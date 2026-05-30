@@ -1,0 +1,3299 @@
+const APP_API_BASE = window.location.origin + '/zawtopup/api';
+
+const state = window.subadminState = {
+  csrf: '',
+  me: null,
+  wallet: null,
+  apiKeys: [],
+  requestLogs: [],
+  bundleOffers: [],
+  users: [],
+
+  bundleBuy: {
+    offerId: '',
+    row: null
+  },
+  
+  bundleCommission: {
+  offerId: '',
+  row: null
+  },
+
+  busyCount: 0,
+requestLogFilter: 'ALL',
+logsAutoRefreshTimer: null,
+
+loaded: {
+  wallet: false,
+  keys: false,
+  logs: false,
+  users: false,
+  bundleOffers: false
+},
+
+loadingSections: {},
+bundleRenderToken: '',
+
+  deductOtp: {
+    targetUid: '',
+    otpRequestId: '',
+    targetName: '',
+    targetPhone: '',
+    amount: 0,
+    note: ''
+  },
+
+  addBalance: {
+    targetUid: '',
+    targetName: '',
+    targetPhone: ''
+  },
+
+  walletLedger: {
+    targetUid: '',
+    targetName: '',
+    targetPhone: ''
+  },
+
+  userCreateOtp: {
+    requestToken: '',
+    otpRequestId: '',
+    maskedPhone: '',
+    expiresInSeconds: 300,
+    formData: null
+  }
+};
+
+function el(id){
+  return document.getElementById(id);
+}
+
+function esc(v){
+  return String(v ?? '').replace(/[&<>"']/g, s => ({
+    '&':'&amp;',
+    '<':'&lt;',
+    '>':'&gt;',
+    '"':'&quot;',
+    "'":'&#39;'
+  }[s]));
+}
+
+function money(v){
+  return Number(v || 0).toFixed(2);
+}
+
+function fmtMoney(v, prefix = 'BDT'){
+  return `${prefix} ${money(v)}`;
+}
+
+function fmtTs(ts){
+  if (!ts) return '-';
+  const raw = Number(ts);
+  const ms = String(Math.trunc(raw)).length <= 10 ? raw * 1000 : raw;
+  const d = new Date(ms);
+  return isNaN(d.getTime()) ? '-' : d.toLocaleString();
+}
+
+
+function getBundlePrice(item){
+  return Number(
+    item?.price_amount ??
+    item?.offer_price ??
+    item?.price ??
+    item?.amount ??
+    0
+  );
+}
+
+function getBundleUserCommission(item){
+  return Number(item?.user_commission || 0);
+}
+
+function getBundleYouPay(item){
+  const price = getBundlePrice(item);
+  const userCommission = getBundleUserCommission(item);
+
+  return Number(
+    item?.you_pay ??
+    item?.payable_amount ??
+    item?.wallet_hold_amount ??
+    item?.net_cost_after_commission ??
+    Math.max(0, price - userCommission)
+  );
+}
+
+function getBundlePackageValidity(item){
+  const direct = String(
+    item?.package_validity ??
+    item?.bundle_validity ??
+    item?.validity_text ??
+    item?.package_duration ??
+    ''
+  ).trim();
+
+  if (direct) return direct.toUpperCase();
+
+  const name = String(item?.bundle_name || item?.name || '').toUpperCase();
+
+  // Example:
+  // 35 GB 400 BDT 30 DAY  => 30 DAY
+  // 70 GB 30 DAY 450 BDT  => 30 DAY
+  // 100 GB 30DAY          => 30 DAY
+  const matches = [...name.matchAll(/(\d+(?:\.\d+)?)\s*(DAY|DAYS|MONTH|MONTHS|HOUR|HOURS|MINUTE|MINUTES)\b/g)];
+
+  if (!matches.length) return '-';
+
+  const last = matches[matches.length - 1];
+  const value = last[1];
+  let unit = last[2];
+
+  if (unit === 'DAYS') unit = 'DAY';
+  if (unit === 'MONTHS') unit = 'MONTH';
+  if (unit === 'HOURS') unit = 'HOUR';
+  if (unit === 'MINUTES') unit = 'MINUTE';
+
+  return `${value} ${unit}`;
+}
+
+
+function statusPill(v){
+  const t = String(v || '').toUpperCase();
+  let cls = 'info';
+
+  if (['SUCCESS','ACTIVE','COMPLETED','APPROVED','VERIFIED'].includes(t)) cls = 'success';
+  else if (['FAILED','DISABLED','REVOKED','INACTIVE','LOCKED','SMS_FAILED','REJECTED','CANCELLED'].includes(t)) cls = 'danger';
+  else if (['PENDING','EXPIRED','WAITING','WAITING_ADMIN','OTP_PENDING','PROCESSING'].includes(t)) cls = 'warning';
+
+  return `<span class="pill ${cls}">${esc(v || '-')}</span>`;
+}
+
+function setBusy(on, text = 'Loading...'){
+  const wrap = el('loadingWrap');
+  const txt = el('loadingText');
+
+  if (!wrap || !txt) return;
+
+  if (on) {
+    state.busyCount++;
+    txt.textContent = text;
+    wrap.classList.add('show');
+    return;
+  }
+
+  state.busyCount = Math.max(0, state.busyCount - 1);
+
+  if (state.busyCount === 0) {
+    wrap.classList.remove('show');
+    txt.textContent = 'Loading...';
+  }
+}
+
+function showToast(message, type = 'info'){
+  const wrap = el('toastWrap');
+  if (!wrap) return;
+
+  const div = document.createElement('div');
+  div.className = 'toast ' + type;
+  div.textContent = String(message || '');
+  wrap.appendChild(div);
+
+  setTimeout(() => div.remove(), 3500);
+}
+
+
+function injectDashboardLazyScrollStyle(){
+  if (document.getElementById('subadminLazyScrollStyle')) return;
+
+  const style = document.createElement('style');
+  style.id = 'subadminLazyScrollStyle';
+  style.textContent = `
+    html, body{
+      height:100%;
+      overflow:hidden !important;
+    }
+
+    .wrap{
+      height:100dvh !important;
+      overflow:hidden !important;
+      box-sizing:border-box;
+    }
+
+    .app-shell{
+      height:100% !important;
+      min-height:0 !important;
+      overflow:hidden !important;
+    }
+
+    .sidebar{
+      height:100% !important;
+      max-height:100% !important;
+      overflow-y:auto !important;
+      overflow-x:hidden !important;
+      overscroll-behavior:contain;
+      scrollbar-width:thin;
+    }
+
+    .main-panel{
+      height:100% !important;
+      min-height:0 !important;
+      overflow:hidden !important;
+      display:flex !important;
+      flex-direction:column !important;
+    }
+
+    .main-panel > .topbar{
+      flex:0 0 auto !important;
+    }
+
+    .page-section{
+      display:none !important;
+    }
+
+    .page-section.active{
+      display:block !important;
+      flex:1 1 auto !important;
+      min-height:0 !important;
+      overflow-y:auto !important;
+      overflow-x:hidden !important;
+      padding-right:6px;
+      overscroll-behavior:contain;
+      scroll-behavior:smooth;
+      scrollbar-width:thin;
+    }
+
+    .table-wrap{
+      max-width:100% !important;
+      overflow:auto !important;
+      overscroll-behavior:contain;
+      scrollbar-width:thin;
+    }
+
+    .modal-card,
+    .modal-card-wide,
+    .modal-card-sm{
+      max-height:calc(100dvh - 40px) !important;
+      overflow-y:auto !important;
+      scrollbar-width:thin;
+    }
+
+    .sidebar::-webkit-scrollbar,
+    .page-section.active::-webkit-scrollbar,
+    .table-wrap::-webkit-scrollbar,
+    .modal-card::-webkit-scrollbar{
+      width:8px;
+      height:8px;
+    }
+
+    .sidebar::-webkit-scrollbar-thumb,
+    .page-section.active::-webkit-scrollbar-thumb,
+    .table-wrap::-webkit-scrollbar-thumb,
+    .modal-card::-webkit-scrollbar-thumb{
+      background:rgba(110,149,221,.35);
+      border-radius:999px;
+    }
+
+    .sidebar::-webkit-scrollbar-track,
+    .page-section.active::-webkit-scrollbar-track,
+    .table-wrap::-webkit-scrollbar-track,
+    .modal-card::-webkit-scrollbar-track{
+      background:rgba(255,255,255,.04);
+    }
+
+    @media (max-width:900px){
+      html, body{
+        height:auto;
+        overflow:auto !important;
+      }
+
+      .wrap{
+        height:auto !important;
+        min-height:100dvh !important;
+        overflow:visible !important;
+      }
+
+      .app-shell{
+        height:auto !important;
+        overflow:visible !important;
+      }
+
+      .sidebar,
+      .main-panel{
+        height:auto !important;
+        max-height:none !important;
+        overflow:visible !important;
+      }
+
+      .page-section.active{
+        height:auto !important;
+        overflow:visible !important;
+      }
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+function getCurrentSectionId(){
+  return document.querySelector('.page-section.active')?.id || 'overviewSection';
+}
+
+function scrollPageSectionTop(sectionId){
+  const section = el(sectionId);
+  if (section) {
+    section.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+
+  const main = document.querySelector('.main-panel');
+  if (main) {
+    main.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+
+async function ensureWalletLoaded(force = false){
+  if (force || !state.loaded.wallet) {
+    await loadWallet();
+  }
+  renderSummary();
+}
+
+async function ensureKeysLoaded(force = false){
+  if (force || !state.loaded.keys) {
+    await loadKeys();
+  }
+  renderKeys();
+  renderSummary();
+  renderIntegrationGuide();
+}
+
+async function ensureLogsLoaded(force = false){
+  if (force || !state.loaded.logs) {
+    await loadLogs();
+  }
+  renderLogs();
+  renderPanelTopupRequests();
+  renderSummary();
+}
+
+async function ensureUsersLoaded(force = false){
+  if (force || !state.loaded.users) {
+    await loadUsers();
+  }
+  renderUsers();
+}
+
+async function ensureBundleOffersLoaded(force = false){
+  if (force || !state.loaded.bundleOffers) {
+    await loadBundleOffers();
+  } else {
+    renderBundleOffers();
+  }
+}
+
+async function loadSectionData(sectionId, force = false){
+  sectionId = sectionId || 'overviewSection';
+
+  const lockKey = sectionId + ':' + (force ? 'force' : 'normal');
+  if (state.loadingSections[lockKey]) {
+    return state.loadingSections[lockKey];
+  }
+
+  const task = (async () => {
+    if (sectionId === 'overviewSection') {
+      await ensureWalletLoaded(force);
+      await ensureKeysLoaded(force);
+      await ensureLogsLoaded(force);
+      return;
+    }
+
+    if (sectionId === 'bundleOffersSection') {
+      await ensureBundleOffersLoaded(force);
+      return;
+    }
+
+    if (sectionId === 'apiKeysSection') {
+      await ensureWalletLoaded(false);
+      await ensureKeysLoaded(force);
+      return;
+    }
+
+    if (sectionId === 'requestLogsSection') {
+      await ensureWalletLoaded(false);
+      await ensureLogsLoaded(force);
+      return;
+    }
+
+    if (sectionId === 'usersSection') {
+      await ensureWalletLoaded(false);
+      await ensureUsersLoaded(force);
+      return;
+    }
+
+    if (sectionId === 'panelTopupSection') {
+      await ensureWalletLoaded(false);
+      await ensureLogsLoaded(force);
+      return;
+    }
+
+    if (sectionId === 'integrationGuideSection') {
+      renderIntegrationGuide();
+      return;
+    }
+
+    if (sectionId === 'bundleApiTestSection' || sectionId === 'liveApiTestSection' || sectionId === 'createUserSection') {
+      await ensureWalletLoaded(false);
+    }
+  })();
+
+  state.loadingSections[lockKey] = task;
+
+  try{
+    await task;
+  }finally{
+    delete state.loadingSections[lockKey];
+  }
+}
+
+
+function showLogin(){
+  el('loginView')?.classList.remove('hidden');
+  el('appView')?.classList.add('hidden');
+}
+
+function showApp(){
+  el('loginView')?.classList.add('hidden');
+  el('appView')?.classList.remove('hidden');
+}
+
+function setLoginError(msg = ''){
+  const node = el('loginError');
+  if (!node) return;
+
+  if (!msg) {
+    node.classList.add('hidden');
+    node.textContent = '';
+    return;
+  }
+
+  node.classList.remove('hidden');
+  node.textContent = msg;
+}
+
+function morphOutputBox(id){
+  const node = el(id);
+  if (!node) return null;
+
+  if (node.tagName === 'PRE') {
+    const div = document.createElement('div');
+    div.id = node.id;
+    div.className = 'status-box-clean';
+    div.innerHTML = '<div style="width:100%">Ready.</div>';
+    node.replaceWith(div);
+    return div;
+  }
+
+  node.classList.remove('code-box');
+  node.classList.add('status-box-clean');
+  return node;
+}
+
+function setBoxMessage(id, type, title, lines = []){
+  const node = el(id);
+  if (!node) return;
+
+  const pillClass =
+    type === 'ok' ? 'success' :
+    type === 'error' ? 'danger' :
+    type === 'warning' ? 'warning' : 'info';
+
+  const cleanLines = Array.isArray(lines) ? lines.filter(Boolean) : [];
+  const listHtml = cleanLines.length
+    ? cleanLines.map(line => `<div class="muted" style="margin-top:6px;line-height:1.55;">${esc(line)}</div>`).join('')
+    : `<div class="muted" style="margin-top:6px;line-height:1.55;">No additional details.</div>`;
+
+  node.innerHTML = `
+    <div style="width:100%">
+      <div style="margin-bottom:10px;">${statusPill(title || 'Status').replace(/pill info|pill success|pill warning|pill danger/, 'pill ' + pillClass)}</div>
+      ${listHtml}
+    </div>
+  `;
+}
+
+function setDetailBox(id, title, pairs = []){
+  const node = el(id);
+  if (!node) return;
+
+  const rows = pairs
+    .filter(item => Array.isArray(item) && item.length >= 2)
+    .map(item => `
+      <div style="display:flex;gap:10px;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+        <div class="muted" style="font-weight:700;">${esc(item[0])}</div>
+        <div style="text-align:right;">${esc(item[1])}</div>
+      </div>
+    `)
+    .join('');
+
+  node.innerHTML = `
+    <div style="width:100%">
+      <div style="margin-bottom:10px;">${statusPill(title || 'Details')}</div>
+      <div>${rows || '<div class="muted">No details found.</div>'}</div>
+    </div>
+  `;
+}
+
+function upgradeOutputBoxes(){
+  [
+    'panelTopupOutput',
+    'createUserOutput',
+    'liveApiOutput',
+    'bundleOffersOutput',
+    'bundleApiOutput',
+    'panelBundleBuyOutput',
+    'logRawJson',
+    'addBalanceStatusBox',
+    'deductOtpStatusBox',
+    'deductOtpRequestInfo'
+  ].forEach(morphOutputBox);
+
+  const rawLabel = el('logRawJson')?.previousElementSibling;
+  if (rawLabel && rawLabel.tagName === 'LABEL') {
+    rawLabel.textContent = 'Details';
+  }
+}
+
+async function readJsonSafe(res){
+  const text = await res.text();
+
+  if (!text || !text.trim()) {
+    throw new Error('Empty response from server');
+  }
+
+  try{
+    return JSON.parse(text);
+  }catch(_){
+    throw new Error(text.length > 400 ? text.slice(0, 400) : text);
+  }
+}
+
+async function proxyGet(action, params = {}, busyText = 'Loading...'){
+  setBusy(true, busyText);
+
+  try{
+    const qs = new URLSearchParams(params).toString();
+    const res = await fetch(
+      'proxy.php?action=' + encodeURIComponent(action) + (qs ? '&' + qs : ''),
+      {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+      }
+    );
+
+    const json = await readJsonSafe(res);
+
+    if (!res.ok || !json.ok) {
+      const err = new Error(json.message || 'Request failed');
+      err.code = json.code || 'ERROR';
+      err.data = json.data || {};
+      throw err;
+    }
+
+    return json.data || {};
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function proxyPost(action, body = {}, busyText = 'Processing...'){
+  setBusy(true, busyText);
+
+  try{
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+
+    if (state.csrf) {
+      headers['X-CSRF-TOKEN'] = state.csrf;
+    }
+
+    const res = await fetch('proxy.php?action=' + encodeURIComponent(action), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+      body: JSON.stringify(body)
+    });
+
+    const json = await readJsonSafe(res);
+
+    if (!res.ok || !json.ok) {
+      const err = new Error(json.message || 'Request failed');
+      err.code = json.code || 'ERROR';
+      err.data = json.data || {};
+      throw err;
+    }
+
+    return json.data || {};
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function copyText(text, successMessage){
+  try{
+    await navigator.clipboard.writeText(String(text || ''));
+    showToast(successMessage || 'Copied', 'ok');
+  }catch(_){
+    showToast('Copy failed. Please copy manually.', 'error');
+  }
+}
+
+function copyById(id, successMessage){
+  const node = el(id);
+  if (!node) {
+    showToast('Element not found', 'error');
+    return;
+  }
+  copyText((node.textContent || '').trim(), successMessage);
+}
+
+function copyLastPlainKey(){
+  const key = el('lastPlainKey')?.textContent?.trim() || '';
+  if (!key || key === '-') {
+    showToast('No plain key available to copy', 'error');
+    return;
+  }
+  copyText(key, 'Plain API key copied');
+}
+
+function useLastPlainKeyInLiveTest(){
+  const key = el('lastPlainKey')?.textContent?.trim() || '';
+  if (!key || key === '-') {
+    showToast('No plain key available', 'error');
+    return;
+  }
+
+  const input = el('liveApiKey');
+  if (input) input.value = key;
+
+  openPageSection('apiTestSection');
+  setApiTestTab('liveApiTestPanel');
+
+  showToast('Plain key inserted into live test', 'ok');
+}
+
+function renderIntegrationGuide(){
+  const topupEndpoint = APP_API_BASE + '/public_api/topup_create.php';
+  const bundleEndpoint = APP_API_BASE + '/public_api/bundle_create.php';
+
+  const plainKey = el('lastPlainKey')?.textContent?.trim() || '';
+  const sampleKey = (plainKey && plainKey !== '-') ? plainKey : 'YOUR_PLAIN_API_KEY';
+
+  const topupBodyObj = {
+    topup_number: '01712345678',
+    operator: 'GP',
+    amount: 20,
+    note: 'API test topup'
+  };
+
+  const bundleBodyObj = {
+    offer_id: 'YOUR_BUNDLE_OFFER_ID',
+    bundle_number: '01712345678',
+    note: 'API test bundle'
+  };
+
+  const topupBodyJson = JSON.stringify(topupBodyObj, null, 2);
+  const bundleBodyJson = JSON.stringify(bundleBodyObj, null, 2);
+
+  const topupCurlText =
+`curl -X POST "${topupEndpoint}" \\
+  -H "Authorization: Bearer ${sampleKey}" \\
+  -H "Content-Type: application/json" \\
+  -H "Accept: application/json" \\
+  -d '${JSON.stringify(topupBodyObj)}'`;
+
+  const bundleCurlText =
+`curl -X POST "${bundleEndpoint}" \\
+  -H "Authorization: Bearer ${sampleKey}" \\
+  -H "Content-Type: application/json" \\
+  -H "Accept: application/json" \\
+  -d '${JSON.stringify(bundleBodyObj)}'`;
+
+  if (el('guideTopupEndpoint')) el('guideTopupEndpoint').textContent = topupEndpoint;
+  if (el('guideTopupAuth')) el('guideTopupAuth').textContent = 'Bearer ' + sampleKey;
+  if (el('guideTopupBody')) el('guideTopupBody').textContent = topupBodyJson;
+  if (el('guideTopupCurl')) el('guideTopupCurl').textContent = topupCurlText;
+
+  if (el('guideBundleEndpoint')) el('guideBundleEndpoint').textContent = bundleEndpoint;
+  if (el('guideBundleAuth')) el('guideBundleAuth').textContent = 'Bearer ' + sampleKey;
+  if (el('guideBundleBody')) el('guideBundleBody').textContent = bundleBodyJson;
+  if (el('guideBundleCurl')) el('guideBundleCurl').textContent = bundleCurlText;
+
+  const liveEndpoint = el('liveApiEndpoint');
+  if (liveEndpoint && !liveEndpoint.value.trim()) {
+    liveEndpoint.value = topupEndpoint;
+  }
+
+  const bundleCreateEndpoint = el('bundleCreateEndpoint');
+  if (bundleCreateEndpoint && !bundleCreateEndpoint.value.trim()) {
+    bundleCreateEndpoint.value = bundleEndpoint;
+  }
+}
+
+function renderSummary(){
+  const me = state.me || {};
+  const data = state.wallet || {};
+  const wallet = data.wallet || {};
+  const roleSettings = data.role_settings || {};
+
+  if (el('meName')) el('meName').textContent = me.name || data.name || '-';
+  if (el('mePhone')) el('mePhone').textContent = me.phone || data.phone || '-';
+  if (el('meEmail')) el('meEmail').textContent = me.email || data.email || '-';
+  if (el('meRole')) el('meRole').textContent = me.role || data.role || '-';
+  if (el('meStatus')) el('meStatus').textContent = me.status || data.status || '-';
+  if (el('meLastLogin')) el('meLastLogin').textContent = fmtTs(data.last_login_at || me.last_login_at || 0);
+
+  if (el('availableBalance')) el('availableBalance').textContent = money(wallet.available_balance || 0);
+  if (el('holdBalance')) el('holdBalance').textContent = money(wallet.hold_balance || 0);
+  if (el('apiKeyCount')) el('apiKeyCount').textContent = String((state.apiKeys || []).length);
+  if (el('requestLogCount')) el('requestLogCount').textContent = String((state.requestLogs || []).length);
+
+  if (el('meCommission')) el('meCommission').textContent = money(roleSettings.commission_per_1000 || 0);
+  if (el('meApiEnabled')) el('meApiEnabled').textContent = roleSettings.api_enabled ? 'Yes' : 'No';
+  if (el('meTopupEnabled')) el('meTopupEnabled').textContent = roleSettings.topup_enabled ? 'Yes' : 'No';
+  if (el('meBundleEnabled')) el('meBundleEnabled').textContent = roleSettings.bundle_enabled ? 'Yes' : 'No';
+
+  const minAmount = Number(roleSettings.min_amount || 0);
+  const maxAmount = Number(roleSettings.max_amount || 0);
+  if (el('meAmountLimits')) el('meAmountLimits').textContent = money(minAmount) + ' - ' + money(maxAmount);
+
+  if (el('meWalletUpdated')) el('meWalletUpdated').textContent = fmtTs(wallet.updated_at || roleSettings.updated_at || 0);
+
+  if (el('sideMeName')) el('sideMeName').textContent = me.name || data.name || '-';
+  if (el('sideMeRole')) el('sideMeRole').textContent = me.role || data.role || '-';
+  if (el('sideMeStatus')) el('sideMeStatus').textContent = me.status || data.status || '-';
+
+  renderIntegrationGuide();
+  renderRequestChart();
+}
+
+
+function renderRequestChart(){
+  const rows = state.requestLogs || [];
+
+  const successCount = rows.filter(item => {
+    const s = String(item.status || '').toUpperCase();
+    return ['SUCCESS', 'COMPLETED', 'APPROVED'].includes(s);
+  }).length;
+
+  const failedCount = rows.filter(item => {
+    const s = String(item.status || '').toUpperCase();
+    return ['FAILED', 'REJECTED', 'CANCELLED', 'CANCELED'].includes(s);
+  }).length;
+
+  const pendingCount = rows.filter(item => {
+    const s = String(item.status || '').toUpperCase();
+    return ['PENDING', 'WAITING_ADMIN', 'WAITING', 'PROCESSING', 'CLAIMED'].includes(s);
+  }).length;
+
+  const total = rows.length || 0;
+
+  const pct = (count) => {
+    if (!total) return 0;
+    return Math.round((count / total) * 100);
+  };
+
+  const successPct = pct(successCount);
+  const failedPct = pct(failedCount);
+  const pendingPct = pct(pendingCount);
+
+  if (el('chartTotalRequests')) el('chartTotalRequests').textContent = `${total} Requests`;
+
+  if (el('chartSuccessCount')) el('chartSuccessCount').textContent = String(successCount);
+  if (el('chartFailedCount')) el('chartFailedCount').textContent = String(failedCount);
+  if (el('chartPendingCount')) el('chartPendingCount').textContent = String(pendingCount);
+
+  if (el('chartSuccessBar')) el('chartSuccessBar').style.width = successPct + '%';
+  if (el('chartFailedBar')) el('chartFailedBar').style.width = failedPct + '%';
+  if (el('chartPendingBar')) el('chartPendingBar').style.width = pendingPct + '%';
+
+  if (el('chartSuccessPercent')) el('chartSuccessPercent').textContent = successPct + '%';
+  if (el('chartFailedPercent')) el('chartFailedPercent').textContent = failedPct + '%';
+  if (el('chartPendingPercent')) el('chartPendingPercent').textContent = pendingPct + '%';
+}
+
+
+function renderKeys(){
+  const tbody = el('keysTableBody');
+  if (!tbody) return;
+
+  const rows = state.apiKeys || [];
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" class="muted">No API keys yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(item => `
+    <tr>
+      <td>
+        <div><strong>${esc(item.key_id || '-')}</strong></div>
+        <div style="margin-top:8px;">
+          <button class="mini-btn" onclick="copyText('${String(item.key_id || '')}','Key ID copied')">Copy Key ID</button>
+        </div>
+      </td>
+      <td><code>${esc(item.key_mask || '-')}</code></td>
+      <td>${statusPill(item.status || '-')}</td>
+      <td>${fmtTs(item.last_used_at || 0)}</td>
+      <td>${fmtTs(item.created_at || 0)}</td>
+      <td>
+        ${
+          String(item.status || '').toUpperCase() === 'ACTIVE'
+            ? `<button class="mini-btn" onclick="updateKeyStatus('${String(item.key_id || '')}','DISABLED')">Disable</button>`
+            : `<button class="mini-btn blue" onclick="updateKeyStatus('${String(item.key_id || '')}','ACTIVE')">Activate</button>`
+        }
+      </td>
+    </tr>
+  `).join('');
+}
+
+function renderLogs(){
+  const tbody = el('logsTableBody');
+  if (!tbody) return;
+
+  let rows = state.requestLogs || [];
+
+  if (state.requestLogFilter !== 'ALL') {
+    rows = rows.filter(item => String(item.status || '').toUpperCase() === state.requestLogFilter);
+  }
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="muted">No request logs found for this filter.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(item => {
+    const number = item.topup_number || item.bundle_number || item.number || '';
+    return `
+      <tr>
+        <td>${esc(item.request_id || '-')}</td>
+        <td>${esc(item.key_id || '-')}</td>
+        <td>${esc(item.request_type || item.action || '-')}</td>
+        <td>${statusPill(item.status || '-')}</td>
+        <td>${esc(item.operator || '-')}</td>
+        <td>${esc(number || '-')}</td>
+        <td>${money(item.amount || 0)}</td>
+        <td>${fmtTs(item.created_at || 0)}</td>
+        <td>
+          <div class="row-actions">
+            <button class="mini-btn blue" onclick="viewRequestLog('${String(item.request_id || '')}')">View</button>
+            <button class="mini-btn green" onclick="copyRequestId('${String(item.request_id || '')}')">Copy ID</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function getUserRowByUidForWallet(uid){
+  return (state.users || []).find(item => String(item.uid || '') === String(uid)) || null;
+}
+
+function renderUsers(){
+  const tbody = el('usersTableBody');
+  if (!tbody) return;
+
+  const rows = state.users || [];
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="muted">No users found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(item => `
+    <tr>
+      <td>${esc(item.name || '-')}</td>
+      <td>${esc(item.phone || '-')}</td>
+      <td>${esc(item.email || '-')}</td>
+      <td>${statusPill(item.role || '-')}</td>
+      <td>${statusPill(item.status || '-')}</td>
+      <td>
+        <div>${fmtMoney(item.available_balance || 0)}</div>
+        <div class="muted" style="margin-top:4px;">Hold: ${fmtMoney(item.hold_balance || 0)}</div>
+      </td>
+      <td>${fmtMoney(item.min_amount || 0)} - ${fmtMoney(item.max_amount || 0)}</td>
+      <td class="users-table-action">
+        <div class="users-action-stack">
+          <button class="mini-btn green" onclick="openAddBalanceModal('${String(item.uid || '')}')">Add</button>
+          <button class="mini-btn blue" onclick="openDeductOtpModal('${String(item.uid || '')}')">Deduct</button>
+          <button class="mini-btn" onclick="openWalletLedgerModal('${String(item.uid || '')}')">Ledger</button>
+          ${
+            item.can_convert_to_retailer
+              ? `<button class="mini-btn green" onclick="convertUserToRetailer('${String(item.uid || '')}')">Convert</button>`
+              : `<button class="mini-btn" disabled>Convert</button>`
+          }
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function resetAddBalanceState(){
+  state.addBalance = {
+    targetUid: '',
+    targetName: '',
+    targetPhone: ''
+  };
+
+  if (el('addBalanceTargetName')) el('addBalanceTargetName').textContent = '-';
+  if (el('addBalanceTargetPhone')) el('addBalanceTargetPhone').textContent = '-';
+  if (el('addBalanceTargetBalance')) el('addBalanceTargetBalance').textContent = '0.00';
+  if (el('addBalanceTargetRole')) el('addBalanceTargetRole').textContent = '-';
+  if (el('addBalanceAmountInput')) el('addBalanceAmountInput').value = '';
+  if (el('addBalanceNoteInput')) el('addBalanceNoteInput').value = '';
+
+  setBoxMessage('addBalanceStatusBox', 'info', 'Ready', [
+    'No balance add request yet.'
+  ]);
+}
+
+function closeAddBalanceModal(){
+  el('addBalanceModalWrap')?.classList.remove('open');
+  resetAddBalanceState();
+}
+
+function openAddBalanceModal(uid){
+  const row = getUserRowByUidForWallet(uid);
+
+  if (!row) {
+    showToast('User not found', 'error');
+    return;
+  }
+
+  resetAddBalanceState();
+
+  state.addBalance.targetUid = String(row.uid || '');
+  state.addBalance.targetName = String(row.name || '');
+  state.addBalance.targetPhone = String(row.phone || '');
+
+  if (el('addBalanceTargetName')) el('addBalanceTargetName').textContent = row.name || '-';
+  if (el('addBalanceTargetPhone')) el('addBalanceTargetPhone').textContent = row.phone || '-';
+  if (el('addBalanceTargetBalance')) el('addBalanceTargetBalance').textContent = money(row.available_balance || 0);
+  if (el('addBalanceTargetRole')) el('addBalanceTargetRole').textContent = row.role || '-';
+
+  el('addBalanceModalWrap')?.classList.add('open');
+}
+
+async function submitAddBalance(){
+  const uid = state.addBalance.targetUid;
+  const amount = Number(el('addBalanceAmountInput')?.value || 0);
+  const note = el('addBalanceNoteInput')?.value.trim() || '';
+
+  if (!uid) {
+    showToast('Target user missing', 'error');
+    return;
+  }
+
+  if (amount <= 0) {
+    showToast('Enter valid add amount', 'error');
+    return;
+  }
+
+  try{
+    const data = await proxyPost('wallet_add_balance', {
+      uid,
+      amount,
+      note
+    }, 'Adding balance...');
+
+    setBoxMessage('addBalanceStatusBox', 'ok', 'Balance Added', [
+      `Target: ${data.target_name || state.addBalance.targetName || '-'}`,
+      `Phone: ${data.target_phone || state.addBalance.targetPhone || '-'}`,
+      `Added: ${fmtMoney(data.amount || amount)}`,
+      `Available Balance: ${fmtMoney(data.available_balance_after || data.after_available || 0)}`,
+      `${data.message || 'Wallet balance updated successfully.'}`
+    ]);
+
+    await Promise.all([
+      loadWallet(),
+      loadLogs(),
+      loadUsers()
+    ]);
+
+    renderSummary();
+    renderLogs();
+    renderUsers();
+    renderPanelTopupRequests();
+
+    showToast('Balance added successfully', 'ok');
+
+    setTimeout(() => {
+      closeAddBalanceModal();
+    }, 900);
+  }catch(err){
+    setBoxMessage('addBalanceStatusBox', 'error', 'Add Balance Failed', [
+      err.message || 'Failed to add balance'
+    ]);
+    showToast(err.message || 'Failed to add balance', 'error');
+  }
+}
+
+function resetWalletLedgerState(){
+  state.walletLedger = {
+    targetUid: '',
+    targetName: '',
+    targetPhone: ''
+  };
+
+  if (el('ledgerTargetName')) el('ledgerTargetName').textContent = '-';
+  if (el('ledgerTargetPhone')) el('ledgerTargetPhone').textContent = '-';
+  if (el('ledgerAvailableBalance')) el('ledgerAvailableBalance').textContent = '0.00';
+  if (el('ledgerHoldBalance')) el('ledgerHoldBalance').textContent = '0.00';
+
+  const tbody = el('walletLedgerTableBody');
+  if (tbody) {
+    tbody.innerHTML = '<tr><td colspan="8" class="muted">No wallet ledger loaded yet.</td></tr>';
+  }
+}
+
+function closeWalletLedgerModal(){
+  el('walletLedgerModalWrap')?.classList.remove('open');
+  resetWalletLedgerState();
+}
+
+function renderWalletLedgerRows(items){
+  const tbody = el('walletLedgerTableBody');
+  if (!tbody) return;
+
+  if (!items || !items.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="muted">No wallet ledger found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = items.map(item => `
+    <tr>
+      <td>${fmtTs(item.created_at || 0)}</td>
+      <td>${esc(item.type || '-')}</td>
+      <td>${statusPill(item.direction || '-')}</td>
+      <td>${esc(item.currency || 'BDT')} ${money(item.amount || 0)}</td>
+      <td>${money(item.before_available || 0)}</td>
+      <td>${money(item.after_available || 0)}</td>
+      <td>${esc(item.note || '-')}</td>
+      <td>${esc(item.created_by_role || '-')}<br>${esc(item.created_by_uid || '-')}</td>
+    </tr>
+  `).join('');
+}
+
+async function loadWalletLedger(uid){
+  const data = await proxyGet('wallet_ledger_list', {
+    uid,
+    limit: 100
+  }, 'Loading wallet ledger...');
+
+  if (el('ledgerTargetName')) el('ledgerTargetName').textContent = data.target_name || '-';
+  if (el('ledgerTargetPhone')) el('ledgerTargetPhone').textContent = data.target_phone || '-';
+  if (el('ledgerAvailableBalance')) el('ledgerAvailableBalance').textContent = money(data.available_balance || 0);
+  if (el('ledgerHoldBalance')) el('ledgerHoldBalance').textContent = money(data.hold_balance || 0);
+
+  renderWalletLedgerRows(data.items || []);
+}
+
+async function openWalletLedgerModal(uid){
+  const row = getUserRowByUidForWallet(uid);
+
+  if (!row) {
+    showToast('User not found', 'error');
+    return;
+  }
+
+  resetWalletLedgerState();
+
+  state.walletLedger.targetUid = String(row.uid || '');
+  state.walletLedger.targetName = String(row.name || '');
+  state.walletLedger.targetPhone = String(row.phone || '');
+
+  el('walletLedgerModalWrap')?.classList.add('open');
+
+  try{
+    await loadWalletLedger(uid);
+  }catch(err){
+    showToast(err.message || 'Failed to load wallet ledger', 'error');
+  }
+}
+
+function getPanelTopupRows(){
+  return (state.requestLogs || [])
+    .filter(item =>
+      String(item.key_id || '').toUpperCase() === 'PANEL' &&
+      String(item.request_type || item.action || '').toUpperCase() === 'TOPUP'
+    )
+    .sort((a, b) => Number(b.created_at || 0) - Number(a.created_at || 0));
+}
+
+function renderPanelTopupRequests(){
+  const tbody = el('panelTopupTableBody');
+  if (!tbody) return;
+
+  const rows = getPanelTopupRows().slice(0, 10);
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="muted">No panel topup yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(item => `
+    <tr>
+      <td>${esc(item.request_id || '-')}</td>
+      <td>${statusPill(item.status || '-')}</td>
+      <td>${esc(item.operator || '-')}</td>
+      <td>${esc(item.topup_number || '-')}</td>
+      <td>${money(item.amount || 0)}</td>
+      <td>${fmtTs(item.created_at || 0)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="mini-btn blue" onclick="viewRequestLog('${String(item.request_id || '')}')">View</button>
+          <button class="mini-btn green" onclick="copyRequestId('${String(item.request_id || '')}')">Copy ID</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+/* =========================
+   Bundle panel
+========================= */
+
+function injectBundlePanelStyle(){
+  const oldStyle = document.getElementById('bundlePanelInlineStyle');
+  if (oldStyle) oldStyle.remove();
+
+  const style = document.createElement('style');
+  style.id = 'bundlePanelInlineStyle';
+  style.textContent = `
+    .bundle-offer-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+      gap:16px;
+      margin-top:16px;
+      align-items:start;
+    }
+
+    .bundle-offer-card{
+      background:linear-gradient(180deg,rgba(18,40,77,.98),rgba(11,31,67,.98));
+      border:1px solid rgba(110,149,221,.20);
+      border-radius:22px;
+      padding:16px;
+      box-shadow:0 14px 34px rgba(0,0,0,.20);
+      overflow:hidden;
+      min-width:0;
+    }
+
+    .bundle-offer-top{
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:12px;
+      margin-bottom:12px;
+      min-width:0;
+    }
+
+    .bundle-offer-name{
+      font-size:18px;
+      font-weight:900;
+      line-height:1.25;
+      color:#ecf4ff;
+      word-break:break-word;
+    }
+
+    .bundle-offer-id{
+      margin-top:5px;
+      color:#9fb5d8;
+      font-size:12px;
+      line-height:1.35;
+      word-break:break-word;
+    }
+
+    .bundle-offer-desc{
+      color:#b8c9e3;
+      font-size:13px;
+      line-height:1.5;
+      min-height:20px;
+      margin-bottom:12px;
+    }
+
+    .bundle-price-row{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      margin:12px 0;
+    }
+
+    .bundle-price-main{
+      background:rgba(255,255,255,.035);
+      border:1px solid rgba(255,255,255,.07);
+      border-radius:16px;
+      padding:12px;
+      min-width:0;
+    }
+
+    .bundle-price-main span,
+    .bundle-mini-grid span,
+    .bundle-expiry{
+      display:block;
+      color:#9fb5d8;
+      font-size:12px;
+      line-height:1.4;
+    }
+
+    .bundle-price-main strong{
+      display:block;
+      margin-top:5px;
+      font-size:17px;
+      line-height:1.25;
+      color:#ecf4ff;
+      word-break:break-word;
+    }
+
+    .bundle-mini-grid{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:8px;
+      margin:12px 0;
+    }
+
+    .bundle-mini-grid > div{
+      background:rgba(255,255,255,.025);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius:14px;
+      padding:10px;
+      min-width:0;
+    }
+
+    .bundle-mini-grid strong{
+      display:block;
+      margin-top:4px;
+      font-size:13px;
+      color:#ecf4ff;
+      word-break:break-word;
+    }
+
+    .bundle-offer-footer{
+      display:flex;
+      flex-direction:column;
+      align-items:stretch;
+      gap:12px;
+      margin-top:14px;
+      clear:both;
+    }
+
+    .bundle-expiry{
+    width:100%;
+    min-width:0;
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:4px;
+    }
+
+    .bundle-offer-actions{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      width:100%;
+    }
+
+    .bundle-offer-actions .btn{
+      width:100%;
+      min-width:0;
+      white-space:nowrap;
+      justify-content:center;
+      text-align:center;
+      padding-left:10px;
+      padding-right:10px;
+    }
+
+    .bundle-buy-btn,
+    .bundle-commission-btn{
+      min-width:0;
+      white-space:nowrap;
+    }
+
+    .bundle-profit-tag{
+      display:inline-flex;
+      align-items:center;
+      min-height:28px;
+      padding:0 10px;
+      border-radius:999px;
+      background:rgba(31,215,96,.12);
+      border:1px solid rgba(31,215,96,.24);
+      color:#b9ffd0;
+      font-size:12px;
+      font-weight:900;
+      margin-top:8px;
+      width:max-content;
+      max-width:100%;
+    }
+
+    .bundle-custom-tag{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:26px;
+  padding:0 10px;
+  border-radius:999px;
+  background:rgba(255,191,31,.13);
+  border:1px solid rgba(255,191,31,.22);
+  color:#ffe3a0;
+  font-size:11px;
+  font-weight:900;
+  margin-top:8px;
+  width:max-content;
+  max-width:100%;
+  clear:both;
+}
+
+    .bundle-empty-card{
+      grid-column:1/-1;
+      padding:24px;
+      border-radius:22px;
+      border:1px solid rgba(110,149,221,.18);
+      background:rgba(255,255,255,.025);
+      text-align:center;
+    }
+
+    .bundle-empty-card strong{
+      display:block;
+      font-size:18px;
+      margin-bottom:8px;
+    }
+
+    .bundle-empty-card span{
+      color:#9fb5d8;
+    }
+
+    .bundle-commission-preview{
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:10px;
+      margin-top:12px;
+    }
+
+    .bundle-commission-preview .box{
+      box-shadow:none;
+    }
+
+    @media (max-width:720px){
+      .bundle-offer-grid{
+        grid-template-columns:1fr;
+      }
+
+      .bundle-price-row,
+      .bundle-mini-grid,
+      .bundle-offer-actions,
+      .bundle-commission-preview{
+        grid-template-columns:1fr;
+      }
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+
+
+
+
+function getBundleOfferItemsFromResponse(data){
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.offers)) return data.offers;
+  if (data.data && Array.isArray(data.data.items)) return data.data.items;
+  if (data.data && Array.isArray(data.data.offers)) return data.data.offers;
+  return [];
+}
+
+function hideNodeById(id){
+  const node = el(id);
+  if (!node) return;
+
+  const field = node.closest('.field');
+  if (field) {
+    field.classList.add('hidden');
+    return;
+  }
+
+  node.classList.add('hidden');
+}
+
+function ensureBundlePanelUi(){
+  injectBundlePanelStyle();
+
+  const section = el('bundleOffersSection');
+  if (!section) return;
+
+  const loadBtn = el('loadBundleOffersBtn');
+  if (loadBtn) loadBtn.textContent = 'Refresh Offers';
+
+  hideNodeById('bundleOffersEndpoint');
+  hideNodeById('bundleOffersApiKey');
+  hideNodeById('bundleOfferSearch');
+  hideNodeById('bundleOfferSearchInput');
+  hideNodeById('bundleOfferOperatorFilter');
+
+  document.querySelectorAll('.bundle-panel-tools,.bundle-offer-toolbar').forEach(node => {
+    node.classList.add('hidden');
+  });
+
+  const tableBody = el('bundleOffersTableBody');
+  const tableWrap = tableBody ? tableBody.closest('.table-wrap') : null;
+  if (tableWrap) {
+    tableWrap.classList.add('hidden');
+  }
+
+  let cardWrap = el('bundleOfferCards') || el('bundleOffersGrid');
+
+  if (!cardWrap) {
+    cardWrap = document.createElement('div');
+    cardWrap.id = 'bundleOfferCards';
+    cardWrap.className = 'bundle-offer-grid';
+
+    const outputBox = el('bundleOffersOutput');
+    const outputParent = outputBox ? outputBox.closest('.box') : null;
+
+    if (outputParent && outputParent.parentNode) {
+      outputParent.parentNode.insertBefore(cardWrap, outputParent.nextSibling);
+    } else {
+      section.appendChild(cardWrap);
+    }
+  }
+
+  cardWrap.classList.add('bundle-offer-grid');
+  cardWrap.classList.remove('hidden');
+
+  if (tableBody) {
+    tableBody.innerHTML = '<tr><td colspan="7" class="muted">Bundle offers are displayed as cards.</td></tr>';
+  }
+
+  ensurePanelBundleModal();
+  ensurePanelBundleCommissionModal();
+}
+
+function ensurePanelBundleModal(){
+  if (el('panelBundleBuyModalWrap')) return;
+
+  const modal = document.createElement('div');
+  modal.id = 'panelBundleBuyModalWrap';
+  modal.className = 'modal-wrap';
+  modal.innerHTML = `
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>
+          <h3>Buy Bundle</h3>
+          <p>Confirm bundle number and create request</p>
+        </div>
+        <button id="closePanelBundleBuyModalBtn" class="modal-close" type="button">Close</button>
+      </div>
+
+      <div class="info-grid mb-14">
+        <div class="box">
+          <label>Bundle Name</label>
+          <strong id="panelBundleOfferName">-</strong>
+        </div>
+
+        <div class="box">
+          <label>Offer ID</label>
+          <strong id="panelBundleOfferId">-</strong>
+        </div>
+
+        <div class="box">
+          <label>Operator</label>
+          <strong id="panelBundleOperator">-</strong>
+        </div>
+
+        <div class="box">
+          <label>Amount</label>
+          <strong id="panelBundleAmount">BDT 0.00</strong>
+        </div>
+
+        <div class="box">
+          <label>User Commission</label>
+          <strong id="panelBundleCommission">BDT 0.00</strong>
+        </div>
+
+        <div class="box">
+          <label>User Pay</label>
+          <strong id="panelBundleNetCost">BDT 0.00</strong>
+        </div>
+
+        <div class="box">
+          <label>Expiry</label>
+          <strong id="panelBundleExpires">-</strong>
+        </div>
+
+        <div class="box">
+          <label>Status</label>
+          <strong id="panelBundleStatus">-</strong>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Bundle Number</label>
+        <input id="panelBundleNumberInput" class="input" placeholder="01712345678">
+      </div>
+
+      <div class="field">
+        <label>Note</label>
+        <input id="panelBundleNoteInput" class="input" value="Panel bundle request">
+      </div>
+
+      <div class="box mt-14">
+        <label>Result</label>
+        <div id="panelBundleBuyOutput" class="status-box-clean">No bundle request created yet.</div>
+      </div>
+
+      <div class="actions mt-14">
+        <button id="panelBundleSubmitBtn" class="btn green" type="button">Create Bundle Request</button>
+        <button id="panelBundleCancelBtn" class="btn ghost" type="button">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  
+  morphOutputBox('panelBundleBuyOutput');
+
+  el('closePanelBundleBuyModalBtn')?.addEventListener('click', closeBundleBuyModal);
+  el('panelBundleCancelBtn')?.addEventListener('click', closeBundleBuyModal);
+  el('panelBundleSubmitBtn')?.addEventListener('click', confirmBundleBuy);
+
+  el('panelBundleBuyModalWrap')?.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'panelBundleBuyModalWrap') {
+      closeBundleBuyModal();
+    }
+  });
+
+  el('panelBundleNumberInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      confirmBundleBuy();
+    }
+  });
+  
+}
+
+
+
+function ensurePanelBundleCommissionModal(){
+  if (el('panelBundleCommissionModalWrap')) return;
+
+  const modal = document.createElement('div');
+  modal.id = 'panelBundleCommissionModalWrap';
+  modal.className = 'modal-wrap';
+  modal.innerHTML = `
+    <div class="modal-card modal-card-sm">
+      <div class="modal-head">
+        <div>
+          <h3>Customize Commission</h3>
+          <p>Set how much commission customer/user will get from this bundle.</p>
+        </div>
+        <button id="closePanelBundleCommissionModalBtn" class="modal-close" type="button">Close</button>
+      </div>
+
+      <div class="info-grid mb-14">
+        <div class="box">
+          <label>Bundle Name</label>
+          <strong id="panelBundleCommissionOfferName">-</strong>
+        </div>
+
+        <div class="box">
+          <label>Offer ID</label>
+          <strong id="panelBundleCommissionOfferId">-</strong>
+        </div>
+
+        <div class="box">
+          <label>Admin Commission</label>
+          <strong id="panelBundleCommissionAdmin">BDT 0.00</strong>
+        </div>
+
+        <div class="box">
+          <label>Current User Commission</label>
+          <strong id="panelBundleCommissionCurrent">BDT 0.00</strong>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>User Commission</label>
+        <input id="panelBundleCommissionInput" class="input" type="number" step="0.01" min="0" placeholder="Enter user commission">
+      </div>
+
+      <div class="bundle-commission-preview">
+        <div class="box">
+          <label>User Gets</label>
+          <strong id="panelBundleCommissionUserGets">BDT 0.00</strong>
+        </div>
+        <div class="box">
+          <label>Your Profit On Success</label>
+          <strong id="panelBundleCommissionProfit">BDT 0.00</strong>
+        </div>
+      </div>
+
+      <div class="box mt-14">
+        <label>Status</label>
+        <div id="panelBundleCommissionOutput" class="status-box-clean">No commission update yet.</div>
+      </div>
+
+      <div class="actions mt-14">
+        <button id="panelBundleCommissionSaveBtn" class="btn green" type="button">Save Commission</button>
+        <button id="panelBundleCommissionResetBtn" class="btn orange" type="button">Reset Default</button>
+        <button id="panelBundleCommissionCancelBtn" class="btn ghost" type="button">Cancel</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  morphOutputBox('panelBundleCommissionOutput');
+
+  el('closePanelBundleCommissionModalBtn')?.addEventListener('click', closeBundleCommissionModal);
+  el('panelBundleCommissionCancelBtn')?.addEventListener('click', closeBundleCommissionModal);
+  el('panelBundleCommissionSaveBtn')?.addEventListener('click', saveBundleCommission);
+  el('panelBundleCommissionResetBtn')?.addEventListener('click', resetBundleCommission);
+
+  el('panelBundleCommissionInput')?.addEventListener('input', updateBundleCommissionPreview);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'panelBundleCommissionModalWrap') {
+      closeBundleCommissionModal();
+    }
+  });
+}
+
+function bundleOfferCardHtml(item){
+  const offerId = String(item.offer_id || '');
+  const name = String(item.bundle_name || item.name || 'Bundle Offer');
+  const operator = String(item.operator || '-').toUpperCase();
+  const description = String(item.description || '');
+  const amount = getBundlePrice(item);
+  const userCommission = getBundleUserCommission(item);
+  const adminCommission = Number(item.admin_commission || 0);
+  const subadminProfit = Number(item.subadmin_profit || 0);
+  const youPay = getBundleYouPay(item);
+  const expiresAt = Number(item.expires_at || 0);
+  const packageValidity = getBundlePackageValidity(item);
+
+  return `
+    <div class="bundle-offer-card">
+      <div class="bundle-offer-top">
+        <div>
+          <div class="bundle-offer-name">${esc(name)}</div>
+          <div class="bundle-offer-id">Offer ID: ${esc(offerId || '-')}</div>
+        </div>
+        <div>${statusPill(operator)}</div>
+      </div>
+
+      ${description ? `<div class="bundle-offer-desc">${esc(description)}</div>` : `<div class="bundle-offer-desc">Ready bundle offer for your customer.</div>`}
+
+      <div class="bundle-price-row">
+        <div class="bundle-price-main">
+          <span>Price</span>
+          <strong>${fmtMoney(amount)}</strong>
+        </div>
+        <div class="bundle-price-main">
+          <span>User Commission</span>
+          <strong>${fmtMoney(userCommission)}</strong>
+        </div>
+      </div>
+
+      <div class="bundle-mini-grid">
+        <div>
+          <span>User Pay</span>
+          <strong>${fmtMoney(youPay)}</strong>
+        </div>
+        <div>
+          <span>Admin Commission</span>
+          <strong>${fmtMoney(adminCommission)}</strong>
+        </div>
+        <div>
+          <span>Subadmin Profit</span>
+          <strong>${fmtMoney(subadminProfit)}</strong>
+        </div>
+        <div>
+          <span>Validity</span>
+          <strong>${esc(packageValidity)}</strong>
+        </div>
+      </div>
+
+      <div class="bundle-offer-footer">
+        <div class="bundle-expiry">
+          ${expiresAt ? `Expires: ${esc(fmtTs(expiresAt))}` : 'No expiry'}
+          ${item.customized_by_subadmin ? `<div class="bundle-custom-tag">Custom commission active</div>` : ''}
+        </div>
+
+        <div class="bundle-offer-actions">
+          <button class="btn ghost bundle-commission-btn" type="button" data-bundle-offer-id="${esc(offerId)}">
+            Customize
+          </button>
+          <button class="btn green bundle-buy-btn" type="button" data-bundle-offer-id="${esc(offerId)}">
+            Buy Bundle
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function bindBundleOfferCardEvents(cardWrap){
+  if (!cardWrap || cardWrap.dataset.bundleClickBound === '1') return;
+
+  cardWrap.dataset.bundleClickBound = '1';
+
+  cardWrap.addEventListener('click', (e) => {
+    const buyBtn = e.target.closest('.bundle-buy-btn');
+    if (buyBtn) {
+      openBundleBuyModal(buyBtn.getAttribute('data-bundle-offer-id') || '');
+      return;
+    }
+
+    const commissionBtn = e.target.closest('.bundle-commission-btn');
+    if (commissionBtn) {
+      openBundleCommissionModal(commissionBtn.getAttribute('data-bundle-offer-id') || '');
+    }
+  });
+}
+
+function renderBundleOffers(){
+  ensureBundlePanelUi();
+
+  const cardWrap = el('bundleOfferCards') || el('bundleOffersGrid');
+  const rows = state.bundleOffers || [];
+
+  if (!cardWrap) return;
+
+  bindBundleOfferCardEvents(cardWrap);
+
+  if (!rows.length) {
+    cardWrap.innerHTML = `
+      <div class="bundle-empty-card">
+        <strong>No bundle offers found</strong>
+        <span>Click Refresh Offers to load active bundle offers.</span>
+      </div>
+    `;
+    return;
+  }
+
+  const token = String(Date.now()) + Math.random();
+  state.bundleRenderToken = token;
+
+  cardWrap.innerHTML = `
+    <div class="bundle-empty-card">
+      <strong>Loading offers...</strong>
+      <span>Offers are rendering one by one for smoother performance.</span>
+    </div>
+  `;
+
+  let index = 0;
+  const chunkSize = 6;
+
+  function drawChunk(){
+    if (state.bundleRenderToken !== token) return;
+
+    if (index === 0) {
+      cardWrap.innerHTML = '';
+    }
+
+    const chunk = rows.slice(index, index + chunkSize);
+    cardWrap.insertAdjacentHTML('beforeend', chunk.map(bundleOfferCardHtml).join(''));
+
+    index += chunkSize;
+
+    if (index < rows.length) {
+      requestAnimationFrame(drawChunk);
+    }
+  }
+
+  requestAnimationFrame(drawChunk);
+}
+
+
+async function loadBundleOffers(){
+  ensureBundlePanelUi();
+
+  try{
+    const data = await proxyGet('bundle_offers_panel', {}, 'Loading bundle offers...');
+    const items = getBundleOfferItemsFromResponse(data);
+
+    state.bundleOffers = Array.isArray(items) ? items : [];
+    state.loaded.bundleOffers = true;
+
+    renderBundleOffers();
+
+    setBoxMessage('bundleOffersOutput', 'ok', 'Bundle Offers Loaded', [
+      `Total offers: ${state.bundleOffers.length}`,
+      'Offers loaded from your subadmin session. No API key needed.'
+    ]);
+
+    showToast('Bundle offers loaded', 'ok');
+  }catch(err){
+    state.bundleOffers = [];
+    state.loaded.bundleOffers = false;
+
+    renderBundleOffers();
+
+    setBoxMessage('bundleOffersOutput', 'error', 'Load Failed', [
+      err.message || 'Failed to load bundle offers'
+    ]);
+
+    showToast(err.message || 'Failed to load bundle offers', 'error');
+  }
+}
+
+function useBundleOfferForTest(offerId){
+  const row = (state.bundleOffers || []).find(item => String(item.offer_id || '') === String(offerId));
+
+  if (!row) {
+    showToast('Bundle offer not found', 'error');
+    return;
+  }
+
+  if (el('bundleTestOfferId')) {
+    el('bundleTestOfferId').value = String(row.offer_id || '');
+  }
+
+  openPageSection('apiTestSection');
+  setApiTestTab('bundleApiTestPanel');
+  
+  showToast('Bundle offer selected for API test', 'ok');
+}
+
+function openBundleBuyModal(offerId){
+  ensureBundlePanelUi();
+
+  const row = (state.bundleOffers || []).find(item => String(item.offer_id || '') === String(offerId));
+
+  if (!row) {
+    showToast('Bundle offer not found', 'error');
+    return;
+  }
+
+  state.bundleBuy = {
+    offerId: String(row.offer_id || ''),
+    row
+  };
+  
+  state.bundleCommission = {
+  offerId: '',
+  row: null
+  };
+  
+
+  if (el('panelBundleOfferName')) el('panelBundleOfferName').textContent = String(row.bundle_name || row.name || '-');
+  if (el('panelBundleOfferId')) el('panelBundleOfferId').textContent = String(row.offer_id || '-');
+  if (el('panelBundleOperator')) el('panelBundleOperator').textContent = String(row.operator || '-');
+  
+  
+  if (el('panelBundleAmount')) el('panelBundleAmount').textContent = fmtMoney(getBundlePrice(row));
+  if (el('panelBundleCommission')) el('panelBundleCommission').textContent = fmtMoney(getBundleUserCommission(row));
+  if (el('panelBundleNetCost')) el('panelBundleNetCost').textContent = fmtMoney(getBundleYouPay(row));
+  
+  
+  if (el('panelBundleExpires')) el('panelBundleExpires').textContent = row.expires_at ? fmtTs(row.expires_at) : '-';
+  if (el('panelBundleStatus')) el('panelBundleStatus').innerHTML = statusPill(row.status || (row.active ? 'ACTIVE' : 'INACTIVE'));
+
+  if (el('panelBundleNumberInput')) el('panelBundleNumberInput').value = '';
+  if (el('panelBundleNoteInput')) el('panelBundleNoteInput').value = 'Panel bundle request';
+
+  setBoxMessage('panelBundleBuyOutput', 'info', 'Ready', [
+    'Enter customer bundle number and create request.'
+  ]);
+
+  el('panelBundleBuyModalWrap')?.classList.add('open');
+}
+
+function closeBundleBuyModal(){
+  el('panelBundleBuyModalWrap')?.classList.remove('open');
+
+  state.bundleBuy = {
+    offerId: '',
+    row: null
+  };
+}
+
+
+function openBundleCommissionModal(offerId){
+  ensurePanelBundleCommissionModal();
+
+  const row = (state.bundleOffers || []).find(item => String(item.offer_id || '') === String(offerId));
+
+  if (!row) {
+    showToast('Bundle offer not found', 'error');
+    return;
+  }
+
+  state.bundleCommission = {
+    offerId: String(row.offer_id || ''),
+    row
+  };
+
+  const adminCommission = Number(row.admin_commission || 0);
+  const userCommission = Number(row.user_commission || 0);
+
+  if (el('panelBundleCommissionOfferName')) {
+    el('panelBundleCommissionOfferName').textContent = String(row.bundle_name || row.name || '-');
+  }
+
+  if (el('panelBundleCommissionOfferId')) {
+    el('panelBundleCommissionOfferId').textContent = String(row.offer_id || '-');
+  }
+
+  if (el('panelBundleCommissionAdmin')) {
+    el('panelBundleCommissionAdmin').textContent = fmtMoney(adminCommission);
+  }
+
+  if (el('panelBundleCommissionCurrent')) {
+    el('panelBundleCommissionCurrent').textContent = fmtMoney(userCommission);
+  }
+
+  if (el('panelBundleCommissionInput')) {
+    el('panelBundleCommissionInput').value = money(userCommission);
+    el('panelBundleCommissionInput').max = String(adminCommission);
+  }
+
+  updateBundleCommissionPreview();
+
+  setBoxMessage('panelBundleCommissionOutput', 'info', 'Ready', [
+    `Maximum user commission: ${fmtMoney(adminCommission)}`,
+    'User commission কম দিলে বাকি profit success হওয়ার পরে subadmin wallet-এ যোগ হবে।'
+  ]);
+
+  el('panelBundleCommissionModalWrap')?.classList.add('open');
+}
+
+function closeBundleCommissionModal(){
+  el('panelBundleCommissionModalWrap')?.classList.remove('open');
+
+  state.bundleCommission = {
+    offerId: '',
+    row: null
+  };
+}
+
+function updateBundleCommissionPreview(){
+  const row = state.bundleCommission?.row || null;
+  const adminCommission = Number(row?.admin_commission || 0);
+  let userCommission = Number(el('panelBundleCommissionInput')?.value || 0);
+
+  if (userCommission < 0) userCommission = 0;
+  if (userCommission > adminCommission) userCommission = adminCommission;
+
+  const profit = Math.max(0, adminCommission - userCommission);
+
+  if (el('panelBundleCommissionUserGets')) {
+    el('panelBundleCommissionUserGets').textContent = fmtMoney(userCommission);
+  }
+
+  if (el('panelBundleCommissionProfit')) {
+    el('panelBundleCommissionProfit').textContent = fmtMoney(profit);
+  }
+}
+
+async function saveBundleCommission(){
+  const row = state.bundleCommission?.row || null;
+  const offerId = String(state.bundleCommission?.offerId || '');
+  const adminCommission = Number(row?.admin_commission || 0);
+  const userCommission = Number(el('panelBundleCommissionInput')?.value || 0);
+
+  if (!row || !offerId) {
+    setBoxMessage('panelBundleCommissionOutput', 'error', 'Offer Missing', [
+      'Bundle offer not found. Please select offer again.'
+    ]);
+    return;
+  }
+
+  if (userCommission < 0) {
+    setBoxMessage('panelBundleCommissionOutput', 'error', 'Validation Error', [
+      'User commission cannot be negative.'
+    ]);
+    return;
+  }
+
+  if (userCommission > adminCommission) {
+    setBoxMessage('panelBundleCommissionOutput', 'error', 'Validation Error', [
+      `User commission cannot be higher than admin commission ${fmtMoney(adminCommission)}.`
+    ]);
+    return;
+  }
+
+  try{
+    setBoxMessage('panelBundleCommissionOutput', 'warning', 'Saving', [
+      'Saving custom commission...'
+    ]);
+
+    const data = await proxyPost('bundle_commission_save', {
+      offer_id: offerId,
+      user_commission: userCommission,
+      active: true
+    }, 'Saving commission...');
+
+    setBoxMessage('panelBundleCommissionOutput', 'ok', 'Commission Saved', [
+      `User Commission: ${fmtMoney(data.user_commission ?? userCommission)}`,
+      `Your Profit: ${fmtMoney(data.subadmin_profit ?? (adminCommission - userCommission))}`,
+      'This profit will be credited only after admin marks the bundle request as SUCCESS.'
+    ]);
+
+    await loadBundleOffers();
+
+    showToast('Bundle commission saved', 'ok');
+
+    setTimeout(() => {
+      closeBundleCommissionModal();
+    }, 700);
+  }catch(err){
+    setBoxMessage('panelBundleCommissionOutput', 'error', 'Save Failed', [
+      err.message || 'Failed to save commission'
+    ]);
+
+    showToast(err.message || 'Failed to save commission', 'error');
+  }
+}
+
+async function resetBundleCommission(){
+  const offerId = String(state.bundleCommission?.offerId || '');
+
+  if (!offerId) {
+    setBoxMessage('panelBundleCommissionOutput', 'error', 'Offer Missing', [
+      'Bundle offer not found. Please select offer again.'
+    ]);
+    return;
+  }
+
+  const ok = await askConfirm({
+    title: 'Reset Commission',
+    text: 'Reset this bundle commission to default?',
+    okText: 'Reset Now',
+    okClass: 'orange'
+  });
+
+  if (!ok) return;
+
+  try{
+    setBoxMessage('panelBundleCommissionOutput', 'warning', 'Resetting', [
+      'Resetting custom commission...'
+    ]);
+
+    await proxyPost('bundle_commission_reset', {
+      offer_id: offerId
+    }, 'Resetting commission...');
+
+    setBoxMessage('panelBundleCommissionOutput', 'ok', 'Commission Reset', [
+      'Custom commission removed. Default commission will be used.'
+    ]);
+
+    await loadBundleOffers();
+
+    showToast('Bundle commission reset', 'ok');
+
+    setTimeout(() => {
+      closeBundleCommissionModal();
+    }, 700);
+  }catch(err){
+    setBoxMessage('panelBundleCommissionOutput', 'error', 'Reset Failed', [
+      err.message || 'Failed to reset commission'
+    ]);
+
+    showToast(err.message || 'Failed to reset commission', 'error');
+  }
+}
+
+
+
+async function confirmBundleBuy(){
+  const row = state.bundleBuy?.row || null;
+  const offerId = String(state.bundleBuy?.offerId || '');
+  const bundleNumber = el('panelBundleNumberInput')?.value.trim() || '';
+  const note = el('panelBundleNoteInput')?.value.trim() || '';
+
+  if (!row || !offerId) {
+    setBoxMessage('panelBundleBuyOutput', 'error', 'Offer Missing', [
+      'Bundle offer not found. Please select offer again.'
+    ]);
+    return;
+  }
+
+  if (!bundleNumber) {
+    setBoxMessage('panelBundleBuyOutput', 'error', 'Validation Error', [
+      'Bundle number is required.'
+    ]);
+    return;
+  }
+
+  try{
+    setBoxMessage('panelBundleBuyOutput', 'warning', 'Processing', [
+      'Creating bundle request...'
+    ]);
+
+    const data = await proxyPost('bundle_create_panel', {
+      offer_id: offerId,
+      bundle_number: bundleNumber,
+      note: note || 'Panel bundle request'
+    }, 'Creating bundle request...');
+
+    setBoxMessage('panelBundleBuyOutput', 'ok', 'Bundle Request Created', [
+      `Request ID: ${data.request_id || '-'}`,
+      `Bundle: ${data.bundle_name || row.bundle_name || row.name || '-'}`,
+      `Number: ${data.bundle_number || bundleNumber}`,
+      `Amount: ${fmtMoney(data.amount || row.amount || 0)}`,
+      `Status: ${data.status || 'WAITING_ADMIN'}`
+    ]);
+
+    setBoxMessage('bundleOffersOutput', 'ok', 'Bundle Request Created', [
+      `Request ID: ${data.request_id || '-'}`,
+      `Bundle: ${data.bundle_name || row.bundle_name || row.name || '-'}`,
+      `Number: ${data.bundle_number || bundleNumber}`,
+      `Amount: ${fmtMoney(data.amount || row.amount || 0)}`,
+      `Status: ${data.status || 'WAITING_ADMIN'}`
+    ]);
+
+    await Promise.all([
+      loadWallet(),
+      loadLogs()
+    ]);
+
+    renderSummary();
+    renderLogs();
+    renderPanelTopupRequests();
+
+    showToast('Bundle request created successfully', 'ok');
+
+    setTimeout(() => {
+      closeBundleBuyModal();
+      openPageSection('requestLogsSection');
+    }, 900);
+  }catch(err){
+    setBoxMessage('panelBundleBuyOutput', 'error', 'Bundle Request Failed', [
+      err.message || 'Failed to create bundle request'
+    ]);
+
+    showToast(err.message || 'Failed to create bundle request', 'error');
+  }
+}
+
+async function runBundleApiTest(){
+  const endpoint = el('bundleCreateEndpoint')?.value.trim() || '';
+  const apiKey = el('bundleCreateApiKey')?.value.trim() || '';
+  const offerId = el('bundleTestOfferId')?.value.trim() || '';
+  const bundleNumber = el('bundleTestNumber')?.value.trim() || '';
+  const note = el('bundleTestNote')?.value.trim() || '';
+
+  if (!endpoint) {
+    showToast('Bundle create endpoint is required', 'error');
+    return;
+  }
+
+  if (!apiKey) {
+    showToast('Plain API key is required', 'error');
+    return;
+  }
+
+  if (!offerId) {
+    showToast('Offer ID is required', 'error');
+    return;
+  }
+
+  if (!bundleNumber) {
+    showToast('Bundle number is required', 'error');
+    return;
+  }
+
+  setBusy(true, 'Creating bundle request...');
+
+  try{
+    const body = {
+      offer_id: offerId,
+      bundle_number: bundleNumber,
+      note: note || 'Bundle API test from subadmin panel'
+    };
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
+
+    const json = await readJsonSafe(res);
+
+    if (!res.ok || !json.ok) {
+      throw new Error(json.message || 'Bundle request failed');
+    }
+
+    const data = json.data || {};
+
+    setBoxMessage('bundleApiOutput', 'ok', 'Bundle Request Created', [
+      `Request ID: ${data.request_id || '-'}`,
+      `Offer ID: ${data.offer_id || offerId}`,
+      `Bundle Number: ${data.bundle_number || bundleNumber}`,
+      `Status: ${data.status || 'PENDING'}`,
+      json.message || 'Bundle request created successfully.'
+    ]);
+
+    showToast('Bundle request created', 'ok');
+  }catch(err){
+    setBoxMessage('bundleApiOutput', 'error', 'Bundle API Failed', [
+      err.message || 'Failed to create bundle request'
+    ]);
+
+    showToast(err.message || 'Failed to create bundle request', 'error');
+  }finally{
+    setBusy(false);
+  }
+}
+
+/* =========================
+   Forms
+========================= */
+
+function clearPanelTopupForm(){
+  if (el('panelTopupNumber')) el('panelTopupNumber').value = '';
+  if (el('panelTopupOperator')) el('panelTopupOperator').value = 'GP';
+  if (el('panelTopupAmount')) el('panelTopupAmount').value = '20';
+  if (el('panelTopupNote')) el('panelTopupNote').value = 'Panel topup request';
+
+  setBoxMessage('panelTopupOutput', 'info', 'Ready', [
+    'No panel topup created yet.'
+  ]);
+}
+
+function clearCreateUserForm(){
+  if (el('newUserName')) el('newUserName').value = '';
+  if (el('newUserPhone')) el('newUserPhone').value = '';
+  if (el('newUserEmail')) el('newUserEmail').value = '';
+  if (el('newUserPassword')) el('newUserPassword').value = '';
+  if (el('newUserConfirmPassword')) el('newUserConfirmPassword').value = '';
+  if (el('newUserPin')) el('newUserPin').value = '';
+  if (el('newUserConfirmPin')) el('newUserConfirmPin').value = '';
+
+  setBoxMessage('createUserOutput', 'info', 'Ready', [
+    'No user created yet.'
+  ]);
+}
+
+function resetCreateUserOtpState(){
+  state.userCreateOtp = {
+    requestToken: '',
+    otpRequestId: '',
+    maskedPhone: '',
+    expiresInSeconds: 300,
+    formData: null
+  };
+
+  if (el('createUserOtpMaskedPhone')) el('createUserOtpMaskedPhone').textContent = '-';
+  if (el('createUserOtpExpiresText')) el('createUserOtpExpiresText').textContent = '300 seconds';
+  if (el('createUserOtpCode')) el('createUserOtpCode').value = '';
+  if (el('createUserOtpStatus')) {
+    el('createUserOtpStatus').textContent = 'OTP পাঠানোর পরে এখানে status দেখাবে।';
+  }
+}
+
+function openCreateUserOtpModal(){
+  el('createUserOtpModalWrap')?.classList.add('open');
+}
+
+function closeCreateUserOtpModal(){
+  el('createUserOtpModalWrap')?.classList.remove('open');
+  resetCreateUserOtpState();
+}
+
+function updateCreateUserOtpModal(data = {}){
+  state.userCreateOtp.requestToken = String(
+    data.user_create_token ||
+    data.create_token ||
+    data.pre_auth_token ||
+    data.request_token ||
+    state.userCreateOtp.requestToken ||
+    ''
+  );
+
+  state.userCreateOtp.otpRequestId = String(
+    data.otp_request_id ||
+    data.request_id ||
+    state.userCreateOtp.otpRequestId ||
+    ''
+  );
+
+  state.userCreateOtp.maskedPhone = String(
+    data.masked_phone ||
+    data.phone_mask ||
+    state.userCreateOtp.maskedPhone ||
+    ''
+  );
+
+  state.userCreateOtp.expiresInSeconds = Number(
+    data.expires_in_seconds ||
+    state.userCreateOtp.expiresInSeconds ||
+    300
+  );
+
+  if (el('createUserOtpMaskedPhone')) {
+    el('createUserOtpMaskedPhone').textContent = state.userCreateOtp.maskedPhone || '-';
+  }
+
+  if (el('createUserOtpExpiresText')) {
+    el('createUserOtpExpiresText').textContent = state.userCreateOtp.expiresInSeconds + ' seconds';
+  }
+
+  if (el('createUserOtpCode')) {
+    el('createUserOtpCode').value = '';
+  }
+
+  if (el('createUserOtpStatus')) {
+    el('createUserOtpStatus').textContent =
+      'OTP sent to ' + (state.userCreateOtp.maskedPhone || 'your phone') + '. OTP verify করলে user create হবে।';
+  }
+}
+
+async function confirmCreateUserOtp(){
+  const otp = el('createUserOtpCode')?.value.trim() || '';
+  const statusBox = el('createUserOtpStatus');
+
+  if (!state.userCreateOtp.formData) {
+    if (statusBox) statusBox.textContent = 'Create user session পাওয়া যায়নি। আবার শুরু করো।';
+    return;
+  }
+
+  if (!state.userCreateOtp.otpRequestId) {
+    if (statusBox) statusBox.textContent = 'OTP request ID missing. আবার OTP send করো।';
+    return;
+  }
+
+  if (!otp) {
+    if (statusBox) statusBox.textContent = 'OTP code দাও।';
+    return;
+  }
+
+  try{
+    const body = {
+      ...state.userCreateOtp.formData,
+      otp: otp,
+      otp_request_id: state.userCreateOtp.otpRequestId,
+      request_id: state.userCreateOtp.otpRequestId,
+      user_create_token: state.userCreateOtp.requestToken,
+      create_token: state.userCreateOtp.requestToken,
+      pre_auth_token: state.userCreateOtp.requestToken
+    };
+
+    const data = await proxyPost('user_create_confirm', body, 'Verifying OTP & creating user...');
+
+    setBoxMessage('createUserOutput', 'ok', 'User Created', [
+      `Name: ${data.name || state.userCreateOtp.formData.name || '-'}`,
+      `Phone: ${data.phone || state.userCreateOtp.formData.phone || '-'}`,
+      `Email: ${data.email || state.userCreateOtp.formData.email || '-'}`,
+      `Role: ${data.role || 'USER'}`,
+      `Status: ${data.status || 'ACTIVE'}`
+    ]);
+
+    if (statusBox) {
+      statusBox.textContent = 'OTP verified successfully. User created.';
+    }
+
+    clearCreateUserForm();
+    await loadUsers();
+    renderUsers();
+
+    showToast('User created successfully', 'ok');
+
+    setTimeout(() => {
+      closeCreateUserOtpModal();
+      openPageSection('usersSection');
+    }, 800);
+  }catch(err){
+    if (statusBox) {
+      statusBox.textContent = err.message || 'Failed to verify OTP.';
+    }
+
+    setBoxMessage('createUserOutput', 'error', 'Create User Failed', [
+      err.message || 'Failed to create user'
+    ]);
+
+    showToast(err.message || 'Failed to create user', 'error');
+  }
+}
+
+async function resendCreateUserOtp(){
+  const statusBox = el('createUserOtpStatus');
+
+  if (!state.userCreateOtp.formData) {
+    if (statusBox) statusBox.textContent = 'Create user session পাওয়া যায়নি। আবার শুরু করো।';
+    return;
+  }
+
+  try{
+    const data = await proxyPost('user_create_send_otp', state.userCreateOtp.formData, 'Resending OTP...');
+
+    updateCreateUserOtpModal(data);
+
+    if (statusBox) {
+      statusBox.textContent =
+        'OTP resent successfully to ' + (state.userCreateOtp.maskedPhone || 'your phone') + '.';
+    }
+
+    showToast('OTP resent successfully', 'ok');
+  }catch(err){
+    if (statusBox) {
+      statusBox.textContent = err.message || 'Failed to resend OTP.';
+    }
+
+    showToast(err.message || 'Failed to resend OTP', 'error');
+  }
+}
+
+/* =========================
+   Logs / navigation
+========================= */
+
+function setRequestLogFilter(filter){
+  state.requestLogFilter = String(filter || 'ALL').toUpperCase();
+
+  document.querySelectorAll('.log-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.logFilter === state.requestLogFilter);
+  });
+
+  renderLogs();
+}
+
+function viewRequestLog(requestId){
+  const row = (state.requestLogs || []).find(item => String(item.request_id || '') === String(requestId));
+
+  if (!row) {
+    showToast('Request log not found', 'error');
+    return;
+  }
+
+  const number = row.topup_number || row.bundle_number || row.number || '';
+
+  if (el('logRequestId')) el('logRequestId').textContent = row.request_id || '-';
+  if (el('logKeyId')) el('logKeyId').textContent = row.key_id || '-';
+  if (el('logType')) el('logType').textContent = row.request_type || row.action || '-';
+  if (el('logStatusText')) el('logStatusText').textContent = row.status || '-';
+  if (el('logOperator')) el('logOperator').textContent = row.operator || '-';
+  if (el('logNumber')) el('logNumber').textContent = number || '-';
+  if (el('logAmount')) el('logAmount').textContent = money(row.amount || 0);
+  if (el('logCreated')) el('logCreated').textContent = fmtTs(row.created_at || 0);
+  if (el('logUpdated')) el('logUpdated').textContent = fmtTs(row.updated_at || row.created_at || 0);
+  if (el('logMessage')) el('logMessage').textContent = row.message || '-';
+
+  setDetailBox('logRawJson', 'Request Details', [
+    ['Request ID', row.request_id || '-'],
+    ['Key ID', row.key_id || '-'],
+    ['Type', row.request_type || row.action || '-'],
+    ['Status', row.status || '-'],
+    ['Operator', row.operator || '-'],
+    ['Number', number || '-'],
+    ['Amount', fmtMoney(row.amount || 0)],
+    ['Created', fmtTs(row.created_at || 0)],
+    ['Updated', fmtTs(row.updated_at || row.created_at || 0)],
+    ['Message', row.message || '-']
+  ]);
+
+  el('logModalWrap')?.classList.add('open');
+
+  const copyBtn = el('copyLogRequestBtn');
+  if (copyBtn) {
+    copyBtn.onclick = () => copyRequestId(row.request_id || '');
+  }
+}
+
+function closeLogModal(){
+  el('logModalWrap')?.classList.remove('open');
+}
+
+function copyRequestId(requestId){
+  copyText(requestId, 'Request ID copied');
+}
+
+function stopLogsAutoRefresh(){
+  if (state.logsAutoRefreshTimer) {
+    clearInterval(state.logsAutoRefreshTimer);
+    state.logsAutoRefreshTimer = null;
+  }
+}
+
+function startLogsAutoRefresh(){
+  stopLogsAutoRefresh();
+
+  state.logsAutoRefreshTimer = setInterval(async () => {
+    const section = el('requestLogsSection');
+    if (!section || !section.classList.contains('active')) return;
+
+    try{
+      await loadLogs();
+      renderSummary();
+      renderLogs();
+      renderPanelTopupRequests();
+    }catch(_){}
+  }, 10000);
+}
+
+
+function setApiTestTab(targetId = 'liveApiTestPanel'){
+  document.querySelectorAll('.api-test-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.id === targetId);
+  });
+
+  document.querySelectorAll('.api-test-tab').forEach(btn => {
+    const active = btn.dataset.apiTestTarget === targetId;
+    btn.classList.toggle('active', active);
+    btn.classList.toggle('green', active);
+    btn.classList.toggle('ghost', !active);
+  });
+}
+
+
+function openPageSection(sectionId){
+  sectionId = sectionId || 'overviewSection';
+
+  document.querySelectorAll('.page-section').forEach(node => node.classList.remove('active'));
+  document.querySelectorAll('.side-btn').forEach(node => node.classList.remove('active'));
+
+  el(sectionId)?.classList.add('active');
+  document.querySelector(`.side-btn[data-page-section="${sectionId}"]`)?.classList.add('active');
+
+  if (sectionId === 'requestLogsSection') {
+    startLogsAutoRefresh();
+  } else {
+    stopLogsAutoRefresh();
+  }
+
+  scrollPageSectionTop(sectionId);
+
+  loadSectionData(sectionId, false).catch(err => {
+    showToast(err.message || 'Failed to load section data', 'error');
+  });
+}
+
+/* =========================
+   Loaders
+========================= */
+
+async function loadMe(){
+  const data = await proxyGet('me', {}, 'Checking session...');
+  state.me = data.user || null;
+  state.csrf = data.csrf || '';
+}
+
+
+
+async function loadWallet(){
+  state.wallet = await proxyGet('wallet_summary', {}, 'Loading wallet summary...');
+  state.loaded.wallet = true;
+}
+
+async function loadKeys(){
+  const data = await proxyGet('api_keys', {}, 'Loading API keys...');
+  state.apiKeys = data.items || [];
+  state.loaded.keys = true;
+}
+
+async function loadLogs(){
+  const data = await proxyGet('request_logs', { limit: 100 }, 'Loading request logs...');
+  state.requestLogs = data.items || [];
+  state.loaded.logs = true;
+}
+
+async function loadUsers(){
+  const role = el('usersRoleFilter')?.value || '';
+  const status = el('usersStatusFilter')?.value || '';
+
+  const data = await proxyGet('users_list', {
+    role,
+    status,
+    limit: 300
+  }, 'Loading users...');
+
+  state.users = data.items || [];
+  state.loaded.users = true;
+}
+
+
+async function refreshAll(showMessage = false){
+  await loadMe();
+
+  const currentSectionId = getCurrentSectionId();
+
+  if (currentSectionId === 'overviewSection') {
+    await loadSectionData('overviewSection', true);
+  } else {
+    await ensureWalletLoaded(true);
+    await loadSectionData(currentSectionId, true);
+  }
+
+  renderSummary();
+
+  if (showMessage) {
+    showToast('Dashboard refreshed', 'info');
+  }
+}
+
+
+async function doLogout(){
+  try{
+    await proxyPost('logout', {}, 'Logging out...');
+  }catch(_){}
+
+  stopLogsAutoRefresh();
+
+  state.me = null;
+  state.csrf = '';
+  state.wallet = null;
+  state.apiKeys = [];
+  state.requestLogs = [];
+  state.bundleOffers = [];
+  state.users = [];
+  state.bundleBuy = {
+    offerId: '',
+    row: null
+  };
+
+  resetAddBalanceState();
+  resetWalletLedgerState();
+
+  state.deductOtp = {
+    targetUid: '',
+    otpRequestId: '',
+    targetName: '',
+    targetPhone: '',
+    amount: 0,
+    note: ''
+  };
+
+  state.userCreateOtp = {
+    requestToken: '',
+    otpRequestId: '',
+    maskedPhone: '',
+    expiresInSeconds: 300,
+    formData: null
+  };
+
+  if (el('lastPlainKey')) el('lastPlainKey').textContent = '-';
+  if (el('liveApiKey')) el('liveApiKey').value = '';
+
+  setBoxMessage('liveApiOutput', 'info', 'Ready', [
+    'No test run yet.'
+  ]);
+
+  clearPanelTopupForm();
+  clearCreateUserForm();
+
+  if (window.resetDeductOtpState) {
+    window.resetDeductOtpState();
+  }
+
+  closeAddBalanceModal();
+  closeWalletLedgerModal();
+  closeLogModal();
+  closeConfirmModal();
+  closeBundleBuyModal();
+  closeBundleCommissionModal();
+
+  if (typeof closeCreateUserOtpModal === 'function') {
+    closeCreateUserOtpModal();
+  }
+
+  showToast('Logged out', 'info');
+
+  setTimeout(() => {
+    window.location.href = 'login.php';
+  }, 150);
+}
+
+/* =========================
+   Actions
+========================= */
+
+async function createKey(){
+  try{
+    const data = await proxyPost('api_key_create', {}, 'Creating API key...');
+    const plainKey = data.plain_key || '-';
+
+    if (el('lastPlainKey')) el('lastPlainKey').textContent = plainKey;
+
+    if (plainKey && plainKey !== '-' && el('liveApiKey')) {
+      el('liveApiKey').value = plainKey;
+    }
+
+    await loadKeys();
+    renderSummary();
+    renderKeys();
+    renderIntegrationGuide();
+
+    openPageSection('apiKeysSection');
+    showToast('API key created successfully. Save the plain key now.', 'ok');
+  }catch(err){
+    showToast(err.message || 'Failed to create key', 'error');
+  }
+}
+
+function ensureConfirmModal(){
+  if (el('confirmModalWrap')) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'confirmModalWrap';
+  wrap.className = 'modal-wrap';
+  wrap.innerHTML = `
+    <div class="confirm-modal-card">
+      <h3 class="confirm-modal-title" id="confirmModalTitle">Confirm Action</h3>
+      <div class="confirm-modal-text" id="confirmModalText">Are you sure?</div>
+      <div class="confirm-modal-actions">
+        <button class="btn ghost" id="confirmModalCancelBtn">Cancel</button>
+        <button class="btn green" id="confirmModalOkBtn">Confirm</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(wrap);
+
+  wrap.addEventListener('click', (e) => {
+    if (e.target.id === 'confirmModalWrap') {
+      closeConfirmModal(false);
+    }
+  });
+}
+
+let confirmResolver = null;
+
+function closeConfirmModal(result = false){
+  const wrap = el('confirmModalWrap');
+  if (wrap) wrap.classList.remove('open');
+
+  if (confirmResolver) {
+    confirmResolver(result);
+    confirmResolver = null;
+  }
+}
+
+function askConfirm({title = 'Confirm Action', text = 'Are you sure?', okText = 'Confirm', okClass = 'green'} = {}){
+  ensureConfirmModal();
+
+  const wrap = el('confirmModalWrap');
+  const titleNode = el('confirmModalTitle');
+  const textNode = el('confirmModalText');
+  const okBtn = el('confirmModalOkBtn');
+  const cancelBtn = el('confirmModalCancelBtn');
+
+  if (titleNode) titleNode.textContent = title;
+  if (textNode) textNode.textContent = text;
+
+  if (okBtn) {
+    okBtn.textContent = okText;
+    okBtn.className = 'btn ' + okClass;
+    okBtn.onclick = () => closeConfirmModal(true);
+  }
+
+  if (cancelBtn) {
+    cancelBtn.onclick = () => closeConfirmModal(false);
+  }
+
+  wrap?.classList.add('open');
+
+  return new Promise(resolve => {
+    confirmResolver = resolve;
+  });
+}
+
+async function updateKeyStatus(keyId, status){
+  const ok = await askConfirm({
+    title: 'Update API Key',
+    text: `Change key ${keyId} to ${status}?`,
+    okText: 'Yes, Update',
+    okClass: 'blue'
+  });
+
+  if (!ok) return;
+
+  try{
+    await proxyPost('api_key_update_status', {
+      key_id: keyId,
+      status: status
+    }, 'Updating key status...');
+
+    await loadKeys();
+    renderSummary();
+    renderKeys();
+    showToast('API key updated', 'ok');
+  }catch(err){
+    showToast(err.message || 'Failed to update key', 'error');
+  }
+}
+
+async function convertUserToRetailer(uid){
+  const ok = await askConfirm({
+    title: 'Convert User',
+    text: 'Convert this USER account to RETAILER?',
+    okText: 'Convert Now',
+    okClass: 'green'
+  });
+
+  if (!ok) return;
+
+  try{
+    await proxyPost('user_convert_retailer', { uid }, 'Converting user...');
+
+    showToast('User converted to retailer', 'ok');
+    await loadUsers();
+    renderUsers();
+  }catch(err){
+    showToast(err.message || 'Failed to convert user', 'error');
+  }
+}
+
+async function createPanelTopup(){
+  const topupNumber = el('panelTopupNumber')?.value.trim() || '';
+  const operator = el('panelTopupOperator')?.value.trim() || '';
+  const amount = Number(el('panelTopupAmount')?.value || 0);
+  const note = el('panelTopupNote')?.value.trim() || '';
+
+  if (!topupNumber) {
+    showToast('Topup number is required', 'error');
+    return;
+  }
+
+  if (!operator) {
+    showToast('Operator is required', 'error');
+    return;
+  }
+
+  if (amount <= 0) {
+    showToast('Amount must be greater than 0', 'error');
+    return;
+  }
+
+  try{
+    const data = await proxyPost('topup_create', {
+      topup_number: topupNumber,
+      operator,
+      amount,
+      note
+    }, 'Creating topup...');
+
+    setBoxMessage('panelTopupOutput', 'ok', 'Topup Created', [
+      `Request ID: ${data.request_id || '-'}`,
+      `Number: ${data.topup_number || topupNumber}`,
+      `Operator: ${data.operator || operator}`,
+      `Amount: ${fmtMoney(data.amount || amount)}`,
+      `Status: ${data.status || 'PENDING'}`
+    ]);
+
+    await refreshAll(false);
+    openPageSection('requestLogsSection');
+    showToast('Topup request created', 'ok');
+  }catch(err){
+    setBoxMessage('panelTopupOutput', 'error', 'Topup Failed', [
+      err.message || 'Failed to create topup'
+    ]);
+    showToast(err.message || 'Failed to create topup', 'error');
+  }
+}
+
+async function createSubadminUser(){
+  const name = el('newUserName')?.value.trim() || '';
+  const phone = el('newUserPhone')?.value.trim() || '';
+  const email = el('newUserEmail')?.value.trim() || '';
+  const password = el('newUserPassword')?.value || '';
+  const confirmPassword = el('newUserConfirmPassword')?.value || '';
+  const pin = el('newUserPin')?.value.trim() || '';
+  const confirmPin = el('newUserConfirmPin')?.value.trim() || '';
+
+  if (!name || !phone || !email || !password || !confirmPassword || !pin || !confirmPin) {
+    showToast('All fields are required', 'error');
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    showToast('Password confirmation does not match', 'error');
+    return;
+  }
+
+  if (pin !== confirmPin) {
+    showToast('PIN confirmation does not match', 'error');
+    return;
+  }
+
+  if (!/^\d{4,8}$/.test(pin)) {
+    showToast('PIN must be 4 to 8 digits', 'error');
+    return;
+  }
+
+  const payload = {
+    name,
+    phone,
+    email,
+    password,
+    confirm_password: confirmPassword,
+    pin,
+    confirm_pin: confirmPin
+  };
+
+  try{
+    const data = await proxyPost('user_create_send_otp', payload, 'Sending create user OTP...');
+
+    state.userCreateOtp.formData = payload;
+    updateCreateUserOtpModal(data);
+    openCreateUserOtpModal();
+
+    setBoxMessage('createUserOutput', 'warning', 'OTP Required', [
+      'OTP পাঠানো হয়েছে। OTP verify করলে user create হবে।',
+      `Phone: ${data.masked_phone || phone}`
+    ]);
+
+    showToast('Create user OTP sent', 'ok');
+  }catch(err){
+    setBoxMessage('createUserOutput', 'error', 'Create User Failed', [
+      err.message || 'Failed to send OTP'
+    ]);
+    showToast(err.message || 'Failed to send OTP', 'error');
+  }
+}
+
+async function runLiveApiTest(){
+  const endpoint = el('liveApiEndpoint')?.value.trim() || '';
+  const apiKey = el('liveApiKey')?.value.trim() || '';
+  const topupNumber = el('liveTopupNumber')?.value.trim() || '';
+  const operator = el('liveOperator')?.value.trim() || '';
+  const amount = Number(el('liveAmount')?.value || 0);
+  const note = el('liveNote')?.value.trim() || '';
+
+  if (!endpoint) {
+    showToast('API endpoint is required', 'error');
+    return;
+  }
+
+  if (!apiKey) {
+    showToast('Plain API key is required', 'error');
+    return;
+  }
+
+  if (!topupNumber) {
+    showToast('Topup number is required', 'error');
+    return;
+  }
+
+  if (amount <= 0) {
+    showToast('Amount must be greater than 0', 'error');
+    return;
+  }
+
+  setBusy(true, 'Running live API test...');
+
+  try{
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + apiKey,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        topup_number: topupNumber,
+        operator,
+        amount,
+        note
+      })
+    });
+
+    const text = await res.text();
+    let parsed = null;
+
+    try{
+      parsed = JSON.parse(text);
+    }catch(_){}
+
+    if (parsed && res.ok && parsed.ok) {
+      setBoxMessage('liveApiOutput', 'ok', 'Live API Test Success', [
+        `Request ID: ${parsed.data?.request_id || '-'}`,
+        `Number: ${parsed.data?.topup_number || topupNumber}`,
+        `Operator: ${parsed.data?.operator || operator}`,
+        `Amount: ${fmtMoney(parsed.data?.amount || amount)}`,
+        `${parsed.message || 'API request completed successfully.'}`
+      ]);
+      showToast('Live API test completed', 'ok');
+    } else if (parsed) {
+      setBoxMessage('liveApiOutput', 'error', 'Live API Test Failed', [
+        parsed.message || 'API request returned an error',
+        parsed.code ? `Code: ${parsed.code}` : ''
+      ]);
+      showToast(parsed.message || 'Live API test returned error', 'error');
+    } else {
+      setBoxMessage('liveApiOutput', 'warning', 'Live API Response', [
+        text || 'Non-JSON response returned from API.'
+      ]);
+      showToast(res.ok ? 'Live API test completed' : 'Live API test returned error', res.ok ? 'ok' : 'error');
+    }
+
+    await loadLogs();
+    renderSummary();
+    renderLogs();
+    renderPanelTopupRequests();
+    openPageSection('requestLogsSection');
+  }catch(err){
+    setBoxMessage('liveApiOutput', 'error', 'Live API Test Failed', [
+      err.message || 'Request could not be completed'
+    ]);
+    showToast('Live API test failed', 'error');
+  }finally{
+    setBusy(false);
+  }
+}
+
+/* =========================
+   Window exports
+========================= */
+
+window.copyText = copyText;
+window.copyById = copyById;
+window.updateKeyStatus = updateKeyStatus;
+window.convertUserToRetailer = convertUserToRetailer;
+window.viewRequestLog = viewRequestLog;
+window.copyRequestId = copyRequestId;
+window.openPageSection = openPageSection;
+window.proxyPost = proxyPost;
+window.proxyGet = proxyGet;
+window.loadWallet = loadWallet;
+window.loadLogs = loadLogs;
+window.loadUsers = loadUsers;
+window.renderSummary = renderSummary;
+window.renderLogs = renderLogs;
+window.renderUsers = renderUsers;
+window.renderPanelTopupRequests = renderPanelTopupRequests;
+window.loadBundleOffers = loadBundleOffers;
+window.renderBundleOffers = renderBundleOffers;
+window.useBundleOfferForTest = useBundleOfferForTest;
+window.runBundleApiTest = runBundleApiTest;
+window.openBundleBuyModal = openBundleBuyModal;
+window.closeBundleBuyModal = closeBundleBuyModal;
+window.confirmBundleBuy = confirmBundleBuy;
+window.money = money;
+window.showToast = showToast;
+window.openAddBalanceModal = openAddBalanceModal;
+window.openWalletLedgerModal = openWalletLedgerModal;
+window.getUserRowByUidForWallet = getUserRowByUidForWallet;
+window.askConfirm = askConfirm;
+window.closeConfirmModal = closeConfirmModal;
+
+window.openBundleCommissionModal = openBundleCommissionModal;
+window.closeBundleCommissionModal = closeBundleCommissionModal;
+window.saveBundleCommission = saveBundleCommission;
+window.resetBundleCommission = resetBundleCommission;
+window.setApiTestTab = setApiTestTab;
+
+/* =========================
+   Event binding
+========================= */
+
+el('logoutBtn')?.addEventListener('click', doLogout);
+el('refreshBtn')?.addEventListener('click', () => refreshAll(true));
+el('createKeyBtn')?.addEventListener('click', createKey);
+
+el('reloadKeysBtn')?.addEventListener('click', async () => {
+  await loadKeys();
+  renderSummary();
+  renderKeys();
+  showToast('Keys reloaded', 'info');
+});
+
+el('reloadLogsBtn')?.addEventListener('click', async () => {
+  await loadLogs();
+  renderSummary();
+  renderLogs();
+  renderPanelTopupRequests();
+  showToast('Logs reloaded', 'info');
+});
+
+el('copyPlainKeyBtn')?.addEventListener('click', copyLastPlainKey);
+el('usePlainKeyBtn')?.addEventListener('click', useLastPlainKeyInLiveTest);
+
+document.querySelectorAll('.side-btn').forEach(btn => {
+  btn.addEventListener('click', () => openPageSection(btn.dataset.pageSection));
+});
+
+
+document.querySelectorAll('.api-test-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    setApiTestTab(btn.dataset.apiTestTarget || 'liveApiTestPanel');
+  });
+});
+
+
+el('runLiveApiTestBtn')?.addEventListener('click', runLiveApiTest);
+
+el('fillLastPlainKeyBtn')?.addEventListener('click', () => {
+  const key = el('lastPlainKey')?.textContent.trim() || '';
+  if (!key || key === '-') {
+    showToast('No last created plain key found', 'error');
+    return;
+  }
+  if (el('liveApiKey')) el('liveApiKey').value = key;
+  showToast('Last created key filled', 'ok');
+});
+
+el('clearLiveApiOutputBtn')?.addEventListener('click', () => {
+  setBoxMessage('liveApiOutput', 'info', 'Ready', [
+    'No test run yet.'
+  ]);
+});
+
+el('sendPanelTopupBtn')?.addEventListener('click', createPanelTopup);
+el('clearPanelTopupBtn')?.addEventListener('click', clearPanelTopupForm);
+
+el('loadBundleOffersBtn')?.addEventListener('click', loadBundleOffers);
+el('runBundleApiTestBtn')?.addEventListener('click', runBundleApiTest);
+
+el('clearBundleApiOutputBtn')?.addEventListener('click', () => {
+  setBoxMessage('bundleApiOutput', 'info', 'Ready', [
+    'No bundle API test run yet.'
+  ]);
+});
+
+document.querySelectorAll('.log-filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => setRequestLogFilter(btn.dataset.logFilter));
+});
+
+el('closeLogModalBtn')?.addEventListener('click', closeLogModal);
+el('closeLogModalBtn2')?.addEventListener('click', closeLogModal);
+
+el('logModalWrap')?.addEventListener('click', (e) => {
+  if (e.target.id === 'logModalWrap') {
+    closeLogModal();
+  }
+});
+
+el('reloadUsersBtn')?.addEventListener('click', async () => {
+  await loadUsers();
+  renderUsers();
+  showToast('Users reloaded', 'info');
+});
+
+el('closeAddBalanceModalBtn')?.addEventListener('click', closeAddBalanceModal);
+el('submitAddBalanceBtn')?.addEventListener('click', submitAddBalance);
+el('cancelAddBalanceBtn')?.addEventListener('click', closeAddBalanceModal);
+
+el('addBalanceModalWrap')?.addEventListener('click', (e) => {
+  if (e.target.id === 'addBalanceModalWrap') {
+    closeAddBalanceModal();
+  }
+});
+
+el('closeWalletLedgerModalBtn')?.addEventListener('click', closeWalletLedgerModal);
+el('closeWalletLedgerModalBtn2')?.addEventListener('click', closeWalletLedgerModal);
+
+el('reloadWalletLedgerBtn')?.addEventListener('click', async () => {
+  const uid = state.walletLedger.targetUid;
+  if (!uid) return;
+
+  try{
+    await loadWalletLedger(uid);
+    showToast('Wallet ledger reloaded', 'info');
+  }catch(err){
+    showToast(err.message || 'Failed to reload wallet ledger', 'error');
+  }
+});
+
+el('walletLedgerModalWrap')?.addEventListener('click', (e) => {
+  if (e.target.id === 'walletLedgerModalWrap') {
+    closeWalletLedgerModal();
+  }
+});
+
+el('usersRoleFilter')?.addEventListener('change', async () => {
+  await loadUsers();
+  renderUsers();
+});
+
+el('usersStatusFilter')?.addEventListener('change', async () => {
+  await loadUsers();
+  renderUsers();
+});
+
+el('createUserBtn')?.addEventListener('click', createSubadminUser);
+el('clearCreateUserBtn')?.addEventListener('click', clearCreateUserForm);
+
+el('verifyCreateUserOtpBtn')?.addEventListener('click', confirmCreateUserOtp);
+el('resendCreateUserOtpBtn')?.addEventListener('click', resendCreateUserOtp);
+el('cancelCreateUserOtpBtn')?.addEventListener('click', closeCreateUserOtpModal);
+el('closeCreateUserOtpModalBtn')?.addEventListener('click', closeCreateUserOtpModal);
+
+el('createUserOtpCode')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    confirmCreateUserOtp();
+  }
+});
+
+el('createUserOtpModalWrap')?.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'createUserOtpModalWrap') {
+    closeCreateUserOtpModal();
+  }
+});
+
+el('closePanelBundleBuyModalBtn')?.addEventListener('click', closeBundleBuyModal);
+el('panelBundleCancelBtn')?.addEventListener('click', closeBundleBuyModal);
+el('panelBundleSubmitBtn')?.addEventListener('click', confirmBundleBuy);
+
+el('panelBundleBuyModalWrap')?.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'panelBundleBuyModalWrap') {
+    closeBundleBuyModal();
+  }
+});
+
+el('panelBundleNumberInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    confirmBundleBuy();
+  }
+});
+
+/* =========================
+   Bootstrap
+========================= */
+
+(async function bootstrap(){
+  injectDashboardLazyScrollStyle();
+  upgradeOutputBoxes();
+
+  clearPanelTopupForm();
+  clearCreateUserForm();
+  resetAddBalanceState();
+  resetWalletLedgerState();
+  resetCreateUserOtpState();
+  ensureBundlePanelUi();
+
+  setBoxMessage('liveApiOutput', 'info', 'Ready', [
+    'No test run yet.'
+  ]);
+
+  setBoxMessage('bundleOffersOutput', 'info', 'Ready', [
+    'Open Bundle Offers or click Refresh Offers to load active offers.'
+  ]);
+
+  setBoxMessage('bundleApiOutput', 'info', 'Ready', [
+    'No bundle API test run yet.'
+  ]);
+
+  setBoxMessage('panelBundleBuyOutput', 'info', 'Ready', [
+    'No bundle request created yet.'
+  ]);
+
+  renderBundleOffers();
+
+  try{
+    await loadMe();
+    showApp();
+
+    await ensureWalletLoaded(true);
+    setRequestLogFilter('ALL');
+
+    setTimeout(() => {
+      loadSectionData('overviewSection', false).catch(() => {});
+    }, 150);
+  }catch(_){
+    showLogin();
+  }
+})();

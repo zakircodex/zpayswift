@@ -1,0 +1,36 @@
+[04-Apr-2026 22:03:25 Asia/Kuala_Lumpur] PHP Fatal error:  Uncaught Error: Call to undefined function auth_require_admin_session() in /home/zedpayhe/public_html/zawtopup/api/admin/topup/status_counts.php:7
+Stack trace:
+#0 {main}
+  thrown in /home/zedpayhe/public_html/zawtopup/api/admin/topup/status_counts.php on line 7
+[04-Apr-2026 22:03:26 Asia/Kuala_Lumpur] PHP Fatal error:  Uncaught Error: Call to undefined function auth_require_admin_session() in /home/zedpayhe/public_html/zawtopup/api/admin/topup/pending.php:8
+Stack trace:
+#0 {main}
+  thrown in /home/zedpayhe/public_html/zawtopup/api/admin/topup/pending.php on line 8
+[04-Apr-2026 22:16:59 Asia/Kuala_Lumpur] PHP Fatal error:  Uncaught Error: Call to undefined function auth_require_admin_session() in /home/zedpayhe/public_html/zawtopup/api/admin/topup/status_counts.php:7
+Stack trace:
+#0 {main}
+  thrown in /home/zedpayhe/public_html/zawtopup/api/admin/topup/status_counts.php on line 7
+[04-Apr-2026 22:17:00 Asia/Kuala_Lumpur] PHP Fatal error:  Uncaught Error: Call to undefined function auth_require_admin_session() in /home/zedpayhe/public_html/zawtopup/api/admin/topup/pending.php:8
+Stack trace:
+#0 {main}
+  thrown in /home/zedpayhe/public_html/zawtopup/api/admin/topup/pending.php on line 8
+[04-Apr-2026 22:20:22 Asia/Kuala_Lumpur] PHP Fatal error:  Uncaught Error: Call to undefined function auth_require_admin_session() in /home/zedpayhe/public_html/zawtopup/api/admin/topup/status_counts.php:7
+Stack trace:
+#0 {main}
+  thrown in /home/zedpayhe/public_html/zawtopup/api/admin/topup/status_counts.php on line 7
+[04-Apr-2026 22:20:25 Asia/Kuala_Lumpur] PHP Fatal error:  Uncaught Error: Call to undefined function auth_require_admin_session() in /home/zedpayhe/public_html/zawtopup/api/admin/topup/pending.php:8
+Stack trace:
+#0 {main}
+  thrown in /home/zedpayhe/public_html/zawtopup/api/admin/topup/pending.php on line 8
+[04-Apr-2026 22:21:07 Asia/Kuala_Lumpur] PHP Fatal error:  Uncaught Error: Call to undefined function auth_require_admin_session() in /home/zedpayhe/public_html/zawtopup/api/admin/topup/status_counts.php:7
+Stack trace:
+#0 {main}
+  thrown in /home/zedpayhe/public_html/zawtopup/api/admin/topup/status_counts.php on line 7
+[04-Apr-2026 22:21:10 Asia/Kuala_Lumpur] PHP Fatal error:  Uncaught Error: Call to undefined function auth_require_admin_session() in /home/zedpayhe/public_html/zawtopup/api/admin/topup/pending.php:8
+Stack trace:
+#0 {main}
+  thrown in /home/zedpayhe/public_html/zawtopup/api/admin/topup/pending.php on line 8
+[04-Apr-2026 22:25:51 Asia/Kuala_Lumpur] PHP Fatal error:  Uncaught Error: Call to undefined function auth_require_admin_session() in /home/zedpayhe/public_html/zawtopup/api/admin/topup/status_counts.php:7
+Stack trace:
+#0 {main}
+  thrown in /home/zedpayhe/public_html/zawtopup/api/admin/topup/status_counts.php on line 7

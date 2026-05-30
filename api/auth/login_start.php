@@ -1,0 +1,244 @@
+<?php
+declare(strict_types=1);
+
+require_once dirname(__DIR__) . '/bootstrap.php';
+require_once __DIR__ . '/../lib/auth_sms.php';
+
+api_require_method('POST');
+api_require_app_key();
+
+$body = api_read_json_body();
+
+function sub_login_bool_value($value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    $value = strtoupper(trim((string)$value));
+    return in_array($value, ['1', 'TRUE', 'YES', 'ON'], true);
+}
+
+function sub_login_mask_phone(string $phone): string
+{
+    $phone = preg_replace('/\D+/', '', trim($phone)) ?? '';
+    $len = strlen($phone);
+
+    if ($len <= 4) {
+        return $phone;
+    }
+
+    if ($len <= 7) {
+        return substr($phone, 0, 2) . str_repeat('*', max(1, $len - 4)) . substr($phone, -2);
+    }
+
+    return substr($phone, 0, 3) . str_repeat('*', max(1, $len - 6)) . substr($phone, -3);
+}
+
+function sub_login_allowed_role(string $role): bool
+{
+    $role = strtoupper(trim($role));
+    return in_array($role, ['SUBADMIN', 'ADMIN'], true);
+}
+
+function sub_login_issue_session(array $user, string $uid, string $deviceId, string $deviceName): string
+{
+    $token = random_token(32);
+    $hash = session_hash($token);
+    $sessionId = make_session_id();
+    $now = now_ts();
+
+    $session = [
+        'session_id' => $sessionId,
+        'uid' => $uid,
+        'phone' => (string)($user['phone'] ?? ''),
+        'token_last8' => substr($token, -8),
+        'device_name' => $deviceName,
+        'device_id' => $deviceId,
+        'status' => 'ACTIVE',
+        'ip' => client_ip(),
+        'created_at' => $now,
+        'expires_at' => $now + SESSION_TTL_SECONDS,
+        'last_seen_at' => $now,
+    ];
+
+    if (!fb_put('USER_SESSIONS/' . $hash, $session)) {
+        api_response(false, 'SERVER_ERROR', 'Failed to create session', [], 500);
+    }
+
+    fb_patch('USERS/' . $uid, [
+        'last_login_at' => $now,
+        'updated_at' => $now,
+    ]);
+
+    return $token;
+}
+
+function sub_login_has_valid_trusted_device(string $uid, string $cookieValue): bool
+{
+    $cookieValue = trim($cookieValue);
+    if ($cookieValue === '' || strpos($cookieValue, ':') === false) {
+        return false;
+    }
+
+    [$selector, $token] = explode(':', $cookieValue, 2);
+    $selector = trim($selector);
+    $token = trim($token);
+
+    if ($selector === '' || $token === '') {
+        return false;
+    }
+
+    $row = fb_get('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector);
+    if (!is_array($row)) {
+        return false;
+    }
+
+    $storedHash = trim((string)($row['token_hash'] ?? ''));
+    $expiresAt = (int)($row['expires_at'] ?? 0);
+
+    if ($storedHash === '' || $expiresAt < now_ts()) {
+        return false;
+    }
+
+    if (!hash_equals($storedHash, hash('sha256', $token))) {
+        return false;
+    }
+
+    fb_patch('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector, [
+        'last_used_at' => now_ts(),
+    ]);
+
+    return true;
+}
+
+$phone = normalize_login_phone($body['phone'] ?? '');
+$password = (string)($body['password'] ?? '');
+$deviceId = trim((string)($body['device_id'] ?? 'SUBADMIN_WEB'));
+$deviceName = trim((string)($body['device_name'] ?? 'Subadmin Panel'));
+$trustDevice = sub_login_bool_value($body['trust_device'] ?? true);
+$trustedDeviceCookie = trim((string)($body['trusted_device_cookie'] ?? ''));
+
+if ($phone === '' || $password === '') {
+    api_response(false, 'VALIDATION_ERROR', 'Phone and password are required', [], 422);
+}
+
+$uid = fb_get('USER_INDEX/PHONE/' . $phone);
+if (!is_string($uid) || $uid === '') {
+    api_response(false, 'INVALID_CREDENTIALS', 'Invalid phone or password', [], 401);
+}
+
+$user = fb_get('USERS/' . $uid);
+if (!is_array($user)) {
+    api_response(false, 'INVALID_CREDENTIALS', 'Invalid phone or password', [], 401);
+}
+
+$status = strtoupper(trim((string)($user['status'] ?? '')));
+$role = strtoupper(trim((string)($user['role'] ?? '')));
+$passwordHash = (string)($user['password_hash'] ?? '');
+
+if ($status !== 'ACTIVE') {
+    api_response(false, 'FORBIDDEN', 'User account is not active', [], 403);
+}
+
+if (!sub_login_allowed_role($role)) {
+    api_response(false, 'FORBIDDEN', 'Subadmin access required', [], 403);
+}
+
+if ($passwordHash === '' || !password_verify($password, $passwordHash)) {
+    api_response(false, 'INVALID_CREDENTIALS', 'Invalid phone or password', [], 401);
+}
+
+if (sub_login_has_valid_trusted_device($uid, $trustedDeviceCookie)) {
+    $sessionToken = sub_login_issue_session($user, $uid, $deviceId, $deviceName);
+
+    if (function_exists('system_log')) {
+        system_log('SUBADMIN_TRUSTED_LOGIN', $uid, 'Trusted device login successful', [
+            'uid' => $uid,
+            'phone' => $phone,
+            'device_id' => $deviceId,
+            'device_name' => $deviceName,
+        ]);
+    }
+
+    api_response(true, 'SUCCESS', 'Trusted device login successful', [
+        'require_otp' => false,
+        'session_token' => $sessionToken,
+        'uid' => $uid,
+        'name' => (string)($user['name'] ?? ''),
+        'phone' => (string)($user['phone'] ?? $phone),
+    ]);
+}
+
+$otpCode = (string)random_int(100000, 999999);
+$otpRequestId = 'OTP' . strtoupper(bin2hex(random_bytes(6)));
+$preAuthToken = random_token(24);
+$now = now_ts();
+$expiresAt = $now + 300;
+
+$message = 'ZawTopup login OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
+
+$otpRow = [
+    'otp_request_id' => $otpRequestId,
+    'uid' => $uid,
+    'phone' => $phone,
+    'purpose' => 'SUBADMIN_LOGIN',
+    'code_hash' => password_hash($otpCode, PASSWORD_DEFAULT),
+    'masked_phone' => sub_login_mask_phone($phone),
+    'status' => 'SENT',
+    'used' => false,
+    'created_at' => $now,
+    'expires_at' => $expiresAt,
+    'updated_at' => $now,
+];
+
+$preAuthRow = [
+    'pre_auth_token' => $preAuthToken,
+    'uid' => $uid,
+    'phone' => $phone,
+    'device_id' => $deviceId,
+    'device_name' => $deviceName,
+    'trust_device' => $trustDevice,
+    'otp_request_id' => $otpRequestId,
+    'status' => 'OTP_PENDING',
+    'created_at' => $now,
+    'expires_at' => $expiresAt,
+    'updated_at' => $now,
+];
+
+$okOtp = fb_put('AUTH_OTP_REQUESTS/' . $otpRequestId, $otpRow);
+$okPre = $okOtp ? fb_put('AUTH_LOGIN_PREAUTH/' . $preAuthToken, $preAuthRow) : false;
+
+if (!($okOtp && $okPre)) {
+    fb_delete('AUTH_OTP_REQUESTS/' . $otpRequestId);
+    fb_delete('AUTH_LOGIN_PREAUTH/' . $preAuthToken);
+    api_response(false, 'SERVER_ERROR', 'Failed to prepare OTP verification', [], 500);
+}
+
+$smsOk = auth_send_otp_sms($phone, $message);
+
+if (!$smsOk) {
+    fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+        'status' => 'SMS_FAILED',
+        'updated_at' => now_ts(),
+    ]);
+
+    api_response(false, 'SMS_FAILED', 'Failed to send OTP SMS', [], 500);
+}
+
+if (function_exists('system_log')) {
+    system_log('SUBADMIN_LOGIN_OTP_SENT', $otpRequestId, 'Subadmin login OTP sent', [
+        'uid' => $uid,
+        'phone' => $phone,
+        'device_id' => $deviceId,
+        'device_name' => $deviceName,
+    ]);
+}
+
+api_response(true, 'OTP_REQUIRED', 'OTP verification required', [
+    'require_otp' => true,
+    'pre_auth_token' => $preAuthToken,
+    'otp_request_id' => $otpRequestId,
+    'masked_phone' => sub_login_mask_phone($phone),
+    'expires_in_seconds' => 300,
+]);

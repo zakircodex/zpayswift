@@ -1,0 +1,7 @@
+AddType text/css .css
+
+<IfModule mod_headers.c>
+  <FilesMatch "\.css$">
+    Header set Content-Type "text/css; charset=UTF-8"
+  </FilesMatch>
+</IfModule>
