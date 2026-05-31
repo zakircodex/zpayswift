@@ -11,6 +11,7 @@ header('Pragma: no-cache');
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Z-Pay Swift User Dashboard</title>
   <link rel="stylesheet" href="assets/dashboard.css?v=8">
+  <link rel="stylesheet" href="assets/dashboard-ux.css?v=1">
 </head>
 <body>
 
