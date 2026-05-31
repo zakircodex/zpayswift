@@ -1,6 +1,6 @@
 // Z-Pay Swift user dashboard UX helper.
 // Quick services + bKash/Nagad frontend flow.
-// MFS create now calls /api/user/mfs_create_telegram.php so Telegram buttons are sent with the request.
+// MFS create uses a relative endpoint so it works under any install folder.
 (function(){
   'use strict';
 
@@ -105,7 +105,7 @@
       pin: d.pin,
       note: providerName(d.provider) + ' request from user panel'
     };
-    var res = await fetch('/zawtopup/api/user/mfs_create_telegram.php', {
+    var res = await fetch('mfs_create_telegram.php', {
       method: 'POST',
       credentials: 'same-origin',
       headers: {'Content-Type':'application/json','Accept':'application/json','Cache-Control':'no-cache'},
