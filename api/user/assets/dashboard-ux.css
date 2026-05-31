@@ -1,0 +1,374 @@
+/* Z-Pay Swift user dashboard mobile-first UX polish */
+
+:root{
+  --zpay-brand:#ec1c64;
+  --zpay-brand2:#ff4f8b;
+  --zpay-brand3:#7c2cff;
+  --zpay-soft:#fff1f7;
+  --zpay-ink:#111827;
+  --zpay-card:#ffffff;
+  --zpay-muted:#64748b;
+  --zpay-border:rgba(15,23,42,.08);
+}
+
+body.user-authenticated{
+  background:
+    radial-gradient(circle at 10% -10%, rgba(236,28,100,.20), transparent 34%),
+    radial-gradient(circle at 90% 0%, rgba(124,44,255,.12), transparent 30%),
+    linear-gradient(180deg,#fff6fa 0%,#f8fbff 38%,#eef5ff 100%);
+  color:var(--zpay-ink);
+}
+
+body.user-authenticated .main-panel{
+  background:transparent;
+}
+
+body.user-authenticated .mobile-top-card,
+body.user-authenticated .hero-card,
+body.user-authenticated .summary-card,
+body.user-authenticated .wizard-card,
+body.user-authenticated .history-card,
+body.user-authenticated .modal-card{
+  background:var(--zpay-card);
+  color:var(--zpay-ink);
+  border:1px solid var(--zpay-border);
+  box-shadow:0 18px 46px rgba(15,23,42,.08);
+}
+
+body.user-authenticated .mobile-top-card{
+  background:linear-gradient(135deg,var(--zpay-brand),var(--zpay-brand2));
+  color:#fff;
+  border:none;
+}
+
+body.user-authenticated .mobile-title{
+  color:#fff;
+  letter-spacing:-.03em;
+}
+
+body.user-authenticated .icon-btn{
+  background:rgba(255,255,255,.18);
+  color:#fff;
+}
+
+body.user-authenticated .hero-card{
+  position:relative;
+  overflow:hidden;
+  padding:20px;
+  border:none;
+  color:#fff;
+  background:
+    radial-gradient(circle at 90% 12%, rgba(255,255,255,.24), transparent 24%),
+    linear-gradient(135deg,var(--zpay-brand) 0%,var(--zpay-brand2) 50%,var(--zpay-brand3) 100%);
+}
+
+body.user-authenticated .hero-card::after{
+  content:"";
+  position:absolute;
+  right:-40px;
+  bottom:-70px;
+  width:170px;
+  height:170px;
+  border-radius:999px;
+  background:rgba(255,255,255,.14);
+}
+
+body.user-authenticated .hero-card > *{
+  position:relative;
+  z-index:1;
+}
+
+body.user-authenticated .hero-balance-label,
+body.user-authenticated .hero-mini-label{
+  color:rgba(255,255,255,.84);
+}
+
+body.user-authenticated .hero-balance{
+  color:#fff;
+  text-shadow:0 8px 26px rgba(0,0,0,.16);
+}
+
+body.user-authenticated .hero-mini{
+  background:rgba(255,255,255,.14);
+  border:1px solid rgba(255,255,255,.18);
+  backdrop-filter:blur(10px);
+}
+
+body.user-authenticated .hero-mini-value{
+  color:#fff;
+}
+
+body.user-authenticated .status-chip{
+  background:rgba(255,255,255,.16);
+  color:#fff;
+  border:1px solid rgba(255,255,255,.18);
+}
+
+.zpay-quick-card{
+  margin:0 0 14px;
+  padding:16px;
+  border-radius:24px;
+  background:#fff;
+  border:1px solid var(--zpay-border);
+  box-shadow:0 16px 38px rgba(15,23,42,.08);
+}
+
+.zpay-quick-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:14px;
+}
+
+.zpay-quick-title{
+  margin:0;
+  color:var(--zpay-ink);
+  font-size:17px;
+  line-height:1.2;
+  font-weight:900;
+  letter-spacing:-.03em;
+}
+
+.zpay-quick-sub{
+  margin:4px 0 0;
+  color:var(--zpay-muted);
+  font-size:12px;
+  line-height:1.4;
+}
+
+.zpay-rate-chip{
+  flex:0 0 auto;
+  padding:8px 10px;
+  border-radius:999px;
+  background:var(--zpay-soft);
+  color:var(--zpay-brand);
+  font-size:11px;
+  font-weight:900;
+  white-space:nowrap;
+}
+
+.zpay-service-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:10px;
+}
+
+.zpay-service-btn{
+  min-height:92px;
+  padding:12px 8px;
+  border:1px solid rgba(236,28,100,.08);
+  border-radius:22px;
+  background:linear-gradient(180deg,#fff,#fff7fb);
+  color:var(--zpay-ink);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  cursor:pointer;
+  box-shadow:0 10px 26px rgba(236,28,100,.06);
+}
+
+.zpay-service-btn:active{
+  transform:scale(.98);
+}
+
+.zpay-service-icon{
+  width:42px;
+  height:42px;
+  border-radius:16px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#fff;
+  font-size:20px;
+  font-weight:900;
+  background:linear-gradient(135deg,var(--zpay-brand),var(--zpay-brand2));
+  box-shadow:0 10px 20px rgba(236,28,100,.20);
+}
+
+.zpay-service-name{
+  display:block;
+  color:var(--zpay-ink);
+  text-align:center;
+  font-size:12px;
+  font-weight:900;
+  line-height:1.25;
+}
+
+body.user-authenticated .summary-box,
+body.user-authenticated .review-box,
+body.user-authenticated .detail-box,
+body.user-authenticated .history-item,
+body.user-authenticated .history-meta .mini,
+body.user-authenticated .history-message,
+body.user-authenticated .result-box,
+body.user-authenticated .bundle-result-box,
+body.user-authenticated .result-card,
+body.user-authenticated .bundle-card,
+body.user-authenticated .bundle-mini{
+  background:#f8fafc;
+  border:1px solid var(--zpay-border);
+  color:var(--zpay-ink);
+}
+
+body.user-authenticated .section-title,
+body.user-authenticated .summary-box strong,
+body.user-authenticated .review-box strong,
+body.user-authenticated .detail-box strong,
+body.user-authenticated .history-id,
+body.user-authenticated .history-meta .mini strong,
+body.user-authenticated .result-title,
+body.user-authenticated .result-text,
+body.user-authenticated .bundle-name,
+body.user-authenticated .bundle-mini strong{
+  color:var(--zpay-ink);
+}
+
+body.user-authenticated .section-sub,
+body.user-authenticated .summary-box label,
+body.user-authenticated .review-box label,
+body.user-authenticated .detail-box label,
+body.user-authenticated .history-small,
+body.user-authenticated .history-meta .mini label,
+body.user-authenticated .bundle-id,
+body.user-authenticated .bundle-desc,
+body.user-authenticated .bundle-expiry{
+  color:var(--zpay-muted);
+}
+
+body.user-authenticated .input,
+body.user-authenticated select,
+body.user-authenticated textarea,
+body.user-authenticated .wizard-big-input{
+  background:#fff;
+  color:var(--zpay-ink);
+  border:1px solid rgba(15,23,42,.12);
+}
+
+body.user-authenticated .input::placeholder,
+body.user-authenticated .wizard-big-input::placeholder{
+  color:#94a3b8;
+}
+
+body.user-authenticated .btn.green,
+body.user-authenticated .btn.blue,
+body.user-authenticated .choice-btn.active,
+body.user-authenticated .wizard-pill.active,
+body.user-authenticated .filter-btn.active{
+  background:linear-gradient(135deg,var(--zpay-brand),var(--zpay-brand2));
+  color:#fff;
+  border-color:transparent;
+}
+
+body.user-authenticated .btn.ghost,
+body.user-authenticated .choice-btn,
+body.user-authenticated .wizard-pill,
+body.user-authenticated .filter-btn{
+  background:#fff;
+  color:var(--zpay-ink);
+  border:1px solid rgba(15,23,42,.12);
+}
+
+body.user-authenticated .bottom-nav{
+  background:linear-gradient(180deg,rgba(248,251,255,0),rgba(248,251,255,.96) 28%,#f8fbff 100%);
+}
+
+body.user-authenticated .bottom-nav-inner{
+  grid-template-columns:repeat(5,minmax(0,1fr));
+  background:#fff;
+  border:1px solid var(--zpay-border);
+  box-shadow:0 12px 34px rgba(15,23,42,.12);
+}
+
+body.user-authenticated .bottom-btn{
+  color:#64748b;
+}
+
+body.user-authenticated .bottom-btn.active{
+  background:var(--zpay-soft);
+  color:var(--zpay-brand);
+}
+
+@media (max-width:980px){
+  body.user-authenticated .main-panel{
+    padding:10px 10px 96px;
+  }
+
+  body.user-authenticated .mobile-header{
+    position:sticky;
+    top:0;
+    z-index:30;
+    margin:-10px -10px 10px;
+    padding:10px 10px 0;
+    background:linear-gradient(180deg,#fff6fa 0%,rgba(255,246,250,.94) 72%,rgba(255,246,250,0) 100%);
+  }
+
+  body.user-authenticated .hero-card{
+    border-radius:26px;
+  }
+
+  .zpay-service-grid{
+    grid-template-columns:repeat(4,minmax(0,1fr));
+    gap:8px;
+  }
+
+  .zpay-service-btn{
+    min-height:86px;
+    border-radius:20px;
+  }
+
+  .zpay-service-icon{
+    width:39px;
+    height:39px;
+    border-radius:15px;
+    font-size:19px;
+  }
+
+  .zpay-service-name{
+    font-size:11px;
+  }
+}
+
+@media (max-width:430px){
+  .zpay-quick-card{
+    padding:14px;
+    border-radius:22px;
+  }
+
+  .zpay-quick-head{
+    align-items:stretch;
+    flex-direction:column;
+    gap:8px;
+  }
+
+  .zpay-rate-chip{
+    width:max-content;
+  }
+
+  .zpay-service-grid{
+    grid-template-columns:repeat(4,minmax(0,1fr));
+  }
+
+  .zpay-service-btn{
+    min-height:78px;
+    padding:9px 5px;
+    gap:6px;
+  }
+
+  .zpay-service-icon{
+    width:34px;
+    height:34px;
+    border-radius:13px;
+    font-size:16px;
+  }
+
+  .zpay-service-name{
+    font-size:10px;
+  }
+
+  body.user-authenticated .hero-balance{
+    font-size:34px;
+  }
+}
