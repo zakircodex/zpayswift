@@ -1,6 +1,6 @@
 <?php
 /**
- * ZawTopup / Z-Pay Swift example configuration.
+ * Z-Pay Swift example configuration.
  *
  * Copy this file to your private config location and fill values on the server.
  * Keep real credentials out of Git.
@@ -40,6 +40,7 @@ define('TELEGRAM_BOT_TOKEN', '');
 define('TELEGRAM_CHAT_ID', '');
 define('TELEGRAM_WEBHOOK_SECRET', '');
 define('TELEGRAM_BUNDLE_ACTION_KEY', '');
+define('TELEGRAM_MFS_ACTION_KEY', '');
 define('TELEGRAM_BUNDLE_CHAT_ID', '');
 define('ZAW_TELEGRAM_BOT_TOKEN', '');
 define('ZAW_TELEGRAM_CHAT_ID', '');
