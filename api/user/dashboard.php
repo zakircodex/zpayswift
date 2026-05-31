@@ -9,7 +9,7 @@ header('Pragma: no-cache');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Zaw Topup User Dashboard</title>
+  <title>Z-Pay Swift User Dashboard</title>
   <link rel="stylesheet" href="assets/dashboard.css?v=8">
 </head>
 <body>
@@ -17,10 +17,10 @@ header('Pragma: no-cache');
 <div id="loginView" class="login-wrap">
   <div class="login-card">
     <div class="brand">
-      <div class="logo">U</div>
+      <div class="logo">Z</div>
       <div>
-        <h1>Zaw Topup<br>User</h1>
-        <p>Secure login, wallet, topup and bundle requests</p>
+        <h1>Z-Pay Swift<br>User</h1>
+        <p>Secure wallet, topup, bundle and bKash/Nagad requests</p>
       </div>
     </div>
 
@@ -58,10 +58,10 @@ header('Pragma: no-cache');
   <div class="app-shell">
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-brand">
-        <div class="logo">U</div>
+        <div class="logo">Z</div>
         <div>
-          <h3>Zaw Topup<br>User</h3>
-          <p>Topup, bundles, wallet and request history</p>
+          <h3>Z-Pay Swift<br>User</h3>
+          <p>Wallet, topup, bundles, bKash/Nagad and request history</p>
         </div>
       </div>
 
@@ -120,7 +120,7 @@ header('Pragma: no-cache');
         <div class="mobile-top-card">
           <div class="mobile-top-row">
             <button id="openSidebarBtn" class="icon-btn" type="button">☰</button>
-            <div class="mobile-title">Zaw Topup</div>
+            <div class="mobile-title">Z-Pay Swift</div>
             <button id="quickRefreshBtn" class="icon-btn" type="button">↻</button>
           </div>
         </div>
@@ -422,7 +422,7 @@ header('Pragma: no-cache');
           <div class="section-head">
             <div>
               <h3 class="section-title">My History</h3>
-              <p class="section-sub">Recent topup and bundle request history</p>
+              <p class="section-sub">Recent topup, bundle and bKash/Nagad request history</p>
             </div>
           </div>
 
