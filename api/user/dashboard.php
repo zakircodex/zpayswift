@@ -578,5 +578,6 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/zawtopup/api/user/proxy.php';
 </script>
 <script src="assets/dashboard.js?v=8"></script>
+<script src="assets/dashboard-ux.js?v=1"></script>
 </body>
 </html>
