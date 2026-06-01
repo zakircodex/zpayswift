@@ -1,10 +1,11 @@
 <?php
 declare(strict_types=1);
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/bootstrap.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/subadmin_api.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/bundle.php';
+require_once dirname(__DIR__) . '/lib/app_paths.php';
+require_once app_private_config_path();
+require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/subadmin_api.php';
+require_once dirname(__DIR__) . '/lib/bundle.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -70,7 +71,11 @@ function sub_proxy_host(): string
 
 function sub_proxy_api_base_url(): string
 {
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/zawtopup/api/subadmin/proxy.php';
+    if (function_exists('app_api_url')) {
+        return app_api_url();
+    }
+
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/subadmin/proxy.php';
     $apiPath = dirname(dirname($script));
     return rtrim(sub_proxy_scheme() . '://' . sub_proxy_host() . $apiPath, '/');
 }
