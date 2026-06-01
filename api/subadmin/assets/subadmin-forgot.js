@@ -7,7 +7,15 @@ const forgotState = {
   resetType: 'PASSWORD'
 };
 
-const FORGOT_PROXY_URL = window.SUBADMIN_PROXY_URL || '/zawtopup/api/subadmin/proxy.php';
+function normalizeSubadminUrl(url, fallback) {
+  const value = String(url || '').trim();
+  if (!value) return fallback;
+  if (value.indexOf('/zawtopup/api/subadmin/') !== -1) return value.split('/zawtopup/api/subadmin/').pop() || fallback;
+  if (value.indexOf('/zpayswift/api/subadmin/') !== -1) return value.split('/zpayswift/api/subadmin/').pop() || fallback;
+  return value;
+}
+
+const FORGOT_PROXY_URL = normalizeSubadminUrl(window.SUBADMIN_PROXY_URL, 'proxy.php');
 const FORGOT_STORE_KEY = 'zawtopup_subadmin_forgot_state_v2';
 
 function fId(id) {
@@ -406,7 +414,7 @@ async function handleVerifyForgotOtp() {
     clearForgotState();
 
     setTimeout(() => {
-      window.location.href = '/zawtopup/api/subadmin/login.php';
+      window.location.href = 'login.php';
     }, 900);
   } catch (err) {
     if (statusBox) statusBox.textContent = err.message || 'Failed to verify OTP';
