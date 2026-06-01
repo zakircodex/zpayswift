@@ -47,8 +47,8 @@ header('Pragma: no-cache');
     <button id="loginBtn" class="btn green full-btn" type="button">Login</button>
 
     <div class="login-links">
-      <a href="/zawtopup/api/user/register.php" class="link-btn">Create Account</a>
-      <a href="/zawtopup/api/user/forgot.php" class="link-btn">Forgot Password / PIN</a>
+      <a href="register.php" class="link-btn">Create Account</a>
+      <a href="forgot.php" class="link-btn">Forgot Password / PIN</a>
     </div>
   </div>
 </div>
@@ -575,9 +575,9 @@ header('Pragma: no-cache');
 </div>
 
 <script>
-window.USER_PROXY_URL = '/zawtopup/api/user/proxy.php';
+window.USER_PROXY_URL = 'proxy.php';
 </script>
-<script src="assets/dashboard.js?v=8"></script>
+<script src="assets/dashboard.js?v=9"></script>
 <script src="assets/dashboard-ux.js?v=1"></script>
 </body>
 </html>

@@ -3,7 +3,7 @@
  * ZawTopup / Z-Pay Swift - Telegram Webhook Router
  *
  * Use this single URL for the Telegram bot webhook:
- * /zawtopup/api/telegram/webhook.php?key=YOUR_TELEGRAM_WEBHOOK_SECRET
+ * /<deploy-folder>/api/telegram/webhook.php?key=YOUR_TELEGRAM_WEBHOOK_SECRET
  *
  * Routes:
  * - bndl|... callbacks go to bundle_webhook.php

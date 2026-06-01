@@ -299,11 +299,11 @@ function mfs_tg_keyboard_active(string $requestId): array
     return [
         'inline_keyboard' => [
             [
-                ['text' => 'Processing', 'callback_data' => mfs_tg_callback_data('p', $requestId)],
+                ['text' => '🔄 Processing', 'callback_data' => mfs_tg_callback_data('p', $requestId)],
             ],
             [
-                ['text' => 'Successful', 'callback_data' => mfs_tg_callback_data('s', $requestId)],
-                ['text' => 'Failed', 'callback_data' => mfs_tg_callback_data('f', $requestId)],
+                ['text' => '✅ Success', 'callback_data' => mfs_tg_callback_data('s', $requestId)],
+                ['text' => '❌ Failed', 'callback_data' => mfs_tg_callback_data('f', $requestId)],
             ],
         ],
     ];
@@ -314,7 +314,7 @@ function mfs_tg_keyboard_waiting(string $requestId): array
     return [
         'inline_keyboard' => [
             [
-                ['text' => 'Failed', 'callback_data' => mfs_tg_callback_data('f', $requestId)],
+                ['text' => '❌ Failed', 'callback_data' => mfs_tg_callback_data('f', $requestId)],
             ],
         ],
     ];
@@ -323,12 +323,12 @@ function mfs_tg_keyboard_waiting(string $requestId): array
 function mfs_tg_text(array $row, string $status, string $message): string
 {
     $currency = strtoupper((string)($row['wallet_currency'] ?? 'BDT'));
-    $amount = $currency === 'MYR'
-        ? 'RM ' . mfs_tg_money($row['amount_rm'] ?? 0) . ' / BDT ' . mfs_tg_money($row['amount_bdt'] ?? 0)
-        : 'BDT ' . mfs_tg_money($row['amount_bdt'] ?? 0);
+    $amountRm = (float)($row['amount_rm'] ?? $row['amount_myr'] ?? 0);
     $fee = $currency === 'MYR'
-        ? 'RM ' . mfs_tg_money($row['fee_rm'] ?? 0)
+        ? 'RM ' . mfs_tg_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0)
         : 'BDT ' . mfs_tg_money($row['fee_bdt'] ?? 0);
+    $total = ($currency === 'MYR' ? 'RM ' : 'BDT ')
+        . mfs_tg_money($row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
     $last = (string)($row['sender_last_digit'] ?? $row['last_digit'] ?? '');
     $icon = $status === 'SUCCESSFUL' ? '✅' : ($status === 'FAILED' ? '❌' : ($status === 'PROCESSING' ? '🔄' : '🔢'));
 
@@ -337,11 +337,19 @@ function mfs_tg_text(array $row, string $status, string $message): string
         '<b>UID:</b> <code>' . mfs_tg_h($row['uid'] ?? '-') . '</code>' . "\n" .
         '<b>User Phone:</b> <code>' . mfs_tg_h($row['user_phone'] ?? '-') . '</code>' . "\n\n" .
         '<b>Provider:</b> <b>' . mfs_tg_h($row['provider_name'] ?? $row['provider'] ?? '-') . '</b>' . "\n" .
-        '<b>Service:</b> ' . mfs_tg_h($row['service_name'] ?? $row['service_type'] ?? '-') . "\n" .
-        '<b>Receiver:</b> <code>' . mfs_tg_h($row['receiver_number'] ?? $row['number'] ?? '-') . '</code>' . "\n" .
-        '<b>Amount:</b> <b>' . mfs_tg_h($amount) . '</b>' . "\n" .
+        '<b>Mode:</b> ' . mfs_tg_h($row['service_mode'] ?? '-') . "\n" .
+        '<b>Type:</b> ' . mfs_tg_h($row['service_type'] ?? $row['service_name'] ?? 'SEND_MONEY') . "\n" .
+        '<b>Receiver Number:</b> <code>' . mfs_tg_h($row['receiver_number'] ?? $row['number'] ?? '-') . '</code>' . "\n" .
+        '<b>Amount BDT:</b> <b>BDT ' . mfs_tg_money($row['amount_bdt'] ?? 0) . '</b>' . "\n";
+
+    if ($amountRm > 0) {
+        $text .= '<b>Amount RM:</b> <b>RM ' . mfs_tg_money($amountRm) . '</b>' . "\n";
+    }
+
+    $text .=
         '<b>Fee:</b> <b>' . mfs_tg_h($fee) . '</b>' . "\n" .
-        '<b>Total Hold:</b> <b>' . mfs_tg_h($currency) . ' ' . mfs_tg_money($row['total_debit'] ?? 0) . '</b>';
+        '<b>Pay / Total Hold:</b> <b>' . mfs_tg_h($total) . '</b>' . "\n" .
+        '<b>Reference:</b> ' . mfs_tg_h($row['reference'] ?? '-');
 
     if ($currency === 'MYR') {
         $text .= "\n" . '<b>Rate:</b> RM 1 = BDT ' . mfs_tg_money($row['exchange_rate'] ?? 0);
@@ -392,15 +400,7 @@ function mfs_tg_digit(string $text): string
 {
     $text = trim($text);
 
-    if (preg_match('/^\d$/', $text)) {
-        return $text;
-    }
-
-    if (preg_match('/(\d)\s*$/', $text, $m)) {
-        return (string)$m[1];
-    }
-
-    return '';
+    return preg_match('/^\d$/', $text) ? $text : '';
 }
 
 function mfs_tg_save_digit(string $requestId, string $digit): void

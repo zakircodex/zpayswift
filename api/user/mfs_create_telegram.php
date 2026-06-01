@@ -67,24 +67,25 @@ function zpay_mfs_create_text(array $row): string
 {
     $currency = strtoupper((string)($row['wallet_currency'] ?? 'BDT'));
     $requestId = (string)($row['request_id'] ?? '-');
-    $amount = $currency === 'MYR'
-        ? 'RM ' . zpay_mfs_create_money($row['amount_rm'] ?? 0) . ' / BDT ' . zpay_mfs_create_money($row['amount_bdt'] ?? 0)
-        : 'BDT ' . zpay_mfs_create_money($row['amount_bdt'] ?? 0);
+    $amountRm = (float)($row['amount_rm'] ?? $row['amount_myr'] ?? 0);
     $fee = $currency === 'MYR'
-        ? 'RM ' . zpay_mfs_create_money($row['fee_rm'] ?? 0)
+        ? 'RM ' . zpay_mfs_create_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0)
         : 'BDT ' . zpay_mfs_create_money($row['fee_bdt'] ?? 0);
-    $total = $currency . ' ' . zpay_mfs_create_money($row['total_debit'] ?? $row['wallet_hold_amount'] ?? 0);
+    $total = ($currency === 'MYR' ? 'RM ' : 'BDT ')
+        . zpay_mfs_create_money($row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
     $text = "🔔 <b>New MFS Request</b>\n\n" .
-        "<b>ID:</b> <code>" . zpay_mfs_create_h($requestId) . "</code>\n" .
+        "<b>Request ID:</b> <code>" . zpay_mfs_create_h($requestId) . "</code>\n" .
         "<b>UID:</b> <code>" . zpay_mfs_create_h($row['uid'] ?? '-') . "</code>\n" .
         "<b>User Phone:</b> <code>" . zpay_mfs_create_h($row['user_phone'] ?? '-') . "</code>\n\n" .
         "<b>Provider:</b> <b>" . zpay_mfs_create_h($row['provider_name'] ?? $row['provider'] ?? '-') . "</b>\n" .
         "<b>Mode:</b> " . zpay_mfs_create_h($row['service_mode'] ?? '-') . "\n" .
         "<b>Type:</b> " . zpay_mfs_create_h($row['service_type'] ?? 'SEND_MONEY') . "\n" .
-        "<b>Number:</b> <code>" . zpay_mfs_create_h($row['receiver_number'] ?? $row['number'] ?? '-') . "</code>\n" .
-        "<b>Amount:</b> <b>" . zpay_mfs_create_h($amount) . "</b>\n" .
+        "<b>Receiver Number:</b> <code>" . zpay_mfs_create_h($row['receiver_number'] ?? $row['number'] ?? '-') . "</code>\n" .
+        "<b>Amount BDT:</b> <b>BDT " . zpay_mfs_create_money($row['amount_bdt'] ?? 0) . "</b>\n";
+    if ($amountRm > 0) $text .= "<b>Amount RM:</b> <b>RM " . zpay_mfs_create_money($amountRm) . "</b>\n";
+    $text .=
         "<b>Fee:</b> <b>" . zpay_mfs_create_h($fee) . "</b>\n" .
-        "<b>Pay:</b> <b>" . zpay_mfs_create_h($total) . "</b>\n";
+        "<b>Pay / Total Hold:</b> <b>" . zpay_mfs_create_h($total) . "</b>\n";
     if ($currency === 'MYR') $text .= "<b>Rate:</b> RM 1 = BDT " . zpay_mfs_create_money($row['exchange_rate'] ?? 0) . "\n";
     $text .= "<b>Reference:</b> " . zpay_mfs_create_h($row['reference'] ?? '-') . "\n" .
         "<b>Status:</b> <b>PENDING</b>";
@@ -123,6 +124,8 @@ if (!$row) $row = $data;
 $tg = ['ok' => false, 'http' => 0, 'raw' => '', 'error' => 'Telegram config missing'];
 if ($requestId !== '' && zpay_mfs_create_token() !== '' && zpay_mfs_create_chat() !== '' && zpay_mfs_create_key() !== '') {
     $tg = zpay_mfs_create_tg_api('sendMessage', ['chat_id' => zpay_mfs_create_chat(), 'text' => zpay_mfs_create_text($row), 'parse_mode' => 'HTML', 'disable_web_page_preview' => true, 'reply_markup' => zpay_mfs_create_keyboard($requestId)]);
+}
+if ($requestId !== '') {
     zpay_mfs_create_patch_telegram($requestId, $tg);
 }
 $data['telegram'] = ['ok' => !empty($tg['ok']), 'http_status' => (int)($tg['http'] ?? 0), 'with_buttons' => true];
