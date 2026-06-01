@@ -7,7 +7,15 @@ const loginState = {
   trustDevice: true
 };
 
-const LOGIN_PROXY_URL = window.SUBADMIN_PROXY_URL || 'proxy.php';
+function normalizeSubadminUrl(url, fallback) {
+  const value = String(url || '').trim();
+  if (!value) return fallback;
+  if (value.indexOf('/zawtopup/api/subadmin/') !== -1) return value.split('/zawtopup/api/subadmin/').pop() || fallback;
+  if (value.indexOf('/zpayswift/api/subadmin/') !== -1) return value.split('/zpayswift/api/subadmin/').pop() || fallback;
+  return value;
+}
+
+const LOGIN_PROXY_URL = normalizeSubadminUrl(window.SUBADMIN_PROXY_URL, 'proxy.php');
 
 function $id(id){
   return document.getElementById(id);
