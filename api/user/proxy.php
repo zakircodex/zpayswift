@@ -1,14 +1,13 @@
 <?php
 declare(strict_types=1);
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/bootstrap.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/roles.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/wallet.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/topup.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/operators.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/bundle.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/mfs.php';
+require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/roles.php';
+require_once dirname(__DIR__) . '/lib/wallet.php';
+require_once dirname(__DIR__) . '/lib/topup.php';
+require_once dirname(__DIR__) . '/lib/operators.php';
+require_once dirname(__DIR__) . '/lib/bundle.php';
+require_once dirname(__DIR__) . '/lib/mfs.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -168,7 +167,13 @@ function user_proxy_host(): string
 
 function user_proxy_api_base_url(): string
 {
-    return rtrim(user_proxy_scheme() . '://' . user_proxy_host() . '/zawtopup/api', '/');
+    if (function_exists('app_api_url')) {
+        return app_api_url();
+    }
+
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/user/proxy.php';
+    $apiPath = dirname(dirname($script));
+    return rtrim(user_proxy_scheme() . '://' . user_proxy_host() . $apiPath, '/');
 }
 
 function user_proxy_internal_api_request(string $method, string $relativePath, ?array $body = null, array $headers = []): array
