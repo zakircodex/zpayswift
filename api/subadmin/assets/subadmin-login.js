@@ -7,7 +7,7 @@ const loginState = {
   trustDevice: true
 };
 
-const LOGIN_PROXY_URL = window.SUBADMIN_PROXY_URL || '/zawtopup/api/subadmin/proxy.php';
+const LOGIN_PROXY_URL = window.SUBADMIN_PROXY_URL || 'proxy.php';
 
 function $id(id){
   return document.getElementById(id);
@@ -184,7 +184,7 @@ function updateLoginOtpModal(data){
 }
 
 function loginGoDashboard(){
-  window.location.href = '/zawtopup/api/subadmin/dashboard.php';
+  window.location.href = 'dashboard.php';
 }
 
 async function handleLogin(){
