@@ -1,8 +1,19 @@
 <?php
 declare(strict_types=1);
 
+if (!function_exists('app_private_sms_bridge_path')) {
+    $appPathsFile = __DIR__ . '/app_paths.php';
+    if (is_file($appPathsFile)) {
+        require_once $appPathsFile;
+    }
+}
+
 function auth_sms_bridge_file(): string
 {
+    if (function_exists('app_private_sms_bridge_path')) {
+        return app_private_sms_bridge_path();
+    }
+
     return '/home/zedpayhe/private/zawtopup/auth_sms_bridge.php';
 }
 
