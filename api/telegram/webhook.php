@@ -9,7 +9,7 @@
  * - bndl|... callbacks go to bundle_webhook.php
  * - MFS_... callbacks go to mfs_webhook.php
  * - mfs|... callbacks go to mfs_webhook.php
- * - normal Telegram messages go to mfs_webhook.php for sender last digit replies
+ * - normal Telegram messages go to mfs_webhook.php for sender details replies
  */
 
 declare(strict_types=1);

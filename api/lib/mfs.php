@@ -161,6 +161,47 @@ function mfs_const_bool(string $name, bool $default = false): bool
     return mfs_bool_value(constant($name));
 }
 
+function mfs_bdt_transfer_limits(): array
+{
+    $minimum = mfs_const_float('MFS_MIN_AMOUNT_BDT', 500.00);
+    $maximum = mfs_const_float('MFS_MAX_AMOUNT_BDT', 50000.00);
+
+    return [
+        'minimum' => max(0.01, mfs_round_money($minimum)),
+        'maximum' => max($minimum, mfs_round_money($maximum)),
+    ];
+}
+
+function mfs_validate_bdt_transfer_amount(float $amountBdt): array
+{
+    $limits = mfs_bdt_transfer_limits();
+    $amountBdt = mfs_round_money($amountBdt);
+
+    if ($amountBdt < (float)$limits['minimum']) {
+        return [
+            'ok' => false,
+            'code' => 'VALIDATION_ERROR',
+            'message' => 'Minimum amount is BDT ' . number_format((float)$limits['minimum'], 2, '.', ''),
+            'data' => [
+                'minimum_amount_bdt' => (float)$limits['minimum'],
+            ],
+        ];
+    }
+
+    if ($amountBdt > (float)$limits['maximum']) {
+        return [
+            'ok' => false,
+            'code' => 'VALIDATION_ERROR',
+            'message' => 'Maximum amount is BDT ' . number_format((float)$limits['maximum'], 2, '.', ''),
+            'data' => [
+                'maximum_amount_bdt' => (float)$limits['maximum'],
+            ],
+        ];
+    }
+
+    return ['ok' => true];
+}
+
 /* =========================================================
    Provider / Service / Number Normalize
 ========================================================= */
@@ -802,17 +843,10 @@ function mfs_calculate_amounts(array $user, array $wallet, string $provider, str
 
         $amountBdt = mfs_round_money($amountBdt);
 
-        $minBdt = mfs_const_float('MFS_BD_MIN_AMOUNT_BDT', 1.00);
+        $limitCheck = mfs_validate_bdt_transfer_amount($amountBdt);
 
-        if ($amountBdt < $minBdt) {
-            return [
-                'ok' => false,
-                'code' => 'VALIDATION_ERROR',
-                'message' => 'Minimum amount is BDT ' . number_format($minBdt, 2, '.', ''),
-                'data' => [
-                    'minimum_amount_bdt' => $minBdt,
-                ],
-            ];
+        if (empty($limitCheck['ok'])) {
+            return $limitCheck;
         }
 
         $feeBdt = mfs_bd_official_fee_bdt($provider, $serviceType, $amountBdt);
@@ -857,18 +891,10 @@ function mfs_calculate_amounts(array $user, array $wallet, string $provider, str
         $amountRm = mfs_round_money($amountRm);
         $amountBdt = mfs_round_money($amountBdt);
 
-        $minRm = mfs_const_float('MFS_MY_MIN_AMOUNT_RM', 1.00);
+        $limitCheck = mfs_validate_bdt_transfer_amount($amountBdt);
 
-        if ($amountRm < $minRm) {
-            return [
-                'ok' => false,
-                'code' => 'VALIDATION_ERROR',
-                'message' => 'Minimum amount is RM ' . number_format($minRm, 2, '.', ''),
-                'data' => [
-                    'minimum_amount_rm' => $minRm,
-                    'exchange_rate' => $rate,
-                ],
-            ];
+        if (empty($limitCheck['ok'])) {
+            return $limitCheck;
         }
 
         $feeRm = mfs_remittance_fee_rm($role, $provider);
@@ -1295,6 +1321,8 @@ function mfs_public_log_row(array $row): array
 
         'reference' => (string)($row['reference'] ?? ''),
         'trxid' => (string)($row['trxid'] ?? ''),
+        'sender_details' => (string)($row['sender_details'] ?? $row['sender_last_digit'] ?? $row['last_digit'] ?? ''),
+        'sender_last_digit' => (string)($row['sender_last_digit'] ?? ''),
         'message' => (string)($row['final_message'] ?? $row['message'] ?? $row['note'] ?? ''),
 
         'created_at' => (int)($row['created_at'] ?? 0),
@@ -1435,24 +1463,29 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         ];
     }
 
-    if ($pin === '') {
-        return [
-            'ok' => false,
-            'code' => 'VALIDATION_ERROR',
-            'message' => 'PIN is required',
-            'data' => [],
-        ];
-    }
+    $skipPinValidation = !empty($actor['skip_pin_validation'])
+        && strtoupper(trim((string)($actor['role'] ?? ''))) === 'ADMIN';
 
-    $pinHash = (string)($user['pin_hash'] ?? '');
+    if (!$skipPinValidation) {
+        if ($pin === '') {
+            return [
+                'ok' => false,
+                'code' => 'VALIDATION_ERROR',
+                'message' => 'PIN is required',
+                'data' => [],
+            ];
+        }
 
-    if ($pinHash === '' || !password_verify($pin, $pinHash)) {
-        return [
-            'ok' => false,
-            'code' => 'INVALID_PIN',
-            'message' => 'Invalid transaction PIN',
-            'data' => [],
-        ];
+        $pinHash = (string)($user['pin_hash'] ?? '');
+
+        if ($pinHash === '' || !password_verify($pin, $pinHash)) {
+            return [
+                'ok' => false,
+                'code' => 'INVALID_PIN',
+                'message' => 'Invalid transaction PIN',
+                'data' => [],
+            ];
+        }
     }
 
     $amounts = mfs_calculate_amounts($user, $wallet, $provider, $serviceType, $body);
@@ -1705,6 +1738,77 @@ function mfs_find_request(string $requestId): array
     }
 
     return [];
+}
+
+function mfs_save_sender_details(string $requestId, string $senderDetails): array
+{
+    $requestId = trim($requestId);
+    $senderDetails = trim($senderDetails);
+
+    if ($requestId === '' || $senderDetails === '') {
+        return [
+            'ok' => false,
+            'code' => 'VALIDATION_ERROR',
+            'message' => 'request_id and sender_details are required',
+            'data' => [],
+        ];
+    }
+
+    $row = mfs_find_request($requestId);
+
+    if (!$row) {
+        return [
+            'ok' => false,
+            'code' => 'NOT_FOUND',
+            'message' => 'MFS request not found',
+            'data' => [
+                'request_id' => $requestId,
+            ],
+        ];
+    }
+
+    $bucket = (string)($row['_bucket'] ?? '');
+
+    if (!in_array($bucket, ['PENDING', 'PROCESSING'], true)) {
+        return [
+            'ok' => false,
+            'code' => 'ALREADY_COMPLETED',
+            'message' => 'MFS request already completed',
+            'data' => [
+                'request_id' => $requestId,
+                'status' => (string)($row['status'] ?? ''),
+            ],
+        ];
+    }
+
+    $saved = mfs_fb_patch('MFS_REQUESTS/' . $bucket . '/' . $requestId, [
+        'sender_details' => $senderDetails,
+        'sender_last_digit' => $senderDetails,
+        'sender_last_number_digit' => $senderDetails,
+        'last_digit' => $senderDetails,
+        'updated_at' => mfs_now(),
+    ]);
+
+    if (!$saved) {
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to save sender details',
+            'data' => [
+                'request_id' => $requestId,
+            ],
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'code' => 'SUCCESS',
+        'message' => 'Sender details saved',
+        'data' => [
+            'request_id' => $requestId,
+            'sender_details' => $senderDetails,
+        ],
+    ];
 }
 
 function mfs_move_request_bucket(string $requestId, string $fromBucket, string $toBucket, array $row): void

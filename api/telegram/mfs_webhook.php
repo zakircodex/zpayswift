@@ -4,15 +4,15 @@
  *
  * Button behavior:
  * - MFS_PROCESSING|REQUEST_ID => mark processing
- * - MFS_FAILED|REQUEST_ID     => mark failed, no last digit needed
- * - MFS_SUCCESS|REQUEST_ID    => ask sender last digit first; success only after digit reply
+ * - MFS_FAILED|REQUEST_ID     => mark failed, no sender details needed
+ * - MFS_SUCCESS|REQUEST_ID    => ask sender details first; success only after details reply
  *
  * Signed format is also supported:
  * - mfs|p|REQUEST_ID|SIGNATURE
  * - mfs|s|REQUEST_ID|SIGNATURE
  * - mfs|f|REQUEST_ID|SIGNATURE
  *
- * TRXID is optional. Sender last digit is required for success.
+ * TRXID is optional. Sender details are required for success.
  */
 
 declare(strict_types=1);
@@ -329,7 +329,7 @@ function mfs_tg_text(array $row, string $status, string $message): string
         : 'BDT ' . mfs_tg_money($row['fee_bdt'] ?? 0);
     $total = ($currency === 'MYR' ? 'RM ' : 'BDT ')
         . mfs_tg_money($row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
-    $last = (string)($row['sender_last_digit'] ?? $row['last_digit'] ?? '');
+    $senderDetails = (string)($row['sender_details'] ?? $row['sender_last_digit'] ?? $row['last_digit'] ?? '');
     $icon = $status === 'SUCCESSFUL' ? '✅' : ($status === 'FAILED' ? '❌' : ($status === 'PROCESSING' ? '🔄' : '🔢'));
 
     $text = $icon . ' <b>MFS Request ' . mfs_tg_h($status) . '</b>' . "\n\n" .
@@ -355,8 +355,8 @@ function mfs_tg_text(array $row, string $status, string $message): string
         $text .= "\n" . '<b>Rate:</b> RM 1 = BDT ' . mfs_tg_money($row['exchange_rate'] ?? 0);
     }
 
-    if ($last !== '') {
-        $text .= "\n\n" . '<b>Sender Last Digit:</b> <code>' . mfs_tg_h($last) . '</code>';
+    if ($senderDetails !== '') {
+        $text .= "\n\n" . '<b>Sender Details:</b> <code>' . mfs_tg_h($senderDetails) . '</code>';
     }
 
     return $text . "\n\n" .
@@ -378,7 +378,7 @@ function mfs_tg_set_pending($fromId, string $requestId, $chatId, $messageId): vo
         'request_id' => $requestId,
         'chat_id' => (string)$chatId,
         'message_id' => (string)$messageId,
-        'status' => 'WAITING_LAST_DIGIT',
+        'status' => 'WAITING_SENDER_DETAILS',
         'created_at' => $now,
         'updated_at' => $now,
         'expires_at' => $now + 600,
@@ -398,31 +398,12 @@ function mfs_tg_clear_pending($fromId): void
 
 function mfs_tg_digit(string $text): string
 {
-    $text = trim($text);
-
-    return preg_match('/^\d$/', $text) ? $text : '';
+    return trim($text);
 }
 
-function mfs_tg_save_digit(string $requestId, string $digit): void
+function mfs_tg_save_digit(string $requestId, string $digit): array
 {
-    $row = mfs_find_request($requestId);
-
-    if (!$row) {
-        return;
-    }
-
-    $bucket = (string)($row['_bucket'] ?? '');
-
-    if (!in_array($bucket, ['PENDING', 'PROCESSING'], true)) {
-        return;
-    }
-
-    fb_patch('MFS_REQUESTS/' . $bucket . '/' . $requestId, [
-        'sender_last_digit' => $digit,
-        'sender_last_number_digit' => $digit,
-        'last_digit' => $digit,
-        'updated_at' => mfs_tg_now(),
-    ]);
+    return mfs_save_sender_details($requestId, $digit);
 }
 
 function mfs_tg_handle_callback(array $callback): void
@@ -492,15 +473,15 @@ function mfs_tg_handle_callback(array $callback): void
         }
 
         mfs_tg_set_pending($fromId, $requestId, $chatId, $messageId);
-        mfs_tg_edit($chatId, $messageId, mfs_tg_text($row, 'WAITING_LAST_DIGIT', 'Sender number last digit required'), mfs_tg_keyboard_waiting($requestId));
-        mfs_tg_send($chatId, '🔢 <b>Sender number last digit দিন</b>' . "\n\n" . 'Request ID: <code>' . mfs_tg_h($requestId) . '</code>' . "\n" . 'Example: <code>5</code>' . "\n\n" . 'Last digit না দিলে success হবে না।', [
+        mfs_tg_edit($chatId, $messageId, mfs_tg_text($row, 'WAITING_SENDER_DETAILS', 'Sender details required'), mfs_tg_keyboard_waiting($requestId));
+        mfs_tg_send($chatId, '<b>Sender details দিন</b>' . "\n\n" . 'Request ID: <code>' . mfs_tg_h($requestId) . '</code>' . "\n" . 'Example: <code>017... = BDT 500, 018... = BDT 300, 123 &amp; abc</code>' . "\n\n" . 'Sender details না দিলে success হবে না।', [
             'reply_markup' => [
                 'force_reply' => true,
-                'input_field_placeholder' => 'Sender last digit',
+                'input_field_placeholder' => 'Sender details',
             ],
         ]);
-        mfs_tg_answer($callbackId, 'Send sender last digit first', true);
-        mfs_tg_json(true, 'WAITING_LAST_DIGIT', 'Waiting for sender last digit', ['request_id' => $requestId], 200);
+        mfs_tg_answer($callbackId, 'Send sender details first', true);
+        mfs_tg_json(true, 'WAITING_SENDER_DETAILS', 'Waiting for sender details', ['request_id' => $requestId], 200);
     }
 
     mfs_tg_json(true, 'IGNORED', 'No action performed', [], 200);
@@ -525,15 +506,15 @@ function mfs_tg_handle_message(array $message): void
 
     if ((int)($pending['expires_at'] ?? 0) < mfs_tg_now()) {
         mfs_tg_clear_pending($fromId);
-        mfs_tg_send($chatId, '⏰ Last digit confirmation expired. Please press Successful again.');
+        mfs_tg_send($chatId, 'Sender details confirmation expired. Please press Successful again.');
         mfs_tg_json(true, 'EXPIRED', 'Pending confirmation expired', [], 200);
     }
 
-    $digit = mfs_tg_digit($text);
+    $senderDetails = mfs_tg_digit($text);
 
-    if ($digit === '') {
-        mfs_tg_send($chatId, '❌ শুধু sender number-এর <b>একটা last digit</b> দিন। Example: <code>5</code>');
-        mfs_tg_json(true, 'INVALID_LAST_DIGIT', 'Invalid last digit', [], 200);
+    if ($senderDetails === '') {
+        mfs_tg_send($chatId, '<b>Sender details দিন।</b> Multiple numbers, amounts and text are allowed.');
+        mfs_tg_json(true, 'INVALID_SENDER_DETAILS', 'Sender details required', [], 200);
     }
 
     $requestId = trim((string)($pending['request_id'] ?? ''));
@@ -543,9 +524,14 @@ function mfs_tg_handle_message(array $message): void
         mfs_tg_json(true, 'INVALID_PENDING', 'Pending request id missing', [], 200);
     }
 
-    mfs_tg_save_digit($requestId, $digit);
+    $saved = mfs_tg_save_digit($requestId, $senderDetails);
 
-    $finalMessage = 'Transaction successful. Sender last digit: ' . $digit;
+    if (empty($saved['ok'])) {
+        mfs_tg_send($chatId, '❌ ' . mfs_tg_h((string)($saved['message'] ?? 'Failed to save sender details')));
+        mfs_tg_json(true, (string)($saved['code'] ?? 'ACTION_FAILED'), (string)($saved['message'] ?? 'Failed'), ['result' => $saved], 200);
+    }
+
+    $finalMessage = 'Transaction successful. Sender details: ' . $senderDetails;
     $res = mfs_mark_success($requestId, $finalMessage, '', mfs_tg_actor($from));
 
     if (empty($res['ok'])) {
@@ -557,14 +543,15 @@ function mfs_tg_handle_message(array $message): void
 
     $done = mfs_find_request($requestId) ?: [
         'request_id' => $requestId,
-        'sender_last_digit' => $digit,
+        'sender_details' => $senderDetails,
     ];
 
     mfs_tg_edit($pending['chat_id'] ?? $chatId, $pending['message_id'] ?? '', mfs_tg_text($done, 'SUCCESSFUL', $finalMessage));
-    mfs_tg_send($chatId, '✅ MFS request successful করা হয়েছে।' . "\n" . 'Request ID: <code>' . mfs_tg_h($requestId) . '</code>' . "\n" . 'Sender Last Digit: <code>' . mfs_tg_h($digit) . '</code>');
+    mfs_tg_send($chatId, 'MFS request successful করা হয়েছে।' . "\n" . 'Request ID: <code>' . mfs_tg_h($requestId) . '</code>' . "\n" . 'Sender Details: <code>' . mfs_tg_h($senderDetails) . '</code>');
     mfs_tg_json(true, 'SUCCESS', 'MFS request marked successful', [
         'request_id' => $requestId,
-        'sender_last_digit' => $digit,
+        'sender_details' => $senderDetails,
+        'sender_last_digit' => $senderDetails,
     ], 200);
 }
 

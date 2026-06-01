@@ -10,7 +10,7 @@ header('Pragma: no-cache');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ZawTopup Admin Dashboard</title>
-  <link rel="stylesheet" href="assets/dashboard.css?v=20">
+  <link rel="stylesheet" href="assets/dashboard.css?v=21">
 </head>
 <body>
   <div id="loginView" class="login-wrap hidden">
@@ -54,6 +54,7 @@ header('Pragma: no-cache');
         <button class="nav-btn active" data-section="dashboardSection">Dashboard <span>›</span></button>
         <button class="nav-btn" data-section="topupSection">Topup Requests <span>›</span></button>
         <button class="nav-btn" data-section="bundleSection">Bundles <span>›</span></button>
+        <a id="zpayAdminMfsNav" class="nav-btn zpay-admin-mfs-link" href="mfs.php">bKash / Nagad <span>›</span></a>
         
         <button class="nav-btn" data-section="bundleOffersSection">Bundle Offers <span>›</span></button>
         
@@ -93,6 +94,7 @@ header('Pragma: no-cache');
       <p>Secure session-based operations panel.</p>
     </div>
     <div class="actions">
+      <a id="zpayAdminMfsTopLink" class="btn brand zpay-admin-mfs-toplink" href="mfs.php">bKash / Nagad</a>
       <button class="btn brand" id="directTopupBtn">Direct Topup</button>
       <button class="btn blue" id="openConfigBtn">System Settings</button>
       <button class="btn blue" id="refreshBtn">Refresh All</button>
@@ -581,7 +583,7 @@ header('Pragma: no-cache');
 
   <div class="toast-wrap" id="toastWrap"></div>
 
-<script src="/zawtopup/api/admin/assets/dashboard.js?v=33"></script>
+<script src="assets/dashboard.js?v=34"></script>
 
 </body>
 </html>

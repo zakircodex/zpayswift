@@ -3592,7 +3592,7 @@ document.getElementById('loginPassword')?.addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
 });
 
-document.querySelectorAll('.nav-btn').forEach(btn => {
+document.querySelectorAll('.nav-btn[data-section]').forEach(btn => {
   btn.addEventListener('click', () => openSection(btn.dataset.section));
 });
 

@@ -240,6 +240,7 @@ html,body{margin:0;padding:0;background:linear-gradient(180deg,var(--bg),var(--b
       min-height:44px;
     }
     .nav-btn:hover,.nav-btn.active{background:rgba(34,197,94,.12)}
+    .zpay-admin-mfs-link,.zpay-admin-mfs-toplink{text-decoration:none}
     .sidebar-box{
       margin-top:18px;padding:12px 14px;border:1px solid var(--line);
       background:rgba(20,31,48,.9);border-radius:16px

@@ -1152,7 +1152,12 @@ switch ($action) {
         break;
         
         
-        case 'mfs_pending':
+    case 'mfs_create':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('mfs/create.php', proxy_read_json_body());
+        break;
+
+    case 'mfs_pending':
         proxy_require_method('GET');
         proxy_forward_admin_get('mfs/pending.php', [
             'page' => (int)($_GET['page'] ?? 1),

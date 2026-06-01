@@ -19,7 +19,7 @@ $replacements = [
 $html = strtr($html, $replacements);
 
 if (strpos($html, 'assets/admin-ux.css') === false) {
-    $html = str_replace('</head>', '<link rel="stylesheet" href="assets/mfs-panel.css?v=1"><link rel="stylesheet" href="assets/admin-ux.css?v=1"></head>', $html);
+    $html = str_replace('</head>', '<link rel="stylesheet" href="assets/mfs-panel.css?v=2"><link rel="stylesheet" href="assets/admin-ux.css?v=1"></head>', $html);
 }
 
 if (strpos($html, 'zpayAdminMfsNav') === false) {
