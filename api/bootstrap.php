@@ -8,7 +8,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 
 header('Content-Type: application/json; charset=utf-8');
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
+require_once __DIR__ . '/lib/app_paths.php';
+require_once app_private_config_path();
 require_once __DIR__ . '/lib/helpers.php';
 require_once __DIR__ . '/lib/firebase.php';
 require_once __DIR__ . '/lib/security.php';
@@ -16,15 +17,6 @@ require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/roles.php';
 require_once __DIR__ . '/lib/subadmin_api.php';
 
-/*
-|--------------------------------------------------------------------------
-| Global Security Enforcement
-|--------------------------------------------------------------------------
-| এখানে পুরো /zawtopup/api layer-এর জন্য security check apply হবে।
-| VPN/Proxy/Tor/Datacenter block, IP whitelist/blocklist/cache এগুলো
-| api/lib/security.php থেকে handle হবে।
-|--------------------------------------------------------------------------
-*/
 security_enforce_request([
     'area' => 'api',
     'file' => 'bootstrap.php',
