@@ -9,12 +9,44 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 
+function tg_bundle_forward_mfs_update_if_needed(): void
+{
+    if (strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        return;
+    }
+
+    $raw = isset($GLOBALS['TELEGRAM_UPDATE_RAW'])
+        ? (string)$GLOBALS['TELEGRAM_UPDATE_RAW']
+        : file_get_contents('php://input');
+    $update = is_string($raw) && trim($raw) !== '' ? json_decode($raw, true) : null;
+
+    if (!is_array($update)) {
+        return;
+    }
+
+    $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
+
+    $callback = $update['callback_query'] ?? null;
+    $callbackData = is_array($callback) ? trim((string)($callback['data'] ?? '')) : '';
+    $isMfsCallback = strpos($callbackData, 'MFS_') === 0 || strpos($callbackData, 'mfs|') === 0;
+    $isMessage = isset($update['message']) && is_array($update['message']);
+
+    if (!$isMfsCallback && !$isMessage) {
+        return;
+    }
+
+    require __DIR__ . '/mfs_webhook.php';
+    exit;
+}
+
+tg_bundle_forward_mfs_update_if_needed();
+
 /*
 |--------------------------------------------------------------------------
 | Telegram Bundle Webhook
 |--------------------------------------------------------------------------
 | Webhook URL example:
-| https://zpayswift.com/zawtopup/api/telegram/bundle_webhook.php?key=webhook_zpayswift_zakir_atik_123
+| /<deploy-folder>/api/telegram/webhook.php?key=YOUR_TELEGRAM_WEBHOOK_SECRET
 |
 | Button callback format:
 | bndl|s|REQUEST_ID|SIGNATURE  = SUCCESS
@@ -122,7 +154,9 @@ function tg_bundle_verify_telegram_secret(): void
 
 function tg_bundle_read_update(): array
 {
-    $raw = file_get_contents('php://input');
+    $raw = isset($GLOBALS['TELEGRAM_UPDATE_RAW'])
+        ? (string)$GLOBALS['TELEGRAM_UPDATE_RAW']
+        : file_get_contents('php://input');
 
     if ($raw === false || trim($raw) === '') {
         tg_bundle_response(true, 'IGNORED', 'Empty Telegram update body', [], 200);

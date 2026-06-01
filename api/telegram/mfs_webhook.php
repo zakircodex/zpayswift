@@ -575,7 +575,9 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     mfs_tg_json(true, 'OK', 'Telegram MFS webhook is ready', ['time' => mfs_tg_time()], 200);
 }
 
-$raw = file_get_contents('php://input');
+$raw = isset($GLOBALS['TELEGRAM_UPDATE_RAW'])
+    ? (string)$GLOBALS['TELEGRAM_UPDATE_RAW']
+    : file_get_contents('php://input');
 $update = is_string($raw) && trim($raw) !== '' ? json_decode($raw, true) : null;
 
 if (!is_array($update)) {

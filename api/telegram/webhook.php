@@ -51,11 +51,13 @@ if (is_array($callback)) {
     $data = trim((string)($callback['data'] ?? ''));
 
     if (strpos($data, 'bndl|') === 0) {
+        $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
         require __DIR__ . '/bundle_webhook.php';
         exit;
     }
 
     if (strpos($data, 'MFS_') === 0 || strpos($data, 'mfs|') === 0) {
+        $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
         require __DIR__ . '/mfs_webhook.php';
         exit;
     }
@@ -66,6 +68,7 @@ if (is_array($callback)) {
 }
 
 if (isset($update['message']) && is_array($update['message'])) {
+    $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
     require __DIR__ . '/mfs_webhook.php';
     exit;
 }
