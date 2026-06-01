@@ -1,9 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/bootstrap.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/security.php';
+require_once dirname(__DIR__) . '/bootstrap.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -53,7 +51,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_name('zawtopup_admin_v3');
     session_set_cookie_params([
         'lifetime' => $__ADMIN_PANEL_SESSION_TTL,
-        'path' => '/zawtopup/api/admin',
+        'path' => proxy_admin_cookie_path(),
         'domain' => '',
         'secure' => $https,
         'httponly' => true,
@@ -141,7 +139,11 @@ function proxy_host(): string
 
 function proxy_api_base_url(): string
 {
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/zawtopup/api/admin/proxy.php';
+    if (function_exists('app_api_url')) {
+        return app_api_url();
+    }
+
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/admin/proxy.php';
     $apiPath = dirname(dirname($script));
     return rtrim(proxy_scheme() . '://' . proxy_host() . $apiPath, '/');
 }
@@ -259,7 +261,9 @@ function proxy_internal_api_request(string $method, string $relativePath, ?array
 
 function proxy_admin_cookie_path(): string
 {
-    return '/zawtopup/api/admin';
+    return function_exists('app_cookie_path')
+        ? app_cookie_path('admin')
+        : dirname($_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/admin/proxy.php');
 }
 
 function proxy_admin_token_cookie_name(): string
