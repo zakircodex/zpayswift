@@ -42,8 +42,8 @@ header('Pragma: no-cache');
     <button id="sendForgotOtpBtn" class="btn green full-btn" type="button">Send OTP</button>
 
     <div class="links">
-      <a href="/zawtopup/api/user/dashboard.php">Back to Login</a>
-      <a href="/zawtopup/api/user/register.php">Create New Account</a>
+      <a href="dashboard.php">Back to Login</a>
+      <a href="register.php">Create New Account</a>
     </div>
 
     <div class="note">
@@ -124,8 +124,8 @@ header('Pragma: no-cache');
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script>
-window.USER_PROXY_URL = '/zawtopup/api/user/proxy.php';
-window.USER_LOGIN_URL = '/zawtopup/api/user/dashboard.php';
+window.USER_PROXY_URL = 'proxy.php';
+window.USER_LOGIN_URL = 'dashboard.php';
 </script>
 <script src="assets/forgot.js?v=1"></script>
 </body>
