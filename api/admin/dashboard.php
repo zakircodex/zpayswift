@@ -9,7 +9,7 @@ header('Pragma: no-cache');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ZawTopup Admin Dashboard</title>
+  <title>Z-Pay Swift Admin Dashboard</title>
   <link rel="stylesheet" href="assets/dashboard.css?v=21">
 </head>
 <body>
@@ -18,7 +18,7 @@ header('Pragma: no-cache');
       <div class="brand">
         <div class="logo">Z</div>
         <div>
-          <h1>ZawTopup Admin</h1>
+          <h1>Z-Pay Swift Admin</h1>
           <p>Secure operations dashboard login</p>
         </div>
       </div>
@@ -44,7 +44,7 @@ header('Pragma: no-cache');
       <div class="sidebar-brand">
         <div class="logo">Z</div>
         <div>
-          <h1>ZawTopup Admin</h1>
+          <h1>Z-Pay Swift Admin</h1>
           <p>Session-protected dashboard</p>
         </div>
       </div>
