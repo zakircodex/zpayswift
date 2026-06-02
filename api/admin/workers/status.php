@@ -3,17 +3,8 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
 
-/*
-|--------------------------------------------------------------------------
-| Use the same admin auth/session guard you already use in config/get.php
-|--------------------------------------------------------------------------
-*/
-// Example:
-// $auth = auth_require_user(true);
-// $user = $auth['user'] ?? [];
-// if (strtoupper((string)($user['role'] ?? '')) !== 'ADMIN') {
-//     api_response(false, 'FORBIDDEN', 'Admin access required', [], 403);
-// }
+api_require_method('GET');
+auth_require_admin_session(true);
 
 function worker_bool($v): bool
 {

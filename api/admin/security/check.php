@@ -10,6 +10,18 @@ header('Pragma: no-cache');
 
 api_require_method('GET');
 
+function admin_security_cookie_path(): string
+{
+    if (function_exists('app_cookie_path')) {
+        return app_cookie_path('admin');
+    }
+
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/admin/security/check.php';
+    $path = rtrim(dirname(dirname($script)), '/');
+
+    return $path !== '' && $path !== '.' ? $path : '/';
+}
+
 /*
 |--------------------------------------------------------------------------
 | Admin Security Check
@@ -31,11 +43,11 @@ function admin_security_start_session(): void
         $https = true;
     }
 
-    session_name('zawtopup_admin');
+    session_name('zawtopup_admin_v3');
 
     session_set_cookie_params([
         'lifetime' => 0,
-        'path' => '/',
+        'path' => admin_security_cookie_path(),
         'domain' => '',
         'secure' => $https,
         'httponly' => true,
