@@ -27,7 +27,8 @@ header('Pragma: no-cache');
       <nav class="nav" aria-label="Admin navigation">
         <div class="nav-title">Operations</div>
         <a class="nav-btn" href="dashboard.php">Dashboard <span>&rsaquo;</span></a>
-        <a class="nav-btn active" href="mfs.php">bKash / Nagad <span>&rsaquo;</span></a>
+        <button class="nav-btn" data-mfs-view-target="create" type="button">Create bKash / Nagad <span>&rsaquo;</span></button>
+        <button class="nav-btn active" data-mfs-view-target="manage" type="button">Manage MFS Requests <span>&rsaquo;</span></button>
         <a class="nav-btn" href="dashboard.php">Topup &amp; Bundles <span>&rsaquo;</span></a>
       </nav>
 
@@ -105,20 +106,26 @@ header('Pragma: no-cache');
         </article>
       </section>
 
-      <section class="mfs-panel-card admin-mfs-create">
+      <div class="mfs-loader hidden" id="mfsPageLoader" role="status" aria-live="polite">
+        <span class="mfs-loader-spinner" aria-hidden="true"></span>
+        <span id="mfsPageLoaderText">Loading MFS requests...</span>
+      </div>
+
+      <section class="mfs-panel-card admin-mfs-create hidden" id="mfsCreateSection" data-mfs-view="create">
         <div class="mfs-panel-head">
           <div>
             <div class="mfs-section-kicker">New Request</div>
             <h2>Create bKash / Nagad Request</h2>
-            <p>Create a request for any user or subadmin UID.</p>
+            <p>Create a request for any user or subadmin UID or registered phone number.</p>
           </div>
           <span class="mfs-limit-pill">BDT 500 - 50,000</span>
         </div>
 
-        <form id="mfsCreateForm" class="admin-mfs-create-grid">
+        <form id="mfsCreateForm" class="admin-mfs-create-grid" novalidate>
           <label class="mfs-field">
-            <span>User / Subadmin UID</span>
-            <input class="input" id="mfsCreateUid" required placeholder="Enter user or subadmin UID">
+            <span>User / Subadmin UID or Phone</span>
+            <input class="input" id="mfsCreateUid" required placeholder="Enter UID or registered phone">
+            <small class="mfs-field-help">Balance will be held from this target account.</small>
           </label>
           <label class="mfs-field">
             <span>Provider</span>
@@ -144,12 +151,12 @@ header('Pragma: no-cache');
             <textarea class="input" id="mfsCreateNote" rows="3" placeholder="Additional request note"></textarea>
           </label>
           <div class="admin-mfs-submit">
-            <button class="btn brand" type="submit">Create Request</button>
+            <button class="btn brand" id="mfsCreateSubmitBtn" type="submit">Create Request</button>
           </div>
         </form>
       </section>
 
-      <section class="mfs-panel-card">
+      <section class="mfs-panel-card" id="mfsManageSection" data-mfs-view="manage">
         <div class="mfs-panel-head mfs-queue-head">
           <div>
             <div class="mfs-section-kicker">Request Queue</div>
@@ -160,6 +167,7 @@ header('Pragma: no-cache');
             <button class="admin-mfs-tab active" data-mfs-tab="pending" type="button">Pending</button>
             <button class="admin-mfs-tab" data-mfs-tab="processing" type="button">Processing</button>
             <button class="admin-mfs-tab" data-mfs-tab="done" type="button">Done</button>
+            <button class="admin-mfs-tab" data-mfs-tab="failed" type="button">Failed</button>
           </div>
         </div>
 
@@ -229,8 +237,47 @@ header('Pragma: no-cache');
         </div>
       </div>
     </div>
+
+    <div class="admin-mfs-modal hidden" id="mfsConfirmModal" role="dialog" aria-modal="true" aria-labelledby="mfsConfirmTitle">
+      <div class="admin-mfs-modal-card admin-mfs-compact-modal">
+        <div class="mfs-section-kicker" id="mfsConfirmKicker">Confirm Action</div>
+        <h2 id="mfsConfirmTitle">Confirm MFS Action</h2>
+        <p id="mfsConfirmMessage"></p>
+        <label class="hidden" id="mfsConfirmInputWrap" for="mfsConfirmInput">
+          Failure message
+          <textarea class="input" id="mfsConfirmInput" rows="4" placeholder="MFS request failed"></textarea>
+        </label>
+        <div class="admin-mfs-modal-actions">
+          <button class="btn ghost" id="mfsConfirmCancelBtn" type="button">Cancel</button>
+          <button class="btn brand" id="mfsConfirmSaveBtn" type="button">Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-mfs-modal hidden" id="mfsViewModal" role="dialog" aria-modal="true" aria-labelledby="mfsViewTitle">
+      <div class="admin-mfs-modal-card">
+        <div class="mfs-section-kicker">Request Details</div>
+        <h2 id="mfsViewTitle">MFS Request</h2>
+        <pre class="admin-mfs-details" id="mfsViewDetails"></pre>
+        <div class="admin-mfs-modal-actions">
+          <button class="btn blue" id="mfsViewCloseBtn" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="admin-mfs-modal hidden" id="mfsFeedbackModal" role="dialog" aria-modal="true" aria-labelledby="mfsFeedbackTitle">
+      <div class="admin-mfs-modal-card admin-mfs-compact-modal" id="mfsFeedbackCard">
+        <span class="mfs-modal-indicator" id="mfsFeedbackIndicator" aria-hidden="true"></span>
+        <div class="mfs-section-kicker" id="mfsFeedbackKicker">Success</div>
+        <h2 id="mfsFeedbackTitle">Action completed</h2>
+        <p id="mfsFeedbackMessage"></p>
+        <div class="admin-mfs-modal-actions">
+          <button class="btn blue" id="mfsFeedbackOkBtn" type="button">OK</button>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <script src="assets/mfs-panel.js?v=1"></script>
+  <script src="assets/mfs-panel.js?v=2"></script>
 </body>
 </html>

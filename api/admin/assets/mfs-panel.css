@@ -28,6 +28,7 @@
 
 .mfs-sidebar .nav-btn{
   text-decoration:none;
+  text-align:left;
 }
 
 .mfs-sidebar .nav-btn.active{
@@ -130,6 +131,33 @@
   grid-template-columns:repeat(4,minmax(0,1fr));
   gap:16px;
   margin-bottom:18px;
+}
+
+.mfs-loader{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin:0 0 18px;
+  padding:11px 13px;
+  border:1px solid rgba(59,130,246,.28);
+  border-radius:14px;
+  background:rgba(30,64,175,.12);
+  color:#bfdbfe;
+  font-size:13px;
+  font-weight:800;
+}
+
+.mfs-loader-spinner{
+  width:16px;
+  height:16px;
+  border:2px solid rgba(191,219,254,.28);
+  border-top-color:#60a5fa;
+  border-radius:50%;
+  animation:mfs-spin .72s linear infinite;
+}
+
+@keyframes mfs-spin{
+  to{transform:rotate(360deg)}
 }
 
 .mfs-summary-card{
@@ -245,6 +273,13 @@
   text-transform:uppercase;
 }
 
+.mfs-field .mfs-field-help{
+  color:#86efac;
+  font-size:10px;
+  line-height:1.45;
+  text-transform:none;
+}
+
 .mfs-field .input,
 .admin-mfs-modal-card .input{
   min-height:44px;
@@ -299,6 +334,13 @@
   border-color:rgba(34,197,94,.36);
   background:rgba(34,197,94,.15);
   color:#bbf7d0;
+}
+
+.admin-mfs-tab:disabled,
+.mfs-busy .admin-mfs-actions .mini-btn{
+  cursor:wait;
+  opacity:.68;
+  pointer-events:none;
 }
 
 .admin-mfs-toolbar{
@@ -466,6 +508,7 @@
 }
 
 .admin-mfs-modal-card{
+  position:relative;
   width:min(680px,100%);
   max-height:calc(100vh - 32px);
   overflow:auto;
@@ -474,6 +517,43 @@
   border-radius:20px;
   background:#0d1525;
   box-shadow:var(--shadow);
+}
+
+.admin-mfs-compact-modal{
+  width:min(520px,100%);
+}
+
+.mfs-modal-indicator{
+  display:block;
+  width:48px;
+  height:5px;
+  margin-bottom:14px;
+  border-radius:999px;
+  background:#22c55e;
+  box-shadow:0 0 22px rgba(34,197,94,.46);
+}
+
+.admin-mfs-modal-card.feedback-error .mfs-modal-indicator{
+  background:#ef4444;
+  box-shadow:0 0 22px rgba(239,68,68,.44);
+}
+
+.admin-mfs-modal-card.feedback-error .mfs-section-kicker{
+  color:#fca5a5;
+}
+
+.admin-mfs-details{
+  max-height:56vh;
+  overflow:auto;
+  margin:15px 0 0;
+  padding:14px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:rgba(2,6,23,.48);
+  color:#bfdbfe;
+  font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  white-space:pre-wrap;
+  word-break:break-word;
 }
 
 .admin-mfs-modal-card h2{
@@ -636,7 +716,7 @@
 
   .admin-mfs-tabs{
     display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
+    grid-template-columns:repeat(2,minmax(0,1fr));
     width:100%;
   }
 

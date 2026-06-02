@@ -2,24 +2,154 @@
 (function(){
   'use strict';
 
-  var state = { tab:'pending', rows:[], csrf:'', successRequestId:'' };
+  var state = {
+    tab:'pending',
+    section:'manage',
+    rows:[],
+    csrf:'',
+    loading:false,
+    mutating:false,
+    busyCount:0,
+    successRequestId:'',
+    confirmAction:null
+  };
 
   function el(id){ return document.getElementById(id); }
+  function all(selector){ return Array.prototype.slice.call(document.querySelectorAll(selector)); }
   function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g,function(s){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s];}); }
   function money(v){ var n=Number(v||0); return Number.isFinite(n)?n.toFixed(2):'0.00'; }
   function ts(v){ var n=Number(v||0); if(!n)return '-'; var d=new Date(String(Math.trunc(n)).length<=10?n*1000:n); return isNaN(d.getTime())?'-':d.toLocaleString(); }
   function msg(text,type){ var box=el('mfsPageMsg'); if(!box)return; box.className='mfs-msg '+(type||''); box.textContent=String(text||''); }
   function statusPill(v){ var t=String(v||'-').toUpperCase(); var cls='info'; if(['SUCCESS','SUCCESSFUL','DONE','COMPLETED'].indexOf(t)>=0)cls='success'; else if(['FAILED','CANCELLED'].indexOf(t)>=0)cls='danger'; else if(['PENDING','PROCESSING','WAITING_ADMIN'].indexOf(t)>=0)cls='warning'; return '<span class="pill '+cls+'">'+esc(t)+'</span>'; }
-  async function readJson(res){ var text=await res.text(); var json={}; try{json=JSON.parse(text);}catch(e){throw new Error(text||'Invalid server response');} if(!res.ok||!json.ok){var er=new Error(json.message||'Request failed'); er.code=json.code||'ERROR'; er.data=json.data||{}; throw er;} return json.data||{}; }
-  async function get(action,params){ var qs=new URLSearchParams(params||{}).toString(); var res=await fetch('proxy.php?action='+encodeURIComponent(action)+(qs?'&'+qs:''),{credentials:'same-origin',headers:{Accept:'application/json','Cache-Control':'no-cache'}}); return readJson(res); }
-  async function post(action,body){ var headers={'Content-Type':'application/json',Accept:'application/json','Cache-Control':'no-cache'}; if(state.csrf)headers['X-CSRF-TOKEN']=state.csrf; var res=await fetch('proxy.php?action='+encodeURIComponent(action),{method:'POST',credentials:'same-origin',headers:headers,body:JSON.stringify(body||{})}); return readJson(res); }
-  function actionForTab(){ return state.tab==='processing'?'mfs_processing':state.tab==='done'?'mfs_done':'mfs_pending'; }
   function normalizeRows(data){ return Array.isArray(data.items)?data.items:Array.isArray(data.rows)?data.rows:Array.isArray(data.requests)?data.requests:[]; }
   function totalRows(data){ var total=Number(data&&data.pagination&&data.pagination.total); return Number.isFinite(total)?total:normalizeRows(data||{}).length; }
   function rowNumber(r){ return r.receiver_number||r.number||r.mfs_number||r.to_number||'-'; }
   function rowAmount(r){ var c=String(r.wallet_currency||'BDT').toUpperCase(); if(c==='MYR') return 'RM '+money(r.total_debit||r.amount_rm||0); return 'BDT '+money(r.total_debit||r.amount_bdt||r.amount||0); }
-  function filterRows(rows){ var q=String(el('mfsSearch').value||'').toLowerCase().trim(); if(!q)return rows; return rows.filter(function(r){ return JSON.stringify(r).toLowerCase().indexOf(q)>=0; }); }
-  function actionButtons(r){ var id=String(r.request_id||''); var status=String(r.status||'').toUpperCase(); var html='<div class="admin-mfs-actions"><button class="mini-btn" type="button" data-act="view" data-id="'+esc(id)+'">View</button>'; if(status!=='PROCESSING'&&status!=='SUCCESSFUL'&&status!=='SUCCESS'&&status!=='FAILED') html+='<button class="mini-btn blue" type="button" data-act="processing" data-id="'+esc(id)+'">Processing</button>'; if(status!=='SUCCESSFUL'&&status!=='SUCCESS'&&status!=='FAILED') html+='<button class="mini-btn success" type="button" data-act="success" data-id="'+esc(id)+'">Success</button><button class="mini-btn danger" type="button" data-act="failed" data-id="'+esc(id)+'">Failed</button>'; return html+'</div>'; }
+
+  async function readJson(res){
+    var text=await res.text();
+    var json={};
+    try{json=JSON.parse(text);}catch(e){throw new Error(text||'Invalid server response');}
+    if(!res.ok||!json.ok){
+      var er=new Error(json.message||'Request failed');
+      er.code=json.code||'ERROR';
+      er.data=json.data||{};
+      throw er;
+    }
+    return json.data||{};
+  }
+
+  async function get(action,params){
+    var qs=new URLSearchParams(params||{}).toString();
+    var res=await fetch('proxy.php?action='+encodeURIComponent(action)+(qs?'&'+qs:''),{
+      credentials:'same-origin',
+      headers:{Accept:'application/json','Cache-Control':'no-cache'}
+    });
+    return readJson(res);
+  }
+
+  async function post(action,body){
+    var headers={'Content-Type':'application/json',Accept:'application/json','Cache-Control':'no-cache'};
+    if(state.csrf)headers['X-CSRF-TOKEN']=state.csrf;
+    var res=await fetch('proxy.php?action='+encodeURIComponent(action),{
+      method:'POST',
+      credentials:'same-origin',
+      headers:headers,
+      body:JSON.stringify(body||{})
+    });
+    return readJson(res);
+  }
+
+  function friendlyError(err){
+    var code=String(err&&err.code||'').toUpperCase();
+    var message=String(err&&err.message||'API or network error');
+    if(code==='INSUFFICIENT_BALANCE'){
+      var data=err.data||{};
+      return 'Insufficient balance. Available: '+money(data.available_balance)+' '+String(data.currency||'')+'. Required: '+money(data.required_amount)+' '+String(data.currency||'')+'.';
+    }
+    if(code==='USER_NOT_FOUND'||code==='NOT_FOUND') return message||'Target user not found.';
+    if(code==='VALIDATION_ERROR') return message||'Please check the form fields and try again.';
+    return message;
+  }
+
+  function showFeedback(type,title,message){
+    var isError=type==='error';
+    el('mfsFeedbackCard').classList.toggle('feedback-error',isError);
+    el('mfsFeedbackKicker').textContent=isError?'Error':'Success';
+    el('mfsFeedbackTitle').textContent=String(title||'Notice');
+    el('mfsFeedbackMessage').textContent=String(message||'');
+    el('mfsFeedbackModal').classList.remove('hidden');
+    el('mfsFeedbackOkBtn').focus();
+  }
+
+  function closeFeedback(){
+    el('mfsFeedbackModal').classList.add('hidden');
+  }
+
+  function setButtonBusy(button,busy,label){
+    if(!button)return;
+    if(busy){
+      if(!button.dataset.mfsOriginalText)button.dataset.mfsOriginalText=button.textContent;
+      button.disabled=true;
+      button.textContent=label||'Loading...';
+    }else{
+      if(button.dataset.mfsOriginalText)button.textContent=button.dataset.mfsOriginalText;
+      button.disabled=false;
+    }
+  }
+
+  function setPageBusy(busy,label){
+    state.busyCount=Math.max(0,state.busyCount+(busy?1:-1));
+    var active=state.busyCount>0;
+    document.body.classList.toggle('mfs-busy',active);
+    el('mfsPageLoader').classList.toggle('hidden',!active);
+    el('mfsPageLoaderText').textContent=String(label||'Loading MFS requests...');
+  }
+
+  function setLoadControlsBusy(busy){
+    all('.admin-mfs-tab').forEach(function(button){button.disabled=busy;});
+    el('mfsReloadBtn').disabled=busy;
+    el('mfsApplyFilterBtn').disabled=busy;
+  }
+
+  async function ensureCsrf(){
+    if(state.csrf)return;
+    var data=await get('me',{});
+    state.csrf=String(data.csrf||'');
+    if(!state.csrf)throw new Error('Admin security token is missing. Please refresh and login again.');
+  }
+
+  function actionForTab(){
+    return state.tab==='processing'?'mfs_processing':state.tab==='done'||state.tab==='failed'?'mfs_done':'mfs_pending';
+  }
+
+  function listParams(){
+    var params={
+      page:1,
+      limit:100,
+      service_type:el('mfsService').value||'',
+      uid:el('mfsUid').value||'',
+      number:el('mfsNumber').value||''
+    };
+    if(state.tab==='done')params.status='SUCCESSFUL';
+    if(state.tab==='failed')params.status='FAILED';
+    return params;
+  }
+
+  function filterRows(rows){
+    var q=String(el('mfsSearch').value||'').toLowerCase().trim();
+    if(!q)return rows;
+    return rows.filter(function(r){return JSON.stringify(r).toLowerCase().indexOf(q)>=0;});
+  }
+
+  function actionButtons(r){
+    var id=String(r.request_id||'');
+    var status=String(r.status||'').toUpperCase();
+    var html='<div class="admin-mfs-actions"><button class="mini-btn" type="button" data-act="view" data-id="'+esc(id)+'">View</button>';
+    if(status!=='PROCESSING'&&status!=='SUCCESSFUL'&&status!=='SUCCESS'&&status!=='FAILED')html+='<button class="mini-btn blue" type="button" data-act="processing" data-id="'+esc(id)+'">Processing</button>';
+    if(status!=='SUCCESSFUL'&&status!=='SUCCESS'&&status!=='FAILED')html+='<button class="mini-btn success" type="button" data-act="success" data-id="'+esc(id)+'">Success</button><button class="mini-btn danger" type="button" data-act="failed" data-id="'+esc(id)+'">Failed</button>';
+    return html+'</div>';
+  }
 
   function render(){
     var rows=filterRows(state.rows);
@@ -38,79 +168,358 @@
     }).join('');
   }
 
-  async function loadDoneSummary(){
-    var page=1;
-    var total=0;
-    var rows=[];
-    var hasMore=false;
-    do{
-      var data=await get('mfs_done',{page:page,limit:500});
-      if(page===1)total=totalRows(data);
-      rows=rows.concat(normalizeRows(data));
-      hasMore=Boolean(data.pagination&&data.pagination.has_more);
-      page++;
-    }while(hasMore&&page<=20);
-    return {total:total,rows:rows};
+  function renderListLoading(){
+    el('mfsTableBody').innerHTML='<tr><td colspan="8" class="empty">Loading '+esc(state.tab)+' requests...</td></tr>';
+    el('mfsMobileList').innerHTML='<div class="empty">Loading '+esc(state.tab)+' requests...</div>';
+  }
+
+  async function loadList(){
+    renderListLoading();
+    try{
+      var data=await get(actionForTab(),listParams());
+      state.rows=normalizeRows(data);
+      render();
+      msg('Loaded '+state.rows.length+' '+state.tab+' request(s).','good');
+    }catch(err){
+      state.rows=[];
+      render();
+      throw err;
+    }
   }
 
   async function loadSummary(){
+    ['mfsSummaryPending','mfsSummaryProcessing','mfsSummaryDone','mfsSummaryFailed'].forEach(function(id){el(id).textContent='...';});
     try{
       var data=await Promise.all([
         get('mfs_pending',{page:1,limit:1}),
         get('mfs_processing',{page:1,limit:1}),
-        loadDoneSummary()
+        get('mfs_done',{page:1,limit:1,status:'SUCCESSFUL'}),
+        get('mfs_done',{page:1,limit:1,status:'FAILED'})
       ]);
-      var failed=data[2].rows.filter(function(r){ return String(r.status||'').toUpperCase()==='FAILED'; }).length;
       el('mfsSummaryPending').textContent=String(totalRows(data[0]));
       el('mfsSummaryProcessing').textContent=String(totalRows(data[1]));
-      el('mfsSummaryDone').textContent=String(data[2].total);
-      el('mfsSummaryFailed').textContent=String(failed);
-    }catch(e){
-      ['mfsSummaryPending','mfsSummaryProcessing','mfsSummaryDone','mfsSummaryFailed'].forEach(function(id){ if(el(id))el(id).textContent='-'; });
+      el('mfsSummaryDone').textContent=String(totalRows(data[2]));
+      el('mfsSummaryFailed').textContent=String(totalRows(data[3]));
+    }catch(err){
+      ['mfsSummaryPending','mfsSummaryProcessing','mfsSummaryDone','mfsSummaryFailed'].forEach(function(id){el(id).textContent='-';});
+      throw err;
     }
   }
 
-  async function load(){
-    msg('Loading '+state.tab+' MFS requests...');
+  async function load(button,notifyError){
+    if(state.loading)return;
+    state.loading=true;
+    setButtonBusy(button,true,'Loading...');
+    setLoadControlsBusy(true);
+    setPageBusy(true,'Loading MFS summary and '+state.tab+' requests...');
     try{
-      var data=await get(actionForTab(),{page:1,limit:100,service:el('mfsService').value||'',uid:el('mfsUid').value||'',number:el('mfsNumber').value||''});
-      state.rows=normalizeRows(data);
-      render();
-      msg('Loaded '+state.rows.length+' request(s).','good');
-    }catch(e){
-      msg(e.message||'Failed to load MFS requests','bad');
+      var results=await Promise.allSettled([loadList(),loadSummary()]);
+      var failed=results.find(function(result){return result.status==='rejected';});
+      if(failed){
+        var error=failed.reason||new Error('Failed to load MFS requests');
+        msg(friendlyError(error),'bad');
+        if(notifyError!==false)showFeedback('error','Unable to load requests',friendlyError(error));
+      }
+    }finally{
+      setPageBusy(false);
+      setLoadControlsBusy(false);
+      setButtonBusy(button,false);
+      state.loading=false;
     }
-    loadSummary();
   }
 
-  async function ensureCsrf(){ if(state.csrf)return; try{ var data=await get('me',{}); state.csrf=data.csrf||''; }catch(e){} }
-  async function createRequest(e){ e.preventDefault(); await ensureCsrf(); var amount=Number(el('mfsCreateAmountBdt').value||0); if(!Number.isFinite(amount)||amount<500||amount>50000){ msg('Amount must be between BDT 500 and BDT 50000.','bad'); return; } var body={uid:String(el('mfsCreateUid').value||'').trim(),provider:el('mfsCreateProvider').value,service_type:'SEND_MONEY',account_type:'PERSONAL',receiver_number:String(el('mfsCreateReceiver').value||'').trim(),amount_bdt:amount,currency:'BDT',reference:String(el('mfsCreateReference').value||'').trim(),note:String(el('mfsCreateNote').value||'').trim()}; try{ var data=await post('mfs_create',body); msg('Created MFS request: '+String(data.request_id||''),'good'); el('mfsCreateForm').reset(); state.tab='pending'; document.querySelectorAll('.admin-mfs-tab').forEach(function(btn){btn.classList.toggle('active',btn.getAttribute('data-mfs-tab')==='pending');}); await load(); }catch(err){ msg(err.message||'Failed to create MFS request','bad'); } }
-  function findRow(id){ return state.rows.find(function(r){return String(r.request_id||'')===String(id);})||{}; }
-  async function viewRow(id){ var row=findRow(id); try{ var data=await get('mfs_get',{request_id:id}); row=data.item||data.row||data.request||data||row; }catch(e){} alert(JSON.stringify(row,null,2)); }
-  async function markProcessing(id){ await ensureCsrf(); if(!confirm('Mark processing?\n'+id))return; try{ await post('mfs_mark_processing',{request_id:id,message:'MFS request is processing'}); msg('Marked processing: '+id,'good'); await load(); }catch(e){ msg(e.message||'Failed to mark processing','bad'); } }
-  async function markFailed(id){ await ensureCsrf(); var reason=prompt('Failure message','MFS request failed'); if(reason===null)return; try{ await post('mfs_failed',{request_id:id,message:reason||'MFS request failed'}); msg('Marked failed: '+id,'good'); await load(); }catch(e){ msg(e.message||'Failed to mark failed','bad'); } }
-  async function markSuccess(id){ await ensureCsrf(); state.successRequestId=String(id||''); el('mfsSuccessSenderDetails').value=''; el('mfsSuccessTrxid').value=''; el('mfsSuccessMessage').value=''; el('mfsSuccessModal').classList.remove('hidden'); el('mfsSuccessSenderDetails').focus(); }
-  function closeSuccess(){ state.successRequestId=''; el('mfsSuccessModal').classList.add('hidden'); }
-  async function submitSuccess(){ var id=state.successRequestId; var details=String(el('mfsSuccessSenderDetails').value||'').trim(); if(!id)return; if(!details){ alert('Sender details required. Multiple numbers, amounts and text are allowed.'); return; } var trxid=String(el('mfsSuccessTrxid').value||'').trim(); var message=String(el('mfsSuccessMessage').value||'').trim()||'Transaction successful. Sender details: '+details; try{ await post('mfs_success',{request_id:id,trxid:trxid,sender_details:details,message:message}); closeSuccess(); msg('Marked successful: '+id,'good'); await load(); }catch(e){ msg(e.message||'Failed to mark success','bad'); } }
-  function onAction(e){ var btn=e.target.closest('[data-act]'); if(!btn)return; var id=btn.getAttribute('data-id')||''; var act=btn.getAttribute('data-act')||''; if(act==='view')viewRow(id); if(act==='processing')markProcessing(id); if(act==='failed')markFailed(id); if(act==='success')markSuccess(id); }
-  function toggleSidebar(open){ document.body.classList.toggle('sidebar-open',Boolean(open)); el('mfsSidebarToggle').setAttribute('aria-expanded',open?'true':'false'); }
+  function setActiveTab(tab){
+    state.tab=String(tab||'pending');
+    all('.admin-mfs-tab').forEach(function(button){
+      button.classList.toggle('active',button.getAttribute('data-mfs-tab')===state.tab);
+    });
+  }
+
+  function setSection(section){
+    state.section=section==='create'?'create':'manage';
+    all('[data-mfs-view]').forEach(function(view){
+      view.classList.toggle('hidden',view.getAttribute('data-mfs-view')!==state.section);
+    });
+    all('[data-mfs-view-target]').forEach(function(button){
+      button.classList.toggle('active',button.getAttribute('data-mfs-view-target')===state.section);
+    });
+    toggleSidebar(false);
+  }
+
+  function validateCreateForm(){
+    var target=String(el('mfsCreateUid').value||'').trim();
+    var provider=String(el('mfsCreateProvider').value||'').toUpperCase();
+    var receiver=String(el('mfsCreateReceiver').value||'').trim();
+    var amount=Number(el('mfsCreateAmountBdt').value||0);
+    if(!target)return 'User / Subadmin UID or registered phone is required.';
+    if(['BKASH','NAGAD'].indexOf(provider)<0)return 'Please select bKash or Nagad.';
+    if(!/^01[3-9]\d{8}$/.test(receiver))return 'Receiver number must be a valid 11 digit BD mobile number.';
+    if(!Number.isFinite(amount)||amount<500||amount>50000)return 'Amount must be between BDT 500 and BDT 50,000.';
+    return '';
+  }
+
+  async function createRequest(e){
+    e.preventDefault();
+    if(state.mutating)return;
+    var validation=validateCreateForm();
+    if(validation){
+      msg(validation,'bad');
+      showFeedback('error','Validation error',validation);
+      return;
+    }
+    var button=el('mfsCreateSubmitBtn');
+    var amount=Number(el('mfsCreateAmountBdt').value||0);
+    var body={
+      uid:String(el('mfsCreateUid').value||'').trim(),
+      provider:el('mfsCreateProvider').value,
+      service_type:'SEND_MONEY',
+      account_type:'PERSONAL',
+      receiver_number:String(el('mfsCreateReceiver').value||'').trim(),
+      amount_bdt:amount,
+      currency:'BDT',
+      reference:String(el('mfsCreateReference').value||'').trim(),
+      note:String(el('mfsCreateNote').value||'').trim()
+    };
+    state.mutating=true;
+    setButtonBusy(button,true,'Creating...');
+    setPageBusy(true,'Creating MFS request and holding target wallet balance...');
+    try{
+      await ensureCsrf();
+      var data=await post('mfs_create',body);
+      el('mfsCreateForm').reset();
+      setActiveTab('pending');
+      setSection('manage');
+      showFeedback('success','Request created successfully','Request '+String(data.request_id||'')+' was created. Balance was held from the target account.');
+      await load(null,false);
+    }catch(err){
+      msg(friendlyError(err),'bad');
+      showFeedback('error','Unable to create request',friendlyError(err));
+    }finally{
+      setPageBusy(false);
+      setButtonBusy(button,false);
+      state.mutating=false;
+    }
+  }
+
+  function findRow(id){
+    return state.rows.find(function(row){return String(row.request_id||'')===String(id);})||{};
+  }
+
+  async function viewRow(id,button){
+    if(state.mutating)return;
+    state.mutating=true;
+    setButtonBusy(button,true,'Loading...');
+    setPageBusy(true,'Loading request details...');
+    try{
+      var data=await get('mfs_get',{request_id:id});
+      var row=data.item||data.row||data.request||data||findRow(id);
+      el('mfsViewTitle').textContent='MFS Request '+String(id||'');
+      el('mfsViewDetails').textContent=JSON.stringify(row,null,2);
+      el('mfsViewModal').classList.remove('hidden');
+      el('mfsViewCloseBtn').focus();
+    }catch(err){
+      showFeedback('error','Unable to load request',friendlyError(err));
+    }finally{
+      setPageBusy(false);
+      setButtonBusy(button,false);
+      state.mutating=false;
+    }
+  }
+
+  function closeView(){
+    el('mfsViewModal').classList.add('hidden');
+  }
+
+  function openConfirm(options){
+    state.confirmAction=options;
+    el('mfsConfirmKicker').textContent=options.kicker||'Confirm Action';
+    el('mfsConfirmTitle').textContent=options.title||'Confirm MFS Action';
+    el('mfsConfirmMessage').textContent=options.message||'';
+    el('mfsConfirmInputWrap').classList.toggle('hidden',!options.input);
+    el('mfsConfirmInput').value=options.inputValue||'';
+    el('mfsConfirmSaveBtn').textContent=options.buttonText||'Confirm';
+    el('mfsConfirmSaveBtn').className='btn '+(options.buttonClass||'brand');
+    el('mfsConfirmModal').classList.remove('hidden');
+    (options.input?el('mfsConfirmInput'):el('mfsConfirmSaveBtn')).focus();
+  }
+
+  function closeConfirm(){
+    if(state.mutating)return;
+    state.confirmAction=null;
+    el('mfsConfirmModal').classList.add('hidden');
+  }
+
+  async function submitConfirm(){
+    if(state.mutating||!state.confirmAction)return;
+    var options=state.confirmAction;
+    var message=options.input?String(el('mfsConfirmInput').value||'').trim():String(options.postMessage||'');
+    if(options.input&&!message){
+      showFeedback('error','Validation error','Failure message is required.');
+      return;
+    }
+    var button=el('mfsConfirmSaveBtn');
+    state.mutating=true;
+    setButtonBusy(button,true,'Updating...');
+    setPageBusy(true,'Updating MFS request...');
+    try{
+      await ensureCsrf();
+      await post(options.action,{request_id:options.requestId,message:message});
+      state.confirmAction=null;
+      el('mfsConfirmModal').classList.add('hidden');
+      showFeedback('success',options.successTitle,options.successMessage);
+      await load(null,false);
+    }catch(err){
+      showFeedback('error','Unable to update request',friendlyError(err));
+    }finally{
+      setPageBusy(false);
+      setButtonBusy(button,false);
+      state.mutating=false;
+    }
+  }
+
+  function markProcessing(id){
+    openConfirm({
+      requestId:id,
+      action:'mfs_mark_processing',
+      title:'Mark request as processing?',
+      message:'Request '+id+' will move to the Processing queue.',
+      postMessage:'MFS request is processing',
+      buttonText:'Mark Processing',
+      buttonClass:'blue',
+      successTitle:'Processing updated',
+      successMessage:'Request '+id+' is now processing.'
+    });
+  }
+
+  function markFailed(id){
+    openConfirm({
+      requestId:id,
+      action:'mfs_failed',
+      kicker:'Refund Request',
+      title:'Mark request as failed?',
+      message:'Request '+id+' will be marked failed and its target wallet hold will be refunded.',
+      input:true,
+      inputValue:'MFS request failed',
+      buttonText:'Fail & Refund',
+      buttonClass:'red',
+      successTitle:'Request failed/refunded',
+      successMessage:'Request '+id+' was marked failed and its target wallet hold was released.'
+    });
+  }
+
+  function markSuccess(id){
+    if(state.mutating)return;
+    state.successRequestId=String(id||'');
+    el('mfsSuccessSenderDetails').value='';
+    el('mfsSuccessTrxid').value='';
+    el('mfsSuccessMessage').value='';
+    el('mfsSuccessModal').classList.remove('hidden');
+    el('mfsSuccessSenderDetails').focus();
+  }
+
+  function closeSuccess(){
+    if(state.mutating)return;
+    state.successRequestId='';
+    el('mfsSuccessModal').classList.add('hidden');
+  }
+
+  async function submitSuccess(){
+    if(state.mutating)return;
+    var id=state.successRequestId;
+    var details=String(el('mfsSuccessSenderDetails').value||'').trim();
+    if(!id)return;
+    if(!details){
+      showFeedback('error','Validation error','Sender details are required. Multiple numbers, amounts and text are allowed.');
+      return;
+    }
+    var trxid=String(el('mfsSuccessTrxid').value||'').trim();
+    var message=String(el('mfsSuccessMessage').value||'').trim()||'Transaction successful. Sender details: '+details;
+    var button=el('mfsSuccessSaveBtn');
+    state.mutating=true;
+    setButtonBusy(button,true,'Updating...');
+    setPageBusy(true,'Settling target wallet hold and completing request...');
+    try{
+      await ensureCsrf();
+      await post('mfs_success',{request_id:id,trxid:trxid,sender_details:details,message:message});
+      state.successRequestId='';
+      el('mfsSuccessModal').classList.add('hidden');
+      showFeedback('success','Request successful','Request '+id+' was completed successfully.');
+      await load(null,false);
+    }catch(err){
+      showFeedback('error','Unable to complete request',friendlyError(err));
+    }finally{
+      setPageBusy(false);
+      setButtonBusy(button,false);
+      state.mutating=false;
+    }
+  }
+
+  function onAction(e){
+    var button=e.target.closest('[data-act]');
+    if(!button||state.mutating)return;
+    var id=button.getAttribute('data-id')||'';
+    var action=button.getAttribute('data-act')||'';
+    if(action==='view')viewRow(id,button);
+    if(action==='processing')markProcessing(id);
+    if(action==='failed')markFailed(id);
+    if(action==='success')markSuccess(id);
+  }
+
+  function toggleSidebar(open){
+    document.body.classList.toggle('sidebar-open',Boolean(open));
+    el('mfsSidebarToggle').setAttribute('aria-expanded',open?'true':'false');
+  }
 
   function bind(){
-    document.querySelectorAll('.admin-mfs-tab').forEach(function(btn){btn.addEventListener('click',function(){document.querySelectorAll('.admin-mfs-tab').forEach(function(b){b.classList.remove('active');}); btn.classList.add('active'); state.tab=btn.getAttribute('data-mfs-tab')||'pending'; load();});});
+    all('.admin-mfs-tab').forEach(function(button){
+      button.addEventListener('click',function(){
+        if(state.loading||state.mutating)return;
+        setActiveTab(button.getAttribute('data-mfs-tab')||'pending');
+        load(button,true);
+      });
+    });
+    all('[data-mfs-view-target]').forEach(function(button){
+      button.addEventListener('click',function(){setSection(button.getAttribute('data-mfs-view-target')||'manage');});
+    });
     el('mfsCreateForm').addEventListener('submit',createRequest);
-    el('mfsReloadBtn').addEventListener('click',load);
-    el('mfsApplyFilterBtn').addEventListener('click',load);
+    el('mfsReloadBtn').addEventListener('click',function(){load(el('mfsReloadBtn'),true);});
+    el('mfsApplyFilterBtn').addEventListener('click',function(){load(el('mfsApplyFilterBtn'),true);});
     el('mfsSearch').addEventListener('input',render);
     el('mfsTableBody').addEventListener('click',onAction);
     el('mfsMobileList').addEventListener('click',onAction);
     el('mfsSuccessCancelBtn').addEventListener('click',closeSuccess);
     el('mfsSuccessSaveBtn').addEventListener('click',submitSuccess);
-    el('mfsSuccessModal').addEventListener('click',function(e){if(e.target===el('mfsSuccessModal'))closeSuccess();});
+    el('mfsConfirmCancelBtn').addEventListener('click',closeConfirm);
+    el('mfsConfirmSaveBtn').addEventListener('click',submitConfirm);
+    el('mfsViewCloseBtn').addEventListener('click',closeView);
+    el('mfsFeedbackOkBtn').addEventListener('click',closeFeedback);
     el('mfsSidebarToggle').addEventListener('click',function(){toggleSidebar(!document.body.classList.contains('sidebar-open'));});
     el('mfsSidebarBackdrop').addEventListener('click',function(){toggleSidebar(false);});
-    document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeSuccess();toggleSidebar(false);}});
+    el('mfsSuccessModal').addEventListener('click',function(e){if(e.target===el('mfsSuccessModal'))closeSuccess();});
+    el('mfsConfirmModal').addEventListener('click',function(e){if(e.target===el('mfsConfirmModal'))closeConfirm();});
+    el('mfsViewModal').addEventListener('click',function(e){if(e.target===el('mfsViewModal'))closeView();});
+    el('mfsFeedbackModal').addEventListener('click',function(e){if(e.target===el('mfsFeedbackModal'))closeFeedback();});
+    document.addEventListener('keydown',function(e){
+      if(e.key!=='Escape')return;
+      closeFeedback();
+      closeView();
+      closeConfirm();
+      closeSuccess();
+      toggleSidebar(false);
+    });
   }
 
-  bind();
-  ensureCsrf().finally(load);
+  function init(){
+    bind();
+    setSection('manage');
+    setActiveTab('pending');
+    load(null,true);
+    ensureCsrf().catch(function(){});
+  }
+
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',init);
+  }else{
+    init();
+  }
 })();

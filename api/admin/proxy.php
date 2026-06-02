@@ -1163,6 +1163,7 @@ switch ($action) {
             'page' => (int)($_GET['page'] ?? 1),
             'limit' => (int)($_GET['limit'] ?? 50),
             'service' => trim((string)($_GET['service'] ?? '')),
+            'service_type' => trim((string)($_GET['service_type'] ?? '')),
             'country' => trim((string)($_GET['country'] ?? '')),
             'uid' => trim((string)($_GET['uid'] ?? '')),
             'number' => trim((string)($_GET['number'] ?? '')),
@@ -1175,6 +1176,7 @@ switch ($action) {
             'page' => (int)($_GET['page'] ?? 1),
             'limit' => (int)($_GET['limit'] ?? 50),
             'service' => trim((string)($_GET['service'] ?? '')),
+            'service_type' => trim((string)($_GET['service_type'] ?? '')),
             'country' => trim((string)($_GET['country'] ?? '')),
             'uid' => trim((string)($_GET['uid'] ?? '')),
             'number' => trim((string)($_GET['number'] ?? '')),
@@ -1187,9 +1189,11 @@ switch ($action) {
             'page' => (int)($_GET['page'] ?? 1),
             'limit' => (int)($_GET['limit'] ?? 50),
             'service' => trim((string)($_GET['service'] ?? '')),
+            'service_type' => trim((string)($_GET['service_type'] ?? '')),
             'country' => trim((string)($_GET['country'] ?? '')),
             'uid' => trim((string)($_GET['uid'] ?? '')),
             'number' => trim((string)($_GET['number'] ?? '')),
+            'status' => trim((string)($_GET['status'] ?? '')),
         ]);
         break;
 

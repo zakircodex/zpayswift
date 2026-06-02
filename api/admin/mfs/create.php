@@ -15,10 +15,27 @@ if (!function_exists('mfs_create_request')) {
 }
 
 $body = api_read_json_body();
-$uid = trim((string)($body['uid'] ?? ''));
+$target = trim((string)($body['uid'] ?? $body['target_uid'] ?? $body['phone'] ?? $body['number'] ?? ''));
 
-if ($uid === '') {
-    api_response(false, 'VALIDATION_ERROR', 'uid is required', [], 422);
+if ($target === '') {
+    api_response(false, 'VALIDATION_ERROR', 'User / Subadmin UID or registered phone is required', [], 422);
+}
+
+$uid = $target;
+$targetUser = fb_get('USERS/' . $uid);
+
+if (!is_array($targetUser)) {
+    $phone = normalize_login_phone($target);
+    $indexedUid = $phone !== '' ? fb_get('USER_INDEX/PHONE/' . $phone) : null;
+
+    if (is_string($indexedUid) && trim($indexedUid) !== '') {
+        $uid = trim($indexedUid);
+        $targetUser = fb_get('USERS/' . $uid);
+    }
+}
+
+if (!is_array($targetUser)) {
+    api_response(false, 'USER_NOT_FOUND', 'Target user not found', [], 404);
 }
 
 $actorUser = is_array($auth) ? $auth : [];
