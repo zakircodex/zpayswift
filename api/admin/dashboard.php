@@ -11,8 +11,9 @@ header('Pragma: no-cache');
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Z-Pay Swift Admin Dashboard</title>
   <link rel="stylesheet" href="assets/dashboard.css?v=21">
+  <link rel="stylesheet" href="assets/admin-ux.css?v=2">
 </head>
-<body>
+<body class="admin-premium-body">
   <div id="loginView" class="login-wrap hidden">
     <div class="login-card">
       <div class="brand">
@@ -40,7 +41,7 @@ header('Pragma: no-cache');
   </div>
 
   <div id="appView" class="app hidden">
-    <aside class="sidebar">
+    <aside class="sidebar" id="adminSidebar">
       <div class="sidebar-brand">
         <div class="logo">Z</div>
         <div>
@@ -84,14 +85,18 @@ header('Pragma: no-cache');
       </div>
     </aside>
 
-
+    <button class="admin-sidebar-backdrop" id="adminSidebarBackdrop" type="button" aria-label="Close navigation"></button>
 
     <main class="main">
       <div class="topbar-wrap">
   <div class="topbar">
-    <div>
-      <h2>Admin Dashboard</h2>
-      <p>Secure session-based operations panel.</p>
+    <div class="admin-heading-wrap">
+      <button class="btn ghost admin-sidebar-toggle" id="adminSidebarToggle" type="button" aria-controls="adminSidebar" aria-expanded="false">Menu</button>
+      <div>
+        <div class="admin-eyebrow">Z-Pay Swift Admin</div>
+        <h2 id="adminPageTitle">Admin Dashboard</h2>
+        <p id="adminPageSubtitle">Secure session-based operations panel.</p>
+      </div>
     </div>
     <div class="actions">
       <a id="zpayAdminMfsTopLink" class="btn brand zpay-admin-mfs-toplink" href="mfs.php">bKash / Nagad</a>
@@ -138,10 +143,10 @@ header('Pragma: no-cache');
 </div>
 
       <div class="cards">
-        <div class="card"><div class="card-body"><div class="metric-title">Pending</div><div class="metric-value" id="countPending">0</div><div class="metric-sub">Waiting queue</div></div></div>
-        <div class="card"><div class="card-body"><div class="metric-title">Claimed</div><div class="metric-value" id="countClaimed">0</div><div class="metric-sub">Taken by worker</div></div></div>
-        <div class="card"><div class="card-body"><div class="metric-title">Processing</div><div class="metric-value" id="countProcessing">0</div><div class="metric-sub">Dialing / waiting</div></div></div>
-        <div class="card"><div class="card-body"><div class="metric-title">Done</div><div class="metric-value" id="countDone">0</div><div class="metric-sub">Completed requests</div></div></div>
+        <div class="card admin-summary-card pending"><div class="card-body"><div class="metric-title">Pending</div><div class="metric-value" id="countPending">0</div><div class="metric-sub">Waiting queue</div></div></div>
+        <div class="card admin-summary-card claimed"><div class="card-body"><div class="metric-title">Claimed</div><div class="metric-value" id="countClaimed">0</div><div class="metric-sub">Taken by worker</div></div></div>
+        <div class="card admin-summary-card processing"><div class="card-body"><div class="metric-title">Processing</div><div class="metric-value" id="countProcessing">0</div><div class="metric-sub">Dialing / waiting</div></div></div>
+        <div class="card admin-summary-card done"><div class="card-body"><div class="metric-title">Done</div><div class="metric-value" id="countDone">0</div><div class="metric-sub">Completed requests</div></div></div>
       </div>
 
       <section class="section active" id="dashboardSection">
@@ -584,6 +589,7 @@ header('Pragma: no-cache');
   <div class="toast-wrap" id="toastWrap"></div>
 
 <script src="assets/dashboard.js?v=34"></script>
+<script src="assets/admin-dashboard-ux.js?v=2"></script>
 
 </body>
 </html>
