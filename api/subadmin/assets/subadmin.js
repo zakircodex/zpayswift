@@ -53,7 +53,9 @@ loaded: {
   logs: false,
   users: false,
   bundleOffers: false,
-  mfs: false
+  mfs: false,
+  mfsSummary: false,
+  mfsList: false
 },
 
 loadingSections: {},
@@ -478,9 +480,16 @@ async function loadSectionData(sectionId, force = false){
       return;
     }
 
-    if (sectionId === 'mfsSection') {
+    if (sectionId === 'mfsCreateSection') {
       await ensureWalletLoaded(false);
-      await ensureMfsLoaded(force);
+      await ensureMfsSummaryLoaded(force);
+      return;
+    }
+
+    if (sectionId === 'mfsRequestsSection') {
+      await ensureWalletLoaded(false);
+      setSubMfsTab(state.mfs.tab || 'pending');
+      await ensureMfsListLoaded(force);
       return;
     }
 
@@ -599,6 +608,7 @@ function upgradeOutputBoxes(){
     'bundleApiOutput',
     'panelBundleBuyOutput',
     'subMfsOutput',
+    'subMfsDetailsOutput',
     'logRawJson',
     'addBalanceStatusBox',
     'deductOtpStatusBox',
@@ -1248,6 +1258,18 @@ function mfsFeePayText(row){
   return `${fmtMoney(mfsRowFee(row))} / ${fmtMoney(mfsRowPay(row))}`;
 }
 
+function mfsReference(row){
+  return String(row?.reference || '-');
+}
+
+function mfsDetailsBoxId(){
+  if (getCurrentSectionId() === 'mfsRequestsSection' && el('subMfsDetailsOutput')) {
+    return 'subMfsDetailsOutput';
+  }
+
+  return el('subMfsOutput') ? 'subMfsOutput' : 'subMfsDetailsOutput';
+}
+
 function getSubMfsFilters(){
   return {
     search: el('subMfsSearch')?.value.trim() || '',
@@ -1285,7 +1307,7 @@ function renderMfsLoading(){
   const mobile = el('subMfsMobileList');
 
   if (tbody) {
-    tbody.innerHTML = '<tr><td colspan="8" class="muted">Loading MFS requests...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="muted">Loading MFS requests...</td></tr>';
   }
 
   if (mobile) {
@@ -1300,7 +1322,7 @@ function renderMfsRows(){
 
   if (tbody) {
     if (!rows.length) {
-      tbody.innerHTML = '<tr><td colspan="8" class="muted">No MFS request found for this tab.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="muted">No MFS request found for this tab.</td></tr>';
     } else {
       tbody.innerHTML = rows.map(row => {
         const requestId = mfsRowId(row);
@@ -1314,6 +1336,7 @@ function renderMfsRows(){
             <td>${esc(mfsFeePayText(row))}</td>
             <td>${statusPill(mfsStatusLabel(row.status))}</td>
             <td>${fmtTs(row.created_at || 0)}</td>
+            <td>${esc(mfsReference(row))}</td>
             <td>
               <div class="row-actions">
                 <button class="mini-btn blue sub-mfs-view-btn" type="button" data-mfs-request="${esc(requestId)}">View</button>
@@ -1346,6 +1369,7 @@ function renderMfsRows(){
           <span>Receiver</span><b>${esc(mfsRowNumber(row))}</b>
           <span>Amount</span><b>${fmtMoney(mfsRowAmount(row))}</b>
           <span>Fee / Pay</span><b>${esc(mfsFeePayText(row))}</b>
+          <span>Reference</span><b>${esc(mfsReference(row))}</b>
           <span>Created</span><b>${fmtTs(row.created_at || 0)}</b>
         </div>
         <button class="mini-btn blue sub-mfs-view-btn" type="button" data-mfs-request="${esc(requestId)}">View Request</button>
@@ -1382,6 +1406,28 @@ async function loadMfsList(){
   renderMfsRows();
 }
 
+async function loadMfsSummaryPanel(force = false){
+  if (!force && state.loaded.mfsSummary) {
+    renderMfsSummary();
+    return;
+  }
+
+  await loadMfsSummary();
+  state.loaded.mfsSummary = true;
+  state.loaded.mfs = state.loaded.mfsSummary && state.loaded.mfsList;
+}
+
+async function loadMfsRequestsPanel(force = false){
+  if (!force && state.loaded.mfsList) {
+    renderMfsRows();
+    return;
+  }
+
+  await loadMfsList();
+  state.loaded.mfsList = true;
+  state.loaded.mfs = state.loaded.mfsSummary && state.loaded.mfsList;
+}
+
 async function loadMfsPanel(force = false){
   if (!force && state.loaded.mfs) {
     renderMfsSummary();
@@ -1390,12 +1436,20 @@ async function loadMfsPanel(force = false){
   }
 
   await Promise.all([
-    loadMfsSummary(),
-    loadMfsList()
+    loadMfsSummaryPanel(force),
+    loadMfsRequestsPanel(force)
   ]);
 
   state.loaded.mfs = true;
   state.mfs.loaded = true;
+}
+
+async function ensureMfsSummaryLoaded(force = false){
+  await loadMfsSummaryPanel(force);
+}
+
+async function ensureMfsListLoaded(force = false){
+  await loadMfsRequestsPanel(force);
 }
 
 async function ensureMfsLoaded(force = false){
@@ -1483,11 +1537,18 @@ async function createMfsRequest(button = null){
       if (el('subMfsReference')) el('subMfsReference').value = '';
       if (el('subMfsNote')) el('subMfsNote').value = '';
 
-      await Promise.all([
+      const refreshJobs = [
         loadWallet(),
-        loadMfsPanel(true),
+        loadMfsSummaryPanel(true),
         loadLogs()
-      ]);
+      ];
+
+      if (state.loaded.mfsList || getCurrentSectionId() === 'mfsRequestsSection') {
+        refreshJobs.push(loadMfsRequestsPanel(true));
+      }
+
+      await Promise.all(refreshJobs);
+      state.loaded.mfs = state.loaded.mfsSummary && state.loaded.mfsList;
 
       renderSummary();
       renderLogs();
@@ -1514,7 +1575,7 @@ async function viewMfsRequest(requestId, button = null){
       const data = await proxyGet('mfs_get', { request_id: requestId }, 'Loading MFS request...');
       const row = data.item || {};
 
-      setDetailBox('subMfsOutput', 'MFS Request Details', [
+      setDetailBox(mfsDetailsBoxId(), 'MFS Request Details', [
         ['Request ID', row.request_id || requestId],
         ['Provider', row.provider_name || mfsProviderName(row.provider)],
         ['Mode', row.service_mode || '-'],
@@ -1541,6 +1602,20 @@ async function viewMfsRequest(requestId, button = null){
 async function refreshMfsPanelFromButton(button, force = true){
   return withButtonLoading(button, 'Loading...', async () => {
     await loadMfsPanel(force);
+    showToast('MFS requests refreshed', 'info');
+  });
+}
+
+async function refreshMfsSummaryFromButton(button, force = true){
+  return withButtonLoading(button, 'Loading...', async () => {
+    await loadMfsSummaryPanel(force);
+    showToast('MFS summary refreshed', 'info');
+  });
+}
+
+async function refreshMfsRequestsFromButton(button, force = true){
+  return withButtonLoading(button, 'Loading...', async () => {
+    await loadMfsRequestsPanel(force);
     showToast('MFS requests refreshed', 'info');
   });
 }
@@ -3048,6 +3123,8 @@ async function doLogout(){
     loaded: false
   };
   state.loaded.mfs = false;
+  state.loaded.mfsSummary = false;
+  state.loaded.mfsList = false;
   state.bundleBuy = {
     offerId: '',
     row: null
@@ -3082,6 +3159,9 @@ async function doLogout(){
 
   clearPanelTopupForm();
   clearMfsForm();
+  setBoxMessage('subMfsDetailsOutput', 'info', 'Ready', [
+    'Select a request to view details.'
+  ]);
   renderMfsSummary();
   renderMfsRows();
   clearCreateUserForm();
@@ -3467,6 +3547,8 @@ window.renderLogs = renderLogs;
 window.renderUsers = renderUsers;
 window.renderPanelTopupRequests = renderPanelTopupRequests;
 window.loadMfsPanel = loadMfsPanel;
+window.loadMfsSummaryPanel = loadMfsSummaryPanel;
+window.loadMfsRequestsPanel = loadMfsRequestsPanel;
 window.renderMfsSummary = renderMfsSummary;
 window.renderMfsRows = renderMfsRows;
 window.viewMfsRequest = viewMfsRequest;
@@ -3552,13 +3634,14 @@ el('clearPanelTopupBtn')?.addEventListener('click', clearPanelTopupForm);
 
 el('subMfsCreateBtn')?.addEventListener('click', (e) => createMfsRequest(e.currentTarget));
 el('subMfsClearBtn')?.addEventListener('click', clearMfsForm);
-el('subMfsRefreshBtn')?.addEventListener('click', (e) => refreshMfsPanelFromButton(e.currentTarget, true));
-el('subMfsApplyFilterBtn')?.addEventListener('click', (e) => refreshMfsPanelFromButton(e.currentTarget, true));
+el('subMfsRefreshBtn')?.addEventListener('click', (e) => refreshMfsSummaryFromButton(e.currentTarget, true));
+el('subMfsListRefreshBtn')?.addEventListener('click', (e) => refreshMfsRequestsFromButton(e.currentTarget, true));
+el('subMfsApplyFilterBtn')?.addEventListener('click', (e) => refreshMfsRequestsFromButton(e.currentTarget, true));
 
 document.querySelectorAll('.sub-mfs-tab').forEach(btn => {
   btn.addEventListener('click', async () => {
     setSubMfsTab(btn.dataset.mfsTab || 'pending');
-    await refreshMfsPanelFromButton(btn, true);
+    await refreshMfsRequestsFromButton(btn, true);
   });
 });
 
@@ -3686,6 +3769,9 @@ el('panelBundleNumberInput')?.addEventListener('keydown', (e) => {
 
   clearPanelTopupForm();
   clearMfsForm();
+  setBoxMessage('subMfsDetailsOutput', 'info', 'Ready', [
+    'Select a request to view details.'
+  ]);
   clearCreateUserForm();
   resetAddBalanceState();
   resetWalletLedgerState();

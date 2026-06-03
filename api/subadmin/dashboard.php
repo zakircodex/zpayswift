@@ -30,7 +30,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Z-Pay Swift Subadmin Panel</title>
-  <link rel="stylesheet" href="assets/subadmin.css?v=14">
+  <link rel="stylesheet" href="assets/subadmin.css?v=15">
 </head>
 <body>
 
@@ -67,8 +67,13 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="mfsSection">
-            <span>bKash / Nagad</span>
+          <button class="side-btn" data-page-section="mfsCreateSection">
+            <span>bKash / Nagad Create</span>
+            <span>›</span>
+          </button>
+
+          <button class="side-btn" data-page-section="mfsRequestsSection">
+            <span>My MFS Requests</span>
             <span>›</span>
           </button>
 
@@ -324,16 +329,16 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
           </div>
         </div>
 
-        <div id="mfsSection" class="page-section">
-          <div class="mfs-panel-layout">
+        <div id="mfsCreateSection" class="page-section">
+          <div class="mfs-panel-layout mfs-create-only">
             <div class="card mfs-create-card">
               <div class="topbar mb-14">
                 <div>
-                  <h3>bKash / Nagad</h3>
+                  <h3>bKash / Nagad Create</h3>
                   <p>Create SEND MONEY request from your own subadmin wallet</p>
                 </div>
                 <div class="actions">
-                  <button class="btn blue" id="subMfsRefreshBtn" type="button">Refresh MFS</button>
+                  <button class="btn blue" id="subMfsRefreshBtn" type="button">Refresh Summary</button>
                 </div>
               </div>
 
@@ -407,18 +412,25 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                 <div id="subMfsOutput" class="status-box-clean">No MFS request created yet.</div>
               </div>
             </div>
+          </div>
+        </div>
 
+        <div id="mfsRequestsSection" class="page-section">
+          <div class="mfs-panel-layout mfs-list-only">
             <div class="card">
               <div class="topbar mb-14">
                 <div>
                   <h3>My MFS Requests</h3>
-                  <p>Pending, processing, successful and failed requests created from this account</p>
+                  <p>View your own bKash/Nagad requests. Status changes are handled from the Admin panel.</p>
                 </div>
-                <div class="actions sub-mfs-tabs">
-                  <button class="btn green sub-mfs-tab active" type="button" data-mfs-tab="pending">Pending</button>
-                  <button class="btn ghost sub-mfs-tab" type="button" data-mfs-tab="processing">Processing</button>
-                  <button class="btn ghost sub-mfs-tab" type="button" data-mfs-tab="done">Done</button>
-                  <button class="btn ghost sub-mfs-tab" type="button" data-mfs-tab="failed">Failed</button>
+                <div class="actions sub-mfs-toolbar">
+                  <button class="btn blue" id="subMfsListRefreshBtn" type="button">Refresh</button>
+                  <div class="actions sub-mfs-tabs">
+                    <button class="btn green sub-mfs-tab active" type="button" data-mfs-tab="pending">Pending</button>
+                    <button class="btn ghost sub-mfs-tab" type="button" data-mfs-tab="processing">Processing</button>
+                    <button class="btn ghost sub-mfs-tab" type="button" data-mfs-tab="done">Done / Success</button>
+                    <button class="btn ghost sub-mfs-tab" type="button" data-mfs-tab="failed">Failed</button>
+                  </div>
                 </div>
               </div>
 
@@ -444,16 +456,22 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                       <th>Fee / Pay</th>
                       <th>Status</th>
                       <th>Created</th>
+                      <th>Reference</th>
                       <th>Action</th>
                     </tr>
                   </thead>
                   <tbody id="subMfsTableBody">
-                    <tr><td colspan="8" class="muted">No MFS request loaded yet.</td></tr>
+                    <tr><td colspan="9" class="muted">No MFS request loaded yet.</td></tr>
                   </tbody>
                 </table>
               </div>
 
               <div id="subMfsMobileList" class="sub-mfs-mobile-list"></div>
+
+              <div class="box mt-14">
+                <label>Details</label>
+                <div id="subMfsDetailsOutput" class="status-box-clean">Select a request to view details.</div>
+              </div>
             </div>
           </div>
         </div>
