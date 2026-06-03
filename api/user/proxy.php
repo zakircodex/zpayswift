@@ -2244,6 +2244,25 @@ function user_proxy_country_code_from_user(array $user): string
         return $map[$country];
     }
 
+    $phone = trim((string)(
+        $user['phone']
+        ?? $user['mobile']
+        ?? $user['number']
+        ?? $user['login_phone']
+        ?? ''
+    ));
+    $digits = preg_replace('/\D+/', '', $phone) ?? '';
+
+    if ($digits !== '') {
+        if (strpos($phone, '+60') === 0 || preg_match('/^60\d{7,12}$/', $digits)) {
+            return 'MY';
+        }
+
+        if (strpos($phone, '+880') === 0 || preg_match('/^8801\d{9}$/', $digits) || preg_match('/^01\d{9}$/', $digits)) {
+            return 'BD';
+        }
+    }
+
     if (defined('DEFAULT_USER_COUNTRY')) {
         $default = strtoupper(trim((string)DEFAULT_USER_COUNTRY));
         return $map[$default] ?? $default;
@@ -2306,6 +2325,8 @@ function user_proxy_mfs_service_mode(string $countryCode, string $walletCurrency
 function user_proxy_mfs_rate_myr_to_bdt(): float
 {
     $paths = [
+        'MFS_SETTINGS/rate_myr_bdt',
+        'MFS_SETTINGS/rates/myr_to_bdt',
         'MFS_CONFIG/RATE/MYR_TO_BDT',
         'MFS_CONFIG/RATES/MYR_TO_BDT',
         'APP_CONFIG/MYR_TO_BDT_RATE',
@@ -2337,17 +2358,29 @@ function user_proxy_mfs_rate_myr_to_bdt(): float
     return 31.00;
 }
 
-function user_proxy_mfs_my_fee_myr(string $role): float
+function user_proxy_mfs_my_fee_myr(string $role, string $provider = ''): float
 {
     $role = strtoupper(trim($role));
+    $provider = user_proxy_mfs_provider($provider);
 
     $paths = [
-        'MFS_CONFIG/MY_FEES/' . $role,
-        'MFS_CONFIG/REMITTANCE_FEES/' . $role,
-        'APP_CONFIG/MFS/MY_FEES/' . $role,
+        'MFS_SETTINGS/fees/MY/' . $provider . '/' . $role,
+        'MFS_SETTINGS/fees/MY/' . $provider . '/fee_rm',
+        'MFS_SETTINGS/fees/MY/' . $provider . '/fixed',
+        'MFS_SETTINGS/fees/MY/' . $provider . '/fixed_fee',
+        'MFS_CONFIG/MY_FEES/' . $provider . '/' . $role,
+        'MFS_CONFIG/REMITTANCE_FEES/' . $provider . '/' . $role,
     ];
 
+    $paths[] = 'MFS_CONFIG/MY_FEES/' . $role;
+    $paths[] = 'MFS_CONFIG/REMITTANCE_FEES/' . $role;
+    $paths[] = 'APP_CONFIG/MFS/MY_FEES/' . $role;
+
     foreach ($paths as $path) {
+        if (strpos($path, '//') !== false) {
+            continue;
+        }
+
         $value = fb_get($path);
 
         if (is_numeric($value)) {
@@ -2361,6 +2394,10 @@ function user_proxy_mfs_my_fee_myr(string $role): float
                 }
             }
         }
+    }
+
+    if ($provider !== '') {
+        return defined('MY_REMITTANCE_FEE_RM') ? user_proxy_round_money(MY_REMITTANCE_FEE_RM) : 3.00;
     }
 
     if ($role === 'SUBADMIN' && defined('MY_REMITTANCE_FEE_SUBADMIN_RM')) {
@@ -2385,6 +2422,8 @@ function user_proxy_mfs_bd_fee_bdt(string $provider, string $mfsType, float $amo
     $amountBdt = user_proxy_round_money($amountBdt);
 
     $paths = [
+        'MFS_SETTINGS/fees/BD/' . $provider . '/' . $mfsType,
+        'MFS_SETTINGS/fees/BD/' . $provider,
         'MFS_CONFIG/BD_FEES/' . $provider . '/' . $mfsType,
         'MFS_CONFIG/LOCAL_FEES/' . $provider . '/' . $mfsType,
         'APP_CONFIG/MFS/BD_FEES/' . $provider . '/' . $mfsType,
@@ -2477,7 +2516,7 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
     }
 
     $amountBdtInput = user_proxy_round_money($body['amount_bdt'] ?? $body['amount'] ?? 0);
-    $amountMyrInput = user_proxy_round_money($body['amount_myr'] ?? $body['rm_amount'] ?? 0);
+    $amountMyrInput = user_proxy_round_money($body['amount_rm'] ?? $body['amount_myr'] ?? $body['rm_amount'] ?? 0);
 
     $amountBdt = 0.00;
     $amountMyr = 0.00;
@@ -2496,11 +2535,11 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
             $amountMyr = $rate > 0 ? user_proxy_round_money($amountBdt / $rate) : 0.00;
         }
 
-        if ($amountBdt < 1 || $amountMyr <= 0) {
-            return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Valid amount is required', 'data' => []];
+        if ($amountBdt < 500 || $amountBdt > 50000 || $amountMyr <= 0) {
+            return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Amount must be between BDT 500 and BDT 50,000', 'data' => []];
         }
 
-        $feeMyr = user_proxy_mfs_my_fee_myr($role);
+        $feeMyr = user_proxy_mfs_my_fee_myr($role, $provider);
         $feeBdt = user_proxy_round_money($feeMyr * $rate);
         $totalPayMyr = user_proxy_round_money($amountMyr + $feeMyr);
         $totalPayBdt = user_proxy_round_money($amountBdt + $feeBdt);
@@ -2508,8 +2547,8 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
     } else {
         $amountBdt = $amountBdtInput > 0 ? $amountBdtInput : user_proxy_round_money($amountMyrInput * $rate);
 
-        if ($amountBdt < 1) {
-            return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Minimum amount is BDT 1', 'data' => []];
+        if ($amountBdt < 500 || $amountBdt > 50000) {
+            return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Amount must be between BDT 500 and BDT 50,000', 'data' => []];
         }
 
         $feeBdt = user_proxy_mfs_bd_fee_bdt($provider, $mfsType, $amountBdt);

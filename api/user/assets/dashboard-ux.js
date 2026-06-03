@@ -12,6 +12,8 @@
     });
   }
 
+  var serverPreview = null;
+
   function openSection(id){
     if (typeof window.openSection === 'function') { window.openSection(id); return; }
     document.querySelectorAll('.page-section').forEach(function(n){ n.classList.remove('active'); });
@@ -58,11 +60,27 @@
   }
 
   function previewHtml(d){
+    var p = serverPreview || {};
+    var currency = String(p.wallet_currency || '').toUpperCase();
+    var country = String(p.country_code || '').toUpperCase();
+    var mode = String(p.service_mode || '').toUpperCase();
+    var feeText = currency === 'MYR'
+      ? 'RM ' + money(p.fee_myr || p.fee_rm || 0)
+      : 'BDT ' + money(p.fee_bdt || 0);
+    var totalText = currency === 'MYR'
+      ? 'RM ' + money(p.total_pay_myr || p.total_debit_rm || p.wallet_hold_amount || 0)
+      : 'BDT ' + money(p.total_pay_bdt || p.total_debit_bdt || p.wallet_hold_amount || 0);
+    var rate = Number(p.rate_myr_to_bdt || p.exchange_rate || 0);
     return '' +
       '<div class="zpay-mfs-preview-row"><span>Provider</span><b>' + esc(providerName(d.provider)) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Receiver</span><b>' + esc(d.receiver_number || '-') + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Amount BDT</span><b>BDT ' + money(d.amount_bdt) + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Amount RM</span><b>RM ' + money(d.amount_rm) + '</b></div>' +
+      '<div class="zpay-mfs-preview-row"><span>Country</span><b>' + esc(country || 'Auto from profile/phone') + '</b></div>' +
+      '<div class="zpay-mfs-preview-row"><span>Mode</span><b>' + esc(mode || 'Auto') + '</b></div>' +
+      '<div class="zpay-mfs-preview-row"><span>Amount BDT</span><b>BDT ' + money(p.amount_bdt || d.amount_bdt) + '</b></div>' +
+      ((p.amount_myr || p.amount_rm || d.amount_rm) ? '<div class="zpay-mfs-preview-row"><span>Amount RM</span><b>RM ' + money(p.amount_myr || p.amount_rm || d.amount_rm) + '</b></div>' : '') +
+      (rate > 0 ? '<div class="zpay-mfs-preview-row"><span>Rate</span><b>RM 1 = BDT ' + money(rate) + '</b></div>' : '') +
+      '<div class="zpay-mfs-preview-row"><span>Fee</span><b>' + esc(feeText) + '</b></div>' +
+      '<div class="zpay-mfs-preview-row"><span>Total Hold</span><b>' + esc(totalText) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Reference</span><b>' + esc(d.reference || '-') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Status</span><b>PENDING</b></div>';
   }
@@ -73,6 +91,27 @@
     var details = byId('mfsPreviewDetails');
     if (live) { live.className = 'bundle-result-box'; live.innerHTML = previewHtml(d); }
     if (details) details.innerHTML = previewHtml(d);
+  }
+
+  async function loadServerPreview(){
+    var d = data();
+    if (typeof window.proxyPost !== 'function') {
+      serverPreview = null;
+      renderPreview();
+      return;
+    }
+
+    serverPreview = await window.proxyPost('mfs_preview', {
+      provider: d.provider,
+      service_type: 'SEND_MONEY',
+      account_type: 'PERSONAL',
+      receiver_number: d.receiver_number,
+      amount_bdt: d.amount_bdt,
+      amount_rm: d.amount_rm,
+      amount_myr: d.amount_rm,
+      reference: d.reference
+    }, 'Loading MFS preview...', { busy: false });
+    renderPreview();
   }
 
   function showStep(id){
@@ -89,6 +128,7 @@
     var num = d.receiver_number.replace(/\D+/g, '');
     if (!/^01\d{9}$/.test(num)) { if (typeof showToast === 'function') showToast('Receiver number must be 11 digit BD number', 'error'); return false; }
     if (d.amount_bdt <= 0 && d.amount_rm <= 0) { if (typeof showToast === 'function') showToast('Amount is required', 'error'); return false; }
+    if (d.amount_bdt > 0 && (d.amount_bdt < 500 || d.amount_bdt > 50000)) { if (typeof showToast === 'function') showToast('Amount must be between BDT 500 and BDT 50,000', 'error'); return false; }
     return true;
   }
 
@@ -175,8 +215,17 @@
     if (window.__zpayMfsFlowFixBound) return;
     window.__zpayMfsFlowFixBound = true;
     document.querySelectorAll('.mfs-provider-choice').forEach(function(btn){ btn.addEventListener('click', function(){ setProvider(btn.getAttribute('data-provider') || 'BKASH'); }); });
-    ['mfsReceiverNumber','mfsAmountBdt','mfsAmountRm','mfsReference'].forEach(function(id){ var n = byId(id); if (n) n.addEventListener('input', renderPreview); });
-    var preview = byId('mfsPreviewBtn'); if (preview) preview.addEventListener('click', function(e){ e.preventDefault(); renderPreview(); if (validBase()) showStep('mfsStepPreview'); });
+    ['mfsReceiverNumber','mfsAmountBdt','mfsAmountRm','mfsReference'].forEach(function(id){ var n = byId(id); if (n) n.addEventListener('input', function(){ serverPreview = null; renderPreview(); }); });
+    var preview = byId('mfsPreviewBtn'); if (preview) preview.addEventListener('click', async function(e){
+      e.preventDefault();
+      if (!validBase()) return;
+      try {
+        await loadServerPreview();
+        showStep('mfsStepPreview');
+      } catch(err) {
+        if (typeof showToast === 'function') showToast(err.message || 'Failed to load MFS preview', 'error');
+      }
+    });
     var back = byId('mfsBackBtn'); if (back) back.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepForm'); });
     var send = byId('mfsSendBtn'); if (send) send.addEventListener('click', function(e){ e.preventDefault(); renderPreview(); if (validBase()) showStep('mfsStepPin'); });
     var pinBack = byId('mfsPinBackBtn'); if (pinBack) pinBack.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepPreview'); });

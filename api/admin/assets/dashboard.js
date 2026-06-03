@@ -2160,7 +2160,7 @@ function renderUsers(){
   if (!tbody) return;
 
   if (!rows.length){
-    tbody.innerHTML = '<tr><td colspan="9" class="empty">No user found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="10" class="empty">No user found.</td></tr>';
     return;
   }
 
@@ -2174,6 +2174,7 @@ function renderUsers(){
       <td>${esc(item.phone || '-')}</td>
       <td>${statusPill(item.status || 'ACTIVE')}</td>
       <td>${rolePill(item.role || 'USER')}</td>
+      <td>${esc(item.country_code || item.country || '-')}</td>
       <td>${esc((Number(item.commission_per_1000 || 0)).toFixed(2))}</td>
       <td>${yesNoPill(!!item.api_enabled)}</td>
       <td>${money(item.available_balance || 0)}</td>
@@ -2203,6 +2204,7 @@ async function viewUser(uid){
           <div class="detail-item"><label>Email</label><strong>${esc(data.email || '-')}</strong></div>
           <div class="detail-item"><label>Status</label><strong>${esc(data.status || '-')}</strong></div>
           <div class="detail-item"><label>Role</label><strong>${esc(data.role || 'USER')}</strong></div>
+          <div class="detail-item"><label>Country</label><strong>${esc(data.country_code || data.country || '-')}</strong></div>
           <div class="detail-item"><label>Commission / 1000</label><strong>${Number(data.commission_per_1000 || 0).toFixed(2)}</strong></div>
           <div class="detail-item"><label>API Enabled</label><strong>${data.api_enabled ? 'Yes' : 'No'}</strong></div>
           <div class="detail-item"><label>Topup Enabled</label><strong>${data.topup_enabled ? 'Yes' : 'No'}</strong></div>
@@ -2282,6 +2284,15 @@ async function openEditUserModal(uid){
             </select>
           </div>
 
+          <div>
+            <label>Country</label>
+            <select id="editUserCountry">
+              <option value="">Not Set / Auto fallback</option>
+              <option value="BD" ${(String(data.country_code || data.country || '').toUpperCase() === 'BD') ? 'selected' : ''}>Bangladesh (BD)</option>
+              <option value="MY" ${(String(data.country_code || data.country || '').toUpperCase() === 'MY') ? 'selected' : ''}>Malaysia (MY)</option>
+            </select>
+          </div>
+
           <div class="form-full">
             <div class="card">
               <div class="card-body">
@@ -2350,6 +2361,7 @@ async function submitEditUser(){
   const email = document.getElementById('editUserEmail')?.value.trim() || '';
   const role = (document.getElementById('editUserRole')?.value || 'USER').toUpperCase();
   const status = (document.getElementById('editUserStatus')?.value || 'ACTIVE').toUpperCase();
+  const country = (document.getElementById('editUserCountry')?.value || '').toUpperCase();
 
   const commission_per_1000 = numberFromValue(document.getElementById('editUserCommissionPer1000')?.value, 0);
   const api_enabled = boolFromValue(document.getElementById('editUserApiEnabled')?.value, false);
@@ -2359,7 +2371,7 @@ async function submitEditUser(){
   const max_amount = numberFromValue(document.getElementById('editUserMaxAmount')?.value, 0);
 
   try{
-    const data = await proxyPost('user_update', {
+    const payload = {
       uid,
       name,
       email,
@@ -2371,7 +2383,14 @@ async function submitEditUser(){
       bundle_enabled,
       min_amount,
       max_amount
-    }, true, { busyText: 'Updating user account...' });
+    };
+
+    if (country) {
+      payload.country = country;
+      payload.country_code = country;
+    }
+
+    const data = await proxyPost('user_update', payload, true, { busyText: 'Updating user account...' });
 
     closeModal();
 

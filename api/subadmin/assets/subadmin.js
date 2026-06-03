@@ -966,7 +966,7 @@ function renderUsers(){
   const rows = state.users || [];
 
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="muted">No users found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="muted">No users found.</td></tr>';
     return;
   }
 
@@ -977,6 +977,15 @@ function renderUsers(){
       <td>${esc(item.email || '-')}</td>
       <td>${statusPill(item.role || '-')}</td>
       <td>${statusPill(item.status || '-')}</td>
+      <td>
+        <div class="country-editor">
+          <select class="input mini-country-select">
+            <option value="BD" ${String(item.country_code || item.country || '').toUpperCase() === 'BD' ? 'selected' : ''}>BD</option>
+            <option value="MY" ${String(item.country_code || item.country || '').toUpperCase() === 'MY' ? 'selected' : ''}>MY</option>
+          </select>
+          <button class="mini-btn blue" type="button" onclick="updateUserCountry(this,'${esc(String(item.uid || ''))}')">Save</button>
+        </div>
+      </td>
       <td>
         <div>${fmtMoney(item.available_balance || 0)}</div>
         <div class="muted" style="margin-top:4px;">Hold: ${fmtMoney(item.hold_balance || 0)}</div>
@@ -996,6 +1005,34 @@ function renderUsers(){
       </td>
     </tr>
   `).join('');
+}
+
+async function updateUserCountry(button, uid){
+  uid = String(uid || '').trim();
+  const wrap = button?.closest?.('.country-editor');
+  const country = String(wrap?.querySelector?.('select')?.value || '').toUpperCase();
+
+  if (!uid || !['BD', 'MY'].includes(country)) {
+    showToast('Valid user and country are required', 'error');
+    return;
+  }
+
+  try{
+    await withButtonLoading(button, 'Saving...', async () => {
+      await proxyPost('user_country_update', { uid, country, country_code: country }, 'Updating country...');
+    });
+
+    const row = (state.users || []).find(item => String(item.uid || '') === uid);
+    if (row) {
+      row.country = country;
+      row.country_code = country;
+    }
+
+    renderUsers();
+    showToast('User country updated', 'ok');
+  }catch(err){
+    showToast(err.message || 'Failed to update country', 'error');
+  }
 }
 
 function resetAddBalanceState(){
@@ -1247,15 +1284,35 @@ function mfsRowAmount(row){
 }
 
 function mfsRowFee(row){
-  return Number(row?.fee_bdt ?? row?.fee ?? 0);
+  const currency = String(row?.wallet_currency || '').toUpperCase();
+  return currency === 'MYR'
+    ? Number(row?.fee_rm ?? row?.fee_myr ?? row?.fee ?? 0)
+    : Number(row?.fee_bdt ?? row?.fee ?? 0);
 }
 
 function mfsRowPay(row){
-  return Number(row?.total_debit_bdt ?? row?.total_hold_bdt ?? row?.total_debit ?? row?.amount ?? 0);
+  const currency = String(row?.wallet_currency || '').toUpperCase();
+  return currency === 'MYR'
+    ? Number(row?.total_debit_rm ?? row?.total_pay_myr ?? row?.total_debit ?? row?.amount_rm ?? 0)
+    : Number(row?.total_debit_bdt ?? row?.total_hold_bdt ?? row?.total_debit ?? row?.amount ?? 0);
+}
+
+function mfsMoney(row, amount){
+  const currency = String(row?.wallet_currency || '').toUpperCase();
+  return `${currency === 'MYR' ? 'RM' : 'BDT'} ${money(amount)}`;
+}
+
+function mfsAmountText(row){
+  const currency = String(row?.wallet_currency || '').toUpperCase();
+  if (currency === 'MYR') {
+    return `BDT ${money(row?.amount_bdt || 0)} / RM ${money(row?.amount_rm ?? row?.amount_myr ?? 0)}`;
+  }
+
+  return fmtMoney(mfsRowAmount(row));
 }
 
 function mfsFeePayText(row){
-  return `${fmtMoney(mfsRowFee(row))} / ${fmtMoney(mfsRowPay(row))}`;
+  return `${mfsMoney(row, mfsRowFee(row))} / ${mfsMoney(row, mfsRowPay(row))}`;
 }
 
 function mfsReference(row){
@@ -1332,7 +1389,7 @@ function renderMfsRows(){
             <td>${esc(requestId || '-')}</td>
             <td>${esc(provider)}</td>
             <td>${esc(mfsRowNumber(row))}</td>
-            <td>${fmtMoney(mfsRowAmount(row))}</td>
+            <td>${esc(mfsAmountText(row))}</td>
             <td>${esc(mfsFeePayText(row))}</td>
             <td>${statusPill(mfsStatusLabel(row.status))}</td>
             <td>${fmtTs(row.created_at || 0)}</td>
@@ -1367,7 +1424,7 @@ function renderMfsRows(){
         <div class="sub-mfs-card-grid">
           <span>Provider</span><b>${esc(provider)}</b>
           <span>Receiver</span><b>${esc(mfsRowNumber(row))}</b>
-          <span>Amount</span><b>${fmtMoney(mfsRowAmount(row))}</b>
+          <span>Amount</span><b>${esc(mfsAmountText(row))}</b>
           <span>Fee / Pay</span><b>${esc(mfsFeePayText(row))}</b>
           <span>Reference</span><b>${esc(mfsReference(row))}</b>
           <span>Created</span><b>${fmtTs(row.created_at || 0)}</b>
@@ -1460,6 +1517,7 @@ function clearMfsForm(){
   if (el('subMfsProvider')) el('subMfsProvider').value = 'BKASH';
   if (el('subMfsReceiver')) el('subMfsReceiver').value = '';
   if (el('subMfsAmountBdt')) el('subMfsAmountBdt').value = '';
+  if (el('subMfsAmountRm')) el('subMfsAmountRm').value = '';
   if (el('subMfsPin')) el('subMfsPin').value = '';
   if (el('subMfsReference')) el('subMfsReference').value = '';
   if (el('subMfsNote')) el('subMfsNote').value = '';
@@ -1473,6 +1531,7 @@ function validateMfsForm(){
   const provider = el('subMfsProvider')?.value.trim() || '';
   const receiver = el('subMfsReceiver')?.value.trim() || '';
   const amount = Number(el('subMfsAmountBdt')?.value || 0);
+  const amountRm = Number(el('subMfsAmountRm')?.value || 0);
   const pin = el('subMfsPin')?.value || '';
 
   if (!['BKASH', 'NAGAD'].includes(provider)) {
@@ -1483,8 +1542,12 @@ function validateMfsForm(){
     throw new Error('Receiver number is required');
   }
 
-  if (!amount || Number.isNaN(amount) || amount < 500 || amount > 50000) {
-    throw new Error('Amount must be between BDT 500 and BDT 50,000');
+  if ((!amount || Number.isNaN(amount)) && (!amountRm || Number.isNaN(amountRm))) {
+    throw new Error('Amount BDT or Amount RM is required');
+  }
+
+  if (amount > 0 && (amount < 500 || amount > 50000)) {
+    throw new Error('Amount BDT must be between BDT 500 and BDT 50,000');
   }
 
   if (!pin.trim()) {
@@ -1495,10 +1558,10 @@ function validateMfsForm(){
     provider,
     receiver_number: receiver,
     amount_bdt: amount,
+    amount_rm: amountRm,
     pin,
     service_type: 'SEND_MONEY',
     account_type: 'PERSONAL',
-    currency: 'BDT',
     reference: el('subMfsReference')?.value.trim() || '',
     note: el('subMfsNote')?.value.trim() || ''
   };
@@ -1526,9 +1589,11 @@ async function createMfsRequest(button = null){
       setBoxMessage('subMfsOutput', 'ok', 'Request Created', [
         `Request ID: ${row.request_id || '-'}`,
         `Provider: ${mfsProviderName(row.provider || payload.provider)}`,
+        `Country: ${row.country_code || '-'}`,
+        `Mode: ${row.service_mode || '-'}`,
         `Receiver: ${row.receiver_number || payload.receiver_number}`,
-        `Amount: ${fmtMoney(row.amount_bdt || payload.amount_bdt)}`,
-        `Pay / Hold: ${fmtMoney(row.total_debit_bdt || row.total_debit || payload.amount_bdt)}`,
+        `Amount: ${mfsAmountText(row)}`,
+        `Pay / Hold: ${mfsMoney(row, mfsRowPay(row))}`,
         `Status: ${row.status || 'PENDING'}`,
         telegram.ok ? 'Telegram message sent.' : 'Telegram message queued/failed; request is still created.'
       ]);
@@ -1578,12 +1643,14 @@ async function viewMfsRequest(requestId, button = null){
       setDetailBox(mfsDetailsBoxId(), 'MFS Request Details', [
         ['Request ID', row.request_id || requestId],
         ['Provider', row.provider_name || mfsProviderName(row.provider)],
+        ['Country', row.country_code || '-'],
         ['Mode', row.service_mode || '-'],
         ['Type', row.service_name || row.service_type || 'SEND_MONEY'],
         ['Receiver', mfsRowNumber(row)],
-        ['Amount BDT', fmtMoney(mfsRowAmount(row))],
-        ['Fee', fmtMoney(mfsRowFee(row))],
-        ['Pay / Hold', fmtMoney(mfsRowPay(row))],
+        ['Amount', mfsAmountText(row)],
+        ['Fee', mfsMoney(row, mfsRowFee(row))],
+        ['Pay / Hold', mfsMoney(row, mfsRowPay(row))],
+        ['Rate', row.exchange_rate ? `RM 1 = BDT ${money(row.exchange_rate)}` : '-'],
         ['Reference', row.reference || '-'],
         ['Status', row.status || '-'],
         ['Sender Details', row.sender_details || row.sender_last_digit || '-'],
@@ -3545,6 +3612,7 @@ window.loadUsers = loadUsers;
 window.renderSummary = renderSummary;
 window.renderLogs = renderLogs;
 window.renderUsers = renderUsers;
+window.updateUserCountry = updateUserCountry;
 window.renderPanelTopupRequests = renderPanelTopupRequests;
 window.loadMfsPanel = loadMfsPanel;
 window.loadMfsSummaryPanel = loadMfsSummaryPanel;

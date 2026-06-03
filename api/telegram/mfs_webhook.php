@@ -337,6 +337,7 @@ function mfs_tg_text(array $row, string $status, string $message): string
         '<b>UID:</b> <code>' . mfs_tg_h($row['uid'] ?? '-') . '</code>' . "\n" .
         '<b>User Phone:</b> <code>' . mfs_tg_h($row['user_phone'] ?? '-') . '</code>' . "\n\n" .
         '<b>Provider:</b> <b>' . mfs_tg_h($row['provider_name'] ?? $row['provider'] ?? '-') . '</b>' . "\n" .
+        '<b>Country:</b> ' . mfs_tg_h($row['country_code'] ?? '-') . "\n" .
         '<b>Mode:</b> ' . mfs_tg_h($row['service_mode'] ?? '-') . "\n" .
         '<b>Type:</b> ' . mfs_tg_h($row['service_type'] ?? $row['service_name'] ?? 'SEND_MONEY') . "\n" .
         '<b>Receiver Number:</b> <code>' . mfs_tg_h($row['receiver_number'] ?? $row['number'] ?? '-') . '</code>' . "\n" .

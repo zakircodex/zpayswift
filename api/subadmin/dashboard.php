@@ -30,7 +30,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Z-Pay Swift Subadmin Panel</title>
-  <link rel="stylesheet" href="assets/subadmin.css?v=15">
+  <link rel="stylesheet" href="assets/subadmin.css?v=16">
 </head>
 <body>
 
@@ -385,6 +385,11 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                 </div>
 
                 <div class="field">
+                  <label>Amount RM <span class="muted">MY optional</span></label>
+                  <input id="subMfsAmountRm" class="input" type="number" step="0.01" min="0" placeholder="Optional for Malaysia wallet">
+                </div>
+
+                <div class="field">
                   <label>Transaction PIN</label>
                   <input id="subMfsPin" class="input" type="password" placeholder="Your account PIN">
                 </div>
@@ -591,13 +596,14 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                     <th>Email</th>
                     <th>Role</th>
                     <th>Status</th>
+                    <th>Country</th>
                     <th>Balance</th>
                     <th>Limits</th>
                     <th>Action</th>
                   </tr>
                 </thead>
                 <tbody id="usersTableBody">
-                  <tr><td colspan="8" class="muted">No users loaded yet.</td></tr>
+                  <tr><td colspan="9" class="muted">No users loaded yet.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -1185,7 +1191,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 <script>
 window.SUBADMIN_PROXY_URL = 'proxy.php';
 </script>
-<script src="assets/subadmin.js?v=13"></script>
+<script src="assets/subadmin.js?v=14"></script>
 <script src="assets/subadmin-otp.js?v=3"></script>
 </body>
 </html>

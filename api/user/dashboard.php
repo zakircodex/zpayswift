@@ -365,11 +365,11 @@ header('Pragma: no-cache');
 
       <div class="field field-top-gap">
         <label>Amount BDT</label>
-        <input id="mfsAmountBdt" class="input" type="number" inputmode="decimal" step="0.01" min="1" placeholder="BDT amount">
+        <input id="mfsAmountBdt" class="input" type="number" inputmode="decimal" step="0.01" min="500" max="50000" placeholder="BDT 500 - 50000">
       </div>
 
       <div class="field field-top-gap">
-        <label>Amount RM</label>
+        <label>Amount RM <span class="muted">Malaysia account</span></label>
         <input id="mfsAmountRm" class="input" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="RM amount">
       </div>
 
@@ -578,6 +578,6 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = 'proxy.php';
 </script>
 <script src="assets/dashboard.js?v=9"></script>
-<script src="assets/dashboard-ux.js?v=1"></script>
+<script src="assets/dashboard-ux.js?v=2"></script>
 </body>
 </html>

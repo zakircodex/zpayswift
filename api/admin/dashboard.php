@@ -506,6 +506,7 @@ header('Pragma: no-cache');
     <th>Phone</th>
     <th>Status</th>
     <th>Role</th>
+    <th>Country</th>
     <th>Commission</th>
     <th>API</th>
     <th>Available</th>
@@ -514,7 +515,7 @@ header('Pragma: no-cache');
   </tr>
 </thead>
 <tbody id="usersTableBody">
-  <tr><td colspan="9" class="empty">No data yet.</td></tr>
+  <tr><td colspan="10" class="empty">No data yet.</td></tr>
 </tbody>
             </table>
           </div>
@@ -588,7 +589,7 @@ header('Pragma: no-cache');
 
   <div class="toast-wrap" id="toastWrap"></div>
 
-<script src="assets/dashboard.js?v=34"></script>
+<script src="assets/dashboard.js?v=35"></script>
 <script src="assets/admin-dashboard-ux.js?v=2"></script>
 
 </body>

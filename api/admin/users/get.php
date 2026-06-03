@@ -3,6 +3,21 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
 
+function admin_user_get_country_code(array $user): string
+{
+    $country = strtoupper(trim((string)($user['country_code'] ?? $user['country'] ?? $user['user_country'] ?? '')));
+    $map = [
+        'BD' => 'BD',
+        'BGD' => 'BD',
+        'BANGLADESH' => 'BD',
+        'MY' => 'MY',
+        'MYS' => 'MY',
+        'MALAYSIA' => 'MY',
+    ];
+
+    return $map[$country] ?? '';
+}
+
 api_require_method('GET');
 auth_require_admin_session();
 
@@ -34,6 +49,8 @@ api_response(true, 'SUCCESS', 'User loaded', [
     'email' => (string)($user['email'] ?? ''),
     'status' => (string)($user['status'] ?? ''),
     'role' => $role,
+    'country_code' => admin_user_get_country_code($user),
+    'country' => admin_user_get_country_code($user),
     'created_at' => (int)($user['created_at'] ?? 0),
     'last_login_at' => (int)($user['last_login_at'] ?? 0),
 

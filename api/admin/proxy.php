@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/mfs.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -836,6 +837,51 @@ function proxy_counts_from_existing_topup_lists(): void
 }
 
 /* =========================
+   MFS SETTINGS
+========================= */
+
+function proxy_mfs_float($value, float $default = 0.0): float
+{
+    if (is_string($value)) {
+        $value = trim(str_replace(',', '', $value));
+    }
+
+    return is_numeric($value) ? round((float)$value, 2) : $default;
+}
+
+function proxy_mfs_fee_row(array $body, string $country, string $provider): array
+{
+    $country = strtoupper(trim($country));
+    $provider = mfs_normalize_provider($provider);
+    $key = strtolower($country . '_' . $provider);
+    $row = is_array($body[$country][$provider] ?? null)
+        ? (array)$body[$country][$provider]
+        : (is_array($body[$key] ?? null) ? (array)$body[$key] : []);
+
+    if ($country === 'MY') {
+        $fixed = proxy_mfs_float($row['fixed'] ?? $row['fee_rm'] ?? $row['amount'] ?? 3.00, 3.00);
+        return [
+            'type' => 'fixed',
+            'fixed' => max(0.0, $fixed),
+            'fee_rm' => max(0.0, $fixed),
+        ];
+    }
+
+    $type = strtolower(trim((string)($row['type'] ?? 'fixed')));
+    if (!in_array($type, ['fixed', 'percent'], true)) {
+        $type = 'fixed';
+    }
+
+    return [
+        'type' => $type,
+        'fixed' => max(0.0, proxy_mfs_float($row['fixed'] ?? $row['fixed_fee'] ?? 0.0)),
+        'percent' => max(0.0, proxy_mfs_float($row['percent'] ?? $row['percent_fee'] ?? 0.0)),
+        'min_fee' => max(0.0, proxy_mfs_float($row['min_fee'] ?? 0.0)),
+        'max_fee' => max(0.0, proxy_mfs_float($row['max_fee'] ?? 0.0)),
+    ];
+}
+
+/* =========================
    ROUTES
 ========================= */
 
@@ -1155,6 +1201,59 @@ switch ($action) {
     case 'mfs_create':
         proxy_require_method('POST');
         proxy_forward_admin_post('mfs/create.php', proxy_read_json_body());
+        break;
+
+    case 'mfs_settings_get':
+        proxy_require_method('GET');
+        proxy_require_admin_login(true);
+
+        proxy_response(true, 'SUCCESS', 'MFS settings loaded', [
+            'settings' => function_exists('mfs_public_settings') ? mfs_public_settings() : [],
+            'raw' => is_array(fb_get('MFS_SETTINGS')) ? fb_get('MFS_SETTINGS') : [],
+        ]);
+        break;
+
+    case 'mfs_settings_save':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+        $adminUser = proxy_require_admin_login(true);
+        $body = proxy_read_json_body();
+
+        $rate = proxy_mfs_float($body['rate_myr_bdt'] ?? $body['myr_to_bdt_rate'] ?? 31.00, 31.00);
+        if ($rate <= 0) {
+            proxy_response(false, 'VALIDATION_ERROR', 'MYR to BDT rate must be greater than zero', ['field' => 'rate_myr_bdt'], 422);
+        }
+
+        $feesBody = is_array($body['fees'] ?? null) ? (array)$body['fees'] : $body;
+        $settings = [
+            'rate_myr_bdt' => $rate,
+            'fees' => [
+                'MY' => [
+                    'BKASH' => proxy_mfs_fee_row($feesBody, 'MY', 'BKASH'),
+                    'NAGAD' => proxy_mfs_fee_row($feesBody, 'MY', 'NAGAD'),
+                ],
+                'BD' => [
+                    'BKASH' => proxy_mfs_fee_row($feesBody, 'BD', 'BKASH'),
+                    'NAGAD' => proxy_mfs_fee_row($feesBody, 'BD', 'NAGAD'),
+                ],
+            ],
+            'updated_at' => time(),
+            'updated_by_uid' => (string)($adminUser['uid'] ?? ''),
+            'updated_by_role' => 'ADMIN',
+        ];
+
+        if (!fb_patch('MFS_SETTINGS', $settings)) {
+            proxy_response(false, 'SERVER_ERROR', 'Failed to save MFS settings', [], 500);
+        }
+
+        if (function_exists('mfs_config')) {
+            mfs_config(true);
+        }
+
+        proxy_response(true, 'SUCCESS', 'MFS settings saved', [
+            'settings' => function_exists('mfs_public_settings') ? mfs_public_settings() : $settings,
+            'raw' => $settings,
+        ]);
         break;
 
     case 'mfs_pending':

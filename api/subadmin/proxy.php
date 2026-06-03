@@ -1192,6 +1192,7 @@ function sub_proxy_mfs_message(array $row): string
         "<b>UID:</b> <code>" . sub_proxy_mfs_h($row['uid'] ?? '-') . "</code>\n" .
         "<b>User Phone:</b> <code>" . sub_proxy_mfs_h($row['user_phone'] ?? '-') . "</code>\n\n" .
         "<b>Provider:</b> <b>" . sub_proxy_mfs_h($row['provider_name'] ?? $row['provider'] ?? '-') . "</b>\n" .
+        "<b>Country:</b> " . sub_proxy_mfs_h($row['country_code'] ?? '-') . "\n" .
         "<b>Mode:</b> " . sub_proxy_mfs_h($row['service_mode'] ?? '-') . "\n" .
         "<b>Type:</b> " . sub_proxy_mfs_h($row['service_type'] ?? 'SEND_MONEY') . "\n" .
         "<b>Receiver Number:</b> <code>" . sub_proxy_mfs_h($row['receiver_number'] ?? $row['number'] ?? '-') . "</code>\n" .
@@ -2432,6 +2433,61 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
             'LOAD_FAILED',
             'Failed to load users'
         );
+        break;
+
+    case 'user_country_update':
+        sub_proxy_require_method('POST');
+        sub_proxy_require_csrf();
+
+        $actor = sub_proxy_require_login(true);
+        $actorUid = trim((string)($actor['uid'] ?? ''));
+        $body = sub_proxy_read_json_body();
+        $targetUid = trim((string)($body['uid'] ?? ''));
+        $country = function_exists('mfs_normalize_country_code')
+            ? mfs_normalize_country_code((string)($body['country_code'] ?? $body['country'] ?? ''))
+            : strtoupper(trim((string)($body['country_code'] ?? $body['country'] ?? '')));
+
+        if ($actorUid === '') {
+            sub_proxy_response(false, 'SESSION_EXPIRED', 'Subadmin session not found', [], 401);
+        }
+
+        if ($targetUid === '') {
+            sub_proxy_response(false, 'VALIDATION_ERROR', 'User ID is required', ['field' => 'uid'], 422);
+        }
+
+        if (!in_array($country, ['BD', 'MY'], true)) {
+            sub_proxy_response(false, 'VALIDATION_ERROR', 'Country must be BD or MY', ['field' => 'country'], 422);
+        }
+
+        $targetUser = sub_proxy_load_user_row($targetUid);
+        if (!$targetUser) {
+            sub_proxy_response(false, 'NOT_FOUND', 'User not found', ['uid' => $targetUid], 404);
+        }
+
+        $parentSubadminUid = trim((string)($targetUser['parent_subadmin_uid'] ?? ''));
+        $createdByUid = trim((string)($targetUser['created_by_uid'] ?? ''));
+        $storedUid = trim((string)($targetUser['uid'] ?? $targetUid));
+        $canUpdateCountry = $storedUid === $actorUid
+            || ($parentSubadminUid !== '' && $parentSubadminUid === $actorUid)
+            || ($createdByUid !== '' && $createdByUid === $actorUid);
+
+        if (!$canUpdateCountry) {
+            sub_proxy_response(false, 'FORBIDDEN', 'You can only update your own users country', [], 403);
+        }
+
+        if (!fb_patch('USERS/' . $targetUid, [
+            'country_code' => $country,
+            'country' => $country,
+            'updated_at' => sub_proxy_now(),
+        ])) {
+            sub_proxy_response(false, 'SERVER_ERROR', 'Failed to update user country', [], 500);
+        }
+
+        sub_proxy_response(true, 'SUCCESS', 'User country updated', [
+            'uid' => $targetUid,
+            'country_code' => $country,
+            'country' => $country,
+        ]);
         break;
 
     case 'user_convert_retailer':

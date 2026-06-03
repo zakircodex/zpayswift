@@ -78,6 +78,7 @@ function zpay_mfs_create_text(array $row): string
         "<b>UID:</b> <code>" . zpay_mfs_create_h($row['uid'] ?? '-') . "</code>\n" .
         "<b>User Phone:</b> <code>" . zpay_mfs_create_h($row['user_phone'] ?? '-') . "</code>\n\n" .
         "<b>Provider:</b> <b>" . zpay_mfs_create_h($row['provider_name'] ?? $row['provider'] ?? '-') . "</b>\n" .
+        "<b>Country:</b> " . zpay_mfs_create_h($row['country_code'] ?? '-') . "\n" .
         "<b>Mode:</b> " . zpay_mfs_create_h($row['service_mode'] ?? '-') . "\n" .
         "<b>Type:</b> " . zpay_mfs_create_h($row['service_type'] ?? 'SEND_MONEY') . "\n" .
         "<b>Receiver Number:</b> <code>" . zpay_mfs_create_h($row['receiver_number'] ?? $row['number'] ?? '-') . "</code>\n" .

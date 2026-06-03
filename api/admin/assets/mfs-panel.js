@@ -11,7 +11,9 @@
     mutating:false,
     busyCount:0,
     successRequestId:'',
-    confirmAction:null
+    confirmAction:null,
+    settings:null,
+    settingsLoading:false
   };
 
   function el(id){ return document.getElementById(id); }
@@ -25,6 +27,8 @@
   function totalRows(data){ var total=Number(data&&data.pagination&&data.pagination.total); return Number.isFinite(total)?total:normalizeRows(data||{}).length; }
   function rowNumber(r){ return r.receiver_number||r.number||r.mfs_number||r.to_number||'-'; }
   function rowAmount(r){ var c=String(r.wallet_currency||'BDT').toUpperCase(); if(c==='MYR') return 'RM '+money(r.total_debit||r.amount_rm||0); return 'BDT '+money(r.total_debit||r.amount_bdt||r.amount||0); }
+  function num(id){ var n=Number(el(id)&&el(id).value||0); return Number.isFinite(n)?n:0; }
+  function fee(settings,country,provider){ return (((settings||{}).fees||{})[country]||{})[provider]||{}; }
 
   async function readJson(res){
     var text=await res.text();
@@ -236,14 +240,119 @@
   }
 
   function setSection(section){
-    state.section=section==='create'?'create':'manage';
+    state.section=section==='create'?'create':(section==='settings'?'settings':'manage');
     all('[data-mfs-view]').forEach(function(view){
       view.classList.toggle('hidden',view.getAttribute('data-mfs-view')!==state.section);
     });
     all('[data-mfs-view-target]').forEach(function(button){
       button.classList.toggle('active',button.getAttribute('data-mfs-view-target')===state.section);
     });
+    if(state.section==='settings'&&!state.settings)loadSettings(null,false);
     toggleSidebar(false);
+  }
+
+  function populateSettings(settings){
+    settings=settings||{};
+    state.settings=settings;
+    var fees=settings.fees||{};
+    var bd=fees.BD||{};
+    var my=fees.MY||{};
+    el('mfsRateMyrBdt').value=money(settings.rate_myr_bdt||31);
+    el('mfsMyBkashFee').value=money((my.BKASH||{}).fee_rm||(my.BKASH||{}).fixed||3);
+    el('mfsMyNagadFee').value=money((my.NAGAD||{}).fee_rm||(my.NAGAD||{}).fixed||3);
+    [['Bkash','BKASH'],['Nagad','NAGAD']].forEach(function(pair){
+      var suffix=pair[0], provider=pair[1], row=bd[provider]||{};
+      el('mfsBd'+suffix+'Type').value=String(row.type||'fixed').toLowerCase()==='percent'?'percent':'fixed';
+      el('mfsBd'+suffix+'Fixed').value=money(row.fixed||0);
+      el('mfsBd'+suffix+'Percent').value=money(row.percent||0);
+      el('mfsBd'+suffix+'Min').value=money(row.min_fee||0);
+      el('mfsBd'+suffix+'Max').value=money(row.max_fee||0);
+    });
+    updateCreatePreview();
+  }
+
+  async function loadSettings(button,notify){
+    if(state.settingsLoading)return;
+    state.settingsLoading=true;
+    setButtonBusy(button,true,'Loading...');
+    try{
+      var data=await get('mfs_settings_get',{});
+      populateSettings(data.settings||data.raw||{});
+      if(notify)showFeedback('success','Settings loaded','MFS fee and rate settings loaded.');
+    }catch(err){
+      if(notify!==false)showFeedback('error','Unable to load settings',friendlyError(err));
+    }finally{
+      setButtonBusy(button,false);
+      state.settingsLoading=false;
+    }
+  }
+
+  function settingsPayload(){
+    return {
+      rate_myr_bdt:num('mfsRateMyrBdt')||31,
+      fees:{
+        MY:{
+          BKASH:{type:'fixed',fixed:num('mfsMyBkashFee'),fee_rm:num('mfsMyBkashFee')},
+          NAGAD:{type:'fixed',fixed:num('mfsMyNagadFee'),fee_rm:num('mfsMyNagadFee')}
+        },
+        BD:{
+          BKASH:{type:el('mfsBdBkashType').value,fixed:num('mfsBdBkashFixed'),percent:num('mfsBdBkashPercent'),min_fee:num('mfsBdBkashMin'),max_fee:num('mfsBdBkashMax')},
+          NAGAD:{type:el('mfsBdNagadType').value,fixed:num('mfsBdNagadFixed'),percent:num('mfsBdNagadPercent'),min_fee:num('mfsBdNagadMin'),max_fee:num('mfsBdNagadMax')}
+        }
+      }
+    };
+  }
+
+  async function saveSettings(e){
+    e.preventDefault();
+    if(state.mutating)return;
+    var button=el('mfsSettingsSaveBtn');
+    state.mutating=true;
+    setButtonBusy(button,true,'Saving...');
+    setPageBusy(true,'Saving MFS fee and rate settings...');
+    try{
+      await ensureCsrf();
+      var data=await post('mfs_settings_save',settingsPayload());
+      populateSettings(data.settings||{});
+      showFeedback('success','Settings saved','MFS fee and MYR/BDT rate settings saved.');
+    }catch(err){
+      showFeedback('error','Unable to save settings',friendlyError(err));
+    }finally{
+      setPageBusy(false);
+      setButtonBusy(button,false);
+      state.mutating=false;
+    }
+  }
+
+  function bdFeeFor(provider,amount){
+    var row=fee(state.settings,'BD',provider);
+    var fixed=Number(row.fixed||0);
+    var percent=Number(row.percent||0);
+    var minFee=Number(row.min_fee||0);
+    var maxFee=Number(row.max_fee||0);
+    var value=fixed+(amount*percent/100);
+    if(minFee>0&&value<minFee)value=minFee;
+    if(maxFee>0&&value>maxFee)value=maxFee;
+    return value;
+  }
+
+  function updateCreatePreview(){
+    var box=el('mfsCreatePreview');
+    if(!box)return;
+    var settings=state.settings||{};
+    var rate=Number(settings.rate_myr_bdt||31);
+    var provider=String(el('mfsCreateProvider')&&el('mfsCreateProvider').value||'BKASH').toUpperCase();
+    var amountBdt=num('mfsCreateAmountBdt');
+    var amountRm=num('mfsCreateAmountRm');
+    if(amountBdt<=0&&amountRm>0)amountBdt=amountRm*rate;
+    if(amountRm<=0&&amountBdt>0)amountRm=amountBdt/rate;
+    var bdFee=bdFeeFor(provider,amountBdt);
+    var myFee=Number((fee(settings,'MY',provider)||{}).fee_rm||(fee(settings,'MY',provider)||{}).fixed||3);
+    box.textContent=[
+      'Backend will use the target account country/currency for the final hold.',
+      'BD target: LOCAL, Amount BDT '+money(amountBdt)+', Fee BDT '+money(bdFee)+', Total Hold BDT '+money(amountBdt+bdFee),
+      'MY target: REMITTANCE, Rate RM 1 = BDT '+money(rate)+', Amount RM '+money(amountRm)+', Fee RM '+money(myFee)+', Total Hold RM '+money(amountRm+myFee)
+    ].join('\n');
   }
 
   function validateCreateForm(){
@@ -251,10 +360,12 @@
     var provider=String(el('mfsCreateProvider').value||'').toUpperCase();
     var receiver=String(el('mfsCreateReceiver').value||'').trim();
     var amount=Number(el('mfsCreateAmountBdt').value||0);
+    var amountRm=Number(el('mfsCreateAmountRm').value||0);
     if(!target)return 'User / Subadmin UID or registered phone is required.';
     if(['BKASH','NAGAD'].indexOf(provider)<0)return 'Please select bKash or Nagad.';
     if(!/^01[3-9]\d{8}$/.test(receiver))return 'Receiver number must be a valid 11 digit BD mobile number.';
-    if(!Number.isFinite(amount)||amount<500||amount>50000)return 'Amount must be between BDT 500 and BDT 50,000.';
+    if((!Number.isFinite(amount)||amount<=0)&&(!Number.isFinite(amountRm)||amountRm<=0))return 'Amount BDT or Amount RM is required.';
+    if(Number.isFinite(amount)&&amount>0&&(amount<500||amount>50000))return 'Amount BDT must be between BDT 500 and BDT 50,000.';
     return '';
   }
 
@@ -269,6 +380,7 @@
     }
     var button=el('mfsCreateSubmitBtn');
     var amount=Number(el('mfsCreateAmountBdt').value||0);
+    var amountRm=Number(el('mfsCreateAmountRm').value||0);
     var body={
       uid:String(el('mfsCreateUid').value||'').trim(),
       provider:el('mfsCreateProvider').value,
@@ -276,7 +388,7 @@
       account_type:'PERSONAL',
       receiver_number:String(el('mfsCreateReceiver').value||'').trim(),
       amount_bdt:amount,
-      currency:'BDT',
+      amount_rm:amountRm,
       reference:String(el('mfsCreateReference').value||'').trim(),
       note:String(el('mfsCreateNote').value||'').trim()
     };
@@ -482,6 +594,9 @@
       button.addEventListener('click',function(){setSection(button.getAttribute('data-mfs-view-target')||'manage');});
     });
     el('mfsCreateForm').addEventListener('submit',createRequest);
+    el('mfsSettingsForm').addEventListener('submit',saveSettings);
+    el('mfsSettingsReloadBtn').addEventListener('click',function(){loadSettings(el('mfsSettingsReloadBtn'),true);});
+    ['mfsCreateProvider','mfsCreateAmountBdt','mfsCreateAmountRm'].forEach(function(id){el(id).addEventListener('input',updateCreatePreview); el(id).addEventListener('change',updateCreatePreview);});
     el('mfsReloadBtn').addEventListener('click',function(){load(el('mfsReloadBtn'),true);});
     el('mfsApplyFilterBtn').addEventListener('click',function(){load(el('mfsApplyFilterBtn'),true);});
     el('mfsSearch').addEventListener('input',render);
@@ -513,6 +628,7 @@
     bind();
     setSection('manage');
     setActiveTab('pending');
+    loadSettings(null,false);
     load(null,true);
     ensureCsrf().catch(function(){});
   }

@@ -764,6 +764,19 @@ code{
   gap:8px;
 }
 
+.country-editor{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  min-width:132px;
+}
+
+.mini-country-select{
+  width:72px;
+  min-height:36px;
+  padding:0 10px;
+}
+
 /* ---------- modal ---------- */
 
 .modal-wrap{

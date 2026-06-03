@@ -334,8 +334,33 @@ function mfs_config(bool $refresh = false): array
     }
 
     $row = mfs_fb_get('MFS_CONFIG');
+    $settings = mfs_fb_get('MFS_SETTINGS');
 
     $cache = is_array($row) ? $row : [];
+
+    if (is_array($settings)) {
+        $rate = mfs_nested_value($settings, 'rate_myr_bdt', null);
+        if ($rate === null || $rate === '') {
+            $rate = mfs_nested_value($settings, 'rate.myr_to_bdt', null);
+        }
+
+        if (is_numeric($rate) && (float)$rate > 0) {
+            $rate = mfs_round_money($rate);
+            $cache['rate_myr_bdt'] = $rate;
+            $cache['myr_to_bdt_rate'] = $rate;
+            $cache['rates']['myr_to_bdt'] = $rate;
+        }
+
+        $fees = mfs_nested_value($settings, 'fees', null);
+        if (is_array($fees)) {
+            $cache['fees'] = array_replace_recursive(
+                is_array($cache['fees'] ?? null) ? $cache['fees'] : [],
+                $fees
+            );
+        }
+
+        $cache['MFS_SETTINGS'] = $settings;
+    }
 
     return $cache;
 }
@@ -498,6 +523,30 @@ function mfs_normalize_country_code(string $country): string
     return $map[$country] ?? '';
 }
 
+function mfs_infer_country_from_phone(string $phone): string
+{
+    $raw = trim($phone);
+    $digits = mfs_clean_mobile_number($raw);
+
+    if ($digits === '') {
+        return '';
+    }
+
+    if (strpos($raw, '+60') === 0 || preg_match('/^60\d{7,12}$/', $digits)) {
+        return 'MY';
+    }
+
+    if (strpos($raw, '+880') === 0 || preg_match('/^8801\d{9}$/', $digits)) {
+        return 'BD';
+    }
+
+    if (preg_match('/^01\d{9}$/', $digits)) {
+        return 'BD';
+    }
+
+    return '';
+}
+
 function mfs_normalize_currency(string $currency): string
 {
     if (function_exists('security_normalize_currency')) {
@@ -534,6 +583,20 @@ function mfs_user_country_code(array $user): string
         ?? $user['user_country']
         ?? ''
     ));
+
+    if ($country !== '') {
+        return $country;
+    }
+
+    $phone = (string)(
+        $user['phone']
+        ?? $user['mobile']
+        ?? $user['number']
+        ?? $user['login_phone']
+        ?? ''
+    );
+
+    $country = mfs_infer_country_from_phone($phone);
 
     if ($country !== '') {
         return $country;
@@ -604,7 +667,9 @@ function mfs_country_wallet_check(array $user, array $wallet): array
     if (function_exists('security_validate_country_wallet_lock')) {
         $check = security_validate_country_wallet_lock($user, $wallet);
 
-        if (is_array($check) && !empty($check)) {
+        $code = is_array($check) ? (string)($check['code'] ?? '') : '';
+
+        if (is_array($check) && !empty($check) && !in_array($code, ['COUNTRY_MISSING', 'WALLET_CURRENCY_MISSING'], true)) {
             return $check;
         }
     }
@@ -682,6 +747,11 @@ function mfs_official_fee_row(string $provider, string $serviceType): array
         'fees.BD.' . $provider . '.' . $serviceType,
         'fees.LOCAL.' . $provider . '.' . $serviceType,
         'providers.' . $provider . '.fees.' . $serviceType,
+        'BD.' . $provider,
+        'LOCAL.' . $provider,
+        'official_fees.' . $provider,
+        'fees.BD.' . $provider,
+        'fees.LOCAL.' . $provider,
     ];
 
     $config = mfs_config();
@@ -755,9 +825,34 @@ function mfs_remittance_fee_rm(string $role, string $provider = ''): float
     $paths = [];
 
     if ($provider !== '') {
+        $providerFee = mfs_config_first(['fees.MY.' . $provider], null);
+
+        if (is_array($providerFee)) {
+            $roleFee = mfs_nested_value($providerFee, $role, null);
+            if (is_numeric($roleFee)) {
+                return mfs_round_money($roleFee);
+            }
+
+            if (is_array($roleFee)) {
+                $pickedRoleFee = mfs_pick_fee_float($roleFee, ['fee_rm', 'fixed', 'fixed_fee', 'amount', 'rm'], -1.0);
+                if ($pickedRoleFee >= 0) {
+                    return mfs_round_money($pickedRoleFee);
+                }
+            }
+
+            $pickedProviderFee = mfs_pick_fee_float($providerFee, ['fee_rm', 'fixed', 'fixed_fee', 'amount', 'rm'], -1.0);
+            if ($pickedProviderFee >= 0) {
+                return mfs_round_money($pickedProviderFee);
+            }
+        }
+
         $paths[] = 'MY.' . $provider . '.remittance_fee_rm.' . $role;
         $paths[] = 'REMITTANCE.' . $provider . '.fee_rm.' . $role;
         $paths[] = 'fees.MY.' . $provider . '.' . $role;
+        $paths[] = 'fees.MY.' . $provider . '.fee_rm';
+        $paths[] = 'fees.MY.' . $provider . '.fixed';
+        $paths[] = 'fees.MY.' . $provider . '.fixed_fee';
+        $paths[] = 'fees.MY.' . $provider . '.amount';
     }
 
     $paths[] = 'MY.remittance_fee_rm.' . $role;
@@ -769,6 +864,10 @@ function mfs_remittance_fee_rm(string $role, string $provider = ''): float
 
     if ($fee >= 0) {
         return mfs_round_money($fee);
+    }
+
+    if ($provider !== '') {
+        return mfs_const_float('MY_REMITTANCE_FEE_RM', 3.00);
     }
 
     if ($role === 'SUBADMIN') {
@@ -784,6 +883,59 @@ function mfs_remittance_fee_rm(string $role, string $provider = ''): float
     }
 
     return mfs_const_float('MY_REMITTANCE_FEE_USER_RM', 5.00);
+}
+
+function mfs_country_label(string $countryCode): string
+{
+    $countryCode = mfs_normalize_country_code($countryCode);
+
+    if ($countryCode === 'BD') {
+        return 'Bangladesh';
+    }
+
+    if ($countryCode === 'MY') {
+        return 'Malaysia';
+    }
+
+    return '';
+}
+
+function mfs_public_settings(): array
+{
+    $rate = mfs_myr_to_bdt_rate();
+    $providers = ['BKASH', 'NAGAD'];
+    $fees = [
+        'BD' => [],
+        'MY' => [],
+    ];
+
+    foreach ($providers as $provider) {
+        $bdRow = mfs_official_fee_row($provider, 'SEND_MONEY');
+        $fees['BD'][$provider] = [
+            'type' => (string)($bdRow['type'] ?? ((float)mfs_pick_fee_float($bdRow, ['percent_fee', 'percent', 'fee_percent', 'rate_percent'], 0.0) > 0 ? 'percent' : 'fixed')),
+            'fixed' => mfs_pick_fee_float($bdRow, ['fixed_fee', 'fixed', 'fee_fixed', 'flat_fee'], 0.0),
+            'percent' => mfs_pick_fee_float($bdRow, ['percent_fee', 'percent', 'fee_percent', 'rate_percent'], 0.0),
+            'min_fee' => mfs_pick_fee_float($bdRow, ['min_fee', 'minimum_fee'], 0.0),
+            'max_fee' => mfs_pick_fee_float($bdRow, ['max_fee', 'maximum_fee'], 0.0),
+        ];
+
+        $myRow = mfs_config_first(['fees.MY.' . $provider], null);
+        $fees['MY'][$provider] = [
+            'type' => is_array($myRow) ? (string)($myRow['type'] ?? 'fixed') : 'fixed',
+            'fixed' => mfs_remittance_fee_rm('USER', $provider),
+            'fee_rm' => mfs_remittance_fee_rm('USER', $provider),
+        ];
+    }
+
+    return [
+        'rate_myr_bdt' => $rate,
+        'countries' => [
+            'BD' => 'Bangladesh',
+            'MY' => 'Malaysia',
+        ],
+        'fees' => $fees,
+        'limits' => mfs_bdt_transfer_limits(),
+    ];
 }
 
 function mfs_amount_input_value(array $body, array $keys): float

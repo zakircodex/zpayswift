@@ -3,6 +3,21 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
 
+function admin_users_list_country_code(array $user): string
+{
+    $country = strtoupper(trim((string)($user['country_code'] ?? $user['country'] ?? $user['user_country'] ?? '')));
+    $map = [
+        'BD' => 'BD',
+        'BGD' => 'BD',
+        'BANGLADESH' => 'BD',
+        'MY' => 'MY',
+        'MYS' => 'MY',
+        'MALAYSIA' => 'MY',
+    ];
+
+    return $map[$country] ?? '';
+}
+
 api_require_method('GET');
 auth_require_admin_session();
 
@@ -38,6 +53,8 @@ foreach ($users as $uid => $user) {
         'email' => (string)($user['email'] ?? ''),
         'status' => (string)($user['status'] ?? ''),
         'role' => $role,
+        'country_code' => admin_users_list_country_code($user),
+        'country' => admin_users_list_country_code($user),
 
         'available_balance' => (float)($wallet['available_balance'] ?? 0),
         'hold_balance' => (float)($wallet['hold_balance'] ?? 0),

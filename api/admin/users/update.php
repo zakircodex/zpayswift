@@ -52,6 +52,21 @@ function admin_bool_or_null(mixed $value): ?bool
     return (bool)$value;
 }
 
+function normalize_admin_country(?string $country): string
+{
+    $country = strtoupper(trim((string)$country));
+    $map = [
+        'BD' => 'BD',
+        'BGD' => 'BD',
+        'BANGLADESH' => 'BD',
+        'MY' => 'MY',
+        'MYS' => 'MY',
+        'MALAYSIA' => 'MY',
+    ];
+
+    return $map[$country] ?? '';
+}
+
 api_require_method('POST');
 
 $auth = auth_require_admin_session(true);
@@ -65,6 +80,7 @@ $nameProvided = array_key_exists('name', $body);
 $emailProvided = array_key_exists('email', $body);
 $roleProvided = array_key_exists('role', $body);
 $statusProvided = array_key_exists('status', $body);
+$countryProvided = array_key_exists('country', $body) || array_key_exists('country_code', $body);
 
 $commissionProvided = array_key_exists('commission_per_1000', $body);
 $apiEnabledProvided = array_key_exists('api_enabled', $body);
@@ -75,6 +91,7 @@ $maxAmountProvided = array_key_exists('max_amount', $body);
 
 $name = trim((string)($body['name'] ?? ''));
 $email = strtolower(trim((string)($body['email'] ?? '')));
+$country = normalize_admin_country((string)($body['country_code'] ?? $body['country'] ?? ''));
 
 $commissionPer1000 = $commissionProvided ? (float)$body['commission_per_1000'] : null;
 $apiEnabled = $apiEnabledProvided ? admin_bool_or_null($body['api_enabled']) : null;
@@ -92,6 +109,7 @@ if (
     !$emailProvided &&
     !$roleProvided &&
     !$statusProvided &&
+    !$countryProvided &&
     !$commissionProvided &&
     !$apiEnabledProvided &&
     !$topupEnabledProvided &&
@@ -158,6 +176,15 @@ if ($roleProvided) {
 
 if ($statusProvided) {
     $updates['status'] = $status;
+}
+
+if ($countryProvided) {
+    if ($country === '') {
+        api_response(false, 'VALIDATION_ERROR', 'Country must be BD or MY', ['field' => 'country'], 422);
+    }
+
+    $updates['country_code'] = $country;
+    $updates['country'] = $country;
 }
 
 /*
@@ -239,6 +266,7 @@ admin_action_log('UPDATE_USER', $uid, 'Admin updated user account', [
     'new_role' => (string)($finalUser['role'] ?? ''),
     'old_status' => $oldStatus,
     'new_status' => (string)($finalUser['status'] ?? ''),
+    'country_code' => (string)($finalUser['country_code'] ?? $finalUser['country'] ?? ''),
     'admin_uid' => (string)($adminUser['uid'] ?? ''),
 ]);
 
@@ -252,6 +280,7 @@ system_log('ADMIN_UPDATE_USER', $uid, 'Admin updated user account', [
     'new_role' => (string)($finalUser['role'] ?? ''),
     'old_status' => $oldStatus,
     'new_status' => (string)($finalUser['status'] ?? ''),
+    'country_code' => (string)($finalUser['country_code'] ?? $finalUser['country'] ?? ''),
     'ip' => client_ip(),
     'admin_uid' => (string)($adminUser['uid'] ?? ''),
 ]);
@@ -263,6 +292,8 @@ api_response(true, 'SUCCESS', 'User account updated successfully', [
     'email' => (string)($finalUser['email'] ?? ''),
     'role' => (string)($finalUser['role'] ?? ''),
     'status' => (string)($finalUser['status'] ?? ''),
+    'country_code' => (string)($finalUser['country_code'] ?? $finalUser['country'] ?? ''),
+    'country' => (string)($finalUser['country_code'] ?? $finalUser['country'] ?? ''),
     'updated_at' => (int)($finalUser['updated_at'] ?? now_ts()),
     'role_settings' => $roleSettings,
     'commission_per_1000' => (float)($roleSettings['commission_per_1000'] ?? 0),

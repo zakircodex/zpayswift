@@ -11,7 +11,7 @@ header('Pragma: no-cache');
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Z-Pay Swift Admin - bKash / Nagad Requests</title>
   <link rel="stylesheet" href="assets/dashboard.css?v=21">
-  <link rel="stylesheet" href="assets/mfs-panel.css?v=3">
+  <link rel="stylesheet" href="assets/mfs-panel.css?v=4">
 </head>
 <body class="mfs-body">
   <div class="mfs-app">
@@ -29,6 +29,7 @@ header('Pragma: no-cache');
         <a class="nav-btn" href="dashboard.php">Dashboard <span>&rsaquo;</span></a>
         <button class="nav-btn" data-mfs-view-target="create" type="button">Create bKash / Nagad <span>&rsaquo;</span></button>
         <button class="nav-btn active" data-mfs-view-target="manage" type="button">Manage MFS Requests <span>&rsaquo;</span></button>
+        <button class="nav-btn" data-mfs-view-target="settings" type="button">Fee &amp; Rate Settings <span>&rsaquo;</span></button>
         <a class="nav-btn" href="dashboard.php">Topup &amp; Bundles <span>&rsaquo;</span></a>
       </nav>
 
@@ -143,6 +144,10 @@ header('Pragma: no-cache');
             <input class="input" id="mfsCreateAmountBdt" required type="number" min="500" max="50000" step="0.01" placeholder="500 - 50000">
           </label>
           <label class="mfs-field">
+            <span>Amount RM <small>MY target optional</small></span>
+            <input class="input" id="mfsCreateAmountRm" type="number" min="0" step="0.01" placeholder="Auto / optional">
+          </label>
+          <label class="mfs-field">
             <span>Reference <small>Optional</small></span>
             <input class="input" id="mfsCreateReference" placeholder="Reference or memo">
           </label>
@@ -152,6 +157,64 @@ header('Pragma: no-cache');
           </label>
           <div class="admin-mfs-submit">
             <button class="btn brand" id="mfsCreateSubmitBtn" type="submit">Create Request</button>
+          </div>
+          <div class="admin-mfs-preview" id="mfsCreatePreview">
+            Enter target, provider and amount to preview country/rate/fee.
+          </div>
+        </form>
+      </section>
+
+      <section class="mfs-panel-card admin-mfs-settings hidden" id="mfsSettingsSection" data-mfs-view="settings">
+        <div class="mfs-panel-head">
+          <div>
+            <div class="mfs-section-kicker">Admin Only</div>
+            <h2>MFS Fee &amp; Rate Settings</h2>
+            <p>Configure MYR/BDT conversion and bKash/Nagad MFS fees.</p>
+          </div>
+          <span class="mfs-limit-pill">Saved in MFS_SETTINGS</span>
+        </div>
+
+        <form id="mfsSettingsForm" class="admin-mfs-settings-grid" novalidate>
+          <label class="mfs-field">
+            <span>MYR to BDT Rate</span>
+            <input class="input" id="mfsRateMyrBdt" type="number" min="0.01" step="0.01" placeholder="31.00">
+          </label>
+
+          <label class="mfs-field">
+            <span>Malaysia bKash Fee RM</span>
+            <input class="input" id="mfsMyBkashFee" type="number" min="0" step="0.01" placeholder="3.00">
+          </label>
+
+          <label class="mfs-field">
+            <span>Malaysia Nagad Fee RM</span>
+            <input class="input" id="mfsMyNagadFee" type="number" min="0" step="0.01" placeholder="3.00">
+          </label>
+
+          <div class="admin-mfs-fee-card">
+            <h3>Bangladesh bKash Fee</h3>
+            <div class="admin-mfs-fee-grid">
+              <label class="mfs-field"><span>Type</span><select class="input" id="mfsBdBkashType"><option value="fixed">Fixed</option><option value="percent">Percent</option></select></label>
+              <label class="mfs-field"><span>Fixed BDT</span><input class="input" id="mfsBdBkashFixed" type="number" min="0" step="0.01"></label>
+              <label class="mfs-field"><span>Percent</span><input class="input" id="mfsBdBkashPercent" type="number" min="0" step="0.01"></label>
+              <label class="mfs-field"><span>Min Fee</span><input class="input" id="mfsBdBkashMin" type="number" min="0" step="0.01"></label>
+              <label class="mfs-field"><span>Max Fee</span><input class="input" id="mfsBdBkashMax" type="number" min="0" step="0.01"></label>
+            </div>
+          </div>
+
+          <div class="admin-mfs-fee-card">
+            <h3>Bangladesh Nagad Fee</h3>
+            <div class="admin-mfs-fee-grid">
+              <label class="mfs-field"><span>Type</span><select class="input" id="mfsBdNagadType"><option value="fixed">Fixed</option><option value="percent">Percent</option></select></label>
+              <label class="mfs-field"><span>Fixed BDT</span><input class="input" id="mfsBdNagadFixed" type="number" min="0" step="0.01"></label>
+              <label class="mfs-field"><span>Percent</span><input class="input" id="mfsBdNagadPercent" type="number" min="0" step="0.01"></label>
+              <label class="mfs-field"><span>Min Fee</span><input class="input" id="mfsBdNagadMin" type="number" min="0" step="0.01"></label>
+              <label class="mfs-field"><span>Max Fee</span><input class="input" id="mfsBdNagadMax" type="number" min="0" step="0.01"></label>
+            </div>
+          </div>
+
+          <div class="admin-mfs-submit admin-mfs-settings-actions">
+            <button class="btn brand" id="mfsSettingsSaveBtn" type="submit">Save Settings</button>
+            <button class="btn ghost" id="mfsSettingsReloadBtn" type="button">Reload</button>
           </div>
         </form>
       </section>
@@ -278,6 +341,6 @@ header('Pragma: no-cache');
     </div>
   </div>
 
-  <script src="assets/mfs-panel.js?v=2"></script>
+  <script src="assets/mfs-panel.js?v=3"></script>
 </body>
 </html>

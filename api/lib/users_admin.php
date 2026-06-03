@@ -80,6 +80,26 @@ function admin_users_normalize_status(?string $status): string
     return in_array($status, ['ACTIVE', 'INACTIVE', 'DISABLED'], true) ? $status : 'ACTIVE';
 }
 
+function admin_users_normalize_country(?string $country): string
+{
+    $country = strtoupper(trim((string)$country));
+    $map = [
+        'BD' => 'BD',
+        'BGD' => 'BD',
+        'BANGLADESH' => 'BD',
+        'MY' => 'MY',
+        'MYS' => 'MY',
+        'MALAYSIA' => 'MY',
+    ];
+
+    return $map[$country] ?? '';
+}
+
+function admin_users_country_code(array $user): string
+{
+    return admin_users_normalize_country((string)($user['country_code'] ?? $user['country'] ?? $user['user_country'] ?? ''));
+}
+
 function admin_users_find_user_by_uid(string $uid): array
 {
     $user = admin_users_load_user($uid);
@@ -98,6 +118,8 @@ function admin_users_find_user_by_uid(string $uid): array
         'email' => (string)($user['email'] ?? ''),
         'role' => $role,
         'status' => admin_users_normalize_status((string)($user['status'] ?? 'ACTIVE')),
+        'country_code' => admin_users_country_code($user),
+        'country' => admin_users_country_code($user),
         'created_at' => (int)($user['created_at'] ?? 0),
         'updated_at' => (int)($user['updated_at'] ?? 0),
         'last_login_at' => (int)($user['last_login_at'] ?? 0),
@@ -163,7 +185,9 @@ function admin_users_actor_can_access_user(array $user, string $actorUid, string
 
     if ($actorRole === 'SUBADMIN') {
         $parentSubadminUid = trim((string)($user['parent_subadmin_uid'] ?? ''));
-        return $parentSubadminUid !== '' && $parentSubadminUid === $actorUid;
+        $createdByUid = trim((string)($user['created_by_uid'] ?? ''));
+        return ($parentSubadminUid !== '' && $parentSubadminUid === $actorUid)
+            || ($createdByUid !== '' && $createdByUid === $actorUid);
     }
 
     return false;
@@ -322,6 +346,8 @@ function admin_users_list_users(
             'email' => (string)($row['email'] ?? ''),
             'role' => $role,
             'status' => $status,
+            'country_code' => admin_users_country_code($row),
+            'country' => admin_users_country_code($row),
             'created_at' => (int)($row['created_at'] ?? 0),
             'updated_at' => (int)($row['updated_at'] ?? 0),
             'last_login_at' => (int)($row['last_login_at'] ?? 0),
