@@ -109,6 +109,7 @@ function admin_users_find_user_by_uid(string $uid): array
 
     $role = admin_users_normalize_role((string)($user['role'] ?? 'USER'));
     $wallet = admin_users_load_wallet($uid);
+    $walletDisplay = function_exists('mfs_wallet_display_payload') ? mfs_wallet_display_payload($user, $wallet) : [];
     $roleSettings = admin_users_load_role_settings($uid, $role);
 
     return [
@@ -133,6 +134,17 @@ function admin_users_find_user_by_uid(string $uid): array
         'wallet' => [
             'available_balance' => (float)($wallet['available_balance'] ?? 0),
             'hold_balance' => (float)($wallet['hold_balance'] ?? 0),
+            'currency' => (string)($walletDisplay['currency'] ?? $wallet['currency'] ?? $wallet['wallet_currency'] ?? 'BDT'),
+            'wallet_currency' => (string)($walletDisplay['wallet_currency'] ?? $wallet['wallet_currency'] ?? $wallet['currency'] ?? 'BDT'),
+            'display_currency' => (string)($walletDisplay['display_currency'] ?? $wallet['currency'] ?? 'BDT'),
+            'display_available_balance' => (float)($walletDisplay['display_available_balance'] ?? $wallet['available_balance'] ?? 0),
+            'display_hold_balance' => (float)($walletDisplay['display_hold_balance'] ?? $wallet['hold_balance'] ?? 0),
+            'available_balance_bdt' => (float)($walletDisplay['available_balance_bdt'] ?? $wallet['available_balance'] ?? 0),
+            'hold_balance_bdt' => (float)($walletDisplay['hold_balance_bdt'] ?? $wallet['hold_balance'] ?? 0),
+            'available_balance_myr' => (float)($walletDisplay['available_balance_myr'] ?? 0),
+            'hold_balance_myr' => (float)($walletDisplay['hold_balance_myr'] ?? 0),
+            'rate_myr_bdt' => (float)($walletDisplay['rate_myr_bdt'] ?? 0),
+            'conversion_note' => (string)($walletDisplay['conversion_note'] ?? ''),
             'total_topup_spent' => (float)($wallet['total_topup_spent'] ?? 0),
             'total_bundle_spent' => (float)($wallet['total_bundle_spent'] ?? 0),
             'total_refund' => (float)($wallet['total_refund'] ?? 0),
@@ -337,6 +349,7 @@ function admin_users_list_users(
         }
 
         $wallet = admin_users_load_wallet((string)$uid);
+        $walletDisplay = function_exists('mfs_wallet_display_payload') ? mfs_wallet_display_payload($row, $wallet) : [];
         $roleSettings = admin_users_load_role_settings((string)$uid, $role);
 
         $items[] = [
@@ -359,6 +372,17 @@ function admin_users_list_users(
             'converted_to_retailer_by' => (string)($row['converted_to_retailer_by'] ?? ''),
             'available_balance' => (float)($wallet['available_balance'] ?? 0),
             'hold_balance' => (float)($wallet['hold_balance'] ?? 0),
+            'currency' => (string)($walletDisplay['currency'] ?? $wallet['currency'] ?? $wallet['wallet_currency'] ?? 'BDT'),
+            'wallet_currency' => (string)($walletDisplay['wallet_currency'] ?? $wallet['wallet_currency'] ?? $wallet['currency'] ?? 'BDT'),
+            'display_currency' => (string)($walletDisplay['display_currency'] ?? $wallet['currency'] ?? 'BDT'),
+            'display_available_balance' => (float)($walletDisplay['display_available_balance'] ?? $wallet['available_balance'] ?? 0),
+            'display_hold_balance' => (float)($walletDisplay['display_hold_balance'] ?? $wallet['hold_balance'] ?? 0),
+            'available_balance_bdt' => (float)($walletDisplay['available_balance_bdt'] ?? $wallet['available_balance'] ?? 0),
+            'hold_balance_bdt' => (float)($walletDisplay['hold_balance_bdt'] ?? $wallet['hold_balance'] ?? 0),
+            'available_balance_myr' => (float)($walletDisplay['available_balance_myr'] ?? 0),
+            'hold_balance_myr' => (float)($walletDisplay['hold_balance_myr'] ?? 0),
+            'rate_myr_bdt' => (float)($walletDisplay['rate_myr_bdt'] ?? 0),
+            'conversion_note' => (string)($walletDisplay['conversion_note'] ?? ''),
             'topup_enabled' => (bool)($roleSettings['topup_enabled'] ?? false),
             'bundle_enabled' => (bool)($roleSettings['bundle_enabled'] ?? false),
             'api_enabled' => (bool)($roleSettings['api_enabled'] ?? false),

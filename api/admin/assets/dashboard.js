@@ -75,6 +75,26 @@ function money(v){
   return Number.isFinite(n) ? n.toFixed(2) : '0.00';
 }
 
+function walletPrefix(currency){
+  return String(currency || 'BDT').toUpperCase() === 'MYR' ? 'RM' : 'BDT';
+}
+
+function walletMoney(row, type = 'available'){
+  const currency = String(row?.display_currency || row?.wallet_currency || row?.currency || 'BDT').toUpperCase();
+  const key = type === 'hold' ? 'display_hold_balance' : 'display_available_balance';
+  const fallback = type === 'hold' ? 'hold_balance' : 'available_balance';
+  return `${walletPrefix(currency)} ${money(row?.[key] ?? row?.[fallback] ?? 0)}`;
+}
+
+function walletRawHint(row, type = 'available'){
+  const note = String(row?.conversion_note || '').trim();
+  if (!note) return '';
+
+  const rawKey = type === 'hold' ? 'hold_balance_bdt' : 'available_balance_bdt';
+  const raw = Number(row?.[rawKey] ?? row?.[type === 'hold' ? 'hold_balance' : 'available_balance'] ?? 0);
+  return `<div class="muted" style="font-size:12px;margin-top:4px;">Stored: BDT ${money(raw)}</div>`;
+}
+
 function boolFromValue(v, fallback = false){
   if (v === true || v === false) return v;
 
@@ -2177,8 +2197,8 @@ function renderUsers(){
       <td>${esc(item.country_code || item.country || '-')}</td>
       <td>${esc((Number(item.commission_per_1000 || 0)).toFixed(2))}</td>
       <td>${yesNoPill(!!item.api_enabled)}</td>
-      <td>${money(item.available_balance || 0)}</td>
-      <td>${money(item.hold_balance || 0)}</td>
+      <td>${walletMoney(item, 'available')}${walletRawHint(item, 'available')}</td>
+      <td>${walletMoney(item, 'hold')}${walletRawHint(item, 'hold')}</td>
       <td>
         <div class="row-actions">
           <button class="mini-btn" onclick="viewUser('${esc(item.uid || '')}')">View</button>
@@ -2212,8 +2232,9 @@ async function viewUser(uid){
           <div class="detail-item"><label>Amount Limits</label><strong>${Number(data.min_amount || 0).toFixed(2)} - ${Number(data.max_amount || 0).toFixed(2)}</strong></div>
           <div class="detail-item"><label>Created</label><strong>${fmtTs(data.created_at)}</strong></div>
           <div class="detail-item"><label>Last Login</label><strong>${fmtTs(data.last_login_at)}</strong></div>
-          <div class="detail-item"><label>Available Balance</label><strong>${money(w.available_balance)}</strong></div>
-          <div class="detail-item"><label>Hold Balance</label><strong>${money(w.hold_balance)}</strong></div>
+          <div class="detail-item"><label>Available Balance</label><strong>${walletMoney(w, 'available')}</strong>${walletRawHint(w, 'available')}</div>
+          <div class="detail-item"><label>Hold Balance</label><strong>${walletMoney(w, 'hold')}</strong>${walletRawHint(w, 'hold')}</div>
+          <div class="detail-item"><label>Wallet Currency</label><strong>${esc(w.wallet_currency || w.currency || 'BDT')}</strong></div>
           <div class="detail-item"><label>Total Topup Spent</label><strong>${money(w.total_topup_spent)}</strong></div>
           <div class="detail-item"><label>Total Bundle Spent</label><strong>${money(w.total_bundle_spent)}</strong></div>
           <div class="detail-item"><label>Total Refund</label><strong>${money(w.total_refund)}</strong></div>

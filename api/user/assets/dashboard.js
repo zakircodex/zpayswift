@@ -71,6 +71,20 @@ function fmtMoney(v, prefix = 'BDT'){
   return `${prefix} ${money(v)}`;
 }
 
+function walletPrefix(currency){
+  return String(currency || 'BDT').toUpperCase() === 'MYR' ? 'RM' : 'BDT';
+}
+
+function walletDisplayAmount(wallet, type = 'available'){
+  const key = type === 'hold' ? 'display_hold_balance' : 'display_available_balance';
+  const fallback = type === 'hold' ? 'hold_balance' : 'available_balance';
+  return money(wallet?.[key] ?? wallet?.[fallback] ?? 0);
+}
+
+function walletDisplayCurrency(wallet){
+  return walletPrefix(wallet?.display_currency || wallet?.wallet_currency || wallet?.currency || 'BDT');
+}
+
 function fmtTs(ts){
   const num = Number(ts || 0);
   if (!num) return '-';
@@ -822,8 +836,16 @@ function renderHero(){
     el('heroStatusText').textContent = String(me.status || data.status || 'ACTIVE').toUpperCase();
   }
 
-  if (el('heroBalance')) el('heroBalance').textContent = money(wallet.available_balance || 0);
-  if (el('heroHold')) el('heroHold').textContent = money(wallet.hold_balance || 0);
+  if (el('heroBalancePrefix')) el('heroBalancePrefix').textContent = walletDisplayCurrency(wallet);
+  if (el('heroHoldPrefix')) el('heroHoldPrefix').textContent = walletDisplayCurrency(wallet);
+  if (el('heroBalance')) {
+    el('heroBalance').textContent = walletDisplayAmount(wallet, 'available');
+    el('heroBalance').title = wallet.conversion_note || '';
+  }
+  if (el('heroHold')) {
+    el('heroHold').textContent = walletDisplayAmount(wallet, 'hold');
+    el('heroHold').title = wallet.conversion_note || '';
+  }
   if (el('heroRequests')) el('heroRequests').textContent = String((state.requestLogs || []).length);
   if (el('heroRole')) el('heroRole').textContent = String(me.role || data.role || '-').toUpperCase();
 
@@ -1511,7 +1533,7 @@ const mfsState = {
 
 function mfsCurrencyPrefix(){
   const wallet = (state.walletSummary || {}).wallet || {};
-  const currency = String(wallet.currency || wallet.wallet_currency || state.walletSummary?.wallet_currency || '').toUpperCase();
+  const currency = String(wallet.display_currency || wallet.currency || wallet.wallet_currency || state.walletSummary?.wallet_currency || '').toUpperCase();
   return currency === 'MYR' ? 'RM' : 'BDT';
 }
 
@@ -1552,7 +1574,7 @@ Number: ${data.receiver_number || '-'}
 Amount BDT: BDT ${money(data.amount_bdt || 0)}
 Amount RM: RM ${money(data.amount_rm || 0)}
 Reference: ${data.reference || '-'}
-Available Balance: ${prefix} ${money(wallet.available_balance || 0)}
+Available Balance: ${prefix} ${walletDisplayAmount(wallet, 'available')}
 Status: PENDING`;
 }
 
@@ -1605,12 +1627,22 @@ function applyMfsCreateSuccessToLocalState(data){
   if (!state.walletSummary.wallet) state.walletSummary.wallet = {};
 
   if (data.wallet && typeof data.wallet === 'object') {
+    const walletCurrency = data.wallet.currency || data.wallet.wallet_currency || data.wallet_currency || '';
     state.walletSummary.wallet = {
       ...(state.walletSummary.wallet || {}),
       available_balance: Number(data.wallet.available_balance || 0),
       hold_balance: Number(data.wallet.hold_balance || 0),
-      currency: data.wallet.currency || data.wallet_currency || '',
-      wallet_currency: data.wallet.currency || data.wallet_currency || '',
+      currency: walletCurrency,
+      wallet_currency: walletCurrency,
+      display_currency: data.wallet.display_currency || walletCurrency,
+      display_available_balance: Number(data.wallet.display_available_balance ?? data.wallet.available_balance ?? 0),
+      display_hold_balance: Number(data.wallet.display_hold_balance ?? data.wallet.hold_balance ?? 0),
+      available_balance_bdt: Number(data.wallet.available_balance_bdt ?? data.wallet.available_balance ?? 0),
+      hold_balance_bdt: Number(data.wallet.hold_balance_bdt ?? data.wallet.hold_balance ?? 0),
+      available_balance_myr: Number(data.wallet.available_balance_myr ?? 0),
+      hold_balance_myr: Number(data.wallet.hold_balance_myr ?? 0),
+      rate_myr_bdt: Number(data.wallet.rate_myr_bdt ?? 0),
+      conversion_note: data.wallet.conversion_note || '',
       updated_at: Number(data.created_at || Math.floor(Date.now() / 1000))
     };
   }

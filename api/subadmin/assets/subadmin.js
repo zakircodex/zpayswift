@@ -113,6 +113,24 @@ function fmtMoney(v, prefix = 'BDT'){
   return `${prefix} ${money(v)}`;
 }
 
+function walletPrefix(currency){
+  return String(currency || 'BDT').toUpperCase() === 'MYR' ? 'RM' : 'BDT';
+}
+
+function fmtWalletMoney(row, type = 'available'){
+  const currency = String(row?.display_currency || row?.wallet_currency || row?.currency || 'BDT').toUpperCase();
+  const key = type === 'hold' ? 'display_hold_balance' : 'display_available_balance';
+  const fallback = type === 'hold' ? 'hold_balance' : 'available_balance';
+  return `${walletPrefix(currency)} ${money(row?.[key] ?? row?.[fallback] ?? 0)}`;
+}
+
+function walletRawHint(row, type = 'available'){
+  const note = String(row?.conversion_note || '').trim();
+  if (!note) return '';
+  const rawKey = type === 'hold' ? 'hold_balance_bdt' : 'available_balance_bdt';
+  return `Stored: BDT ${money(row?.[rawKey] ?? row?.[type === 'hold' ? 'hold_balance' : 'available_balance'] ?? 0)}`;
+}
+
 function fmtTs(ts){
   if (!ts) return '-';
   const raw = Number(ts);
@@ -813,8 +831,14 @@ function renderSummary(){
   if (el('meStatus')) el('meStatus').textContent = me.status || data.status || '-';
   if (el('meLastLogin')) el('meLastLogin').textContent = fmtTs(data.last_login_at || me.last_login_at || 0);
 
-  if (el('availableBalance')) el('availableBalance').textContent = money(wallet.available_balance || 0);
-  if (el('holdBalance')) el('holdBalance').textContent = money(wallet.hold_balance || 0);
+  if (el('availableBalance')) {
+    el('availableBalance').textContent = fmtWalletMoney(wallet, 'available');
+    el('availableBalance').title = walletRawHint(wallet, 'available');
+  }
+  if (el('holdBalance')) {
+    el('holdBalance').textContent = fmtWalletMoney(wallet, 'hold');
+    el('holdBalance').title = walletRawHint(wallet, 'hold');
+  }
   if (el('apiKeyCount')) el('apiKeyCount').textContent = String((state.apiKeys || []).length);
   if (el('requestLogCount')) el('requestLogCount').textContent = String((state.requestLogs || []).length);
 
@@ -987,8 +1011,9 @@ function renderUsers(){
         </div>
       </td>
       <td>
-        <div>${fmtMoney(item.available_balance || 0)}</div>
-        <div class="muted" style="margin-top:4px;">Hold: ${fmtMoney(item.hold_balance || 0)}</div>
+        <div>${fmtWalletMoney(item, 'available')}</div>
+        <div class="muted" style="margin-top:4px;">Hold: ${fmtWalletMoney(item, 'hold')}</div>
+        ${walletRawHint(item, 'available') ? `<div class="muted" style="margin-top:4px;">${esc(walletRawHint(item, 'available'))}</div>` : ''}
       </td>
       <td>${fmtMoney(item.min_amount || 0)} - ${fmtMoney(item.max_amount || 0)}</td>
       <td class="users-table-action">
@@ -1022,13 +1047,7 @@ async function updateUserCountry(button, uid){
       await proxyPost('user_country_update', { uid, country, country_code: country }, 'Updating country...');
     });
 
-    const row = (state.users || []).find(item => String(item.uid || '') === uid);
-    if (row) {
-      row.country = country;
-      row.country_code = country;
-    }
-
-    renderUsers();
+    await loadUsers();
     showToast('User country updated', 'ok');
   }catch(err){
     showToast(err.message || 'Failed to update country', 'error');
@@ -1075,7 +1094,7 @@ function openAddBalanceModal(uid){
 
   if (el('addBalanceTargetName')) el('addBalanceTargetName').textContent = row.name || '-';
   if (el('addBalanceTargetPhone')) el('addBalanceTargetPhone').textContent = row.phone || '-';
-  if (el('addBalanceTargetBalance')) el('addBalanceTargetBalance').textContent = money(row.available_balance || 0);
+  if (el('addBalanceTargetBalance')) el('addBalanceTargetBalance').textContent = fmtWalletMoney(row, 'available');
   if (el('addBalanceTargetRole')) el('addBalanceTargetRole').textContent = row.role || '-';
 
   el('addBalanceModalWrap')?.classList.add('open');
@@ -1302,9 +1321,14 @@ function mfsMoney(row, amount){
   return `${currency === 'MYR' ? 'RM' : 'BDT'} ${money(amount)}`;
 }
 
+function mfsIsRemittance(row){
+  return String(row?.service_mode || '').toUpperCase() === 'REMITTANCE'
+    || String(row?.country_code || row?.country || '').toUpperCase() === 'MY'
+    || Number(row?.amount_rm ?? row?.amount_myr ?? 0) > 0;
+}
+
 function mfsAmountText(row){
-  const currency = String(row?.wallet_currency || '').toUpperCase();
-  if (currency === 'MYR') {
+  if (mfsIsRemittance(row)) {
     return `BDT ${money(row?.amount_bdt || 0)} / RM ${money(row?.amount_rm ?? row?.amount_myr ?? 0)}`;
   }
 
@@ -1312,6 +1336,14 @@ function mfsAmountText(row){
 }
 
 function mfsFeePayText(row){
+  if (mfsIsRemittance(row)) {
+    const currency = String(row?.wallet_currency || '').toUpperCase();
+    const hold = currency === 'MYR'
+      ? `RM ${money(row?.total_debit_rm ?? row?.total_pay_myr ?? row?.total_debit ?? 0)}`
+      : `BDT ${money(row?.total_debit_bdt ?? row?.total_hold_bdt ?? row?.total_debit ?? 0)}`;
+    return `BDT ${money(row?.fee_bdt || 0)} / RM ${money(row?.fee_rm ?? row?.fee_myr ?? 0)} / ${hold}`;
+  }
+
   return `${mfsMoney(row, mfsRowFee(row))} / ${mfsMoney(row, mfsRowPay(row))}`;
 }
 

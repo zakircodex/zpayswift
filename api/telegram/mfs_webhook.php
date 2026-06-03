@@ -324,11 +324,18 @@ function mfs_tg_text(array $row, string $status, string $message): string
 {
     $currency = strtoupper((string)($row['wallet_currency'] ?? 'BDT'));
     $amountRm = (float)($row['amount_rm'] ?? $row['amount_myr'] ?? 0);
+    $isRemittance = strtoupper((string)($row['service_mode'] ?? '')) === 'REMITTANCE'
+        || strtoupper((string)($row['country_code'] ?? '')) === 'MY'
+        || $amountRm > 0;
     $fee = $currency === 'MYR'
         ? 'RM ' . mfs_tg_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0)
         : 'BDT ' . mfs_tg_money($row['fee_bdt'] ?? 0);
-    $total = ($currency === 'MYR' ? 'RM ' : 'BDT ')
-        . mfs_tg_money($row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
+    if ($isRemittance && $currency !== 'MYR') {
+        $fee .= ' / RM ' . mfs_tg_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0);
+    }
+    $total = $currency === 'MYR'
+        ? 'RM ' . mfs_tg_money($row['total_debit_rm'] ?? $row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0)
+        : 'BDT ' . mfs_tg_money($row['total_debit_bdt'] ?? $row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
     $senderDetails = (string)($row['sender_details'] ?? $row['sender_last_digit'] ?? $row['last_digit'] ?? '');
     $icon = $status === 'SUCCESSFUL' ? '✅' : ($status === 'FAILED' ? '❌' : ($status === 'PROCESSING' ? '🔄' : '🔢'));
 
@@ -352,8 +359,8 @@ function mfs_tg_text(array $row, string $status, string $message): string
         '<b>Pay / Total Hold:</b> <b>' . mfs_tg_h($total) . '</b>' . "\n" .
         '<b>Reference:</b> ' . mfs_tg_h($row['reference'] ?? '-');
 
-    if ($currency === 'MYR') {
-        $text .= "\n" . '<b>Rate:</b> RM 1 = BDT ' . mfs_tg_money($row['exchange_rate'] ?? 0);
+    if ($isRemittance) {
+        $text .= "\n" . '<b>Rate:</b> RM 1 = BDT ' . mfs_tg_money($row['exchange_rate'] ?? $row['rate_myr_to_bdt'] ?? 0);
     }
 
     if ($senderDetails !== '') {

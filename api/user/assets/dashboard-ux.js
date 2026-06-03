@@ -67,6 +67,9 @@
     var feeText = currency === 'MYR'
       ? 'RM ' + money(p.fee_myr || p.fee_rm || 0)
       : 'BDT ' + money(p.fee_bdt || 0);
+    if (mode === 'REMITTANCE' && currency !== 'MYR') {
+      feeText += ' / RM ' + money(p.fee_myr || p.fee_rm || 0);
+    }
     var totalText = currency === 'MYR'
       ? 'RM ' + money(p.total_pay_myr || p.total_debit_rm || p.wallet_hold_amount || 0)
       : 'BDT ' + money(p.total_pay_bdt || p.total_debit_bdt || p.wallet_hold_amount || 0);

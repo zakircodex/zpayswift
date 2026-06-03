@@ -138,12 +138,12 @@ header('Pragma: no-cache');
         </div>
 
         <div class="hero-balance-label">Available Balance</div>
-        <div class="hero-balance">BDT <span id="heroBalance">0.00</span></div>
+        <div class="hero-balance"><span id="heroBalancePrefix">BDT</span> <span id="heroBalance">0.00</span></div>
 
         <div class="hero-grid">
           <div class="hero-mini">
             <div class="hero-mini-label">Hold Balance</div>
-            <div class="hero-mini-value">BDT <span id="heroHold">0.00</span></div>
+            <div class="hero-mini-value"><span id="heroHoldPrefix">BDT</span> <span id="heroHold">0.00</span></div>
           </div>
 
           <div class="hero-mini">

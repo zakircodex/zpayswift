@@ -551,6 +551,9 @@ function user_proxy_wallet_summary_payload(string $uid, array $sessionUser = [])
 
     $walletRow = user_proxy_load_wallet($uid);
     $roleSettingsRow = user_proxy_load_role_settings($uid, (string)($userRow['role'] ?? 'USER'));
+    $walletDisplay = function_exists('mfs_wallet_display_payload')
+        ? mfs_wallet_display_payload(is_array($userRow) ? $userRow : [], is_array($walletRow) ? $walletRow : [])
+        : [];
 
     return [
         'uid' => (string)($userRow['uid'] ?? $uid),
@@ -564,6 +567,17 @@ function user_proxy_wallet_summary_payload(string $uid, array $sessionUser = [])
         'wallet' => [
             'available_balance' => (float)($walletRow['available_balance'] ?? 0),
             'hold_balance' => (float)($walletRow['hold_balance'] ?? 0),
+            'currency' => (string)($walletDisplay['currency'] ?? $walletRow['currency'] ?? $walletRow['wallet_currency'] ?? 'BDT'),
+            'wallet_currency' => (string)($walletDisplay['wallet_currency'] ?? $walletRow['wallet_currency'] ?? $walletRow['currency'] ?? 'BDT'),
+            'display_currency' => (string)($walletDisplay['display_currency'] ?? $walletRow['currency'] ?? 'BDT'),
+            'display_available_balance' => (float)($walletDisplay['display_available_balance'] ?? $walletRow['available_balance'] ?? 0),
+            'display_hold_balance' => (float)($walletDisplay['display_hold_balance'] ?? $walletRow['hold_balance'] ?? 0),
+            'available_balance_bdt' => (float)($walletDisplay['available_balance_bdt'] ?? $walletRow['available_balance'] ?? 0),
+            'hold_balance_bdt' => (float)($walletDisplay['hold_balance_bdt'] ?? $walletRow['hold_balance'] ?? 0),
+            'available_balance_myr' => (float)($walletDisplay['available_balance_myr'] ?? 0),
+            'hold_balance_myr' => (float)($walletDisplay['hold_balance_myr'] ?? 0),
+            'rate_myr_bdt' => (float)($walletDisplay['rate_myr_bdt'] ?? 0),
+            'conversion_note' => (string)($walletDisplay['conversion_note'] ?? ''),
             'total_topup_spent' => (float)($walletRow['total_topup_spent'] ?? 0),
             'total_bundle_spent' => (float)($walletRow['total_bundle_spent'] ?? 0),
             'total_refund' => (float)($walletRow['total_refund'] ?? 0),
@@ -2301,12 +2315,6 @@ function user_proxy_wallet_currency_for_user(array $user, array $wallet): string
         return $map[$currency];
     }
 
-    $country = user_proxy_country_code_from_user($user);
-
-    if ($country === 'MY') {
-        return 'MYR';
-    }
-
     return 'BDT';
 }
 
@@ -2543,7 +2551,7 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
         $feeBdt = user_proxy_round_money($feeMyr * $rate);
         $totalPayMyr = user_proxy_round_money($amountMyr + $feeMyr);
         $totalPayBdt = user_proxy_round_money($amountBdt + $feeBdt);
-        $walletHoldAmount = $totalPayMyr;
+        $walletHoldAmount = $walletCurrency === 'MYR' ? $totalPayMyr : $totalPayBdt;
     } else {
         $amountBdt = $amountBdtInput > 0 ? $amountBdtInput : user_proxy_round_money($amountMyrInput * $rate);
 
@@ -2706,13 +2714,18 @@ function user_proxy_send_mfs_telegram(array $row): void
 
     $requestId = (string)($row['request_id'] ?? '');
     $provider = (string)($row['mfs_provider'] ?? '');
-    $serviceMode = (string)($row['service_mode'] ?? '');
-    $currency = (string)($row['wallet_currency'] ?? '');
+    $currency = strtoupper(trim((string)($row['wallet_currency'] ?? '')));
     $number = (string)($row['receiver_number'] ?? '');
+    $serviceMode = strtoupper(trim((string)($row['service_mode'] ?? '')));
 
-    $amountLine = $currency === 'MYR'
-        ? 'Pay: RM ' . user_proxy_round_money($row['total_pay_myr'] ?? 0) . "\nReceiver Gets: BDT " . user_proxy_round_money($row['amount_bdt'] ?? 0) . "\nFee: RM " . user_proxy_round_money($row['fee_myr'] ?? 0)
-        : 'Pay: BDT ' . user_proxy_round_money($row['total_pay_bdt'] ?? 0) . "\nAmount: BDT " . user_proxy_round_money($row['amount_bdt'] ?? 0) . "\nFee: BDT " . user_proxy_round_money($row['fee_bdt'] ?? 0);
+    if ($serviceMode === 'REMITTANCE') {
+        $amountLine = $currency === 'MYR'
+            ? 'Pay / Hold: RM ' . user_proxy_round_money($row['total_pay_myr'] ?? 0) . "\nAmount BDT: BDT " . user_proxy_round_money($row['amount_bdt'] ?? 0) . "\nFee: RM " . user_proxy_round_money($row['fee_myr'] ?? 0)
+            : 'Pay / Hold: BDT ' . user_proxy_round_money($row['total_pay_bdt'] ?? 0) . "\nAmount RM: RM " . user_proxy_round_money($row['amount_myr'] ?? 0) . "\nFee: BDT " . user_proxy_round_money($row['fee_bdt'] ?? 0);
+        $amountLine .= "\nRate: RM 1 = BDT " . user_proxy_round_money($row['rate_myr_to_bdt'] ?? 0);
+    } else {
+        $amountLine = 'Pay: BDT ' . user_proxy_round_money($row['total_pay_bdt'] ?? 0) . "\nAmount: BDT " . user_proxy_round_money($row['amount_bdt'] ?? 0) . "\nFee: BDT " . user_proxy_round_money($row['fee_bdt'] ?? 0);
+    }
 
     $text =
         "🔔 New MFS Request\n\n" .
@@ -2935,11 +2948,16 @@ function user_proxy_create_mfs_request(string $uid, array $body): array
     }
 
     $response = user_proxy_public_request_log($row, $requestId);
-    $response['wallet'] = [
+    $responseWallet = [
         'available_balance' => (float)($hold['after_available'] ?? $hold['available_balance'] ?? 0),
         'hold_balance' => (float)($hold['after_hold'] ?? $hold['hold_balance'] ?? 0),
         'currency' => (string)$data['wallet_currency'],
+        'wallet_currency' => (string)$data['wallet_currency'],
     ];
+    if (function_exists('mfs_wallet_display_payload')) {
+        $responseWallet += mfs_wallet_display_payload(is_array($user) ? $user : [], $responseWallet);
+    }
+    $response['wallet'] = $responseWallet;
 
     return [
         'ok' => true,

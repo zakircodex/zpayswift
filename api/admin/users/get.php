@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
+require_once dirname(__DIR__, 2) . '/lib/mfs.php';
 
 function admin_user_get_country_code(array $user): string
 {
@@ -36,6 +37,7 @@ if (!is_array($wallet)) {
 }
 
 $role = (string)($user['role'] ?? 'USER');
+$walletDisplay = function_exists('mfs_wallet_display_payload') ? mfs_wallet_display_payload($user, $wallet) : [];
 
 $roleSettings = fb_get('USER_ROLE_SETTINGS/' . $uid);
 if (!is_array($roleSettings)) {
@@ -57,6 +59,17 @@ api_response(true, 'SUCCESS', 'User loaded', [
     'wallet' => [
         'available_balance' => (float)($wallet['available_balance'] ?? 0),
         'hold_balance' => (float)($wallet['hold_balance'] ?? 0),
+        'currency' => (string)($walletDisplay['currency'] ?? $wallet['currency'] ?? $wallet['wallet_currency'] ?? 'BDT'),
+        'wallet_currency' => (string)($walletDisplay['wallet_currency'] ?? $wallet['wallet_currency'] ?? $wallet['currency'] ?? 'BDT'),
+        'display_currency' => (string)($walletDisplay['display_currency'] ?? $wallet['currency'] ?? 'BDT'),
+        'display_available_balance' => (float)($walletDisplay['display_available_balance'] ?? $wallet['available_balance'] ?? 0),
+        'display_hold_balance' => (float)($walletDisplay['display_hold_balance'] ?? $wallet['hold_balance'] ?? 0),
+        'available_balance_bdt' => (float)($walletDisplay['available_balance_bdt'] ?? $wallet['available_balance'] ?? 0),
+        'hold_balance_bdt' => (float)($walletDisplay['hold_balance_bdt'] ?? $wallet['hold_balance'] ?? 0),
+        'available_balance_myr' => (float)($walletDisplay['available_balance_myr'] ?? 0),
+        'hold_balance_myr' => (float)($walletDisplay['hold_balance_myr'] ?? 0),
+        'rate_myr_bdt' => (float)($walletDisplay['rate_myr_bdt'] ?? 0),
+        'conversion_note' => (string)($walletDisplay['conversion_note'] ?? ''),
         'total_topup_spent' => (float)($wallet['total_topup_spent'] ?? 0),
         'total_bundle_spent' => (float)($wallet['total_bundle_spent'] ?? 0),
         'total_refund' => (float)($wallet['total_refund'] ?? 0),

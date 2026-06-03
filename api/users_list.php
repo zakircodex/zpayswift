@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/lib/roles.php';
 require_once __DIR__ . '/lib/wallet.php';
+require_once __DIR__ . '/lib/mfs.php';
 require_once __DIR__ . '/lib/users_admin.php';
 
 header('Content-Type: application/json; charset=utf-8');

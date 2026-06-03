@@ -68,11 +68,18 @@ function zpay_mfs_create_text(array $row): string
     $currency = strtoupper((string)($row['wallet_currency'] ?? 'BDT'));
     $requestId = (string)($row['request_id'] ?? '-');
     $amountRm = (float)($row['amount_rm'] ?? $row['amount_myr'] ?? 0);
+    $isRemittance = strtoupper((string)($row['service_mode'] ?? '')) === 'REMITTANCE'
+        || strtoupper((string)($row['country_code'] ?? '')) === 'MY'
+        || $amountRm > 0;
     $fee = $currency === 'MYR'
         ? 'RM ' . zpay_mfs_create_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0)
         : 'BDT ' . zpay_mfs_create_money($row['fee_bdt'] ?? 0);
-    $total = ($currency === 'MYR' ? 'RM ' : 'BDT ')
-        . zpay_mfs_create_money($row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
+    if ($isRemittance && $currency !== 'MYR') {
+        $fee .= ' / RM ' . zpay_mfs_create_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0);
+    }
+    $total = $currency === 'MYR'
+        ? 'RM ' . zpay_mfs_create_money($row['total_debit_rm'] ?? $row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0)
+        : 'BDT ' . zpay_mfs_create_money($row['total_debit_bdt'] ?? $row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
     $text = "🔔 <b>New MFS Request</b>\n\n" .
         "<b>Request ID:</b> <code>" . zpay_mfs_create_h($requestId) . "</code>\n" .
         "<b>UID:</b> <code>" . zpay_mfs_create_h($row['uid'] ?? '-') . "</code>\n" .
@@ -87,7 +94,7 @@ function zpay_mfs_create_text(array $row): string
     $text .=
         "<b>Fee:</b> <b>" . zpay_mfs_create_h($fee) . "</b>\n" .
         "<b>Pay / Total Hold:</b> <b>" . zpay_mfs_create_h($total) . "</b>\n";
-    if ($currency === 'MYR') $text .= "<b>Rate:</b> RM 1 = BDT " . zpay_mfs_create_money($row['exchange_rate'] ?? 0) . "\n";
+    if ($isRemittance) $text .= "<b>Rate:</b> RM 1 = BDT " . zpay_mfs_create_money($row['exchange_rate'] ?? $row['rate_myr_to_bdt'] ?? 0) . "\n";
     $text .= "<b>Reference:</b> " . zpay_mfs_create_h($row['reference'] ?? '-') . "\n" .
         "<b>Status:</b> <b>PENDING</b>";
     return $text;

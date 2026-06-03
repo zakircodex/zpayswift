@@ -26,7 +26,16 @@
   function normalizeRows(data){ return Array.isArray(data.items)?data.items:Array.isArray(data.rows)?data.rows:Array.isArray(data.requests)?data.requests:[]; }
   function totalRows(data){ var total=Number(data&&data.pagination&&data.pagination.total); return Number.isFinite(total)?total:normalizeRows(data||{}).length; }
   function rowNumber(r){ return r.receiver_number||r.number||r.mfs_number||r.to_number||'-'; }
-  function rowAmount(r){ var c=String(r.wallet_currency||'BDT').toUpperCase(); if(c==='MYR') return 'RM '+money(r.total_debit||r.amount_rm||0); return 'BDT '+money(r.total_debit||r.amount_bdt||r.amount||0); }
+  function isRemittance(r){ return String(r.service_mode||'').toUpperCase()==='REMITTANCE'||String(r.country_code||r.country||'').toUpperCase()==='MY'||Number(r.amount_rm||r.amount_myr||0)>0; }
+  function rowAmount(r){
+    var c=String(r.wallet_currency||'BDT').toUpperCase();
+    if(isRemittance(r)){
+      var hold=c==='MYR'?'RM '+money(r.total_debit_rm||r.total_debit||r.amount_rm||0):'BDT '+money(r.total_debit_bdt||r.total_debit||r.amount_bdt||r.amount||0);
+      return 'BDT '+money(r.amount_bdt||0)+' / RM '+money(r.amount_rm||r.amount_myr||0)+' | Hold '+hold;
+    }
+    if(c==='MYR') return 'RM '+money(r.total_debit||r.amount_rm||0);
+    return 'BDT '+money(r.total_debit||r.amount_bdt||r.amount||0);
+  }
   function num(id){ var n=Number(el(id)&&el(id).value||0); return Number.isFinite(n)?n:0; }
   function fee(settings,country,provider){ return (((settings||{}).fees||{})[country]||{})[provider]||{}; }
 
@@ -351,7 +360,7 @@
     box.textContent=[
       'Backend will use the target account country/currency for the final hold.',
       'BD target: LOCAL, Amount BDT '+money(amountBdt)+', Fee BDT '+money(bdFee)+', Total Hold BDT '+money(amountBdt+bdFee),
-      'MY target: REMITTANCE, Rate RM 1 = BDT '+money(rate)+', Amount RM '+money(amountRm)+', Fee RM '+money(myFee)+', Total Hold RM '+money(amountRm+myFee)
+      'MY target: REMITTANCE, Rate RM 1 = BDT '+money(rate)+', Amount RM '+money(amountRm)+', Fee RM '+money(myFee)+', Hold RM wallet RM '+money(amountRm+myFee)+' or BDT wallet BDT '+money(amountBdt+(myFee*rate))
     ].join('\n');
   }
 

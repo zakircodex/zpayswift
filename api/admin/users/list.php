@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
+require_once dirname(__DIR__, 2) . '/lib/mfs.php';
 
 function admin_users_list_country_code(array $user): string
 {
@@ -39,6 +40,7 @@ foreach ($users as $uid => $user) {
     }
 
     $wallet = is_array($wallets[$uid] ?? null) ? $wallets[$uid] : [];
+    $walletDisplay = function_exists('mfs_wallet_display_payload') ? mfs_wallet_display_payload($user, $wallet) : [];
     $role = (string)($user['role'] ?? 'USER');
 
     $roleSettings = fb_get('USER_ROLE_SETTINGS/' . $uid);
@@ -58,6 +60,17 @@ foreach ($users as $uid => $user) {
 
         'available_balance' => (float)($wallet['available_balance'] ?? 0),
         'hold_balance' => (float)($wallet['hold_balance'] ?? 0),
+        'currency' => (string)($walletDisplay['currency'] ?? $wallet['currency'] ?? $wallet['wallet_currency'] ?? 'BDT'),
+        'wallet_currency' => (string)($walletDisplay['wallet_currency'] ?? $wallet['wallet_currency'] ?? $wallet['currency'] ?? 'BDT'),
+        'display_currency' => (string)($walletDisplay['display_currency'] ?? $wallet['currency'] ?? 'BDT'),
+        'display_available_balance' => (float)($walletDisplay['display_available_balance'] ?? $wallet['available_balance'] ?? 0),
+        'display_hold_balance' => (float)($walletDisplay['display_hold_balance'] ?? $wallet['hold_balance'] ?? 0),
+        'available_balance_bdt' => (float)($walletDisplay['available_balance_bdt'] ?? $wallet['available_balance'] ?? 0),
+        'hold_balance_bdt' => (float)($walletDisplay['hold_balance_bdt'] ?? $wallet['hold_balance'] ?? 0),
+        'available_balance_myr' => (float)($walletDisplay['available_balance_myr'] ?? 0),
+        'hold_balance_myr' => (float)($walletDisplay['hold_balance_myr'] ?? 0),
+        'rate_myr_bdt' => (float)($walletDisplay['rate_myr_bdt'] ?? 0),
+        'conversion_note' => (string)($walletDisplay['conversion_note'] ?? ''),
         'created_at' => (int)($user['created_at'] ?? 0),
 
         'role_settings' => $roleSettings,
