@@ -493,8 +493,8 @@ if (!empty($_SESSION['subadmin_session_token']) && !empty($_SESSION['subadmin_us
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script>
-window.SUBADMIN_PROXY_URL = '/zawtopup/api/subadmin/proxy.php';
+window.SUBADMIN_PROXY_URL = 'proxy.php';
 </script>
-<script src="assets/subadmin-login.js?v=4"></script>
+<script src="assets/subadmin-login.js?v=5"></script>
 </body>
 </html>

@@ -10,8 +10,9 @@ const forgotState = {
 function normalizeSubadminUrl(url, fallback) {
   const value = String(url || '').trim();
   if (!value) return fallback;
-  if (value.indexOf('/zawtopup/api/subadmin/') !== -1) return value.split('/zawtopup/api/subadmin/').pop() || fallback;
-  if (value.indexOf('/zpayswift/api/subadmin/') !== -1) return value.split('/zpayswift/api/subadmin/').pop() || fallback;
+  const marker = '/api/subadmin/';
+  const index = value.indexOf(marker);
+  if (index !== -1) return value.slice(index + marker.length) || fallback;
   return value;
 }
 

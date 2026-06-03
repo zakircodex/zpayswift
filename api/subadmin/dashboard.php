@@ -29,8 +29,8 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>ZawTopup Subadmin Panel</title>
-  <link rel="stylesheet" href="assets/subadmin.css?v=13">
+  <title>Z-Pay Swift Subadmin Panel</title>
+  <link rel="stylesheet" href="assets/subadmin.css?v=14">
 </head>
 <body>
 
@@ -44,7 +44,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
         <div class="sidebar-brand">
           <div class="logo">S</div>
           <div>
-            <h3>ZawTopup<br>Subadmin</h3>
+            <h3>Z-Pay Swift<br>Subadmin</h3>
             <p>API keys, users, wallet tools and request monitoring</p>
           </div>
         </div>
@@ -64,6 +64,11 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 
           <button class="side-btn" data-page-section="panelTopupSection">
             <span>Panel Topup</span>
+            <span>›</span>
+          </button>
+
+          <button class="side-btn" data-page-section="mfsSection">
+            <span>bKash / Nagad</span>
             <span>›</span>
           </button>
 
@@ -315,6 +320,140 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="mfsSection" class="page-section">
+          <div class="mfs-panel-layout">
+            <div class="card mfs-create-card">
+              <div class="topbar mb-14">
+                <div>
+                  <h3>bKash / Nagad</h3>
+                  <p>Create SEND MONEY request from your own subadmin wallet</p>
+                </div>
+                <div class="actions">
+                  <button class="btn blue" id="subMfsRefreshBtn" type="button">Refresh MFS</button>
+                </div>
+              </div>
+
+              <div class="mfs-summary-grid">
+                <div class="mfs-summary-card pending">
+                  <label>Pending</label>
+                  <strong id="subMfsSummaryPending">0</strong>
+                  <span>Waiting admin</span>
+                </div>
+                <div class="mfs-summary-card processing">
+                  <label>Processing</label>
+                  <strong id="subMfsSummaryProcessing">0</strong>
+                  <span>In progress</span>
+                </div>
+                <div class="mfs-summary-card done">
+                  <label>Done</label>
+                  <strong id="subMfsSummaryDone">0</strong>
+                  <span>Successful</span>
+                </div>
+                <div class="mfs-summary-card failed">
+                  <label>Failed</label>
+                  <strong id="subMfsSummaryFailed">0</strong>
+                  <span>Refunded</span>
+                </div>
+              </div>
+
+              <div class="sub-mfs-create-grid mt-14">
+                <div class="field">
+                  <label>Provider</label>
+                  <select id="subMfsProvider" class="input">
+                    <option value="BKASH">bKash</option>
+                    <option value="NAGAD">Nagad</option>
+                  </select>
+                </div>
+
+                <div class="field">
+                  <label>Receiver Number</label>
+                  <input id="subMfsReceiver" class="input" inputmode="numeric" placeholder="01XXXXXXXXX">
+                </div>
+
+                <div class="field">
+                  <label>Amount BDT</label>
+                  <input id="subMfsAmountBdt" class="input" type="number" step="0.01" min="500" max="50000" placeholder="500 - 50000">
+                </div>
+
+                <div class="field">
+                  <label>Transaction PIN</label>
+                  <input id="subMfsPin" class="input" type="password" placeholder="Your account PIN">
+                </div>
+
+                <div class="field">
+                  <label>Reference <span class="muted">Optional</span></label>
+                  <input id="subMfsReference" class="input" placeholder="Reference or memo">
+                </div>
+
+                <div class="field">
+                  <label>Note <span class="muted">Optional</span></label>
+                  <input id="subMfsNote" class="input" placeholder="Request note">
+                </div>
+              </div>
+
+              <p class="muted tiny-note mt-10">Minimum BDT 500 and maximum BDT 50,000 per request. Failed requests refund the same subadmin wallet.</p>
+
+              <div class="actions mt-10">
+                <button class="btn green" id="subMfsCreateBtn" type="button">Create MFS Request</button>
+                <button class="btn ghost" id="subMfsClearBtn" type="button">Clear</button>
+              </div>
+
+              <div class="box mt-14">
+                <label>Status</label>
+                <div id="subMfsOutput" class="status-box-clean">No MFS request created yet.</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="topbar mb-14">
+                <div>
+                  <h3>My MFS Requests</h3>
+                  <p>Pending, processing, successful and failed requests created from this account</p>
+                </div>
+                <div class="actions sub-mfs-tabs">
+                  <button class="btn green sub-mfs-tab active" type="button" data-mfs-tab="pending">Pending</button>
+                  <button class="btn ghost sub-mfs-tab" type="button" data-mfs-tab="processing">Processing</button>
+                  <button class="btn ghost sub-mfs-tab" type="button" data-mfs-tab="done">Done</button>
+                  <button class="btn ghost sub-mfs-tab" type="button" data-mfs-tab="failed">Failed</button>
+                </div>
+              </div>
+
+              <div class="sub-mfs-filter-row mb-16">
+                <input id="subMfsSearch" class="input" placeholder="Search request, number, provider">
+                <input id="subMfsNumberFilter" class="input" placeholder="Receiver number filter">
+                <select id="subMfsProviderFilter" class="input">
+                  <option value="">All Providers</option>
+                  <option value="BKASH">bKash</option>
+                  <option value="NAGAD">Nagad</option>
+                </select>
+                <button class="btn blue" id="subMfsApplyFilterBtn" type="button">Apply Filter</button>
+              </div>
+
+              <div class="table-wrap sub-mfs-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Request ID</th>
+                      <th>Provider</th>
+                      <th>Receiver</th>
+                      <th>Amount</th>
+                      <th>Fee / Pay</th>
+                      <th>Status</th>
+                      <th>Created</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody id="subMfsTableBody">
+                    <tr><td colspan="8" class="muted">No MFS request loaded yet.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div id="subMfsMobileList" class="sub-mfs-mobile-list"></div>
             </div>
           </div>
         </div>
@@ -611,7 +750,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
               <div class="test-grid">
                 <div class="field">
                   <label>Topup Create API Endpoint</label>
-                  <input id="liveApiEndpoint" class="input" value="https://zpayswift.com/zawtopup/api/public_api/topup_create.php">
+                  <input id="liveApiEndpoint" class="input" value="">
                 </div>
 
                 <div class="field">
@@ -665,7 +804,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
               <div class="test-grid">
                 <div class="field">
                   <label>Bundle Create API Endpoint</label>
-                  <input id="bundleCreateEndpoint" class="input" value="https://zpayswift.com/zawtopup/api/public_api/bundle_create.php">
+                  <input id="bundleCreateEndpoint" class="input" value="">
                 </div>
 
                 <div class="field">
@@ -1026,9 +1165,9 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script>
-window.SUBADMIN_PROXY_URL = '/zawtopup/api/subadmin/proxy.php';
+window.SUBADMIN_PROXY_URL = 'proxy.php';
 </script>
-<script src="assets/subadmin.js?v=12"></script>
+<script src="assets/subadmin.js?v=13"></script>
 <script src="assets/subadmin-otp.js?v=3"></script>
 </body>
 </html>

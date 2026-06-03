@@ -6,6 +6,7 @@ require_once app_private_config_path();
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/subadmin_api.php';
 require_once dirname(__DIR__) . '/lib/bundle.php';
+require_once dirname(__DIR__) . '/lib/mfs.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -1080,6 +1081,270 @@ function sub_proxy_create_panel_bundle_fixed(string $uid, string $offerId, strin
     ];
 }
 
+function sub_proxy_mfs_token(): string
+{
+    return defined('TELEGRAM_BOT_TOKEN') ? trim((string)TELEGRAM_BOT_TOKEN) : '';
+}
+
+function sub_proxy_mfs_chat_id(): string
+{
+    return defined('TELEGRAM_CHAT_ID') ? trim((string)TELEGRAM_CHAT_ID) : '';
+}
+
+function sub_proxy_mfs_action_key(): string
+{
+    if (defined('TELEGRAM_MFS_ACTION_KEY') && trim((string)TELEGRAM_MFS_ACTION_KEY) !== '') {
+        return trim((string)TELEGRAM_MFS_ACTION_KEY);
+    }
+
+    if (defined('TELEGRAM_BUNDLE_ACTION_KEY') && trim((string)TELEGRAM_BUNDLE_ACTION_KEY) !== '') {
+        return trim((string)TELEGRAM_BUNDLE_ACTION_KEY);
+    }
+
+    return defined('APP_KEY') ? trim((string)APP_KEY) : '';
+}
+
+function sub_proxy_mfs_h($value): string
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function sub_proxy_mfs_money($value): string
+{
+    return number_format((float)$value, 2, '.', '');
+}
+
+function sub_proxy_mfs_signature(string $requestId, string $action): string
+{
+    return substr(hash_hmac('sha256', strtolower(trim($action)) . '|' . trim($requestId), sub_proxy_mfs_action_key()), 0, 16);
+}
+
+function sub_proxy_mfs_callback_data(string $action, string $requestId): string
+{
+    $action = strtolower(trim($action));
+    return 'mfs|' . $action . '|' . trim($requestId) . '|' . sub_proxy_mfs_signature($requestId, $action);
+}
+
+function sub_proxy_mfs_keyboard(string $requestId): array
+{
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => '🔄 Processing', 'callback_data' => sub_proxy_mfs_callback_data('p', $requestId)],
+            ],
+            [
+                ['text' => '✅ Success', 'callback_data' => sub_proxy_mfs_callback_data('s', $requestId)],
+                ['text' => '❌ Failed', 'callback_data' => sub_proxy_mfs_callback_data('f', $requestId)],
+            ],
+        ],
+    ];
+}
+
+function sub_proxy_mfs_telegram_api(string $method, array $payload): array
+{
+    $token = sub_proxy_mfs_token();
+    if ($token === '') {
+        return ['ok' => false, 'http' => 0, 'raw' => '', 'error' => 'TELEGRAM_BOT_TOKEN missing'];
+    }
+
+    if (!function_exists('curl_init')) {
+        return ['ok' => false, 'http' => 0, 'raw' => '', 'error' => 'PHP cURL extension missing'];
+    }
+
+    $ch = curl_init('https://api.telegram.org/bot' . $token . '/' . ltrim($method, '/'));
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json'],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    ]);
+
+    $raw = curl_exec($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+
+    $json = is_string($raw) ? json_decode($raw, true) : null;
+
+    return [
+        'ok' => $http >= 200 && $http < 300 && is_array($json) && !empty($json['ok']),
+        'http' => $http,
+        'raw' => is_string($raw) ? substr($raw, 0, 1200) : '',
+        'error' => $err,
+    ];
+}
+
+function sub_proxy_mfs_message(array $row): string
+{
+    $currency = strtoupper((string)($row['wallet_currency'] ?? 'BDT'));
+    $requestId = (string)($row['request_id'] ?? '-');
+    $amountRm = (float)($row['amount_rm'] ?? $row['amount_myr'] ?? 0);
+    $fee = $currency === 'MYR'
+        ? 'RM ' . sub_proxy_mfs_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0)
+        : 'BDT ' . sub_proxy_mfs_money($row['fee_bdt'] ?? 0);
+    $total = ($currency === 'MYR' ? 'RM ' : 'BDT ')
+        . sub_proxy_mfs_money($row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
+
+    $text = "🔔 <b>New MFS Request</b>\n\n" .
+        "<b>Request ID:</b> <code>" . sub_proxy_mfs_h($requestId) . "</code>\n" .
+        "<b>UID:</b> <code>" . sub_proxy_mfs_h($row['uid'] ?? '-') . "</code>\n" .
+        "<b>User Phone:</b> <code>" . sub_proxy_mfs_h($row['user_phone'] ?? '-') . "</code>\n\n" .
+        "<b>Provider:</b> <b>" . sub_proxy_mfs_h($row['provider_name'] ?? $row['provider'] ?? '-') . "</b>\n" .
+        "<b>Mode:</b> " . sub_proxy_mfs_h($row['service_mode'] ?? '-') . "\n" .
+        "<b>Type:</b> " . sub_proxy_mfs_h($row['service_type'] ?? 'SEND_MONEY') . "\n" .
+        "<b>Receiver Number:</b> <code>" . sub_proxy_mfs_h($row['receiver_number'] ?? $row['number'] ?? '-') . "</code>\n" .
+        "<b>Amount BDT:</b> <b>BDT " . sub_proxy_mfs_money($row['amount_bdt'] ?? 0) . "</b>\n";
+
+    if ($amountRm > 0) {
+        $text .= "<b>Amount RM:</b> <b>RM " . sub_proxy_mfs_money($amountRm) . "</b>\n";
+    }
+
+    $text .=
+        "<b>Fee:</b> <b>" . sub_proxy_mfs_h($fee) . "</b>\n" .
+        "<b>Pay / Total Hold:</b> <b>" . sub_proxy_mfs_h($total) . "</b>\n";
+
+    if ($currency === 'MYR') {
+        $text .= "<b>Rate:</b> RM 1 = BDT " . sub_proxy_mfs_money($row['exchange_rate'] ?? 0) . "\n";
+    }
+
+    $text .=
+        "<b>Reference:</b> " . sub_proxy_mfs_h($row['reference'] ?? '-') . "\n" .
+        "<b>Status:</b> <b>PENDING</b>";
+
+    return $text;
+}
+
+function sub_proxy_mfs_patch_telegram(string $requestId, array $telegram): void
+{
+    $requestId = trim($requestId);
+    if ($requestId === '') {
+        return;
+    }
+
+    $patch = [
+        'telegram_sent' => !empty($telegram['ok']),
+        'telegram_sent_at' => sub_proxy_now(),
+        'telegram_http_status' => (int)($telegram['http'] ?? 0),
+        'telegram_error' => (string)($telegram['error'] ?? ''),
+        'updated_at' => sub_proxy_now(),
+    ];
+
+    foreach (['PENDING', 'PROCESSING', 'DONE'] as $bucket) {
+        $row = mfs_fb_get('MFS_REQUESTS/' . $bucket . '/' . $requestId);
+        if (is_array($row)) {
+            mfs_fb_patch('MFS_REQUESTS/' . $bucket . '/' . $requestId, $patch);
+            break;
+        }
+    }
+
+    mfs_fb_put('MFS_TELEGRAM_LOGS/' . $requestId, [
+        'request_id' => $requestId,
+        'http_status' => (int)($telegram['http'] ?? 0),
+        'raw' => (string)($telegram['raw'] ?? ''),
+        'error' => (string)($telegram['error'] ?? ''),
+        'sent_at' => sub_proxy_now(),
+        'with_buttons' => true,
+        'source' => 'SUBADMIN_PANEL',
+    ]);
+}
+
+function sub_proxy_mfs_send_telegram(string $requestId, array $row): array
+{
+    $requestId = trim($requestId);
+
+    $telegram = ['ok' => false, 'http' => 0, 'raw' => '', 'error' => 'Telegram config missing'];
+    if (
+        $requestId !== '' &&
+        sub_proxy_mfs_token() !== '' &&
+        sub_proxy_mfs_chat_id() !== '' &&
+        sub_proxy_mfs_action_key() !== ''
+    ) {
+        $telegram = sub_proxy_mfs_telegram_api('sendMessage', [
+            'chat_id' => sub_proxy_mfs_chat_id(),
+            'text' => sub_proxy_mfs_message($row),
+            'parse_mode' => 'HTML',
+            'disable_web_page_preview' => true,
+            'reply_markup' => sub_proxy_mfs_keyboard($requestId),
+        ]);
+    }
+
+    sub_proxy_mfs_patch_telegram($requestId, $telegram);
+
+    return $telegram;
+}
+
+function sub_proxy_mfs_filter_uid(array $items, string $uid): array
+{
+    $uid = trim($uid);
+
+    return array_values(array_filter($items, static function (array $row) use ($uid): bool {
+        return $uid !== '' && (string)($row['uid'] ?? '') === $uid;
+    }));
+}
+
+function sub_proxy_mfs_rows(string $uid, string $tab, array $filters = []): array
+{
+    $tab = strtolower(trim($tab));
+    $bucket = $tab === 'processing' ? 'PROCESSING' : ($tab === 'done' || $tab === 'failed' ? 'DONE' : 'PENDING');
+
+    $items = function_exists('mfs_read_bucket') ? mfs_read_bucket($bucket) : [];
+    $items = sub_proxy_mfs_filter_uid($items, $uid);
+
+    if ($tab === 'done') {
+        $filters['status'] = 'SUCCESSFUL';
+    } elseif ($tab === 'failed') {
+        $filters['status'] = 'FAILED';
+    }
+
+    if (function_exists('mfs_apply_filters')) {
+        $items = mfs_apply_filters($items, $filters);
+    }
+
+    $search = strtolower(trim((string)($filters['search'] ?? '')));
+    if ($search !== '') {
+        $items = array_values(array_filter($items, static function (array $row) use ($search): bool {
+            $encoded = json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            return is_string($encoded) && strpos(strtolower($encoded), $search) !== false;
+        }));
+    }
+
+    return $items;
+}
+
+function sub_proxy_mfs_summary(string $uid): array
+{
+    return [
+        'pending' => count(sub_proxy_mfs_rows($uid, 'pending')),
+        'processing' => count(sub_proxy_mfs_rows($uid, 'processing')),
+        'done' => count(sub_proxy_mfs_rows($uid, 'done')),
+        'failed' => count(sub_proxy_mfs_rows($uid, 'failed')),
+    ];
+}
+
+function sub_proxy_mfs_paginate(array $items, int $page, int $limit): array
+{
+    if (function_exists('mfs_paginate')) {
+        return mfs_paginate($items, $page, $limit);
+    }
+
+    $page = max(1, $page);
+    $limit = max(1, min(100, $limit));
+    $total = count($items);
+    $offset = ($page - 1) * $limit;
+
+    return [
+        'items' => array_values(array_slice($items, $offset, $limit)),
+        'pagination' => [
+            'page' => $page,
+            'limit' => $limit,
+            'total' => $total,
+            'has_more' => ($offset + $limit) < $total,
+        ],
+    ];
+}
+
 
 
 $action = trim((string) ($_GET['action'] ?? ''));
@@ -1992,6 +2257,153 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
             (array)($res['data'] ?? []),
             200
         );
+        break;
+
+    case 'mfs_create':
+        sub_proxy_require_method('POST');
+        sub_proxy_require_csrf();
+
+        $user = sub_proxy_require_login(true);
+        $uid = trim((string)($user['uid'] ?? ''));
+        $role = strtoupper(trim((string)($user['role'] ?? 'SUBADMIN')));
+        $body = sub_proxy_read_json_body();
+
+        if ($uid === '') {
+            sub_proxy_response(false, 'SESSION_EXPIRED', 'Subadmin session not found', [], 401);
+        }
+
+        if (!function_exists('mfs_create_request')) {
+            sub_proxy_response(false, 'SERVER_ERROR', 'Missing MFS create helper', [], 500);
+        }
+
+        $res = mfs_create_request($uid, $body, 'SUBADMIN_PANEL', 'PANEL', [
+            'uid' => $uid,
+            'role' => $role !== '' ? $role : 'SUBADMIN',
+        ]);
+
+        if (empty($res['ok'])) {
+            $code = (string)($res['code'] ?? 'SERVER_ERROR');
+            $httpStatus = 500;
+
+            if (in_array($code, [
+                'VALIDATION_ERROR',
+                'INSUFFICIENT_BALANCE',
+                'MFS_DISABLED',
+                'PROVIDER_DISABLED',
+                'SERVICE_NOT_ALLOWED',
+                'COUNTRY_MISSING',
+                'WALLET_CURRENCY_MISSING',
+                'COUNTRY_CURRENCY_MISMATCH',
+                'UNSUPPORTED_COUNTRY_CURRENCY',
+            ], true)) {
+                $httpStatus = 422;
+            } elseif (in_array($code, ['ACCOUNT_INACTIVE', 'INVALID_PIN', 'ROLE_NOT_ALLOWED'], true)) {
+                $httpStatus = 403;
+            } elseif ($code === 'USER_NOT_FOUND') {
+                $httpStatus = 404;
+            }
+
+            sub_proxy_response(
+                false,
+                $code,
+                (string)($res['message'] ?? 'Failed to create MFS request'),
+                (array)($res['data'] ?? []),
+                $httpStatus
+            );
+        }
+
+        $data = (array)($res['data'] ?? []);
+        $requestId = trim((string)($data['request_id'] ?? ''));
+        $row = $requestId !== '' && function_exists('mfs_find_request') ? mfs_find_request($requestId) : [];
+        if (!$row) {
+            $row = $data;
+        }
+
+        $telegram = $requestId !== '' ? sub_proxy_mfs_send_telegram($requestId, $row) : [
+            'ok' => false,
+            'http' => 0,
+            'error' => 'Request ID missing',
+        ];
+
+        $data['telegram'] = [
+            'ok' => !empty($telegram['ok']),
+            'http_status' => (int)($telegram['http'] ?? 0),
+            'with_buttons' => true,
+        ];
+
+        sub_proxy_response(true, 'SUCCESS', 'MFS request created successfully', $data, 200);
+        break;
+
+    case 'mfs_summary':
+        sub_proxy_require_method('GET');
+
+        $user = sub_proxy_require_login(true);
+        $uid = trim((string)($user['uid'] ?? ''));
+
+        sub_proxy_response(true, 'SUCCESS', 'MFS summary loaded', [
+            'uid' => $uid,
+            'summary' => sub_proxy_mfs_summary($uid),
+        ]);
+        break;
+
+    case 'mfs_list':
+        sub_proxy_require_method('GET');
+
+        $user = sub_proxy_require_login(true);
+        $uid = trim((string)($user['uid'] ?? ''));
+        $tab = strtolower(trim((string)($_GET['tab'] ?? 'pending')));
+        $page = (int)($_GET['page'] ?? 1);
+        $limit = (int)($_GET['limit'] ?? 50);
+
+        if (!in_array($tab, ['pending', 'processing', 'done', 'failed'], true)) {
+            sub_proxy_response(false, 'VALIDATION_ERROR', 'Invalid MFS tab', [], 422);
+        }
+
+        $items = sub_proxy_mfs_rows($uid, $tab, $_GET);
+        $paginated = sub_proxy_mfs_paginate($items, $page, $limit);
+
+        sub_proxy_response(true, 'SUCCESS', 'MFS requests loaded', [
+            'uid' => $uid,
+            'tab' => $tab,
+            'items' => $paginated['items'] ?? [],
+            'pagination' => $paginated['pagination'] ?? [
+                'page' => $page,
+                'limit' => $limit,
+                'total' => 0,
+                'has_more' => false,
+            ],
+        ]);
+        break;
+
+    case 'mfs_get':
+        sub_proxy_require_method('GET');
+
+        $user = sub_proxy_require_login(true);
+        $uid = trim((string)($user['uid'] ?? ''));
+        $requestId = trim((string)($_GET['request_id'] ?? ''));
+
+        if ($requestId === '') {
+            sub_proxy_response(false, 'VALIDATION_ERROR', 'request_id is required', [], 422);
+        }
+
+        if (!function_exists('mfs_find_request')) {
+            sub_proxy_response(false, 'SERVER_ERROR', 'Missing MFS get helper', [], 500);
+        }
+
+        $row = mfs_find_request($requestId);
+
+        if (!$row || (string)($row['uid'] ?? '') !== $uid) {
+            sub_proxy_response(false, 'NOT_FOUND', 'MFS request not found', [
+                'request_id' => $requestId,
+            ], 404);
+        }
+
+        $public = function_exists('mfs_public_log_row') ? mfs_public_log_row($row) : $row;
+
+        sub_proxy_response(true, 'SUCCESS', 'MFS request loaded', [
+            'item' => $public,
+            'raw' => $row,
+        ]);
         break;
         
         

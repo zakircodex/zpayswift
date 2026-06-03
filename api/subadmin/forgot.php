@@ -453,8 +453,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script>
-window.SUBADMIN_PROXY_URL = '/zawtopup/api/subadmin/proxy.php';
+window.SUBADMIN_PROXY_URL = 'proxy.php';
 </script>
-<script src="assets/subadmin-forgot.js?v=14"></script>
+<script src="assets/subadmin-forgot.js?v=15"></script>
 </body>
 </html>
