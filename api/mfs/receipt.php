@@ -40,13 +40,37 @@ $walletCurrency = strtoupper((string)($data['wallet_currency'] ?? 'BDT'));
 $isMy = strtoupper((string)($data['country_code'] ?? '')) === 'MY'
     || strtoupper((string)($data['service_mode'] ?? $data['mode'] ?? '')) === 'REMITTANCE'
     || (float)($data['amount_rm'] ?? 0) > 0;
-$feeText = $walletCurrency === 'MYR'
-    ? 'RM ' . receipt_money($data['fee_rm'] ?? 0)
-    : 'BDT ' . receipt_money($data['fee_bdt'] ?? $data['fee_amount'] ?? 0);
-if ($isMy && $walletCurrency !== 'MYR') {
-    $feeText .= ' / RM ' . receipt_money($data['fee_rm'] ?? 0);
+$rate = (float)($data['rate_myr_to_bdt'] ?? $data['exchange_rate'] ?? 0);
+$amountBdt = (float)($data['amount_bdt'] ?? 0);
+$amountRm = (float)($data['amount_rm'] ?? $data['amount_myr'] ?? 0);
+if ($isMy && $amountRm <= 0 && $rate > 0 && $amountBdt > 0) {
+    $amountRm = round($amountBdt / $rate, 2);
 }
-$totalText = ($walletCurrency === 'MYR' ? 'RM ' : 'BDT ') . receipt_money($data['total_pay'] ?? 0);
+$feeRm = (float)($data['fee_rm'] ?? 0);
+if ($isMy && $feeRm <= 0 && strtoupper((string)($data['fee_currency'] ?? '')) === 'MYR') {
+    $feeRm = (float)($data['fee_amount'] ?? 0);
+}
+if ($isMy && $feeRm <= 0 && $rate > 0 && (float)($data['fee_bdt'] ?? 0) > 0) {
+    $feeRm = round((float)$data['fee_bdt'] / $rate, 2);
+}
+$totalRm = (float)($data['total_debit_rm'] ?? $data['total_pay_myr'] ?? 0);
+if ($isMy && $totalRm <= 0 && $amountRm > 0) {
+    $totalRm = round($amountRm + $feeRm, 2);
+}
+if ($isMy && $totalRm <= 0 && $walletCurrency === 'MYR') {
+    $totalRm = (float)($data['total_pay'] ?? 0);
+}
+if ($isMy && $totalRm <= 0 && $rate > 0 && (float)($data['total_pay'] ?? 0) > 0) {
+    $totalRm = round((float)$data['total_pay'] / $rate, 2);
+}
+$feeBdt = (float)($data['fee_bdt'] ?? $data['fee_amount'] ?? 0);
+$totalBdt = (float)($data['total_debit_bdt'] ?? 0);
+if (!$isMy && $totalBdt <= 0) {
+    $totalBdt = (float)($data['total_pay'] ?? 0);
+}
+if (!$isMy && $totalBdt <= 0) {
+    $totalBdt = round($amountBdt + $feeBdt, 2);
+}
 ?>
 <!doctype html>
 <html lang="en">
@@ -121,21 +145,24 @@ $totalText = ($walletCurrency === 'MYR' ? 'RM ' : 'BDT ') . receipt_money($data[
             <div class="grid">
               <?= receipt_row('Name', $data['sender_name'] ?? '') ?>
               <?= receipt_row('Phone', $data['sender_phone'] ?? '') ?>
-              <?= receipt_row('Role', $data['sender_role'] ?? '') ?>
-              <?= receipt_row('Sender Details', $data['sender_details'] ?? $data['sender_last_digit'] ?? '') ?>
+              <?= receipt_row('Role', strtoupper((string)($data['sender_role'] ?? ''))) ?>
+              <?= receipt_row('Sender Last Digit', $data['sender_last_digit'] ?? $data['sender_details'] ?? '') ?>
             </div>
           </section>
 
           <section class="section">
             <h2>Amount</h2>
             <div class="grid">
-              <?= receipt_row('Amount BDT', 'BDT ' . receipt_money($data['amount_bdt'] ?? 0)) ?>
+              <?= receipt_row('Received Amount', 'BDT ' . receipt_money($amountBdt)) ?>
               <?php if ($isMy): ?>
-                <?= receipt_row('Amount MYR', 'RM ' . receipt_money($data['amount_rm'] ?? $data['amount_myr'] ?? 0)) ?>
-                <?= receipt_row('Rate', 'RM 1 = BDT ' . receipt_money($data['rate_myr_to_bdt'] ?? $data['exchange_rate'] ?? 0)) ?>
+                <?= receipt_row('Send Amount', 'RM ' . receipt_money($amountRm)) ?>
+                <?= receipt_row('Rate', 'RM 1 = BDT ' . receipt_money($rate)) ?>
+                <?= receipt_row('Fee', 'RM ' . receipt_money($feeRm)) ?>
+                <?= receipt_row('Total Paid', 'RM ' . receipt_money($totalRm)) ?>
+              <?php else: ?>
+                <?= receipt_row('Fee', 'BDT ' . receipt_money($feeBdt)) ?>
+                <?= receipt_row('Total Paid', 'BDT ' . receipt_money($totalBdt)) ?>
               <?php endif; ?>
-              <?= receipt_row('Fee', $feeText) ?>
-              <?= receipt_row('Total Paid / Hold', $totalText) ?>
               <?= receipt_row('Reference', $data['reference'] ?? '') ?>
               <?= receipt_row('TRXID', $data['trxid'] ?? '') ?>
             </div>
@@ -151,7 +178,6 @@ $totalText = ($walletCurrency === 'MYR' ? 'RM ' : 'BDT ') . receipt_money($data[
               <button class="green" type="button" onclick="window.print()">Download / Print PDF</button>
               <button type="button" onclick="copyReceipt()">Copy Link</button>
               <button type="button" onclick="shareReceipt()">Share</button>
-              <a class="btn" href="receipt_api.php?t=<?= receipt_h(rawurlencode($token)) ?>">JSON API</a>
             </div>
             <div class="copy-status" id="copyStatus"></div>
           </section>

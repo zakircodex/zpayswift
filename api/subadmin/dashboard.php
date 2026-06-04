@@ -551,7 +551,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                     <th>Key ID</th>
                     <th>Type</th>
                     <th>Status</th>
-                    <th>Operator</th>
+                    <th>Service</th>
                     <th>Number</th>
                     <th>Amount</th>
                     <th>Created</th>

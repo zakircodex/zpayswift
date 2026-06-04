@@ -117,11 +117,73 @@ function requestTypeOf(row){
 }
 
 function requestNumberOf(row){
-  return String(row?.bundle_number || row?.topup_number || row?.number || '');
+  return String(row?.bundle_number || row?.topup_number || row?.receiver_number || row?.number || '');
 }
 
 function amountPrefixOf(){
   return 'BDT';
+}
+
+function isMfsRow(row){
+  return requestTypeOf(row) === 'MFS';
+}
+
+function mfsProviderLabel(row){
+  const provider = String(row?.provider_name || row?.provider || row?.mfs_provider || '').toUpperCase();
+  if (provider === 'BKASH') return 'bKash';
+  if (provider === 'NAGAD') return 'Nagad';
+  return row?.provider_name || row?.provider || row?.mfs_provider || 'MFS';
+}
+
+function mfsIsRemittance(row){
+  return String(row?.service_mode || '').toUpperCase() === 'REMITTANCE'
+    || String(row?.country_code || row?.country || '').toUpperCase() === 'MY'
+    || Number(row?.amount_rm ?? row?.amount_myr ?? 0) > 0;
+}
+
+function mfsRate(row){
+  return Number(row?.exchange_rate ?? row?.rate_myr_to_bdt ?? row?.rate_myr_bdt ?? 0);
+}
+
+function mfsAmountRm(row){
+  let value = Number(row?.amount_rm ?? row?.amount_myr ?? 0);
+  const rate = mfsRate(row);
+  if (value <= 0 && rate > 0 && Number(row?.amount_bdt || 0) > 0) {
+    value = Number(row.amount_bdt || 0) / rate;
+  }
+  return value;
+}
+
+function mfsFeeRm(row){
+  let value = Number(row?.fee_rm ?? row?.fee_myr ?? 0);
+  const rate = mfsRate(row);
+  if (value <= 0 && String(row?.fee_currency || '').toUpperCase() === 'MYR') value = Number(row?.fee_amount || 0);
+  if (value <= 0 && rate > 0 && Number(row?.fee_bdt || 0) > 0) value = Number(row.fee_bdt || 0) / rate;
+  return value;
+}
+
+function mfsTotalRm(row){
+  let value = Number(row?.total_debit_rm ?? row?.total_pay_myr ?? 0);
+  const rate = mfsRate(row);
+  if (value <= 0) value = mfsAmountRm(row) + mfsFeeRm(row);
+  if (value <= 0 && String(row?.wallet_currency || '').toUpperCase() === 'MYR') value = Number(row?.total_debit ?? row?.total_pay ?? row?.amount ?? 0);
+  if (value <= 0 && rate > 0 && Number(row?.total_debit ?? row?.total_pay ?? 0) > 0) value = Number(row?.total_debit ?? row?.total_pay ?? 0) / rate;
+  return value;
+}
+
+function mfsTotalBdt(row){
+  let value = Number(row?.total_debit_bdt ?? row?.total_pay_bdt ?? 0);
+  if (value <= 0) value = Number(row?.total_debit ?? row?.total_pay ?? row?.amount ?? 0);
+  if (value <= 0) value = Number(row?.amount_bdt ?? row?.amount ?? 0) + Number(row?.fee_bdt ?? 0);
+  return value;
+}
+
+function mfsDisplayText(row){
+  if (mfsIsRemittance(row)) {
+    return `Received: BDT ${money(row?.amount_bdt || 0)} | Send: RM ${money(mfsAmountRm(row))} | Fee: RM ${money(mfsFeeRm(row))} | Total Paid: RM ${money(mfsTotalRm(row))}`;
+  }
+
+  return `Amount: BDT ${money(row?.amount_bdt ?? row?.amount ?? 0)} | Fee: BDT ${money(row?.fee_bdt || 0)} | Total Paid: BDT ${money(mfsTotalBdt(row))}`;
 }
 
 function isSessionError(err){
@@ -1031,26 +1093,38 @@ function renderHistory(){
     const type = requestTypeOf(item);
     const number = requestNumberOf(item);
     const prefix = amountPrefixOf(item);
+    const isMfs = type === 'MFS';
 
     const displayAmount = type === 'BUNDLE'
       ? (item.you_pay ?? item.payable_amount ?? item.net_cost_after_commission ?? item.amount ?? 0)
       : (item.amount || 0);
+
+    const metaHtml = isMfs
+      ? `
+          <div class="mini"><label>Service</label><strong>${esc(mfsProviderLabel(item))}</strong></div>
+          <div class="mini"><label>Receiver</label><strong>${esc(number || '-')}</strong></div>
+          <div class="mini"><label>Amount</label><strong>${esc(mfsDisplayText(item))}</strong></div>
+          <div class="mini"><label>Created</label><strong>${esc(fmtTs(item.created_at || 0))}</strong></div>
+        `
+      : `
+          <div class="mini"><label>Operator</label><strong>${esc(operatorName(item.operator || '-'))}</strong></div>
+          <div class="mini"><label>Number</label><strong>${esc(number || '-')}</strong></div>
+          <div class="mini"><label>Amount</label><strong>${esc(prefix)} ${money(displayAmount)}</strong></div>
+          <div class="mini"><label>Created</label><strong>${esc(fmtTs(item.created_at || 0))}</strong></div>
+        `;
 
     return `
       <div class="history-item">
         <div class="history-top">
           <div>
             <div class="history-id">${esc(item.request_id || '-')}</div>
-            <div class="history-small">${esc(type)} Request</div>
+            <div class="history-small">${esc(type)} Request${isMfs ? ' - ' + esc(mfsProviderLabel(item)) : ''}</div>
           </div>
           ${statusPill(item.status || '-')}
         </div>
 
         <div class="history-meta">
-          <div class="mini"><label>Operator</label><strong>${esc(operatorName(item.operator || '-'))}</strong></div>
-          <div class="mini"><label>Number</label><strong>${esc(number || '-')}</strong></div>
-          <div class="mini"><label>Amount</label><strong>${esc(prefix)} ${money(displayAmount)}</strong></div>
-          <div class="mini"><label>Created</label><strong>${esc(fmtTs(item.created_at || 0))}</strong></div>
+          ${metaHtml}
         </div>
 
         ${
@@ -1102,6 +1176,7 @@ window.openHistoryDetail = function(requestId){
   const type = requestTypeOf(row);
   const number = requestNumberOf(row);
   const prefix = amountPrefixOf(row);
+  const isMfs = type === 'MFS';
 
   const displayAmount = type === 'BUNDLE'
     ? (row.you_pay ?? row.payable_amount ?? row.net_cost_after_commission ?? row.amount ?? 0)
@@ -1111,9 +1186,11 @@ window.openHistoryDetail = function(requestId){
   if (el('detailStatus')) el('detailStatus').innerHTML = statusPill(row.status || '-');
   if (el('detailType')) el('detailType').textContent = type;
   if (el('detailSource')) el('detailSource').textContent = row.source || row.request_source || 'USER_PANEL';
-  if (el('detailOperator')) el('detailOperator').textContent = operatorName(row.operator || '-');
+  const operatorLabel = el('detailOperator')?.parentElement?.querySelector('label');
+  if (operatorLabel) operatorLabel.textContent = isMfs ? 'Service' : 'Operator';
+  if (el('detailOperator')) el('detailOperator').textContent = isMfs ? mfsProviderLabel(row) : operatorName(row.operator || '-');
   if (el('detailNumber')) el('detailNumber').textContent = number || '-';
-  if (el('detailAmount')) el('detailAmount').textContent = prefix + ' ' + money(displayAmount);
+  if (el('detailAmount')) el('detailAmount').textContent = isMfs ? mfsDisplayText(row) : prefix + ' ' + money(displayAmount);
   if (el('detailCreated')) el('detailCreated').textContent = fmtTs(row.created_at || 0);
   if (el('detailUpdated')) el('detailUpdated').textContent = fmtTs(row.updated_at || 0);
   if (el('detailCompleted')) el('detailCompleted').textContent = fmtTs(row.completed_at || 0);
@@ -1585,8 +1662,8 @@ function renderMfsPreview(){
   box.textContent =
 `Provider: ${providerName}
 Number: ${data.receiver_number || '-'}
-Amount BDT: BDT ${money(data.amount_bdt || 0)}
-Amount RM: RM ${money(data.amount_rm || 0)}
+Received Amount: BDT ${money(data.amount_bdt || 0)}
+Send Amount: RM ${money(data.amount_rm || 0)}
 Reference: ${data.reference || '-'}
 Available Balance: ${prefix} ${walletDisplayAmount(wallet, 'available')}
 Status: PENDING`;
@@ -1597,7 +1674,28 @@ function renderMfsResultSuccess(data){
   if (!box) return;
 
   const providerName = data.provider_name || (data.provider === 'BKASH' ? 'bKash' : 'Nagad');
-  const prefix = data.wallet_currency === 'MYR' ? 'RM' : 'BDT';
+  const isRemit = String(data.service_mode || '').toUpperCase() === 'REMITTANCE'
+    || String(data.country_code || '').toUpperCase() === 'MY'
+    || Number(data.amount_rm || data.amount_myr || 0) > 0;
+  const rate = Number(data.exchange_rate ?? data.rate_myr_to_bdt ?? 0);
+  let amountRm = Number(data.amount_rm ?? data.amount_myr ?? 0);
+  if (isRemit && amountRm <= 0 && rate > 0 && Number(data.amount_bdt || 0) > 0) {
+    amountRm = Number(data.amount_bdt || 0) / rate;
+  }
+  let feeRm = Number(data.fee_rm ?? data.fee_myr ?? 0);
+  if (isRemit && feeRm <= 0 && rate > 0 && Number(data.fee_bdt || 0) > 0) {
+    feeRm = Number(data.fee_bdt || 0) / rate;
+  }
+  const totalRm = Number(data.total_debit_rm ?? data.total_pay_myr ?? 0) || amountRm + feeRm;
+  const totalBdt = Number(data.total_debit_bdt ?? data.total_pay_bdt ?? data.total_debit ?? 0);
+  const amountLines = isRemit
+    ? `Received Amount: BDT ${money(data.amount_bdt || 0)}
+Send Amount: RM ${money(amountRm)}
+Fee: RM ${money(feeRm)}
+Total Paid: RM ${money(totalRm)}`
+    : `Amount: BDT ${money(data.amount_bdt || 0)}
+Fee: BDT ${money(data.fee_bdt || 0)}
+Total Paid: BDT ${money(totalBdt)}`;
 
   box.className = '';
   box.innerHTML = `
@@ -1608,11 +1706,7 @@ Request ID: ${esc(data.request_id || '-')}
 Provider: ${esc(providerName)}
 Number: ${esc(data.receiver_number || data.number || '-')}
 Status: ${esc(data.status || 'PENDING')}
-Amount BDT: BDT ${money(data.amount_bdt || 0)}
-Amount RM: RM ${money(data.amount_rm || 0)}
-Fee BDT: BDT ${money(data.fee_bdt || 0)}
-Fee RM: RM ${money(data.fee_rm || 0)}
-Total Debit: ${esc(prefix)} ${money(data.total_debit || 0)}
+${esc(amountLines)}
 Reference: ${esc(data.reference || '-')}
 TRXID: ${esc(data.trxid || '-')}
 Created: ${esc(fmtTs(data.created_at || 0))}

@@ -1184,14 +1184,29 @@ function sub_proxy_mfs_message(array $row): string
     $isRemittance = strtoupper((string)($row['service_mode'] ?? '')) === 'REMITTANCE'
         || strtoupper((string)($row['country_code'] ?? '')) === 'MY'
         || $amountRm > 0;
+    $rate = (float)($row['exchange_rate'] ?? $row['rate_myr_to_bdt'] ?? 0);
+    if ($isRemittance && $amountRm <= 0 && $rate > 0 && (float)($row['amount_bdt'] ?? 0) > 0) {
+        $amountRm = round((float)$row['amount_bdt'] / $rate, 2);
+    }
     $fee = $currency === 'MYR'
         ? 'RM ' . sub_proxy_mfs_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0)
         : 'BDT ' . sub_proxy_mfs_money($row['fee_bdt'] ?? 0);
     if ($isRemittance && $currency !== 'MYR') {
-        $fee .= ' / RM ' . sub_proxy_mfs_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0);
+        $feeRm = (float)($row['fee_rm'] ?? $row['fee_myr'] ?? 0);
+        if ($feeRm <= 0 && $rate > 0 && (float)($row['fee_bdt'] ?? 0) > 0) {
+            $feeRm = round((float)$row['fee_bdt'] / $rate, 2);
+        }
+        $fee = 'RM ' . sub_proxy_mfs_money($feeRm);
     }
-    $total = $currency === 'MYR'
-        ? 'RM ' . sub_proxy_mfs_money($row['total_debit_rm'] ?? $row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0)
+    $totalRm = (float)($row['total_debit_rm'] ?? $row['total_pay_myr'] ?? 0);
+    if ($isRemittance && $totalRm <= 0) {
+        $totalRm = $amountRm + (float)($row['fee_rm'] ?? $row['fee_myr'] ?? 0);
+        if ($totalRm <= $amountRm && $rate > 0 && (float)($row['fee_bdt'] ?? 0) > 0) {
+            $totalRm = $amountRm + round((float)$row['fee_bdt'] / $rate, 2);
+        }
+    }
+    $total = $isRemittance
+        ? 'RM ' . sub_proxy_mfs_money($totalRm)
         : 'BDT ' . sub_proxy_mfs_money($row['total_debit_bdt'] ?? $row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
 
     $text = "🔔 <b>New MFS Request</b>\n\n" .
@@ -1204,15 +1219,15 @@ function sub_proxy_mfs_message(array $row): string
         "<b>Mode:</b> " . sub_proxy_mfs_h($row['service_mode'] ?? '-') . "\n" .
         "<b>Type:</b> " . sub_proxy_mfs_h($row['service_type'] ?? 'SEND_MONEY') . "\n" .
         "<b>Receiver Number:</b> <code>" . sub_proxy_mfs_h($row['receiver_number'] ?? $row['number'] ?? '-') . "</code>\n" .
-        "<b>Amount BDT:</b> <b>BDT " . sub_proxy_mfs_money($row['amount_bdt'] ?? 0) . "</b>\n";
+        "<b>Received Amount:</b> <b>BDT " . sub_proxy_mfs_money($row['amount_bdt'] ?? 0) . "</b>\n";
 
     if ($amountRm > 0) {
-        $text .= "<b>Amount RM:</b> <b>RM " . sub_proxy_mfs_money($amountRm) . "</b>\n";
+        $text .= "<b>Send Amount:</b> <b>RM " . sub_proxy_mfs_money($amountRm) . "</b>\n";
     }
 
     $text .=
         "<b>Fee:</b> <b>" . sub_proxy_mfs_h($fee) . "</b>\n" .
-        "<b>Pay / Total Hold:</b> <b>" . sub_proxy_mfs_h($total) . "</b>\n";
+        "<b>Total Paid:</b> <b>" . sub_proxy_mfs_h($total) . "</b>\n";
 
     if ($isRemittance) {
         $text .= "<b>Rate:</b> RM 1 = BDT " . sub_proxy_mfs_money($row['exchange_rate'] ?? $row['rate_myr_to_bdt'] ?? 0) . "\n";

@@ -64,14 +64,12 @@
     var currency = String(p.wallet_currency || '').toUpperCase();
     var country = String(p.country_code || '').toUpperCase();
     var mode = String(p.service_mode || '').toUpperCase();
-    var feeText = currency === 'MYR'
+    var remittance = mode === 'REMITTANCE' || country === 'MY' || Number(p.amount_myr || p.amount_rm || d.amount_rm || 0) > 0;
+    var feeText = remittance
       ? 'RM ' + money(p.fee_myr || p.fee_rm || 0)
       : 'BDT ' + money(p.fee_bdt || 0);
-    if (mode === 'REMITTANCE' && currency !== 'MYR') {
-      feeText += ' / RM ' + money(p.fee_myr || p.fee_rm || 0);
-    }
-    var totalText = currency === 'MYR'
-      ? 'RM ' + money(p.total_pay_myr || p.total_debit_rm || p.wallet_hold_amount || 0)
+    var totalText = remittance
+      ? 'RM ' + money(p.total_pay_myr || p.total_debit_rm || ((Number(p.amount_myr || p.amount_rm || d.amount_rm || 0)) + Number(p.fee_myr || p.fee_rm || 0)))
       : 'BDT ' + money(p.total_pay_bdt || p.total_debit_bdt || p.wallet_hold_amount || 0);
     var rate = Number(p.rate_myr_to_bdt || p.exchange_rate || 0);
     return '' +
@@ -80,11 +78,11 @@
       '<div class="zpay-mfs-preview-row"><span>Country</span><b>' + esc(country || 'Auto from profile/phone') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Role</span><b>' + esc(p.role || 'USER') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Mode</span><b>' + esc(mode || 'Auto') + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Amount BDT</span><b>BDT ' + money(p.amount_bdt || d.amount_bdt) + '</b></div>' +
-      ((p.amount_myr || p.amount_rm || d.amount_rm) ? '<div class="zpay-mfs-preview-row"><span>Amount RM</span><b>RM ' + money(p.amount_myr || p.amount_rm || d.amount_rm) + '</b></div>' : '') +
+      '<div class="zpay-mfs-preview-row"><span>Received Amount</span><b>BDT ' + money(p.amount_bdt || d.amount_bdt) + '</b></div>' +
+      ((p.amount_myr || p.amount_rm || d.amount_rm) ? '<div class="zpay-mfs-preview-row"><span>Send Amount</span><b>RM ' + money(p.amount_myr || p.amount_rm || d.amount_rm) + '</b></div>' : '') +
       (rate > 0 ? '<div class="zpay-mfs-preview-row"><span>Rate</span><b>RM 1 = BDT ' + money(rate) + '</b></div>' : '') +
       '<div class="zpay-mfs-preview-row"><span>Fee</span><b>' + esc(feeText) + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Total Hold</span><b>' + esc(totalText) + '</b></div>' +
+      '<div class="zpay-mfs-preview-row"><span>Total Paid</span><b>' + esc(totalText) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Reference</span><b>' + esc(d.reference || '-') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Status</span><b>PENDING</b></div>';
   }

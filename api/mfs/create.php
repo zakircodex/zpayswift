@@ -185,19 +185,29 @@ function mfs_create_endpoint_build_telegram_text(array $data, array $user): stri
     $isRemittance = strtoupper((string)($data['service_mode'] ?? '')) === 'REMITTANCE'
         || strtoupper((string)($data['country_code'] ?? '')) === 'MY'
         || $amountRm > 0;
-
-    $amountLine = $isRemittance
-        ? 'Amount: <b>' . mfs_create_endpoint_h($amountRm, 'MYR') . '</b> / BDT ' . number_format($amountBdt, 2, '.', '')
-        : 'Amount: <b>' . mfs_create_endpoint_h($amountBdt, 'BDT') . '</b>';
-
-    $feeLine = $currency === 'MYR'
-        ? 'Fee: <b>' . mfs_create_endpoint_h($feeRm, 'MYR') . '</b>'
-        : 'Fee: <b>' . mfs_create_endpoint_h($feeBdt, 'BDT') . '</b>';
-    if ($isRemittance && $currency !== 'MYR') {
-        $feeLine .= ' / RM ' . number_format($feeRm, 2, '.', '');
+    if ($isRemittance && $amountRm <= 0 && $rate > 0 && $amountBdt > 0) {
+        $amountRm = round($amountBdt / $rate, 2);
+    }
+    if ($isRemittance && $feeRm <= 0 && $rate > 0 && $feeBdt > 0) {
+        $feeRm = round($feeBdt / $rate, 2);
     }
 
-    $totalLine = 'Total Hold: <b>' . mfs_create_endpoint_h($totalDebit, $currency) . '</b>';
+    $totalRm = (float)($data['total_debit_rm'] ?? $data['total_pay_myr'] ?? 0);
+    if ($isRemittance && $totalRm <= 0) {
+        $totalRm = $amountRm + $feeRm;
+    }
+
+    $amountLine = $isRemittance
+        ? 'Received Amount: <b>BDT ' . number_format($amountBdt, 2, '.', '') . '</b>' . "\n" . 'Send Amount: <b>' . mfs_create_endpoint_h($amountRm, 'MYR') . '</b>'
+        : 'Received Amount: <b>' . mfs_create_endpoint_h($amountBdt, 'BDT') . '</b>';
+
+    $feeLine = $isRemittance
+        ? 'Fee: <b>' . mfs_create_endpoint_h($feeRm, 'MYR') . '</b>'
+        : 'Fee: <b>' . mfs_create_endpoint_h($feeBdt, 'BDT') . '</b>';
+
+    $totalLine = $isRemittance
+        ? 'Total Paid: <b>' . mfs_create_endpoint_h($totalRm, 'MYR') . '</b>'
+        : 'Total Paid: <b>' . mfs_create_endpoint_h($totalDebit, $currency) . '</b>';
 
     $rateLine = $isRemittance
         ? "\nRate: <b>RM 1 = BDT " . number_format($rate, 2, '.', '') . '</b>'

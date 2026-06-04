@@ -2726,12 +2726,26 @@ function user_proxy_send_mfs_telegram(array $row): void
     $serviceMode = strtoupper(trim((string)($row['service_mode'] ?? '')));
 
     if ($serviceMode === 'REMITTANCE') {
-        $amountLine = $currency === 'MYR'
-            ? 'Pay / Hold: RM ' . user_proxy_round_money($row['total_pay_myr'] ?? 0) . "\nAmount BDT: BDT " . user_proxy_round_money($row['amount_bdt'] ?? 0) . "\nFee: RM " . user_proxy_round_money($row['fee_myr'] ?? 0)
-            : 'Pay / Hold: BDT ' . user_proxy_round_money($row['total_pay_bdt'] ?? 0) . "\nAmount RM: RM " . user_proxy_round_money($row['amount_myr'] ?? 0) . "\nFee: BDT " . user_proxy_round_money($row['fee_bdt'] ?? 0) . " / RM " . user_proxy_round_money($row['fee_myr'] ?? 0);
+        $rate = (float)($row['rate_myr_to_bdt'] ?? $row['exchange_rate'] ?? 0);
+        $amountRm = (float)($row['amount_myr'] ?? $row['amount_rm'] ?? 0);
+        if ($amountRm <= 0 && $rate > 0 && (float)($row['amount_bdt'] ?? 0) > 0) {
+            $amountRm = round((float)$row['amount_bdt'] / $rate, 2);
+        }
+        $feeRm = (float)($row['fee_myr'] ?? $row['fee_rm'] ?? 0);
+        if ($feeRm <= 0 && $rate > 0 && (float)($row['fee_bdt'] ?? 0) > 0) {
+            $feeRm = round((float)$row['fee_bdt'] / $rate, 2);
+        }
+        $totalRm = (float)($row['total_pay_myr'] ?? $row['total_debit_rm'] ?? 0);
+        if ($totalRm <= 0) {
+            $totalRm = $amountRm + $feeRm;
+        }
+        $amountLine = 'Received Amount: BDT ' . user_proxy_round_money($row['amount_bdt'] ?? 0)
+            . "\nSend Amount: RM " . user_proxy_round_money($amountRm)
+            . "\nFee: RM " . user_proxy_round_money($feeRm)
+            . "\nTotal Paid: RM " . user_proxy_round_money($totalRm);
         $amountLine .= "\nRate: RM 1 = BDT " . user_proxy_round_money($row['rate_myr_to_bdt'] ?? 0);
     } else {
-        $amountLine = 'Pay: BDT ' . user_proxy_round_money($row['total_pay_bdt'] ?? 0) . "\nAmount: BDT " . user_proxy_round_money($row['amount_bdt'] ?? 0) . "\nFee: BDT " . user_proxy_round_money($row['fee_bdt'] ?? 0);
+        $amountLine = 'Received Amount: BDT ' . user_proxy_round_money($row['amount_bdt'] ?? 0) . "\nFee: BDT " . user_proxy_round_money($row['fee_bdt'] ?? 0) . "\nTotal Paid: BDT " . user_proxy_round_money($row['total_pay_bdt'] ?? 0);
     }
 
     $text =

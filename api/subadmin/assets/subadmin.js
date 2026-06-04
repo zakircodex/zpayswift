@@ -957,16 +957,22 @@ function renderLogs(){
   }
 
   tbody.innerHTML = rows.map(item => {
-    const number = item.topup_number || item.bundle_number || item.number || '';
+    const type = String(item.request_type || item.action || '').toUpperCase();
+    const isMfs = type === 'MFS';
+    const number = item.topup_number || item.bundle_number || item.receiver_number || item.number || '';
+    const service = isMfs ? (item.provider_name || mfsProviderName(item.provider || item.service)) : (item.operator || '-');
+    const amountText = isMfs
+      ? `${mfsAmountText(item)} / ${mfsFeePayText(item)}`
+      : money(item.amount || 0);
     return `
       <tr>
         <td>${esc(item.request_id || '-')}</td>
         <td>${esc(item.key_id || '-')}</td>
-        <td>${esc(item.request_type || item.action || '-')}</td>
+        <td>${esc(type || '-')} ${isMfs ? statusPill(item.provider_name || mfsProviderName(item.provider || item.service)) : ''}</td>
         <td>${statusPill(item.status || '-')}</td>
-        <td>${esc(item.operator || '-')}</td>
+        <td>${esc(service)}</td>
         <td>${esc(number || '-')}</td>
-        <td>${money(item.amount || 0)}</td>
+        <td>${esc(amountText)}</td>
         <td>${fmtTs(item.created_at || 0)}</td>
         <td>
           <div class="row-actions">
@@ -1302,23 +1308,49 @@ function mfsRowAmount(row){
   return Number(row?.amount_bdt ?? row?.amount ?? 0);
 }
 
+function mfsRate(row){
+  return Number(row?.exchange_rate ?? row?.rate_myr_to_bdt ?? row?.rate_myr_bdt ?? 0);
+}
+
+function mfsAmountRm(row){
+  let value = Number(row?.amount_rm ?? row?.amount_myr ?? 0);
+  const rate = mfsRate(row);
+  if (value <= 0 && rate > 0 && Number(row?.amount_bdt || 0) > 0) {
+    value = Number(row.amount_bdt || 0) / rate;
+  }
+  return value;
+}
+
 function mfsRowFee(row){
-  const currency = String(row?.wallet_currency || '').toUpperCase();
-  return currency === 'MYR'
-    ? Number(row?.fee_rm ?? row?.fee_myr ?? row?.fee ?? 0)
-    : Number(row?.fee_bdt ?? row?.fee ?? 0);
+  if (mfsIsRemittance(row)) {
+    let value = Number(row?.fee_rm ?? row?.fee_myr ?? 0);
+    const rate = mfsRate(row);
+    if (value <= 0 && String(row?.fee_currency || '').toUpperCase() === 'MYR') value = Number(row?.fee_amount || 0);
+    if (value <= 0 && rate > 0 && Number(row?.fee_bdt || 0) > 0) value = Number(row.fee_bdt || 0) / rate;
+    return value;
+  }
+
+  return Number(row?.fee_bdt ?? row?.fee ?? 0);
 }
 
 function mfsRowPay(row){
-  const currency = String(row?.wallet_currency || '').toUpperCase();
-  return currency === 'MYR'
-    ? Number(row?.total_debit_rm ?? row?.total_pay_myr ?? row?.total_debit ?? row?.amount_rm ?? 0)
-    : Number(row?.total_debit_bdt ?? row?.total_hold_bdt ?? row?.total_debit ?? row?.amount ?? 0);
+  if (mfsIsRemittance(row)) {
+    let value = Number(row?.total_debit_rm ?? row?.total_pay_myr ?? 0);
+    const rate = mfsRate(row);
+    if (value <= 0) value = mfsAmountRm(row) + mfsRowFee(row);
+    if (value <= 0 && String(row?.wallet_currency || '').toUpperCase() === 'MYR') value = Number(row?.total_debit ?? row?.total_pay ?? 0);
+    if (value <= 0 && rate > 0 && Number(row?.total_debit ?? row?.total_pay ?? 0) > 0) value = Number(row?.total_debit ?? row?.total_pay ?? 0) / rate;
+    return value;
+  }
+
+  let value = Number(row?.total_debit_bdt ?? row?.total_hold_bdt ?? row?.total_pay_bdt ?? 0);
+  if (value <= 0) value = Number(row?.total_debit ?? row?.total_pay ?? row?.amount ?? 0);
+  if (value <= 0) value = mfsRowAmount(row) + mfsRowFee(row);
+  return value;
 }
 
 function mfsMoney(row, amount){
-  const currency = String(row?.wallet_currency || '').toUpperCase();
-  return `${currency === 'MYR' ? 'RM' : 'BDT'} ${money(amount)}`;
+  return `${mfsIsRemittance(row) ? 'RM' : 'BDT'} ${money(amount)}`;
 }
 
 function mfsIsRemittance(row){
@@ -1329,22 +1361,18 @@ function mfsIsRemittance(row){
 
 function mfsAmountText(row){
   if (mfsIsRemittance(row)) {
-    return `BDT ${money(row?.amount_bdt || 0)} / RM ${money(row?.amount_rm ?? row?.amount_myr ?? 0)}`;
+    return `Received: BDT ${money(row?.amount_bdt || 0)} / Send: RM ${money(mfsAmountRm(row))}`;
   }
 
-  return fmtMoney(mfsRowAmount(row));
+  return `Amount: ${fmtMoney(mfsRowAmount(row))}`;
 }
 
 function mfsFeePayText(row){
   if (mfsIsRemittance(row)) {
-    const currency = String(row?.wallet_currency || '').toUpperCase();
-    const hold = currency === 'MYR'
-      ? `RM ${money(row?.total_debit_rm ?? row?.total_pay_myr ?? row?.total_debit ?? 0)}`
-      : `BDT ${money(row?.total_debit_bdt ?? row?.total_hold_bdt ?? row?.total_debit ?? 0)}`;
-    return `BDT ${money(row?.fee_bdt || 0)} / RM ${money(row?.fee_rm ?? row?.fee_myr ?? 0)} / ${hold}`;
+    return `Fee: RM ${money(mfsRowFee(row))} / Total Paid: RM ${money(mfsRowPay(row))}`;
   }
 
-  return `${mfsMoney(row, mfsRowFee(row))} / ${mfsMoney(row, mfsRowPay(row))}`;
+  return `Fee: ${mfsMoney(row, mfsRowFee(row))} / Total Paid: ${mfsMoney(row, mfsRowPay(row))}`;
 }
 
 function mfsReference(row){
@@ -1626,16 +1654,24 @@ async function previewMfsRequest(button = null){
     try{
       const data = await proxyPost('mfs_preview', payload, 'Loading MFS preview...');
       const currency = String(data.wallet_currency || 'BDT').toUpperCase();
-      const total = currency === 'MYR'
+      const previewIsRemittance = String(data.service_mode || '').toUpperCase() === 'REMITTANCE'
+        || String(data.country_code || '').toUpperCase() === 'MY'
+        || Number(data.amount_rm ?? data.amount_myr ?? 0) > 0;
+      const total = previewIsRemittance
+        ? `RM ${money(data.total_pay_myr ?? data.total_debit_rm ?? ((Number(data.amount_rm ?? data.amount_myr ?? 0)) + Number(data.fee_rm ?? data.fee_myr ?? 0)))}`
+        : currency === 'MYR'
         ? `RM ${money(data.total_pay_myr ?? data.total_debit_rm ?? data.total_pay ?? 0)}`
         : `BDT ${money(data.total_pay_bdt ?? data.total_debit_bdt ?? data.total_pay ?? 0)}`;
+      const fee = previewIsRemittance
+        ? `RM ${money(data.fee_rm ?? data.fee_myr ?? 0)}`
+        : `${data.fee_currency || currency} ${money(data.fee_amount || 0)}`;
 
       setBoxMessage('subMfsOutput', 'info', 'MFS Preview Ready', [
         `Role: ${data.role || '-'}`,
         `Country: ${data.country_code || '-'} / ${data.service_mode || '-'}`,
-        `Amount: BDT ${money(data.amount_bdt || 0)}${Number(data.amount_rm ?? data.amount_myr ?? 0) > 0 ? ` / RM ${money(data.amount_rm ?? data.amount_myr ?? 0)}` : ''}`,
-        `Fee: ${data.fee_currency || currency} ${money(data.fee_amount || 0)}`,
-        `Total Hold: ${total}`,
+        `Received: BDT ${money(data.amount_bdt || 0)}${Number(data.amount_rm ?? data.amount_myr ?? 0) > 0 ? ` / Send: RM ${money(data.amount_rm ?? data.amount_myr ?? 0)}` : ''}`,
+        `Fee: ${fee}`,
+        `Total Paid: ${total}`,
         Number(data.exchange_rate || data.rate_myr_to_bdt || 0) > 0 ? `Rate: RM 1 = BDT ${money(data.exchange_rate || data.rate_myr_to_bdt)}` : ''
       ]);
       showToast('MFS preview ready', 'info');
@@ -1674,7 +1710,7 @@ async function createMfsRequest(button = null){
         `Mode: ${row.service_mode || '-'}`,
         `Receiver: ${row.receiver_number || payload.receiver_number}`,
         `Amount: ${mfsAmountText(row)}`,
-        `Pay / Hold: ${mfsMoney(row, mfsRowPay(row))}`,
+        `Total Paid: ${mfsMoney(row, mfsRowPay(row))}`,
         `Status: ${row.status || 'PENDING'}`,
         telegram.ok ? 'Telegram message sent.' : 'Telegram message queued/failed; request is still created.'
       ]);
@@ -1730,11 +1766,11 @@ async function viewMfsRequest(requestId, button = null){
         ['Receiver', mfsRowNumber(row)],
         ['Amount', mfsAmountText(row)],
         ['Fee', mfsMoney(row, mfsRowFee(row))],
-        ['Pay / Hold', mfsMoney(row, mfsRowPay(row))],
+        ['Total Paid', mfsMoney(row, mfsRowPay(row))],
         ['Rate', row.exchange_rate ? `RM 1 = BDT ${money(row.exchange_rate)}` : '-'],
         ['Reference', row.reference || '-'],
         ['Status', row.status || '-'],
-        ['Sender Details', row.sender_details || row.sender_last_digit || '-'],
+        ['Sender Last Digit', row.sender_last_digit || row.sender_details || '-'],
         ['Receipt', row.receipt_url || '-'],
         ['Message', row.message || '-'],
         ['Created', fmtTs(row.created_at || 0)],
@@ -3080,15 +3116,23 @@ function viewRequestLog(requestId){
     return;
   }
 
-  const number = row.topup_number || row.bundle_number || row.number || '';
+  const type = String(row.request_type || row.action || '').toUpperCase();
+  const isMfs = type === 'MFS';
+  const number = row.topup_number || row.bundle_number || row.receiver_number || row.number || '';
+  const service = isMfs ? (row.provider_name || mfsProviderName(row.provider || row.service)) : (row.operator || '-');
+  const amountText = isMfs
+    ? `${mfsAmountText(row)} / ${mfsFeePayText(row)}`
+    : fmtMoney(row.amount || 0);
 
   if (el('logRequestId')) el('logRequestId').textContent = row.request_id || '-';
   if (el('logKeyId')) el('logKeyId').textContent = row.key_id || '-';
-  if (el('logType')) el('logType').textContent = row.request_type || row.action || '-';
+  if (el('logType')) el('logType').textContent = isMfs ? `${type} - ${service}` : (type || '-');
   if (el('logStatusText')) el('logStatusText').textContent = row.status || '-';
-  if (el('logOperator')) el('logOperator').textContent = row.operator || '-';
+  const logServiceLabel = el('logOperator')?.parentElement?.querySelector('label');
+  if (logServiceLabel) logServiceLabel.textContent = isMfs ? 'Service' : 'Operator';
+  if (el('logOperator')) el('logOperator').textContent = service;
   if (el('logNumber')) el('logNumber').textContent = number || '-';
-  if (el('logAmount')) el('logAmount').textContent = money(row.amount || 0);
+  if (el('logAmount')) el('logAmount').textContent = amountText;
   if (el('logCreated')) el('logCreated').textContent = fmtTs(row.created_at || 0);
   if (el('logUpdated')) el('logUpdated').textContent = fmtTs(row.updated_at || row.created_at || 0);
   if (el('logMessage')) el('logMessage').textContent = row.message || '-';
@@ -3096,11 +3140,11 @@ function viewRequestLog(requestId){
   setDetailBox('logRawJson', 'Request Details', [
     ['Request ID', row.request_id || '-'],
     ['Key ID', row.key_id || '-'],
-    ['Type', row.request_type || row.action || '-'],
+    ['Type', isMfs ? `${type} - ${service}` : (type || '-')],
     ['Status', row.status || '-'],
-    ['Operator', row.operator || '-'],
+    [isMfs ? 'Service' : 'Operator', service],
     ['Number', number || '-'],
-    ['Amount', fmtMoney(row.amount || 0)],
+    ['Amount', amountText],
     ['Created', fmtTs(row.created_at || 0)],
     ['Updated', fmtTs(row.updated_at || row.created_at || 0)],
     ['Message', row.message || '-']

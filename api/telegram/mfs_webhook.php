@@ -327,14 +327,23 @@ function mfs_tg_text(array $row, string $status, string $message): string
     $isRemittance = strtoupper((string)($row['service_mode'] ?? '')) === 'REMITTANCE'
         || strtoupper((string)($row['country_code'] ?? '')) === 'MY'
         || $amountRm > 0;
-    $fee = $currency === 'MYR'
-        ? 'RM ' . mfs_tg_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0)
-        : 'BDT ' . mfs_tg_money($row['fee_bdt'] ?? 0);
-    if ($isRemittance && $currency !== 'MYR') {
-        $fee .= ' / RM ' . mfs_tg_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0);
+    $rate = (float)($row['exchange_rate'] ?? $row['rate_myr_to_bdt'] ?? 0);
+    if ($isRemittance && $amountRm <= 0 && $rate > 0 && (float)($row['amount_bdt'] ?? 0) > 0) {
+        $amountRm = round((float)$row['amount_bdt'] / $rate, 2);
     }
-    $total = $currency === 'MYR'
-        ? 'RM ' . mfs_tg_money($row['total_debit_rm'] ?? $row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0)
+    $feeRm = (float)($row['fee_rm'] ?? $row['fee_myr'] ?? 0);
+    if ($isRemittance && $feeRm <= 0 && $rate > 0 && (float)($row['fee_bdt'] ?? 0) > 0) {
+        $feeRm = round((float)$row['fee_bdt'] / $rate, 2);
+    }
+    $totalRm = (float)($row['total_debit_rm'] ?? $row['total_pay_myr'] ?? 0);
+    if ($isRemittance && $totalRm <= 0) {
+        $totalRm = $amountRm + $feeRm;
+    }
+    $fee = $isRemittance
+        ? 'RM ' . mfs_tg_money($feeRm)
+        : 'BDT ' . mfs_tg_money($row['fee_bdt'] ?? 0);
+    $total = $isRemittance
+        ? 'RM ' . mfs_tg_money($totalRm)
         : 'BDT ' . mfs_tg_money($row['total_debit_bdt'] ?? $row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
     $senderDetails = (string)($row['sender_details'] ?? $row['sender_last_digit'] ?? $row['last_digit'] ?? '');
     $icon = $status === 'SUCCESSFUL' ? '✅' : ($status === 'FAILED' ? '❌' : ($status === 'PROCESSING' ? '🔄' : '🔢'));
@@ -349,15 +358,15 @@ function mfs_tg_text(array $row, string $status, string $message): string
         '<b>Mode:</b> ' . mfs_tg_h($row['service_mode'] ?? '-') . "\n" .
         '<b>Type:</b> ' . mfs_tg_h($row['service_type'] ?? $row['service_name'] ?? 'SEND_MONEY') . "\n" .
         '<b>Receiver Number:</b> <code>' . mfs_tg_h($row['receiver_number'] ?? $row['number'] ?? '-') . '</code>' . "\n" .
-        '<b>Amount BDT:</b> <b>BDT ' . mfs_tg_money($row['amount_bdt'] ?? 0) . '</b>' . "\n";
+        '<b>Received Amount:</b> <b>BDT ' . mfs_tg_money($row['amount_bdt'] ?? 0) . '</b>' . "\n";
 
     if ($amountRm > 0) {
-        $text .= '<b>Amount RM:</b> <b>RM ' . mfs_tg_money($amountRm) . '</b>' . "\n";
+        $text .= '<b>Send Amount:</b> <b>RM ' . mfs_tg_money($amountRm) . '</b>' . "\n";
     }
 
     $text .=
         '<b>Fee:</b> <b>' . mfs_tg_h($fee) . '</b>' . "\n" .
-        '<b>Pay / Total Hold:</b> <b>' . mfs_tg_h($total) . '</b>' . "\n" .
+        '<b>Total Paid:</b> <b>' . mfs_tg_h($total) . '</b>' . "\n" .
         '<b>Reference:</b> ' . mfs_tg_h($row['reference'] ?? '-');
 
     if ($isRemittance) {
@@ -365,7 +374,7 @@ function mfs_tg_text(array $row, string $status, string $message): string
     }
 
     if ($senderDetails !== '') {
-        $text .= "\n\n" . '<b>Sender Details:</b> <code>' . mfs_tg_h($senderDetails) . '</code>';
+        $text .= "\n\n" . '<b>Sender Last Digit:</b> <code>' . mfs_tg_h($senderDetails) . '</code>';
     }
 
     if ($status === 'SUCCESSFUL' && trim((string)($row['receipt_url'] ?? '')) !== '') {
@@ -560,7 +569,7 @@ function mfs_tg_handle_message(array $message): void
     ];
 
     mfs_tg_edit($pending['chat_id'] ?? $chatId, $pending['message_id'] ?? '', mfs_tg_text($done, 'SUCCESSFUL', $finalMessage));
-    mfs_tg_send($chatId, 'MFS request successful করা হয়েছে।' . "\n" . 'Request ID: <code>' . mfs_tg_h($requestId) . '</code>' . "\n" . 'Sender Details: <code>' . mfs_tg_h($senderDetails) . '</code>');
+    mfs_tg_send($chatId, 'MFS request successful করা হয়েছে।' . "\n" . 'Request ID: <code>' . mfs_tg_h($requestId) . '</code>' . "\n" . 'Sender Last Digit: <code>' . mfs_tg_h($senderDetails) . '</code>');
     mfs_tg_json(true, 'SUCCESS', 'MFS request marked successful', [
         'request_id' => $requestId,
         'sender_details' => $senderDetails,

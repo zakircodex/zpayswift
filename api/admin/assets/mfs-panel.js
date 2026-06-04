@@ -28,14 +28,38 @@
   function totalRows(data){ var total=Number(data&&data.pagination&&data.pagination.total); return Number.isFinite(total)?total:normalizeRows(data||{}).length; }
   function rowNumber(r){ return r.receiver_number||r.number||r.mfs_number||r.to_number||'-'; }
   function isRemittance(r){ return String(r.service_mode||'').toUpperCase()==='REMITTANCE'||String(r.country_code||r.country||'').toUpperCase()==='MY'||Number(r.amount_rm||r.amount_myr||0)>0; }
+  function rmAmount(r){
+    var rm=Number(r.amount_rm||r.amount_myr||0);
+    var rate=Number(r.exchange_rate||r.rate_myr_to_bdt||0);
+    if(rm<=0&&rate>0&&Number(r.amount_bdt||0)>0)rm=Number(r.amount_bdt||0)/rate;
+    return rm;
+  }
+  function rmFee(r){
+    var fee=Number(r.fee_rm||r.fee_myr||0);
+    var rate=Number(r.exchange_rate||r.rate_myr_to_bdt||0);
+    if(fee<=0&&String(r.fee_currency||'').toUpperCase()==='MYR')fee=Number(r.fee_amount||0);
+    if(fee<=0&&rate>0&&Number(r.fee_bdt||0)>0)fee=Number(r.fee_bdt||0)/rate;
+    return fee;
+  }
+  function rmTotal(r){
+    var total=Number(r.total_debit_rm||r.total_pay_myr||0);
+    var rate=Number(r.exchange_rate||r.rate_myr_to_bdt||0);
+    if(total<=0)total=rmAmount(r)+rmFee(r);
+    if(total<=0&&String(r.wallet_currency||'').toUpperCase()==='MYR')total=Number(r.total_debit||r.total_pay||0);
+    if(total<=0&&rate>0&&Number(r.total_debit||r.total_pay||0)>0)total=Number(r.total_debit||r.total_pay||0)/rate;
+    return total;
+  }
+  function bdtTotal(r){
+    var total=Number(r.total_debit_bdt||r.total_pay_bdt||0);
+    if(total<=0)total=Number(r.total_debit||r.total_pay||0);
+    if(total<=0)total=Number(r.amount_bdt||r.amount||0)+Number(r.fee_bdt||0);
+    return total;
+  }
   function rowAmount(r){
-    var c=String(r.wallet_currency||'BDT').toUpperCase();
     if(isRemittance(r)){
-      var hold=c==='MYR'?'RM '+money(r.total_debit_rm||r.total_debit||r.amount_rm||0):'BDT '+money(r.total_debit_bdt||r.total_debit||r.amount_bdt||r.amount||0);
-      return 'BDT '+money(r.amount_bdt||0)+' / RM '+money(r.amount_rm||r.amount_myr||0)+' | Hold '+hold;
+      return 'Received: BDT '+money(r.amount_bdt||0)+' | Send: RM '+money(rmAmount(r))+' | Fee: RM '+money(rmFee(r))+' | Total Paid: RM '+money(rmTotal(r));
     }
-    if(c==='MYR') return 'RM '+money(r.total_debit||r.amount_rm||0);
-    return 'BDT '+money(r.total_debit||r.amount_bdt||r.amount||0);
+    return 'Amount: BDT '+money(r.amount_bdt||r.amount||0)+' | Fee: BDT '+money(r.fee_bdt||0)+' | Total Paid: BDT '+money(bdtTotal(r));
   }
   function num(id){ var n=Number(el(id)&&el(id).value||0); return Number.isFinite(n)?n:0; }
   function numDefault(id,def){ var node=el(id); if(!node)return def; var raw=String(node.value||'').trim(); if(raw==='')return def; var n=Number(raw); return Number.isFinite(n)?n:def; }
@@ -378,7 +402,7 @@
     var myFeeSubadmin=roleFee(myRow,'SUBADMIN',2);
     box.textContent=[
       'Backend will use the target account country/currency for the final hold.',
-      'BD target: LOCAL, Amount BDT '+money(amountBdt)+', Fee BDT '+money(bdFee)+', Total Hold BDT '+money(amountBdt+bdFee),
+      'BD target: LOCAL, Amount BDT '+money(amountBdt)+', Fee BDT '+money(bdFee)+', Total Paid BDT '+money(amountBdt+bdFee),
       'MY target: REMITTANCE, Rate RM 1 = BDT '+money(rate)+', Role fee USER RM '+money(myFeeUser)+', RETAILER RM '+money(myFeeRetailer)+', SUBADMIN RM '+money(myFeeSubadmin)+'.',
       'Use Preview Fee to confirm the actual target role/country before create.'
     ].join('\n');
@@ -409,12 +433,14 @@
       await ensureCsrf();
       var data=await post('mfs_preview',body);
       var currency=String(data.wallet_currency||'BDT').toUpperCase();
-      var total=currency==='MYR'?'RM '+money(data.total_pay_myr||data.total_debit_rm||data.total_pay||0):'BDT '+money(data.total_pay_bdt||data.total_debit_bdt||data.total_pay||0);
+      var remittance=String(data.service_mode||'').toUpperCase()==='REMITTANCE'||String(data.country_code||'').toUpperCase()==='MY'||Number(data.amount_rm||data.amount_myr||0)>0;
+      var previewFee=remittance?'RM '+money(data.fee_rm||data.fee_myr||0):String(data.fee_currency||currency)+' '+money(data.fee_amount||0);
+      var total=remittance?'RM '+money(data.total_pay_myr||data.total_debit_rm||((Number(data.amount_rm||data.amount_myr||0))+(Number(data.fee_rm||data.fee_myr||0)))):(currency==='MYR'?'RM '+money(data.total_pay_myr||data.total_debit_rm||data.total_pay||0):'BDT '+money(data.total_pay_bdt||data.total_debit_bdt||data.total_pay||0));
       el('mfsCreatePreview').textContent=[
         'Target preview ready.',
         'UID: '+String(data.uid||'-')+' | Role: '+String(data.role||'-')+' | Country: '+String(data.country_code||'-')+' | Mode: '+String(data.service_mode||'-'),
-        'Amount: BDT '+money(data.amount_bdt||0)+(Number(data.amount_rm||data.amount_myr||0)>0?' / RM '+money(data.amount_rm||data.amount_myr||0):''),
-        'Fee: '+String(data.fee_currency||currency)+' '+money(data.fee_amount||0)+' | Total Hold: '+total,
+        'Received: BDT '+money(data.amount_bdt||0)+(Number(data.amount_rm||data.amount_myr||0)>0?' | Send: RM '+money(data.amount_rm||data.amount_myr||0):''),
+        'Fee: '+previewFee+' | Total Paid: '+total,
         Number(data.exchange_rate||data.rate_myr_to_bdt||0)>0?'Rate: RM 1 = BDT '+money(data.exchange_rate||data.rate_myr_to_bdt):''
       ].filter(Boolean).join('\n');
       showFeedback('success','Preview ready','Target role '+String(data.role||'-')+' will pay '+total+'.');
@@ -647,7 +673,7 @@
       var data=await post('mfs_success',{request_id:id,trxid:trxid,sender_details:details,message:message});
       state.successRequestId='';
       el('mfsSuccessModal').classList.add('hidden');
-      showFeedback('success','Request successful','Request '+id+' was completed successfully.'+(data.receipt_url?' Receipt: '+data.receipt_url:''));
+      showFeedback('success','Request successful','Request '+id+' completed successfully.');
       await load(null,false);
     }catch(err){
       showFeedback('error','Unable to complete request',friendlyError(err));
