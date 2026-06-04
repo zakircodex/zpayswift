@@ -78,6 +78,7 @@
       '<div class="zpay-mfs-preview-row"><span>Provider</span><b>' + esc(providerName(d.provider)) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Receiver</span><b>' + esc(d.receiver_number || '-') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Country</span><b>' + esc(country || 'Auto from profile/phone') + '</b></div>' +
+      '<div class="zpay-mfs-preview-row"><span>Role</span><b>' + esc(p.role || 'USER') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Mode</span><b>' + esc(mode || 'Auto') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Amount BDT</span><b>BDT ' + money(p.amount_bdt || d.amount_bdt) + '</b></div>' +
       ((p.amount_myr || p.amount_rm || d.amount_rm) ? '<div class="zpay-mfs-preview-row"><span>Amount RM</span><b>RM ' + money(p.amount_myr || p.amount_rm || d.amount_rm) + '</b></div>' : '') +

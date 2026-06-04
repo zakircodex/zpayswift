@@ -52,6 +52,15 @@ function mfs_make_request_id(): string
     }
 }
 
+function mfs_make_receipt_id(): string
+{
+    try {
+        return 'RCP' . date('YmdHis') . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
+    } catch (Throwable $e) {
+        return 'RCP' . date('YmdHis') . strtoupper(substr(md5((string)microtime(true)), 0, 8));
+    }
+}
+
 function mfs_make_ledger_id(): string
 {
     if (function_exists('make_uid')) {
@@ -862,9 +871,55 @@ function mfs_bd_official_fee_bdt(string $provider, string $serviceType, float $a
     return mfs_round_money($fee);
 }
 
+function mfs_fee_roles(): array
+{
+    return ['USER', 'RETAILER', 'SUBADMIN', 'ADMIN'];
+}
+
+function mfs_default_my_fee_rm(string $role): float
+{
+    $role = strtoupper(trim($role));
+
+    if ($role === 'SUBADMIN') {
+        return mfs_const_float('MY_REMITTANCE_FEE_SUBADMIN_RM', 2.00);
+    }
+
+    if ($role === 'RETAILER') {
+        return mfs_const_float('MY_REMITTANCE_FEE_RETAILER_RM', 2.00);
+    }
+
+    if ($role === 'ADMIN') {
+        return mfs_const_float('MY_REMITTANCE_FEE_ADMIN_RM', 0.00);
+    }
+
+    return mfs_const_float('MY_REMITTANCE_FEE_USER_RM', 5.00);
+}
+
+function mfs_pick_role_fee_from_row(array $row, string $role): float
+{
+    $roleFee = mfs_nested_value($row, $role, null);
+
+    if (is_numeric($roleFee)) {
+        return mfs_round_money($roleFee);
+    }
+
+    if (is_array($roleFee)) {
+        $pickedRoleFee = mfs_pick_fee_float($roleFee, ['fee_rm', 'fixed', 'fixed_fee', 'amount', 'rm'], -1.0);
+        if ($pickedRoleFee >= 0) {
+            return mfs_round_money($pickedRoleFee);
+        }
+    }
+
+    return -1.0;
+}
+
 function mfs_remittance_fee_rm(string $role, string $provider = ''): float
 {
     $role = strtoupper(trim($role));
+    if (!in_array($role, mfs_fee_roles(), true)) {
+        $role = 'USER';
+    }
+
     $provider = mfs_normalize_provider($provider);
 
     $paths = [];
@@ -873,19 +928,14 @@ function mfs_remittance_fee_rm(string $role, string $provider = ''): float
         $providerFee = mfs_config_first(['fees.MY.' . $provider], null);
 
         if (is_array($providerFee)) {
-            $roleFee = mfs_nested_value($providerFee, $role, null);
-            if (is_numeric($roleFee)) {
-                return mfs_round_money($roleFee);
+            $pickedRoleFee = mfs_pick_role_fee_from_row($providerFee, $role);
+            if ($pickedRoleFee >= 0) {
+                return mfs_round_money($pickedRoleFee);
             }
 
-            if (is_array($roleFee)) {
-                $pickedRoleFee = mfs_pick_fee_float($roleFee, ['fee_rm', 'fixed', 'fixed_fee', 'amount', 'rm'], -1.0);
-                if ($pickedRoleFee >= 0) {
-                    return mfs_round_money($pickedRoleFee);
-                }
-            }
-
-            $pickedProviderFee = mfs_pick_fee_float($providerFee, ['fee_rm', 'fixed', 'fixed_fee', 'amount', 'rm'], -1.0);
+            $pickedProviderFee = $role === 'USER'
+                ? mfs_pick_fee_float($providerFee, ['fee_rm', 'fixed', 'fixed_fee', 'amount', 'rm'], -1.0)
+                : -1.0;
             if ($pickedProviderFee >= 0) {
                 return mfs_round_money($pickedProviderFee);
             }
@@ -894,10 +944,12 @@ function mfs_remittance_fee_rm(string $role, string $provider = ''): float
         $paths[] = 'MY.' . $provider . '.remittance_fee_rm.' . $role;
         $paths[] = 'REMITTANCE.' . $provider . '.fee_rm.' . $role;
         $paths[] = 'fees.MY.' . $provider . '.' . $role;
-        $paths[] = 'fees.MY.' . $provider . '.fee_rm';
-        $paths[] = 'fees.MY.' . $provider . '.fixed';
-        $paths[] = 'fees.MY.' . $provider . '.fixed_fee';
-        $paths[] = 'fees.MY.' . $provider . '.amount';
+        if ($role === 'USER') {
+            $paths[] = 'fees.MY.' . $provider . '.fee_rm';
+            $paths[] = 'fees.MY.' . $provider . '.fixed';
+            $paths[] = 'fees.MY.' . $provider . '.fixed_fee';
+            $paths[] = 'fees.MY.' . $provider . '.amount';
+        }
     }
 
     $paths[] = 'MY.remittance_fee_rm.' . $role;
@@ -911,23 +963,7 @@ function mfs_remittance_fee_rm(string $role, string $provider = ''): float
         return mfs_round_money($fee);
     }
 
-    if ($provider !== '') {
-        return mfs_const_float('MY_REMITTANCE_FEE_RM', 3.00);
-    }
-
-    if ($role === 'SUBADMIN') {
-        return mfs_const_float('MY_REMITTANCE_FEE_SUBADMIN_RM', 2.00);
-    }
-
-    if ($role === 'RETAILER') {
-        return mfs_const_float('MY_REMITTANCE_FEE_RETAILER_RM', 3.00);
-    }
-
-    if ($role === 'ADMIN') {
-        return mfs_const_float('MY_REMITTANCE_FEE_ADMIN_RM', 0.00);
-    }
-
-    return mfs_const_float('MY_REMITTANCE_FEE_USER_RM', 5.00);
+    return mfs_default_my_fee_rm($role);
 }
 
 function mfs_country_label(string $countryCode): string
@@ -965,10 +1001,15 @@ function mfs_public_settings(): array
         ];
 
         $myRow = mfs_config_first(['fees.MY.' . $provider], null);
+        $userFee = mfs_remittance_fee_rm('USER', $provider);
         $fees['MY'][$provider] = [
             'type' => is_array($myRow) ? (string)($myRow['type'] ?? 'fixed') : 'fixed',
-            'fixed' => mfs_remittance_fee_rm('USER', $provider),
-            'fee_rm' => mfs_remittance_fee_rm('USER', $provider),
+            'fixed' => $userFee,
+            'fee_rm' => $userFee,
+            'USER' => mfs_remittance_fee_rm('USER', $provider),
+            'RETAILER' => mfs_remittance_fee_rm('RETAILER', $provider),
+            'SUBADMIN' => mfs_remittance_fee_rm('SUBADMIN', $provider),
+            'ADMIN' => mfs_remittance_fee_rm('ADMIN', $provider),
         ];
     }
 
@@ -1127,6 +1168,171 @@ function mfs_calculate_amounts(array $user, array $wallet, string $provider, str
             'country_code' => $countryCode,
             'wallet_currency' => $walletCurrency,
             'service_mode' => $serviceMode,
+        ],
+    ];
+}
+
+function mfs_preview_payload(string $uid, array $body): array
+{
+    $uid = trim($uid);
+
+    if ($uid === '') {
+        return [
+            'ok' => false,
+            'code' => 'VALIDATION_ERROR',
+            'message' => 'uid is required',
+            'data' => [],
+        ];
+    }
+
+    $user = mfs_load_user($uid);
+
+    if (!$user) {
+        return [
+            'ok' => false,
+            'code' => 'USER_NOT_FOUND',
+            'message' => 'User not found',
+            'data' => [],
+        ];
+    }
+
+    if (mfs_user_status($user) !== 'ACTIVE') {
+        return [
+            'ok' => false,
+            'code' => 'ACCOUNT_INACTIVE',
+            'message' => 'Account is inactive',
+            'data' => [],
+        ];
+    }
+
+    $wallet = mfs_load_wallet($uid);
+    $provider = mfs_normalize_provider((string)($body['provider'] ?? $body['mfs_provider'] ?? ''));
+    $serviceType = mfs_normalize_service_type((string)($body['service_type'] ?? $body['service'] ?? $body['mfs_type'] ?? 'SEND_MONEY'));
+    $accountType = mfs_normalize_account_type((string)($body['account_type'] ?? ''), $serviceType);
+    $receiverNumber = mfs_clean_mobile_number((string)($body['receiver_number'] ?? $body['number'] ?? $body['mobile'] ?? ''));
+
+    if ($provider === '') {
+        return [
+            'ok' => false,
+            'code' => 'VALIDATION_ERROR',
+            'message' => 'Valid provider is required',
+            'data' => [],
+        ];
+    }
+
+    if (!mfs_provider_enabled($provider)) {
+        return [
+            'ok' => false,
+            'code' => 'PROVIDER_DISABLED',
+            'message' => mfs_provider_name($provider) . ' is disabled',
+            'data' => ['provider' => $provider],
+        ];
+    }
+
+    if ($serviceType === '' || $accountType === '') {
+        return [
+            'ok' => false,
+            'code' => 'VALIDATION_ERROR',
+            'message' => 'Valid service and account type are required',
+            'data' => [],
+        ];
+    }
+
+    if (!mfs_valid_bd_mobile($receiverNumber)) {
+        return [
+            'ok' => false,
+            'code' => 'VALIDATION_ERROR',
+            'message' => 'Receiver number must be a valid 11 digit BD mobile number',
+            'data' => ['required_format' => '01XXXXXXXXX'],
+        ];
+    }
+
+    $amounts = mfs_calculate_amounts($user, $wallet, $provider, $serviceType, $body);
+
+    if (empty($amounts['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($amounts['code'] ?? 'VALIDATION_ERROR'),
+            'message' => (string)($amounts['message'] ?? 'Invalid amount'),
+            'data' => (array)($amounts['data'] ?? []),
+        ];
+    }
+
+    [$policyOk, $policyMessage] = mfs_validate_policy(
+        (string)$amounts['country_code'],
+        (string)$amounts['service_mode'],
+        $serviceType,
+        $accountType
+    );
+
+    if (!$policyOk) {
+        return [
+            'ok' => false,
+            'code' => 'SERVICE_NOT_ALLOWED',
+            'message' => $policyMessage,
+            'data' => [
+                'country_code' => (string)$amounts['country_code'],
+                'service_mode' => (string)$amounts['service_mode'],
+                'service_type' => $serviceType,
+                'account_type' => $accountType,
+            ],
+        ];
+    }
+
+    $walletCurrency = (string)$amounts['wallet_currency'];
+    $walletHoldAmount = mfs_round_money((float)$amounts['total_debit']);
+    $available = mfs_wallet_available_balance($wallet);
+    $hold = mfs_wallet_hold_balance($wallet);
+    $feeCurrency = $walletCurrency === 'MYR' ? 'MYR' : 'BDT';
+    $feeAmount = $feeCurrency === 'MYR'
+        ? mfs_round_money((float)$amounts['fee_rm'])
+        : mfs_round_money((float)$amounts['fee_bdt']);
+
+    return [
+        'ok' => true,
+        'code' => 'SUCCESS',
+        'message' => 'MFS preview ready',
+        'data' => [
+            'uid' => $uid,
+            'role' => mfs_user_role($user),
+            'country_code' => (string)$amounts['country_code'],
+            'country' => (string)$amounts['country_code'],
+            'service_mode' => (string)$amounts['service_mode'],
+            'mode' => (string)$amounts['service_mode'],
+            'wallet_currency' => $walletCurrency,
+            'wallet_hold_amount' => $walletHoldAmount,
+            'wallet_balance' => $available,
+
+            'provider' => $provider,
+            'provider_name' => mfs_provider_name($provider),
+            'service_type' => $serviceType,
+            'service_name' => mfs_service_name($serviceType),
+            'account_type' => $accountType,
+            'receiver_number' => $receiverNumber,
+            'number' => $receiverNumber,
+
+            'rate_myr_to_bdt' => (float)$amounts['exchange_rate'],
+            'exchange_rate' => (float)$amounts['exchange_rate'],
+            'amount_bdt' => (float)$amounts['amount_bdt'],
+            'amount_rm' => (float)$amounts['amount_rm'],
+            'amount_myr' => (float)$amounts['amount_rm'],
+            'fee_bdt' => (float)$amounts['fee_bdt'],
+            'fee_rm' => (float)$amounts['fee_rm'],
+            'fee_myr' => (float)$amounts['fee_rm'],
+            'fee_currency' => $feeCurrency,
+            'fee_amount' => $feeAmount,
+            'total_pay' => $walletHoldAmount,
+            'total_debit' => $walletHoldAmount,
+            'total_pay_bdt' => (float)$amounts['total_debit_bdt'],
+            'total_debit_bdt' => (float)$amounts['total_debit_bdt'],
+            'total_pay_myr' => (float)$amounts['total_debit_rm'],
+            'total_debit_rm' => (float)$amounts['total_debit_rm'],
+
+            'available_balance' => $available,
+            'hold_balance' => $hold,
+            'can_pay' => $available >= $walletHoldAmount,
+            'reference' => trim((string)($body['reference'] ?? '')),
+            'message' => 'Preview only. No wallet hold has been created.',
         ],
     ];
 }
@@ -1492,6 +1698,8 @@ function mfs_public_log_row(array $row): array
         'request_source' => (string)($row['request_source'] ?? $row['source'] ?? 'USER_PANEL'),
 
         'status' => (string)($row['status'] ?? 'PENDING'),
+        'role' => (string)($row['user_role'] ?? $row['role'] ?? ''),
+        'user_role' => (string)($row['user_role'] ?? $row['role'] ?? ''),
 
         'provider' => $provider,
         'provider_name' => mfs_provider_name($provider),
@@ -1508,14 +1716,14 @@ function mfs_public_log_row(array $row): array
 
         'amount' => (float)($row['total_debit'] ?? 0),
         'amount_bdt' => (float)($row['amount_bdt'] ?? 0),
-        'amount_rm' => (float)($row['amount_rm'] ?? 0),
+        'amount_rm' => (float)($row['amount_rm'] ?? $row['amount_myr'] ?? 0),
 
         'fee_bdt' => (float)($row['fee_bdt'] ?? 0),
-        'fee_rm' => (float)($row['fee_rm'] ?? 0),
+        'fee_rm' => (float)($row['fee_rm'] ?? $row['fee_myr'] ?? 0),
 
         'total_debit' => (float)($row['total_debit'] ?? 0),
-        'total_debit_bdt' => (float)($row['total_debit_bdt'] ?? 0),
-        'total_debit_rm' => (float)($row['total_debit_rm'] ?? 0),
+        'total_debit_bdt' => (float)($row['total_debit_bdt'] ?? $row['total_pay_bdt'] ?? 0),
+        'total_debit_rm' => (float)($row['total_debit_rm'] ?? $row['total_pay_myr'] ?? 0),
 
         'exchange_rate' => (float)($row['exchange_rate'] ?? 0),
 
@@ -1528,6 +1736,10 @@ function mfs_public_log_row(array $row): array
         'created_at' => (int)($row['created_at'] ?? 0),
         'updated_at' => (int)($row['updated_at'] ?? 0),
         'completed_at' => (int)($row['completed_at'] ?? 0),
+
+        'receipt_id' => (string)($row['receipt_id'] ?? ''),
+        'receipt_url' => (string)($row['receipt_url'] ?? ''),
+        'receipt_created_at' => (int)($row['receipt_created_at'] ?? 0),
     ];
 }
 
@@ -1556,6 +1768,217 @@ function mfs_write_history(string $uid, string $requestId, array $row): void
     $month = mfs_month_key($ts);
 
     mfs_fb_patch('MFS_HISTORY/' . $uid . '/' . $month . '/' . $requestId, mfs_public_log_row($row));
+}
+
+/* =========================================================
+   Receipt Helpers
+========================================================= */
+
+function mfs_receipt_token(): string
+{
+    try {
+        return rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+    } catch (Throwable $e) {
+        return hash('sha256', uniqid('mfs_receipt_', true) . '|' . mt_rand());
+    }
+}
+
+function mfs_api_base_url_for_receipt(): string
+{
+    if (function_exists('app_api_url')) {
+        return rtrim((string)app_api_url(), '/');
+    }
+
+    $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
+        $https = true;
+    }
+
+    $scheme = $https ? 'https' : 'http';
+    $host = trim((string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
+    $script = (string)($_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/mfs/receipt.php');
+    $apiPath = dirname(dirname($script));
+
+    if ($apiPath === '/' || $apiPath === '\\' || $apiPath === '.') {
+        $apiPath = '/zpayswift/api';
+    }
+
+    return rtrim($scheme . '://' . $host . '/' . trim(str_replace('\\', '/', $apiPath), '/'), '/');
+}
+
+function mfs_receipt_url(string $token): string
+{
+    return mfs_api_base_url_for_receipt() . '/mfs/receipt.php?t=' . rawurlencode($token);
+}
+
+function mfs_receipt_display_money($value): float
+{
+    return mfs_round_money((float)$value);
+}
+
+function mfs_create_receipt_for_success(string $requestId, array $row): array
+{
+    $requestId = trim($requestId);
+
+    if ($requestId === '') {
+        return [];
+    }
+
+    $receiptId = trim((string)($row['receipt_id'] ?? ''));
+    $existingToken = trim((string)($row['receipt_token'] ?? ''));
+    $existingUrl = trim((string)($row['receipt_url'] ?? ''));
+
+    if ($receiptId !== '' && $existingToken !== '' && $existingUrl !== '') {
+        return [
+            'receipt_id' => $receiptId,
+            'receipt_token' => $existingToken,
+            'receipt_url' => $existingUrl,
+            'receipt_created_at' => (int)($row['receipt_created_at'] ?? mfs_now()),
+        ];
+    }
+
+    $uid = trim((string)($row['uid'] ?? ''));
+    $user = $uid !== '' ? mfs_load_user($uid) : [];
+    $now = mfs_now();
+    $receiptId = mfs_make_receipt_id();
+    $token = mfs_receipt_token();
+    $url = mfs_receipt_url($token);
+
+    $receipt = [
+        'receipt_id' => $receiptId,
+        'receipt_token' => $token,
+        'receipt_url' => $url,
+        'request_id' => $requestId,
+        'title' => 'Z-Pay Swift Remittance Receipt',
+
+        'uid' => $uid,
+        'sender_name' => (string)($row['user_name'] ?? $user['name'] ?? ''),
+        'sender_phone' => (string)($row['user_phone'] ?? $user['phone'] ?? ''),
+        'sender_role' => (string)($row['user_role'] ?? $row['role'] ?? $user['role'] ?? 'USER'),
+
+        'provider' => mfs_normalize_provider((string)($row['provider'] ?? '')),
+        'provider_name' => (string)($row['provider_name'] ?? mfs_provider_name((string)($row['provider'] ?? ''))),
+        'receiver_number' => (string)($row['receiver_number'] ?? $row['number'] ?? ''),
+        'country_code' => (string)($row['country_code'] ?? ''),
+        'country' => mfs_country_label((string)($row['country_code'] ?? '')),
+        'service_mode' => (string)($row['service_mode'] ?? ''),
+        'mode' => (string)($row['service_mode'] ?? ''),
+
+        'amount_bdt' => mfs_receipt_display_money($row['amount_bdt'] ?? 0),
+        'amount_rm' => mfs_receipt_display_money($row['amount_rm'] ?? $row['amount_myr'] ?? 0),
+        'rate_myr_to_bdt' => mfs_receipt_display_money($row['exchange_rate'] ?? $row['rate_myr_to_bdt'] ?? 0),
+        'exchange_rate' => mfs_receipt_display_money($row['exchange_rate'] ?? $row['rate_myr_to_bdt'] ?? 0),
+        'fee_bdt' => mfs_receipt_display_money($row['fee_bdt'] ?? 0),
+        'fee_rm' => mfs_receipt_display_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0),
+        'total_debit_bdt' => mfs_receipt_display_money($row['total_debit_bdt'] ?? 0),
+        'total_debit_rm' => mfs_receipt_display_money($row['total_debit_rm'] ?? 0),
+        'total_pay' => mfs_receipt_display_money($row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0),
+        'wallet_currency' => mfs_normalize_currency((string)($row['wallet_currency'] ?? 'BDT')),
+
+        'reference' => (string)($row['reference'] ?? ''),
+        'sender_details' => (string)($row['sender_details'] ?? $row['sender_last_digit'] ?? $row['last_digit'] ?? ''),
+        'sender_last_digit' => (string)($row['sender_last_digit'] ?? $row['sender_details'] ?? $row['last_digit'] ?? ''),
+        'trxid' => (string)($row['trxid'] ?? ''),
+        'status' => 'SUCCESSFUL',
+        'created_at' => (int)($row['created_at'] ?? 0),
+        'success_at' => (int)($row['completed_at'] ?? $now),
+        'completed_at' => (int)($row['completed_at'] ?? $now),
+        'approved_by_uid' => (string)($row['completed_by_uid'] ?? ''),
+        'approved_by_role' => (string)($row['completed_by_role'] ?? ''),
+        'receipt_created_at' => $now,
+    ];
+
+    $saved = mfs_fb_put('MFS_RECEIPTS/' . $receiptId, $receipt);
+    $indexed = mfs_fb_put('MFS_RECEIPT_INDEX/' . $token, [
+        'receipt_id' => $receiptId,
+        'request_id' => $requestId,
+        'created_at' => $now,
+    ]);
+
+    if (!$saved || !$indexed) {
+        return [
+            'receipt_error' => 'Receipt save failed',
+        ];
+    }
+
+    return [
+        'receipt_id' => $receiptId,
+        'receipt_token' => $token,
+        'receipt_url' => $url,
+        'receipt_created_at' => $now,
+    ];
+}
+
+function mfs_public_receipt(array $receipt): array
+{
+    return [
+        'receipt_id' => (string)($receipt['receipt_id'] ?? ''),
+        'request_id' => (string)($receipt['request_id'] ?? ''),
+        'title' => (string)($receipt['title'] ?? 'Z-Pay Swift Remittance Receipt'),
+        'provider' => (string)($receipt['provider'] ?? ''),
+        'provider_name' => (string)($receipt['provider_name'] ?? ''),
+        'sender_name' => (string)($receipt['sender_name'] ?? ''),
+        'sender_phone' => (string)($receipt['sender_phone'] ?? ''),
+        'sender_role' => (string)($receipt['sender_role'] ?? ''),
+        'receiver_number' => (string)($receipt['receiver_number'] ?? ''),
+        'country_code' => (string)($receipt['country_code'] ?? ''),
+        'country' => (string)($receipt['country'] ?? ''),
+        'mode' => (string)($receipt['mode'] ?? $receipt['service_mode'] ?? ''),
+        'service_mode' => (string)($receipt['service_mode'] ?? $receipt['mode'] ?? ''),
+        'amount_bdt' => (float)($receipt['amount_bdt'] ?? 0),
+        'amount_myr' => (float)($receipt['amount_rm'] ?? $receipt['amount_myr'] ?? 0),
+        'amount_rm' => (float)($receipt['amount_rm'] ?? $receipt['amount_myr'] ?? 0),
+        'rate_myr_bdt' => (float)($receipt['rate_myr_to_bdt'] ?? $receipt['exchange_rate'] ?? 0),
+        'rate_myr_to_bdt' => (float)($receipt['rate_myr_to_bdt'] ?? $receipt['exchange_rate'] ?? 0),
+        'exchange_rate' => (float)($receipt['exchange_rate'] ?? $receipt['rate_myr_to_bdt'] ?? 0),
+        'fee_amount' => (float)(strtoupper((string)($receipt['wallet_currency'] ?? 'BDT')) === 'MYR' ? ($receipt['fee_rm'] ?? 0) : ($receipt['fee_bdt'] ?? 0)),
+        'fee_currency' => strtoupper((string)($receipt['wallet_currency'] ?? 'BDT')) === 'MYR' ? 'MYR' : 'BDT',
+        'fee_bdt' => (float)($receipt['fee_bdt'] ?? 0),
+        'fee_rm' => (float)($receipt['fee_rm'] ?? 0),
+        'total_pay' => (float)($receipt['total_pay'] ?? 0),
+        'wallet_currency' => (string)($receipt['wallet_currency'] ?? ''),
+        'reference' => (string)($receipt['reference'] ?? ''),
+        'sender_details' => (string)($receipt['sender_details'] ?? ''),
+        'sender_last_digit' => (string)($receipt['sender_last_digit'] ?? ''),
+        'trxid' => (string)($receipt['trxid'] ?? ''),
+        'status' => (string)($receipt['status'] ?? 'SUCCESSFUL'),
+        'created_at' => (int)($receipt['created_at'] ?? 0),
+        'success_at' => (int)($receipt['success_at'] ?? $receipt['completed_at'] ?? 0),
+        'receipt_url' => (string)($receipt['receipt_url'] ?? ''),
+    ];
+}
+
+function mfs_load_receipt_by_token(string $token): array
+{
+    $token = trim($token);
+
+    if ($token === '' || !preg_match('/^[A-Za-z0-9_-]{24,128}$/', $token)) {
+        return [];
+    }
+
+    $index = mfs_fb_get('MFS_RECEIPT_INDEX/' . $token);
+
+    if (!is_array($index)) {
+        return [];
+    }
+
+    $receiptId = trim((string)($index['receipt_id'] ?? ''));
+
+    if ($receiptId === '') {
+        return [];
+    }
+
+    $receipt = mfs_fb_get('MFS_RECEIPTS/' . $receiptId);
+
+    if (!is_array($receipt)) {
+        return [];
+    }
+
+    if (trim((string)($receipt['receipt_token'] ?? '')) !== $token) {
+        return [];
+    }
+
+    return $receipt;
 }
 
 /* =========================================================
@@ -1724,6 +2147,7 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
     $now = mfs_now();
     $walletCurrency = (string)$amounts['wallet_currency'];
     $totalDebit = mfs_round_money((float)$amounts['total_debit']);
+    $userRole = mfs_user_role($user);
 
     $hold = mfs_hold_wallet(
         $uid,
@@ -1750,6 +2174,9 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         'request_id' => $requestId,
         'uid' => $uid,
         'user_phone' => (string)($user['phone'] ?? ''),
+        'user_name' => (string)($user['name'] ?? ''),
+        'user_role' => $userRole,
+        'role' => $userRole,
 
         'provider' => $provider,
         'provider_name' => mfs_provider_name($provider),
@@ -1859,6 +2286,8 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         'data' => [
             'request_id' => $requestId,
             'uid' => $uid,
+            'role' => $userRole,
+            'user_role' => $userRole,
             'status' => 'PENDING',
 
             'provider' => $provider,
@@ -2194,6 +2623,16 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
     $row['completed_by_uid'] = (string)($actor['uid'] ?? '');
     $row['completed_by_role'] = (string)($actor['role'] ?? '');
 
+    $receipt = mfs_create_receipt_for_success($requestId, $row);
+    if (!empty($receipt['receipt_id'])) {
+        $row['receipt_id'] = (string)$receipt['receipt_id'];
+        $row['receipt_token'] = (string)($receipt['receipt_token'] ?? '');
+        $row['receipt_url'] = (string)($receipt['receipt_url'] ?? '');
+        $row['receipt_created_at'] = (int)($receipt['receipt_created_at'] ?? $now);
+    } elseif (!empty($receipt['receipt_error'])) {
+        $row['receipt_error'] = (string)$receipt['receipt_error'];
+    }
+
     mfs_move_request_bucket($requestId, (string)($row['_bucket'] ?? 'PENDING'), 'DONE', $row);
     mfs_update_request_status($requestId, $uid, 'SUCCESSFUL', $message, $now);
     mfs_write_user_request_log($uid, $requestId, $row);
@@ -2220,6 +2659,9 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
             'status' => 'SUCCESSFUL',
             'trxid' => $trxid,
             'completed_at' => $now,
+            'receipt_id' => (string)($row['receipt_id'] ?? ''),
+            'receipt_url' => (string)($row['receipt_url'] ?? ''),
+            'receipt_created_at' => (int)($row['receipt_created_at'] ?? 0),
         ],
     ];
 }

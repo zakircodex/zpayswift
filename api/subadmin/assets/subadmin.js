@@ -1429,6 +1429,7 @@ function renderMfsRows(){
             <td>
               <div class="row-actions">
                 <button class="mini-btn blue sub-mfs-view-btn" type="button" data-mfs-request="${esc(requestId)}">View</button>
+                ${row.receipt_url ? `<button class="mini-btn green sub-mfs-receipt-btn" type="button" data-receipt-url="${esc(row.receipt_url)}">Receipt</button>` : ''}
               </div>
             </td>
           </tr>
@@ -1462,6 +1463,7 @@ function renderMfsRows(){
           <span>Created</span><b>${fmtTs(row.created_at || 0)}</b>
         </div>
         <button class="mini-btn blue sub-mfs-view-btn" type="button" data-mfs-request="${esc(requestId)}">View Request</button>
+        ${row.receipt_url ? `<button class="mini-btn green sub-mfs-receipt-btn" type="button" data-receipt-url="${esc(row.receipt_url)}">View Receipt</button>` : ''}
       </div>
     `;
   }).join('');
@@ -1560,11 +1562,25 @@ function clearMfsForm(){
 }
 
 function validateMfsForm(){
+  const payload = buildMfsPreviewPayload();
+  const pin = el('subMfsPin')?.value || '';
+
+  if (!pin.trim()) {
+    throw new Error('Transaction PIN is required');
+  }
+
+  return {
+    ...payload,
+    pin,
+    note: el('subMfsNote')?.value.trim() || ''
+  };
+}
+
+function buildMfsPreviewPayload(){
   const provider = el('subMfsProvider')?.value.trim() || '';
   const receiver = el('subMfsReceiver')?.value.trim() || '';
   const amount = Number(el('subMfsAmountBdt')?.value || 0);
   const amountRm = Number(el('subMfsAmountRm')?.value || 0);
-  const pin = el('subMfsPin')?.value || '';
 
   if (!['BKASH', 'NAGAD'].includes(provider)) {
     throw new Error('Provider must be bKash or Nagad');
@@ -1582,21 +1598,54 @@ function validateMfsForm(){
     throw new Error('Amount BDT must be between BDT 500 and BDT 50,000');
   }
 
-  if (!pin.trim()) {
-    throw new Error('Transaction PIN is required');
-  }
-
   return {
     provider,
     receiver_number: receiver,
     amount_bdt: amount,
     amount_rm: amountRm,
-    pin,
     service_type: 'SEND_MONEY',
     account_type: 'PERSONAL',
-    reference: el('subMfsReference')?.value.trim() || '',
-    note: el('subMfsNote')?.value.trim() || ''
+    reference: el('subMfsReference')?.value.trim() || ''
   };
+}
+
+async function previewMfsRequest(button = null){
+  return withButtonLoading(button || el('subMfsPreviewBtn'), 'Previewing...', async () => {
+    let payload;
+
+    try{
+      payload = buildMfsPreviewPayload();
+    }catch(err){
+      showToast(err.message || 'Validation error', 'error');
+      setBoxMessage('subMfsOutput', 'error', 'Validation Error', [
+        err.message || 'Please check the MFS form.'
+      ]);
+      return;
+    }
+
+    try{
+      const data = await proxyPost('mfs_preview', payload, 'Loading MFS preview...');
+      const currency = String(data.wallet_currency || 'BDT').toUpperCase();
+      const total = currency === 'MYR'
+        ? `RM ${money(data.total_pay_myr ?? data.total_debit_rm ?? data.total_pay ?? 0)}`
+        : `BDT ${money(data.total_pay_bdt ?? data.total_debit_bdt ?? data.total_pay ?? 0)}`;
+
+      setBoxMessage('subMfsOutput', 'info', 'MFS Preview Ready', [
+        `Role: ${data.role || '-'}`,
+        `Country: ${data.country_code || '-'} / ${data.service_mode || '-'}`,
+        `Amount: BDT ${money(data.amount_bdt || 0)}${Number(data.amount_rm ?? data.amount_myr ?? 0) > 0 ? ` / RM ${money(data.amount_rm ?? data.amount_myr ?? 0)}` : ''}`,
+        `Fee: ${data.fee_currency || currency} ${money(data.fee_amount || 0)}`,
+        `Total Hold: ${total}`,
+        Number(data.exchange_rate || data.rate_myr_to_bdt || 0) > 0 ? `Rate: RM 1 = BDT ${money(data.exchange_rate || data.rate_myr_to_bdt)}` : ''
+      ]);
+      showToast('MFS preview ready', 'info');
+    }catch(err){
+      setBoxMessage('subMfsOutput', 'error', 'Preview Failed', [
+        err.message || 'Failed to preview MFS request'
+      ]);
+      showToast(err.message || 'Failed to preview MFS request', 'error');
+    }
+  });
 }
 
 async function createMfsRequest(button = null){
@@ -1686,6 +1735,7 @@ async function viewMfsRequest(requestId, button = null){
         ['Reference', row.reference || '-'],
         ['Status', row.status || '-'],
         ['Sender Details', row.sender_details || row.sender_last_digit || '-'],
+        ['Receipt', row.receipt_url || '-'],
         ['Message', row.message || '-'],
         ['Created', fmtTs(row.created_at || 0)],
         ['Updated', fmtTs(row.updated_at || row.created_at || 0)]
@@ -3733,6 +3783,7 @@ el('sendPanelTopupBtn')?.addEventListener('click', createPanelTopup);
 el('clearPanelTopupBtn')?.addEventListener('click', clearPanelTopupForm);
 
 el('subMfsCreateBtn')?.addEventListener('click', (e) => createMfsRequest(e.currentTarget));
+el('subMfsPreviewBtn')?.addEventListener('click', (e) => previewMfsRequest(e.currentTarget));
 el('subMfsClearBtn')?.addEventListener('click', clearMfsForm);
 el('subMfsRefreshBtn')?.addEventListener('click', (e) => refreshMfsSummaryFromButton(e.currentTarget, true));
 el('subMfsListRefreshBtn')?.addEventListener('click', (e) => refreshMfsRequestsFromButton(e.currentTarget, true));
@@ -3746,6 +3797,13 @@ document.querySelectorAll('.sub-mfs-tab').forEach(btn => {
 });
 
 function handleSubMfsViewClick(e){
+  const receiptBtn = e.target?.closest?.('.sub-mfs-receipt-btn');
+  if (receiptBtn) {
+    const url = receiptBtn.dataset.receiptUrl || '';
+    if (url) window.open(url, '_blank', 'noopener');
+    return;
+  }
+
   const btn = e.target?.closest?.('.sub-mfs-view-btn');
   if (!btn) return;
   viewMfsRequest(btn.dataset.mfsRequest || '', btn);

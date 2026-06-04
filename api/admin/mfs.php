@@ -156,6 +156,7 @@ header('Pragma: no-cache');
             <textarea class="input" id="mfsCreateNote" rows="3" placeholder="Additional request note"></textarea>
           </label>
           <div class="admin-mfs-submit">
+            <button class="btn blue" id="mfsCreatePreviewBtn" type="button">Preview Fee</button>
             <button class="btn brand" id="mfsCreateSubmitBtn" type="submit">Create Request</button>
           </div>
           <div class="admin-mfs-preview" id="mfsCreatePreview">
@@ -180,15 +181,23 @@ header('Pragma: no-cache');
             <input class="input" id="mfsRateMyrBdt" type="number" min="0.01" step="0.01" placeholder="31.00">
           </label>
 
-          <label class="mfs-field">
-            <span>Malaysia bKash Fee RM</span>
-            <input class="input" id="mfsMyBkashFee" type="number" min="0" step="0.01" placeholder="3.00">
-          </label>
+          <div class="admin-mfs-fee-card admin-mfs-my-fee-card">
+            <h3>Malaysia bKash Role Fee</h3>
+            <div class="admin-mfs-fee-grid admin-mfs-role-fees">
+              <label class="mfs-field"><span>USER Fee RM</span><input class="input" id="mfsMyBkashUserFee" type="number" min="0" step="0.01" placeholder="5.00"></label>
+              <label class="mfs-field"><span>RETAILER Fee RM</span><input class="input" id="mfsMyBkashRetailerFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
+              <label class="mfs-field"><span>SUBADMIN Fee RM</span><input class="input" id="mfsMyBkashSubadminFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
+            </div>
+          </div>
 
-          <label class="mfs-field">
-            <span>Malaysia Nagad Fee RM</span>
-            <input class="input" id="mfsMyNagadFee" type="number" min="0" step="0.01" placeholder="3.00">
-          </label>
+          <div class="admin-mfs-fee-card admin-mfs-my-fee-card">
+            <h3>Malaysia Nagad Role Fee</h3>
+            <div class="admin-mfs-fee-grid admin-mfs-role-fees">
+              <label class="mfs-field"><span>USER Fee RM</span><input class="input" id="mfsMyNagadUserFee" type="number" min="0" step="0.01" placeholder="5.00"></label>
+              <label class="mfs-field"><span>RETAILER Fee RM</span><input class="input" id="mfsMyNagadRetailerFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
+              <label class="mfs-field"><span>SUBADMIN Fee RM</span><input class="input" id="mfsMyNagadSubadminFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
+            </div>
+          </div>
 
           <div class="admin-mfs-fee-card">
             <h3>Bangladesh bKash Fee</h3>
@@ -322,6 +331,10 @@ header('Pragma: no-cache');
         <div class="mfs-section-kicker">Request Details</div>
         <h2 id="mfsViewTitle">MFS Request</h2>
         <pre class="admin-mfs-details" id="mfsViewDetails"></pre>
+        <div class="admin-mfs-receipt-actions hidden" id="mfsViewReceiptActions">
+          <a class="btn green" id="mfsViewReceiptOpen" href="#" target="_blank" rel="noopener">View Receipt</a>
+          <button class="btn ghost" id="mfsViewReceiptCopy" type="button">Copy Receipt Link</button>
+        </div>
         <div class="admin-mfs-modal-actions">
           <button class="btn blue" id="mfsViewCloseBtn" type="button">Close</button>
         </div>
@@ -341,6 +354,6 @@ header('Pragma: no-cache');
     </div>
   </div>
 
-  <script src="assets/mfs-panel.js?v=3"></script>
+  <script src="assets/mfs-panel.js?v=4"></script>
 </body>
 </html>

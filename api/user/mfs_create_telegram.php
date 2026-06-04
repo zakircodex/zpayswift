@@ -83,7 +83,8 @@ function zpay_mfs_create_text(array $row): string
     $text = "🔔 <b>New MFS Request</b>\n\n" .
         "<b>Request ID:</b> <code>" . zpay_mfs_create_h($requestId) . "</code>\n" .
         "<b>UID:</b> <code>" . zpay_mfs_create_h($row['uid'] ?? '-') . "</code>\n" .
-        "<b>User Phone:</b> <code>" . zpay_mfs_create_h($row['user_phone'] ?? '-') . "</code>\n\n" .
+        "<b>User Phone:</b> <code>" . zpay_mfs_create_h($row['user_phone'] ?? '-') . "</code>\n" .
+        "<b>Role:</b> " . zpay_mfs_create_h($row['user_role'] ?? $row['role'] ?? 'USER') . "\n\n" .
         "<b>Provider:</b> <b>" . zpay_mfs_create_h($row['provider_name'] ?? $row['provider'] ?? '-') . "</b>\n" .
         "<b>Country:</b> " . zpay_mfs_create_h($row['country_code'] ?? '-') . "\n" .
         "<b>Mode:</b> " . zpay_mfs_create_h($row['service_mode'] ?? '-') . "\n" .

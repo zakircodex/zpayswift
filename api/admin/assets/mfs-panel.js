@@ -13,7 +13,8 @@
     successRequestId:'',
     confirmAction:null,
     settings:null,
-    settingsLoading:false
+    settingsLoading:false,
+    viewReceiptUrl:''
   };
 
   function el(id){ return document.getElementById(id); }
@@ -37,7 +38,17 @@
     return 'BDT '+money(r.total_debit||r.amount_bdt||r.amount||0);
   }
   function num(id){ var n=Number(el(id)&&el(id).value||0); return Number.isFinite(n)?n:0; }
+  function numDefault(id,def){ var node=el(id); if(!node)return def; var raw=String(node.value||'').trim(); if(raw==='')return def; var n=Number(raw); return Number.isFinite(n)?n:def; }
   function fee(settings,country,provider){ return (((settings||{}).fees||{})[country]||{})[provider]||{}; }
+  function setVal(id,value){ var node=el(id); if(node)node.value=money(value); }
+  function roleFee(row,role,def){
+    row=row||{};
+    var value=row[role];
+    if(value&&typeof value==='object')value=value.fee_rm||value.fixed||value.amount||value.rm;
+    if((value===undefined||value===null||value==='')&&role==='USER')value=row.fee_rm||row.fixed||row.amount;
+    var n=Number(value);
+    return Number.isFinite(n)?n:def;
+  }
 
   async function readJson(res){
     var text=await res.text();
@@ -159,6 +170,7 @@
     var id=String(r.request_id||'');
     var status=String(r.status||'').toUpperCase();
     var html='<div class="admin-mfs-actions"><button class="mini-btn" type="button" data-act="view" data-id="'+esc(id)+'">View</button>';
+    if(r.receipt_url)html+='<button class="mini-btn success" type="button" data-act="receipt" data-url="'+esc(r.receipt_url)+'">Receipt</button>';
     if(status!=='PROCESSING'&&status!=='SUCCESSFUL'&&status!=='SUCCESS'&&status!=='FAILED')html+='<button class="mini-btn blue" type="button" data-act="processing" data-id="'+esc(id)+'">Processing</button>';
     if(status!=='SUCCESSFUL'&&status!=='SUCCESS'&&status!=='FAILED')html+='<button class="mini-btn success" type="button" data-act="success" data-id="'+esc(id)+'">Success</button><button class="mini-btn danger" type="button" data-act="failed" data-id="'+esc(id)+'">Failed</button>';
     return html+'</div>';
@@ -267,8 +279,12 @@
     var bd=fees.BD||{};
     var my=fees.MY||{};
     el('mfsRateMyrBdt').value=money(settings.rate_myr_bdt||31);
-    el('mfsMyBkashFee').value=money((my.BKASH||{}).fee_rm||(my.BKASH||{}).fixed||3);
-    el('mfsMyNagadFee').value=money((my.NAGAD||{}).fee_rm||(my.NAGAD||{}).fixed||3);
+    [['Bkash','BKASH'],['Nagad','NAGAD']].forEach(function(pair){
+      var suffix=pair[0], provider=pair[1], row=my[provider]||{};
+      setVal('mfsMy'+suffix+'UserFee',roleFee(row,'USER',5));
+      setVal('mfsMy'+suffix+'RetailerFee',roleFee(row,'RETAILER',2));
+      setVal('mfsMy'+suffix+'SubadminFee',roleFee(row,'SUBADMIN',2));
+    });
     [['Bkash','BKASH'],['Nagad','NAGAD']].forEach(function(pair){
       var suffix=pair[0], provider=pair[1], row=bd[provider]||{};
       el('mfsBd'+suffix+'Type').value=String(row.type||'fixed').toLowerCase()==='percent'?'percent':'fixed';
@@ -301,8 +317,8 @@
       rate_myr_bdt:num('mfsRateMyrBdt')||31,
       fees:{
         MY:{
-          BKASH:{type:'fixed',fixed:num('mfsMyBkashFee'),fee_rm:num('mfsMyBkashFee')},
-          NAGAD:{type:'fixed',fixed:num('mfsMyNagadFee'),fee_rm:num('mfsMyNagadFee')}
+          BKASH:{type:'fixed',fixed:numDefault('mfsMyBkashUserFee',5),fee_rm:numDefault('mfsMyBkashUserFee',5),USER:numDefault('mfsMyBkashUserFee',5),RETAILER:numDefault('mfsMyBkashRetailerFee',2),SUBADMIN:numDefault('mfsMyBkashSubadminFee',2),ADMIN:0},
+          NAGAD:{type:'fixed',fixed:numDefault('mfsMyNagadUserFee',5),fee_rm:numDefault('mfsMyNagadUserFee',5),USER:numDefault('mfsMyNagadUserFee',5),RETAILER:numDefault('mfsMyNagadRetailerFee',2),SUBADMIN:numDefault('mfsMyNagadSubadminFee',2),ADMIN:0}
         },
         BD:{
           BKASH:{type:el('mfsBdBkashType').value,fixed:num('mfsBdBkashFixed'),percent:num('mfsBdBkashPercent'),min_fee:num('mfsBdBkashMin'),max_fee:num('mfsBdBkashMax')},
@@ -356,12 +372,58 @@
     if(amountBdt<=0&&amountRm>0)amountBdt=amountRm*rate;
     if(amountRm<=0&&amountBdt>0)amountRm=amountBdt/rate;
     var bdFee=bdFeeFor(provider,amountBdt);
-    var myFee=Number((fee(settings,'MY',provider)||{}).fee_rm||(fee(settings,'MY',provider)||{}).fixed||3);
+    var myRow=fee(settings,'MY',provider)||{};
+    var myFeeUser=roleFee(myRow,'USER',5);
+    var myFeeRetailer=roleFee(myRow,'RETAILER',2);
+    var myFeeSubadmin=roleFee(myRow,'SUBADMIN',2);
     box.textContent=[
       'Backend will use the target account country/currency for the final hold.',
       'BD target: LOCAL, Amount BDT '+money(amountBdt)+', Fee BDT '+money(bdFee)+', Total Hold BDT '+money(amountBdt+bdFee),
-      'MY target: REMITTANCE, Rate RM 1 = BDT '+money(rate)+', Amount RM '+money(amountRm)+', Fee RM '+money(myFee)+', Hold RM wallet RM '+money(amountRm+myFee)+' or BDT wallet BDT '+money(amountBdt+(myFee*rate))
+      'MY target: REMITTANCE, Rate RM 1 = BDT '+money(rate)+', Role fee USER RM '+money(myFeeUser)+', RETAILER RM '+money(myFeeRetailer)+', SUBADMIN RM '+money(myFeeSubadmin)+'.',
+      'Use Preview Fee to confirm the actual target role/country before create.'
     ].join('\n');
+  }
+
+  async function previewCreateFromServer(button){
+    var validation=validateCreateForm();
+    if(validation){
+      showFeedback('error','Validation error',validation);
+      return;
+    }
+    var amount=Number(el('mfsCreateAmountBdt').value||0);
+    var amountRm=Number(el('mfsCreateAmountRm').value||0);
+    var body={
+      uid:String(el('mfsCreateUid').value||'').trim(),
+      provider:el('mfsCreateProvider').value,
+      service_type:'SEND_MONEY',
+      account_type:'PERSONAL',
+      receiver_number:String(el('mfsCreateReceiver').value||'').trim(),
+      amount_bdt:amount,
+      amount_rm:amountRm,
+      amount_myr:amountRm,
+      reference:String(el('mfsCreateReference').value||'').trim()
+    };
+    setButtonBusy(button,true,'Previewing...');
+    setPageBusy(true,'Loading target MFS fee preview...');
+    try{
+      await ensureCsrf();
+      var data=await post('mfs_preview',body);
+      var currency=String(data.wallet_currency||'BDT').toUpperCase();
+      var total=currency==='MYR'?'RM '+money(data.total_pay_myr||data.total_debit_rm||data.total_pay||0):'BDT '+money(data.total_pay_bdt||data.total_debit_bdt||data.total_pay||0);
+      el('mfsCreatePreview').textContent=[
+        'Target preview ready.',
+        'UID: '+String(data.uid||'-')+' | Role: '+String(data.role||'-')+' | Country: '+String(data.country_code||'-')+' | Mode: '+String(data.service_mode||'-'),
+        'Amount: BDT '+money(data.amount_bdt||0)+(Number(data.amount_rm||data.amount_myr||0)>0?' / RM '+money(data.amount_rm||data.amount_myr||0):''),
+        'Fee: '+String(data.fee_currency||currency)+' '+money(data.fee_amount||0)+' | Total Hold: '+total,
+        Number(data.exchange_rate||data.rate_myr_to_bdt||0)>0?'Rate: RM 1 = BDT '+money(data.exchange_rate||data.rate_myr_to_bdt):''
+      ].filter(Boolean).join('\n');
+      showFeedback('success','Preview ready','Target role '+String(data.role||'-')+' will pay '+total+'.');
+    }catch(err){
+      showFeedback('error','Unable to preview fee',friendlyError(err));
+    }finally{
+      setPageBusy(false);
+      setButtonBusy(button,false);
+    }
   }
 
   function validateCreateForm(){
@@ -436,6 +498,11 @@
       var row=data.item||data.row||data.request||data||findRow(id);
       el('mfsViewTitle').textContent='MFS Request '+String(id||'');
       el('mfsViewDetails').textContent=JSON.stringify(row,null,2);
+      state.viewReceiptUrl=String(row.receipt_url||'');
+      var actions=el('mfsViewReceiptActions');
+      var open=el('mfsViewReceiptOpen');
+      if(actions)actions.classList.toggle('hidden',!state.viewReceiptUrl);
+      if(open)open.href=state.viewReceiptUrl||'#';
       el('mfsViewModal').classList.remove('hidden');
       el('mfsViewCloseBtn').focus();
     }catch(err){
@@ -448,7 +515,23 @@
   }
 
   function closeView(){
+    state.viewReceiptUrl='';
+    var actions=el('mfsViewReceiptActions');
+    if(actions)actions.classList.add('hidden');
     el('mfsViewModal').classList.add('hidden');
+  }
+
+  async function copyViewReceipt(){
+    if(!state.viewReceiptUrl){
+      showFeedback('error','Receipt unavailable','This request does not have a receipt link yet.');
+      return;
+    }
+    try{
+      await navigator.clipboard.writeText(state.viewReceiptUrl);
+      showFeedback('success','Receipt copied','Receipt link copied to clipboard.');
+    }catch(err){
+      showFeedback('success','Receipt link',state.viewReceiptUrl);
+    }
   }
 
   function openConfirm(options){
@@ -561,10 +644,10 @@
     setPageBusy(true,'Settling target wallet hold and completing request...');
     try{
       await ensureCsrf();
-      await post('mfs_success',{request_id:id,trxid:trxid,sender_details:details,message:message});
+      var data=await post('mfs_success',{request_id:id,trxid:trxid,sender_details:details,message:message});
       state.successRequestId='';
       el('mfsSuccessModal').classList.add('hidden');
-      showFeedback('success','Request successful','Request '+id+' was completed successfully.');
+      showFeedback('success','Request successful','Request '+id+' was completed successfully.'+(data.receipt_url?' Receipt: '+data.receipt_url:''));
       await load(null,false);
     }catch(err){
       showFeedback('error','Unable to complete request',friendlyError(err));
@@ -584,6 +667,10 @@
     if(action==='processing')markProcessing(id);
     if(action==='failed')markFailed(id);
     if(action==='success')markSuccess(id);
+    if(action==='receipt'){
+      var url=button.getAttribute('data-url')||'';
+      if(url)window.open(url,'_blank','noopener');
+    }
   }
 
   function toggleSidebar(open){
@@ -603,9 +690,10 @@
       button.addEventListener('click',function(){setSection(button.getAttribute('data-mfs-view-target')||'manage');});
     });
     el('mfsCreateForm').addEventListener('submit',createRequest);
+    el('mfsCreatePreviewBtn').addEventListener('click',function(){previewCreateFromServer(el('mfsCreatePreviewBtn'));});
     el('mfsSettingsForm').addEventListener('submit',saveSettings);
     el('mfsSettingsReloadBtn').addEventListener('click',function(){loadSettings(el('mfsSettingsReloadBtn'),true);});
-    ['mfsCreateProvider','mfsCreateAmountBdt','mfsCreateAmountRm'].forEach(function(id){el(id).addEventListener('input',updateCreatePreview); el(id).addEventListener('change',updateCreatePreview);});
+    ['mfsCreateUid','mfsCreateProvider','mfsCreateReceiver','mfsCreateAmountBdt','mfsCreateAmountRm'].forEach(function(id){el(id).addEventListener('input',updateCreatePreview); el(id).addEventListener('change',updateCreatePreview);});
     el('mfsReloadBtn').addEventListener('click',function(){load(el('mfsReloadBtn'),true);});
     el('mfsApplyFilterBtn').addEventListener('click',function(){load(el('mfsApplyFilterBtn'),true);});
     el('mfsSearch').addEventListener('input',render);
@@ -616,6 +704,7 @@
     el('mfsConfirmCancelBtn').addEventListener('click',closeConfirm);
     el('mfsConfirmSaveBtn').addEventListener('click',submitConfirm);
     el('mfsViewCloseBtn').addEventListener('click',closeView);
+    el('mfsViewReceiptCopy').addEventListener('click',copyViewReceipt);
     el('mfsFeedbackOkBtn').addEventListener('click',closeFeedback);
     el('mfsSidebarToggle').addEventListener('click',function(){toggleSidebar(!document.body.classList.contains('sidebar-open'));});
     el('mfsSidebarBackdrop').addEventListener('click',function(){toggleSidebar(false);});

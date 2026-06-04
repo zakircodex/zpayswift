@@ -2373,12 +2373,15 @@ function user_proxy_mfs_my_fee_myr(string $role, string $provider = ''): float
 
     $paths = [
         'MFS_SETTINGS/fees/MY/' . $provider . '/' . $role,
-        'MFS_SETTINGS/fees/MY/' . $provider . '/fee_rm',
-        'MFS_SETTINGS/fees/MY/' . $provider . '/fixed',
-        'MFS_SETTINGS/fees/MY/' . $provider . '/fixed_fee',
         'MFS_CONFIG/MY_FEES/' . $provider . '/' . $role,
         'MFS_CONFIG/REMITTANCE_FEES/' . $provider . '/' . $role,
     ];
+
+    if ($role === 'USER') {
+        $paths[] = 'MFS_SETTINGS/fees/MY/' . $provider . '/fee_rm';
+        $paths[] = 'MFS_SETTINGS/fees/MY/' . $provider . '/fixed';
+        $paths[] = 'MFS_SETTINGS/fees/MY/' . $provider . '/fixed_fee';
+    }
 
     $paths[] = 'MFS_CONFIG/MY_FEES/' . $role;
     $paths[] = 'MFS_CONFIG/REMITTANCE_FEES/' . $role;
@@ -2404,10 +2407,6 @@ function user_proxy_mfs_my_fee_myr(string $role, string $provider = ''): float
         }
     }
 
-    if ($provider !== '') {
-        return defined('MY_REMITTANCE_FEE_RM') ? user_proxy_round_money(MY_REMITTANCE_FEE_RM) : 3.00;
-    }
-
     if ($role === 'SUBADMIN' && defined('MY_REMITTANCE_FEE_SUBADMIN_RM')) {
         return user_proxy_round_money(MY_REMITTANCE_FEE_SUBADMIN_RM);
     }
@@ -2420,7 +2419,15 @@ function user_proxy_mfs_my_fee_myr(string $role, string $provider = ''): float
         return user_proxy_round_money(MY_REMITTANCE_FEE_USER_RM);
     }
 
-    return $role === 'RETAILER' ? 3.00 : 5.00;
+    if ($role === 'SUBADMIN' || $role === 'RETAILER') {
+        return 2.00;
+    }
+
+    if ($role === 'ADMIN') {
+        return 0.00;
+    }
+
+    return 5.00;
 }
 
 function user_proxy_mfs_bd_fee_bdt(string $provider, string $mfsType, float $amountBdt): float
@@ -2721,7 +2728,7 @@ function user_proxy_send_mfs_telegram(array $row): void
     if ($serviceMode === 'REMITTANCE') {
         $amountLine = $currency === 'MYR'
             ? 'Pay / Hold: RM ' . user_proxy_round_money($row['total_pay_myr'] ?? 0) . "\nAmount BDT: BDT " . user_proxy_round_money($row['amount_bdt'] ?? 0) . "\nFee: RM " . user_proxy_round_money($row['fee_myr'] ?? 0)
-            : 'Pay / Hold: BDT ' . user_proxy_round_money($row['total_pay_bdt'] ?? 0) . "\nAmount RM: RM " . user_proxy_round_money($row['amount_myr'] ?? 0) . "\nFee: BDT " . user_proxy_round_money($row['fee_bdt'] ?? 0);
+            : 'Pay / Hold: BDT ' . user_proxy_round_money($row['total_pay_bdt'] ?? 0) . "\nAmount RM: RM " . user_proxy_round_money($row['amount_myr'] ?? 0) . "\nFee: BDT " . user_proxy_round_money($row['fee_bdt'] ?? 0) . " / RM " . user_proxy_round_money($row['fee_myr'] ?? 0);
         $amountLine .= "\nRate: RM 1 = BDT " . user_proxy_round_money($row['rate_myr_to_bdt'] ?? 0);
     } else {
         $amountLine = 'Pay: BDT ' . user_proxy_round_money($row['total_pay_bdt'] ?? 0) . "\nAmount: BDT " . user_proxy_round_money($row['amount_bdt'] ?? 0) . "\nFee: BDT " . user_proxy_round_money($row['fee_bdt'] ?? 0);
@@ -2731,6 +2738,7 @@ function user_proxy_send_mfs_telegram(array $row): void
         "🔔 New MFS Request\n\n" .
         "ID: {$requestId}\n" .
         "Provider: {$provider}\n" .
+        "Role: " . (string)($row['user_role'] ?? $row['role'] ?? 'USER') . "\n" .
         "Mode: {$serviceMode}\n" .
         "Type: " . (string)($row['mfs_type'] ?? 'SEND_MONEY') . "\n" .
         "Number: {$number}\n" .
@@ -2836,6 +2844,9 @@ function user_proxy_create_mfs_request(string $uid, array $body): array
         'request_id' => $requestId,
         'uid' => $uid,
         'user_phone' => (string)($user['phone'] ?? ''),
+        'user_name' => (string)($user['name'] ?? ''),
+        'user_role' => (string)($data['role'] ?? $user['role'] ?? 'USER'),
+        'role' => (string)($data['role'] ?? $user['role'] ?? 'USER'),
 
         'request_type' => 'MFS',
         'type' => 'MFS',

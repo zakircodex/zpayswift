@@ -1071,6 +1071,7 @@ function renderHistory(){
         <div class="history-actions">
           <button class="btn blue sm" type="button" onclick="openHistoryDetail('${esc(item.request_id || '')}')">View</button>
           <button class="btn ghost sm" type="button" onclick="copyHistoryId('${esc(item.request_id || '')}')">Copy ID</button>
+          ${item.receipt_url ? `<button class="btn green sm" type="button" onclick="openReceiptLink('${esc(item.receipt_url)}')">Receipt</button>` : ''}
         </div>
       </div>
     `;
@@ -1079,6 +1080,15 @@ function renderHistory(){
 
 window.copyHistoryId = function(requestId){
   copyText(requestId, 'Request ID copied');
+};
+
+window.openReceiptLink = function(url){
+  url = String(url || '').trim();
+  if (!url) {
+    showToast('Receipt link not available', 'error');
+    return;
+  }
+  window.open(url, '_blank', 'noopener');
 };
 
 window.openHistoryDetail = function(requestId){
@@ -1116,6 +1126,10 @@ window.openHistoryDetail = function(requestId){
       '\nOffer ID: ' + (row.offer_id || '-') +
       '\nUser Commission: BDT ' + money(row.user_commission || row.customer_commission || row.user_discount || 0) +
       '\nYou Pay: BDT ' + money(row.you_pay || row.payable_amount || row.net_cost_after_commission || row.amount || 0);
+  }
+
+  if (row.receipt_url) {
+    msg += '\nReceipt: ' + row.receipt_url;
   }
 
   if (el('detailMessage')) el('detailMessage').textContent = msg;

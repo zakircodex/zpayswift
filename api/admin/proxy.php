@@ -849,6 +849,18 @@ function proxy_mfs_float($value, float $default = 0.0): float
     return is_numeric($value) ? round((float)$value, 2) : $default;
 }
 
+function proxy_mfs_role_fee(array $row, string $role, float $default): float
+{
+    $role = strtoupper(trim($role));
+    $value = $row[$role] ?? null;
+
+    if (is_array($value)) {
+        $value = $value['fee_rm'] ?? $value['fixed'] ?? $value['amount'] ?? $value['rm'] ?? null;
+    }
+
+    return max(0.0, proxy_mfs_float($value, $default));
+}
+
 function proxy_mfs_fee_row(array $body, string $country, string $provider): array
 {
     $country = strtoupper(trim($country));
@@ -859,11 +871,20 @@ function proxy_mfs_fee_row(array $body, string $country, string $provider): arra
         : (is_array($body[$key] ?? null) ? (array)$body[$key] : []);
 
     if ($country === 'MY') {
-        $fixed = proxy_mfs_float($row['fixed'] ?? $row['fee_rm'] ?? $row['amount'] ?? 3.00, 3.00);
+        $legacy = proxy_mfs_float($row['fixed'] ?? $row['fee_rm'] ?? $row['amount'] ?? -1.0, -1.0);
+        $userFee = proxy_mfs_role_fee($row, 'USER', $legacy >= 0 ? $legacy : 5.00);
+        $retailerFee = proxy_mfs_role_fee($row, 'RETAILER', 2.00);
+        $subadminFee = proxy_mfs_role_fee($row, 'SUBADMIN', 2.00);
+        $adminFee = proxy_mfs_role_fee($row, 'ADMIN', 0.00);
+
         return [
             'type' => 'fixed',
-            'fixed' => max(0.0, $fixed),
-            'fee_rm' => max(0.0, $fixed),
+            'fixed' => $userFee,
+            'fee_rm' => $userFee,
+            'USER' => $userFee,
+            'RETAILER' => $retailerFee,
+            'SUBADMIN' => $subadminFee,
+            'ADMIN' => $adminFee,
         ];
     }
 
@@ -879,6 +900,34 @@ function proxy_mfs_fee_row(array $body, string $country, string $provider): arra
         'min_fee' => max(0.0, proxy_mfs_float($row['min_fee'] ?? 0.0)),
         'max_fee' => max(0.0, proxy_mfs_float($row['max_fee'] ?? 0.0)),
     ];
+}
+
+function proxy_mfs_target_uid_from_body(array $body): string
+{
+    $target = trim((string)($body['uid'] ?? $body['target_uid'] ?? $body['phone'] ?? $body['target_phone'] ?? $body['number'] ?? ''));
+
+    if ($target === '') {
+        return '';
+    }
+
+    $row = fb_get('USERS/' . $target);
+    if (is_array($row)) {
+        return trim((string)($row['uid'] ?? $target));
+    }
+
+    $phone = function_exists('normalize_login_phone')
+        ? normalize_login_phone($target)
+        : preg_replace('/\D+/', '', $target);
+    $phone = trim((string)$phone);
+
+    if ($phone !== '') {
+        $indexedUid = fb_get('USER_INDEX/PHONE/' . $phone);
+        if (is_string($indexedUid) && trim($indexedUid) !== '') {
+            return trim($indexedUid);
+        }
+    }
+
+    return '';
 }
 
 /* =========================
@@ -1203,6 +1252,44 @@ switch ($action) {
         proxy_forward_admin_post('mfs/create.php', proxy_read_json_body());
         break;
 
+    case 'mfs_preview':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+        proxy_require_admin_login(true);
+
+        if (!function_exists('mfs_preview_payload')) {
+            proxy_response(false, 'MFS_FUNCTION_MISSING', 'Required MFS preview helper missing', [], 500);
+        }
+
+        $body = proxy_read_json_body();
+        $targetUid = proxy_mfs_target_uid_from_body($body);
+
+        if ($targetUid === '') {
+            proxy_response(false, 'USER_NOT_FOUND', 'Target user not found', [], 404);
+        }
+
+        $res = mfs_preview_payload($targetUid, $body);
+
+        if (empty($res['ok'])) {
+            $code = (string)($res['code'] ?? 'SERVER_ERROR');
+            $httpStatus = 500;
+
+            if (in_array($code, ['VALIDATION_ERROR', 'INSUFFICIENT_BALANCE', 'SERVICE_NOT_ALLOWED', 'PROVIDER_DISABLED'], true)) {
+                $httpStatus = 422;
+            } elseif ($code === 'ACCOUNT_INACTIVE') {
+                $httpStatus = 403;
+            } elseif ($code === 'USER_NOT_FOUND') {
+                $httpStatus = 404;
+            }
+
+            proxy_response(false, $code, (string)($res['message'] ?? 'Failed to preview MFS request'), (array)($res['data'] ?? []), $httpStatus);
+        }
+
+        proxy_response(true, 'SUCCESS', 'MFS preview ready', (array)($res['data'] ?? []));
+        break;
+
+    case 'get_mfs_settings':
+    case 'get_mfs_fee_rate_settings':
     case 'mfs_settings_get':
         proxy_require_method('GET');
         proxy_require_admin_login(true);
@@ -1213,6 +1300,8 @@ switch ($action) {
         ]);
         break;
 
+    case 'save_mfs_settings':
+    case 'save_mfs_fee_rate_settings':
     case 'mfs_settings_save':
         proxy_require_method('POST');
         proxy_require_csrf();

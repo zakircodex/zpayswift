@@ -342,7 +342,8 @@ function mfs_tg_text(array $row, string $status, string $message): string
     $text = $icon . ' <b>MFS Request ' . mfs_tg_h($status) . '</b>' . "\n\n" .
         '<b>Request ID:</b> <code>' . mfs_tg_h($row['request_id'] ?? '-') . '</code>' . "\n" .
         '<b>UID:</b> <code>' . mfs_tg_h($row['uid'] ?? '-') . '</code>' . "\n" .
-        '<b>User Phone:</b> <code>' . mfs_tg_h($row['user_phone'] ?? '-') . '</code>' . "\n\n" .
+        '<b>User Phone:</b> <code>' . mfs_tg_h($row['user_phone'] ?? '-') . '</code>' . "\n" .
+        '<b>Role:</b> ' . mfs_tg_h($row['user_role'] ?? $row['role'] ?? '-') . "\n\n" .
         '<b>Provider:</b> <b>' . mfs_tg_h($row['provider_name'] ?? $row['provider'] ?? '-') . '</b>' . "\n" .
         '<b>Country:</b> ' . mfs_tg_h($row['country_code'] ?? '-') . "\n" .
         '<b>Mode:</b> ' . mfs_tg_h($row['service_mode'] ?? '-') . "\n" .
@@ -365,6 +366,10 @@ function mfs_tg_text(array $row, string $status, string $message): string
 
     if ($senderDetails !== '') {
         $text .= "\n\n" . '<b>Sender Details:</b> <code>' . mfs_tg_h($senderDetails) . '</code>';
+    }
+
+    if ($status === 'SUCCESSFUL' && trim((string)($row['receipt_url'] ?? '')) !== '') {
+        $text .= "\n" . '<b>Receipt:</b> ' . mfs_tg_h((string)$row['receipt_url']);
     }
 
     return $text . "\n\n" .

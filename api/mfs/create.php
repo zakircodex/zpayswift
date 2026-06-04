@@ -170,6 +170,7 @@ function mfs_create_endpoint_build_telegram_text(array $data, array $user): stri
     $userName = htmlspecialchars((string)($user['name'] ?? '-'), ENT_QUOTES, 'UTF-8');
     $userPhone = htmlspecialchars((string)($user['phone'] ?? '-'), ENT_QUOTES, 'UTF-8');
     $uid = htmlspecialchars((string)($user['uid'] ?? '-'), ENT_QUOTES, 'UTF-8');
+    $role = htmlspecialchars((string)($data['user_role'] ?? $data['role'] ?? $user['role'] ?? 'USER'), ENT_QUOTES, 'UTF-8');
 
     $country = htmlspecialchars((string)($data['country_code'] ?? '-'), ENT_QUOTES, 'UTF-8');
     $mode = htmlspecialchars((string)($data['service_mode'] ?? '-'), ENT_QUOTES, 'UTF-8');
@@ -181,18 +182,24 @@ function mfs_create_endpoint_build_telegram_text(array $data, array $user): stri
     $feeRm = (float)($data['fee_rm'] ?? 0);
     $totalDebit = (float)($data['total_debit'] ?? 0);
     $rate = (float)($data['exchange_rate'] ?? 0);
+    $isRemittance = strtoupper((string)($data['service_mode'] ?? '')) === 'REMITTANCE'
+        || strtoupper((string)($data['country_code'] ?? '')) === 'MY'
+        || $amountRm > 0;
 
-    $amountLine = $currency === 'MYR'
+    $amountLine = $isRemittance
         ? 'Amount: <b>' . mfs_create_endpoint_h($amountRm, 'MYR') . '</b> / BDT ' . number_format($amountBdt, 2, '.', '')
         : 'Amount: <b>' . mfs_create_endpoint_h($amountBdt, 'BDT') . '</b>';
 
     $feeLine = $currency === 'MYR'
         ? 'Fee: <b>' . mfs_create_endpoint_h($feeRm, 'MYR') . '</b>'
         : 'Fee: <b>' . mfs_create_endpoint_h($feeBdt, 'BDT') . '</b>';
+    if ($isRemittance && $currency !== 'MYR') {
+        $feeLine .= ' / RM ' . number_format($feeRm, 2, '.', '');
+    }
 
     $totalLine = 'Total Hold: <b>' . mfs_create_endpoint_h($totalDebit, $currency) . '</b>';
 
-    $rateLine = $currency === 'MYR'
+    $rateLine = $isRemittance
         ? "\nRate: <b>RM 1 = BDT " . number_format($rate, 2, '.', '') . '</b>'
         : '';
 
@@ -212,6 +219,7 @@ function mfs_create_endpoint_build_telegram_text(array $data, array $user): stri
         "Currency: <b>{$currency}</b>\n\n" .
         "User: <b>{$userName}</b>\n" .
         "Phone: <code>{$userPhone}</code>\n" .
+        "Role: <b>{$role}</b>\n" .
         "UID: <code>{$uid}</code>\n\n" .
         "Status: <b>PENDING</b>";
 }

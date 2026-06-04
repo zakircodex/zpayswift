@@ -132,7 +132,17 @@ function mfs_preview_load_wallet(string $uid): array
 function mfs_preview_load_config(): array
 {
     $row = mfs_preview_fb_get('MFS_CONFIG');
-    return is_array($row) ? $row : [];
+    $settings = mfs_preview_fb_get('MFS_SETTINGS');
+
+    if (!is_array($row)) {
+        $row = [];
+    }
+
+    if (is_array($settings)) {
+        $row = array_replace_recursive($row, $settings);
+    }
+
+    return $row;
 }
 
 function mfs_preview_config_path(array $config, array $path, $default = null)
@@ -420,11 +430,15 @@ function mfs_preview_mfs_enabled(array $config): bool
     return true;
 }
 
-function mfs_preview_my_fee_rm(array $config, string $role): float
+function mfs_preview_my_fee_rm(array $config, string $role, string $provider = ''): float
 {
     $role = strtoupper(trim($role));
+    $provider = mfs_preview_normalize_provider($provider);
 
     $paths = [
+        ['fees', 'MY', $provider, $role],
+        ['fees', 'MY', $provider, $role, 'fee_rm'],
+        ['fees', 'MY', $provider, $role, 'fixed'],
         ['fees', 'MY', $role, 'fee_rm'],
         ['fees', 'MY', $role, 'amount'],
         ['fees', 'MY', $role],
@@ -459,6 +473,14 @@ function mfs_preview_my_fee_rm(array $config, string $role): float
 
     if (defined('MY_REMITTANCE_FEE_USER_RM')) {
         return mfs_preview_round((float)MY_REMITTANCE_FEE_USER_RM);
+    }
+
+    if ($role === 'SUBADMIN' || $role === 'RETAILER') {
+        return 2.00;
+    }
+
+    if ($role === 'ADMIN') {
+        return 0.00;
     }
 
     return 5.00;
@@ -759,8 +781,8 @@ if ($countryCode === 'BD') {
     }
 }
 
-if ($countryCode === 'BD' && $amountBdt < 1) {
-    api_response(false, 'VALIDATION_ERROR', 'Minimum amount is BDT 1.00', [], 422);
+if ($amountBdt < 500 || $amountBdt > 50000) {
+    api_response(false, 'VALIDATION_ERROR', 'Amount must be between BDT 500 and BDT 50,000', [], 422);
 }
 
 if ($countryCode === 'MY' && ($amountBdt <= 0 || $amountRm <= 0)) {
@@ -777,9 +799,11 @@ if ($countryCode === 'BD') {
     $feeRm = 0.0;
     $totalDebit = mfs_preview_round($amountBdt + $feeBdt);
 } else {
-    $feeRm = mfs_preview_my_fee_rm($config, $userRole);
+    $feeRm = mfs_preview_my_fee_rm($config, $userRole, $provider);
     $feeBdt = mfs_preview_round($feeRm * $exchangeRate);
-    $totalDebit = mfs_preview_round($amountRm + $feeRm);
+    $totalDebit = $walletCurrency === 'MYR'
+        ? mfs_preview_round($amountRm + $feeRm)
+        : mfs_preview_round($amountBdt + $feeBdt);
 }
 
 $availableBalance = mfs_preview_round((float)($wallet['available_balance'] ?? 0));
@@ -798,6 +822,7 @@ $now = mfs_preview_now();
 api_response(true, 'SUCCESS', 'MFS preview ready', [
     'preview_id' => $previewId,
     'uid' => $uid,
+    'role' => $userRole,
 
     'provider' => $provider,
     'provider_name' => mfs_preview_provider_name($provider),
@@ -820,8 +845,14 @@ api_response(true, 'SUCCESS', 'MFS preview ready', [
     'amount_rm' => $amountRm,
     'fee_bdt' => $feeBdt,
     'fee_rm' => $feeRm,
+    'fee_currency' => $walletCurrency === 'MYR' ? 'MYR' : 'BDT',
+    'fee_amount' => $walletCurrency === 'MYR' ? $feeRm : $feeBdt,
 
     'total_debit' => $totalDebit,
+    'total_pay' => $totalDebit,
+    'wallet_hold_amount' => $totalDebit,
+    'total_pay_bdt' => $countryCode === 'MY' ? mfs_preview_round($amountBdt + $feeBdt) : $totalDebit,
+    'total_pay_myr' => $countryCode === 'MY' ? mfs_preview_round($amountRm + $feeRm) : 0.0,
     'total_debit_currency' => $totalDebitCurrency,
     'total_debit_text' => mfs_preview_money_text($totalDebit, $totalDebitCurrency),
 

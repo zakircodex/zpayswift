@@ -1197,7 +1197,8 @@ function sub_proxy_mfs_message(array $row): string
     $text = "🔔 <b>New MFS Request</b>\n\n" .
         "<b>Request ID:</b> <code>" . sub_proxy_mfs_h($requestId) . "</code>\n" .
         "<b>UID:</b> <code>" . sub_proxy_mfs_h($row['uid'] ?? '-') . "</code>\n" .
-        "<b>User Phone:</b> <code>" . sub_proxy_mfs_h($row['user_phone'] ?? '-') . "</code>\n\n" .
+        "<b>User Phone:</b> <code>" . sub_proxy_mfs_h($row['user_phone'] ?? '-') . "</code>\n" .
+        "<b>Role:</b> " . sub_proxy_mfs_h($row['user_role'] ?? $row['role'] ?? 'SUBADMIN') . "\n\n" .
         "<b>Provider:</b> <b>" . sub_proxy_mfs_h($row['provider_name'] ?? $row['provider'] ?? '-') . "</b>\n" .
         "<b>Country:</b> " . sub_proxy_mfs_h($row['country_code'] ?? '-') . "\n" .
         "<b>Mode:</b> " . sub_proxy_mfs_h($row['service_mode'] ?? '-') . "\n" .
@@ -2279,6 +2280,58 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
             (array)($res['data'] ?? []),
             200
         );
+        break;
+
+    case 'mfs_preview':
+        sub_proxy_require_method('POST');
+        sub_proxy_require_csrf();
+
+        $user = sub_proxy_require_login(true);
+        $uid = trim((string)($user['uid'] ?? ''));
+        $body = sub_proxy_read_json_body();
+
+        if ($uid === '') {
+            sub_proxy_response(false, 'SESSION_EXPIRED', 'Subadmin session not found', [], 401);
+        }
+
+        if (!function_exists('mfs_preview_payload')) {
+            sub_proxy_response(false, 'SERVER_ERROR', 'Missing MFS preview helper', [], 500);
+        }
+
+        $res = mfs_preview_payload($uid, $body);
+
+        if (empty($res['ok'])) {
+            $code = (string)($res['code'] ?? 'SERVER_ERROR');
+            $httpStatus = 500;
+
+            if (in_array($code, [
+                'VALIDATION_ERROR',
+                'INSUFFICIENT_BALANCE',
+                'MFS_DISABLED',
+                'PROVIDER_DISABLED',
+                'SERVICE_NOT_ALLOWED',
+                'COUNTRY_MISSING',
+                'WALLET_CURRENCY_MISSING',
+                'COUNTRY_CURRENCY_MISMATCH',
+                'UNSUPPORTED_COUNTRY_CURRENCY',
+            ], true)) {
+                $httpStatus = 422;
+            } elseif (in_array($code, ['ACCOUNT_INACTIVE', 'INVALID_PIN', 'ROLE_NOT_ALLOWED'], true)) {
+                $httpStatus = 403;
+            } elseif ($code === 'USER_NOT_FOUND') {
+                $httpStatus = 404;
+            }
+
+            sub_proxy_response(
+                false,
+                $code,
+                (string)($res['message'] ?? 'Failed to preview MFS request'),
+                (array)($res['data'] ?? []),
+                $httpStatus
+            );
+        }
+
+        sub_proxy_response(true, 'SUCCESS', 'MFS preview ready', (array)($res['data'] ?? []), 200);
         break;
 
     case 'mfs_create':
