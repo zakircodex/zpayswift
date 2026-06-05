@@ -1546,19 +1546,109 @@ function showSubMfsCreateSuccessModal(row){
 }
 
 function subMfsWalletMoney(currency, amount){
-  const prefix = String(currency || 'BDT').toUpperCase() === 'MYR' ? 'RM' : 'BDT';
+  const prefix = mfsCurrencyPrefix(currency);
   return `${prefix} ${money(amount)}`;
+}
+
+function mfsNormalizeCurrency(value){
+  const currency = String(value || '').toUpperCase().trim();
+  if (['MYR', 'RM', 'MY'].includes(currency)) return 'MYR';
+  if (['BDT', 'BD', 'TK'].includes(currency)) return 'BDT';
+  return '';
+}
+
+function mfsCurrencyPrefix(currency){
+  return mfsNormalizeCurrency(currency) === 'MYR' ? 'RM' : 'BDT';
+}
+
+function mfsReviewCurrency(data, remittance){
+  const meta = mfsWalletMeta();
+  const candidates = [
+    data?.display_currency,
+    data?.wallet_currency,
+    data?.currency,
+    data?.wallet?.display_currency,
+    data?.wallet?.wallet_currency,
+    data?.wallet?.currency,
+    meta.currency
+  ];
+
+  for (const value of candidates) {
+    const normalized = mfsNormalizeCurrency(value);
+    if (normalized) return normalized;
+  }
+
+  const country = String(data?.country_code || data?.country || meta.country || '').toUpperCase();
+  if (country === 'MY' || remittance) return 'MYR';
+  return 'BDT';
+}
+
+function mfsFirstNumber(...values){
+  for (const value of values) {
+    if (value === undefined || value === null || value === '') continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return NaN;
+}
+
+function mfsReviewAvailable(data, currency){
+  const wallet = state.wallet?.wallet || {};
+  if (currency === 'MYR') {
+    return mfsFirstNumber(
+      data?.display_currency === 'MYR' ? data?.display_available_balance : undefined,
+      data?.available_balance_myr,
+      data?.wallet?.display_currency === 'MYR' ? data?.wallet?.display_available_balance : undefined,
+      data?.wallet?.available_balance_myr,
+      wallet.display_currency === 'MYR' ? wallet.display_available_balance : undefined,
+      wallet.available_balance_myr,
+      data?.available_balance,
+      data?.wallet_balance
+    );
+  }
+
+  return mfsFirstNumber(
+    data?.display_currency === 'BDT' ? data?.display_available_balance : undefined,
+    data?.available_balance_bdt,
+    data?.wallet?.display_currency === 'BDT' ? data?.wallet?.display_available_balance : undefined,
+    data?.wallet?.available_balance_bdt,
+    wallet.display_currency === 'BDT' ? wallet.display_available_balance : undefined,
+    wallet.available_balance_bdt,
+    data?.available_balance,
+    data?.wallet_balance
+  );
+}
+
+function mfsReviewDebit(data, currency){
+  if (currency === 'MYR') {
+    return mfsFirstNumber(
+      data?.display_currency === 'MYR' ? data?.display_total_pay : undefined,
+      data?.total_pay_myr,
+      data?.total_debit_rm,
+      data?.wallet_currency === 'MYR' ? data?.wallet_hold_amount : undefined,
+      data?.wallet_currency === 'MYR' ? data?.total_pay : undefined,
+      data?.wallet_currency === 'MYR' ? data?.total_debit : undefined
+    );
+  }
+
+  return mfsFirstNumber(
+    data?.display_currency === 'BDT' ? data?.display_total_pay : undefined,
+    data?.total_pay_bdt,
+    data?.total_debit_bdt,
+    data?.wallet_currency === 'BDT' ? data?.wallet_hold_amount : undefined,
+    data?.wallet_currency === 'BDT' ? data?.total_pay : undefined,
+    data?.wallet_currency === 'BDT' ? data?.total_debit : undefined
+  );
 }
 
 function subMfsReviewRows(data, payload){
   const remittance = mfsIsRemittance(data);
-  const walletCurrency = String(data.wallet_currency || (remittance ? 'MYR' : 'BDT')).toUpperCase();
+  const walletCurrency = mfsReviewCurrency(data, remittance);
   const rate = Number(data.exchange_rate ?? data.rate_myr_to_bdt ?? 0);
-  const availableRaw = data.available_balance ?? data.wallet_balance;
-  const holdRaw = data.wallet_hold_amount ?? data.total_pay ?? data.total_debit;
-  const available = availableRaw === undefined || availableRaw === null || availableRaw === '' ? NaN : Number(availableRaw);
-  const hold = holdRaw === undefined || holdRaw === null || holdRaw === '' ? NaN : Number(holdRaw);
-  const after = Number.isFinite(available) && Number.isFinite(hold) ? available - hold : NaN;
+  const available = mfsReviewAvailable(data, walletCurrency);
+  const hold = mfsReviewDebit(data, walletCurrency);
+  const afterFromResponse = mfsFirstNumber(data?.display_currency === walletCurrency ? data?.display_balance_after : undefined);
+  const after = Number.isFinite(afterFromResponse) ? afterFromResponse : (Number.isFinite(available) && Number.isFinite(hold) ? available - hold : NaN);
 
   return [
     {label: 'Provider', value: data.provider_name || mfsProviderName(payload.provider), className: 'mfs-review-highlight'},
@@ -1570,7 +1660,7 @@ function subMfsReviewRows(data, payload){
     ...(remittance ? [{label: 'Send Amount', value: `RM ${money(data.amount_rm ?? data.amount_myr ?? payload.amount_rm ?? 0)}`}] : []),
     {label: 'Fee', value: mfsMoney(data, mfsRowFee(data))},
     {label: 'Total Pay', value: mfsMoney(data, mfsRowPay(data)), className: 'mfs-review-total'},
-    ...(Number.isFinite(available) ? [{label: 'Available Balance', value: subMfsWalletMoney(walletCurrency, available)}] : []),
+    ...(Number.isFinite(available) ? [{label: 'Available Balance', value: subMfsWalletMoney(walletCurrency, available), className: 'mfs-review-highlight'}] : []),
     ...(Number.isFinite(after) ? [{label: 'Balance After', value: subMfsWalletMoney(walletCurrency, after), className: 'mfs-review-highlight'}] : []),
     {label: 'Reference', value: payload.reference || '-', className: 'mfs-review-wide'}
   ];
@@ -1840,6 +1930,18 @@ function clearMfsForm(){
   updateSubMfsCurrencyUi();
 }
 
+function clearMfsCreateFieldsAfterSuccess(){
+  if (el('subMfsReceiver')) el('subMfsReceiver').value = '';
+  if (el('subMfsAmountBdt')) el('subMfsAmountBdt').value = '';
+  if (el('subMfsAmountRm')) el('subMfsAmountRm').value = '';
+  if (el('subMfsPin')) el('subMfsPin').value = '';
+  if (el('subMfsReference')) el('subMfsReference').value = '';
+  if (el('subMfsNote')) el('subMfsNote').value = '';
+  const out = el('subMfsOutput');
+  if (out) out.textContent = 'No MFS request created yet.';
+  updateSubMfsCurrencyUi();
+}
+
 function validateMfsForm(){
   const payload = buildMfsPreviewPayload();
   const pin = el('subMfsPin')?.value || '';
@@ -1946,10 +2048,7 @@ async function createMfsRequest(button = null, payloadOverride = null){
       state.mfsCreateReview = null;
       el('subMfsReviewModalWrap')?.classList.remove('open');
       showSubMfsCreateSuccessModal(row);
-
-      if (el('subMfsPin')) el('subMfsPin').value = '';
-      if (el('subMfsReference')) el('subMfsReference').value = '';
-      if (el('subMfsNote')) el('subMfsNote').value = '';
+      clearMfsCreateFieldsAfterSuccess();
 
       const refreshJobs = [
         loadWallet(),

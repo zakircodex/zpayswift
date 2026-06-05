@@ -64,7 +64,7 @@
     var appState = window.userState || {};
     var summary = appState.walletSummary || {};
     var wallet = summary.wallet || {};
-    var currency = String(wallet.display_currency || wallet.wallet_currency || wallet.currency || summary.wallet_currency || '').toUpperCase();
+    var currency = normalizeCurrency(wallet.display_currency || wallet.wallet_currency || wallet.currency || summary.wallet_currency || '');
     var country = String(summary.country_code || wallet.country_code || '').toUpperCase();
     var preview = serverPreview || {};
     var rate = Number(preview.rate_myr_to_bdt || preview.exchange_rate || wallet.rate_myr_bdt || wallet.rate_myr_to_bdt || summary.rate_myr_bdt || 0);
@@ -75,6 +75,98 @@
       rate: Number.isFinite(rate) ? rate : 0,
       isMyr: currency === 'MYR' || country === 'MY'
     };
+  }
+
+  function normalizeCurrency(value){
+    var currency = String(value || '').toUpperCase().trim();
+    if (['MYR','RM','MY'].indexOf(currency) >= 0) return 'MYR';
+    if (['BDT','BD','TK'].indexOf(currency) >= 0) return 'BDT';
+    return '';
+  }
+
+  function currencyPrefix(currency){
+    return normalizeCurrency(currency) === 'MYR' ? 'RM' : 'BDT';
+  }
+
+  function firstNumber(){
+    for (var i = 0; i < arguments.length; i++) {
+      var value = arguments[i];
+      if (value === undefined || value === null || value === '') continue;
+      var n = Number(value);
+      if (Number.isFinite(n)) return n;
+    }
+    return NaN;
+  }
+
+  function walletCurrencyForPreview(p, remittance){
+    var appState = window.userState || {};
+    var summary = appState.walletSummary || {};
+    var wallet = summary.wallet || {};
+    var candidates = [
+      p.display_currency,
+      p.wallet_currency,
+      p.currency,
+      wallet.display_currency,
+      wallet.wallet_currency,
+      wallet.currency,
+      summary.wallet_currency
+    ];
+
+    for (var i = 0; i < candidates.length; i++) {
+      var normalized = normalizeCurrency(candidates[i]);
+      if (normalized) return normalized;
+    }
+
+    var country = String(p.country_code || p.country || summary.country_code || wallet.country_code || '').toUpperCase();
+    if (country === 'MY' || remittance) return 'MYR';
+    return 'BDT';
+  }
+
+  function availableForPreview(p, currency){
+    var appState = window.userState || {};
+    var summary = appState.walletSummary || {};
+    var wallet = summary.wallet || {};
+    if (currency === 'MYR') {
+      return firstNumber(
+        normalizeCurrency(p.display_currency) === 'MYR' ? p.display_available_balance : undefined,
+        p.available_balance_myr,
+        normalizeCurrency(wallet.display_currency) === 'MYR' ? wallet.display_available_balance : undefined,
+        wallet.available_balance_myr,
+        p.available_balance,
+        p.wallet_balance,
+        wallet.available_balance
+      );
+    }
+    return firstNumber(
+      normalizeCurrency(p.display_currency) === 'BDT' ? p.display_available_balance : undefined,
+      p.available_balance_bdt,
+      normalizeCurrency(wallet.display_currency) === 'BDT' ? wallet.display_available_balance : undefined,
+      wallet.available_balance_bdt,
+      p.available_balance,
+      p.wallet_balance,
+      wallet.available_balance
+    );
+  }
+
+  function debitForPreview(p, currency, d){
+    if (currency === 'MYR') {
+      return firstNumber(
+        normalizeCurrency(p.display_currency) === 'MYR' ? p.display_total_pay : undefined,
+        p.total_pay_myr,
+        p.total_debit_rm,
+        normalizeCurrency(p.wallet_currency) === 'MYR' ? p.wallet_hold_amount : undefined,
+        normalizeCurrency(p.wallet_currency) === 'MYR' ? p.total_pay : undefined,
+        d.amount_rm
+      );
+    }
+    return firstNumber(
+      normalizeCurrency(p.display_currency) === 'BDT' ? p.display_total_pay : undefined,
+      p.total_pay_bdt,
+      p.total_debit_bdt,
+      normalizeCurrency(p.wallet_currency) === 'BDT' ? p.wallet_hold_amount : undefined,
+      normalizeCurrency(p.wallet_currency) === 'BDT' ? p.total_pay : undefined,
+      d.amount_bdt
+    );
   }
 
   function isMyrMfsAccount(){
@@ -119,6 +211,7 @@
     var mode = String(p.service_mode || '').toUpperCase();
     var meta = walletMeta();
     var remittance = meta.isMyr || mode === 'REMITTANCE' || country === 'MY' || Number(p.amount_myr || p.amount_rm || d.amount_rm || 0) > 0;
+    var reviewCurrency = walletCurrencyForPreview(p, remittance);
     var feeText = remittance
       ? 'RM ' + money(p.fee_myr || p.fee_rm || 0)
       : 'BDT ' + money(p.fee_bdt || 0);
@@ -126,6 +219,10 @@
       ? 'RM ' + money(p.total_pay_myr || p.total_debit_rm || ((Number(p.amount_myr || p.amount_rm || d.amount_rm || 0)) + Number(p.fee_myr || p.fee_rm || 0)))
       : 'BDT ' + money(p.total_pay_bdt || p.total_debit_bdt || p.wallet_hold_amount || 0);
     var rate = Number(p.rate_myr_to_bdt || p.exchange_rate || meta.rate || 0);
+    var available = availableForPreview(p, reviewCurrency);
+    var debit = debitForPreview(p, reviewCurrency, d);
+    var responseAfter = firstNumber(normalizeCurrency(p.display_currency) === reviewCurrency ? p.display_balance_after : undefined);
+    var after = Number.isFinite(responseAfter) ? responseAfter : (Number.isFinite(available) && Number.isFinite(debit) ? available - debit : NaN);
     return '<div class="mfs-review-grid">' +
       '<div class="zpay-mfs-preview-row"><span>Provider</span><b>' + esc(providerName(d.provider)) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Receiver</span><b>' + esc(d.receiver_number || '-') + '</b></div>' +
@@ -137,6 +234,8 @@
       (rate > 0 ? '<div class="zpay-mfs-preview-row"><span>Rate</span><b>RM 1 = BDT ' + money(rate) + '</b></div>' : '') +
       '<div class="zpay-mfs-preview-row"><span>Fee</span><b>' + esc(feeText) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Total Paid</span><b>' + esc(totalText) + '</b></div>' +
+      (Number.isFinite(available) ? '<div class="zpay-mfs-preview-row"><span>Available Balance</span><b>' + currencyPrefix(reviewCurrency) + ' ' + money(available) + '</b></div>' : '') +
+      (Number.isFinite(after) ? '<div class="zpay-mfs-preview-row"><span>Balance After</span><b>' + currencyPrefix(reviewCurrency) + ' ' + money(after) + '</b></div>' : '') +
       '<div class="zpay-mfs-preview-row"><span>Reference</span><b>' + esc(d.reference || '-') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Status</span><b>PENDING</b></div>' +
       '</div>';
@@ -241,9 +340,8 @@
       var result = await createWithTelegramButtons(d);
       if (typeof renderMfsResultSuccess === 'function') renderMfsResultSuccess(result);
       if (typeof applyMfsCreateSuccessToLocalState === 'function') applyMfsCreateSuccessToLocalState(result);
-      if (byId('mfsPin')) byId('mfsPin').value = '';
+      clearMfsCreateFieldsAfterSuccess();
       if (typeof showToast === 'function') showToast('Request created successfully', 'ok');
-      setTimeout(function(){ openSection('historySection'); }, 700);
     } catch(e) {
       if (typeof renderMfsResultError === 'function') renderMfsResultError(e.message || 'Failed to create request');
       if (typeof showToast === 'function') showToast(e.message || 'Failed to create request', 'error');
@@ -309,6 +407,17 @@
     setProvider(selectedProvider());
     updateCurrencyUi();
     renderPreview();
+  }
+
+  function clearMfsCreateFieldsAfterSuccess(){
+    ['mfsReceiverNumber','mfsAmountBdt','mfsAmountRm','mfsPin','mfsReference'].forEach(function(id){
+      var node = byId(id);
+      if (node) node.value = '';
+    });
+    serverPreview = null;
+    updateCurrencyUi();
+    renderPreview();
+    showStep('mfsStepForm');
   }
 
   window.zpayMfsRefreshCurrencyUi = function(){

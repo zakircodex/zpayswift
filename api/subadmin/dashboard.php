@@ -1191,7 +1191,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 <script>
 window.SUBADMIN_PROXY_URL = 'proxy.php';
 </script>
-<script src="assets/subadmin.js?v=17"></script>
+<script src="assets/subadmin.js?v=18"></script>
 <script src="assets/subadmin-otp.js?v=3"></script>
 </body>
 </html>

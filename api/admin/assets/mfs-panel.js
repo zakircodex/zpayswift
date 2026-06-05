@@ -92,6 +92,87 @@
     return value||'-';
   }
 
+  function normalizeCurrency(value){
+    var currency=String(value||'').toUpperCase().trim();
+    if(['MYR','RM','MY'].indexOf(currency)>=0)return 'MYR';
+    if(['BDT','BD','TK'].indexOf(currency)>=0)return 'BDT';
+    return '';
+  }
+
+  function currencyPrefix(currency){
+    return normalizeCurrency(currency)==='MYR'?'RM':'BDT';
+  }
+
+  function reviewCurrency(data,remittance){
+    var candidates=[
+      data&&data.display_currency,
+      data&&data.wallet_currency,
+      data&&data.currency,
+      data&&data.wallet&&data.wallet.display_currency,
+      data&&data.wallet&&data.wallet.wallet_currency,
+      data&&data.wallet&&data.wallet.currency
+    ];
+    for(var i=0;i<candidates.length;i++){
+      var normalized=normalizeCurrency(candidates[i]);
+      if(normalized)return normalized;
+    }
+    var country=String(data&&data.country_code||data&&data.country||'').toUpperCase();
+    if(country==='MY'||remittance)return 'MYR';
+    return 'BDT';
+  }
+
+  function firstNumber(){
+    for(var i=0;i<arguments.length;i++){
+      var value=arguments[i];
+      if(value===undefined||value===null||value==='')continue;
+      var n=Number(value);
+      if(Number.isFinite(n))return n;
+    }
+    return NaN;
+  }
+
+  function reviewAvailable(data,currency){
+    if(currency==='MYR'){
+      return firstNumber(
+        String(data.display_currency||'').toUpperCase()==='MYR'?data.display_available_balance:undefined,
+        data.available_balance_myr,
+        data.wallet&&String(data.wallet.display_currency||'').toUpperCase()==='MYR'?data.wallet.display_available_balance:undefined,
+        data.wallet&&data.wallet.available_balance_myr,
+        data.available_balance,
+        data.wallet_balance
+      );
+    }
+    return firstNumber(
+      String(data.display_currency||'').toUpperCase()==='BDT'?data.display_available_balance:undefined,
+      data.available_balance_bdt,
+      data.wallet&&String(data.wallet.display_currency||'').toUpperCase()==='BDT'?data.wallet.display_available_balance:undefined,
+      data.wallet&&data.wallet.available_balance_bdt,
+      data.available_balance,
+      data.wallet_balance
+    );
+  }
+
+  function reviewDebit(data,currency){
+    if(currency==='MYR'){
+      return firstNumber(
+        String(data.display_currency||'').toUpperCase()==='MYR'?data.display_total_pay:undefined,
+        data.total_pay_myr,
+        data.total_debit_rm,
+        String(data.wallet_currency||'').toUpperCase()==='MYR'?data.wallet_hold_amount:undefined,
+        String(data.wallet_currency||'').toUpperCase()==='MYR'?data.total_pay:undefined,
+        String(data.wallet_currency||'').toUpperCase()==='MYR'?data.total_debit:undefined
+      );
+    }
+    return firstNumber(
+      String(data.display_currency||'').toUpperCase()==='BDT'?data.display_total_pay:undefined,
+      data.total_pay_bdt,
+      data.total_debit_bdt,
+      String(data.wallet_currency||'').toUpperCase()==='BDT'?data.wallet_hold_amount:undefined,
+      String(data.wallet_currency||'').toUpperCase()==='BDT'?data.total_pay:undefined,
+      String(data.wallet_currency||'').toUpperCase()==='BDT'?data.total_debit:undefined
+    );
+  }
+
   async function readJson(res){
     var text=await res.text();
     var json={};
@@ -512,12 +593,13 @@
   }
 
   function formatCreateReview(data,body){
-    var currency=String(data.wallet_currency||'BDT').toUpperCase();
     var remittance=String(data.service_mode||'').toUpperCase()==='REMITTANCE'||String(data.country_code||'').toUpperCase()==='MY'||Number(data.amount_rm||data.amount_myr||0)>0;
+    var currency=reviewCurrency(data,remittance);
     var rate=Number(data.exchange_rate||data.rate_myr_to_bdt||0);
-    var totalPay=Number(data.total_pay||data.wallet_hold_amount||0);
-    var available=Number(data.available_balance||data.wallet_balance||0);
-    var after=Number.isFinite(available)&&Number.isFinite(totalPay)?available-totalPay:NaN;
+    var totalPay=reviewDebit(data,currency);
+    var available=reviewAvailable(data,currency);
+    var responseAfter=firstNumber(String(data.display_currency||'').toUpperCase()===currency?data.display_balance_after:undefined);
+    var after=Number.isFinite(responseAfter)?responseAfter:(Number.isFinite(available)&&Number.isFinite(totalPay)?available-totalPay:NaN);
     var rows=[
       {label:'Provider',value:String(data.provider_name||body.provider||'-'),className:'admin-mfs-review-highlight'},
       {label:'Receiver Number',value:String(data.receiver_number||body.receiver_number||'-')},
@@ -528,8 +610,8 @@
       remittance?{label:'Send Amount',value:'RM '+money(data.amount_rm||data.amount_myr||body.amount_rm||0)}:null,
       {label:'Fee',value:reviewFeeText(data,remittance)},
       {label:'Total Pay',value:reviewMoney(data,remittance),className:'admin-mfs-review-total'},
-      Number.isFinite(available)?{label:'Available Balance',value:(currency==='MYR'?'RM ':'BDT ')+money(available)}:null,
-      Number.isFinite(after)?{label:'Balance After',value:(currency==='MYR'?'RM ':'BDT ')+money(after),className:'admin-mfs-review-highlight'}:null,
+      Number.isFinite(available)?{label:'Available Balance',value:currencyPrefix(currency)+' '+money(available),className:'admin-mfs-review-highlight'}:null,
+      Number.isFinite(after)?{label:'Balance After',value:currencyPrefix(currency)+' '+money(after),className:'admin-mfs-review-highlight'}:null,
       {label:'Reference',value:String(body.reference||'-'),className:'admin-mfs-review-wide'}
     ];
     return rows.filter(Boolean).map(function(row){
@@ -559,6 +641,16 @@
       'Receipt / Tracking Link: '+String(row.receipt_url||row.tracking_url||row.request_url||'')
     ];
     return lines.filter(Boolean).join('\n');
+  }
+
+  function clearCreateFormAfterSuccess(){
+    var provider=el('mfsCreateProvider')&&el('mfsCreateProvider').value;
+    if(el('mfsCreateForm'))el('mfsCreateForm').reset();
+    if(provider&&el('mfsCreateProvider'))el('mfsCreateProvider').value=provider;
+    ['mfsCreateUid','mfsCreateReceiver','mfsCreateAmountBdt','mfsCreateAmountRm','mfsCreateReference','mfsCreateNote'].forEach(function(id){
+      if(el(id))el(id).value='';
+    });
+    updateCreatePreview();
   }
 
   async function openCreateReview(e){
@@ -624,14 +716,11 @@
       var receiptUrl=String(row.receipt_url||row.tracking_url||row.request_url||'');
       state.createReview=null;
       el('mfsCreateReviewModal').classList.add('hidden');
-      el('mfsCreateForm').reset();
-      updateCreatePreview();
-      setActiveTab('pending');
-      setSection('manage');
       showFeedback('success','Request Created Successfully','Your send money request has been submitted securely.',null,{
         details:formatCreateSuccess(row,body),
         link:receiptUrl
       });
+      clearCreateFormAfterSuccess();
       await load(null,false);
     }catch(err){
       if(handleSessionExpired(err))return;

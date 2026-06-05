@@ -1672,6 +1672,13 @@ Available Balance: ${prefix} ${walletDisplayAmount(wallet, 'available')}
 Status: PENDING`;
 }
 
+function clearMfsCreateFieldsAfterSuccess(){
+  ['mfsReceiverNumber','mfsAmountBdt','mfsAmountRm','mfsPin','mfsReference'].forEach(id => {
+    if (el(id)) el(id).value = '';
+  });
+  renderMfsPreview();
+}
+
 function mfsTrackingUrl(data){
   return String(data?.tracking_url || data?.receipt_url || data?.request_url || '');
 }
@@ -1934,9 +1941,8 @@ async function submitMfsRequest(){
 
     renderMfsResultSuccess(res);
     applyMfsCreateSuccessToLocalState(res);
+    clearMfsCreateFieldsAfterSuccess();
     showToast('Request created successfully', 'ok');
-
-    setTimeout(() => openSection('historySection'), 600);
   }catch(err){
     renderMfsResultError(err.message || 'Failed to create request');
     showToast(err.message || 'Failed to create request', 'error');

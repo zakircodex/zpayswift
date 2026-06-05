@@ -1283,6 +1283,14 @@ function mfs_preview_payload(string $uid, array $body): array
     $walletHoldAmount = mfs_round_money((float)$amounts['total_debit']);
     $available = mfs_wallet_available_balance($wallet);
     $hold = mfs_wallet_hold_balance($wallet);
+    $displayWallet = mfs_wallet_display_payload($user, $wallet);
+    $displayCurrency = (string)($displayWallet['display_currency'] ?? $walletCurrency);
+    $displayAvailable = mfs_round_money((float)($displayWallet['display_available_balance'] ?? $available));
+    $displayHold = mfs_round_money((float)($displayWallet['display_hold_balance'] ?? $hold));
+    $displayDebit = $displayCurrency === 'MYR'
+        ? mfs_round_money((float)$amounts['total_debit_rm'])
+        : mfs_round_money((float)$amounts['total_debit_bdt']);
+    $displayBalanceAfter = mfs_round_money($displayAvailable - $displayDebit);
     $feeCurrency = $walletCurrency === 'MYR' ? 'MYR' : 'BDT';
     $feeAmount = $feeCurrency === 'MYR'
         ? mfs_round_money((float)$amounts['fee_rm'])
@@ -1300,8 +1308,18 @@ function mfs_preview_payload(string $uid, array $body): array
             'service_mode' => (string)$amounts['service_mode'],
             'mode' => (string)$amounts['service_mode'],
             'wallet_currency' => $walletCurrency,
+            'currency' => $walletCurrency,
+            'display_currency' => $displayCurrency,
             'wallet_hold_amount' => $walletHoldAmount,
             'wallet_balance' => $available,
+            'display_available_balance' => $displayAvailable,
+            'display_hold_balance' => $displayHold,
+            'display_total_pay' => $displayDebit,
+            'display_balance_after' => $displayBalanceAfter,
+            'available_balance_bdt' => (float)($displayWallet['available_balance_bdt'] ?? $available),
+            'available_balance_myr' => (float)($displayWallet['available_balance_myr'] ?? 0),
+            'hold_balance_bdt' => (float)($displayWallet['hold_balance_bdt'] ?? $hold),
+            'hold_balance_myr' => (float)($displayWallet['hold_balance_myr'] ?? 0),
 
             'provider' => $provider,
             'provider_name' => mfs_provider_name($provider),

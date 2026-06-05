@@ -371,6 +371,6 @@ header('Pragma: no-cache');
     </div>
   </div>
 
-  <script src="assets/mfs-panel.js?v=6"></script>
+  <script src="assets/mfs-panel.js?v=7"></script>
 </body>
 </html>
