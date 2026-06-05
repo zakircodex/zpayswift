@@ -1816,33 +1816,38 @@ function mfs_receipt_display_money($value): float
     return mfs_round_money((float)$value);
 }
 
-function mfs_create_receipt_for_success(string $requestId, array $row): array
+function mfs_save_receipt_for_request(string $requestId, array $row, string $status = 'PENDING'): array
 {
     $requestId = trim($requestId);
+    $status = strtoupper(trim($status));
 
     if ($requestId === '') {
         return [];
     }
 
+    if (!in_array($status, ['PENDING', 'PROCESSING', 'SUCCESSFUL', 'FAILED'], true)) {
+        $status = strtoupper(trim((string)($row['status'] ?? 'PENDING'))) ?: 'PENDING';
+    }
+
+    $isSuccess = $status === 'SUCCESSFUL';
     $receiptId = trim((string)($row['receipt_id'] ?? ''));
     $existingToken = trim((string)($row['receipt_token'] ?? ''));
     $existingUrl = trim((string)($row['receipt_url'] ?? ''));
 
-    if ($receiptId !== '' && $existingToken !== '' && $existingUrl !== '') {
-        return [
-            'receipt_id' => $receiptId,
-            'receipt_token' => $existingToken,
-            'receipt_url' => $existingUrl,
-            'receipt_created_at' => (int)($row['receipt_created_at'] ?? mfs_now()),
-        ];
-    }
-
     $uid = trim((string)($row['uid'] ?? ''));
     $user = $uid !== '' ? mfs_load_user($uid) : [];
     $now = mfs_now();
-    $receiptId = mfs_make_receipt_id();
-    $token = mfs_receipt_token();
-    $url = mfs_receipt_url($token);
+    $receiptCreatedAt = (int)($row['receipt_created_at'] ?? 0);
+    if ($receiptCreatedAt <= 0) {
+        $receiptCreatedAt = $now;
+    }
+
+    if ($receiptId === '') {
+        $receiptId = mfs_make_receipt_id();
+    }
+
+    $token = $existingToken !== '' ? $existingToken : mfs_receipt_token();
+    $url = $existingUrl !== '' ? $existingUrl : mfs_receipt_url($token);
 
     $receipt = [
         'receipt_id' => $receiptId,
@@ -1879,20 +1884,22 @@ function mfs_create_receipt_for_success(string $requestId, array $row): array
         'sender_details' => (string)($row['sender_details'] ?? $row['sender_last_digit'] ?? $row['last_digit'] ?? ''),
         'sender_last_digit' => (string)($row['sender_last_digit'] ?? $row['sender_details'] ?? $row['last_digit'] ?? ''),
         'trxid' => (string)($row['trxid'] ?? ''),
-        'status' => 'SUCCESSFUL',
+        'status' => $status,
         'created_at' => (int)($row['created_at'] ?? 0),
-        'success_at' => (int)($row['completed_at'] ?? $now),
-        'completed_at' => (int)($row['completed_at'] ?? $now),
-        'approved_by_uid' => (string)($row['completed_by_uid'] ?? ''),
-        'approved_by_role' => (string)($row['completed_by_role'] ?? ''),
-        'receipt_created_at' => $now,
+        'success_at' => $isSuccess ? (int)($row['completed_at'] ?? $now) : 0,
+        'completed_at' => $isSuccess ? (int)($row['completed_at'] ?? $now) : 0,
+        'approved_by_uid' => $isSuccess ? (string)($row['completed_by_uid'] ?? '') : '',
+        'approved_by_role' => $isSuccess ? (string)($row['completed_by_role'] ?? '') : '',
+        'receipt_created_at' => $receiptCreatedAt,
+        'updated_at' => $now,
     ];
 
     $saved = mfs_fb_put('MFS_RECEIPTS/' . $receiptId, $receipt);
     $indexed = mfs_fb_put('MFS_RECEIPT_INDEX/' . $token, [
         'receipt_id' => $receiptId,
         'request_id' => $requestId,
-        'created_at' => $now,
+        'created_at' => $receiptCreatedAt,
+        'updated_at' => $now,
     ]);
 
     if (!$saved || !$indexed) {
@@ -1905,8 +1912,18 @@ function mfs_create_receipt_for_success(string $requestId, array $row): array
         'receipt_id' => $receiptId,
         'receipt_token' => $token,
         'receipt_url' => $url,
-        'receipt_created_at' => $now,
+        'receipt_created_at' => $receiptCreatedAt,
     ];
+}
+
+function mfs_create_receipt_for_tracking(string $requestId, array $row): array
+{
+    return mfs_save_receipt_for_request($requestId, $row, (string)($row['status'] ?? 'PENDING'));
+}
+
+function mfs_create_receipt_for_success(string $requestId, array $row): array
+{
+    return mfs_save_receipt_for_request($requestId, $row, 'SUCCESSFUL');
 }
 
 function mfs_public_receipt(array $receipt): array
@@ -2254,6 +2271,30 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         ];
     }
 
+    $receipt = function_exists('mfs_create_receipt_for_tracking') ? mfs_create_receipt_for_tracking($requestId, $row) : [];
+    if (!empty($receipt['receipt_id'])) {
+        $row['receipt_id'] = (string)$receipt['receipt_id'];
+        $row['receipt_token'] = (string)($receipt['receipt_token'] ?? '');
+        $row['receipt_url'] = (string)($receipt['receipt_url'] ?? '');
+        $row['tracking_url'] = (string)($receipt['receipt_url'] ?? '');
+        $row['receipt_created_at'] = (int)($receipt['receipt_created_at'] ?? $now);
+
+        mfs_fb_patch('MFS_REQUESTS/PENDING/' . $requestId, [
+            'receipt_id' => $row['receipt_id'],
+            'receipt_token' => $row['receipt_token'],
+            'receipt_url' => $row['receipt_url'],
+            'tracking_url' => $row['tracking_url'],
+            'receipt_created_at' => $row['receipt_created_at'],
+            'updated_at' => $now,
+        ]);
+    } elseif (!empty($receipt['receipt_error'])) {
+        $row['receipt_error'] = (string)$receipt['receipt_error'];
+        mfs_fb_patch('MFS_REQUESTS/PENDING/' . $requestId, [
+            'receipt_error' => $row['receipt_error'],
+            'updated_at' => $now,
+        ]);
+    }
+
     mfs_create_request_status($requestId, $uid, 'PENDING', 'MFS request created');
     mfs_write_user_request_log($uid, $requestId, $row);
     mfs_write_history($uid, $requestId, $row);
@@ -2318,6 +2359,11 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
             'trxid' => '',
 
             'created_at' => $now,
+            'receipt_id' => (string)($row['receipt_id'] ?? ''),
+            'receipt_token' => (string)($row['receipt_token'] ?? ''),
+            'receipt_url' => (string)($row['receipt_url'] ?? ''),
+            'tracking_url' => (string)($row['tracking_url'] ?? $row['receipt_url'] ?? ''),
+            'receipt_created_at' => (int)($row['receipt_created_at'] ?? 0),
             'wallet' => $responseWallet,
         ],
     ];
@@ -2630,6 +2676,7 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
         $row['receipt_id'] = (string)$receipt['receipt_id'];
         $row['receipt_token'] = (string)($receipt['receipt_token'] ?? '');
         $row['receipt_url'] = (string)($receipt['receipt_url'] ?? '');
+        $row['tracking_url'] = (string)($receipt['receipt_url'] ?? '');
         $row['receipt_created_at'] = (int)($receipt['receipt_created_at'] ?? $now);
     } elseif (!empty($receipt['receipt_error'])) {
         $row['receipt_error'] = (string)$receipt['receipt_error'];
@@ -2663,6 +2710,7 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
             'completed_at' => $now,
             'receipt_id' => (string)($row['receipt_id'] ?? ''),
             'receipt_url' => (string)($row['receipt_url'] ?? ''),
+            'tracking_url' => (string)($row['tracking_url'] ?? $row['receipt_url'] ?? ''),
             'receipt_created_at' => (int)($row['receipt_created_at'] ?? 0),
         ],
     ];
@@ -2759,6 +2807,17 @@ function mfs_mark_failed(string $requestId, string $message = 'Transaction faile
     $row['completed_by_uid'] = (string)($actor['uid'] ?? '');
     $row['completed_by_role'] = (string)($actor['role'] ?? '');
 
+    $receipt = function_exists('mfs_save_receipt_for_request') ? mfs_save_receipt_for_request($requestId, $row, 'FAILED') : [];
+    if (!empty($receipt['receipt_id'])) {
+        $row['receipt_id'] = (string)$receipt['receipt_id'];
+        $row['receipt_token'] = (string)($receipt['receipt_token'] ?? '');
+        $row['receipt_url'] = (string)($receipt['receipt_url'] ?? '');
+        $row['tracking_url'] = (string)($receipt['receipt_url'] ?? '');
+        $row['receipt_created_at'] = (int)($receipt['receipt_created_at'] ?? $now);
+    } elseif (!empty($receipt['receipt_error'])) {
+        $row['receipt_error'] = (string)$receipt['receipt_error'];
+    }
+
     mfs_move_request_bucket($requestId, (string)($row['_bucket'] ?? 'PENDING'), 'DONE', $row);
     mfs_update_request_status($requestId, $uid, 'FAILED', $message, $now);
     mfs_write_user_request_log($uid, $requestId, $row);
@@ -2783,6 +2842,8 @@ function mfs_mark_failed(string $requestId, string $message = 'Transaction faile
             'request_id' => $requestId,
             'status' => 'FAILED',
             'completed_at' => $now,
+            'receipt_url' => (string)($row['receipt_url'] ?? ''),
+            'tracking_url' => (string)($row['tracking_url'] ?? $row['receipt_url'] ?? ''),
         ],
     ];
 }

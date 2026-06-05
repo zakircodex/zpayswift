@@ -1379,6 +1379,158 @@ function mfsReference(row){
   return String(row?.reference || '-');
 }
 
+function mfsWalletMeta(){
+  const wallet = state.wallet?.wallet || {};
+  const currency = String(wallet.display_currency || wallet.wallet_currency || wallet.currency || state.wallet?.wallet_currency || '').toUpperCase();
+  const country = String(state.wallet?.country_code || wallet.country_code || '').toUpperCase();
+  const rate = Number(wallet.rate_myr_bdt || wallet.rate_myr_to_bdt || state.wallet?.rate_myr_bdt || 0);
+
+  return {
+    currency,
+    country,
+    rate: Number.isFinite(rate) ? rate : 0,
+    isMyr: currency === 'MYR' || country === 'MY'
+  };
+}
+
+function updateSubMfsCurrencyUi(){
+  const meta = mfsWalletMeta();
+  const field = el('subMfsAmountRmField') || el('subMfsAmountRm')?.closest('.field');
+
+  if (field) field.classList.toggle('hidden', !meta.isMyr);
+  if (!meta.isMyr && el('subMfsAmountRm')) el('subMfsAmountRm').value = '';
+
+  return meta;
+}
+
+function syncSubMfsAmounts(source){
+  const meta = updateSubMfsCurrencyUi();
+  if (!meta.isMyr || meta.rate <= 0 || state.mfsAmountSyncing) return;
+
+  const bdt = el('subMfsAmountBdt');
+  const rm = el('subMfsAmountRm');
+  if (!bdt || !rm) return;
+
+  state.mfsAmountSyncing = true;
+
+  try{
+    if (source === 'bdt') {
+      const value = Number(bdt.value || 0);
+      rm.value = value > 0 ? money(value / meta.rate) : '';
+    } else if (source === 'rm') {
+      const value = Number(rm.value || 0);
+      bdt.value = value > 0 ? money(value * meta.rate) : '';
+    }
+  } finally {
+    state.mfsAmountSyncing = false;
+  }
+}
+
+function mfsTrackingUrl(row){
+  return String(row?.tracking_url || row?.receipt_url || row?.request_url || '');
+}
+
+function ensureSubMfsResultModal(){
+  if (el('subMfsResultModalWrap')) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'subMfsResultModalWrap';
+  wrap.className = 'modal-wrap';
+  wrap.innerHTML = `
+    <div class="modal-card modal-card-sm">
+      <div class="modal-head">
+        <div>
+          <h3 id="subMfsResultModalTitle">MFS Request</h3>
+          <p id="subMfsResultModalSub">Request details</p>
+        </div>
+        <button id="subMfsResultModalCloseBtn" class="modal-close" type="button">Close</button>
+      </div>
+      <div id="subMfsResultModalBody" class="status-box-clean"></div>
+      <div class="actions mt-14" id="subMfsResultModalActions">
+        <button id="subMfsResultCopyBtn" class="btn blue" type="button">Copy Link</button>
+        <button id="subMfsResultOpenBtn" class="btn green" type="button">Open Receipt</button>
+        <button id="subMfsResultOkBtn" class="btn ghost" type="button">OK</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(wrap);
+
+  const close = () => wrap.classList.remove('open');
+  el('subMfsResultModalCloseBtn')?.addEventListener('click', close);
+  el('subMfsResultOkBtn')?.addEventListener('click', close);
+  wrap.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'subMfsResultModalWrap') close();
+  });
+}
+
+function showSubMfsResultModal({title = 'MFS Request', subtitle = '', rows = [], link = '', type = 'info'} = {}){
+  ensureSubMfsResultModal();
+
+  const wrap = el('subMfsResultModalWrap');
+  const titleNode = el('subMfsResultModalTitle');
+  const subNode = el('subMfsResultModalSub');
+  const body = el('subMfsResultModalBody');
+  const copyBtn = el('subMfsResultCopyBtn');
+  const openBtn = el('subMfsResultOpenBtn');
+
+  if (titleNode) titleNode.textContent = title;
+  if (subNode) subNode.textContent = subtitle || '';
+
+  const pillType = type === 'success' ? 'SUCCESS' : type === 'error' ? 'FAILED' : 'PENDING';
+  const rowHtml = rows
+    .filter(row => Array.isArray(row) && row.length >= 2)
+    .map(row => `
+      <div style="display:flex;gap:12px;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+        <div class="muted" style="font-weight:800;">${esc(row[0])}</div>
+        <div style="text-align:right;word-break:break-word;">${esc(row[1] || '-')}</div>
+      </div>
+    `).join('');
+
+  if (body) {
+    body.innerHTML = `
+      <div style="width:100%">
+        <div style="margin-bottom:10px;">${statusPill(pillType)}</div>
+        ${rowHtml || '<div class="muted">No details available.</div>'}
+        ${link ? `<div style="margin-top:12px;"><div class="muted" style="font-weight:800;margin-bottom:6px;">Receipt / Tracking Link</div><div style="word-break:break-all;color:#d7e7ff;">${esc(link)}</div></div>` : ''}
+      </div>
+    `;
+  }
+
+  if (copyBtn) {
+    copyBtn.classList.toggle('hidden', !link);
+    copyBtn.onclick = () => copyText(link, 'Receipt link copied');
+  }
+
+  if (openBtn) {
+    openBtn.classList.toggle('hidden', !link);
+    openBtn.onclick = () => window.open(link, '_blank', 'noopener');
+  }
+
+  wrap?.classList.add('open');
+}
+
+function showSubMfsCreateSuccessModal(row, telegram = {}){
+  const link = mfsTrackingUrl(row);
+  showSubMfsResultModal({
+    title: 'Request Created Successfully',
+    subtitle: 'Admin approval pending. Use this link to track the request.',
+    type: 'success',
+    link,
+    rows: [
+      ['Request ID', row.request_id || '-'],
+      ['Provider', row.provider_name || mfsProviderName(row.provider)],
+      ['Receiver Number', mfsRowNumber(row)],
+      ['Amount BDT', `BDT ${money(row.amount_bdt || 0)}`],
+      ...(mfsIsRemittance(row) ? [['Amount RM', `RM ${money(mfsAmountRm(row))}`]] : []),
+      ['Fee', mfsMoney(row, mfsRowFee(row))],
+      ['Total Pay/Hold', mfsMoney(row, mfsRowPay(row))],
+      ['Status', row.status || 'PENDING'],
+      ['Telegram', telegram.ok ? 'Message sent' : 'Queued/failed; request is still created']
+    ]
+  });
+}
+
 function mfsDetailsBoxId(){
   if (getCurrentSectionId() === 'mfsRequestsSection' && el('subMfsDetailsOutput')) {
     return 'subMfsDetailsOutput';
@@ -1583,10 +1735,7 @@ function clearMfsForm(){
   if (el('subMfsPin')) el('subMfsPin').value = '';
   if (el('subMfsReference')) el('subMfsReference').value = '';
   if (el('subMfsNote')) el('subMfsNote').value = '';
-
-  setBoxMessage('subMfsOutput', 'info', 'Ready', [
-    'No MFS request created yet.'
-  ]);
+  updateSubMfsCurrencyUi();
 }
 
 function validateMfsForm(){
@@ -1607,8 +1756,9 @@ function validateMfsForm(){
 function buildMfsPreviewPayload(){
   const provider = el('subMfsProvider')?.value.trim() || '';
   const receiver = el('subMfsReceiver')?.value.trim() || '';
+  const meta = updateSubMfsCurrencyUi();
   const amount = Number(el('subMfsAmountBdt')?.value || 0);
-  const amountRm = Number(el('subMfsAmountRm')?.value || 0);
+  const amountRm = meta.isMyr ? Number(el('subMfsAmountRm')?.value || 0) : 0;
 
   if (!['BKASH', 'NAGAD'].includes(provider)) {
     throw new Error('Provider must be bKash or Nagad');
@@ -1645,9 +1795,11 @@ async function previewMfsRequest(button = null){
       payload = buildMfsPreviewPayload();
     }catch(err){
       showToast(err.message || 'Validation error', 'error');
-      setBoxMessage('subMfsOutput', 'error', 'Validation Error', [
-        err.message || 'Please check the MFS form.'
-      ]);
+      showSubMfsResultModal({
+        title: 'Validation Error',
+        subtitle: err.message || 'Please check the MFS form.',
+        type: 'error'
+      });
       return;
     }
 
@@ -1666,19 +1818,27 @@ async function previewMfsRequest(button = null){
         ? `RM ${money(data.fee_rm ?? data.fee_myr ?? 0)}`
         : `${data.fee_currency || currency} ${money(data.fee_amount || 0)}`;
 
-      setBoxMessage('subMfsOutput', 'info', 'MFS Preview Ready', [
-        `Role: ${data.role || '-'}`,
-        `Country: ${data.country_code || '-'} / ${data.service_mode || '-'}`,
-        `Received: BDT ${money(data.amount_bdt || 0)}${Number(data.amount_rm ?? data.amount_myr ?? 0) > 0 ? ` / Send: RM ${money(data.amount_rm ?? data.amount_myr ?? 0)}` : ''}`,
-        `Fee: ${fee}`,
-        `Total Paid: ${total}`,
-        Number(data.exchange_rate || data.rate_myr_to_bdt || 0) > 0 ? `Rate: RM 1 = BDT ${money(data.exchange_rate || data.rate_myr_to_bdt)}` : ''
-      ]);
+      showSubMfsResultModal({
+        title: 'MFS Preview Ready',
+        subtitle: 'Review the estimated fee before creating request.',
+        type: 'info',
+        rows: [
+          ['Role', data.role || '-'],
+          ['Country', `${data.country_code || '-'} / ${data.service_mode || '-'}`],
+          ['Received Amount', `BDT ${money(data.amount_bdt || 0)}`],
+          ...(Number(data.amount_rm ?? data.amount_myr ?? 0) > 0 ? [['Send Amount', `RM ${money(data.amount_rm ?? data.amount_myr ?? 0)}`]] : []),
+          ['Fee', fee],
+          ['Total Pay/Hold', total],
+          ...(Number(data.exchange_rate || data.rate_myr_to_bdt || 0) > 0 ? [['Rate', `RM 1 = BDT ${money(data.exchange_rate || data.rate_myr_to_bdt)}`]] : [])
+        ]
+      });
       showToast('MFS preview ready', 'info');
     }catch(err){
-      setBoxMessage('subMfsOutput', 'error', 'Preview Failed', [
-        err.message || 'Failed to preview MFS request'
-      ]);
+      showSubMfsResultModal({
+        title: 'Preview Failed',
+        subtitle: err.message || 'Failed to preview MFS request',
+        type: 'error'
+      });
       showToast(err.message || 'Failed to preview MFS request', 'error');
     }
   });
@@ -1692,9 +1852,11 @@ async function createMfsRequest(button = null){
       payload = validateMfsForm();
     }catch(err){
       showToast(err.message || 'Validation error', 'error');
-      setBoxMessage('subMfsOutput', 'error', 'Validation Error', [
-        err.message || 'Please check the MFS form.'
-      ]);
+      showSubMfsResultModal({
+        title: 'Validation Error',
+        subtitle: err.message || 'Please check the MFS form.',
+        type: 'error'
+      });
       return;
     }
 
@@ -1703,17 +1865,7 @@ async function createMfsRequest(button = null){
       const row = data.request || data.item || data || {};
       const telegram = data.telegram || {};
 
-      setBoxMessage('subMfsOutput', 'ok', 'Request Created', [
-        `Request ID: ${row.request_id || '-'}`,
-        `Provider: ${mfsProviderName(row.provider || payload.provider)}`,
-        `Country: ${row.country_code || '-'}`,
-        `Mode: ${row.service_mode || '-'}`,
-        `Receiver: ${row.receiver_number || payload.receiver_number}`,
-        `Amount: ${mfsAmountText(row)}`,
-        `Total Paid: ${mfsMoney(row, mfsRowPay(row))}`,
-        `Status: ${row.status || 'PENDING'}`,
-        telegram.ok ? 'Telegram message sent.' : 'Telegram message queued/failed; request is still created.'
-      ]);
+      showSubMfsCreateSuccessModal(row, telegram);
 
       if (el('subMfsPin')) el('subMfsPin').value = '';
       if (el('subMfsReference')) el('subMfsReference').value = '';
@@ -1737,9 +1889,11 @@ async function createMfsRequest(button = null){
       renderPanelTopupRequests();
       showToast('MFS request created successfully', 'ok');
     }catch(err){
-      setBoxMessage('subMfsOutput', 'error', 'Create Failed', [
-        err.message || 'Failed to create MFS request'
-      ]);
+      showSubMfsResultModal({
+        title: 'Create Failed',
+        subtitle: err.message || 'Failed to create MFS request',
+        type: 'error'
+      });
       showToast(err.message || 'Failed to create MFS request', 'error');
     }
   });
@@ -3241,6 +3395,7 @@ async function loadMe(){
 async function loadWallet(){
   state.wallet = await proxyGet('wallet_summary', {}, 'Loading wallet summary...');
   state.loaded.wallet = true;
+  updateSubMfsCurrencyUi();
 }
 
 async function loadKeys(){
@@ -3829,6 +3984,8 @@ el('clearPanelTopupBtn')?.addEventListener('click', clearPanelTopupForm);
 el('subMfsCreateBtn')?.addEventListener('click', (e) => createMfsRequest(e.currentTarget));
 el('subMfsPreviewBtn')?.addEventListener('click', (e) => previewMfsRequest(e.currentTarget));
 el('subMfsClearBtn')?.addEventListener('click', clearMfsForm);
+el('subMfsAmountBdt')?.addEventListener('input', () => syncSubMfsAmounts('bdt'));
+el('subMfsAmountRm')?.addEventListener('input', () => syncSubMfsAmounts('rm'));
 el('subMfsRefreshBtn')?.addEventListener('click', (e) => refreshMfsSummaryFromButton(e.currentTarget, true));
 el('subMfsListRefreshBtn')?.addEventListener('click', (e) => refreshMfsRequestsFromButton(e.currentTarget, true));
 el('subMfsApplyFilterBtn')?.addEventListener('click', (e) => refreshMfsRequestsFromButton(e.currentTarget, true));

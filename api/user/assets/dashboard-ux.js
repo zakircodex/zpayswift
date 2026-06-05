@@ -13,6 +13,7 @@
   }
 
   var serverPreview = null;
+  var amountSyncing = false;
 
   function openSection(id){
     if (typeof window.openSection === 'function') { window.openSection(id); return; }
@@ -53,10 +54,62 @@
       provider: selectedProvider(),
       receiver_number: String(byId('mfsReceiverNumber') ? byId('mfsReceiverNumber').value : '').trim(),
       amount_bdt: Number(byId('mfsAmountBdt') ? byId('mfsAmountBdt').value || 0 : 0),
-      amount_rm: Number(byId('mfsAmountRm') ? byId('mfsAmountRm').value || 0 : 0),
+      amount_rm: isMyrMfsAccount() ? Number(byId('mfsAmountRm') ? byId('mfsAmountRm').value || 0 : 0) : 0,
       reference: String(byId('mfsReference') ? byId('mfsReference').value : '').trim(),
       pin: String(byId('mfsPin') ? byId('mfsPin').value : '').trim()
     };
+  }
+
+  function walletMeta(){
+    var appState = window.userState || {};
+    var summary = appState.walletSummary || {};
+    var wallet = summary.wallet || {};
+    var currency = String(wallet.display_currency || wallet.wallet_currency || wallet.currency || summary.wallet_currency || '').toUpperCase();
+    var country = String(summary.country_code || wallet.country_code || '').toUpperCase();
+    var preview = serverPreview || {};
+    var rate = Number(preview.rate_myr_to_bdt || preview.exchange_rate || wallet.rate_myr_bdt || wallet.rate_myr_to_bdt || summary.rate_myr_bdt || 0);
+
+    return {
+      currency: currency,
+      country: country,
+      rate: Number.isFinite(rate) ? rate : 0,
+      isMyr: currency === 'MYR' || country === 'MY'
+    };
+  }
+
+  function isMyrMfsAccount(){
+    return walletMeta().isMyr;
+  }
+
+  function updateCurrencyUi(){
+    var meta = walletMeta();
+    var field = byId('mfsAmountRmField') || (byId('mfsAmountRm') ? byId('mfsAmountRm').closest('.field') : null);
+    if (field) field.classList.toggle('hidden', !meta.isMyr);
+    if (!meta.isMyr && byId('mfsAmountRm')) byId('mfsAmountRm').value = '';
+    return meta;
+  }
+
+  function syncAmounts(source){
+    var meta = updateCurrencyUi();
+    if (!meta.isMyr || meta.rate <= 0 || amountSyncing) return;
+
+    var bdt = byId('mfsAmountBdt');
+    var rm = byId('mfsAmountRm');
+    if (!bdt || !rm) return;
+
+    amountSyncing = true;
+
+    try {
+      if (source === 'bdt') {
+        var bdtValue = Number(bdt.value || 0);
+        rm.value = bdtValue > 0 ? money(bdtValue / meta.rate) : '';
+      } else if (source === 'rm') {
+        var rmValue = Number(rm.value || 0);
+        bdt.value = rmValue > 0 ? money(rmValue * meta.rate) : '';
+      }
+    } finally {
+      amountSyncing = false;
+    }
   }
 
   function previewHtml(d){
@@ -64,14 +117,15 @@
     var currency = String(p.wallet_currency || '').toUpperCase();
     var country = String(p.country_code || '').toUpperCase();
     var mode = String(p.service_mode || '').toUpperCase();
-    var remittance = mode === 'REMITTANCE' || country === 'MY' || Number(p.amount_myr || p.amount_rm || d.amount_rm || 0) > 0;
+    var meta = walletMeta();
+    var remittance = meta.isMyr || mode === 'REMITTANCE' || country === 'MY' || Number(p.amount_myr || p.amount_rm || d.amount_rm || 0) > 0;
     var feeText = remittance
       ? 'RM ' + money(p.fee_myr || p.fee_rm || 0)
       : 'BDT ' + money(p.fee_bdt || 0);
     var totalText = remittance
       ? 'RM ' + money(p.total_pay_myr || p.total_debit_rm || ((Number(p.amount_myr || p.amount_rm || d.amount_rm || 0)) + Number(p.fee_myr || p.fee_rm || 0)))
       : 'BDT ' + money(p.total_pay_bdt || p.total_debit_bdt || p.wallet_hold_amount || 0);
-    var rate = Number(p.rate_myr_to_bdt || p.exchange_rate || 0);
+    var rate = Number(p.rate_myr_to_bdt || p.exchange_rate || meta.rate || 0);
     return '' +
       '<div class="zpay-mfs-preview-row"><span>Provider</span><b>' + esc(providerName(d.provider)) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Receiver</span><b>' + esc(d.receiver_number || '-') + '</b></div>' +
@@ -79,7 +133,7 @@
       '<div class="zpay-mfs-preview-row"><span>Role</span><b>' + esc(p.role || 'USER') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Mode</span><b>' + esc(mode || 'Auto') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Received Amount</span><b>BDT ' + money(p.amount_bdt || d.amount_bdt) + '</b></div>' +
-      ((p.amount_myr || p.amount_rm || d.amount_rm) ? '<div class="zpay-mfs-preview-row"><span>Send Amount</span><b>RM ' + money(p.amount_myr || p.amount_rm || d.amount_rm) + '</b></div>' : '') +
+      (remittance ? '<div class="zpay-mfs-preview-row"><span>Send Amount</span><b>RM ' + money(p.amount_myr || p.amount_rm || d.amount_rm) + '</b></div>' : '') +
       (rate > 0 ? '<div class="zpay-mfs-preview-row"><span>Rate</span><b>RM 1 = BDT ' + money(rate) + '</b></div>' : '') +
       '<div class="zpay-mfs-preview-row"><span>Fee</span><b>' + esc(feeText) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Total Paid</span><b>' + esc(totalText) + '</b></div>' +
@@ -88,6 +142,7 @@
   }
 
   function renderPreview(){
+    updateCurrencyUi();
     var d = data();
     var live = byId('mfsLivePreview') || byId('mfsPreviewBox');
     var details = byId('mfsPreviewDetails');
@@ -109,8 +164,8 @@
       account_type: 'PERSONAL',
       receiver_number: d.receiver_number,
       amount_bdt: d.amount_bdt,
-      amount_rm: d.amount_rm,
-      amount_myr: d.amount_rm,
+      amount_rm: isMyrMfsAccount() ? d.amount_rm : 0,
+      amount_myr: isMyrMfsAccount() ? d.amount_rm : 0,
       reference: d.reference
     }, 'Loading MFS preview...', { busy: false });
     renderPreview();
@@ -128,9 +183,21 @@
   function validBase(){
     var d = data();
     var num = d.receiver_number.replace(/\D+/g, '');
-    if (!/^01\d{9}$/.test(num)) { if (typeof showToast === 'function') showToast('Receiver number must be 11 digit BD number', 'error'); return false; }
-    if (d.amount_bdt <= 0 && d.amount_rm <= 0) { if (typeof showToast === 'function') showToast('Amount is required', 'error'); return false; }
-    if (d.amount_bdt > 0 && (d.amount_bdt < 500 || d.amount_bdt > 50000)) { if (typeof showToast === 'function') showToast('Amount must be between BDT 500 and BDT 50,000', 'error'); return false; }
+    if (!/^01\d{9}$/.test(num)) {
+      if (typeof showToast === 'function') showToast('Receiver number must be 11 digit BD number', 'error');
+      if (typeof showMfsErrorModal === 'function') showMfsErrorModal('Validation Error', 'Receiver number must be 11 digit BD number');
+      return false;
+    }
+    if (d.amount_bdt <= 0 && d.amount_rm <= 0) {
+      if (typeof showToast === 'function') showToast('Amount is required', 'error');
+      if (typeof showMfsErrorModal === 'function') showMfsErrorModal('Validation Error', 'Amount is required');
+      return false;
+    }
+    if (d.amount_bdt > 0 && (d.amount_bdt < 500 || d.amount_bdt > 50000)) {
+      if (typeof showToast === 'function') showToast('Amount must be between BDT 500 and BDT 50,000', 'error');
+      if (typeof showMfsErrorModal === 'function') showMfsErrorModal('Validation Error', 'Amount must be between BDT 500 and BDT 50,000');
+      return false;
+    }
     return true;
   }
 
@@ -141,8 +208,8 @@
       account_type: 'PERSONAL',
       receiver_number: d.receiver_number,
       amount_bdt: d.amount_bdt,
-      amount_rm: d.amount_rm,
-      amount_myr: d.amount_rm,
+      amount_rm: isMyrMfsAccount() ? d.amount_rm : 0,
+      amount_myr: isMyrMfsAccount() ? d.amount_rm : 0,
       reference: d.reference,
       pin: d.pin,
       note: providerName(d.provider) + ' request from user panel'
@@ -163,7 +230,11 @@
   async function confirmMfs(){
     var d = data();
     if (!validBase()) return;
-    if (!d.pin) { if (typeof showToast === 'function') showToast('PIN is required', 'error'); return; }
+    if (!d.pin) {
+      if (typeof showToast === 'function') showToast('PIN is required', 'error');
+      if (typeof showMfsErrorModal === 'function') showMfsErrorModal('Validation Error', 'PIN is required');
+      return;
+    }
     try {
       if (typeof setBusy === 'function') setBusy(true, 'Creating request...');
       var result = await createWithTelegramButtons(d);
@@ -217,7 +288,9 @@
     if (window.__zpayMfsFlowFixBound) return;
     window.__zpayMfsFlowFixBound = true;
     document.querySelectorAll('.mfs-provider-choice').forEach(function(btn){ btn.addEventListener('click', function(){ setProvider(btn.getAttribute('data-provider') || 'BKASH'); }); });
-    ['mfsReceiverNumber','mfsAmountBdt','mfsAmountRm','mfsReference'].forEach(function(id){ var n = byId(id); if (n) n.addEventListener('input', function(){ serverPreview = null; renderPreview(); }); });
+    ['mfsReceiverNumber','mfsReference'].forEach(function(id){ var n = byId(id); if (n) n.addEventListener('input', function(){ serverPreview = null; renderPreview(); }); });
+    var bdt = byId('mfsAmountBdt'); if (bdt) bdt.addEventListener('input', function(){ serverPreview = null; syncAmounts('bdt'); renderPreview(); });
+    var rm = byId('mfsAmountRm'); if (rm) rm.addEventListener('input', function(){ serverPreview = null; syncAmounts('rm'); renderPreview(); });
     var preview = byId('mfsPreviewBtn'); if (preview) preview.addEventListener('click', async function(e){
       e.preventDefault();
       if (!validBase()) return;
@@ -234,8 +307,14 @@
     var confirm = byId('mfsConfirmBtn'); if (confirm) confirm.addEventListener('click', function(e){ e.preventDefault(); confirmMfs(); });
     var pin = byId('mfsPin'); if (pin) pin.addEventListener('keydown', function(e){ if (e.key === 'Enter') confirmMfs(); });
     setProvider(selectedProvider());
+    updateCurrencyUi();
     renderPreview();
   }
+
+  window.zpayMfsRefreshCurrencyUi = function(){
+    updateCurrencyUi();
+    renderPreview();
+  };
 
   function init(){ ensureQuickActions(); bindMfs(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();

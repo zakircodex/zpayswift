@@ -30,7 +30,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Z-Pay Swift Subadmin Panel</title>
-  <link rel="stylesheet" href="assets/subadmin.css?v=16">
+  <link rel="stylesheet" href="assets/subadmin.css?v=17">
 </head>
 <body>
 
@@ -384,7 +384,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                   <input id="subMfsAmountBdt" class="input" type="number" step="0.01" min="500" max="50000" placeholder="500 - 50000">
                 </div>
 
-                <div class="field">
+                <div class="field" id="subMfsAmountRmField">
                   <label>Amount RM <span class="muted">MY optional</span></label>
                   <input id="subMfsAmountRm" class="input" type="number" step="0.01" min="0" placeholder="Optional for Malaysia wallet">
                 </div>
@@ -413,7 +413,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                 <button class="btn ghost" id="subMfsClearBtn" type="button">Clear</button>
               </div>
 
-              <div class="box mt-14">
+              <div class="box mt-14 hidden" aria-hidden="true">
                 <label>Status</label>
                 <div id="subMfsOutput" class="status-box-clean">No MFS request created yet.</div>
               </div>
@@ -1192,7 +1192,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 <script>
 window.SUBADMIN_PROXY_URL = 'proxy.php';
 </script>
-<script src="assets/subadmin.js?v=14"></script>
+<script src="assets/subadmin.js?v=15"></script>
 <script src="assets/subadmin-otp.js?v=3"></script>
 </body>
 </html>

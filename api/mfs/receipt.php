@@ -34,7 +34,12 @@ function receipt_row(string $label, $value): string
     return '<div class="r-row"><span>' . receipt_h($label) . '</span><strong>' . receipt_h($value === '' ? '-' : $value) . '</strong></div>';
 }
 
-$title = $ok ? 'Z-Pay Swift Remittance Receipt' : 'Receipt Not Found';
+$rawStatus = strtoupper((string)($data['status'] ?? ''));
+$isFinalReceipt = in_array($rawStatus, ['SUCCESS', 'SUCCESSFUL', 'DONE', 'COMPLETED'], true);
+$displayStatus = $rawStatus === 'PENDING' ? 'PENDING / Waiting Admin Approval' : ($rawStatus ?: 'PENDING');
+$title = $ok
+    ? ($isFinalReceipt ? 'Z-Pay Swift Remittance Receipt' : 'Z-Pay Swift MFS Request Tracking')
+    : 'Receipt Not Found';
 $receiptUrl = (string)($data['receipt_url'] ?? '');
 $walletCurrency = strtoupper((string)($data['wallet_currency'] ?? 'BDT'));
 $isMy = strtoupper((string)($data['country_code'] ?? '')) === 'MY'
@@ -89,7 +94,8 @@ if (!$isMy && $totalBdt <= 0) {
     .logo{width:52px;height:52px;border-radius:18px;background:linear-gradient(135deg,var(--green),var(--blue));display:grid;place-items:center;font-weight:900;color:#03111f}
     h1{margin:0;font-size:26px;letter-spacing:-.03em}
     p{margin:6px 0 0;color:var(--muted)}
-    .status{border:1px solid rgba(34,197,94,.35);background:rgba(34,197,94,.12);color:#bbf7d0;border-radius:999px;padding:8px 12px;font-weight:800;font-size:12px}
+    .status{border:1px solid rgba(245,158,11,.38);background:rgba(245,158,11,.13);color:#fde68a;border-radius:999px;padding:8px 12px;font-weight:800;font-size:12px}
+    .status.success{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.12);color:#bbf7d0}
     .body{padding:24px;display:grid;gap:18px}
     .section{border:1px solid var(--line);border-radius:20px;background:rgba(15,23,42,.62);padding:18px}
     .section h2{margin:0 0 12px;font-size:15px;color:#bfdbfe;text-transform:uppercase;letter-spacing:.12em}
@@ -120,11 +126,11 @@ if (!$isMy && $totalBdt <= 0) {
           <div class="brand">
             <div class="logo">Z</div>
             <div>
-              <h1>Z-Pay Swift Remittance Receipt</h1>
-              <p>Secure token receipt for completed MFS request</p>
+              <h1><?= receipt_h($title) ?></h1>
+              <p><?= $isFinalReceipt ? 'Secure token receipt for completed MFS request' : 'Secure tracking link for pending MFS request' ?></p>
             </div>
           </div>
-          <span class="status"><?= receipt_h($data['status'] ?? 'SUCCESSFUL') ?></span>
+          <span class="status<?= $isFinalReceipt ? ' success' : '' ?>"><?= receipt_h($displayStatus) ?></span>
         </header>
 
         <div class="body">
@@ -172,7 +178,7 @@ if (!$isMy && $totalBdt <= 0) {
             <h2>Timeline</h2>
             <div class="grid">
               <?= receipt_row('Created', receipt_time($data['created_at'] ?? 0)) ?>
-              <?= receipt_row('Successful', receipt_time($data['success_at'] ?? 0)) ?>
+              <?= receipt_row($isFinalReceipt ? 'Successful' : 'Waiting Admin Approval', $isFinalReceipt ? receipt_time($data['success_at'] ?? 0) : 'Pending') ?>
             </div>
             <div class="actions">
               <button class="green" type="button" onclick="window.print()">Download / Print PDF</button>

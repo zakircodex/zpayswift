@@ -368,7 +368,7 @@ header('Pragma: no-cache');
         <input id="mfsAmountBdt" class="input" type="number" inputmode="decimal" step="0.01" min="500" max="50000" placeholder="BDT 500 - 50000">
       </div>
 
-      <div class="field field-top-gap">
+      <div class="field field-top-gap" id="mfsAmountRmField">
         <label>Amount RM <span class="muted">Malaysia account</span></label>
         <input id="mfsAmountRm" class="input" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="RM amount">
       </div>
@@ -411,7 +411,7 @@ header('Pragma: no-cache');
       </div>
     </div>
 
-    <div class="result-box">
+    <div class="result-box hidden" aria-hidden="true">
       <div id="mfsResult" class="result-empty">No MFS request created yet.</div>
     </div>
   </div>
@@ -577,7 +577,7 @@ header('Pragma: no-cache');
 <script>
 window.USER_PROXY_URL = 'proxy.php';
 </script>
-<script src="assets/dashboard.js?v=9"></script>
-<script src="assets/dashboard-ux.js?v=2"></script>
+<script src="assets/dashboard.js?v=10"></script>
+<script src="assets/dashboard-ux.js?v=3"></script>
 </body>
 </html>

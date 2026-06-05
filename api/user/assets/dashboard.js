@@ -882,6 +882,9 @@ function renderAll(){
   renderSummary();
   renderHistory();
   hideBundleSummaryBoxes();
+  if (typeof window.zpayMfsRefreshCurrencyUi === 'function') {
+    window.zpayMfsRefreshCurrencyUi();
+  }
 
   if (el('bundleSection')?.classList.contains('active')) {
     renderBundleOffers();
@@ -1669,9 +1672,93 @@ Available Balance: ${prefix} ${walletDisplayAmount(wallet, 'available')}
 Status: PENDING`;
 }
 
+function mfsTrackingUrl(data){
+  return String(data?.tracking_url || data?.receipt_url || data?.request_url || '');
+}
+
+function ensureMfsResultModal(){
+  if (el('mfsCreateResultModal')) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'mfsCreateResultModal';
+  wrap.className = 'modal';
+  wrap.innerHTML = `
+    <div class="modal-card">
+      <button id="closeMfsCreateResultModalBtn" class="modal-close" type="button">×</button>
+      <h3 class="modal-title" id="mfsCreateResultTitle">MFS Request</h3>
+      <p class="modal-sub" id="mfsCreateResultSub">Request details</p>
+      <div id="mfsCreateResultBody" class="result-card"></div>
+      <div class="wizard-actions">
+        <button id="mfsCopyTrackingBtn" class="btn blue" type="button">Copy Link</button>
+        <button id="mfsOpenTrackingBtn" class="btn green" type="button">Open Receipt</button>
+        <button id="mfsCreateResultOkBtn" class="btn ghost" type="button">OK</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(wrap);
+
+  const close = () => wrap.classList.remove('show');
+  el('closeMfsCreateResultModalBtn')?.addEventListener('click', close);
+  el('mfsCreateResultOkBtn')?.addEventListener('click', close);
+  wrap.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'mfsCreateResultModal') close();
+  });
+}
+
+function showMfsResultModal({title = 'MFS Request', subtitle = '', rows = [], link = '', type = 'info'} = {}){
+  ensureMfsResultModal();
+
+  const wrap = el('mfsCreateResultModal');
+  const titleNode = el('mfsCreateResultTitle');
+  const subNode = el('mfsCreateResultSub');
+  const body = el('mfsCreateResultBody');
+  const copyBtn = el('mfsCopyTrackingBtn');
+  const openBtn = el('mfsOpenTrackingBtn');
+
+  if (titleNode) titleNode.textContent = title;
+  if (subNode) subNode.textContent = subtitle || '';
+  if (body) {
+    body.className = 'result-card ' + (type === 'error' ? 'bad' : 'good');
+    const rowsHtml = rows
+      .filter(row => Array.isArray(row) && row.length >= 2)
+      .map(row => `
+        <div style="display:flex;gap:12px;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);">
+          <label style="color:#9fb5d8;font-weight:900;">${esc(row[0])}</label>
+          <strong style="text-align:right;word-break:break-word;">${esc(row[1] || '-')}</strong>
+        </div>
+      `).join('');
+
+    body.innerHTML = `
+      ${rowsHtml || `<div class="result-text">${esc(subtitle || 'No details available.')}</div>`}
+      ${link ? `<div style="margin-top:12px;"><label style="display:block;color:#9fb5d8;font-weight:900;margin-bottom:6px;">Receipt / Tracking Link</label><div style="word-break:break-all;color:#dbeafe;">${esc(link)}</div></div>` : ''}
+    `;
+  }
+
+  if (copyBtn) {
+    copyBtn.classList.toggle('hidden', !link);
+    copyBtn.onclick = () => copyText(link, 'Receipt link copied');
+  }
+
+  if (openBtn) {
+    openBtn.classList.toggle('hidden', !link);
+    openBtn.onclick = () => window.open(link, '_blank', 'noopener');
+  }
+
+  wrap?.classList.add('show');
+}
+
+function showMfsErrorModal(title, message){
+  showMfsResultModal({
+    title: title || 'MFS Error',
+    subtitle: message || 'Something went wrong',
+    type: 'error',
+    rows: [['Message', message || 'Something went wrong']]
+  });
+}
+
 function renderMfsResultSuccess(data){
   const box = el('mfsResult');
-  if (!box) return;
 
   const providerName = data.provider_name || (data.provider === 'BKASH' ? 'bKash' : 'Nagad');
   const isRemit = String(data.service_mode || '').toUpperCase() === 'REMITTANCE'
@@ -1697,35 +1784,38 @@ Total Paid: RM ${money(totalRm)}`
 Fee: BDT ${money(data.fee_bdt || 0)}
 Total Paid: BDT ${money(totalBdt)}`;
 
-  box.className = '';
-  box.innerHTML = `
-    <div class="result-card good">
-      <div class="result-title">Request created successfully</div>
-      <div class="result-text">
-Request ID: ${esc(data.request_id || '-')}
-Provider: ${esc(providerName)}
-Number: ${esc(data.receiver_number || data.number || '-')}
-Status: ${esc(data.status || 'PENDING')}
-${esc(amountLines)}
-Reference: ${esc(data.reference || '-')}
-TRXID: ${esc(data.trxid || '-')}
-Created: ${esc(fmtTs(data.created_at || 0))}
-      </div>
-    </div>
-  `;
+  if (box) {
+    box.className = 'result-empty';
+    box.textContent = '';
+  }
+
+  showMfsResultModal({
+    title: 'Request Created Successfully',
+    subtitle: 'Admin approval pending. Use this link to track the request.',
+    type: 'success',
+    link: mfsTrackingUrl(data),
+    rows: [
+      ['Request ID', data.request_id || '-'],
+      ['Provider', providerName],
+      ['Receiver Number', data.receiver_number || data.number || '-'],
+      ['Amount BDT', `BDT ${money(data.amount_bdt || 0)}`],
+      ...(isRemit ? [['Amount RM', `RM ${money(amountRm)}`]] : []),
+      ['Fee', isRemit ? `RM ${money(feeRm)}` : `BDT ${money(data.fee_bdt || 0)}`],
+      ['Total Pay/Hold', isRemit ? `RM ${money(totalRm)}` : `BDT ${money(totalBdt)}`],
+      ['Status', data.status || 'PENDING'],
+      ['Reference', data.reference || '-']
+    ]
+  });
 }
 
 function renderMfsResultError(message){
   const box = el('mfsResult');
-  if (!box) return;
+  if (box) {
+    box.className = 'result-empty';
+    box.textContent = '';
+  }
 
-  box.className = '';
-  box.innerHTML = `
-    <div class="result-card bad">
-      <div class="result-title">Request failed</div>
-      <div class="result-text">${esc(message || 'Unknown error')}</div>
-    </div>
-  `;
+  showMfsErrorModal('Request Failed', message || 'Unknown error');
 }
 
 function applyMfsCreateSuccessToLocalState(data){
@@ -1785,6 +1875,10 @@ function applyMfsCreateSuccessToLocalState(data){
       total_debit_bdt: Number(data.total_debit_bdt || 0),
       total_debit_rm: Number(data.total_debit_rm || 0),
       exchange_rate: Number(data.exchange_rate || 0),
+      receipt_id: data.receipt_id || '',
+      receipt_url: data.receipt_url || '',
+      tracking_url: data.tracking_url || data.receipt_url || '',
+      receipt_created_at: Number(data.receipt_created_at || 0),
       reference: data.reference || '',
       trxid: data.trxid || '',
       message: 'MFS request created',
@@ -1797,6 +1891,9 @@ function applyMfsCreateSuccessToLocalState(data){
   renderHero();
   renderSummary();
   renderHistory();
+  if (typeof window.zpayMfsRefreshCurrencyUi === 'function') {
+    window.zpayMfsRefreshCurrencyUi();
+  }
 }
 
 async function submitMfsRequest(){
