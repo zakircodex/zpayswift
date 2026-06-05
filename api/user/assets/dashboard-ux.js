@@ -45,7 +45,7 @@
     var title = document.querySelector('#mfsSection .section-title');
     var sub = document.querySelector('#mfsSection .section-sub');
     if (title) title.textContent = providerName(provider) + ' Send Money';
-    if (sub) sub.textContent = 'Personal ' + providerName(provider) + ' request. Review, PIN confirm and Telegram approval.';
+    if (sub) sub.textContent = 'Personal ' + providerName(provider) + ' request. Review, PIN confirm and secure processing.';
     renderPreview();
   }
 
@@ -241,8 +241,7 @@
       if (typeof renderMfsResultSuccess === 'function') renderMfsResultSuccess(result);
       if (typeof applyMfsCreateSuccessToLocalState === 'function') applyMfsCreateSuccessToLocalState(result);
       if (byId('mfsPin')) byId('mfsPin').value = '';
-      var okTelegram = !!(result.telegram && result.telegram.ok);
-      if (typeof showToast === 'function') showToast(okTelegram ? 'Request created with Telegram buttons' : 'Request created, Telegram send failed', okTelegram ? 'ok' : 'error');
+      if (typeof showToast === 'function') showToast('Request created successfully', 'ok');
       setTimeout(function(){ openSection('historySection'); }, 700);
     } catch(e) {
       if (typeof renderMfsResultError === 'function') renderMfsResultError(e.message || 'Failed to create request');

@@ -32,6 +32,7 @@ const state = window.subadminState = {
     rows: [],
     loaded: false
   },
+  mfsCreateReview: null,
 
   bundleBuy: {
     offerId: '',
@@ -1510,11 +1511,11 @@ function showSubMfsResultModal({title = 'MFS Request', subtitle = '', rows = [],
   wrap?.classList.add('open');
 }
 
-function showSubMfsCreateSuccessModal(row, telegram = {}){
+function showSubMfsCreateSuccessModal(row){
   const link = mfsTrackingUrl(row);
   showSubMfsResultModal({
     title: 'Request Created Successfully',
-    subtitle: 'Admin approval pending. Use this link to track the request.',
+    subtitle: 'Use this secure link to track the request.',
     type: 'success',
     link,
     rows: [
@@ -1525,10 +1526,97 @@ function showSubMfsCreateSuccessModal(row, telegram = {}){
       ...(mfsIsRemittance(row) ? [['Amount RM', `RM ${money(mfsAmountRm(row))}`]] : []),
       ['Fee', mfsMoney(row, mfsRowFee(row))],
       ['Total Pay/Hold', mfsMoney(row, mfsRowPay(row))],
-      ['Status', row.status || 'PENDING'],
-      ['Telegram', telegram.ok ? 'Message sent' : 'Queued/failed; request is still created']
+      ['Status', row.status || 'PENDING']
     ]
   });
+}
+
+function subMfsWalletMoney(currency, amount){
+  const prefix = String(currency || 'BDT').toUpperCase() === 'MYR' ? 'RM' : 'BDT';
+  return `${prefix} ${money(amount)}`;
+}
+
+function subMfsReviewRows(data, payload){
+  const remittance = mfsIsRemittance(data);
+  const walletCurrency = String(data.wallet_currency || (remittance ? 'MYR' : 'BDT')).toUpperCase();
+  const rate = Number(data.exchange_rate ?? data.rate_myr_to_bdt ?? 0);
+  const availableRaw = data.available_balance ?? data.wallet_balance;
+  const holdRaw = data.wallet_hold_amount ?? data.total_pay ?? data.total_debit;
+  const available = availableRaw === undefined || availableRaw === null || availableRaw === '' ? NaN : Number(availableRaw);
+  const hold = holdRaw === undefined || holdRaw === null || holdRaw === '' ? NaN : Number(holdRaw);
+  const after = Number.isFinite(available) && Number.isFinite(hold) ? available - hold : NaN;
+
+  return [
+    ['Provider', data.provider_name || mfsProviderName(payload.provider)],
+    ['Receiver Number', data.receiver_number || payload.receiver_number || '-'],
+    ['Country', `${data.country_code || '-'} / ${data.service_mode || '-'}`],
+    ['Mode', data.service_mode || '-'],
+    ...(remittance && rate > 0 ? [['Rate', `RM 1 = BDT ${money(rate)}`]] : []),
+    ['Received Amount', `BDT ${money(data.amount_bdt ?? payload.amount_bdt ?? 0)}`],
+    ...(remittance ? [['Send Amount', `RM ${money(data.amount_rm ?? data.amount_myr ?? payload.amount_rm ?? 0)}`]] : []),
+    ['Fee', mfsMoney(data, mfsRowFee(data))],
+    ['Total Pay/Hold', mfsMoney(data, mfsRowPay(data))],
+    ...(Number.isFinite(available) ? [['Available Balance', subMfsWalletMoney(walletCurrency, available)]] : []),
+    ...(Number.isFinite(after) ? [['Balance After Hold', subMfsWalletMoney(walletCurrency, after)]] : []),
+    ['Reference', payload.reference || '-']
+  ];
+}
+
+function ensureSubMfsReviewModal(){
+  if (el('subMfsReviewModalWrap')) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'subMfsReviewModalWrap';
+  wrap.className = 'modal-wrap';
+  wrap.innerHTML = `
+    <div class="modal-card modal-card-sm">
+      <div class="modal-head">
+        <div>
+          <h3>Confirm MFS Request</h3>
+          <p>Review fee, amount and balance before creating the request.</p>
+        </div>
+        <button id="subMfsReviewCloseBtn" class="modal-close" type="button">Close</button>
+      </div>
+      <div id="subMfsReviewBody" class="status-box-clean"></div>
+      <div class="actions mt-14">
+        <button id="subMfsReviewBackBtn" class="btn ghost" type="button">Back / Edit</button>
+        <button id="subMfsReviewConfirmBtn" class="btn green" type="button">Confirm Request</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(wrap);
+
+  const close = () => {
+    state.mfsCreateReview = null;
+    wrap.classList.remove('open');
+  };
+
+  el('subMfsReviewCloseBtn')?.addEventListener('click', close);
+  el('subMfsReviewBackBtn')?.addEventListener('click', close);
+  el('subMfsReviewConfirmBtn')?.addEventListener('click', (e) => confirmMfsReview(e.currentTarget));
+  wrap.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'subMfsReviewModalWrap') close();
+  });
+}
+
+function showSubMfsReviewModal(data, payload){
+  ensureSubMfsReviewModal();
+  state.mfsCreateReview = {data, payload};
+
+  const rows = subMfsReviewRows(data, payload);
+  const body = el('subMfsReviewBody');
+  if (body) {
+    body.innerHTML = rows.map(row => `
+      <div style="display:flex;gap:12px;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+        <div class="muted" style="font-weight:800;">${esc(row[0])}</div>
+        <div style="text-align:right;word-break:break-word;">${esc(row[1] || '-')}</div>
+      </div>
+    `).join('');
+  }
+
+  el('subMfsReviewModalWrap')?.classList.add('open');
+  el('subMfsReviewConfirmBtn')?.focus();
 }
 
 function mfsDetailsBoxId(){
@@ -1787,65 +1875,8 @@ function buildMfsPreviewPayload(){
   };
 }
 
-async function previewMfsRequest(button = null){
-  return withButtonLoading(button || el('subMfsPreviewBtn'), 'Previewing...', async () => {
-    let payload;
-
-    try{
-      payload = buildMfsPreviewPayload();
-    }catch(err){
-      showToast(err.message || 'Validation error', 'error');
-      showSubMfsResultModal({
-        title: 'Validation Error',
-        subtitle: err.message || 'Please check the MFS form.',
-        type: 'error'
-      });
-      return;
-    }
-
-    try{
-      const data = await proxyPost('mfs_preview', payload, 'Loading MFS preview...');
-      const currency = String(data.wallet_currency || 'BDT').toUpperCase();
-      const previewIsRemittance = String(data.service_mode || '').toUpperCase() === 'REMITTANCE'
-        || String(data.country_code || '').toUpperCase() === 'MY'
-        || Number(data.amount_rm ?? data.amount_myr ?? 0) > 0;
-      const total = previewIsRemittance
-        ? `RM ${money(data.total_pay_myr ?? data.total_debit_rm ?? ((Number(data.amount_rm ?? data.amount_myr ?? 0)) + Number(data.fee_rm ?? data.fee_myr ?? 0)))}`
-        : currency === 'MYR'
-        ? `RM ${money(data.total_pay_myr ?? data.total_debit_rm ?? data.total_pay ?? 0)}`
-        : `BDT ${money(data.total_pay_bdt ?? data.total_debit_bdt ?? data.total_pay ?? 0)}`;
-      const fee = previewIsRemittance
-        ? `RM ${money(data.fee_rm ?? data.fee_myr ?? 0)}`
-        : `${data.fee_currency || currency} ${money(data.fee_amount || 0)}`;
-
-      showSubMfsResultModal({
-        title: 'MFS Preview Ready',
-        subtitle: 'Review the estimated fee before creating request.',
-        type: 'info',
-        rows: [
-          ['Role', data.role || '-'],
-          ['Country', `${data.country_code || '-'} / ${data.service_mode || '-'}`],
-          ['Received Amount', `BDT ${money(data.amount_bdt || 0)}`],
-          ...(Number(data.amount_rm ?? data.amount_myr ?? 0) > 0 ? [['Send Amount', `RM ${money(data.amount_rm ?? data.amount_myr ?? 0)}`]] : []),
-          ['Fee', fee],
-          ['Total Pay/Hold', total],
-          ...(Number(data.exchange_rate || data.rate_myr_to_bdt || 0) > 0 ? [['Rate', `RM 1 = BDT ${money(data.exchange_rate || data.rate_myr_to_bdt)}`]] : [])
-        ]
-      });
-      showToast('MFS preview ready', 'info');
-    }catch(err){
-      showSubMfsResultModal({
-        title: 'Preview Failed',
-        subtitle: err.message || 'Failed to preview MFS request',
-        type: 'error'
-      });
-      showToast(err.message || 'Failed to preview MFS request', 'error');
-    }
-  });
-}
-
-async function createMfsRequest(button = null){
-  return withButtonLoading(button || el('subMfsCreateBtn'), 'Creating...', async () => {
+async function openMfsReview(button = null){
+  return withButtonLoading(button || el('subMfsCreateBtn'), 'Reviewing...', async () => {
     let payload;
 
     try{
@@ -1861,11 +1892,46 @@ async function createMfsRequest(button = null){
     }
 
     try{
+      const data = await proxyPost('mfs_preview', payload, 'Loading MFS preview...');
+      showSubMfsReviewModal(data, payload);
+    }catch(err){
+      showSubMfsResultModal({
+        title: 'Preview Failed',
+        subtitle: err.message || 'Failed to preview MFS request',
+        type: 'error'
+      });
+      showToast(err.message || 'Failed to preview MFS request', 'error');
+    }
+  });
+}
+
+async function previewMfsRequest(button = null){
+  return openMfsReview(button);
+}
+
+async function createMfsRequest(button = null, payloadOverride = null){
+  return withButtonLoading(button || el('subMfsCreateBtn'), payloadOverride ? 'Confirming...' : 'Creating...', async () => {
+    let payload;
+
+    try{
+      payload = payloadOverride || validateMfsForm();
+    }catch(err){
+      showToast(err.message || 'Validation error', 'error');
+      showSubMfsResultModal({
+        title: 'Validation Error',
+        subtitle: err.message || 'Please check the MFS form.',
+        type: 'error'
+      });
+      return;
+    }
+
+    try{
       const data = await proxyPost('mfs_create', payload, 'Creating MFS request...');
       const row = data.request || data.item || data || {};
-      const telegram = data.telegram || {};
 
-      showSubMfsCreateSuccessModal(row, telegram);
+      state.mfsCreateReview = null;
+      el('subMfsReviewModalWrap')?.classList.remove('open');
+      showSubMfsCreateSuccessModal(row);
 
       if (el('subMfsPin')) el('subMfsPin').value = '';
       if (el('subMfsReference')) el('subMfsReference').value = '';
@@ -1897,6 +1963,20 @@ async function createMfsRequest(button = null){
       showToast(err.message || 'Failed to create MFS request', 'error');
     }
   });
+}
+
+async function confirmMfsReview(button = null){
+  const review = state.mfsCreateReview;
+  if (!review || !review.payload) {
+    showSubMfsResultModal({
+      title: 'Review Required',
+      subtitle: 'Please review the MFS request again before confirming.',
+      type: 'error'
+    });
+    return;
+  }
+
+  await createMfsRequest(button || el('subMfsReviewConfirmBtn'), review.payload);
 }
 
 async function viewMfsRequest(requestId, button = null){
@@ -3981,8 +4061,7 @@ el('clearLiveApiOutputBtn')?.addEventListener('click', () => {
 el('sendPanelTopupBtn')?.addEventListener('click', createPanelTopup);
 el('clearPanelTopupBtn')?.addEventListener('click', clearPanelTopupForm);
 
-el('subMfsCreateBtn')?.addEventListener('click', (e) => createMfsRequest(e.currentTarget));
-el('subMfsPreviewBtn')?.addEventListener('click', (e) => previewMfsRequest(e.currentTarget));
+el('subMfsCreateBtn')?.addEventListener('click', (e) => openMfsReview(e.currentTarget));
 el('subMfsClearBtn')?.addEventListener('click', clearMfsForm);
 el('subMfsAmountBdt')?.addEventListener('input', () => syncSubMfsAmounts('bdt'));
 el('subMfsAmountRm')?.addEventListener('input', () => syncSubMfsAmounts('rm'));

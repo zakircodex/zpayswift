@@ -12,6 +12,10 @@
     busyCount:0,
     successRequestId:'',
     confirmAction:null,
+    createReview:null,
+    feedbackAction:null,
+    feedbackReceiptUrl:'',
+    sessionRedirecting:false,
     settings:null,
     settingsLoading:false,
     viewReceiptUrl:''
@@ -82,6 +86,7 @@
       var er=new Error(json.message||'Request failed');
       er.code=json.code||'ERROR';
       er.data=json.data||{};
+      er.status=res.status;
       throw er;
     }
     return json.data||{};
@@ -120,18 +125,69 @@
     return message;
   }
 
-  function showFeedback(type,title,message){
+  function isSessionExpiredError(err){
+    var code=String(err&&err.code||'').toUpperCase();
+    var message=String(err&&err.message||'').toLowerCase();
+    var status=Number(err&&err.status||0);
+    return status===401
+      || ['AUTH_ERROR','UNAUTHORIZED','FORBIDDEN','SESSION_EXPIRED','ADMIN_SESSION_EXPIRED'].indexOf(code)>=0
+      || message.indexOf('session expired')>=0
+      || message.indexOf('session not found')>=0
+      || message.indexOf('not found or expired')>=0
+      || message.indexOf('please login')>=0;
+  }
+
+  function redirectAdminLogin(){
+    window.location.href='dashboard.php';
+  }
+
+  function handleSessionExpired(err){
+    if(!isSessionExpiredError(err))return false;
+    if(state.sessionRedirecting)return true;
+    state.sessionRedirecting=true;
+    showFeedback('error','Session expired','Session expired. Please login again.',redirectAdminLogin);
+    window.setTimeout(redirectAdminLogin,1500);
+    return true;
+  }
+
+  function showFeedback(type,title,message,onOk,options){
+    options=options||{};
+    state.feedbackAction=typeof onOk==='function'?onOk:null;
+    state.feedbackReceiptUrl=String(options.link||'');
     var isError=type==='error';
     el('mfsFeedbackCard').classList.toggle('feedback-error',isError);
     el('mfsFeedbackKicker').textContent=isError?'Error':'Success';
     el('mfsFeedbackTitle').textContent=String(title||'Notice');
     el('mfsFeedbackMessage').textContent=String(message||'');
+    var details=el('mfsFeedbackDetails');
+    if(details){
+      details.textContent=String(options.details||'');
+      details.classList.toggle('hidden',!options.details);
+    }
+    var receiptActions=el('mfsFeedbackReceiptActions');
+    var receiptOpen=el('mfsFeedbackReceiptOpen');
+    if(receiptActions)receiptActions.classList.toggle('hidden',!state.feedbackReceiptUrl);
+    if(receiptOpen)receiptOpen.href=state.feedbackReceiptUrl||'#';
     el('mfsFeedbackModal').classList.remove('hidden');
     el('mfsFeedbackOkBtn').focus();
   }
 
   function closeFeedback(){
     el('mfsFeedbackModal').classList.add('hidden');
+    var action=state.feedbackAction;
+    state.feedbackAction=null;
+    state.feedbackReceiptUrl='';
+    if(action)action();
+  }
+
+  async function copyFeedbackReceipt(){
+    if(!state.feedbackReceiptUrl)return;
+    try{
+      await navigator.clipboard.writeText(state.feedbackReceiptUrl);
+      el('mfsFeedbackMessage').textContent='Receipt / tracking link copied to clipboard.';
+    }catch(err){
+      el('mfsFeedbackMessage').textContent=state.feedbackReceiptUrl;
+    }
   }
 
   function setButtonBusy(button,busy,label){
@@ -267,6 +323,7 @@
       if(failed){
         var error=failed.reason||new Error('Failed to load MFS requests');
         msg(friendlyError(error),'bad');
+        if(handleSessionExpired(error))return;
         if(notifyError!==false)showFeedback('error','Unable to load requests',friendlyError(error));
       }
     }finally{
@@ -329,6 +386,7 @@
       populateSettings(data.settings||data.raw||{});
       if(notify)showFeedback('success','Settings loaded','MFS fee and rate settings loaded.');
     }catch(err){
+      if(handleSessionExpired(err))return;
       if(notify!==false)showFeedback('error','Unable to load settings',friendlyError(err));
     }finally{
       setButtonBusy(button,false);
@@ -365,6 +423,7 @@
       populateSettings(data.settings||{});
       showFeedback('success','Settings saved','MFS fee and MYR/BDT rate settings saved.');
     }catch(err){
+      if(handleSessionExpired(err))return;
       showFeedback('error','Unable to save settings',friendlyError(err));
     }finally{
       setPageBusy(false);
@@ -404,19 +463,14 @@
       'Backend will use the target account country/currency for the final hold.',
       'BD target: LOCAL, Amount BDT '+money(amountBdt)+', Fee BDT '+money(bdFee)+', Total Paid BDT '+money(amountBdt+bdFee),
       'MY target: REMITTANCE, Rate RM 1 = BDT '+money(rate)+', Role fee USER RM '+money(myFeeUser)+', RETAILER RM '+money(myFeeRetailer)+', SUBADMIN RM '+money(myFeeSubadmin)+'.',
-      'Use Preview Fee to confirm the actual target role/country before create.'
+      'Create MFS Request will open a review modal before any wallet hold.'
     ].join('\n');
   }
 
-  async function previewCreateFromServer(button){
-    var validation=validateCreateForm();
-    if(validation){
-      showFeedback('error','Validation error',validation);
-      return;
-    }
+  function createRequestPayload(){
     var amount=Number(el('mfsCreateAmountBdt').value||0);
     var amountRm=Number(el('mfsCreateAmountRm').value||0);
-    var body={
+    return {
       uid:String(el('mfsCreateUid').value||'').trim(),
       provider:el('mfsCreateProvider').value,
       service_type:'SEND_MONEY',
@@ -425,31 +479,105 @@
       amount_bdt:amount,
       amount_rm:amountRm,
       amount_myr:amountRm,
-      reference:String(el('mfsCreateReference').value||'').trim()
+      reference:String(el('mfsCreateReference').value||'').trim(),
+      note:String(el('mfsCreateNote').value||'').trim()
     };
+  }
+
+  function reviewMoney(data,remittance){
+    var currency=String(data.wallet_currency||'BDT').toUpperCase();
+    if(remittance)return 'RM '+money(data.total_pay_myr||data.total_debit_rm||((Number(data.amount_rm||data.amount_myr||0))+(Number(data.fee_rm||data.fee_myr||0))));
+    if(currency==='MYR')return 'RM '+money(data.total_pay_myr||data.total_debit_rm||data.total_pay||0);
+    return 'BDT '+money(data.total_pay_bdt||data.total_debit_bdt||data.total_pay||0);
+  }
+
+  function reviewFeeText(data,remittance){
+    var currency=String(data.wallet_currency||'BDT').toUpperCase();
+    if(remittance)return 'RM '+money(data.fee_rm||data.fee_myr||0);
+    return String(data.fee_currency||currency)+' '+money(data.fee_amount||0);
+  }
+
+  function formatCreateReview(data,body){
+    var currency=String(data.wallet_currency||'BDT').toUpperCase();
+    var remittance=String(data.service_mode||'').toUpperCase()==='REMITTANCE'||String(data.country_code||'').toUpperCase()==='MY'||Number(data.amount_rm||data.amount_myr||0)>0;
+    var rate=Number(data.exchange_rate||data.rate_myr_to_bdt||0);
+    var totalPay=Number(data.total_pay||data.wallet_hold_amount||0);
+    var available=Number(data.available_balance||data.wallet_balance||0);
+    var after=Number.isFinite(available)&&Number.isFinite(totalPay)?available-totalPay:NaN;
+    var lines=[
+      'Provider: '+String(data.provider_name||body.provider||'-'),
+      'Receiver Number: '+String(data.receiver_number||body.receiver_number||'-'),
+      'Country: '+String(data.country_code||'-'),
+      'Mode: '+String(data.service_mode||'-'),
+      remittance&&rate>0?'Rate: RM 1 = BDT '+money(rate):'',
+      'Received Amount: BDT '+money(data.amount_bdt||body.amount_bdt||0),
+      remittance?'Send Amount: RM '+money(data.amount_rm||data.amount_myr||body.amount_rm||0):'',
+      'Fee: '+reviewFeeText(data,remittance),
+      'Total Pay/Hold: '+reviewMoney(data,remittance),
+      Number.isFinite(available)?'Available Balance: '+(currency==='MYR'?'RM ':'BDT ')+money(available):'',
+      Number.isFinite(after)?'Balance After Hold: '+(currency==='MYR'?'RM ':'BDT ')+money(after):'',
+      'Reference: '+String(body.reference||'-')
+    ];
+    return lines.filter(Boolean).join('\n');
+  }
+
+  function formatCreateSuccess(row,body){
+    row=row||{};
+    body=body||{};
+    var receiver=rowNumber(row);
+    if(receiver==='-')receiver=body.receiver_number||'-';
+    var remittance=isRemittance(row)||Number(row.amount_rm||row.amount_myr||body.amount_rm||0)>0;
+    var rate=Number(row.exchange_rate||row.rate_myr_to_bdt||0);
+    var feeText=remittance?'RM '+money(rmFee(row)):('BDT '+money(row.fee_bdt||row.fee_amount||0));
+    var totalText=remittance?'RM '+money(rmTotal(row)):('BDT '+money(bdtTotal(row)));
+    var lines=[
+      'Request ID: '+String(row.request_id||'-'),
+      'Provider: '+String(row.provider_name||body.provider||'-'),
+      'Receiver Number: '+String(receiver),
+      'Amount BDT: BDT '+money(row.amount_bdt||body.amount_bdt||0),
+      remittance?'Amount RM: RM '+money(rmAmount(row)||body.amount_rm||0):'',
+      remittance&&rate>0?'Rate: RM 1 = BDT '+money(rate):'',
+      'Fee: '+feeText,
+      'Total Pay/Hold: '+totalText,
+      'Status: '+String(row.status||'PENDING'),
+      'Receipt / Tracking Link: '+String(row.receipt_url||row.tracking_url||row.request_url||'')
+    ];
+    return lines.filter(Boolean).join('\n');
+  }
+
+  async function openCreateReview(e){
+    e.preventDefault();
+    if(state.mutating)return;
+    var validation=validateCreateForm();
+    if(validation){
+      msg('', '');
+      showFeedback('error','Validation error',validation);
+      return;
+    }
+    var button=el('mfsCreateSubmitBtn');
+    var body=createRequestPayload();
     setButtonBusy(button,true,'Previewing...');
     setPageBusy(true,'Loading target MFS fee preview...');
     try{
       await ensureCsrf();
       var data=await post('mfs_preview',body);
-      var currency=String(data.wallet_currency||'BDT').toUpperCase();
-      var remittance=String(data.service_mode||'').toUpperCase()==='REMITTANCE'||String(data.country_code||'').toUpperCase()==='MY'||Number(data.amount_rm||data.amount_myr||0)>0;
-      var previewFee=remittance?'RM '+money(data.fee_rm||data.fee_myr||0):String(data.fee_currency||currency)+' '+money(data.fee_amount||0);
-      var total=remittance?'RM '+money(data.total_pay_myr||data.total_debit_rm||((Number(data.amount_rm||data.amount_myr||0))+(Number(data.fee_rm||data.fee_myr||0)))):(currency==='MYR'?'RM '+money(data.total_pay_myr||data.total_debit_rm||data.total_pay||0):'BDT '+money(data.total_pay_bdt||data.total_debit_bdt||data.total_pay||0));
-      el('mfsCreatePreview').textContent=[
-        'Target preview ready.',
-        'UID: '+String(data.uid||'-')+' | Role: '+String(data.role||'-')+' | Country: '+String(data.country_code||'-')+' | Mode: '+String(data.service_mode||'-'),
-        'Received: BDT '+money(data.amount_bdt||0)+(Number(data.amount_rm||data.amount_myr||0)>0?' | Send: RM '+money(data.amount_rm||data.amount_myr||0):''),
-        'Fee: '+previewFee+' | Total Paid: '+total,
-        Number(data.exchange_rate||data.rate_myr_to_bdt||0)>0?'Rate: RM 1 = BDT '+money(data.exchange_rate||data.rate_myr_to_bdt):''
-      ].filter(Boolean).join('\n');
-      showFeedback('success','Preview ready','Target role '+String(data.role||'-')+' will pay '+total+'.');
+      state.createReview={body:body,preview:data};
+      el('mfsCreateReviewDetails').textContent=formatCreateReview(data,body);
+      el('mfsCreateReviewModal').classList.remove('hidden');
+      el('mfsCreateReviewConfirmBtn').focus();
     }catch(err){
-      showFeedback('error','Unable to preview fee',friendlyError(err));
+      if(handleSessionExpired(err))return;
+      showFeedback('error','Unable to preview request',friendlyError(err));
     }finally{
       setPageBusy(false);
       setButtonBusy(button,false);
     }
+  }
+
+  function closeCreateReview(){
+    if(state.mutating)return;
+    state.createReview=null;
+    el('mfsCreateReviewModal').classList.add('hidden');
   }
 
   function validateCreateForm(){
@@ -466,42 +594,31 @@
     return '';
   }
 
-  async function createRequest(e){
-    e.preventDefault();
-    if(state.mutating)return;
-    var validation=validateCreateForm();
-    if(validation){
-      msg(validation,'bad');
-      showFeedback('error','Validation error',validation);
-      return;
-    }
-    var button=el('mfsCreateSubmitBtn');
-    var amount=Number(el('mfsCreateAmountBdt').value||0);
-    var amountRm=Number(el('mfsCreateAmountRm').value||0);
-    var body={
-      uid:String(el('mfsCreateUid').value||'').trim(),
-      provider:el('mfsCreateProvider').value,
-      service_type:'SEND_MONEY',
-      account_type:'PERSONAL',
-      receiver_number:String(el('mfsCreateReceiver').value||'').trim(),
-      amount_bdt:amount,
-      amount_rm:amountRm,
-      reference:String(el('mfsCreateReference').value||'').trim(),
-      note:String(el('mfsCreateNote').value||'').trim()
-    };
+  async function confirmCreateRequest(){
+    if(state.mutating||!state.createReview)return;
+    var body=state.createReview.body;
+    var button=el('mfsCreateReviewConfirmBtn');
     state.mutating=true;
-    setButtonBusy(button,true,'Creating...');
+    setButtonBusy(button,true,'Confirming...');
     setPageBusy(true,'Creating MFS request and holding target wallet balance...');
     try{
       await ensureCsrf();
       var data=await post('mfs_create',body);
+      var row=data.request||data.item||data.row||data;
+      var receiptUrl=String(row.receipt_url||row.tracking_url||row.request_url||'');
+      state.createReview=null;
+      el('mfsCreateReviewModal').classList.add('hidden');
       el('mfsCreateForm').reset();
+      updateCreatePreview();
       setActiveTab('pending');
       setSection('manage');
-      showFeedback('success','Request created successfully','Request '+String(data.request_id||'')+' was created. Balance was held from the target account.');
+      showFeedback('success','Request Created Successfully','Request '+String(row.request_id||data.request_id||'')+' was created. Balance was held from the target account.',null,{
+        details:formatCreateSuccess(row,body),
+        link:receiptUrl
+      });
       await load(null,false);
     }catch(err){
-      msg(friendlyError(err),'bad');
+      if(handleSessionExpired(err))return;
       showFeedback('error','Unable to create request',friendlyError(err));
     }finally{
       setPageBusy(false);
@@ -532,6 +649,7 @@
       el('mfsViewModal').classList.remove('hidden');
       el('mfsViewCloseBtn').focus();
     }catch(err){
+      if(handleSessionExpired(err))return;
       showFeedback('error','Unable to load request',friendlyError(err));
     }finally{
       setPageBusy(false);
@@ -599,6 +717,7 @@
       showFeedback('success',options.successTitle,options.successMessage);
       await load(null,false);
     }catch(err){
+      if(handleSessionExpired(err))return;
       showFeedback('error','Unable to update request',friendlyError(err));
     }finally{
       setPageBusy(false);
@@ -676,6 +795,7 @@
       showFeedback('success','Request successful','Request '+id+' completed successfully.');
       await load(null,false);
     }catch(err){
+      if(handleSessionExpired(err))return;
       showFeedback('error','Unable to complete request',friendlyError(err));
     }finally{
       setPageBusy(false);
@@ -715,8 +835,9 @@
     all('[data-mfs-view-target]').forEach(function(button){
       button.addEventListener('click',function(){setSection(button.getAttribute('data-mfs-view-target')||'manage');});
     });
-    el('mfsCreateForm').addEventListener('submit',createRequest);
-    el('mfsCreatePreviewBtn').addEventListener('click',function(){previewCreateFromServer(el('mfsCreatePreviewBtn'));});
+    el('mfsCreateForm').addEventListener('submit',openCreateReview);
+    el('mfsCreateReviewCancelBtn').addEventListener('click',closeCreateReview);
+    el('mfsCreateReviewConfirmBtn').addEventListener('click',confirmCreateRequest);
     el('mfsSettingsForm').addEventListener('submit',saveSettings);
     el('mfsSettingsReloadBtn').addEventListener('click',function(){loadSettings(el('mfsSettingsReloadBtn'),true);});
     ['mfsCreateUid','mfsCreateProvider','mfsCreateReceiver','mfsCreateAmountBdt','mfsCreateAmountRm'].forEach(function(id){el(id).addEventListener('input',updateCreatePreview); el(id).addEventListener('change',updateCreatePreview);});
@@ -732,10 +853,12 @@
     el('mfsViewCloseBtn').addEventListener('click',closeView);
     el('mfsViewReceiptCopy').addEventListener('click',copyViewReceipt);
     el('mfsFeedbackOkBtn').addEventListener('click',closeFeedback);
+    el('mfsFeedbackReceiptCopy').addEventListener('click',copyFeedbackReceipt);
     el('mfsSidebarToggle').addEventListener('click',function(){toggleSidebar(!document.body.classList.contains('sidebar-open'));});
     el('mfsSidebarBackdrop').addEventListener('click',function(){toggleSidebar(false);});
     el('mfsSuccessModal').addEventListener('click',function(e){if(e.target===el('mfsSuccessModal'))closeSuccess();});
     el('mfsConfirmModal').addEventListener('click',function(e){if(e.target===el('mfsConfirmModal'))closeConfirm();});
+    el('mfsCreateReviewModal').addEventListener('click',function(e){if(e.target===el('mfsCreateReviewModal'))closeCreateReview();});
     el('mfsViewModal').addEventListener('click',function(e){if(e.target===el('mfsViewModal'))closeView();});
     el('mfsFeedbackModal').addEventListener('click',function(e){if(e.target===el('mfsFeedbackModal'))closeFeedback();});
     document.addEventListener('keydown',function(e){
@@ -743,6 +866,7 @@
       closeFeedback();
       closeView();
       closeConfirm();
+      closeCreateReview();
       closeSuccess();
       toggleSidebar(false);
     });

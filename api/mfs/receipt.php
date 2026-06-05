@@ -36,10 +36,24 @@ function receipt_row(string $label, $value): string
 
 $rawStatus = strtoupper((string)($data['status'] ?? ''));
 $isFinalReceipt = in_array($rawStatus, ['SUCCESS', 'SUCCESSFUL', 'DONE', 'COMPLETED'], true);
-$displayStatus = $rawStatus === 'PENDING' ? 'PENDING / Waiting Admin Approval' : ($rawStatus ?: 'PENDING');
+$isFailedReceipt = in_array($rawStatus, ['FAILED', 'CANCELLED'], true);
+$isProcessingReceipt = $rawStatus === 'PROCESSING';
+$displayStatus = $isFinalReceipt
+    ? 'Successful'
+    : ($isFailedReceipt ? 'Failed' : ($isProcessingReceipt ? 'Processing' : 'Processing Securely'));
+$statusMessage = $isFinalReceipt
+    ? 'Your remittance has been completed successfully.'
+    : ($isFailedReceipt
+        ? 'Your request could not be completed. Any held balance has been returned if applicable.'
+        : ($isProcessingReceipt
+            ? 'Your request is currently being processed.'
+            : 'Your request is being processed securely.'));
 $title = $ok
     ? ($isFinalReceipt ? 'Z-Pay Swift Remittance Receipt' : 'Z-Pay Swift MFS Request Tracking')
     : 'Receipt Not Found';
+$subtitle = $isFinalReceipt
+    ? 'Secure receipt for your completed MFS request'
+    : 'Secure tracking link for your MFS request';
 $receiptUrl = (string)($data['receipt_url'] ?? '');
 $walletCurrency = strtoupper((string)($data['wallet_currency'] ?? 'BDT'));
 $isMy = strtoupper((string)($data['country_code'] ?? '')) === 'MY'
@@ -96,6 +110,7 @@ if (!$isMy && $totalBdt <= 0) {
     p{margin:6px 0 0;color:var(--muted)}
     .status{border:1px solid rgba(245,158,11,.38);background:rgba(245,158,11,.13);color:#fde68a;border-radius:999px;padding:8px 12px;font-weight:800;font-size:12px}
     .status.success{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.12);color:#bbf7d0}
+    .status.failed{border-color:rgba(239,68,68,.35);background:rgba(239,68,68,.12);color:#fecaca}
     .body{padding:24px;display:grid;gap:18px}
     .section{border:1px solid var(--line);border-radius:20px;background:rgba(15,23,42,.62);padding:18px}
     .section h2{margin:0 0 12px;font-size:15px;color:#bfdbfe;text-transform:uppercase;letter-spacing:.12em}
@@ -127,10 +142,10 @@ if (!$isMy && $totalBdt <= 0) {
             <div class="logo">Z</div>
             <div>
               <h1><?= receipt_h($title) ?></h1>
-              <p><?= $isFinalReceipt ? 'Secure token receipt for completed MFS request' : 'Secure tracking link for pending MFS request' ?></p>
+              <p><?= receipt_h($subtitle) ?></p>
             </div>
           </div>
-          <span class="status<?= $isFinalReceipt ? ' success' : '' ?>"><?= receipt_h($displayStatus) ?></span>
+          <span class="status<?= $isFinalReceipt ? ' success' : ($isFailedReceipt ? ' failed' : '') ?>"><?= receipt_h($displayStatus) ?></span>
         </header>
 
         <div class="body">
@@ -178,7 +193,7 @@ if (!$isMy && $totalBdt <= 0) {
             <h2>Timeline</h2>
             <div class="grid">
               <?= receipt_row('Created', receipt_time($data['created_at'] ?? 0)) ?>
-              <?= receipt_row($isFinalReceipt ? 'Successful' : 'Waiting Admin Approval', $isFinalReceipt ? receipt_time($data['success_at'] ?? 0) : 'Pending') ?>
+              <?= receipt_row($isFinalReceipt ? 'Successful At' : 'Status', $isFinalReceipt ? receipt_time($data['success_at'] ?? 0) : $statusMessage) ?>
             </div>
             <div class="actions">
               <button class="green" type="button" onclick="window.print()">Download / Print PDF</button>

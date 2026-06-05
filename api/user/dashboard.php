@@ -577,7 +577,7 @@ header('Pragma: no-cache');
 <script>
 window.USER_PROXY_URL = 'proxy.php';
 </script>
-<script src="assets/dashboard.js?v=10"></script>
-<script src="assets/dashboard-ux.js?v=3"></script>
+<script src="assets/dashboard.js?v=11"></script>
+<script src="assets/dashboard-ux.js?v=4"></script>
 </body>
 </html>

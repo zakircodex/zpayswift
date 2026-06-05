@@ -1791,7 +1791,7 @@ Total Paid: BDT ${money(totalBdt)}`;
 
   showMfsResultModal({
     title: 'Request Created Successfully',
-    subtitle: 'Admin approval pending. Use this link to track the request.',
+    subtitle: 'Use this secure link to track the request.',
     type: 'success',
     link: mfsTrackingUrl(data),
     rows: [

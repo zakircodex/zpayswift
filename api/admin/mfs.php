@@ -156,11 +156,10 @@ header('Pragma: no-cache');
             <textarea class="input" id="mfsCreateNote" rows="3" placeholder="Additional request note"></textarea>
           </label>
           <div class="admin-mfs-submit">
-            <button class="btn blue" id="mfsCreatePreviewBtn" type="button">Preview Fee</button>
-            <button class="btn brand" id="mfsCreateSubmitBtn" type="submit">Create Request</button>
+            <button class="btn brand" id="mfsCreateSubmitBtn" type="submit">Create MFS Request</button>
           </div>
           <div class="admin-mfs-preview" id="mfsCreatePreview">
-            Enter target, provider and amount to preview country/rate/fee.
+            Enter target, provider and amount. You will review the fee before confirming.
           </div>
         </form>
       </section>
@@ -326,6 +325,19 @@ header('Pragma: no-cache');
       </div>
     </div>
 
+    <div class="admin-mfs-modal hidden" id="mfsCreateReviewModal" role="dialog" aria-modal="true" aria-labelledby="mfsCreateReviewTitle">
+      <div class="admin-mfs-modal-card">
+        <div class="mfs-section-kicker">Review Request</div>
+        <h2 id="mfsCreateReviewTitle">Confirm MFS Request</h2>
+        <p>Review target fee, amount and balance before holding the target account balance.</p>
+        <div class="admin-mfs-details" id="mfsCreateReviewDetails"></div>
+        <div class="admin-mfs-modal-actions">
+          <button class="btn ghost" id="mfsCreateReviewCancelBtn" type="button">Back / Edit</button>
+          <button class="btn brand" id="mfsCreateReviewConfirmBtn" type="button">Confirm Request</button>
+        </div>
+      </div>
+    </div>
+
     <div class="admin-mfs-modal hidden" id="mfsViewModal" role="dialog" aria-modal="true" aria-labelledby="mfsViewTitle">
       <div class="admin-mfs-modal-card">
         <div class="mfs-section-kicker">Request Details</div>
@@ -347,6 +359,11 @@ header('Pragma: no-cache');
         <div class="mfs-section-kicker" id="mfsFeedbackKicker">Success</div>
         <h2 id="mfsFeedbackTitle">Action completed</h2>
         <p id="mfsFeedbackMessage"></p>
+        <pre class="admin-mfs-details hidden" id="mfsFeedbackDetails"></pre>
+        <div class="admin-mfs-receipt-actions hidden" id="mfsFeedbackReceiptActions">
+          <a class="btn green" id="mfsFeedbackReceiptOpen" href="#" target="_blank" rel="noopener">Open Receipt</a>
+          <button class="btn ghost" id="mfsFeedbackReceiptCopy" type="button">Copy Link</button>
+        </div>
         <div class="admin-mfs-modal-actions">
           <button class="btn blue" id="mfsFeedbackOkBtn" type="button">OK</button>
         </div>
@@ -354,6 +371,6 @@ header('Pragma: no-cache');
     </div>
   </div>
 
-  <script src="assets/mfs-panel.js?v=4"></script>
+  <script src="assets/mfs-panel.js?v=5"></script>
 </body>
 </html>
