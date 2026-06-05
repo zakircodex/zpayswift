@@ -10,8 +10,8 @@ header('Pragma: no-cache');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Z-Pay Swift User Dashboard</title>
-  <link rel="stylesheet" href="assets/dashboard.css?v=8">
-  <link rel="stylesheet" href="assets/dashboard-ux.css?v=1">
+  <link rel="stylesheet" href="assets/dashboard.css?v=9">
+  <link rel="stylesheet" href="assets/dashboard-ux.css?v=2">
 </head>
 <body>
 
@@ -395,7 +395,7 @@ header('Pragma: no-cache');
 
       <div class="wizard-actions">
         <button id="mfsBackBtn" class="btn ghost" type="button">Back</button>
-        <button id="mfsSendBtn" class="btn green" type="button">Send</button>
+        <button id="mfsSendBtn" class="btn green" type="button">Next</button>
       </div>
     </div>
 
@@ -407,7 +407,7 @@ header('Pragma: no-cache');
 
       <div class="wizard-actions">
         <button id="mfsPinBackBtn" class="btn ghost" type="button">Back</button>
-        <button id="mfsConfirmBtn" class="btn green" type="button">Confirm Request</button>
+        <button id="mfsConfirmBtn" class="btn green" type="button">Confirm Send Money</button>
       </div>
     </div>
 
@@ -577,7 +577,7 @@ header('Pragma: no-cache');
 <script>
 window.USER_PROXY_URL = 'proxy.php';
 </script>
-<script src="assets/dashboard.js?v=11"></script>
-<script src="assets/dashboard-ux.js?v=4"></script>
+<script src="assets/dashboard.js?v=12"></script>
+<script src="assets/dashboard-ux.js?v=5"></script>
 </body>
 </html>

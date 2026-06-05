@@ -686,6 +686,71 @@ textarea.input:focus{
   align-items:flex-start;
 }
 
+.mfs-review-modal-card{
+  width:min(600px,calc(100vw - 28px));
+  max-width:600px;
+}
+
+.mfs-review-grid{
+  min-height:0;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin-top:14px;
+}
+
+.mfs-review-item{
+  min-width:0;
+  padding:12px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;
+  background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025));
+}
+
+.mfs-review-link{
+  min-width:0;
+  margin-top:12px;
+  padding:12px;
+  border:1px solid rgba(46,167,255,.26);
+  border-radius:16px;
+  background:rgba(46,167,255,.08);
+}
+
+.mfs-review-label{
+  display:block;
+  margin-bottom:7px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.08em;
+  line-height:1.25;
+  text-transform:uppercase;
+}
+
+.mfs-review-value{
+  display:block;
+  color:var(--text);
+  font-size:15px;
+  font-weight:900;
+  line-height:1.35;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+
+.mfs-review-wide{
+  grid-column:1/-1;
+}
+
+.mfs-review-total{
+  border-color:rgba(31,215,96,.36);
+  background:linear-gradient(135deg,rgba(31,215,96,.16),rgba(46,167,255,.08));
+}
+
+.mfs-review-highlight{
+  border-color:rgba(46,167,255,.32);
+  background:linear-gradient(135deg,rgba(46,167,255,.15),rgba(255,255,255,.025));
+}
+
 .code-box,
 pre{
   margin:0;
@@ -1194,6 +1259,10 @@ code{
     overflow-y:auto !important;
     overflow-x:hidden !important;
     overscroll-behavior:contain;
+  }
+
+  .mfs-review-grid{
+    grid-template-columns:1fr;
   }
 }
 

@@ -1723,15 +1723,15 @@ function showMfsResultModal({title = 'MFS Request', subtitle = '', rows = [], li
     const rowsHtml = rows
       .filter(row => Array.isArray(row) && row.length >= 2)
       .map(row => `
-        <div style="display:flex;gap:12px;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);">
-          <label style="color:#9fb5d8;font-weight:900;">${esc(row[0])}</label>
-          <strong style="text-align:right;word-break:break-word;">${esc(row[1] || '-')}</strong>
+        <div class="mfs-review-item">
+          <span class="mfs-review-label">${esc(row[0])}</span>
+          <strong class="mfs-review-value">${esc(row[1] || '-')}</strong>
         </div>
       `).join('');
 
     body.innerHTML = `
-      ${rowsHtml || `<div class="result-text">${esc(subtitle || 'No details available.')}</div>`}
-      ${link ? `<div style="margin-top:12px;"><label style="display:block;color:#9fb5d8;font-weight:900;margin-bottom:6px;">Receipt / Tracking Link</label><div style="word-break:break-all;color:#dbeafe;">${esc(link)}</div></div>` : ''}
+      <div class="mfs-review-grid">${rowsHtml || `<div class="result-text">${esc(subtitle || 'No details available.')}</div>`}</div>
+      ${link ? `<div class="mfs-review-link"><span class="mfs-review-label">Receipt / Tracking Link</span><strong class="mfs-review-value">${esc(link)}</strong></div>` : ''}
     `;
   }
 
@@ -1791,7 +1791,7 @@ Total Paid: BDT ${money(totalBdt)}`;
 
   showMfsResultModal({
     title: 'Request Created Successfully',
-    subtitle: 'Use this secure link to track the request.',
+    subtitle: 'Your send money request has been submitted securely.',
     type: 'success',
     link: mfsTrackingUrl(data),
     rows: [

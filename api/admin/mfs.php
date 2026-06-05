@@ -11,7 +11,7 @@ header('Pragma: no-cache');
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Z-Pay Swift Admin - bKash / Nagad Requests</title>
   <link rel="stylesheet" href="assets/dashboard.css?v=21">
-  <link rel="stylesheet" href="assets/mfs-panel.css?v=4">
+  <link rel="stylesheet" href="assets/mfs-panel.css?v=5">
 </head>
 <body class="mfs-body">
   <div class="mfs-app">
@@ -156,7 +156,7 @@ header('Pragma: no-cache');
             <textarea class="input" id="mfsCreateNote" rows="3" placeholder="Additional request note"></textarea>
           </label>
           <div class="admin-mfs-submit">
-            <button class="btn brand" id="mfsCreateSubmitBtn" type="submit">Create MFS Request</button>
+            <button class="btn brand" id="mfsCreateSubmitBtn" type="submit">Create Request</button>
           </div>
           <div class="admin-mfs-preview" id="mfsCreatePreview">
             Enter target, provider and amount. You will review the fee before confirming.
@@ -328,12 +328,12 @@ header('Pragma: no-cache');
     <div class="admin-mfs-modal hidden" id="mfsCreateReviewModal" role="dialog" aria-modal="true" aria-labelledby="mfsCreateReviewTitle">
       <div class="admin-mfs-modal-card">
         <div class="mfs-section-kicker">Review Request</div>
-        <h2 id="mfsCreateReviewTitle">Confirm MFS Request</h2>
-        <p>Review target fee, amount and balance before holding the target account balance.</p>
-        <div class="admin-mfs-details" id="mfsCreateReviewDetails"></div>
+        <h2 id="mfsCreateReviewTitle">Confirm Send Money</h2>
+        <p>Please review the details before confirming.</p>
+        <div class="admin-mfs-review-grid" id="mfsCreateReviewDetails"></div>
         <div class="admin-mfs-modal-actions">
           <button class="btn ghost" id="mfsCreateReviewCancelBtn" type="button">Back / Edit</button>
-          <button class="btn brand" id="mfsCreateReviewConfirmBtn" type="button">Confirm Request</button>
+          <button class="btn brand" id="mfsCreateReviewConfirmBtn" type="button">Confirm Send Money</button>
         </div>
       </div>
     </div>
@@ -371,6 +371,6 @@ header('Pragma: no-cache');
     </div>
   </div>
 
-  <script src="assets/mfs-panel.js?v=5"></script>
+  <script src="assets/mfs-panel.js?v=6"></script>
 </body>
 </html>

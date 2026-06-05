@@ -1289,6 +1289,20 @@ function mfsProviderName(value){
   return value || '-';
 }
 
+function mfsCountryName(value){
+  const country = String(value || '').toUpperCase();
+  if (country === 'MY') return 'Malaysia';
+  if (country === 'BD') return 'Bangladesh';
+  return value || '-';
+}
+
+function mfsModeName(value){
+  const mode = String(value || '').toUpperCase();
+  if (mode === 'REMITTANCE') return 'Remittance';
+  if (mode === 'LOCAL') return 'Local';
+  return value || '-';
+}
+
 function mfsStatusLabel(value){
   const status = String(value || '').toUpperCase();
   if (status === 'SUCCESSFUL' || status === 'SUCCESS') return 'Done';
@@ -1482,9 +1496,9 @@ function showSubMfsResultModal({title = 'MFS Request', subtitle = '', rows = [],
   const rowHtml = rows
     .filter(row => Array.isArray(row) && row.length >= 2)
     .map(row => `
-      <div style="display:flex;gap:12px;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-        <div class="muted" style="font-weight:800;">${esc(row[0])}</div>
-        <div style="text-align:right;word-break:break-word;">${esc(row[1] || '-')}</div>
+      <div class="mfs-review-item">
+        <span class="mfs-review-label">${esc(row[0])}</span>
+        <strong class="mfs-review-value">${esc(row[1] || '-')}</strong>
       </div>
     `).join('');
 
@@ -1492,8 +1506,8 @@ function showSubMfsResultModal({title = 'MFS Request', subtitle = '', rows = [],
     body.innerHTML = `
       <div style="width:100%">
         <div style="margin-bottom:10px;">${statusPill(pillType)}</div>
-        ${rowHtml || '<div class="muted">No details available.</div>'}
-        ${link ? `<div style="margin-top:12px;"><div class="muted" style="font-weight:800;margin-bottom:6px;">Receipt / Tracking Link</div><div style="word-break:break-all;color:#d7e7ff;">${esc(link)}</div></div>` : ''}
+        <div class="mfs-review-grid">${rowHtml || '<div class="muted">No details available.</div>'}</div>
+        ${link ? `<div class="mfs-review-link"><span class="mfs-review-label">Receipt / Tracking Link</span><strong class="mfs-review-value">${esc(link)}</strong></div>` : ''}
       </div>
     `;
   }
@@ -1515,7 +1529,7 @@ function showSubMfsCreateSuccessModal(row){
   const link = mfsTrackingUrl(row);
   showSubMfsResultModal({
     title: 'Request Created Successfully',
-    subtitle: 'Use this secure link to track the request.',
+    subtitle: 'Your send money request has been submitted securely.',
     type: 'success',
     link,
     rows: [
@@ -1547,18 +1561,18 @@ function subMfsReviewRows(data, payload){
   const after = Number.isFinite(available) && Number.isFinite(hold) ? available - hold : NaN;
 
   return [
-    ['Provider', data.provider_name || mfsProviderName(payload.provider)],
-    ['Receiver Number', data.receiver_number || payload.receiver_number || '-'],
-    ['Country', `${data.country_code || '-'} / ${data.service_mode || '-'}`],
-    ['Mode', data.service_mode || '-'],
-    ...(remittance && rate > 0 ? [['Rate', `RM 1 = BDT ${money(rate)}`]] : []),
-    ['Received Amount', `BDT ${money(data.amount_bdt ?? payload.amount_bdt ?? 0)}`],
-    ...(remittance ? [['Send Amount', `RM ${money(data.amount_rm ?? data.amount_myr ?? payload.amount_rm ?? 0)}`]] : []),
-    ['Fee', mfsMoney(data, mfsRowFee(data))],
-    ['Total Pay/Hold', mfsMoney(data, mfsRowPay(data))],
-    ...(Number.isFinite(available) ? [['Available Balance', subMfsWalletMoney(walletCurrency, available)]] : []),
-    ...(Number.isFinite(after) ? [['Balance After Hold', subMfsWalletMoney(walletCurrency, after)]] : []),
-    ['Reference', payload.reference || '-']
+    {label: 'Provider', value: data.provider_name || mfsProviderName(payload.provider), className: 'mfs-review-highlight'},
+    {label: 'Receiver Number', value: data.receiver_number || payload.receiver_number || '-'},
+    {label: 'Country', value: mfsCountryName(data.country_code || data.country)},
+    {label: 'Mode', value: mfsModeName(data.service_mode)},
+    ...(remittance && rate > 0 ? [{label: 'Rate', value: `RM 1 = BDT ${money(rate)}`}] : []),
+    {label: remittance ? 'Received Amount' : 'Amount', value: `BDT ${money(data.amount_bdt ?? payload.amount_bdt ?? 0)}`},
+    ...(remittance ? [{label: 'Send Amount', value: `RM ${money(data.amount_rm ?? data.amount_myr ?? payload.amount_rm ?? 0)}`}] : []),
+    {label: 'Fee', value: mfsMoney(data, mfsRowFee(data))},
+    {label: 'Total Pay', value: mfsMoney(data, mfsRowPay(data)), className: 'mfs-review-total'},
+    ...(Number.isFinite(available) ? [{label: 'Available Balance', value: subMfsWalletMoney(walletCurrency, available)}] : []),
+    ...(Number.isFinite(after) ? [{label: 'Balance After', value: subMfsWalletMoney(walletCurrency, after), className: 'mfs-review-highlight'}] : []),
+    {label: 'Reference', value: payload.reference || '-', className: 'mfs-review-wide'}
   ];
 }
 
@@ -1569,18 +1583,18 @@ function ensureSubMfsReviewModal(){
   wrap.id = 'subMfsReviewModalWrap';
   wrap.className = 'modal-wrap';
   wrap.innerHTML = `
-    <div class="modal-card modal-card-sm">
+    <div class="modal-card modal-card-sm mfs-review-modal-card">
       <div class="modal-head">
         <div>
-          <h3>Confirm MFS Request</h3>
-          <p>Review fee, amount and balance before creating the request.</p>
+          <h3>Confirm Send Money</h3>
+          <p>Please review the details before confirming.</p>
         </div>
         <button id="subMfsReviewCloseBtn" class="modal-close" type="button">Close</button>
       </div>
-      <div id="subMfsReviewBody" class="status-box-clean"></div>
+      <div id="subMfsReviewBody" class="mfs-review-grid"></div>
       <div class="actions mt-14">
         <button id="subMfsReviewBackBtn" class="btn ghost" type="button">Back / Edit</button>
-        <button id="subMfsReviewConfirmBtn" class="btn green" type="button">Confirm Request</button>
+        <button id="subMfsReviewConfirmBtn" class="btn green" type="button">Confirm Send Money</button>
       </div>
     </div>
   `;
@@ -1608,9 +1622,9 @@ function showSubMfsReviewModal(data, payload){
   const body = el('subMfsReviewBody');
   if (body) {
     body.innerHTML = rows.map(row => `
-      <div style="display:flex;gap:12px;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-        <div class="muted" style="font-weight:800;">${esc(row[0])}</div>
-        <div style="text-align:right;word-break:break-word;">${esc(row[1] || '-')}</div>
+      <div class="mfs-review-item ${esc(row.className || '')}">
+        <span class="mfs-review-label">${esc(row.label)}</span>
+        <strong class="mfs-review-value">${esc(row.value || '-')}</strong>
       </div>
     `).join('');
   }
@@ -1876,7 +1890,7 @@ function buildMfsPreviewPayload(){
 }
 
 async function openMfsReview(button = null){
-  return withButtonLoading(button || el('subMfsCreateBtn'), 'Reviewing...', async () => {
+  return withButtonLoading(button || el('subMfsCreateBtn'), 'Checking...', async () => {
     let payload;
 
     try{
@@ -1910,7 +1924,7 @@ async function previewMfsRequest(button = null){
 }
 
 async function createMfsRequest(button = null, payloadOverride = null){
-  return withButtonLoading(button || el('subMfsCreateBtn'), payloadOverride ? 'Confirming...' : 'Creating...', async () => {
+  return withButtonLoading(button || el('subMfsCreateBtn'), payloadOverride ? 'Submitting...' : 'Submitting...', async () => {
     let payload;
 
     try{

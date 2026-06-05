@@ -583,6 +583,10 @@
   width:min(520px,100%);
 }
 
+#mfsCreateReviewModal .admin-mfs-modal-card{
+  width:min(600px,100%);
+}
+
 .mfs-modal-indicator{
   display:block;
   width:48px;
@@ -614,6 +618,56 @@
   font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   white-space:pre-wrap;
   word-break:break-word;
+}
+
+.admin-mfs-review-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin:15px 0 0;
+}
+
+.admin-mfs-review-item{
+  min-width:0;
+  padding:12px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;
+  background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025));
+}
+
+.admin-mfs-review-label{
+  display:block;
+  margin-bottom:7px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.08em;
+  line-height:1.25;
+  text-transform:uppercase;
+}
+
+.admin-mfs-review-value{
+  display:block;
+  color:var(--text);
+  font-size:15px;
+  font-weight:900;
+  line-height:1.35;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+
+.admin-mfs-review-wide{
+  grid-column:1/-1;
+}
+
+.admin-mfs-review-total{
+  border-color:rgba(34,197,94,.36);
+  background:linear-gradient(135deg,rgba(34,197,94,.16),rgba(59,130,246,.08));
+}
+
+.admin-mfs-review-highlight{
+  border-color:rgba(59,130,246,.32);
+  background:linear-gradient(135deg,rgba(59,130,246,.15),rgba(255,255,255,.025));
 }
 
 .admin-mfs-receipt-actions{
@@ -822,5 +876,9 @@
 
   .admin-mfs-modal-actions .btn{
     width:100%;
+  }
+
+  .admin-mfs-review-grid{
+    grid-template-columns:1fr;
   }
 }

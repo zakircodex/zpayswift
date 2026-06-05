@@ -78,6 +78,20 @@
     return Number.isFinite(n)?n:def;
   }
 
+  function countryName(value){
+    var country=String(value||'').toUpperCase();
+    if(country==='MY')return 'Malaysia';
+    if(country==='BD')return 'Bangladesh';
+    return value||'-';
+  }
+
+  function modeName(value){
+    var mode=String(value||'').toUpperCase();
+    if(mode==='REMITTANCE')return 'Remittance';
+    if(mode==='LOCAL')return 'Local';
+    return value||'-';
+  }
+
   async function readJson(res){
     var text=await res.text();
     var json={};
@@ -463,7 +477,7 @@
       'Backend will use the target account country/currency for the final hold.',
       'BD target: LOCAL, Amount BDT '+money(amountBdt)+', Fee BDT '+money(bdFee)+', Total Paid BDT '+money(amountBdt+bdFee),
       'MY target: REMITTANCE, Rate RM 1 = BDT '+money(rate)+', Role fee USER RM '+money(myFeeUser)+', RETAILER RM '+money(myFeeRetailer)+', SUBADMIN RM '+money(myFeeSubadmin)+'.',
-      'Create MFS Request will open a review modal before any wallet hold.'
+      'Create Request will open a review modal before any wallet hold.'
     ].join('\n');
   }
 
@@ -504,21 +518,23 @@
     var totalPay=Number(data.total_pay||data.wallet_hold_amount||0);
     var available=Number(data.available_balance||data.wallet_balance||0);
     var after=Number.isFinite(available)&&Number.isFinite(totalPay)?available-totalPay:NaN;
-    var lines=[
-      'Provider: '+String(data.provider_name||body.provider||'-'),
-      'Receiver Number: '+String(data.receiver_number||body.receiver_number||'-'),
-      'Country: '+String(data.country_code||'-'),
-      'Mode: '+String(data.service_mode||'-'),
-      remittance&&rate>0?'Rate: RM 1 = BDT '+money(rate):'',
-      'Received Amount: BDT '+money(data.amount_bdt||body.amount_bdt||0),
-      remittance?'Send Amount: RM '+money(data.amount_rm||data.amount_myr||body.amount_rm||0):'',
-      'Fee: '+reviewFeeText(data,remittance),
-      'Total Pay/Hold: '+reviewMoney(data,remittance),
-      Number.isFinite(available)?'Available Balance: '+(currency==='MYR'?'RM ':'BDT ')+money(available):'',
-      Number.isFinite(after)?'Balance After Hold: '+(currency==='MYR'?'RM ':'BDT ')+money(after):'',
-      'Reference: '+String(body.reference||'-')
+    var rows=[
+      {label:'Provider',value:String(data.provider_name||body.provider||'-'),className:'admin-mfs-review-highlight'},
+      {label:'Receiver Number',value:String(data.receiver_number||body.receiver_number||'-')},
+      {label:'Country',value:countryName(data.country_code||data.country)},
+      {label:'Mode',value:modeName(data.service_mode)},
+      remittance&&rate>0?{label:'Rate',value:'RM 1 = BDT '+money(rate)}:null,
+      {label:remittance?'Received Amount':'Amount',value:'BDT '+money(data.amount_bdt||body.amount_bdt||0)},
+      remittance?{label:'Send Amount',value:'RM '+money(data.amount_rm||data.amount_myr||body.amount_rm||0)}:null,
+      {label:'Fee',value:reviewFeeText(data,remittance)},
+      {label:'Total Pay',value:reviewMoney(data,remittance),className:'admin-mfs-review-total'},
+      Number.isFinite(available)?{label:'Available Balance',value:(currency==='MYR'?'RM ':'BDT ')+money(available)}:null,
+      Number.isFinite(after)?{label:'Balance After',value:(currency==='MYR'?'RM ':'BDT ')+money(after),className:'admin-mfs-review-highlight'}:null,
+      {label:'Reference',value:String(body.reference||'-'),className:'admin-mfs-review-wide'}
     ];
-    return lines.filter(Boolean).join('\n');
+    return rows.filter(Boolean).map(function(row){
+      return '<div class="admin-mfs-review-item '+esc(row.className||'')+'"><span class="admin-mfs-review-label">'+esc(row.label)+'</span><strong class="admin-mfs-review-value">'+esc(row.value||'-')+'</strong></div>';
+    }).join('');
   }
 
   function formatCreateSuccess(row,body){
@@ -556,13 +572,13 @@
     }
     var button=el('mfsCreateSubmitBtn');
     var body=createRequestPayload();
-    setButtonBusy(button,true,'Previewing...');
+    setButtonBusy(button,true,'Checking...');
     setPageBusy(true,'Loading target MFS fee preview...');
     try{
       await ensureCsrf();
       var data=await post('mfs_preview',body);
       state.createReview={body:body,preview:data};
-      el('mfsCreateReviewDetails').textContent=formatCreateReview(data,body);
+      el('mfsCreateReviewDetails').innerHTML=formatCreateReview(data,body);
       el('mfsCreateReviewModal').classList.remove('hidden');
       el('mfsCreateReviewConfirmBtn').focus();
     }catch(err){
@@ -599,7 +615,7 @@
     var body=state.createReview.body;
     var button=el('mfsCreateReviewConfirmBtn');
     state.mutating=true;
-    setButtonBusy(button,true,'Confirming...');
+    setButtonBusy(button,true,'Submitting...');
     setPageBusy(true,'Creating MFS request and holding target wallet balance...');
     try{
       await ensureCsrf();
@@ -612,7 +628,7 @@
       updateCreatePreview();
       setActiveTab('pending');
       setSection('manage');
-      showFeedback('success','Request Created Successfully','Request '+String(row.request_id||data.request_id||'')+' was created. Balance was held from the target account.',null,{
+      showFeedback('success','Request Created Successfully','Your send money request has been submitted securely.',null,{
         details:formatCreateSuccess(row,body),
         link:receiptUrl
       });

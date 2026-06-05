@@ -126,7 +126,7 @@
       ? 'RM ' + money(p.total_pay_myr || p.total_debit_rm || ((Number(p.amount_myr || p.amount_rm || d.amount_rm || 0)) + Number(p.fee_myr || p.fee_rm || 0)))
       : 'BDT ' + money(p.total_pay_bdt || p.total_debit_bdt || p.wallet_hold_amount || 0);
     var rate = Number(p.rate_myr_to_bdt || p.exchange_rate || meta.rate || 0);
-    return '' +
+    return '<div class="mfs-review-grid">' +
       '<div class="zpay-mfs-preview-row"><span>Provider</span><b>' + esc(providerName(d.provider)) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Receiver</span><b>' + esc(d.receiver_number || '-') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Country</span><b>' + esc(country || 'Auto from profile/phone') + '</b></div>' +
@@ -138,7 +138,8 @@
       '<div class="zpay-mfs-preview-row"><span>Fee</span><b>' + esc(feeText) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Total Paid</span><b>' + esc(totalText) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Reference</span><b>' + esc(d.reference || '-') + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Status</span><b>PENDING</b></div>';
+      '<div class="zpay-mfs-preview-row"><span>Status</span><b>PENDING</b></div>' +
+      '</div>';
   }
 
   function renderPreview(){

@@ -206,6 +206,9 @@ body.user-authenticated .history-message,
 body.user-authenticated .result-box,
 body.user-authenticated .bundle-result-box,
 body.user-authenticated .result-card,
+body.user-authenticated .mfs-review-item,
+body.user-authenticated .mfs-review-link,
+body.user-authenticated .zpay-mfs-preview-row,
 body.user-authenticated .bundle-card,
 body.user-authenticated .bundle-mini{
   background:#f8fafc;
@@ -221,6 +224,8 @@ body.user-authenticated .history-id,
 body.user-authenticated .history-meta .mini strong,
 body.user-authenticated .result-title,
 body.user-authenticated .result-text,
+body.user-authenticated .mfs-review-value,
+body.user-authenticated .zpay-mfs-preview-row b,
 body.user-authenticated .bundle-name,
 body.user-authenticated .bundle-mini strong{
   color:var(--zpay-ink);
@@ -232,6 +237,8 @@ body.user-authenticated .review-box label,
 body.user-authenticated .detail-box label,
 body.user-authenticated .history-small,
 body.user-authenticated .history-meta .mini label,
+body.user-authenticated .mfs-review-label,
+body.user-authenticated .zpay-mfs-preview-row span,
 body.user-authenticated .bundle-id,
 body.user-authenticated .bundle-desc,
 body.user-authenticated .bundle-expiry{

@@ -866,6 +866,63 @@ textarea:focus{
   word-break:break-word;
 }
 
+.mfs-review-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  white-space:normal;
+}
+
+.mfs-review-item,
+.mfs-review-link,
+.zpay-mfs-preview-row{
+  min-width:0;
+  padding:12px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;
+  background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.025));
+}
+
+.zpay-mfs-preview-row{
+  display:block;
+  margin-bottom:10px;
+}
+
+.mfs-review-grid .zpay-mfs-preview-row{
+  margin-bottom:0;
+}
+
+.zpay-mfs-preview-row:last-child{
+  margin-bottom:0;
+}
+
+.mfs-review-label,
+.zpay-mfs-preview-row span{
+  display:block;
+  margin-bottom:7px;
+  color:#9fb5d8;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.08em;
+  line-height:1.25;
+  text-transform:uppercase;
+}
+
+.mfs-review-value,
+.zpay-mfs-preview-row b{
+  display:block;
+  color:#f8fbff;
+  font-size:15px;
+  font-weight:900;
+  line-height:1.35;
+  overflow-wrap:anywhere;
+  word-break:normal;
+}
+
+.mfs-review-link{
+  margin-top:12px;
+}
+
 /* =========================
    Bundle
 ========================= */
@@ -1685,6 +1742,10 @@ body:not(.user-authenticated) .bottom-nav{
   .modal-card{
     padding:16px;
     border-radius:20px;
+  }
+
+  .mfs-review-grid{
+    grid-template-columns:1fr;
   }
 
   .bottom-nav{
