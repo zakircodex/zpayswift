@@ -1,6 +1,6 @@
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/zedpayhe/public_html/zpayswift/
+    - export DEPLOYPATH=/home/zedpayhe/public_html/
     - /bin/mkdir -p $DEPLOYPATH
     - /bin/cp -R api $DEPLOYPATH
     - /bin/cp -f .htaccess $DEPLOYPATH/.htaccess
