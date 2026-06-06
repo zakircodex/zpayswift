@@ -246,17 +246,17 @@ function mfs_create_endpoint_notify_telegram(array $data, array $user): void
         'inline_keyboard' => [
             [
                 [
-                    'text' => 'Processing',
+                    'text' => '🔄 Processing',
                     'callback_data' => mfs_telegram_callback_data('p', $requestId),
                 ],
             ],
             [
                 [
-                    'text' => 'Successful',
+                    'text' => '✅ Success',
                     'callback_data' => mfs_telegram_callback_data('s', $requestId),
                 ],
                 [
-                    'text' => 'Failed',
+                    'text' => '❌ Failed',
                     'callback_data' => mfs_telegram_callback_data('f', $requestId),
                 ],
             ],

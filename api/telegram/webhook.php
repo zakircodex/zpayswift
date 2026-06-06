@@ -7,8 +7,8 @@
  *
  * Routes:
  * - bndl|... callbacks go to bundle_webhook.php
- * - MFS_... callbacks go to mfs_webhook.php
- * - mfs|... callbacks go to mfs_webhook.php
+ * - known MFS callback formats go to mfs_webhook.php
+ * - non-bundle callbacks fall back to the MFS parser
  * - normal Telegram messages go to mfs_webhook.php for sender details replies
  */
 
@@ -30,7 +30,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     tg_router_response(true, 'OK', 'Telegram router webhook is ready', [
         'routes' => [
             'bundle' => 'callback_data starts with bndl|',
-            'mfs' => 'callback_data starts with MFS_ or mfs|, plus normal messages',
+            'mfs' => 'known MFS formats and non-bundle callback fallback, plus normal messages',
         ],
         'time' => date('Y-m-d H:i:s'),
     ], 200);
@@ -49,24 +49,17 @@ if (!is_array($update)) {
 $callback = $update['callback_query'] ?? null;
 if (is_array($callback)) {
     $data = trim((string)($callback['data'] ?? ''));
-    $routePrefix = strtolower(substr($data, 0, 4));
+    $routePrefix = strtolower(substr($data, 0, 5));
 
-    if (strpos($data, 'bndl|') === 0) {
+    if ($routePrefix === 'bndl|') {
         $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
         require __DIR__ . '/bundle_webhook.php';
         exit;
     }
 
-    if (stripos($data, 'MFS_') === 0 || $routePrefix === 'mfs|') {
-        $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
-        require __DIR__ . '/mfs_webhook.php';
-        exit;
-    }
-
-    tg_router_response(true, 'IGNORED', 'Unknown Telegram callback route', [
-        'callback_prefix' => substr($data, 0, 8),
-        'callback_length' => strlen($data),
-    ], 200);
+    $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
+    require __DIR__ . '/mfs_webhook.php';
+    exit;
 }
 
 if (isset($update['message']) && is_array($update['message'])) {

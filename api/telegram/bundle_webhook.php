@@ -28,7 +28,8 @@ function tg_bundle_forward_mfs_update_if_needed(): void
 
     $callback = $update['callback_query'] ?? null;
     $callbackData = is_array($callback) ? trim((string)($callback['data'] ?? '')) : '';
-    $isMfsCallback = strpos($callbackData, 'MFS_') === 0 || strpos($callbackData, 'mfs|') === 0;
+    $isBundleCallback = strncasecmp($callbackData, 'bndl|', 5) === 0;
+    $isMfsCallback = is_array($callback) && !$isBundleCallback;
     $isMessage = isset($update['message']) && is_array($update['message']);
 
     if (!$isMfsCallback && !$isMessage) {
