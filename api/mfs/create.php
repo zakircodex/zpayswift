@@ -74,11 +74,9 @@ function mfs_create_endpoint_client_ip(): string
 
 function mfs_create_endpoint_telegram_enabled(): bool
 {
-    if (!defined('TELEGRAM_BOT_TOKEN') || !defined('TELEGRAM_CHAT_ID')) {
-        return false;
-    }
-
-    return trim((string)TELEGRAM_BOT_TOKEN) !== '' && trim((string)TELEGRAM_CHAT_ID) !== '';
+    return mfs_telegram_bot_token() !== ''
+        && mfs_telegram_chat_id() !== ''
+        && mfs_telegram_action_key() !== '';
 }
 
 function mfs_create_endpoint_telegram_send_message(string $text, array $replyMarkup = []): array
@@ -92,10 +90,10 @@ function mfs_create_endpoint_telegram_send_message(string $text, array $replyMar
         ];
     }
 
-    $url = 'https://api.telegram.org/bot' . rawurlencode((string)TELEGRAM_BOT_TOKEN) . '/sendMessage';
+    $url = 'https://api.telegram.org/bot' . rawurlencode(mfs_telegram_bot_token()) . '/sendMessage';
 
     $payload = [
-        'chat_id' => (string)TELEGRAM_CHAT_ID,
+        'chat_id' => mfs_telegram_chat_id(),
         'text' => $text,
         'parse_mode' => 'HTML',
         'disable_web_page_preview' => true,
@@ -249,17 +247,17 @@ function mfs_create_endpoint_notify_telegram(array $data, array $user): void
             [
                 [
                     'text' => 'Processing',
-                    'callback_data' => 'MFS_PROCESSING|' . $requestId,
+                    'callback_data' => mfs_telegram_callback_data('p', $requestId),
                 ],
             ],
             [
                 [
                     'text' => 'Successful',
-                    'callback_data' => 'MFS_SUCCESS|' . $requestId,
+                    'callback_data' => mfs_telegram_callback_data('s', $requestId),
                 ],
                 [
                     'text' => 'Failed',
-                    'callback_data' => 'MFS_FAILED|' . $requestId,
+                    'callback_data' => mfs_telegram_callback_data('f', $requestId),
                 ],
             ],
         ],

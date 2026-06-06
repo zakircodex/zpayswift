@@ -52,6 +52,219 @@ function mfs_make_request_id(): string
     }
 }
 
+function mfs_telegram_bot_token(): string
+{
+    foreach (['TELEGRAM_BOT_TOKEN', 'ZAW_TELEGRAM_BOT_TOKEN'] as $constant) {
+        if (defined($constant) && trim((string)constant($constant)) !== '') {
+            return trim((string)constant($constant));
+        }
+    }
+
+    return '';
+}
+
+function mfs_telegram_chat_id(): string
+{
+    foreach (['TELEGRAM_CHAT_ID', 'TELEGRAM_BUNDLE_CHAT_ID', 'ZAW_TELEGRAM_CHAT_ID'] as $constant) {
+        if (defined($constant) && trim((string)constant($constant)) !== '') {
+            return trim((string)constant($constant));
+        }
+    }
+
+    return '';
+}
+
+function mfs_telegram_action_key(): string
+{
+    if (defined('TELEGRAM_MFS_ACTION_KEY') && trim((string)TELEGRAM_MFS_ACTION_KEY) !== '') {
+        return trim((string)TELEGRAM_MFS_ACTION_KEY);
+    }
+
+    return defined('APP_KEY') ? trim((string)APP_KEY) : '';
+}
+
+function mfs_telegram_legacy_action_keys(): array
+{
+    $keys = [];
+
+    foreach (['TELEGRAM_BUNDLE_ACTION_KEY', 'APP_KEY'] as $constant) {
+        if (!defined($constant)) {
+            continue;
+        }
+
+        $key = trim((string)constant($constant));
+        if ($key !== '' && !in_array($key, $keys, true)) {
+            $keys[] = $key;
+        }
+    }
+
+    return $keys;
+}
+
+function mfs_telegram_signature(string $requestId, string $actionCode, ?string $key = null): string
+{
+    $requestId = trim($requestId);
+    $actionCode = strtolower(trim($actionCode));
+    $key = $key === null ? mfs_telegram_action_key() : trim($key);
+
+    return substr(hash_hmac('sha256', $actionCode . '|' . $requestId, $key), 0, 16);
+}
+
+function mfs_telegram_callback_data(string $actionCode, string $requestId): string
+{
+    $actionCode = strtolower(trim($actionCode));
+    $requestId = trim($requestId);
+
+    if (!in_array($actionCode, ['p', 's', 'f'], true)) {
+        throw new InvalidArgumentException('Invalid MFS Telegram action');
+    }
+
+    if (!preg_match('/^[A-Za-z0-9_-]{3,41}$/', $requestId)) {
+        throw new InvalidArgumentException('Invalid MFS request id for Telegram callback');
+    }
+
+    $callbackData = 'mfs|' . $actionCode . '|' . $requestId . '|' . mfs_telegram_signature($requestId, $actionCode);
+
+    if (strlen($callbackData) > 64) {
+        throw new LengthException('MFS Telegram callback exceeds 64 bytes');
+    }
+
+    return $callbackData;
+}
+
+function mfs_telegram_parse_callback_data(string $callbackData): array
+{
+    $callbackData = trim($callbackData);
+    $parts = explode('|', $callbackData);
+
+    if (count($parts) === 2) {
+        $map = [
+            'MFS_PROCESSING' => 'PROCESSING',
+            'MFS_SUCCESS' => 'SUCCESS',
+            'MFS_FAILED' => 'FAILED',
+        ];
+        $legacyAction = strtoupper(trim($parts[0]));
+        $requestId = trim($parts[1]);
+
+        if (!isset($map[$legacyAction])) {
+            return [
+                'ok' => false,
+                'reason' => 'invalid_action',
+                'callback_action' => $legacyAction,
+                'request_id' => $requestId,
+                'format' => 'legacy',
+            ];
+        }
+
+        if (!preg_match('/^[A-Za-z0-9_-]{3,120}$/', $requestId)) {
+            return [
+                'ok' => false,
+                'reason' => 'invalid_request_id',
+                'callback_action' => $legacyAction,
+                'request_id' => $requestId,
+                'format' => 'legacy',
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'action' => $map[$legacyAction],
+            'action_code' => strtolower(substr($legacyAction, 4, 1)),
+            'request_id' => $requestId,
+            'format' => 'legacy_unsigned',
+            'legacy' => true,
+        ];
+    }
+
+    if (count($parts) !== 4 || strtolower(trim($parts[0])) !== 'mfs') {
+        return [
+            'ok' => false,
+            'reason' => 'invalid_format',
+            'callback_action' => trim((string)($parts[1] ?? $parts[0] ?? '')),
+            'request_id' => trim((string)($parts[2] ?? $parts[1] ?? '')),
+            'format' => 'unknown',
+        ];
+    }
+
+    $actionCode = strtolower(trim($parts[1]));
+    $requestId = trim($parts[2]);
+    $signature = strtolower(trim($parts[3]));
+    $actionMap = [
+        'p' => 'PROCESSING',
+        's' => 'SUCCESS',
+        'f' => 'FAILED',
+    ];
+
+    if (!isset($actionMap[$actionCode])) {
+        return [
+            'ok' => false,
+            'reason' => 'invalid_action',
+            'callback_action' => $actionCode,
+            'request_id' => $requestId,
+            'format' => 'signed',
+        ];
+    }
+
+    if (!preg_match('/^[A-Za-z0-9_-]{3,41}$/', $requestId)) {
+        return [
+            'ok' => false,
+            'reason' => 'invalid_request_id',
+            'callback_action' => $actionCode,
+            'request_id' => $requestId,
+            'format' => 'signed',
+        ];
+    }
+
+    if (!preg_match('/^[a-f0-9]{16}$/', $signature)) {
+        return [
+            'ok' => false,
+            'reason' => 'invalid_signature_format',
+            'callback_action' => $actionCode,
+            'request_id' => $requestId,
+            'format' => 'signed',
+        ];
+    }
+
+    $currentKey = mfs_telegram_action_key();
+    if ($currentKey !== '' && hash_equals(mfs_telegram_signature($requestId, $actionCode, $currentKey), $signature)) {
+        return [
+            'ok' => true,
+            'action' => $actionMap[$actionCode],
+            'action_code' => $actionCode,
+            'request_id' => $requestId,
+            'format' => 'signed',
+            'legacy' => false,
+            'key_source' => 'mfs',
+        ];
+    }
+
+    foreach (mfs_telegram_legacy_action_keys() as $legacyKey) {
+        if ($legacyKey === $currentKey) {
+            continue;
+        }
+
+        if (hash_equals(mfs_telegram_signature($requestId, $actionCode, $legacyKey), $signature)) {
+            return [
+                'ok' => true,
+                'action' => $actionMap[$actionCode],
+                'action_code' => $actionCode,
+                'request_id' => $requestId,
+                'format' => 'signed_legacy_key',
+                'legacy' => true,
+                'key_source' => 'legacy',
+            ];
+        }
+    }
+
+    return [
+        'ok' => false,
+        'reason' => $currentKey === '' ? 'missing_action_key' : 'invalid_signature',
+        'callback_action' => $actionCode,
+        'request_id' => $requestId,
+        'format' => 'signed',
+    ];
+}
+
 function mfs_make_receipt_id(): string
 {
     try {

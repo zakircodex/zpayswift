@@ -49,6 +49,7 @@ if (!is_array($update)) {
 $callback = $update['callback_query'] ?? null;
 if (is_array($callback)) {
     $data = trim((string)($callback['data'] ?? ''));
+    $routePrefix = strtolower(substr($data, 0, 4));
 
     if (strpos($data, 'bndl|') === 0) {
         $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
@@ -56,14 +57,15 @@ if (is_array($callback)) {
         exit;
     }
 
-    if (strpos($data, 'MFS_') === 0 || strpos($data, 'mfs|') === 0) {
+    if (stripos($data, 'MFS_') === 0 || $routePrefix === 'mfs|') {
         $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
         require __DIR__ . '/mfs_webhook.php';
         exit;
     }
 
     tg_router_response(true, 'IGNORED', 'Unknown Telegram callback route', [
-        'callback_data' => $data,
+        'callback_prefix' => substr($data, 0, 8),
+        'callback_length' => strlen($data),
     ], 200);
 }
 

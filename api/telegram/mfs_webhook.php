@@ -39,12 +39,12 @@ function mfs_tg_now(): int
 
 function mfs_tg_token(): string
 {
-    return defined('TELEGRAM_BOT_TOKEN') ? trim((string)TELEGRAM_BOT_TOKEN) : '';
+    return mfs_telegram_bot_token();
 }
 
 function mfs_tg_chat_id(): string
 {
-    return defined('TELEGRAM_CHAT_ID') ? trim((string)TELEGRAM_CHAT_ID) : '';
+    return mfs_telegram_chat_id();
 }
 
 function mfs_tg_secret(): string
@@ -54,15 +54,7 @@ function mfs_tg_secret(): string
 
 function mfs_tg_action_key(): string
 {
-    if (defined('TELEGRAM_MFS_ACTION_KEY') && trim((string)TELEGRAM_MFS_ACTION_KEY) !== '') {
-        return trim((string)TELEGRAM_MFS_ACTION_KEY);
-    }
-
-    if (defined('TELEGRAM_BUNDLE_ACTION_KEY') && trim((string)TELEGRAM_BUNDLE_ACTION_KEY) !== '') {
-        return trim((string)TELEGRAM_BUNDLE_ACTION_KEY);
-    }
-
-    return defined('APP_KEY') ? trim((string)APP_KEY) : '';
+    return mfs_telegram_action_key();
 }
 
 function mfs_tg_h($value): string
@@ -97,7 +89,7 @@ function mfs_tg_require_config(): void
     }
 
     if (mfs_tg_action_key() === '') {
-        $missing[] = 'TELEGRAM_MFS_ACTION_KEY_OR_FALLBACK';
+        $missing[] = 'TELEGRAM_MFS_ACTION_KEY_OR_APP_KEY';
     }
 
     if ($missing) {
@@ -215,75 +207,44 @@ function mfs_tg_allowed($chatId, $fromId = ''): bool
 
 function mfs_tg_signature(string $requestId, string $action): string
 {
-    return substr(hash_hmac('sha256', strtolower(trim($action)) . '|' . trim($requestId), mfs_tg_action_key()), 0, 16);
+    return mfs_telegram_signature($requestId, $action);
 }
 
 function mfs_tg_callback_data(string $action, string $requestId): string
 {
-    $action = strtolower(trim($action));
-    $requestId = trim($requestId);
-
-    return 'mfs|' . $action . '|' . $requestId . '|' . mfs_tg_signature($requestId, $action);
+    return mfs_telegram_callback_data($action, $requestId);
 }
 
 function mfs_tg_parse_action(string $data): array
 {
-    $data = trim($data);
-    $parts = explode('|', $data);
+    return mfs_telegram_parse_callback_data($data);
+}
 
-    if (count($parts) === 2) {
-        $map = [
-            'MFS_PROCESSING' => 'PROCESSING',
-            'MFS_SUCCESS' => 'SUCCESS',
-            'MFS_FAILED' => 'FAILED',
-        ];
-
-        $action = $map[strtoupper(trim($parts[0]))] ?? '';
-        $requestId = trim($parts[1]);
-
-        if ($action === '') {
-            return ['ok' => false, 'message' => 'Invalid MFS action'];
-        }
-
-        if (!preg_match('/^[A-Za-z0-9_-]{3,120}$/', $requestId)) {
-            return ['ok' => false, 'message' => 'Invalid request id'];
-        }
-
-        return [
-            'ok' => true,
-            'action' => $action,
-            'request_id' => $requestId,
-            'legacy' => true,
-        ];
+function mfs_tg_log_invalid_callback(array $parsed, string $callbackData): void
+{
+    if (!function_exists('system_log')) {
+        return;
     }
 
-    if (count($parts) === 4 && strtolower(trim($parts[0])) === 'mfs') {
-        $actionCode = strtolower(trim($parts[1]));
-        $requestId = trim($parts[2]);
-        $signature = trim($parts[3]);
-        $map = ['p' => 'PROCESSING', 's' => 'SUCCESS', 'f' => 'FAILED'];
+    $requestId = trim((string)($parsed['request_id'] ?? ''));
+    $action = trim((string)($parsed['callback_action'] ?? ''));
 
-        if (!isset($map[$actionCode])) {
-            return ['ok' => false, 'message' => 'Invalid MFS action'];
-        }
-
-        if (!preg_match('/^[A-Za-z0-9_-]{3,120}$/', $requestId)) {
-            return ['ok' => false, 'message' => 'Invalid request id'];
-        }
-
-        if (!hash_equals(mfs_tg_signature($requestId, $actionCode), $signature)) {
-            return ['ok' => false, 'message' => 'Invalid action signature'];
-        }
-
-        return [
-            'ok' => true,
-            'action' => $map[$actionCode],
-            'request_id' => $requestId,
-            'legacy' => false,
-        ];
+    try {
+        system_log(
+            'MFS_CALLBACK_INVALID',
+            $requestId !== '' ? $requestId : 'TELEGRAM_CALLBACK',
+            'Invalid MFS Telegram callback',
+            [
+                'reason' => (string)($parsed['reason'] ?? 'unknown'),
+                'callback_action' => $action,
+                'request_id' => $requestId,
+                'format' => (string)($parsed['format'] ?? 'unknown'),
+                'callback_length' => strlen($callbackData),
+            ]
+        );
+    } catch (Throwable $e) {
+        // Callback handling must continue even when diagnostic logging is unavailable.
     }
-
-    return ['ok' => false, 'message' => 'Invalid callback data'];
 }
 
 function mfs_tg_actor(array $from): array
@@ -441,11 +402,13 @@ function mfs_tg_handle_callback(array $callback): void
         mfs_tg_json(true, 'IGNORED', 'Unauthorized Telegram account', [], 200);
     }
 
-    $parsed = mfs_tg_parse_action((string)($callback['data'] ?? ''));
+    $callbackData = trim((string)($callback['data'] ?? ''));
+    $parsed = mfs_tg_parse_action($callbackData);
 
     if (empty($parsed['ok'])) {
-        mfs_tg_answer($callbackId, (string)($parsed['message'] ?? 'Invalid action'), true);
-        mfs_tg_json(true, 'IGNORED', (string)($parsed['message'] ?? 'Invalid action'), [], 200);
+        mfs_tg_log_invalid_callback($parsed, $callbackData);
+        mfs_tg_answer($callbackId, 'This MFS button is invalid or expired. Please use a newer request message.', true);
+        mfs_tg_json(true, 'IGNORED', 'Invalid or expired MFS callback', [], 200);
     }
 
     $requestId = (string)$parsed['request_id'];

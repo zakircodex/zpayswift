@@ -24,16 +24,14 @@ function zpay_mfs_btn_start_session(): void
     session_start();
 }
 
-function zpay_mfs_btn_token(): string { return defined('TELEGRAM_BOT_TOKEN') ? trim((string)TELEGRAM_BOT_TOKEN) : ''; }
-function zpay_mfs_btn_chat(): string { return defined('TELEGRAM_CHAT_ID') ? trim((string)TELEGRAM_CHAT_ID) : ''; }
+function zpay_mfs_btn_token(): string { return mfs_telegram_bot_token(); }
+function zpay_mfs_btn_chat(): string { return mfs_telegram_chat_id(); }
 function zpay_mfs_btn_key(): string
 {
-    if (defined('TELEGRAM_MFS_ACTION_KEY') && trim((string)TELEGRAM_MFS_ACTION_KEY) !== '') return trim((string)TELEGRAM_MFS_ACTION_KEY);
-    if (defined('TELEGRAM_BUNDLE_ACTION_KEY') && trim((string)TELEGRAM_BUNDLE_ACTION_KEY) !== '') return trim((string)TELEGRAM_BUNDLE_ACTION_KEY);
-    return defined('APP_KEY') ? trim((string)APP_KEY) : '';
+    return mfs_telegram_action_key();
 }
-function zpay_mfs_btn_sig(string $id, string $act): string { return substr(hash_hmac('sha256', strtolower($act) . '|' . trim($id), zpay_mfs_btn_key()), 0, 16); }
-function zpay_mfs_btn_cb(string $act, string $id): string { return 'mfs|' . strtolower($act) . '|' . trim($id) . '|' . zpay_mfs_btn_sig($id, $act); }
+function zpay_mfs_btn_sig(string $id, string $act): string { return mfs_telegram_signature($id, $act); }
+function zpay_mfs_btn_cb(string $act, string $id): string { return mfs_telegram_callback_data($act, $id); }
 function zpay_mfs_btn_keyboard(string $id): array
 {
     return ['inline_keyboard' => [

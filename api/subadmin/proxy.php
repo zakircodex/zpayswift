@@ -1083,25 +1083,17 @@ function sub_proxy_create_panel_bundle_fixed(string $uid, string $offerId, strin
 
 function sub_proxy_mfs_token(): string
 {
-    return defined('TELEGRAM_BOT_TOKEN') ? trim((string)TELEGRAM_BOT_TOKEN) : '';
+    return mfs_telegram_bot_token();
 }
 
 function sub_proxy_mfs_chat_id(): string
 {
-    return defined('TELEGRAM_CHAT_ID') ? trim((string)TELEGRAM_CHAT_ID) : '';
+    return mfs_telegram_chat_id();
 }
 
 function sub_proxy_mfs_action_key(): string
 {
-    if (defined('TELEGRAM_MFS_ACTION_KEY') && trim((string)TELEGRAM_MFS_ACTION_KEY) !== '') {
-        return trim((string)TELEGRAM_MFS_ACTION_KEY);
-    }
-
-    if (defined('TELEGRAM_BUNDLE_ACTION_KEY') && trim((string)TELEGRAM_BUNDLE_ACTION_KEY) !== '') {
-        return trim((string)TELEGRAM_BUNDLE_ACTION_KEY);
-    }
-
-    return defined('APP_KEY') ? trim((string)APP_KEY) : '';
+    return mfs_telegram_action_key();
 }
 
 function sub_proxy_mfs_h($value): string
@@ -1116,13 +1108,12 @@ function sub_proxy_mfs_money($value): string
 
 function sub_proxy_mfs_signature(string $requestId, string $action): string
 {
-    return substr(hash_hmac('sha256', strtolower(trim($action)) . '|' . trim($requestId), sub_proxy_mfs_action_key()), 0, 16);
+    return mfs_telegram_signature($requestId, $action);
 }
 
 function sub_proxy_mfs_callback_data(string $action, string $requestId): string
 {
-    $action = strtolower(trim($action));
-    return 'mfs|' . $action . '|' . trim($requestId) . '|' . sub_proxy_mfs_signature($requestId, $action);
+    return mfs_telegram_callback_data($action, $requestId);
 }
 
 function sub_proxy_mfs_keyboard(string $requestId): array
