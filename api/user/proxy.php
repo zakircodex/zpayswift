@@ -93,6 +93,17 @@ function user_proxy_month_key(?int $ts = null): string
     return date('Y-m', $ts ?? user_proxy_now());
 }
 
+function user_proxy_valid_month_key($month = null): string
+{
+    $month = trim((string)($month ?? ''));
+
+    if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
+        return $month;
+    }
+
+    return user_proxy_month_key();
+}
+
 function user_proxy_round_money($value): float
 {
     if (is_string($value)) {
@@ -1384,6 +1395,10 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
 
             'reference' => (string)($row['reference'] ?? ''),
             'trxid' => (string)($row['trxid'] ?? ''),
+            'receipt_id' => (string)($row['receipt_id'] ?? ''),
+            'receipt_url' => (string)($row['receipt_url'] ?? $row['tracking_url'] ?? ''),
+            'tracking_url' => (string)($row['tracking_url'] ?? $row['receipt_url'] ?? ''),
+            'receipt_created_at' => (int)($row['receipt_created_at'] ?? 0),
             'message' => (string)($row['final_message'] ?? $row['message'] ?? $row['note'] ?? ''),
 
             'created_at' => (int)($row['created_at'] ?? 0),
@@ -1517,9 +1532,52 @@ function user_proxy_write_user_request_log(string $uid, string $requestId, array
     fb_patch('USER_API_REQUESTS/' . $uid . '/' . $requestId, $public);
 }
 
-function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100): array
+function user_proxy_request_log_month(array $row, string $requestId = ''): string
+{
+    foreach (['created_at', 'updated_at', 'completed_at', 'receipt_created_at'] as $key) {
+        $ts = (int)($row[$key] ?? 0);
+
+        if ($ts <= 0) {
+            continue;
+        }
+
+        if ($ts > 9999999999) {
+            $ts = (int)floor($ts / 1000);
+        }
+
+        return user_proxy_month_key($ts);
+    }
+
+    foreach (['month', 'month_key', 'history_month'] as $key) {
+        $month = trim((string)($row[$key] ?? ''));
+
+        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
+            return $month;
+        }
+    }
+
+    if (preg_match('/(20\d{2})[-_]?([01]\d)/', $requestId, $m)) {
+        $candidate = $m[1] . '-' . $m[2];
+
+        if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $candidate)) {
+            return $candidate;
+        }
+    }
+
+    return '';
+}
+
+function user_proxy_request_log_matches_month(array $row, string $requestId, string $month): bool
+{
+    $rowMonth = user_proxy_request_log_month($row, $requestId);
+
+    return $rowMonth !== '' && $rowMonth === $month;
+}
+
+function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100, ?string $month = null): array
 {
     $uid = trim($uid);
+    $month = user_proxy_valid_month_key($month);
 
     if ($uid === '') {
         return [];
@@ -1540,16 +1598,13 @@ function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100): ar
 
             $rid = (string)($public['request_id'] ?? $requestId);
 
-            if ($rid !== '') {
+            if ($rid !== '' && user_proxy_request_log_matches_month($public, $rid, $month)) {
                 $map[$rid] = $public;
             }
         }
     }
 
-    $monthKeys = [
-        user_proxy_month_key(),
-        user_proxy_month_key(strtotime('-1 month') ?: null),
-    ];
+    $monthKeys = [$month];
 
     foreach (array_unique($monthKeys) as $month) {
         $histRows = fb_get('BUNDLE_HISTORY/' . $uid . '/' . $month);
@@ -1570,7 +1625,9 @@ function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100): ar
 
             $rid = (string)($public['request_id'] ?? $requestId);
 
-            if ($rid !== '') {
+            $rowMonth = user_proxy_request_log_month($public, $rid);
+
+            if ($rid !== '' && ($rowMonth === '' || $rowMonth === $month)) {
                 $map[$rid] = array_merge($map[$rid] ?? [], $public);
             }
         }
@@ -1591,9 +1648,10 @@ function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100): ar
     return array_values($rows);
 }
 
-function user_proxy_collect_legacy_request_logs(string $uid, int $limit = 100): array
+function user_proxy_collect_legacy_request_logs(string $uid, int $limit = 100, ?string $month = null): array
 {
     $uid = trim($uid);
+    $month = user_proxy_valid_month_key($month);
     $rows = [];
 
     if ($uid === '') {
@@ -1625,7 +1683,10 @@ function user_proxy_collect_legacy_request_logs(string $uid, int $limit = 100): 
 
             $row['request_type'] = 'TOPUP';
             $public = user_proxy_public_request_log($row, (string)$requestId);
-            $rows[$public['request_id']] = user_proxy_apply_request_status_row($public);
+            $public = user_proxy_apply_request_status_row($public);
+            if (user_proxy_request_log_matches_month($public, (string)$requestId, $month)) {
+                $rows[$public['request_id']] = $public;
+            }
         }
     }
 
@@ -1654,7 +1715,10 @@ function user_proxy_collect_legacy_request_logs(string $uid, int $limit = 100): 
 
             $row['request_type'] = 'BUNDLE';
             $public = user_proxy_public_request_log($row, (string)$requestId);
-            $rows[$public['request_id']] = user_proxy_apply_request_status_row($public);
+            $public = user_proxy_apply_request_status_row($public);
+            if (user_proxy_request_log_matches_month($public, (string)$requestId, $month)) {
+                $rows[$public['request_id']] = $public;
+            }
         }
     }
 
@@ -1673,15 +1737,15 @@ function user_proxy_collect_legacy_request_logs(string $uid, int $limit = 100): 
     return array_values($out);
 }
 
-function user_proxy_collect_request_logs(string $uid, int $limit = 100, bool $legacyFallback = false): array
+function user_proxy_collect_request_logs(string $uid, int $limit = 100, bool $legacyFallback = false, ?string $month = null): array
 {
-    $fast = user_proxy_collect_fast_request_logs($uid, $limit);
+    $fast = user_proxy_collect_fast_request_logs($uid, $limit, $month);
 
     if (!$legacyFallback || count($fast) > 0) {
         return $fast;
     }
 
-    return user_proxy_collect_legacy_request_logs($uid, $limit);
+    return user_proxy_collect_legacy_request_logs($uid, $limit, $month);
 }
 
 /* =========================================================
@@ -3236,13 +3300,16 @@ switch ($action) {
             $limit = 100;
         }
 
+        $month = user_proxy_valid_month_key($_GET['month'] ?? null);
+
         user_proxy_response(true, 'SUCCESS', 'Dashboard bootstrap loaded', [
             'user' => $sessionUser,
             'csrf' => user_proxy_get_csrf(),
             'wallet_summary' => user_proxy_wallet_summary_payload($uid, $sessionUser),
             'request_logs' => [
                 'uid' => $uid,
-                'items' => user_proxy_collect_request_logs($uid, $limit, false),
+                'month' => $month,
+                'items' => user_proxy_collect_request_logs($uid, $limit, false, $month),
             ],
             'loaded_at' => user_proxy_now(),
         ]);
@@ -3270,6 +3337,7 @@ switch ($action) {
         $uid = trim((string)($sessionUser['uid'] ?? ''));
         $limit = (int)($_GET['limit'] ?? 100);
         $legacy = user_proxy_bool_value($_GET['legacy'] ?? false);
+        $month = user_proxy_valid_month_key($_GET['month'] ?? null);
 
         if ($limit <= 0) {
             $limit = 100;
@@ -3281,7 +3349,8 @@ switch ($action) {
 
         user_proxy_response(true, 'SUCCESS', 'Request logs loaded', [
             'uid' => $uid,
-            'items' => user_proxy_collect_request_logs($uid, $limit, $legacy),
+            'month' => $month,
+            'items' => user_proxy_collect_request_logs($uid, $limit, $legacy, $month),
             'mode' => $legacy ? 'fast_with_legacy_fallback' : 'fast',
         ]);
         break;

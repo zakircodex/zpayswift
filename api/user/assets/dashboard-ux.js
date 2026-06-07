@@ -1,6 +1,6 @@
 // Z-Pay Swift user dashboard UX helper.
 // Quick services + bKash/Nagad frontend flow.
-// MFS create uses a relative endpoint so it works under any install folder.
+// MFS create uses the public API path so it works from the clean /user/ URL.
 (function(){
   'use strict';
 
@@ -237,7 +237,6 @@
       (Number.isFinite(available) ? '<div class="zpay-mfs-preview-row"><span>Available Balance</span><b>' + currencyPrefix(reviewCurrency) + ' ' + money(available) + '</b></div>' : '') +
       (Number.isFinite(after) ? '<div class="zpay-mfs-preview-row"><span>Balance After</span><b>' + currencyPrefix(reviewCurrency) + ' ' + money(after) + '</b></div>' : '') +
       '<div class="zpay-mfs-preview-row"><span>Reference</span><b>' + esc(d.reference || '-') + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Status</span><b>PENDING</b></div>' +
       '</div>';
   }
 
@@ -314,7 +313,7 @@
       pin: d.pin,
       note: providerName(d.provider) + ' request from user panel'
     };
-    var res = await fetch('mfs_create_telegram.php', {
+    var res = await fetch('/api/user/mfs_create_telegram.php', {
       method: 'POST',
       credentials: 'same-origin',
       headers: {'Content-Type':'application/json','Accept':'application/json','Cache-Control':'no-cache'},
@@ -337,6 +336,12 @@
     }
     try {
       if (typeof setBusy === 'function') setBusy(true, 'Creating request...');
+      var confirmBtn = byId('mfsConfirmBtn');
+      var confirmText = confirmBtn ? confirmBtn.textContent : '';
+      if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Submitting...';
+      }
       var result = await createWithTelegramButtons(d);
       if (typeof renderMfsResultSuccess === 'function') renderMfsResultSuccess(result);
       if (typeof applyMfsCreateSuccessToLocalState === 'function') applyMfsCreateSuccessToLocalState(result);
@@ -346,6 +351,11 @@
       if (typeof renderMfsResultError === 'function') renderMfsResultError(e.message || 'Failed to create request');
       if (typeof showToast === 'function') showToast(e.message || 'Failed to create request', 'error');
     } finally {
+      var finalConfirmBtn = byId('mfsConfirmBtn');
+      if (finalConfirmBtn) {
+        finalConfirmBtn.disabled = false;
+        finalConfirmBtn.textContent = confirmText || 'Confirm Send Money';
+      }
       if (typeof setBusy === 'function') setBusy(false);
     }
   }
@@ -392,11 +402,17 @@
     var preview = byId('mfsPreviewBtn'); if (preview) preview.addEventListener('click', async function(e){
       e.preventDefault();
       if (!validBase()) return;
+      var originalText = preview.textContent;
       try {
+        preview.disabled = true;
+        preview.textContent = 'Checking...';
         await loadServerPreview();
         showStep('mfsStepPreview');
       } catch(err) {
         if (typeof showToast === 'function') showToast(err.message || 'Failed to load MFS preview', 'error');
+      } finally {
+        preview.disabled = false;
+        preview.textContent = originalText || 'Next';
       }
     });
     var back = byId('mfsBackBtn'); if (back) back.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepForm'); });

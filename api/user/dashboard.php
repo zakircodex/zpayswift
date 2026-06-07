@@ -10,8 +10,8 @@ header('Pragma: no-cache');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Z-Pay Swift User Dashboard</title>
-  <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=9">
-  <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=2">
+  <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=10">
+  <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=7">
 </head>
 <body>
 
@@ -147,7 +147,7 @@ header('Pragma: no-cache');
           </div>
 
           <div class="hero-mini">
-            <div class="hero-mini-label">Requests</div>
+            <div class="hero-mini-label">This Month</div>
             <div class="hero-mini-value" id="heroRequests">0</div>
           </div>
 
@@ -342,7 +342,7 @@ header('Pragma: no-cache');
     <div class="section-head">
       <div>
         <h3 class="section-title">bKash / Nagad Send Money</h3>
-        <p class="section-sub">Personal bKash/Nagad request. Status: Pending, Processing, Successful.</p>
+        <p class="section-sub">Personal bKash/Nagad request with review, PIN confirm and secure tracking.</p>
       </div>
     </div>
 
@@ -423,8 +423,17 @@ header('Pragma: no-cache');
           <div class="section-head">
             <div>
               <h3 class="section-title">My History</h3>
-              <p class="section-sub">Recent topup, bundle and bKash/Nagad request history</p>
+              <p class="section-sub">This month topup, bundle and bKash/Nagad request history</p>
             </div>
+          </div>
+
+          <div class="history-toolbar">
+            <div class="history-month-card">
+              <label for="historyMonthInput">History Month</label>
+              <input id="historyMonthInput" class="input" type="month">
+              <span id="historyMonthLabel" class="history-month-label">This month</span>
+            </div>
+            <button id="historyRefreshBtn" class="btn blue" type="button">Refresh History</button>
           </div>
 
           <div class="filter-row">
@@ -441,7 +450,7 @@ header('Pragma: no-cache');
 
           <div id="historyList" class="history-list">
             <div class="history-item">
-              <div class="history-id">No history found.</div>
+              <div class="history-id">No history found for this month.</div>
             </div>
           </div>
         </div>
@@ -578,7 +587,7 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=13"></script>
-<script src="/api/user/assets/dashboard-ux.js?v=6"></script>
+<script src="/api/user/assets/dashboard.js?v=14"></script>
+<script src="/api/user/assets/dashboard-ux.js?v=7"></script>
 </body>
 </html>

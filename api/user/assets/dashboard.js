@@ -5,6 +5,10 @@ const state = {
   me: null,
   walletSummary: null,
   requestLogs: [],
+  historyMonth: currentMonthKey(),
+  historyLoaded: false,
+  historyLoading: false,
+  historyLimit: 50,
   bundleOffers: [],
   busyCount: 0,
   filter: 'ALL',
@@ -22,6 +26,8 @@ const state = {
     trustDevice: true
   }
 };
+
+window.userState = state;
 
 const wizard = {
   step: 1,
@@ -93,6 +99,19 @@ function fmtTs(ts){
   const d = new Date(ms);
 
   return isNaN(d.getTime()) ? '-' : d.toLocaleString();
+}
+
+function currentMonthKey(date = new Date()){
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return currentMonthKey(new Date());
+
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  return `${d.getFullYear()}-${month}`;
+}
+
+function normalizeMonthKey(value){
+  const month = String(value || '').trim();
+  return /^\d{4}-\d{2}$/.test(month) ? month : currentMonthKey();
 }
 
 function operatorName(code){
@@ -585,6 +604,18 @@ function openSection(sectionId){
     }
   }
 
+  if (sectionId === 'historySection') {
+    ensureHistoryLoaded().catch(err => {
+      if (isSessionError(err)) {
+        showLogin();
+        setLoginError('Session expired. Please login again.');
+        return;
+      }
+
+      showToast(err.message || 'Failed to load history', 'error');
+    });
+  }
+
   const main = document.querySelector('.main-panel');
   if (main) {
     main.scrollTo({ top: 0, behavior: 'smooth' });
@@ -604,15 +635,19 @@ function applyDashboardBootstrap(data){
   }
 
   const logWrap = data.request_logs || {};
+  if (logWrap.month) {
+    state.historyMonth = normalizeMonthKey(logWrap.month);
+  }
   if (Array.isArray(logWrap.items)) {
     state.requestLogs = logWrap.items;
+    state.historyLoaded = false;
   }
 }
 
 async function loadDashboardBootstrap(showBusy = true, busyText = 'Checking session...'){
   const data = await proxyGet(
     'dashboard_bootstrap',
-    { limit: 100 },
+    { limit: 20, month: state.historyMonth },
     busyText,
     { busy: showBusy }
   );
@@ -643,14 +678,48 @@ async function loadWalletSummary(options = {}){
 }
 
 async function loadRequestLogs(options = {}){
-  const data = await proxyGet(
-    'request_logs',
-    { limit: 100 },
-    options.busyText || 'Loading history...',
-    { busy: options.busy !== false }
-  );
+  if (state.historyLoading) return;
 
-  state.requestLogs = Array.isArray(data.items) ? data.items : [];
+  const month = normalizeMonthKey(options.month || state.historyMonth);
+  const limit = Number(options.limit || state.historyLimit || 50);
+
+  state.historyLoading = true;
+
+  try {
+    const data = await proxyGet(
+      'request_logs',
+      { limit, month },
+      options.busyText || 'Loading history...',
+      { busy: options.busy !== false }
+    );
+
+    state.historyMonth = normalizeMonthKey(data.month || month);
+    state.requestLogs = Array.isArray(data.items) ? data.items : [];
+    state.historyLoaded = true;
+    syncHistoryMonthControls();
+    renderHero();
+    renderHistory();
+  } finally {
+    state.historyLoading = false;
+  }
+}
+
+async function ensureHistoryLoaded(options = {}){
+  if (state.historyLoaded && !options.force) {
+    renderHistory();
+    return;
+  }
+
+  try {
+    await loadRequestLogs({
+      month: state.historyMonth,
+      limit: state.historyLimit,
+      busy: options.busy !== false,
+      busyText: options.busyText || 'Loading this month history...'
+    });
+  } finally {
+    state.historyLoading = false;
+  }
 }
 
 async function loadInitialDashboard(showBusy = true, busyText = 'Checking session...'){
@@ -670,7 +739,7 @@ async function loadInitialDashboard(showBusy = true, busyText = 'Checking sessio
 
     await Promise.all([
       loadWalletSummary({ busy: false }),
-      loadRequestLogs({ busy: false })
+      loadRequestLogs({ busy: false, limit: 20 })
     ]);
 
     renderAll();
@@ -683,6 +752,14 @@ async function refreshAll(showMessage = false){
   if (el('bundleSection')?.classList.contains('active')) {
     await loadBundleOffers().catch(err => {
       if (isSessionError(err)) throw err;
+    });
+  }
+
+  if (el('historySection')?.classList.contains('active')) {
+    await loadRequestLogs({
+      month: state.historyMonth,
+      limit: state.historyLimit,
+      busy: false
     });
   }
 
@@ -1024,6 +1101,29 @@ function getFilteredHistory(){
   return rows.filter(row => statusMatchesFilter(row, state.filter));
 }
 
+function historyMonthLabel(monthKey = state.historyMonth){
+  const month = normalizeMonthKey(monthKey);
+  const date = new Date(`${month}-01T00:00:00`);
+
+  if (isNaN(date.getTime())) {
+    return 'this month';
+  }
+
+  return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
+function syncHistoryMonthControls(){
+  const input = el('historyMonthInput');
+  if (input && input.value !== state.historyMonth) {
+    input.value = state.historyMonth;
+  }
+
+  const label = el('historyMonthLabel');
+  if (label) {
+    label.textContent = historyMonthLabel();
+  }
+}
+
 function cleanHistoryMessage(row){
   const msg = String(row?.message || '').trim();
   if (!msg) return '';
@@ -1081,12 +1181,25 @@ function renderHistory(){
   const list = el('historyList');
   if (!list) return;
 
+  syncHistoryMonthControls();
+
+  if (state.historyLoading) {
+    list.innerHTML = `
+      <div class="history-item history-empty">
+        <div class="history-id">Loading this month history...</div>
+        <div class="history-small">${esc(historyMonthLabel())}</div>
+      </div>
+    `;
+    return;
+  }
+
   const rows = getFilteredHistory();
 
   if (!rows.length) {
     list.innerHTML = `
-      <div class="history-item">
-        <div class="history-id">No history found.</div>
+      <div class="history-item history-empty">
+        <div class="history-id">No history found for this month.</div>
+        <div class="history-small">${esc(historyMonthLabel())}</div>
       </div>
     `;
     return;
@@ -1121,7 +1234,10 @@ function renderHistory(){
         <div class="history-top">
           <div>
             <div class="history-id">${esc(item.request_id || '-')}</div>
-            <div class="history-small">${esc(type)} Request${isMfs ? ' - ' + esc(mfsProviderLabel(item)) : ''}</div>
+            <div class="history-small">
+              <span class="history-type-badge">${esc(type)}</span>
+              ${isMfs ? esc(mfsProviderLabel(item)) + ' Send Money' : esc(type === 'BUNDLE' ? 'Bundle Request' : 'Topup Request')}
+            </div>
           </div>
           ${statusPill(item.status || '-')}
         </div>
@@ -1668,8 +1784,7 @@ Number: ${data.receiver_number || '-'}
 Received Amount: BDT ${money(data.amount_bdt || 0)}
 Send Amount: RM ${money(data.amount_rm || 0)}
 Reference: ${data.reference || '-'}
-Available Balance: ${prefix} ${walletDisplayAmount(wallet, 'available')}
-Status: PENDING`;
+Available Balance: ${prefix} ${walletDisplayAmount(wallet, 'available')}`;
 }
 
 function clearMfsCreateFieldsAfterSuccess(){
@@ -2467,6 +2582,41 @@ function bindEvents(){
     btn.addEventListener('click', () => setHistoryFilter(btn.dataset.filter || 'ALL'));
   });
 
+  const historyMonthInput = el('historyMonthInput');
+  if (historyMonthInput && historyMonthInput.dataset.bound !== '1') {
+    historyMonthInput.dataset.bound = '1';
+    historyMonthInput.value = state.historyMonth;
+    historyMonthInput.addEventListener('change', () => {
+      state.historyMonth = normalizeMonthKey(historyMonthInput.value);
+      state.historyLoaded = false;
+      ensureHistoryLoaded({ force: true, busyText: 'Loading selected month...' }).catch(err => {
+        if (isSessionError(err)) {
+          showLogin();
+          setLoginError('Session expired. Please login again.');
+          return;
+        }
+
+        showToast(err.message || 'Failed to load history', 'error');
+      });
+    });
+  }
+
+  const historyRefreshBtn = el('historyRefreshBtn');
+  if (historyRefreshBtn && historyRefreshBtn.dataset.bound !== '1') {
+    historyRefreshBtn.dataset.bound = '1';
+    historyRefreshBtn.addEventListener('click', () => {
+      ensureHistoryLoaded({ force: true, busyText: 'Refreshing history...' }).catch(err => {
+        if (isSessionError(err)) {
+          showLogin();
+          setLoginError('Session expired. Please login again.');
+          return;
+        }
+
+        showToast(err.message || 'Failed to refresh history', 'error');
+      });
+    });
+  }
+
   document.querySelectorAll('.operator-choice').forEach(btn => {
     if (btn.dataset.bound === '1') return;
     btn.dataset.bound = '1';
@@ -2577,11 +2727,22 @@ function bindEvents(){
   el(id)?.addEventListener('input', renderMfsPreview);
 });
 
-el('mfsPreviewBtn')?.addEventListener('click', renderMfsPreview);
+  el('mfsPreviewBtn')?.addEventListener('click', renderMfsPreview);
 el('mfsSubmitBtn')?.addEventListener('click', submitMfsRequest);
   
   
 }
+
+window.userState = state;
+window.proxyGet = proxyGet;
+window.proxyPost = proxyPost;
+window.openSection = openSection;
+window.showToast = showToast;
+window.setBusy = setBusy;
+window.renderMfsResultSuccess = renderMfsResultSuccess;
+window.applyMfsCreateSuccessToLocalState = applyMfsCreateSuccessToLocalState;
+window.renderMfsResultError = renderMfsResultError;
+window.showMfsErrorModal = showMfsErrorModal;
 
 /* =========================
    Bootstrap
