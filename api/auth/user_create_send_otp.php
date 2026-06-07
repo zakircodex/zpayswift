@@ -1,9 +1,8 @@
 <?php
 declare(strict_types=1);
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
 require_once dirname(__DIR__) . '/bootstrap.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/auth_sms.php';
+require_once dirname(__DIR__) . '/lib/auth_sms.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -250,7 +249,7 @@ if (!($okOtp && $okPre)) {
 }
 
 $message =
-    'ZawTopup OTP to create user ' . $phone .
+    'Z-Pay Swift OTP to create user ' . $phone .
     ' is ' . $otpCode .
     '. Valid for 5 minutes. Do not share this code.';
 

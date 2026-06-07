@@ -551,7 +551,8 @@ async function proxyGet(action, params = {}, options = {}){
   try{
     const qs = new URLSearchParams(params).toString();
 
-    const res = await fetch(`proxy.php?action=${encodeURIComponent(action)}${qs ? '&' + qs : ''}`, {
+    const proxyUrl = window.ADMIN_PROXY_URL || '/api/admin/proxy.php';
+    const res = await fetch(`${proxyUrl}?action=${encodeURIComponent(action)}${qs ? '&' + qs : ''}`, {
       method: 'GET',
       credentials: 'same-origin',
       headers: {
@@ -594,7 +595,8 @@ async function proxyPost(action, body = {}, withCsrf = true, options = {}){
       headers['X-CSRF-TOKEN'] = state.csrf;
     }
 
-    const res = await fetch(`proxy.php?action=${encodeURIComponent(action)}`, {
+    const proxyUrl = window.ADMIN_PROXY_URL || '/api/admin/proxy.php';
+    const res = await fetch(`${proxyUrl}?action=${encodeURIComponent(action)}`, {
       method: 'POST',
       credentials: 'same-origin',
       headers,

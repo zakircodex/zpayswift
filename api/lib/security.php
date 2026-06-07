@@ -3,9 +3,9 @@ declare(strict_types=1);
 
 /*
 |--------------------------------------------------------------------------
-| ZawTopup / Z-Pay Swift - Common Security Layer
+| Z-Pay Swift - Common Security Layer
 |--------------------------------------------------------------------------
-| File: /zawtopup/api/lib/security.php
+| File: /api/lib/security.php
 |
 | কাজ:
 | 1) Safe client IP detect
@@ -549,7 +549,7 @@ function security_external_ip_lookup(string $ip): array
 
     $headers = [
         'Accept: application/json',
-        'User-Agent: ZawTopupSecurity/1.0',
+        'User-Agent: ZPaySwiftSecurity/1.0',
     ];
 
     $apiKey = security_string_constant('SECURITY_IP_RISK_API_KEY');
@@ -811,7 +811,7 @@ function security_should_skip_ip_risk_for_endpoint(): bool
      * এখানে শুধু VPN/IP risk skip হবে।
      */
     $skipPrefixes = [
-        '/zawtopup/api/telegram/',
+        '/api/telegram/',
         '/api/telegram/',
     ];
 

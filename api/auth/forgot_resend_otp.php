@@ -1,9 +1,8 @@
 <?php
 declare(strict_types=1);
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/bootstrap.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/auth_sms.php';
+require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/auth_sms.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -190,8 +189,8 @@ $newOtp = (string) random_int(100000, 999999);
 $newExpiresAt = $now + 300;
 
 $message = $storedResetType === 'PIN'
-    ? 'ZawTopup PIN reset OTP is ' . $newOtp . '. Valid for 5 minutes. Do not share this code.'
-    : 'ZawTopup password reset OTP is ' . $newOtp . '. Valid for 5 minutes. Do not share this code.';
+    ? 'Z-Pay Swift PIN reset OTP is ' . $newOtp . '. Valid for 5 minutes. Do not share this code.'
+    : 'Z-Pay Swift password reset OTP is ' . $newOtp . '. Valid for 5 minutes. Do not share this code.';
 
 $updatedOtpRow = [
     'code_hash' => password_hash($newOtp, PASSWORD_DEFAULT),

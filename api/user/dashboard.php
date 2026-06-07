@@ -10,8 +10,8 @@ header('Pragma: no-cache');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Z-Pay Swift User Dashboard</title>
-  <link rel="stylesheet" href="assets/dashboard.css?v=9">
-  <link rel="stylesheet" href="assets/dashboard-ux.css?v=2">
+  <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=9">
+  <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=2">
 </head>
 <body>
 
@@ -47,8 +47,8 @@ header('Pragma: no-cache');
     <button id="loginBtn" class="btn green full-btn" type="button">Login</button>
 
     <div class="login-links">
-      <a href="register.php" class="link-btn">Create Account</a>
-      <a href="forgot.php" class="link-btn">Forgot Password / PIN</a>
+      <a href="/user/register.php" class="link-btn">Create Account</a>
+      <a href="/user/forgot.php" class="link-btn">Forgot Password / PIN</a>
     </div>
   </div>
 </div>
@@ -575,9 +575,10 @@ header('Pragma: no-cache');
 </div>
 
 <script>
-window.USER_PROXY_URL = 'proxy.php';
+window.USER_PROXY_URL = '/api/user/proxy.php';
+window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="assets/dashboard.js?v=13"></script>
-<script src="assets/dashboard-ux.js?v=6"></script>
+<script src="/api/user/assets/dashboard.js?v=13"></script>
+<script src="/api/user/assets/dashboard-ux.js?v=6"></script>
 </body>
 </html>

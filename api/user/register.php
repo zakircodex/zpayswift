@@ -10,7 +10,7 @@ header('Pragma: no-cache');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Create Z-Pay Swift User Account</title>
-  <link rel="stylesheet" href="assets/register.css?v=1">
+  <link rel="stylesheet" href="/api/user/assets/register.css?v=1">
 </head>
 <body>
 
@@ -67,8 +67,8 @@ header('Pragma: no-cache');
     <button id="sendRegisterOtpBtn" class="btn green full-btn" type="button">Create Account</button>
 
     <div class="links">
-      <a href="/zawtopup/api/user/dashboard.php">Already have an account? Login</a>
-      <a href="/zawtopup/api/user/forgot.php">Forgot Password / PIN</a>
+      <a href="/user/">Already have an account? Login</a>
+      <a href="/user/forgot.php">Forgot Password / PIN</a>
     </div>
 
     <div class="note">
@@ -125,9 +125,9 @@ header('Pragma: no-cache');
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script>
-window.USER_PROXY_URL = '/zawtopup/api/user/proxy.php';
-window.USER_LOGIN_URL = '/zawtopup/api/user/dashboard.php';
+window.USER_PROXY_URL = '/api/user/proxy.php';
+window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="assets/register.js?v=1"></script>
+<script src="/api/user/assets/register.js?v=1"></script>
 </body>
 </html>

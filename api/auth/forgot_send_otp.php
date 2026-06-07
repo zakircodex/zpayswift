@@ -1,9 +1,8 @@
 <?php
 declare(strict_types=1);
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/bootstrap.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/auth_sms.php';
+require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/auth_sms.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -269,9 +268,9 @@ $preAuthToken = 'FPA' . auth_make_token(16);
 $expiresAt = $now + 300;
 
 if ($resetType === 'PIN') {
-    $message = 'ZawTopup PIN reset OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
+    $message = 'Z-Pay Swift PIN reset OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
 } else {
-    $message = 'ZawTopup password reset OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
+    $message = 'Z-Pay Swift password reset OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
 }
 
 $otpRow = [

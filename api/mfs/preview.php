@@ -3,9 +3,9 @@ declare(strict_types=1);
 
 /*
 |--------------------------------------------------------------------------
-| ZawTopup / Z-Pay Swift - MFS Preview Endpoint
+| Z-Pay Swift - MFS Preview Endpoint
 |--------------------------------------------------------------------------
-| File: /zawtopup/api/mfs/preview.php
+| File: /api/mfs/preview.php
 |
 | POST JSON:
 | {

@@ -8,7 +8,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 
 /*
 |--------------------------------------------------------------------------
-| ZawTopup / Z-Pay Swift - MFS Core Helper
+| Z-Pay Swift - MFS Core Helper
 |--------------------------------------------------------------------------
 | Providers: bKash, Nagad
 | Modes:
@@ -2066,11 +2066,11 @@ function mfs_api_base_url_for_receipt(): string
 
     $scheme = $https ? 'https' : 'http';
     $host = trim((string)($_SERVER['HTTP_HOST'] ?? 'localhost'));
-    $script = (string)($_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/mfs/receipt.php');
+    $script = (string)($_SERVER['SCRIPT_NAME'] ?? '/api/mfs/receipt.php');
     $apiPath = dirname(dirname($script));
 
     if ($apiPath === '/' || $apiPath === '\\' || $apiPath === '.') {
-        $apiPath = '/zpayswift/api';
+        $apiPath = '/api';
     }
 
     return rtrim($scheme . '://' . $host . '/' . trim(str_replace('\\', '/', $apiPath), '/'), '/');

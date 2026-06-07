@@ -1,5 +1,5 @@
-const USER_PROXY_URL = window.USER_PROXY_URL || '/zawtopup/api/user/proxy.php';
-const USER_LOGIN_URL = window.USER_LOGIN_URL || '/zawtopup/api/user/dashboard.php';
+const USER_PROXY_URL = window.USER_PROXY_URL || '/api/user/proxy.php';
+const USER_LOGIN_URL = window.USER_LOGIN_URL || '/user/';
 
 const state = {
   busyCount: 0,

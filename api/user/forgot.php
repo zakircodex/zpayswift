@@ -10,7 +10,7 @@ header('Pragma: no-cache');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Recover Z-Pay Swift User Account</title>
-  <link rel="stylesheet" href="assets/forgot.css?v=1">
+  <link rel="stylesheet" href="/api/user/assets/forgot.css?v=1">
 </head>
 <body>
 
@@ -42,8 +42,8 @@ header('Pragma: no-cache');
     <button id="sendForgotOtpBtn" class="btn green full-btn" type="button">Send OTP</button>
 
     <div class="links">
-      <a href="dashboard.php">Back to Login</a>
-      <a href="register.php">Create New Account</a>
+      <a href="/user/">Back to Login</a>
+      <a href="/user/register.php">Create New Account</a>
     </div>
 
     <div class="note">
@@ -124,9 +124,9 @@ header('Pragma: no-cache');
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script>
-window.USER_PROXY_URL = 'proxy.php';
-window.USER_LOGIN_URL = 'dashboard.php';
+window.USER_PROXY_URL = '/api/user/proxy.php';
+window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="assets/forgot.js?v=1"></script>
+<script src="/api/user/assets/forgot.js?v=1"></script>
 </body>
 </html>

@@ -190,7 +190,7 @@ $preAuthToken = random_token(24);
 $now = now_ts();
 $expiresAt = $now + 300;
 
-$message = 'ZawTopup login OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
+$message = 'Z-Pay Swift login OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
 
 $otpRow = [
     'otp_request_id' => $otpRequestId,

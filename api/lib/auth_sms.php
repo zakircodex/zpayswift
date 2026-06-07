@@ -14,7 +14,18 @@ function auth_sms_bridge_file(): string
         return app_private_sms_bridge_path();
     }
 
-    return '/home/zedpayhe/private/zawtopup/auth_sms_bridge.php';
+    $primary = '/home/zedpayhe/private/zpayswift/auth_sms_bridge.php';
+    $legacy = '/home/zedpayhe/private/zawtopup/auth_sms_bridge.php';
+
+    if (is_file($primary)) {
+        return $primary;
+    }
+
+    if (is_file($legacy)) {
+        return $legacy;
+    }
+
+    return $primary;
 }
 
 function auth_sms_load_bridge(): void

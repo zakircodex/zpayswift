@@ -1,11 +1,10 @@
 <?php
 declare(strict_types=1);
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/bootstrap.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/roles.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/wallet.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/users_admin.php';
+require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/lib/roles.php';
+require_once __DIR__ . '/lib/wallet.php';
+require_once __DIR__ . '/lib/users_admin.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -57,7 +56,7 @@ function admin_convert_api_host(): string
 
 function admin_convert_api_base_url(): string
 {
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/zawtopup/api/user_convert_retailer.php';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/api/user_convert_retailer.php';
     $apiPath = dirname($script);
     return rtrim(admin_convert_api_scheme() . '://' . admin_convert_api_host() . $apiPath, '/');
 }

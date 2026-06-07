@@ -16,7 +16,7 @@ function normalizeSubadminUrl(url, fallback) {
   return value;
 }
 
-const LOGIN_PROXY_URL = normalizeSubadminUrl(window.SUBADMIN_PROXY_URL, 'proxy.php');
+const LOGIN_PROXY_URL = normalizeSubadminUrl(window.SUBADMIN_PROXY_URL, '/api/subadmin/proxy.php');
 
 function $id(id){
   return document.getElementById(id);
@@ -193,7 +193,7 @@ function updateLoginOtpModal(data){
 }
 
 function loginGoDashboard(){
-  window.location.href = 'dashboard.php';
+  window.location.href = '/subadmin/';
 }
 
 async function handleLogin(){

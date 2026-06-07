@@ -1,8 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/bootstrap.php';
+require_once __DIR__ . '/bootstrap.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -39,7 +38,7 @@ function wallet_ledger_host(): string
 
 function wallet_ledger_api_base_url(): string
 {
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/zawtopup/api/wallet_ledger_list.php';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/api/wallet_ledger_list.php';
     $apiPath = dirname($script);
     return rtrim(wallet_ledger_scheme() . '://' . wallet_ledger_host() . $apiPath, '/');
 }

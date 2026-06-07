@@ -1,5 +1,9 @@
 # Keep cPanel/PHP runtime logs out of the public admin tree.
 api/admin/error_log
 api/admin/**/error_log
+api/auth/error_log
+api/auth/**/error_log
 api/subadmin/error_log
 api/subadmin/**/error_log
+api/worker/error_log
+api/**/error_log

@@ -123,7 +123,7 @@ if ($phone === '') {
 $newOtpCode = (string)random_int(100000, 999999);
 $expiresAt = $now + 300;
 
-$message = 'ZawTopup admin login OTP is ' . $newOtpCode . '. Valid for 5 minutes. Do not share this code.';
+$message = 'Z-Pay Swift admin login OTP is ' . $newOtpCode . '. Valid for 5 minutes. Do not share this code.';
 
 $okOtp = fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
     'code_hash' => password_hash($newOtpCode, PASSWORD_DEFAULT),

@@ -10,7 +10,7 @@ const APP_API_BASE = (() => {
     return window.location.origin + path.slice(0, index) + '/api';
   }
 
-  return window.location.origin + '/zpayswift/api';
+  return window.location.origin + '/api';
 })();
 
 const state = window.subadminState = {
@@ -660,7 +660,7 @@ async function proxyGet(action, params = {}, busyText = 'Loading...'){
   try{
     const qs = new URLSearchParams(params).toString();
     const res = await fetch(
-      'proxy.php?action=' + encodeURIComponent(action) + (qs ? '&' + qs : ''),
+      (window.SUBADMIN_PROXY_URL || '/api/subadmin/proxy.php') + '?action=' + encodeURIComponent(action) + (qs ? '&' + qs : ''),
       {
         method: 'GET',
         credentials: 'same-origin',
@@ -696,7 +696,7 @@ async function proxyPost(action, body = {}, busyText = 'Processing...'){
       headers['X-CSRF-TOKEN'] = state.csrf;
     }
 
-    const res = await fetch('proxy.php?action=' + encodeURIComponent(action), {
+    const res = await fetch((window.SUBADMIN_PROXY_URL || '/api/subadmin/proxy.php') + '?action=' + encodeURIComponent(action), {
       method: 'POST',
       credentials: 'same-origin',
       headers,
@@ -3725,7 +3725,7 @@ async function doLogout(){
   showToast('Logged out', 'info');
 
   setTimeout(() => {
-    window.location.href = 'login.php';
+    window.location.href = '/subadmin/login.php';
   }, 150);
 }
 

@@ -16,7 +16,7 @@ function admin_security_cookie_path(): string
         return app_cookie_path('admin');
     }
 
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/admin/security/check.php';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/api/admin/security/check.php';
     $path = rtrim(dirname(dirname($script)), '/');
 
     return $path !== '' && $path !== '.' ? $path : '/';

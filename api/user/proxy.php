@@ -171,7 +171,7 @@ function user_proxy_api_base_url(): string
         return app_api_url();
     }
 
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/user/proxy.php';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/api/user/proxy.php';
     $apiPath = dirname(dirname($script));
     return rtrim(user_proxy_scheme() . '://' . user_proxy_host() . $apiPath, '/');
 }

@@ -144,7 +144,7 @@ function proxy_api_base_url(): string
         return app_api_url();
     }
 
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/admin/proxy.php';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/api/admin/proxy.php';
     $apiPath = dirname(dirname($script));
     return rtrim(proxy_scheme() . '://' . proxy_host() . $apiPath, '/');
 }
@@ -264,7 +264,7 @@ function proxy_admin_cookie_path(): string
 {
     return function_exists('app_cookie_path')
         ? app_cookie_path('admin')
-        : dirname($_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/admin/proxy.php');
+        : dirname($_SERVER['SCRIPT_NAME'] ?? '/api/admin/proxy.php');
 }
 
 function proxy_admin_token_cookie_name(): string

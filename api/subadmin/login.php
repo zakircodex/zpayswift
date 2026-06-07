@@ -20,7 +20,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 
 if (!empty($_SESSION['subadmin_session_token']) && !empty($_SESSION['subadmin_user'])) {
-    header('Location: dashboard.php');
+    header('Location: /subadmin/');
     exit;
 }
 ?>
@@ -443,7 +443,7 @@ if (!empty($_SESSION['subadmin_session_token']) && !empty($_SESSION['subadmin_us
       </label>
 
       <button id="loginBtn" class="btn btn-green" type="button">Login</button>
-      <a href="forgot.php" class="btn btn-ghost">Forgot Password / PIN</a>
+      <a href="/subadmin/forgot.php" class="btn btn-ghost">Forgot Password / PIN</a>
 
       
     </div>
@@ -493,8 +493,8 @@ if (!empty($_SESSION['subadmin_session_token']) && !empty($_SESSION['subadmin_us
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script>
-window.SUBADMIN_PROXY_URL = 'proxy.php';
+window.SUBADMIN_PROXY_URL = '/api/subadmin/proxy.php';
 </script>
-<script src="assets/subadmin-login.js?v=5"></script>
+<script src="/api/subadmin/assets/subadmin-login.js?v=5"></script>
 </body>
 </html>

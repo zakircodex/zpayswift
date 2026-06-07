@@ -1,9 +1,8 @@
 <?php
 declare(strict_types=1);
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/bootstrap.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/lib/sms_bulksmsbd.php';
+require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/lib/sms_bulksmsbd.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -55,7 +54,7 @@ function deduct_otp_send_host(): string
 
 function deduct_otp_send_api_base_url(): string
 {
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/zawtopup/api/wallet_deduct_send_otp.php';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/api/wallet_deduct_send_otp.php';
     $apiPath = dirname($script);
     return rtrim(deduct_otp_send_scheme() . '://' . deduct_otp_send_host() . $apiPath, '/');
 }
@@ -283,7 +282,7 @@ $expiresAt = $now + (defined('WALLET_DEDUCT_OTP_TTL_SECONDS') ? WALLET_DEDUCT_OT
 $maxAttempts = defined('WALLET_DEDUCT_OTP_MAX_ATTEMPTS') ? (int)WALLET_DEDUCT_OTP_MAX_ATTEMPTS : 5;
 
 $targetPhone = trim((string)($targetUser['phone'] ?? ''));
-$message = 'ZawTopup: OTP for deducting BDT ' . number_format($amount, 2, '.', '') . ' from your wallet is ' . $otp . '. Valid for 5 minutes. Do not share this code.';
+$message = 'Z-Pay Swift: OTP for deducting BDT ' . number_format($amount, 2, '.', '') . ' from your wallet is ' . $otp . '. Valid for 5 minutes. Do not share this code.';
 
 $smsRes = bulksmsbd_send_sms($targetPhone, $message);
 

@@ -391,7 +391,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
       </div>
 
       <button id="sendForgotOtpBtn" class="fp-btn fp-btn-orange" type="button">Send OTP</button>
-      <a href="login.php" class="fp-btn fp-btn-ghost">Back to Login</a>
+      <a href="/subadmin/login.php" class="fp-btn fp-btn-ghost">Back to Login</a>
 
 
     </div>
@@ -453,8 +453,8 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script>
-window.SUBADMIN_PROXY_URL = 'proxy.php';
+window.SUBADMIN_PROXY_URL = '/api/subadmin/proxy.php';
 </script>
-<script src="assets/subadmin-forgot.js?v=15"></script>
+<script src="/api/subadmin/assets/subadmin-forgot.js?v=15"></script>
 </body>
 </html>

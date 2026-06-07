@@ -16,7 +16,7 @@
     var link=document.createElement('link');
     link.id='zpayAdminUxCss';
     link.rel='stylesheet';
-    link.href='assets/admin-ux.css?v=2';
+    link.href='/api/admin/assets/admin-ux.css?v=2';
     document.head.appendChild(link);
   }
 
@@ -33,7 +33,7 @@
       var link=document.createElement('a');
       link.id='zpayAdminMfsNav';
       link.className='nav-btn zpay-admin-mfs-link';
-      link.href='mfs.php';
+      link.href='/admin/mfs.php';
       link.innerHTML='bKash / Nagad <span>&rsaquo;</span>';
       var bundleButton=nav.querySelector('[data-section="bundleSection"]');
       if(bundleButton&&bundleButton.nextSibling)nav.insertBefore(link,bundleButton.nextSibling);
@@ -45,7 +45,7 @@
       var topLink=document.createElement('a');
       topLink.id='zpayAdminMfsTopLink';
       topLink.className='btn brand zpay-admin-mfs-toplink';
-      topLink.href='mfs.php';
+      topLink.href='/admin/mfs.php';
       topLink.textContent='bKash / Nagad';
       actions.insertBefore(topLink,actions.firstChild);
     }

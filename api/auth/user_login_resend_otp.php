@@ -112,7 +112,7 @@ if (!($okOtp && $okPre)) {
     api_response(false, 'SERVER_ERROR', 'Failed to resend OTP', [], 500);
 }
 
-$message = 'ZawTopup login OTP is ' . $newOtpCode . '. Valid for 5 minutes. Do not share this code.';
+$message = 'Z-Pay Swift login OTP is ' . $newOtpCode . '. Valid for 5 minutes. Do not share this code.';
 $smsOk = auth_send_otp_sms($phone, $message);
 
 if (!$smsOk) {

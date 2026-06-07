@@ -189,7 +189,8 @@
 
   async function get(action,params){
     var qs=new URLSearchParams(params||{}).toString();
-    var res=await fetch('proxy.php?action='+encodeURIComponent(action)+(qs?'&'+qs:''),{
+    var proxyUrl=window.ADMIN_MFS_PROXY_URL||window.ADMIN_PROXY_URL||'/api/admin/proxy.php';
+    var res=await fetch(proxyUrl+'?action='+encodeURIComponent(action)+(qs?'&'+qs:''),{
       credentials:'same-origin',
       headers:{Accept:'application/json','Cache-Control':'no-cache'}
     });
@@ -199,7 +200,8 @@
   async function post(action,body){
     var headers={'Content-Type':'application/json',Accept:'application/json','Cache-Control':'no-cache'};
     if(state.csrf)headers['X-CSRF-TOKEN']=state.csrf;
-    var res=await fetch('proxy.php?action='+encodeURIComponent(action),{
+    var proxyUrl=window.ADMIN_MFS_PROXY_URL||window.ADMIN_PROXY_URL||'/api/admin/proxy.php';
+    var res=await fetch(proxyUrl+'?action='+encodeURIComponent(action),{
       method:'POST',
       credentials:'same-origin',
       headers:headers,
@@ -233,7 +235,7 @@
   }
 
   function redirectAdminLogin(){
-    window.location.href='dashboard.php';
+    window.location.href=window.ADMIN_DASHBOARD_URL||'/admin/';
   }
 
   function handleSessionExpired(err){

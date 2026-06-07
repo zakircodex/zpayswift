@@ -20,7 +20,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 
 if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user'])) {
-    header('Location: login.php');
+    header('Location: /subadmin/login.php');
     exit;
 }
 ?>
@@ -30,7 +30,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Z-Pay Swift Subadmin Panel</title>
-  <link rel="stylesheet" href="assets/subadmin.css?v=18">
+  <link rel="stylesheet" href="/api/subadmin/assets/subadmin.css?v=18">
 </head>
 <body>
 
@@ -1189,9 +1189,10 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 <div id="toastWrap" class="toast-wrap"></div>
 
 <script>
-window.SUBADMIN_PROXY_URL = 'proxy.php';
+window.SUBADMIN_PROXY_URL = '/api/subadmin/proxy.php';
+window.SUBADMIN_API_BASE = '/api';
 </script>
-<script src="assets/subadmin.js?v=18"></script>
-<script src="assets/subadmin-otp.js?v=3"></script>
+<script src="/api/subadmin/assets/subadmin.js?v=18"></script>
+<script src="/api/subadmin/assets/subadmin-otp.js?v=3"></script>
 </body>
 </html>

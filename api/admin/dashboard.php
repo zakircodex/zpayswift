@@ -10,8 +10,8 @@ header('Pragma: no-cache');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Z-Pay Swift Admin Dashboard</title>
-  <link rel="stylesheet" href="assets/dashboard.css?v=21">
-  <link rel="stylesheet" href="assets/admin-ux.css?v=2">
+  <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=21">
+  <link rel="stylesheet" href="/api/admin/assets/admin-ux.css?v=2">
 </head>
 <body class="admin-premium-body">
   <div id="loginView" class="login-wrap hidden">
@@ -55,7 +55,7 @@ header('Pragma: no-cache');
         <button class="nav-btn active" data-section="dashboardSection">Dashboard <span>›</span></button>
         <button class="nav-btn" data-section="topupSection">Topup Requests <span>›</span></button>
         <button class="nav-btn" data-section="bundleSection">Bundles <span>›</span></button>
-        <a id="zpayAdminMfsNav" class="nav-btn zpay-admin-mfs-link" href="mfs.php">bKash / Nagad <span>›</span></a>
+        <a id="zpayAdminMfsNav" class="nav-btn zpay-admin-mfs-link" href="/admin/mfs.php">bKash / Nagad <span>›</span></a>
         
         <button class="nav-btn" data-section="bundleOffersSection">Bundle Offers <span>›</span></button>
         
@@ -99,7 +99,7 @@ header('Pragma: no-cache');
       </div>
     </div>
     <div class="actions">
-      <a id="zpayAdminMfsTopLink" class="btn brand zpay-admin-mfs-toplink" href="mfs.php">bKash / Nagad</a>
+      <a id="zpayAdminMfsTopLink" class="btn brand zpay-admin-mfs-toplink" href="/admin/mfs.php">bKash / Nagad</a>
       <button class="btn brand" id="directTopupBtn">Direct Topup</button>
       <button class="btn blue" id="openConfigBtn">System Settings</button>
       <button class="btn blue" id="refreshBtn">Refresh All</button>
@@ -589,8 +589,11 @@ header('Pragma: no-cache');
 
   <div class="toast-wrap" id="toastWrap"></div>
 
-<script src="assets/dashboard.js?v=35"></script>
-<script src="assets/admin-dashboard-ux.js?v=2"></script>
+<script>
+window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
+</script>
+<script src="/api/admin/assets/dashboard.js?v=35"></script>
+<script src="/api/admin/assets/admin-dashboard-ux.js?v=2"></script>
 
 </body>
 </html>

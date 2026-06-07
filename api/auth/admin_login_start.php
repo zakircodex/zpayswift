@@ -209,7 +209,7 @@ $preAuthToken = 'APA' . random_token(24);
 $now = now_ts();
 $expiresAt = $now + 300;
 
-$message = 'ZawTopup admin login OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
+$message = 'Z-Pay Swift admin login OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
 
 $otpRow = [
     'otp_request_id' => $otpRequestId,

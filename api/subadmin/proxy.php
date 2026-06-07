@@ -76,7 +76,7 @@ function sub_proxy_api_base_url(): string
         return app_api_url();
     }
 
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/zpayswift/api/subadmin/proxy.php';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/api/subadmin/proxy.php';
     $apiPath = dirname(dirname($script));
     return rtrim(sub_proxy_scheme() . '://' . sub_proxy_host() . $apiPath, '/');
 }

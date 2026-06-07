@@ -1,7 +1,6 @@
 <?php
 declare(strict_types=1);
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
 require_once dirname(__DIR__) . '/bootstrap.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -145,7 +144,7 @@ function ucc_host(): string
 
 function ucc_api_base_url(): string
 {
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/zawtopup/api/auth/user_create_confirm.php';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/api/auth/user_create_confirm.php';
     $apiPath = dirname(dirname($script));
     return rtrim(ucc_scheme() . '://' . ucc_host() . $apiPath, '/');
 }

@@ -10,8 +10,8 @@ header('Pragma: no-cache');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Z-Pay Swift Admin - bKash / Nagad Requests</title>
-  <link rel="stylesheet" href="assets/dashboard.css?v=21">
-  <link rel="stylesheet" href="assets/mfs-panel.css?v=5">
+  <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=21">
+  <link rel="stylesheet" href="/api/admin/assets/mfs-panel.css?v=5">
 </head>
 <body class="mfs-body">
   <div class="mfs-app">
@@ -26,11 +26,11 @@ header('Pragma: no-cache');
 
       <nav class="nav" aria-label="Admin navigation">
         <div class="nav-title">Operations</div>
-        <a class="nav-btn" href="dashboard.php">Dashboard <span>&rsaquo;</span></a>
+        <a class="nav-btn" href="/admin/">Dashboard <span>&rsaquo;</span></a>
         <button class="nav-btn" data-mfs-view-target="create" type="button">Create bKash / Nagad <span>&rsaquo;</span></button>
         <button class="nav-btn active" data-mfs-view-target="manage" type="button">Manage MFS Requests <span>&rsaquo;</span></button>
         <button class="nav-btn" data-mfs-view-target="settings" type="button">Fee &amp; Rate Settings <span>&rsaquo;</span></button>
-        <a class="nav-btn" href="dashboard.php">Topup &amp; Bundles <span>&rsaquo;</span></a>
+        <a class="nav-btn" href="/admin/">Topup &amp; Bundles <span>&rsaquo;</span></a>
       </nav>
 
       <div class="sidebar-box">
@@ -64,7 +64,7 @@ header('Pragma: no-cache');
           </div>
           <div class="mfs-top-actions">
             <button class="btn blue" id="mfsReloadBtn" type="button">Refresh</button>
-            <a class="btn ghost" href="dashboard.php">Back Dashboard</a>
+            <a class="btn ghost" href="/admin/">Back Dashboard</a>
           </div>
         </header>
 
@@ -371,6 +371,10 @@ header('Pragma: no-cache');
     </div>
   </div>
 
-  <script src="assets/mfs-panel.js?v=7"></script>
+  <script>
+  window.ADMIN_MFS_PROXY_URL = '/api/admin/proxy.php';
+  window.ADMIN_DASHBOARD_URL = '/admin/';
+  </script>
+  <script src="/api/admin/assets/mfs-panel.js?v=7"></script>
 </body>
 </html>

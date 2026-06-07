@@ -1,4 +1,4 @@
-const USER_PROXY_URL = window.USER_PROXY_URL || 'proxy.php';
+const USER_PROXY_URL = window.USER_PROXY_URL || '/api/user/proxy.php';
 
 const state = {
   csrf: '',

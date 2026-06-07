@@ -1,8 +1,7 @@
 <?php
 declare(strict_types=1);
 
-require_once '/home/zedpayhe/private/zawtopup/config.php';
-require_once '/home/zedpayhe/public_html/zawtopup/api/bootstrap.php';
+require_once __DIR__ . '/bootstrap.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -54,7 +53,7 @@ function deduct_otp_confirm_host(): string
 
 function deduct_otp_confirm_api_base_url(): string
 {
-    $script = $_SERVER['SCRIPT_NAME'] ?? '/zawtopup/api/wallet_deduct_confirm.php';
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/api/wallet_deduct_confirm.php';
     $apiPath = dirname($script);
     return rtrim(deduct_otp_confirm_scheme() . '://' . deduct_otp_confirm_host() . $apiPath, '/');
 }

@@ -16,7 +16,7 @@ function normalizeSubadminUrl(url, fallback) {
   return value;
 }
 
-const FORGOT_PROXY_URL = normalizeSubadminUrl(window.SUBADMIN_PROXY_URL, 'proxy.php');
+const FORGOT_PROXY_URL = normalizeSubadminUrl(window.SUBADMIN_PROXY_URL, '/api/subadmin/proxy.php');
 const FORGOT_STORE_KEY = 'zawtopup_subadmin_forgot_state_v2';
 
 function fId(id) {
@@ -415,7 +415,7 @@ async function handleVerifyForgotOtp() {
     clearForgotState();
 
     setTimeout(() => {
-      window.location.href = 'login.php';
+      window.location.href = '/subadmin/login.php';
     }, 900);
   } catch (err) {
     if (statusBox) statusBox.textContent = err.message || 'Failed to verify OTP';
