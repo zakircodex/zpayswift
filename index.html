@@ -40,7 +40,9 @@
     button,input{font:inherit}
     .page{
       width:min(1160px,calc(100% - 32px));
-      margin:0 auto;
+      margin-left:auto;
+      margin-right:auto;
+      box-sizing:border-box;
     }
     .site-header{
       position:sticky;
@@ -402,8 +404,11 @@
       font-size:13px;
     }
     .footer-card{
-      margin:0 0 20px;
+      width:min(1160px,calc(100% - 32px));
+      max-width:1160px;
+      margin:24px auto 32px;
       padding:20px;
+      box-sizing:border-box;
       border:1px solid var(--line);
       border-radius:24px;
       background:linear-gradient(180deg,var(--card),var(--card2));
@@ -469,7 +474,11 @@
       .steps{grid-template-columns:repeat(2,minmax(0,1fr))}
     }
     @media(max-width:640px){
-      .page{width:min(100% - 20px,1160px)}
+      .page{
+        width:min(1160px,calc(100% - 24px));
+        margin-left:auto;
+        margin-right:auto;
+      }
       .site-header{padding-top:8px}
       .nav{
         align-items:stretch;
@@ -535,6 +544,9 @@
       }
       .support-strip .btn{width:100%}
       .footer-card{
+        width:min(1160px,calc(100% - 24px));
+        max-width:1160px;
+        margin:18px auto 28px;
         padding:16px;
         border-radius:22px;
       }
