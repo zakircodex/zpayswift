@@ -11,84 +11,114 @@ function zps_docs_is_json(): bool
     return $format === 'json' || str_contains($accept, 'application/json');
 }
 
+function zps_docs_is_developer(): bool
+{
+    return strtolower(trim((string)($_GET['view'] ?? ''))) === 'developer';
+}
+
 function zps_docs_h($value): string
 {
     return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
-function zps_docs_endpoint(string $method, string $path, string $auth, string $description): array
+function zps_docs_endpoint(string $method, string $path, string $access, string $description): array
 {
     return [
         'method' => $method,
         'path' => $path,
-        'auth' => $auth,
+        'access' => $access,
         'description' => $description,
     ];
 }
 
-$sections = [
-    'User APIs' => [
-        zps_docs_endpoint('POST', '/api/auth/user_login_start.php', 'X-APP-KEY', 'Start user login OTP flow.'),
-        zps_docs_endpoint('POST', '/api/auth/user_login_verify_otp.php', 'X-APP-KEY', 'Verify user login OTP and receive a session token.'),
-        zps_docs_endpoint('POST', '/api/auth/user_register_send_otp.php', 'X-APP-KEY', 'Start user registration OTP flow.'),
-        zps_docs_endpoint('POST', '/api/auth/user_register_confirm.php', 'X-APP-KEY', 'Confirm registration OTP.'),
-        zps_docs_endpoint('POST', '/api/auth/user_forgot_send_otp.php', 'X-APP-KEY', 'Start password or PIN reset OTP flow.'),
-        zps_docs_endpoint('POST', '/api/auth/user_forgot_verify_otp.php', 'X-APP-KEY', 'Confirm reset OTP and update credentials.'),
-        zps_docs_endpoint('GET/POST', '/api/user/proxy.php', 'X-APP-KEY + X-SESSION-TOKEN', 'User dashboard, wallet, history, topup, bundle, and MFS actions.'),
-        zps_docs_endpoint('GET', '/api/topup/status.php?request_id=ID', 'X-APP-KEY + X-SESSION-TOKEN', 'Check a user topup request status.'),
-        zps_docs_endpoint('GET', '/api/mfs/receipt.php?t=TOKEN', 'Receipt token', 'Public token-based MFS tracking and receipt page.'),
-        zps_docs_endpoint('GET', '/api/mfs/receipt_api.php?t=TOKEN', 'Receipt token', 'JSON receipt data for apps.'),
+function zps_docs_service(string $name, string $description, string $safeRoute): array
+{
+    return [
+        'name' => $name,
+        'description' => $description,
+        'safe_route' => $safeRoute,
+    ];
+}
+
+$mainLinks = [
+    ['label' => 'User Panel', 'url' => app_url('user'), 'description' => 'Customer dashboard, wallet, topup, send money, bundle, and history.'],
+    ['label' => 'Admin Panel', 'url' => app_url('admin'), 'description' => 'Protected admin operations and approvals.'],
+    ['label' => 'Subadmin Panel', 'url' => app_url('subadmin'), 'description' => 'Protected subadmin wallet, API keys, users, and request tools.'],
+    ['label' => 'API Base', 'url' => app_api_url(), 'description' => 'Application API base URL for authenticated integrations.'],
+];
+
+$publicTracking = [
+    'title' => 'MFS Tracking / Receipt',
+    'description' => 'Tracking links are token-based. Replace TRACKING_TOKEN with a valid token from a successful request response.',
+    'example_url' => app_api_url('mfs/receipt.php?t=TRACKING_TOKEN'),
+    'json_example_url' => app_api_url('mfs/receipt_api.php?t=TRACKING_TOKEN'),
+];
+
+$serviceActions = [
+    zps_docs_service('Login', 'Secure OTP/session based login for users, admins, and subadmins.', '/user, /admin, /subadmin'),
+    zps_docs_service('Register', 'Customer registration and OTP verification.', '/user'),
+    zps_docs_service('Dashboard', 'Wallet balance, request summaries, and quick services.', '/user'),
+    zps_docs_service('Topup', 'Create and track mobile topup requests.', '/user'),
+    zps_docs_service('bKash/Nagad Send Money', 'Create MFS send money requests and track status with receipt links.', '/user'),
+    zps_docs_service('Bundle', 'Browse and request available bundle offers.', '/user'),
+    zps_docs_service('History', 'View current and previous request history where available.', '/user'),
+    zps_docs_service('Tracking', 'Open token-based receipt/tracking links.', '/api/mfs/receipt.php?t=TRACKING_TOKEN'),
+];
+
+$developerAccess = [
+    'summary' => 'Developer and app access requires valid credentials. Secret values are never displayed on this page.',
+    'headers' => [
+        ['name' => 'X-APP-KEY', 'purpose' => 'Required by app endpoints where configured.', 'value' => 'Hidden'],
+        ['name' => 'X-SESSION-TOKEN', 'purpose' => 'User/admin/subadmin session token where applicable.', 'value' => 'Hidden'],
+        ['name' => 'Authorization: Bearer', 'purpose' => 'Bearer session token where supported.', 'value' => 'Hidden'],
+        ['name' => 'X-API-KEY', 'purpose' => 'Subadmin public API integration key.', 'value' => 'Hidden'],
+        ['name' => 'X-WORKER-KEY', 'purpose' => 'Worker app access only.', 'value' => 'Hidden'],
     ],
-    'Admin APIs' => [
-        zps_docs_endpoint('POST', '/api/auth/admin_login_start.php', 'X-APP-KEY', 'Start admin login OTP flow.'),
-        zps_docs_endpoint('POST', '/api/auth/admin_login_verify_otp.php', 'X-APP-KEY', 'Verify admin login OTP.'),
-        zps_docs_endpoint('GET/POST', '/api/admin/proxy.php', 'Admin session', 'Admin dashboard, users, wallet, topup, bundle, MFS, config, and worker actions.'),
-        zps_docs_endpoint('POST', '/api/admin/topup/create.php', 'Admin session', 'Create an admin topup request.'),
-        zps_docs_endpoint('GET', '/api/admin/operators/list.php', 'Admin session', 'List operator runtime configuration with secret values masked.'),
-        zps_docs_endpoint('GET', '/api/admin/operators/get.php', 'Admin session', 'Load one operator runtime configuration with secret values masked.'),
-        zps_docs_endpoint('POST', '/api/admin/operators/save.php', 'Admin session', 'Save operator runtime/private configuration.'),
-        zps_docs_endpoint('GET/POST', '/api/admin/mfs.php', 'Admin session', 'Admin bKash/Nagad management page and actions.'),
+];
+
+$securityNotice = [
+    'Password, PIN, token, hash, private keys, bot tokens, SMS keys, and Firebase credentials are never shown here.',
+    'Internal endpoints are protected by app keys, sessions, roles, worker keys, API keys, or webhook secrets.',
+    'Public receipt pages require a non-guessable tracking token.',
+];
+
+$developerEndpoints = [
+    'User and App' => [
+        zps_docs_endpoint('POST', '/api/auth/user_login_start.php', 'Protected app access', 'Start user login.'),
+        zps_docs_endpoint('POST', '/api/auth/user_login_verify_otp.php', 'Protected app access', 'Verify login and create a session.'),
+        zps_docs_endpoint('POST', '/api/auth/user_register_send_otp.php', 'Protected app access', 'Start registration.'),
+        zps_docs_endpoint('POST', '/api/auth/user_register_confirm.php', 'Protected app access', 'Confirm registration.'),
+        zps_docs_endpoint('GET/POST', '/api/user/proxy.php', 'Protected user session', 'User dashboard actions.'),
+        zps_docs_endpoint('GET', '/api/topup/status.php?request_id=ID', 'Protected user session', 'Check own topup status.'),
+        zps_docs_endpoint('GET', '/api/mfs/receipt.php?t=TRACKING_TOKEN', 'Public token', 'Open MFS tracking/receipt page.'),
+        zps_docs_endpoint('GET', '/api/mfs/receipt_api.php?t=TRACKING_TOKEN', 'Public token', 'Read sanitized receipt JSON.'),
     ],
-    'Subadmin APIs' => [
-        zps_docs_endpoint('GET/POST', '/api/subadmin/proxy.php', 'Subadmin session', 'Subadmin dashboard, wallet, API keys, MFS, topup, bundle, and request logs.'),
-        zps_docs_endpoint('POST', '/api/public_api/topup_create.php', 'X-API-KEY', 'Public subadmin/API topup creation.'),
-        zps_docs_endpoint('GET', '/api/public_api/bundle_offers.php', 'X-API-KEY', 'Public subadmin/API bundle offer list.'),
-        zps_docs_endpoint('POST', '/api/public_api/bundle_create.php', 'X-API-KEY', 'Public subadmin/API bundle request creation.'),
+    'Subadmin Public API' => [
+        zps_docs_endpoint('POST', '/api/public_api/topup_create.php', 'Protected API key', 'Create topup request.'),
+        zps_docs_endpoint('GET', '/api/public_api/bundle_offers.php', 'Protected API key', 'List available bundle offers.'),
+        zps_docs_endpoint('POST', '/api/public_api/bundle_create.php', 'Protected API key', 'Create bundle request.'),
     ],
-    'Worker APIs' => [
-        zps_docs_endpoint('POST', '/api/worker/heartbeat.php', 'X-WORKER-KEY', 'Report worker device availability.'),
-        zps_docs_endpoint('POST', '/api/worker/active.php', 'X-WORKER-KEY', 'Mark worker device active or busy.'),
-        zps_docs_endpoint('POST', '/api/worker/claim.php', 'X-WORKER-KEY', 'Claim a pending topup request for automatic processing.'),
-        zps_docs_endpoint('POST', '/api/worker/start_dial.php', 'X-WORKER-KEY', 'Mark claimed work as dial started where applicable.'),
-        zps_docs_endpoint('POST', '/api/worker/result.php', 'X-WORKER-KEY', 'Submit worker topup success or failure result.'),
+    'Admin and Subadmin Panels' => [
+        zps_docs_endpoint('GET/POST', '/api/admin/proxy.php', 'Protected admin session', 'Admin panel actions.'),
+        zps_docs_endpoint('GET/POST', '/api/subadmin/proxy.php', 'Protected subadmin session', 'Subadmin panel actions.'),
+        zps_docs_endpoint('GET/POST', '/api/admin/mfs.php', 'Protected admin session', 'Admin MFS page/actions.'),
     ],
-    'Telegram Webhooks' => [
-        zps_docs_endpoint('POST', '/api/telegram/webhook.php?key=WEBHOOK_SECRET', 'Telegram secret token or hidden key', 'Unified Telegram webhook router for Bundle, MFS, and Topup callbacks.'),
-        zps_docs_endpoint('POST', '/api/telegram/bundle_webhook.php?key=WEBHOOK_SECRET', 'Telegram secret token or hidden key', 'Bundle callback handler.'),
-        zps_docs_endpoint('POST', '/api/telegram/mfs_webhook.php?key=WEBHOOK_SECRET', 'Telegram secret token or hidden key', 'MFS callback and sender-detail handler.'),
-        zps_docs_endpoint('POST', '/api/telegram/topup_webhook.php?key=WEBHOOK_SECRET', 'Telegram secret token or hidden key', 'Topup manual fallback callback handler.'),
+    'Worker and Webhook' => [
+        zps_docs_endpoint('POST', '/api/worker/heartbeat.php', 'Protected worker key', 'Worker heartbeat.'),
+        zps_docs_endpoint('POST', '/api/worker/claim.php', 'Protected worker key', 'Claim pending topup.'),
+        zps_docs_endpoint('POST', '/api/worker/result.php', 'Protected worker key', 'Submit topup result.'),
+        zps_docs_endpoint('POST', '/api/telegram/webhook.php', 'Protected webhook secret', 'Unified Telegram webhook router.'),
     ],
 ];
 
 $data = [
-    'base_urls' => [
-        'web_user' => app_url('user'),
-        'admin' => app_url('admin'),
-        'subadmin' => app_url('subadmin'),
-        'api_base' => app_api_url(),
-        'legacy_api' => [
-            app_url('zpayswift/api'),
-            app_url('zawtopup/api'),
-        ],
-    ],
-    'auth_headers' => [
-        'X-APP-KEY' => 'Required where applicable. Value is private and not shown.',
-        'X-SESSION-TOKEN' => 'User/admin/subadmin session token where applicable.',
-        'Authorization' => 'Bearer SESSION_TOKEN is accepted where implemented.',
-        'X-WORKER-KEY' => 'Worker-only key. Value is private and not shown.',
-        'X-API-KEY' => 'Subadmin public API key. Value is private and not shown.',
-    ],
-    'endpoints' => $sections,
+    'title' => 'Z-Pay Swift API & Service Links',
+    'main_links' => $mainLinks,
+    'public_tracking' => $publicTracking,
+    'service_actions' => $serviceActions,
+    'developer_access' => $developerAccess,
+    'security_notice' => $securityNotice,
+    'developer_endpoints' => $developerEndpoints,
     'response_shape' => [
         'ok' => true,
         'code' => 'SUCCESS',
@@ -102,12 +132,13 @@ if (zps_docs_is_json()) {
     echo json_encode([
         'ok' => true,
         'code' => 'SUCCESS',
-        'message' => 'Z-Pay Swift API endpoints',
+        'message' => 'Z-Pay Swift API and service links',
         'data' => $data,
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
     exit;
 }
 
+$developerView = zps_docs_is_developer();
 header('Content-Type: text/html; charset=utf-8');
 ?>
 <!doctype html>
@@ -115,90 +146,257 @@ header('Content-Type: text/html; charset=utf-8');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Z-Pay Swift API Endpoints</title>
+  <title>Z-Pay Swift API & Service Links</title>
   <style>
-    :root { color-scheme: dark; --bg:#071528; --card:rgba(15,31,58,.86); --line:rgba(148,163,184,.22); --text:#e5eefc; --muted:#9fb2cc; --brand:#34d399; }
+    :root {
+      color-scheme: dark;
+      --bg: #061326;
+      --bg2: #0b2a51;
+      --card: rgba(13, 30, 58, .86);
+      --card2: rgba(20, 42, 78, .72);
+      --line: rgba(148, 163, 184, .22);
+      --text: #e6f0ff;
+      --muted: #9fb2cc;
+      --brand: #34d399;
+      --blue: #60a5fa;
+      --warn: #fbbf24;
+    }
     * { box-sizing: border-box; }
-    body { margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif; background: radial-gradient(circle at top left, #0d2a52, var(--bg)); color:var(--text); }
-    main { width:min(1120px, calc(100% - 32px)); margin:32px auto; }
-    header, section { background:var(--card); border:1px solid var(--line); border-radius:22px; padding:24px; box-shadow:0 24px 70px rgba(0,0,0,.28); margin-bottom:18px; }
-    h1, h2 { margin:0 0 10px; }
-    p { color:var(--muted); line-height:1.6; }
-    code { color:#bbf7d0; background:rgba(52,211,153,.1); border:1px solid rgba(52,211,153,.2); padding:2px 6px; border-radius:8px; }
-    .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
-    .pill { border:1px solid var(--line); border-radius:16px; padding:12px; background:rgba(255,255,255,.04); }
-    table { width:100%; border-collapse:collapse; overflow:hidden; border-radius:16px; }
-    th, td { text-align:left; border-bottom:1px solid var(--line); padding:12px; vertical-align:top; }
-    th { color:#93c5fd; font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
-    td { color:var(--text); }
-    .muted { color:var(--muted); }
-    .method { color:var(--brand); font-weight:700; white-space:nowrap; }
-    @media (max-width: 720px) { main { width:min(100% - 20px, 1120px); margin:18px auto; } header, section { padding:18px; border-radius:18px; } th:nth-child(4), td:nth-child(4) { display:none; } }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(52, 211, 153, .22), transparent 28rem),
+        radial-gradient(circle at 90% 10%, rgba(96, 165, 250, .18), transparent 24rem),
+        linear-gradient(145deg, var(--bg2), var(--bg));
+      color: var(--text);
+    }
+    a { color: inherit; text-decoration: none; }
+    main { width: min(1120px, calc(100% - 32px)); margin: 32px auto; }
+    header, section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 24px;
+      box-shadow: 0 26px 80px rgba(0,0,0,.30);
+      margin-bottom: 18px;
+      backdrop-filter: blur(14px);
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.3fr .7fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+    .hero h1 { font-size: clamp(28px, 5vw, 48px); line-height: 1.05; margin: 0 0 14px; }
+    h2 { margin: 0 0 12px; font-size: 22px; }
+    h3 { margin: 0 0 8px; font-size: 17px; }
+    p { color: var(--muted); line-height: 1.6; margin: 0 0 12px; }
+    code {
+      color: #bbf7d0;
+      background: rgba(52, 211, 153, .10);
+      border: 1px solid rgba(52, 211, 153, .22);
+      padding: 3px 7px;
+      border-radius: 9px;
+      overflow-wrap: anywhere;
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .card, .link-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      background: var(--card2);
+      min-width: 0;
+    }
+    .link-card { display: flex; flex-direction: column; gap: 10px; }
+    .url-row { display: flex; gap: 8px; align-items: center; }
+    .url-row code { flex: 1; min-width: 0; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(52, 211, 153, .32);
+      background: rgba(52, 211, 153, .14);
+      color: var(--text);
+      padding: 9px 12px;
+      border-radius: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn.secondary { border-color: var(--line); background: rgba(255,255,255,.06); }
+    .btn:hover { transform: translateY(-1px); }
+    .badge {
+      display: inline-flex;
+      width: fit-content;
+      gap: 6px;
+      align-items: center;
+      color: #d1fae5;
+      background: rgba(52, 211, 153, .12);
+      border: 1px solid rgba(52, 211, 153, .25);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .notice-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .notice-list li { border: 1px solid var(--line); border-radius: 14px; padding: 12px; background: rgba(255,255,255,.04); color: var(--muted); }
+    .tracking {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 16px; }
+    th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 12px; vertical-align: top; }
+    th { color: #93c5fd; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+    td { color: var(--text); }
+    .method { color: var(--brand); font-weight: 800; white-space: nowrap; }
+    .muted { color: var(--muted); }
+    .developer-note { border-color: rgba(251, 191, 36, .25); background: rgba(251, 191, 36, .08); }
+    @media (max-width: 760px) {
+      main { width: min(100% - 20px, 1120px); margin: 18px auto; }
+      header, section { padding: 18px; border-radius: 20px; }
+      .hero, .tracking { grid-template-columns: 1fr; }
+      .url-row { flex-direction: column; align-items: stretch; }
+      .btn { width: 100%; }
+      table, thead, tbody, tr, th, td { display: block; width: 100%; }
+      thead { display: none; }
+      tr { border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; padding: 10px; background: rgba(255,255,255,.04); }
+      td { border-bottom: 0; padding: 6px 0; }
+      td::before { content: attr(data-label); display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+    }
   </style>
 </head>
 <body>
 <main>
-  <header>
-    <h1>Z-Pay Swift API Endpoints</h1>
-    <p>Public developer reference for clean routes and API paths. Secrets, tokens, PINs, hashes, and private keys are intentionally hidden.</p>
-    <p><a href="?format=json"><code>?format=json</code></a></p>
+  <header class="hero">
+    <div>
+      <span class="badge">Z-Pay Swift</span>
+      <h1>Z-Pay Swift API & Service Links</h1>
+      <p>Clean public links for panels, tracking, and secure app access. Internal endpoints and secret values are intentionally hidden from the default view.</p>
+      <p>
+        <a class="btn" href="?view=developer">Developer View</a>
+        <a class="btn secondary" href="?format=json">JSON</a>
+      </p>
+    </div>
+    <div class="card developer-note">
+      <h3>Security-first docs</h3>
+      <p>No passwords, PINs, tokens, hashes, private keys, bot tokens, SMS keys, or server paths are shown here.</p>
+    </div>
   </header>
 
   <section>
-    <h2>Base URLs</h2>
+    <h2>Main Links</h2>
     <div class="grid">
-      <?php foreach ($data['base_urls'] as $label => $value): ?>
-        <div class="pill">
-          <strong><?= zps_docs_h(str_replace('_', ' ', strtoupper($label))) ?></strong><br>
-          <?php if (is_array($value)): ?>
-            <?php foreach ($value as $item): ?><code><?= zps_docs_h($item) ?></code><br><?php endforeach; ?>
-          <?php else: ?>
-            <code><?= zps_docs_h($value) ?></code>
-          <?php endif; ?>
+      <?php foreach ($mainLinks as $link): ?>
+        <div class="link-card">
+          <h3><?= zps_docs_h($link['label']) ?></h3>
+          <p><?= zps_docs_h($link['description']) ?></p>
+          <div class="url-row">
+            <code><?= zps_docs_h($link['url']) ?></code>
+            <button class="btn secondary" type="button" data-copy="<?= zps_docs_h($link['url']) ?>">Copy</button>
+          </div>
         </div>
       <?php endforeach; ?>
     </div>
   </section>
 
   <section>
-    <h2>Auth Headers</h2>
+    <h2>Public Tracking</h2>
+    <p><?= zps_docs_h($publicTracking['description']) ?></p>
+    <div class="tracking">
+      <div class="card">
+        <h3>Receipt Page</h3>
+        <div class="url-row">
+          <code><?= zps_docs_h($publicTracking['example_url']) ?></code>
+          <button class="btn secondary" type="button" data-copy="<?= zps_docs_h($publicTracking['example_url']) ?>">Copy</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Receipt JSON</h3>
+        <div class="url-row">
+          <code><?= zps_docs_h($publicTracking['json_example_url']) ?></code>
+          <button class="btn secondary" type="button" data-copy="<?= zps_docs_h($publicTracking['json_example_url']) ?>">Copy</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Services</h2>
     <div class="grid">
-      <?php foreach ($data['auth_headers'] as $header => $description): ?>
-        <div class="pill"><code><?= zps_docs_h($header) ?></code><p><?= zps_docs_h($description) ?></p></div>
+      <?php foreach ($serviceActions as $service): ?>
+        <div class="card">
+          <h3><?= zps_docs_h($service['name']) ?></h3>
+          <p><?= zps_docs_h($service['description']) ?></p>
+          <code><?= zps_docs_h($service['safe_route']) ?></code>
+        </div>
       <?php endforeach; ?>
     </div>
   </section>
 
-  <?php foreach ($sections as $title => $endpoints): ?>
-    <section>
-      <h2><?= zps_docs_h($title) ?></h2>
-      <table>
-        <thead>
-          <tr><th>Method</th><th>Path</th><th>Auth</th><th>Description</th></tr>
-        </thead>
-        <tbody>
-          <?php foreach ($endpoints as $endpoint): ?>
-            <tr>
-              <td class="method"><?= zps_docs_h($endpoint['method']) ?></td>
-              <td><code><?= zps_docs_h($endpoint['path']) ?></code></td>
-              <td class="muted"><?= zps_docs_h($endpoint['auth']) ?></td>
-              <td><?= zps_docs_h($endpoint['description']) ?></td>
-            </tr>
-          <?php endforeach; ?>
-        </tbody>
-      </table>
-    </section>
-  <?php endforeach; ?>
+  <section>
+    <h2>App / Developer Access</h2>
+    <p><?= zps_docs_h($developerAccess['summary']) ?></p>
+    <div class="grid">
+      <?php foreach ($developerAccess['headers'] as $header): ?>
+        <div class="card">
+          <h3><?= zps_docs_h($header['name']) ?></h3>
+          <p><?= zps_docs_h($header['purpose']) ?></p>
+          <code>Value: <?= zps_docs_h($header['value']) ?></code>
+        </div>
+      <?php endforeach; ?>
+    </div>
+  </section>
 
   <section>
-    <h2>Response Shape</h2>
-    <pre><code>{
-  "ok": true,
-  "code": "SUCCESS",
-  "message": "Human readable status message",
-  "data": {}
-}</code></pre>
+    <h2>Security Notice</h2>
+    <ul class="notice-list">
+      <?php foreach ($securityNotice as $notice): ?>
+        <li><?= zps_docs_h($notice) ?></li>
+      <?php endforeach; ?>
+    </ul>
   </section>
+
+  <?php if ($developerView): ?>
+    <?php foreach ($developerEndpoints as $title => $endpoints): ?>
+      <section>
+        <h2><?= zps_docs_h($title) ?></h2>
+        <table>
+          <thead>
+            <tr><th>Method</th><th>Path</th><th>Access</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <?php foreach ($endpoints as $endpoint): ?>
+              <tr>
+                <td class="method" data-label="Method"><?= zps_docs_h($endpoint['method']) ?></td>
+                <td data-label="Path"><code><?= zps_docs_h($endpoint['path']) ?></code></td>
+                <td class="muted" data-label="Access"><?= zps_docs_h($endpoint['access']) ?></td>
+                <td data-label="Description"><?= zps_docs_h($endpoint['description']) ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </section>
+    <?php endforeach; ?>
+  <?php endif; ?>
 </main>
+
+<script>
+document.querySelectorAll('[data-copy]').forEach((button) => {
+  button.addEventListener('click', async () => {
+    const value = button.getAttribute('data-copy') || '';
+    try {
+      await navigator.clipboard.writeText(value);
+      button.textContent = 'Copied';
+      setTimeout(() => { button.textContent = 'Copy'; }, 1200);
+    } catch (error) {
+      button.textContent = 'Select & copy';
+      setTimeout(() => { button.textContent = 'Copy'; }, 1600);
+    }
+  });
+});
+</script>
 </body>
 </html>
