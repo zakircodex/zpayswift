@@ -6,4 +6,5 @@ deployment:
     - /bin/cp -R api $DEPLOYPATH
     - /bin/cp -f .htaccess $DEPLOYPATH/.htaccess
     - /bin/cp -f index.html $DEPLOYPATH/index.html
-    - /bin/sh -c 'if [ -f download.php ]; then /bin/cp -f download.php "$DEPLOYPATH/download.php"; fi'
+    - /bin/cp -f download.php $DEPLOYPATH/download.php
+    - /bin/sh -c 'if [ -d downloads ]; then /bin/cp -R downloads "$DEPLOYPATH"; fi'
