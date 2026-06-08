@@ -151,7 +151,7 @@ function mfsProviderLabel(row){
   const provider = String(row?.provider_name || row?.provider || row?.mfs_provider || '').toUpperCase();
   if (provider === 'BKASH') return 'bKash';
   if (provider === 'NAGAD') return 'Nagad';
-  return row?.provider_name || row?.provider || row?.mfs_provider || 'MFS';
+  return row?.provider_name || row?.provider || row?.mfs_provider || 'Send Money';
 }
 
 function mfsIsRemittance(row){
@@ -414,6 +414,21 @@ function showToast(message, type = 'info'){
   wrap.appendChild(div);
 
   setTimeout(() => div.remove(), 3500);
+}
+
+function syncUserModalLock(){
+  const hasOpenModal = !!document.querySelector('.modal.show, #mfsStepPreview.active, #mfsStepPin.active');
+  document.body.classList.toggle('flow-modal-open', hasOpenModal);
+}
+
+function showModalById(id){
+  el(id)?.classList.add('show');
+  syncUserModalLock();
+}
+
+function hideModalById(id){
+  el(id)?.classList.remove('show');
+  syncUserModalLock();
 }
 
 function setLoginError(msg = ''){
@@ -1807,7 +1822,7 @@ function ensureMfsResultModal(){
   wrap.innerHTML = `
     <div class="modal-card">
       <button id="closeMfsCreateResultModalBtn" class="modal-close" type="button">×</button>
-      <h3 class="modal-title" id="mfsCreateResultTitle">MFS Request</h3>
+      <h3 class="modal-title" id="mfsCreateResultTitle">Send Money Request</h3>
       <p class="modal-sub" id="mfsCreateResultSub">Request details</p>
       <div id="mfsCreateResultBody" class="result-card"></div>
       <div class="wizard-actions">
@@ -1820,7 +1835,7 @@ function ensureMfsResultModal(){
 
   document.body.appendChild(wrap);
 
-  const close = () => wrap.classList.remove('show');
+  const close = () => hideModalById('mfsCreateResultModal');
   el('closeMfsCreateResultModalBtn')?.addEventListener('click', close);
   el('mfsCreateResultOkBtn')?.addEventListener('click', close);
   wrap.addEventListener('click', (e) => {
@@ -1828,7 +1843,7 @@ function ensureMfsResultModal(){
   });
 }
 
-function showMfsResultModal({title = 'MFS Request', subtitle = '', rows = [], link = '', type = 'info'} = {}){
+function showMfsResultModal({title = 'Send Money Request', subtitle = '', rows = [], link = '', type = 'info'} = {}){
   ensureMfsResultModal();
 
   const wrap = el('mfsCreateResultModal');
@@ -1867,12 +1882,12 @@ function showMfsResultModal({title = 'MFS Request', subtitle = '', rows = [], li
     openBtn.onclick = () => window.open(link, '_blank', 'noopener');
   }
 
-  wrap?.classList.add('show');
+  showModalById('mfsCreateResultModal');
 }
 
 function showMfsErrorModal(title, message){
   showMfsResultModal({
-    title: title || 'MFS Error',
+    title: title || 'Send Money Error',
     subtitle: message || 'Something went wrong',
     type: 'error',
     rows: [['Message', message || 'Something went wrong']]
@@ -2003,7 +2018,7 @@ function applyMfsCreateSuccessToLocalState(data){
       receipt_created_at: Number(data.receipt_created_at || 0),
       reference: data.reference || '',
       trxid: data.trxid || '',
-      message: 'MFS request created',
+      message: 'Send money request created',
       created_at: Number(data.created_at || Math.floor(Date.now() / 1000)),
       updated_at: Number(data.created_at || Math.floor(Date.now() / 1000)),
       completed_at: 0
@@ -2051,7 +2066,7 @@ async function submitMfsRequest(){
       amount_rm: data.amount_rm,
       reference: data.reference,
       pin: data.pin,
-      note: 'MFS request from user panel'
+      note: 'Send money request from user panel'
     }, 'Creating request...');
 
     renderMfsResultSuccess(res);
@@ -2190,37 +2205,346 @@ function resetWizard(){
   updateWizardUI();
 }
 
-function renderTopupResultSuccess(data){
-  const box = el('topupResult');
-  if (!box) return;
+function topupDigits(){
+  return String(el('wizardTopupNumber')?.value || '').replace(/\D+/g, '');
+}
 
-  box.className = '';
-  box.innerHTML = `
-    <div class="result-card good">
-      <div class="result-title">Topup request created successfully</div>
-      <div class="result-text">
-Request ID: ${esc(data.request_id || '-')}
-Status: ${esc(data.status || 'PENDING')}
-Number: ${esc(data.topup_number || '-')}
-Operator: ${esc(operatorName(data.operator || '-'))}
-Amount: BDT ${money(data.amount || 0)}
-Created: ${esc(fmtTs(data.created_at || 0))}
+function detectTopupOperator(number = topupDigits()){
+  const n = String(number || '').replace(/\D+/g, '');
+  if (/^(013|017)/.test(n)) return 'GP';
+  if (/^018/.test(n)) return 'ROBI';
+  if (/^016/.test(n)) return 'AIRTEL';
+  if (/^(014|019)/.test(n)) return 'BL';
+  if (/^015/.test(n)) return 'TT';
+  return '';
+}
+
+function topupWalletInfo(){
+  const wallet = (state.walletSummary || {}).wallet || {};
+  const prefix = walletDisplayCurrency(wallet);
+  const available = Number(wallet.display_available_balance ?? wallet.available_balance ?? 0);
+
+  return {
+    prefix,
+    available: Number.isFinite(available) ? available : NaN
+  };
+}
+
+function topupReviewRows(){
+  const data = wizardData();
+  const amount = Number(data.amount || 0);
+  const fee = 0;
+  const total = amount + fee;
+  const wallet = topupWalletInfo();
+  const after = Number.isFinite(wallet.available) ? wallet.available - total : NaN;
+
+  return [
+    ['Number', data.topup_number || '-'],
+    ['Operator', operatorName(data.operator || '-')],
+    ['Amount', 'BDT ' + money(amount)],
+    ['Fee / Charge', 'BDT ' + money(fee)],
+    ['Total Pay', 'BDT ' + money(total), true],
+    ...(Number.isFinite(wallet.available) ? [['Available Balance', wallet.prefix + ' ' + money(wallet.available)]] : []),
+    ...(Number.isFinite(after) ? [['Balance After', wallet.prefix + ' ' + money(after)]] : [])
+  ];
+}
+
+function ensureTopupFlowModal(){
+  if (el('topupFlowModal')) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'topupFlowModal';
+  wrap.className = 'modal';
+  wrap.innerHTML = `
+    <div class="modal-card modal-card-flow">
+      <button id="closeTopupFlowModalBtn" class="modal-close" type="button">&times;</button>
+      <div class="flow-step-head">
+        <h3 id="topupFlowTitle" class="flow-step-title">Topup</h3>
+        <p id="topupFlowSub" class="flow-step-sub">Complete the next step.</p>
+      </div>
+      <div id="topupFlowBody"></div>
+      <div class="wizard-actions">
+        <button id="topupFlowBackBtn" class="btn ghost" type="button">Back</button>
+        <button id="topupFlowNextBtn" class="btn green" type="button">Next</button>
       </div>
     </div>
   `;
+  document.body.appendChild(wrap);
+
+  el('closeTopupFlowModalBtn')?.addEventListener('click', closeTopupFlowModal);
+  wrap.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'topupFlowModal') closeTopupFlowModal();
+
+    const operatorBtn = e.target.closest?.('.topup-flow-operator');
+    if (operatorBtn) {
+      setWizardOperator(operatorBtn.getAttribute('data-operator') || '');
+      renderTopupFlowStep();
+      return;
+    }
+
+    const amountBtn = e.target.closest?.('.topup-flow-amount');
+    if (amountBtn) {
+      setWizardAmount(amountBtn.getAttribute('data-amount') || '');
+      renderTopupFlowStep();
+      return;
+    }
+
+    if (e.target.closest?.('#topupFlowBackBtn')) {
+      e.preventDefault();
+      topupFlowBack();
+      return;
+    }
+
+    if (e.target.closest?.('#topupFlowNextBtn')) {
+      e.preventDefault();
+      topupFlowNext();
+    }
+  });
+}
+
+function setTopupFlowBusy(on, text = 'Submitting...'){
+  const btn = el('topupFlowNextBtn');
+  if (!btn) return;
+
+  if (on) {
+    btn.dataset.originalText = btn.textContent || '';
+    btn.disabled = true;
+    btn.textContent = text;
+    return;
+  }
+
+  btn.disabled = false;
+  btn.textContent = btn.dataset.originalText || btn.textContent || 'Next';
+  delete btn.dataset.originalText;
+}
+
+function openTopupFlowFromNumber(){
+  if (!validateWizardStep(1)) return;
+
+  const detected = detectTopupOperator();
+  if (detected) {
+    setWizardOperator(detected);
+  }
+
+  showTopupFlowStep('operator');
+}
+
+function showTopupFlowStep(step){
+  ensureTopupFlowModal();
+  wizard.step = step === 'operator' ? 2 : step === 'amount' ? 3 : step === 'preview' ? 4 : 5;
+  renderTopupFlowStep(step);
+  showModalById('topupFlowModal');
+}
+
+function closeTopupFlowModal(){
+  hideModalById('topupFlowModal');
+  wizard.step = 1;
+  updateWizardUI();
+}
+
+function renderTopupFlowStep(step = ''){
+  ensureTopupFlowModal();
+
+  const body = el('topupFlowBody');
+  const title = el('topupFlowTitle');
+  const sub = el('topupFlowSub');
+  const back = el('topupFlowBackBtn');
+  const next = el('topupFlowNextBtn');
+
+  const current = step || (wizard.step === 2 ? 'operator' : wizard.step === 3 ? 'amount' : wizard.step === 4 ? 'preview' : 'pin');
+  const data = wizardData();
+
+  if (back) back.textContent = current === 'operator' ? 'Back / Edit' : 'Back';
+  if (next) next.textContent = current === 'preview' ? 'Continue' : current === 'pin' ? 'Confirm Topup' : 'Next';
+
+  if (current === 'operator') {
+    if (title) title.textContent = 'Select Operator';
+    if (sub) sub.textContent = 'Auto-detected when possible. Select manually if needed.';
+    if (body) body.innerHTML = `
+      <div class="flow-choice-grid flow-choice-grid-operators">
+        ${[
+          ['GP','Grameenphone'],
+          ['ROBI','Robi'],
+          ['AIRTEL','Airtel'],
+          ['BL','Banglalink'],
+          ['TT','Teletalk']
+        ].map(([code, name]) => `
+          <button type="button" class="flow-choice-btn topup-flow-operator ${data.operator === code ? 'active' : ''}" data-operator="${esc(code)}">
+            ${esc(name)}
+            <small>${esc(code)}</small>
+          </button>
+        `).join('')}
+      </div>
+    `;
+    return;
+  }
+
+  if (current === 'amount') {
+    if (title) title.textContent = 'Enter Amount';
+    if (sub) sub.textContent = 'Choose a quick amount or write the amount manually.';
+    if (body) body.innerHTML = `
+      <div class="flow-amount-grid">
+        ${['20','30','50','100'].map(value => `
+          <button type="button" class="flow-choice-btn topup-flow-amount ${String(data.amount) === value ? 'active' : ''}" data-amount="${value}">
+            BDT ${value}
+          </button>
+        `).join('')}
+      </div>
+      <input id="topupFlowAmountInput" class="wizard-big-input" type="number" inputmode="decimal" step="0.01" min="1" placeholder="Enter amount" value="${esc(data.amount || '')}">
+    `;
+
+    const amountInput = el('topupFlowAmountInput');
+    if (amountInput) {
+      amountInput.addEventListener('input', () => setWizardAmount(amountInput.value || ''));
+      setTimeout(() => amountInput.focus(), 50);
+    }
+    return;
+  }
+
+  if (current === 'preview') {
+    if (title) title.textContent = 'Review Topup';
+    if (sub) sub.textContent = 'Please review details before entering your PIN.';
+    if (body) body.innerHTML = `
+      <div class="flow-review-grid">
+        ${topupReviewRows().map(row => `
+          <div class="flow-review-box ${row[2] ? 'total' : ''}">
+            <label>${esc(row[0])}</label>
+            <strong>${esc(row[1])}</strong>
+          </div>
+        `).join('')}
+      </div>
+    `;
+    return;
+  }
+
+  if (title) title.textContent = 'Confirm with PIN';
+  if (sub) sub.textContent = 'Enter your transaction PIN to submit the topup.';
+  if (body) body.innerHTML = `
+    <input id="topupFlowPinInput" class="wizard-big-input" type="password" inputmode="numeric" placeholder="Enter PIN" value="${esc(data.pin || '')}">
+  `;
+
+  const pinInput = el('topupFlowPinInput');
+  if (pinInput) {
+    pinInput.addEventListener('input', () => {
+      if (el('wizardPin')) el('wizardPin').value = pinInput.value || '';
+    });
+    pinInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') topupFlowNext();
+    });
+    setTimeout(() => pinInput.focus(), 50);
+  }
+}
+
+function topupFlowBack(){
+  if (wizard.step === 2) {
+    closeTopupFlowModal();
+  } else if (wizard.step === 3) {
+    showTopupFlowStep('operator');
+  } else if (wizard.step === 4) {
+    showTopupFlowStep('amount');
+  } else {
+    showTopupFlowStep('preview');
+  }
+}
+
+function topupFlowNext(){
+  if (wizard.step === 2) {
+    if (validateWizardStep(2)) showTopupFlowStep('amount');
+    return;
+  }
+
+  if (wizard.step === 3) {
+    if (validateWizardStep(3)) showTopupFlowStep('preview');
+    return;
+  }
+
+  if (wizard.step === 4) {
+    showTopupFlowStep('pin');
+    return;
+  }
+
+  const pinInput = el('topupFlowPinInput');
+  if (pinInput && el('wizardPin')) {
+    el('wizardPin').value = pinInput.value || '';
+  }
+
+  submitTopup();
+}
+
+function ensureTopupResultModal(){
+  if (el('topupResultModal')) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'topupResultModal';
+  wrap.className = 'modal';
+  wrap.innerHTML = `
+    <div class="modal-card">
+      <button id="closeTopupResultModalBtn" class="modal-close" type="button">&times;</button>
+      <h3 class="modal-title" id="topupResultTitle">Topup Request</h3>
+      <p class="modal-sub" id="topupResultSub">Request details</p>
+      <div id="topupResultBody" class="result-card"></div>
+      <div class="wizard-actions">
+        <button id="topupResultOkBtn" class="btn green" type="button">OK</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  const close = () => hideModalById('topupResultModal');
+  el('closeTopupResultModalBtn')?.addEventListener('click', close);
+  el('topupResultOkBtn')?.addEventListener('click', close);
+  wrap.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'topupResultModal') close();
+  });
+}
+
+function showTopupResultModal({ title, subtitle, rows = [], type = 'success' } = {}){
+  ensureTopupResultModal();
+
+  if (el('topupResultTitle')) el('topupResultTitle').textContent = title || 'Topup Request';
+  if (el('topupResultSub')) el('topupResultSub').textContent = subtitle || '';
+
+  const body = el('topupResultBody');
+  if (body) {
+    body.className = 'result-card ' + (type === 'error' ? 'bad' : 'good');
+    body.innerHTML = `
+      <div class="flow-review-grid">
+        ${rows.map(row => `
+          <div class="flow-review-box">
+            <label>${esc(row[0])}</label>
+            <strong>${esc(row[1])}</strong>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  showModalById('topupResultModal');
+}
+
+function renderTopupResultSuccess(data){
+  showTopupResultModal({
+    title: 'Topup Created Successfully',
+    subtitle: 'Your topup request has been submitted securely.',
+    type: 'success',
+    rows: [
+      ['Request ID', data.request_id || '-'],
+      ['Number', data.topup_number || '-'],
+      ['Operator', operatorName(data.operator || '-')],
+      ['Amount', 'BDT ' + money(data.amount || 0)],
+      ['Status', data.status || 'PENDING'],
+      ['Created', fmtTs(data.created_at || 0)]
+    ]
+  });
 }
 
 function renderTopupResultError(message){
-  const box = el('topupResult');
-  if (!box) return;
-
-  box.className = '';
-  box.innerHTML = `
-    <div class="result-card bad">
-      <div class="result-title">Topup failed</div>
-      <div class="result-text">${esc(message || 'Unknown error')}</div>
-    </div>
-  `;
+  showTopupResultModal({
+    title: 'Topup Failed',
+    subtitle: message || 'Unknown error',
+    type: 'error',
+    rows: [['Message', message || 'Unknown error']]
+  });
 }
 
 async function submitTopup(){
@@ -2231,6 +2555,7 @@ async function submitTopup(){
   const data = wizardData();
 
   try{
+    setTopupFlowBusy(true, 'Submitting...');
     const res = await proxyPost('topup_create', {
       topup_number: data.topup_number,
       operator: data.operator,
@@ -2239,15 +2564,17 @@ async function submitTopup(){
       note: 'Topup request from user dashboard'
     }, 'Creating topup...');
 
+    closeTopupFlowModal();
     renderTopupResultSuccess(res);
     showToast('Topup created successfully', 'ok');
 
     await safeRefreshAll(false);
     resetWizard();
-    openSection('historySection');
   }catch(err){
     renderTopupResultError(err.message || 'Failed to create topup');
     showToast(err.message || 'Failed to create topup', 'error');
+  }finally{
+    setTopupFlowBusy(false);
   }
 }
 
@@ -2637,9 +2964,7 @@ function bindEvents(){
     });
   });
 
-  el('wizardNext1')?.addEventListener('click', () => {
-    if (validateWizardStep(1)) gotoWizardStep(2);
-  });
+  el('wizardNext1')?.addEventListener('click', openTopupFlowFromNumber);
 
   el('wizardNext2')?.addEventListener('click', () => {
     if (validateWizardStep(2)) gotoWizardStep(3);
@@ -2660,7 +2985,7 @@ function bindEvents(){
   el('wizardConfirmBtn')?.addEventListener('click', submitTopup);
 
   el('wizardTopupNumber')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && validateWizardStep(1)) gotoWizardStep(2);
+    if (e.key === 'Enter') openTopupFlowFromNumber();
   });
 
   el('wizardAmount')?.addEventListener('keydown', (e) => {
@@ -2712,7 +3037,14 @@ function bindEvents(){
       closeSidebar();
       closeHistoryDetail();
       closeBundleBuyModal();
+      closeTopupFlowModal();
+      hideModalById('topupResultModal');
+      hideModalById('mfsCreateResultModal');
+      if (typeof window.zpayCloseMfsFlow === 'function') {
+        window.zpayCloseMfsFlow();
+      }
       el('loginOtpModal')?.classList.remove('show');
+      syncUserModalLock();
     }
   });
   
@@ -2739,6 +3071,7 @@ window.proxyPost = proxyPost;
 window.openSection = openSection;
 window.showToast = showToast;
 window.setBusy = setBusy;
+window.syncUserModalLock = syncUserModalLock;
 window.renderMfsResultSuccess = renderMfsResultSuccess;
 window.applyMfsCreateSuccessToLocalState = applyMfsCreateSuccessToLocalState;
 window.renderMfsResultError = renderMfsResultError;

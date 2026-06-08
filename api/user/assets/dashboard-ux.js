@@ -266,7 +266,7 @@
       amount_rm: isMyrMfsAccount() ? d.amount_rm : 0,
       amount_myr: isMyrMfsAccount() ? d.amount_rm : 0,
       reference: d.reference
-    }, 'Loading MFS preview...', { busy: false });
+    }, 'Loading send money preview...', { busy: false });
     renderPreview();
   }
 
@@ -277,6 +277,11 @@
     });
     var target = byId(id);
     if (target) target.classList.add('active');
+    if (typeof window.syncUserModalLock === 'function') {
+      window.syncUserModalLock();
+    } else {
+      document.body.classList.toggle('flow-modal-open', id === 'mfsStepPreview' || id === 'mfsStepPin');
+    }
   }
 
   function validBase(){
@@ -409,7 +414,7 @@
         await loadServerPreview();
         showStep('mfsStepPreview');
       } catch(err) {
-        if (typeof showToast === 'function') showToast(err.message || 'Failed to load MFS preview', 'error');
+        if (typeof showToast === 'function') showToast(err.message || 'Failed to load send money preview', 'error');
       } finally {
         preview.disabled = false;
         preview.textContent = originalText || 'Next';
@@ -439,6 +444,10 @@
   window.zpayMfsRefreshCurrencyUi = function(){
     updateCurrencyUi();
     renderPreview();
+  };
+
+  window.zpayCloseMfsFlow = function(){
+    showStep('mfsStepForm');
   };
 
   function init(){ ensureQuickActions(); bindMfs(); }

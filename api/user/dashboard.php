@@ -10,8 +10,8 @@ header('Pragma: no-cache');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Z-Pay Swift User Dashboard</title>
-  <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=10">
-  <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=7">
+  <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=11">
+  <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=8">
 </head>
 <body>
 
@@ -395,7 +395,7 @@ header('Pragma: no-cache');
 
       <div class="wizard-actions">
         <button id="mfsBackBtn" class="btn ghost" type="button">Back</button>
-        <button id="mfsSendBtn" class="btn green" type="button">Next</button>
+        <button id="mfsSendBtn" class="btn green" type="button">Continue</button>
       </div>
     </div>
 
@@ -412,7 +412,7 @@ header('Pragma: no-cache');
     </div>
 
     <div class="result-box hidden" aria-hidden="true">
-      <div id="mfsResult" class="result-empty">No MFS request created yet.</div>
+      <div id="mfsResult" class="result-empty">No send money request created yet.</div>
     </div>
   </div>
 </section>
@@ -577,7 +577,7 @@ header('Pragma: no-cache');
     <button class="bottom-btn" data-page-section="topupSection" type="button">Topup</button>
     <button class="bottom-btn" data-page-section="bundleSection" type="button">Bundle</button>
     
-    <button class="bottom-btn" data-page-section="mfsSection" type="button">MFS</button>
+    <button class="bottom-btn" data-page-section="mfsSection" type="button">Send Money</button>
     
     <button class="bottom-btn" data-page-section="historySection" type="button">History</button>
   </div>
@@ -587,7 +587,7 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=14"></script>
-<script src="/api/user/assets/dashboard-ux.js?v=7"></script>
+<script src="/api/user/assets/dashboard.js?v=15"></script>
+<script src="/api/user/assets/dashboard-ux.js?v=8"></script>
 </body>
 </html>
