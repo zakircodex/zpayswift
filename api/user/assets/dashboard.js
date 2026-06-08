@@ -2744,7 +2744,9 @@ async function topupFlowNext(){
     } finally {
       if (next) {
         next.disabled = false;
-        next.textContent = originalText || 'Next';
+        next.textContent = topupStepNameFromWizard() === 'review'
+          ? 'Confirm Topup'
+          : (originalText || 'Next');
       }
     }
     return;

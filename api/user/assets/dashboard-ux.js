@@ -556,13 +556,6 @@
         message = 'Please enter your correct transaction PIN.';
         showStep('mfsStepPin');
         setMfsPinError(message);
-        if (typeof showMfsErrorModal === 'function') {
-          showMfsErrorModal(
-            'Incorrect PIN',
-            message,
-            { retryStep: 'pin', editStep: 'pin' }
-          );
-        }
       } else if (typeof renderMfsResultError === 'function') {
         renderMfsResultError(message);
       }
@@ -703,13 +696,9 @@
         var invalidPin = String(err && err.code || '').toUpperCase() === 'INVALID_PIN' || isPinError(err);
         var message = invalidPin ? 'Please enter your correct transaction PIN.' : (err.message || 'Invalid transaction PIN');
         setMfsPinError(message);
-        if (invalidPin && typeof showMfsErrorModal === 'function') {
-          showMfsErrorModal(
-            'Incorrect PIN',
-            'Please enter your correct transaction PIN.',
-            { retryStep: 'pin', editStep: 'pin' }
-          );
-        } else if (typeof showToast === 'function') {
+        var pinInput = byId('mfsPin');
+        if (invalidPin && pinInput) setTimeout(function(){ pinInput.focus(); pinInput.select(); }, 50);
+        if (!invalidPin && typeof showToast === 'function') {
           showToast(message, 'error');
         }
         if (isAuthError(err) && typeof window.userSessionExpired === 'function') {

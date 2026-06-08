@@ -593,7 +593,7 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=18"></script>
-<script src="/api/user/assets/dashboard-ux.js?v=11"></script>
+<script src="/api/user/assets/dashboard.js?v=19"></script>
+<script src="/api/user/assets/dashboard-ux.js?v=12"></script>
 </body>
 </html>
