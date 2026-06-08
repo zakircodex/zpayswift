@@ -6,6 +6,28 @@ require_once dirname(__DIR__) . '/lib/mfs.php';
 
 $token = trim((string)($_GET['t'] ?? $_GET['token'] ?? ''));
 $receipt = function_exists('mfs_load_receipt_by_token') ? mfs_load_receipt_by_token($token) : [];
+if ($receipt && function_exists('mfs_find_request')) {
+    $latest = mfs_find_request((string)($receipt['request_id'] ?? ''));
+
+    if (is_array($latest) && $latest) {
+        foreach ([
+            'status',
+            'public_status',
+            'process_status',
+            'message',
+            'updated_at',
+            'processing_at',
+            'completed_at',
+            'success_at',
+            'receipt_url',
+            'tracking_url',
+        ] as $key) {
+            if (array_key_exists($key, $latest)) {
+                $receipt[$key] = $latest[$key];
+            }
+        }
+    }
+}
 $data = $receipt ? mfs_public_receipt($receipt) : [];
 $ok = !empty($data);
 
@@ -41,13 +63,13 @@ $isProcessingReceipt = $rawStatus === 'PROCESSING';
 $isPendingReceipt = in_array($rawStatus, ['', 'PENDING', 'WAITING', 'WAITING_ADMIN'], true);
 $displayStatus = $isFinalReceipt
     ? 'Successful'
-    : ($isFailedReceipt ? 'Failed' : ($isProcessingReceipt ? 'Processing' : ($isPendingReceipt ? 'Pending' : $rawStatus)));
+    : ($isFailedReceipt ? 'Failed' : ($isProcessingReceipt ? 'Processing Securely' : ($isPendingReceipt ? 'Pending' : $rawStatus)));
 $statusMessage = $isFinalReceipt
     ? 'Your remittance has been completed successfully.'
     : ($isFailedReceipt
         ? 'Your request could not be completed. Any held balance has been returned if applicable.'
         : ($isProcessingReceipt
-            ? 'Your request is currently being processed.'
+            ? 'Your request is being processed securely.'
             : 'Your request has been submitted successfully.'));
 $title = $ok
     ? ($isFinalReceipt ? 'Z-Pay Swift Remittance Receipt' : 'Z-Pay Swift MFS Request Tracking')

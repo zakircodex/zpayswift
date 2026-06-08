@@ -270,6 +270,18 @@ function mfs_tg_keyboard_active(string $requestId): array
     ];
 }
 
+function mfs_tg_keyboard_after_processing(string $requestId): array
+{
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => '✅ Success', 'callback_data' => mfs_tg_callback_data('s', $requestId)],
+                ['text' => '❌ Failed', 'callback_data' => mfs_tg_callback_data('f', $requestId)],
+            ],
+        ],
+    ];
+}
+
 function mfs_tg_keyboard_waiting(string $requestId): array
 {
     return [
@@ -431,7 +443,7 @@ function mfs_tg_handle_callback(array $callback): void
         }
 
         $updated = mfs_find_request($requestId) ?: $row;
-        mfs_tg_edit($chatId, $messageId, mfs_tg_text($updated, 'PROCESSING', 'MFS request is processing'), mfs_tg_keyboard_active($requestId));
+        mfs_tg_edit($chatId, $messageId, mfs_tg_text($updated, 'PROCESSING', 'MFS request is processing'), mfs_tg_keyboard_after_processing($requestId));
         mfs_tg_answer($callbackId, 'Marked PROCESSING');
         mfs_tg_json(true, 'SUCCESS', 'MFS request marked processing', ['request_id' => $requestId], 200);
     }

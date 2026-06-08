@@ -2832,6 +2832,17 @@ function mfs_mark_processing(string $requestId, string $message = 'Request is pr
     $row['processing_by_uid'] = (string)($actor['uid'] ?? '');
     $row['processing_by_role'] = (string)($actor['role'] ?? '');
 
+    $receipt = mfs_save_receipt_for_request($requestId, $row, 'PROCESSING');
+    if (!empty($receipt['receipt_id'])) {
+        $row['receipt_id'] = (string)$receipt['receipt_id'];
+        $row['receipt_token'] = (string)($receipt['receipt_token'] ?? '');
+        $row['receipt_url'] = (string)($receipt['receipt_url'] ?? '');
+        $row['tracking_url'] = (string)($receipt['receipt_url'] ?? '');
+        $row['receipt_created_at'] = (int)($receipt['receipt_created_at'] ?? $now);
+    } elseif (!empty($receipt['receipt_error'])) {
+        $row['receipt_error'] = (string)$receipt['receipt_error'];
+    }
+
     mfs_move_request_bucket($requestId, (string)($row['_bucket'] ?? 'PENDING'), 'PROCESSING', $row);
     mfs_update_request_status($requestId, $uid, 'PROCESSING', $message);
     mfs_write_user_request_log($uid, $requestId, $row);
