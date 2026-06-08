@@ -400,6 +400,11 @@
     renderPreview();
   }
 
+  async function validatePinBeforeReview(pin){
+    if (typeof window.proxyPost !== 'function') return;
+    await window.proxyPost('validate_pin', { pin: pin }, 'Checking PIN...', { busy: false });
+  }
+
   function showStep(id){
     ['mfsStepForm','mfsStepAmount','mfsStepPreview','mfsStepPin'].forEach(function(stepId){
       var n = byId(stepId);
@@ -617,7 +622,7 @@
       confirmMfs();
     });
     var pinBack = byId('mfsPinBackBtn'); if (pinBack) pinBack.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepAmount'); });
-    var confirm = byId('mfsConfirmBtn'); if (confirm) confirm.addEventListener('click', function(e){
+    var confirm = byId('mfsConfirmBtn'); if (confirm) confirm.addEventListener('click', async function(e){
       e.preventDefault();
       var d = data();
       if (!d.pin) {
@@ -625,8 +630,25 @@
         if (typeof showToast === 'function') showToast('PIN is required', 'error');
         return;
       }
-      renderPreview();
-      showStep('mfsStepPreview');
+      var originalText = confirm.textContent;
+      try {
+        confirm.disabled = true;
+        confirm.textContent = 'Checking...';
+        await validatePinBeforeReview(d.pin);
+        setMfsPinError('');
+        renderPreview();
+        showStep('mfsStepPreview');
+      } catch (err) {
+        var message = err.message || 'Invalid transaction PIN';
+        setMfsPinError(message);
+        if (typeof showToast === 'function') showToast(message, 'error');
+        if (isAuthError(err) && typeof window.userSessionExpired === 'function') {
+          setTimeout(function(){ window.userSessionExpired(); }, 900);
+        }
+      } finally {
+        confirm.disabled = false;
+        confirm.textContent = originalText || 'Next';
+      }
     });
     var pin = byId('mfsPin'); if (pin) pin.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); var next = byId('mfsConfirmBtn'); if (next) next.click(); } });
     setProvider(selectedProvider());

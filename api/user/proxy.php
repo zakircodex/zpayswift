@@ -500,6 +500,48 @@ function user_proxy_load_user(string $uid): array
     return is_array($row) ? $row : [];
 }
 
+function user_proxy_validate_transaction_pin(string $uid, string $pin): array
+{
+    $uid = trim($uid);
+    $pin = trim($pin);
+
+    if ($uid === '') {
+        return ['ok' => false, 'code' => 'USER_NOT_FOUND', 'message' => 'User not found', 'data' => []];
+    }
+
+    if ($pin === '') {
+        return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'PIN is required', 'data' => []];
+    }
+
+    $user = user_proxy_load_user($uid);
+
+    if (!$user) {
+        return ['ok' => false, 'code' => 'USER_NOT_FOUND', 'message' => 'User not found', 'data' => []];
+    }
+
+    $status = strtoupper(trim((string)($user['status'] ?? 'INACTIVE')));
+
+    if ($status !== 'ACTIVE') {
+        return ['ok' => false, 'code' => 'ACCOUNT_INACTIVE', 'message' => 'Account is inactive', 'data' => []];
+    }
+
+    $pinHash = (string)($user['pin_hash'] ?? '');
+
+    if ($pinHash === '' || !password_verify($pin, $pinHash)) {
+        return ['ok' => false, 'code' => 'INVALID_PIN', 'message' => 'Invalid transaction PIN', 'data' => []];
+    }
+
+    return [
+        'ok' => true,
+        'code' => 'SUCCESS',
+        'message' => 'PIN verified',
+        'data' => [
+            'pin_verified' => true,
+            'verified_at' => user_proxy_now(),
+        ],
+    ];
+}
+
 function user_proxy_load_wallet(string $uid): array
 {
     $uid = trim($uid);
@@ -3353,6 +3395,48 @@ switch ($action) {
             'items' => user_proxy_collect_request_logs($uid, $limit, $legacy, $month),
             'mode' => $legacy ? 'fast_with_legacy_fallback' : 'fast',
         ]);
+        break;
+
+    case 'validate_pin':
+    case 'pin_validate':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $body = user_proxy_read_json_body();
+        $pin = trim((string)($body['pin'] ?? $body['transaction_pin'] ?? ''));
+
+        $res = user_proxy_validate_transaction_pin($uid, $pin);
+
+        if (!($res['ok'] ?? false)) {
+            $code = (string)($res['code'] ?? 'SERVER_ERROR');
+            $httpStatus = 500;
+
+            if ($code === 'VALIDATION_ERROR') {
+                $httpStatus = 422;
+            } elseif (in_array($code, ['ACCOUNT_INACTIVE', 'INVALID_PIN'], true)) {
+                $httpStatus = 403;
+            } elseif ($code === 'USER_NOT_FOUND') {
+                $httpStatus = 404;
+            }
+
+            user_proxy_response(
+                false,
+                $code,
+                (string)($res['message'] ?? 'Failed to validate PIN'),
+                (array)($res['data'] ?? []),
+                $httpStatus
+            );
+        }
+
+        user_proxy_response(
+            true,
+            (string)($res['code'] ?? 'SUCCESS'),
+            (string)($res['message'] ?? 'PIN verified'),
+            (array)($res['data'] ?? []),
+            200
+        );
         break;
         
         

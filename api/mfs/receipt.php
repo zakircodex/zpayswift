@@ -38,16 +38,17 @@ $rawStatus = strtoupper((string)($data['status'] ?? ''));
 $isFinalReceipt = in_array($rawStatus, ['SUCCESS', 'SUCCESSFUL', 'DONE', 'COMPLETED'], true);
 $isFailedReceipt = in_array($rawStatus, ['FAILED', 'CANCELLED'], true);
 $isProcessingReceipt = $rawStatus === 'PROCESSING';
+$isPendingReceipt = in_array($rawStatus, ['', 'PENDING', 'WAITING', 'WAITING_ADMIN'], true);
 $displayStatus = $isFinalReceipt
     ? 'Successful'
-    : ($isFailedReceipt ? 'Failed' : ($isProcessingReceipt ? 'Processing' : 'Processing Securely'));
+    : ($isFailedReceipt ? 'Failed' : ($isProcessingReceipt ? 'Processing' : ($isPendingReceipt ? 'Pending' : $rawStatus)));
 $statusMessage = $isFinalReceipt
     ? 'Your remittance has been completed successfully.'
     : ($isFailedReceipt
         ? 'Your request could not be completed. Any held balance has been returned if applicable.'
         : ($isProcessingReceipt
             ? 'Your request is currently being processed.'
-            : 'Your request is being processed securely.'));
+            : 'Your request has been submitted successfully.'));
 $title = $ok
     ? ($isFinalReceipt ? 'Z-Pay Swift Remittance Receipt' : 'Z-Pay Swift MFS Request Tracking')
     : 'Receipt Not Found';
@@ -100,6 +101,7 @@ if (!$isMy && $totalBdt <= 0) {
   <style>
     :root{color-scheme:dark;--bg:#07101d;--card:#101827;--line:rgba(148,163,184,.22);--text:#f8fafc;--muted:#94a3b8;--green:#22c55e;--blue:#3b82f6}
     *{box-sizing:border-box}
+    html,body{height:auto}
     body{margin:0;min-height:100vh;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:radial-gradient(circle at top left,rgba(59,130,246,.18),transparent 35%),linear-gradient(180deg,#07101d,#0f172a);color:var(--text);padding:24px}
     .wrap{max-width:820px;margin:0 auto}
     .card{border:1px solid var(--line);border-radius:28px;background:linear-gradient(180deg,rgba(16,24,39,.96),rgba(16,24,39,.9));box-shadow:0 24px 70px rgba(0,0,0,.34);overflow:hidden}
@@ -125,7 +127,23 @@ if (!$isMy && $totalBdt <= 0) {
     .copy-status{margin-top:10px;color:#bbf7d0;font-weight:800;min-height:20px}
     .not-found{padding:48px;text-align:center}
     @media(max-width:640px){body{padding:12px}.head{display:block}.status{display:inline-flex;margin-top:16px}.grid{grid-template-columns:1fr}.r-row{display:block}.r-row strong{display:block;text-align:left;margin-top:4px}.card{border-radius:22px}}
-    @media print{body{background:#fff;color:#111;padding:0}.card,.section{box-shadow:none;border-color:#ddd;background:#fff}.actions{display:none}.status{color:#166534;background:#dcfce7}.r-row span,p{color:#555}}
+    @page{size:auto;margin:12mm}
+    @media print{
+      :root{color-scheme:light}
+      html,body{height:auto !important;min-height:0 !important;background:#fff !important;color:#111 !important}
+      body{padding:0 !important;margin:0 !important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      .wrap{max-width:100% !important;margin:0 auto !important;padding:0 !important}
+      .card{box-shadow:none !important;border:1px solid #ddd !important;background:#fff !important;color:#111 !important;overflow:visible !important;border-radius:14px !important;break-before:auto !important;page-break-before:auto !important}
+      .head{padding:16px 18px !important;break-inside:avoid;page-break-inside:avoid}
+      .body{padding:16px 18px !important;gap:12px !important}
+      .section{box-shadow:none !important;border-color:#ddd !important;background:#fff !important;color:#111 !important;break-inside:avoid;page-break-inside:avoid;padding:12px !important}
+      .actions,.copy-status{display:none !important}
+      .status{border-color:#ddd !important;color:#111 !important;background:#f8fafc !important}
+      .status.success{color:#166534 !important;background:#dcfce7 !important}
+      .status.failed{color:#991b1b !important;background:#fee2e2 !important}
+      .r-row span,p{color:#555 !important}
+      h1{font-size:22px !important}
+    }
   </style>
 </head>
 <body>

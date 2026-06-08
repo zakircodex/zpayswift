@@ -2374,6 +2374,18 @@ function setTopupFlowBusy(on, text = 'Submitting...'){
   delete btn.dataset.originalText;
 }
 
+function setTopupFlowError(message){
+  const node = el('topupFlowError');
+  if (!node) return;
+
+  node.textContent = message || '';
+  node.classList.toggle('active', !!message);
+}
+
+async function validateTransactionPin(pin){
+  await proxyPost('validate_pin', { pin }, 'Checking PIN...', { busy: false });
+}
+
 function openTopupFlowFromNumber(){
   if (!validateWizardStep(1)) return;
 
@@ -2469,6 +2481,7 @@ function renderTopupFlowStep(step = ''){
   if (sub) sub.textContent = 'Enter your transaction PIN to submit the topup.';
   if (body) body.innerHTML = `
     <input id="topupFlowPinInput" class="wizard-big-input" type="password" inputmode="numeric" placeholder="Enter PIN" value="${esc(data.pin || '')}">
+    <div id="topupFlowError" class="mfs-pin-error"></div>
   `;
 
   const pinInput = el('topupFlowPinInput');
@@ -2493,7 +2506,7 @@ function topupFlowBack(){
   }
 }
 
-function topupFlowNext(){
+async function topupFlowNext(){
   if (wizard.step === 2) {
     if (validateWizardStep(2) && validateWizardStep(3)) showTopupFlowStep('pin');
     return;
@@ -2504,7 +2517,39 @@ function topupFlowNext(){
     if (pinInput && el('wizardPin')) {
       el('wizardPin').value = pinInput.value || '';
     }
-    if (validateWizardStep(4)) showTopupFlowStep('review');
+    if (!validateWizardStep(4)) {
+      setTopupFlowError('PIN is required');
+      return;
+    }
+
+    const data = wizardData();
+    const next = el('topupFlowNextBtn');
+    const originalText = next ? next.textContent : '';
+
+    try {
+      if (next) {
+        next.disabled = true;
+        next.textContent = 'Checking...';
+      }
+      await validateTransactionPin(data.pin);
+      setTopupFlowError('');
+      showTopupFlowStep('review');
+    } catch (err) {
+      const message = err.message || 'Invalid transaction PIN';
+      setTopupFlowError(message);
+      showToast(message, 'error');
+      if (isSessionError(err)) {
+        setTimeout(() => {
+          showLogin();
+          setLoginError('Session expired. Please login again.');
+        }, 900);
+      }
+    } finally {
+      if (next) {
+        next.disabled = false;
+        next.textContent = originalText || 'Next';
+      }
+    }
     return;
   }
 

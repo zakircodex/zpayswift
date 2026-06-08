@@ -394,7 +394,7 @@ body.flow-modal-open{
   border-radius:22px;
   background:linear-gradient(180deg,rgba(18,40,77,.98),rgba(11,31,67,.98));
   border:1px solid rgba(110,149,221,.24);
-  box-shadow:0 0 0 9999px rgba(2,7,15,.72),0 22px 70px rgba(0,0,0,.42);
+  box-shadow:0 0 0 9999px rgba(2,7,15,.9),0 22px 70px rgba(0,0,0,.42);
   transform:translate(-50%,-50%);
 }
 
