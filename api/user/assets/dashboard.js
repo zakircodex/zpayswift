@@ -8,6 +8,7 @@ const state = {
   historyMonth: currentMonthKey(),
   historyLoaded: false,
   historyLoading: false,
+  historyVisited: false,
   historyLimit: 50,
   bundleOffers: [],
   busyCount: 0,
@@ -155,9 +156,11 @@ function mfsProviderLabel(row){
 }
 
 function mfsIsRemittance(row){
-  return String(row?.service_mode || '').toUpperCase() === 'REMITTANCE'
-    || String(row?.country_code || row?.country || '').toUpperCase() === 'MY'
-    || Number(row?.amount_rm ?? row?.amount_myr ?? 0) > 0;
+  const mode = String(row?.service_mode || '').toUpperCase();
+  const country = String(row?.country_code || row?.country || '').toUpperCase();
+  if (country === 'BD' && (!mode || mode === 'LOCAL')) return false;
+  if (country === 'MY' || mode === 'REMITTANCE') return true;
+  return Number(row?.amount_rm ?? row?.amount_myr ?? 0) > 0;
 }
 
 function mfsRate(row){
@@ -620,7 +623,12 @@ function openSection(sectionId){
   }
 
   if (sectionId === 'historySection') {
-    ensureHistoryLoaded().catch(err => {
+    if (!state.historyVisited) {
+      state.historyVisited = true;
+      setHistoryFilter('ALL', { skipRender: true });
+    }
+
+    ensureHistoryLoaded({ force: !state.historyLoaded }).catch(err => {
       if (isSessionError(err)) {
         showLogin();
         setLoginError('Session expired. Please login again.');
@@ -655,14 +663,14 @@ function applyDashboardBootstrap(data){
   }
   if (Array.isArray(logWrap.items)) {
     state.requestLogs = logWrap.items;
-    state.historyLoaded = false;
+    state.historyLoaded = true;
   }
 }
 
 async function loadDashboardBootstrap(showBusy = true, busyText = 'Checking session...'){
   const data = await proxyGet(
     'dashboard_bootstrap',
-    { limit: 20, month: state.historyMonth },
+    { limit: state.historyLimit, month: state.historyMonth },
     busyText,
     { busy: showBusy }
   );
@@ -1090,7 +1098,11 @@ function statusMatchesFilter(row, filter){
   if (filter === 'BUNDLE') return type === 'BUNDLE';
 
   if (filter === 'PENDING') {
-    return ['PENDING','CLAIMED','PROCESSING','DIALING','WAITING','WAITING_ADMIN'].includes(status);
+    return ['PENDING','WAITING','WAITING_ADMIN'].includes(status);
+  }
+
+  if (filter === 'PROCESSING') {
+    return ['CLAIMED','PROCESSING','DIALING'].includes(status);
   }
 
   if (filter === 'SUCCESS') {
@@ -1225,6 +1237,7 @@ function renderHistory(){
     const number = requestNumberOf(item);
     const prefix = amountPrefixOf(item);
     const isMfs = type === 'MFS';
+    const receiptLink = isMfs ? mfsTrackingUrl(item) : String(item.receipt_url || '').trim();
 
     const displayAmount = type === 'BUNDLE'
       ? (item.you_pay ?? item.payable_amount ?? item.net_cost_after_commission ?? item.amount ?? 0)
@@ -1279,7 +1292,7 @@ function renderHistory(){
         <div class="history-actions">
           <button class="btn blue sm" type="button" onclick="openHistoryDetail('${esc(item.request_id || '')}')">View</button>
           <button class="btn ghost sm" type="button" onclick="copyHistoryId('${esc(item.request_id || '')}')">Copy ID</button>
-          ${item.receipt_url ? `<button class="btn green sm" type="button" onclick="openReceiptLink('${esc(item.receipt_url)}')">Receipt</button>` : ''}
+          ${receiptLink ? `<button class="btn green sm" type="button" onclick="openReceiptLink('${esc(receiptLink)}')">Receipt</button>` : ''}
         </div>
       </div>
     `;
@@ -1339,8 +1352,9 @@ window.openHistoryDetail = function(requestId){
       '\nYou Pay: BDT ' + money(row.you_pay || row.payable_amount || row.net_cost_after_commission || row.amount || 0);
   }
 
-  if (row.receipt_url) {
-    msg += '\nReceipt: ' + row.receipt_url;
+  const receiptLink = isMfs ? mfsTrackingUrl(row) : String(row.receipt_url || '').trim();
+  if (receiptLink) {
+    msg += '\nReceipt: ' + receiptLink;
   }
 
   if (el('detailMessage')) el('detailMessage').textContent = msg;
@@ -1352,13 +1366,25 @@ function closeHistoryDetail(){
   el('detailModal')?.classList.remove('show');
 }
 
-function setHistoryFilter(filter){
+function setHistoryFilter(filter, options = {}){
   state.filter = String(filter || 'ALL').toUpperCase();
 
   document.querySelectorAll('.filter-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.filter === state.filter);
   });
 
+  if (!state.historyLoaded && !options.skipLoad) {
+    ensureHistoryLoaded({ force: true, busyText: 'Loading this month history...' }).catch(err => {
+      if (isSessionError(err)) {
+        showLogin();
+        setLoginError('Session expired. Please login again.');
+        return;
+      }
+      showToast(err.message || 'Failed to load history', 'error');
+    });
+  }
+
+  if (options.skipRender) return;
   renderHistory();
 }
 
@@ -1810,7 +1836,15 @@ function clearMfsCreateFieldsAfterSuccess(){
 }
 
 function mfsTrackingUrl(data){
-  return String(data?.tracking_url || data?.receipt_url || data?.request_url || '');
+  const direct = String(data?.tracking_url || data?.receipt_url || data?.request_url || '').trim();
+  if (direct) return direct;
+
+  const token = String(data?.receipt_token || data?.tracking_token || '').trim();
+  if (token) {
+    return `${window.location.origin || ''}/api/mfs/receipt.php?t=${encodeURIComponent(token)}`;
+  }
+
+  return '';
 }
 
 function ensureMfsResultModal(){
@@ -1986,6 +2020,7 @@ function applyMfsCreateSuccessToLocalState(data){
 
   if (requestId) {
     state.requestLogs = (state.requestLogs || []).filter(row => String(row.request_id || '') !== requestId);
+    const trackingLink = mfsTrackingUrl(data);
 
     state.requestLogs.unshift({
       request_id: requestId,
@@ -2013,8 +2048,9 @@ function applyMfsCreateSuccessToLocalState(data){
       total_debit_rm: Number(data.total_debit_rm || 0),
       exchange_rate: Number(data.exchange_rate || 0),
       receipt_id: data.receipt_id || '',
-      receipt_url: data.receipt_url || '',
-      tracking_url: data.tracking_url || data.receipt_url || '',
+      receipt_url: trackingLink,
+      tracking_url: trackingLink,
+      receipt_token: data.receipt_token || data.tracking_token || '',
       receipt_created_at: Number(data.receipt_created_at || 0),
       reference: data.reference || '',
       trxid: data.trxid || '',
@@ -3072,6 +3108,10 @@ window.openSection = openSection;
 window.showToast = showToast;
 window.setBusy = setBusy;
 window.syncUserModalLock = syncUserModalLock;
+window.userSessionExpired = function(){
+  showLogin();
+  setLoginError('Session expired. Please login again.');
+};
 window.renderMfsResultSuccess = renderMfsResultSuccess;
 window.applyMfsCreateSuccessToLocalState = applyMfsCreateSuccessToLocalState;
 window.renderMfsResultError = renderMfsResultError;

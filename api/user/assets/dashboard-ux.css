@@ -352,6 +352,17 @@ body.flow-modal-open{
   overflow:hidden;
 }
 
+#mfsStepForm > .choice-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+
+#mfsStepForm .mfs-provider-choice{
+  min-height:64px;
+  width:100%;
+}
+
 #mfsLivePreview,
 #topupSection > .wizard-card > .wizard-progress,
 #topupSection > .wizard-card > .result-box,
@@ -447,6 +458,30 @@ body.flow-modal-open{
   border-color:rgba(31,215,96,.36);
   background:linear-gradient(135deg,rgba(31,215,96,.18),rgba(91,233,156,.11));
   color:#d7ffe3;
+}
+
+.mfs-preview-alert,
+.mfs-pin-error{
+  grid-column:1/-1;
+  display:none;
+  padding:11px 12px;
+  border-radius:15px;
+  border:1px solid rgba(255,99,132,.28);
+  background:linear-gradient(135deg,rgba(255,99,132,.14),rgba(255,255,255,.035));
+  color:#ffd6df;
+  font-size:12px;
+  font-weight:900;
+  line-height:1.35;
+}
+
+.mfs-preview-alert,
+.mfs-pin-error.active{
+  display:block;
+}
+
+.mfs-danger-row{
+  border-color:rgba(255,99,132,.28) !important;
+  background:linear-gradient(135deg,rgba(255,99,132,.12),rgba(255,255,255,.025)) !important;
 }
 
 .flow-amount-grid{
@@ -568,6 +603,10 @@ body.flow-modal-open{
 
   .mfs-review-grid{
     grid-template-columns:1fr;
+  }
+
+  #mfsStepForm > .choice-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
   }
 
   .flow-choice-grid,

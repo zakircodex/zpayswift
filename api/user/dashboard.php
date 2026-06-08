@@ -10,8 +10,8 @@ header('Pragma: no-cache');
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Z-Pay Swift User Dashboard</title>
-  <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=11">
-  <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=8">
+  <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=12">
+  <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=9">
 </head>
 <body>
 
@@ -147,7 +147,7 @@ header('Pragma: no-cache');
           </div>
 
           <div class="hero-mini">
-            <div class="hero-mini-label">This Month</div>
+            <div class="hero-mini-label">This Month Requests</div>
             <div class="hero-mini-value" id="heroRequests">0</div>
           </div>
 
@@ -438,13 +438,9 @@ header('Pragma: no-cache');
 
           <div class="filter-row">
             <button class="filter-btn active" data-filter="ALL" type="button">All</button>
-            <button class="filter-btn" data-filter="TOPUP" type="button">Topup</button>
-            <button class="filter-btn" data-filter="BUNDLE" type="button">Bundle</button>
-            
-            <button class="filter-btn" data-filter="MFS" type="button">bKash/Nagad</button>
-            
             <button class="filter-btn" data-filter="PENDING" type="button">Pending</button>
-            <button class="filter-btn" data-filter="SUCCESS" type="button">Success</button>
+            <button class="filter-btn" data-filter="PROCESSING" type="button">Processing</button>
+            <button class="filter-btn" data-filter="SUCCESS" type="button">Successful</button>
             <button class="filter-btn" data-filter="FAILED" type="button">Failed</button>
           </div>
 
@@ -577,7 +573,7 @@ header('Pragma: no-cache');
     <button class="bottom-btn" data-page-section="topupSection" type="button">Topup</button>
     <button class="bottom-btn" data-page-section="bundleSection" type="button">Bundle</button>
     
-    <button class="bottom-btn" data-page-section="mfsSection" type="button">Send Money</button>
+    <button class="bottom-btn" data-page-section="mfsSection" type="button">Money</button>
     
     <button class="bottom-btn" data-page-section="historySection" type="button">History</button>
   </div>
@@ -587,7 +583,7 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=15"></script>
-<script src="/api/user/assets/dashboard-ux.js?v=8"></script>
+<script src="/api/user/assets/dashboard.js?v=16"></script>
+<script src="/api/user/assets/dashboard-ux.js?v=9"></script>
 </body>
 </html>

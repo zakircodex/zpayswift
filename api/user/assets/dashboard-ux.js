@@ -14,6 +14,7 @@
 
   var serverPreview = null;
   var amountSyncing = false;
+  var previewCanContinue = true;
 
   function openSection(id){
     if (typeof window.openSection === 'function') { window.openSection(id); return; }
@@ -64,8 +65,9 @@
     var appState = window.userState || {};
     var summary = appState.walletSummary || {};
     var wallet = summary.wallet || {};
+    var me = appState.me || {};
     var currency = normalizeCurrency(wallet.display_currency || wallet.wallet_currency || wallet.currency || summary.wallet_currency || '');
-    var country = String(summary.country_code || wallet.country_code || '').toUpperCase();
+    var country = normalizeCountry(summary.country_code || summary.country || wallet.country_code || wallet.country || me.country_code || me.country || '');
     var preview = serverPreview || {};
     var rate = Number(preview.rate_myr_to_bdt || preview.exchange_rate || wallet.rate_myr_bdt || wallet.rate_myr_to_bdt || summary.rate_myr_bdt || 0);
 
@@ -73,8 +75,30 @@
       currency: currency,
       country: country,
       rate: Number.isFinite(rate) ? rate : 0,
-      isMyr: currency === 'MYR' || country === 'MY'
+      isMyr: country === 'MY' || (currency === 'MYR' && country !== 'BD')
     };
+  }
+
+  function normalizeCountry(value){
+    var country = String(value || '').toUpperCase().trim();
+    if (country === 'BANGLADESH') return 'BD';
+    if (country === 'MALAYSIA') return 'MY';
+    if (['BD','MY'].indexOf(country) >= 0) return country;
+    return '';
+  }
+
+  function countryLabel(country){
+    country = normalizeCountry(country);
+    if (country === 'BD') return 'Bangladesh';
+    if (country === 'MY') return 'Malaysia';
+    return '-';
+  }
+
+  function modeLabel(mode){
+    mode = String(mode || '').toUpperCase().trim();
+    if (mode === 'LOCAL') return 'Local';
+    if (mode === 'REMITTANCE') return 'Remittance';
+    return '-';
   }
 
   function normalizeCurrency(value){
@@ -173,6 +197,34 @@
     return walletMeta().isMyr;
   }
 
+  function previewFacts(d){
+    var p = serverPreview || {};
+    var meta = walletMeta();
+    var country = normalizeCountry(p.country_code || p.country || p.display_country || meta.country);
+    var mode = String(p.service_mode || p.mode || '').toUpperCase().trim();
+    var reviewCurrency = walletCurrencyForPreview(p, false);
+    var localBd = country === 'BD' && (mode === '' || mode === 'LOCAL');
+    var remittance = !localBd && (
+      country === 'MY' ||
+      mode === 'REMITTANCE' ||
+      reviewCurrency === 'MYR' ||
+      meta.isMyr ||
+      Number(p.amount_myr || p.amount_rm || d.amount_rm || 0) > 0
+    );
+
+    if (remittance) {
+      reviewCurrency = 'MYR';
+      if (!mode) mode = 'REMITTANCE';
+      if (!country) country = 'MY';
+    } else {
+      reviewCurrency = 'BDT';
+      if (!mode) mode = 'LOCAL';
+      if (!country) country = 'BD';
+    }
+
+    return { p: p, meta: meta, country: country, mode: mode, reviewCurrency: reviewCurrency, remittance: remittance };
+  }
+
   function updateCurrencyUi(){
     var meta = walletMeta();
     var field = byId('mfsAmountRmField') || (byId('mfsAmountRm') ? byId('mfsAmountRm').closest('.field') : null);
@@ -205,13 +257,13 @@
   }
 
   function previewHtml(d){
-    var p = serverPreview || {};
-    var currency = String(p.wallet_currency || '').toUpperCase();
-    var country = String(p.country_code || '').toUpperCase();
-    var mode = String(p.service_mode || '').toUpperCase();
-    var meta = walletMeta();
-    var remittance = meta.isMyr || mode === 'REMITTANCE' || country === 'MY' || Number(p.amount_myr || p.amount_rm || d.amount_rm || 0) > 0;
-    var reviewCurrency = walletCurrencyForPreview(p, remittance);
+    var facts = previewFacts(d);
+    var p = facts.p;
+    var meta = facts.meta;
+    var country = facts.country;
+    var mode = facts.mode;
+    var remittance = facts.remittance;
+    var reviewCurrency = facts.reviewCurrency;
     var feeText = remittance
       ? 'RM ' + money(p.fee_myr || p.fee_rm || 0)
       : 'BDT ' + money(p.fee_bdt || 0);
@@ -223,21 +275,63 @@
     var debit = debitForPreview(p, reviewCurrency, d);
     var responseAfter = firstNumber(normalizeCurrency(p.display_currency) === reviewCurrency ? p.display_balance_after : undefined);
     var after = Number.isFinite(responseAfter) ? responseAfter : (Number.isFinite(available) && Number.isFinite(debit) ? available - debit : NaN);
+    var explicitCanPay = p.can_pay;
+    var hasPreview = !!serverPreview;
+    previewCanContinue = !hasPreview || (
+      explicitCanPay !== false &&
+      (!Number.isFinite(after) || after >= 0) &&
+      (!Number.isFinite(available) || !Number.isFinite(debit) || available >= debit)
+    );
+    var balanceAfterText = Number.isFinite(after)
+      ? (after >= 0 ? currencyPrefix(reviewCurrency) + ' ' + money(after) : 'Insufficient')
+      : '';
+    var alertHtml = previewCanContinue ? '' : '<div class="mfs-preview-alert">Insufficient available balance</div>';
     return '<div class="mfs-review-grid">' +
+      alertHtml +
       '<div class="zpay-mfs-preview-row"><span>Provider</span><b>' + esc(providerName(d.provider)) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Receiver</span><b>' + esc(d.receiver_number || '-') + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Country</span><b>' + esc(country || 'Auto from profile/phone') + '</b></div>' +
+      '<div class="zpay-mfs-preview-row"><span>Country</span><b>' + esc(countryLabel(country)) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Role</span><b>' + esc(p.role || 'USER') + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Mode</span><b>' + esc(mode || 'Auto') + '</b></div>' +
+      '<div class="zpay-mfs-preview-row"><span>Mode</span><b>' + esc(modeLabel(mode)) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Received Amount</span><b>BDT ' + money(p.amount_bdt || d.amount_bdt) + '</b></div>' +
       (remittance ? '<div class="zpay-mfs-preview-row"><span>Send Amount</span><b>RM ' + money(p.amount_myr || p.amount_rm || d.amount_rm) + '</b></div>' : '') +
-      (rate > 0 ? '<div class="zpay-mfs-preview-row"><span>Rate</span><b>RM 1 = BDT ' + money(rate) + '</b></div>' : '') +
+      (remittance && rate > 0 ? '<div class="zpay-mfs-preview-row"><span>Rate</span><b>RM 1 = BDT ' + money(rate) + '</b></div>' : '') +
       '<div class="zpay-mfs-preview-row"><span>Fee</span><b>' + esc(feeText) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Total Paid</span><b>' + esc(totalText) + '</b></div>' +
       (Number.isFinite(available) ? '<div class="zpay-mfs-preview-row"><span>Available Balance</span><b>' + currencyPrefix(reviewCurrency) + ' ' + money(available) + '</b></div>' : '') +
-      (Number.isFinite(after) ? '<div class="zpay-mfs-preview-row"><span>Balance After</span><b>' + currencyPrefix(reviewCurrency) + ' ' + money(after) + '</b></div>' : '') +
+      (balanceAfterText ? '<div class="zpay-mfs-preview-row ' + (previewCanContinue ? '' : 'mfs-danger-row') + '"><span>Balance After</span><b>' + esc(balanceAfterText) + '</b></div>' : '') +
       '<div class="zpay-mfs-preview-row"><span>Reference</span><b>' + esc(d.reference || '-') + '</b></div>' +
       '</div>';
+  }
+
+  function updateContinueButton(){
+    var btn = byId('mfsSendBtn');
+    if (!btn) return;
+    btn.disabled = serverPreview ? !previewCanContinue : false;
+    btn.title = btn.disabled ? 'Insufficient available balance' : '';
+  }
+
+  function setMfsPinError(message){
+    var pin = byId('mfsPin');
+    if (!pin || !pin.parentNode) return;
+    var node = byId('mfsPinError');
+    if (!node) {
+      node = document.createElement('div');
+      node.id = 'mfsPinError';
+      node.className = 'mfs-pin-error';
+      pin.insertAdjacentElement('afterend', node);
+    }
+    node.textContent = message || '';
+    node.classList.toggle('active', !!message);
+  }
+
+  function isAuthError(err){
+    var code = String(err && err.code || '').toUpperCase();
+    var status = Number(err && err.status || 0);
+    var msg = String(err && err.message || '').toLowerCase();
+    return status === 401 || status === 403 ||
+      ['AUTH_ERROR','UNAUTHORIZED','FORBIDDEN','SESSION_EXPIRED','USER_SESSION_EXPIRED'].indexOf(code) >= 0 ||
+      msg.indexOf('session') >= 0 && msg.indexOf('expired') >= 0;
   }
 
   function renderPreview(){
@@ -247,6 +341,7 @@
     var details = byId('mfsPreviewDetails');
     if (live) { live.className = 'bundle-result-box'; live.innerHTML = previewHtml(d); }
     if (details) details.innerHTML = previewHtml(d);
+    updateContinueButton();
   }
 
   async function loadServerPreview(){
@@ -277,6 +372,7 @@
     });
     var target = byId(id);
     if (target) target.classList.add('active');
+    if (id === 'mfsStepPin') setMfsPinError('');
     if (typeof window.syncUserModalLock === 'function') {
       window.syncUserModalLock();
     } else {
@@ -327,7 +423,13 @@
     var text = await res.text();
     var json;
     try { json = JSON.parse(text); } catch(e) { throw new Error(text || 'Invalid server response'); }
-    if (!res.ok || !json.ok) throw new Error(json.message || 'Failed to create request');
+    if (!res.ok || !json.ok) {
+      var err = new Error(json.message || 'Failed to create request');
+      err.status = res.status;
+      err.code = json.code || (json.data && json.data.code) || '';
+      err.data = json.data || null;
+      throw err;
+    }
     return json.data || {};
   }
 
@@ -336,7 +438,13 @@
     if (!validBase()) return;
     if (!d.pin) {
       if (typeof showToast === 'function') showToast('PIN is required', 'error');
-      if (typeof showMfsErrorModal === 'function') showMfsErrorModal('Validation Error', 'PIN is required');
+      setMfsPinError('PIN is required');
+      showStep('mfsStepPin');
+      return;
+    }
+    if (serverPreview && !previewCanContinue) {
+      showStep('mfsStepPreview');
+      if (typeof showToast === 'function') showToast('Insufficient available balance', 'error');
       return;
     }
     try {
@@ -353,8 +461,12 @@
       clearMfsCreateFieldsAfterSuccess();
       if (typeof showToast === 'function') showToast('Request created successfully', 'ok');
     } catch(e) {
-      if (typeof renderMfsResultError === 'function') renderMfsResultError(e.message || 'Failed to create request');
-      if (typeof showToast === 'function') showToast(e.message || 'Failed to create request', 'error');
+      var message = e.message || 'Failed to create request';
+      setMfsPinError(message);
+      if (typeof showToast === 'function') showToast(message, 'error');
+      if (isAuthError(e) && typeof window.userSessionExpired === 'function') {
+        setTimeout(function(){ window.userSessionExpired(); }, 900);
+      }
     } finally {
       var finalConfirmBtn = byId('mfsConfirmBtn');
       if (finalConfirmBtn) {
@@ -415,13 +527,25 @@
         showStep('mfsStepPreview');
       } catch(err) {
         if (typeof showToast === 'function') showToast(err.message || 'Failed to load send money preview', 'error');
+        if (isAuthError(err) && typeof window.userSessionExpired === 'function') {
+          setTimeout(function(){ window.userSessionExpired(); }, 900);
+        }
       } finally {
         preview.disabled = false;
         preview.textContent = originalText || 'Next';
       }
     });
     var back = byId('mfsBackBtn'); if (back) back.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepForm'); });
-    var send = byId('mfsSendBtn'); if (send) send.addEventListener('click', function(e){ e.preventDefault(); renderPreview(); if (validBase()) showStep('mfsStepPin'); });
+    var send = byId('mfsSendBtn'); if (send) send.addEventListener('click', function(e){
+      e.preventDefault();
+      renderPreview();
+      if (!validBase()) return;
+      if (!previewCanContinue) {
+        if (typeof showToast === 'function') showToast('Insufficient available balance', 'error');
+        return;
+      }
+      showStep('mfsStepPin');
+    });
     var pinBack = byId('mfsPinBackBtn'); if (pinBack) pinBack.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepPreview'); });
     var confirm = byId('mfsConfirmBtn'); if (confirm) confirm.addEventListener('click', function(e){ e.preventDefault(); confirmMfs(); });
     var pin = byId('mfsPin'); if (pin) pin.addEventListener('keydown', function(e){ if (e.key === 'Enter') confirmMfs(); });
