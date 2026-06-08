@@ -420,7 +420,7 @@ function showToast(message, type = 'info'){
 }
 
 function syncUserModalLock(){
-  const hasOpenModal = !!document.querySelector('.modal.show, #mfsStepPreview.active, #mfsStepPin.active');
+  const hasOpenModal = !!document.querySelector('.modal.show, #mfsStepAmount.active, #mfsStepPreview.active, #mfsStepPin.active');
   document.body.classList.toggle('flow-modal-open', hasOpenModal);
 }
 
@@ -1860,6 +1860,8 @@ function ensureMfsResultModal(){
       <p class="modal-sub" id="mfsCreateResultSub">Request details</p>
       <div id="mfsCreateResultBody" class="result-card"></div>
       <div class="wizard-actions">
+        <button id="mfsRetryBtn" class="btn green hidden" type="button">Try Again</button>
+        <button id="mfsEditBtn" class="btn ghost hidden" type="button">Edit</button>
         <button id="mfsCopyTrackingBtn" class="btn blue" type="button">Copy Link</button>
         <button id="mfsOpenTrackingBtn" class="btn green" type="button">Open Receipt</button>
         <button id="mfsCreateResultOkBtn" class="btn ghost" type="button">OK</button>
@@ -1886,6 +1888,8 @@ function showMfsResultModal({title = 'Send Money Request', subtitle = '', rows =
   const body = el('mfsCreateResultBody');
   const copyBtn = el('mfsCopyTrackingBtn');
   const openBtn = el('mfsOpenTrackingBtn');
+  const retryBtn = el('mfsRetryBtn');
+  const editBtn = el('mfsEditBtn');
 
   if (titleNode) titleNode.textContent = title;
   if (subNode) subNode.textContent = subtitle || '';
@@ -1914,6 +1918,22 @@ function showMfsResultModal({title = 'Send Money Request', subtitle = '', rows =
   if (openBtn) {
     openBtn.classList.toggle('hidden', !link);
     openBtn.onclick = () => window.open(link, '_blank', 'noopener');
+  }
+
+  if (retryBtn) {
+    retryBtn.classList.toggle('hidden', type !== 'error');
+    retryBtn.onclick = () => {
+      hideModalById('mfsCreateResultModal');
+      if (typeof window.zpayOpenMfsPinStep === 'function') window.zpayOpenMfsPinStep();
+    };
+  }
+
+  if (editBtn) {
+    editBtn.classList.toggle('hidden', type !== 'error');
+    editBtn.onclick = () => {
+      hideModalById('mfsCreateResultModal');
+      if (typeof window.zpayOpenMfsAmountStep === 'function') window.zpayOpenMfsAmountStep();
+    };
   }
 
   showModalById('mfsCreateResultModal');
@@ -2362,12 +2382,12 @@ function openTopupFlowFromNumber(){
     setWizardOperator(detected);
   }
 
-  showTopupFlowStep('operator');
+  showTopupFlowStep('details');
 }
 
 function showTopupFlowStep(step){
   ensureTopupFlowModal();
-  wizard.step = step === 'operator' ? 2 : step === 'amount' ? 3 : step === 'preview' ? 4 : 5;
+  wizard.step = step === 'details' ? 2 : step === 'pin' ? 3 : 4;
   renderTopupFlowStep(step);
   showModalById('topupFlowModal');
 }
@@ -2387,15 +2407,15 @@ function renderTopupFlowStep(step = ''){
   const back = el('topupFlowBackBtn');
   const next = el('topupFlowNextBtn');
 
-  const current = step || (wizard.step === 2 ? 'operator' : wizard.step === 3 ? 'amount' : wizard.step === 4 ? 'preview' : 'pin');
+  const current = step || (wizard.step === 2 ? 'details' : wizard.step === 3 ? 'pin' : 'review');
   const data = wizardData();
 
-  if (back) back.textContent = current === 'operator' ? 'Back / Edit' : 'Back';
-  if (next) next.textContent = current === 'preview' ? 'Continue' : current === 'pin' ? 'Confirm Topup' : 'Next';
+  if (back) back.textContent = current === 'details' ? 'Back / Edit' : 'Back';
+  if (next) next.textContent = current === 'review' ? 'Confirm Topup' : 'Next';
 
-  if (current === 'operator') {
-    if (title) title.textContent = 'Select Operator';
-    if (sub) sub.textContent = 'Auto-detected when possible. Select manually if needed.';
+  if (current === 'details') {
+    if (title) title.textContent = 'Topup Details';
+    if (sub) sub.textContent = 'Confirm operator and amount before PIN.';
     if (body) body.innerHTML = `
       <div class="flow-choice-grid flow-choice-grid-operators">
         ${[
@@ -2411,14 +2431,6 @@ function renderTopupFlowStep(step = ''){
           </button>
         `).join('')}
       </div>
-    `;
-    return;
-  }
-
-  if (current === 'amount') {
-    if (title) title.textContent = 'Enter Amount';
-    if (sub) sub.textContent = 'Choose a quick amount or write the amount manually.';
-    if (body) body.innerHTML = `
       <div class="flow-amount-grid">
         ${['20','30','50','100'].map(value => `
           <button type="button" class="flow-choice-btn topup-flow-amount ${String(data.amount) === value ? 'active' : ''}" data-amount="${value}">
@@ -2437,9 +2449,9 @@ function renderTopupFlowStep(step = ''){
     return;
   }
 
-  if (current === 'preview') {
+  if (current === 'review') {
     if (title) title.textContent = 'Review Topup';
-    if (sub) sub.textContent = 'Please review details before entering your PIN.';
+    if (sub) sub.textContent = 'Please review details before confirming.';
     if (body) body.innerHTML = `
       <div class="flow-review-grid">
         ${topupReviewRows().map(row => `
@@ -2475,33 +2487,25 @@ function topupFlowBack(){
   if (wizard.step === 2) {
     closeTopupFlowModal();
   } else if (wizard.step === 3) {
-    showTopupFlowStep('operator');
-  } else if (wizard.step === 4) {
-    showTopupFlowStep('amount');
+    showTopupFlowStep('details');
   } else {
-    showTopupFlowStep('preview');
+    showTopupFlowStep('pin');
   }
 }
 
 function topupFlowNext(){
   if (wizard.step === 2) {
-    if (validateWizardStep(2)) showTopupFlowStep('amount');
+    if (validateWizardStep(2) && validateWizardStep(3)) showTopupFlowStep('pin');
     return;
   }
 
   if (wizard.step === 3) {
-    if (validateWizardStep(3)) showTopupFlowStep('preview');
+    const pinInput = el('topupFlowPinInput');
+    if (pinInput && el('wizardPin')) {
+      el('wizardPin').value = pinInput.value || '';
+    }
+    if (validateWizardStep(4)) showTopupFlowStep('review');
     return;
-  }
-
-  if (wizard.step === 4) {
-    showTopupFlowStep('pin');
-    return;
-  }
-
-  const pinInput = el('topupFlowPinInput');
-  if (pinInput && el('wizardPin')) {
-    el('wizardPin').value = pinInput.value || '';
   }
 
   submitTopup();
@@ -2520,6 +2524,8 @@ function ensureTopupResultModal(){
       <p class="modal-sub" id="topupResultSub">Request details</p>
       <div id="topupResultBody" class="result-card"></div>
       <div class="wizard-actions">
+        <button id="topupRetryBtn" class="btn green hidden" type="button">Try Again</button>
+        <button id="topupEditBtn" class="btn ghost hidden" type="button">Edit</button>
         <button id="topupResultOkBtn" class="btn green" type="button">OK</button>
       </div>
     </div>
@@ -2553,6 +2559,25 @@ function showTopupResultModal({ title, subtitle, rows = [], type = 'success' } =
         `).join('')}
       </div>
     `;
+  }
+
+  const retryBtn = el('topupRetryBtn');
+  const editBtn = el('topupEditBtn');
+
+  if (retryBtn) {
+    retryBtn.classList.toggle('hidden', type !== 'error');
+    retryBtn.onclick = () => {
+      hideModalById('topupResultModal');
+      showTopupFlowStep('pin');
+    };
+  }
+
+  if (editBtn) {
+    editBtn.classList.toggle('hidden', type !== 'error');
+    editBtn.onclick = () => {
+      hideModalById('topupResultModal');
+      showTopupFlowStep('details');
+    };
   }
 
   showModalById('topupResultModal');

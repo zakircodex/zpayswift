@@ -11,7 +11,7 @@ header('Pragma: no-cache');
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Z-Pay Swift User Dashboard</title>
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=12">
-  <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=9">
+  <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
 </head>
 <body>
 
@@ -363,6 +363,15 @@ header('Pragma: no-cache');
         <input id="mfsReceiverNumber" class="input" type="tel" inputmode="numeric" maxlength="11" placeholder="01XXXXXXXXX">
       </div>
 
+      <div class="wizard-actions">
+        <button id="mfsPreviewBtn" class="btn blue" type="button">Next</button>
+      </div>
+    </div>
+
+    <div id="mfsStepAmount" class="mfs-step">
+      <div class="wizard-step-title">Enter Amount</div>
+      <div class="wizard-step-sub">Write amount and optional reference before PIN confirmation</div>
+
       <div class="field field-top-gap">
         <label>Amount BDT</label>
         <input id="mfsAmountBdt" class="input" type="number" inputmode="decimal" step="0.01" min="500" max="50000" placeholder="BDT 500 - 50000">
@@ -373,41 +382,42 @@ header('Pragma: no-cache');
         <input id="mfsAmountRm" class="input" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="RM amount">
       </div>
 
+      <div id="mfsRateHint" class="mfs-rate-hint"></div>
+
       <div class="field field-top-gap">
         <label>Reference</label>
         <input id="mfsReference" class="input" placeholder="Reference / note">
       </div>
 
-      <div id="mfsLivePreview" class="bundle-result-box">
-        Enter number and amount to preview.
-      </div>
+      <div id="mfsAmountNotice" class="mfs-step-notice"></div>
 
       <div class="wizard-actions">
-        <button id="mfsPreviewBtn" class="btn blue" type="button">Next</button>
+        <button id="mfsAmountBackBtn" class="btn ghost" type="button">Back</button>
+        <button id="mfsAmountNextBtn" class="btn green" type="button">Next</button>
       </div>
     </div>
 
     <div id="mfsStepPreview" class="mfs-step">
       <div class="result-card good">
-        <div class="result-title">Review Request</div>
+        <div class="result-title">Review Send Money</div>
         <div id="mfsPreviewDetails" class="result-text">-</div>
       </div>
 
       <div class="wizard-actions">
-        <button id="mfsBackBtn" class="btn ghost" type="button">Back</button>
-        <button id="mfsSendBtn" class="btn green" type="button">Continue</button>
+        <button id="mfsBackBtn" class="btn ghost" type="button">Back / Edit</button>
+        <button id="mfsSendBtn" class="btn green" type="button">Confirm &amp; Send Money</button>
       </div>
     </div>
 
     <div id="mfsStepPin" class="mfs-step">
-      <div class="wizard-step-title">Confirm with PIN</div>
-      <div class="wizard-step-sub">Enter your transaction PIN to submit request</div>
+      <div class="wizard-step-title">Enter PIN</div>
+      <div class="wizard-step-sub">PIN is required before final review</div>
 
       <input id="mfsPin" class="wizard-big-input" type="password" inputmode="numeric" placeholder="Enter PIN">
 
       <div class="wizard-actions">
         <button id="mfsPinBackBtn" class="btn ghost" type="button">Back</button>
-        <button id="mfsConfirmBtn" class="btn green" type="button">Confirm Send Money</button>
+        <button id="mfsConfirmBtn" class="btn green" type="button">Next</button>
       </div>
     </div>
 
@@ -583,7 +593,7 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=16"></script>
-<script src="/api/user/assets/dashboard-ux.js?v=9"></script>
+<script src="/api/user/assets/dashboard.js?v=17"></script>
+<script src="/api/user/assets/dashboard-ux.js?v=10"></script>
 </body>
 </html>

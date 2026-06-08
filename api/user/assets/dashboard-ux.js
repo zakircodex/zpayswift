@@ -230,6 +230,11 @@
     var field = byId('mfsAmountRmField') || (byId('mfsAmountRm') ? byId('mfsAmountRm').closest('.field') : null);
     if (field) field.classList.toggle('hidden', !meta.isMyr);
     if (!meta.isMyr && byId('mfsAmountRm')) byId('mfsAmountRm').value = '';
+    var rateHint = byId('mfsRateHint');
+    if (rateHint) {
+      rateHint.textContent = meta.isMyr && meta.rate > 0 ? 'Rate: RM 1 = BDT ' + money(meta.rate) : '';
+      rateHint.classList.toggle('active', meta.isMyr && meta.rate > 0);
+    }
     return meta;
   }
 
@@ -256,6 +261,24 @@
     }
   }
 
+  function syncPreviewAmountsToInputs(){
+    var p = serverPreview || {};
+    if (!isMyrMfsAccount()) return;
+
+    var bdt = byId('mfsAmountBdt');
+    var rm = byId('mfsAmountRm');
+    var amountBdt = firstNumber(p.amount_bdt);
+    var amountRm = firstNumber(p.amount_myr, p.amount_rm);
+
+    amountSyncing = true;
+    try {
+      if (bdt && Number.isFinite(amountBdt) && amountBdt > 0) bdt.value = money(amountBdt);
+      if (rm && Number.isFinite(amountRm) && amountRm > 0) rm.value = money(amountRm);
+    } finally {
+      amountSyncing = false;
+    }
+  }
+
   function previewHtml(d){
     var facts = previewFacts(d);
     var p = facts.p;
@@ -276,30 +299,28 @@
     var responseAfter = firstNumber(normalizeCurrency(p.display_currency) === reviewCurrency ? p.display_balance_after : undefined);
     var after = Number.isFinite(responseAfter) ? responseAfter : (Number.isFinite(available) && Number.isFinite(debit) ? available - debit : NaN);
     var explicitCanPay = p.can_pay;
+    var canPayFlag = !(explicitCanPay === false || explicitCanPay === 0 || String(explicitCanPay).toLowerCase() === 'false');
     var hasPreview = !!serverPreview;
     previewCanContinue = !hasPreview || (
-      explicitCanPay !== false &&
+      canPayFlag &&
       (!Number.isFinite(after) || after >= 0) &&
       (!Number.isFinite(available) || !Number.isFinite(debit) || available >= debit)
     );
     var balanceAfterText = Number.isFinite(after)
-      ? (after >= 0 ? currencyPrefix(reviewCurrency) + ' ' + money(after) : 'Insufficient')
+      ? currencyPrefix(reviewCurrency) + ' ' + money(Math.max(after, 0))
       : '';
-    var alertHtml = previewCanContinue ? '' : '<div class="mfs-preview-alert">Insufficient available balance</div>';
     return '<div class="mfs-review-grid">' +
-      alertHtml +
       '<div class="zpay-mfs-preview-row"><span>Provider</span><b>' + esc(providerName(d.provider)) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Receiver</span><b>' + esc(d.receiver_number || '-') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Country</span><b>' + esc(countryLabel(country)) + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Role</span><b>' + esc(p.role || 'USER') + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Mode</span><b>' + esc(modeLabel(mode)) + '</b></div>' +
       '<div class="zpay-mfs-preview-row"><span>Received Amount</span><b>BDT ' + money(p.amount_bdt || d.amount_bdt) + '</b></div>' +
       (remittance ? '<div class="zpay-mfs-preview-row"><span>Send Amount</span><b>RM ' + money(p.amount_myr || p.amount_rm || d.amount_rm) + '</b></div>' : '') +
       (remittance && rate > 0 ? '<div class="zpay-mfs-preview-row"><span>Rate</span><b>RM 1 = BDT ' + money(rate) + '</b></div>' : '') +
       '<div class="zpay-mfs-preview-row"><span>Fee</span><b>' + esc(feeText) + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Total Paid</span><b>' + esc(totalText) + '</b></div>' +
+      '<div class="zpay-mfs-preview-row"><span>Total Pay</span><b>' + esc(totalText) + '</b></div>' +
       (Number.isFinite(available) ? '<div class="zpay-mfs-preview-row"><span>Available Balance</span><b>' + currencyPrefix(reviewCurrency) + ' ' + money(available) + '</b></div>' : '') +
-      (balanceAfterText ? '<div class="zpay-mfs-preview-row ' + (previewCanContinue ? '' : 'mfs-danger-row') + '"><span>Balance After</span><b>' + esc(balanceAfterText) + '</b></div>' : '') +
+      (balanceAfterText ? '<div class="zpay-mfs-preview-row"><span>Balance After</span><b>' + esc(balanceAfterText) + '</b></div>' : '') +
       '<div class="zpay-mfs-preview-row"><span>Reference</span><b>' + esc(d.reference || '-') + '</b></div>' +
       '</div>';
   }
@@ -325,6 +346,13 @@
     node.classList.toggle('active', !!message);
   }
 
+  function setMfsAmountNotice(message){
+    var node = byId('mfsAmountNotice');
+    if (!node) return;
+    node.textContent = message || '';
+    node.classList.toggle('active', !!message);
+  }
+
   function isAuthError(err){
     var code = String(err && err.code || '').toUpperCase();
     var status = Number(err && err.status || 0);
@@ -332,6 +360,12 @@
     return status === 401 || status === 403 ||
       ['AUTH_ERROR','UNAUTHORIZED','FORBIDDEN','SESSION_EXPIRED','USER_SESSION_EXPIRED'].indexOf(code) >= 0 ||
       msg.indexOf('session') >= 0 && msg.indexOf('expired') >= 0;
+  }
+
+  function isPinError(err){
+    var msg = String(err && err.message || '').toLowerCase();
+    var code = String(err && err.code || '').toUpperCase();
+    return code.indexOf('PIN') >= 0 || msg.indexOf('pin') >= 0;
   }
 
   function renderPreview(){
@@ -362,25 +396,27 @@
       amount_myr: isMyrMfsAccount() ? d.amount_rm : 0,
       reference: d.reference
     }, 'Loading send money preview...', { busy: false });
+    syncPreviewAmountsToInputs();
     renderPreview();
   }
 
   function showStep(id){
-    ['mfsStepForm','mfsStepPreview','mfsStepPin'].forEach(function(stepId){
+    ['mfsStepForm','mfsStepAmount','mfsStepPreview','mfsStepPin'].forEach(function(stepId){
       var n = byId(stepId);
       if (n) n.classList.remove('active');
     });
     var target = byId(id);
     if (target) target.classList.add('active');
     if (id === 'mfsStepPin') setMfsPinError('');
+    if (id === 'mfsStepAmount') setMfsAmountNotice('');
     if (typeof window.syncUserModalLock === 'function') {
       window.syncUserModalLock();
     } else {
-      document.body.classList.toggle('flow-modal-open', id === 'mfsStepPreview' || id === 'mfsStepPin');
+      document.body.classList.toggle('flow-modal-open', id === 'mfsStepAmount' || id === 'mfsStepPreview' || id === 'mfsStepPin');
     }
   }
 
-  function validBase(){
+  function validNumberStep(){
     var d = data();
     var num = d.receiver_number.replace(/\D+/g, '');
     if (!/^01\d{9}$/.test(num)) {
@@ -388,16 +424,28 @@
       if (typeof showMfsErrorModal === 'function') showMfsErrorModal('Validation Error', 'Receiver number must be 11 digit BD number');
       return false;
     }
+    return true;
+  }
+
+  function validAmountStep(){
+    var d = data();
     if (d.amount_bdt <= 0 && d.amount_rm <= 0) {
       if (typeof showToast === 'function') showToast('Amount is required', 'error');
-      if (typeof showMfsErrorModal === 'function') showMfsErrorModal('Validation Error', 'Amount is required');
+      setMfsAmountNotice('Amount is required');
       return false;
     }
     if (d.amount_bdt > 0 && (d.amount_bdt < 500 || d.amount_bdt > 50000)) {
       if (typeof showToast === 'function') showToast('Amount must be between BDT 500 and BDT 50,000', 'error');
-      if (typeof showMfsErrorModal === 'function') showMfsErrorModal('Validation Error', 'Amount must be between BDT 500 and BDT 50,000');
+      setMfsAmountNotice('Amount must be between BDT 500 and BDT 50,000');
       return false;
     }
+    setMfsAmountNotice('');
+    return true;
+  }
+
+  function validBase(){
+    if (!validNumberStep()) return false;
+    if (!validAmountStep()) return false;
     return true;
   }
 
@@ -443,13 +491,14 @@
       return;
     }
     if (serverPreview && !previewCanContinue) {
-      showStep('mfsStepPreview');
+      showStep('mfsStepAmount');
+      setMfsAmountNotice('Insufficient available balance');
       if (typeof showToast === 'function') showToast('Insufficient available balance', 'error');
       return;
     }
     try {
       if (typeof setBusy === 'function') setBusy(true, 'Creating request...');
-      var confirmBtn = byId('mfsConfirmBtn');
+      var confirmBtn = byId('mfsSendBtn');
       var confirmText = confirmBtn ? confirmBtn.textContent : '';
       if (confirmBtn) {
         confirmBtn.disabled = true;
@@ -462,16 +511,21 @@
       if (typeof showToast === 'function') showToast('Request created successfully', 'ok');
     } catch(e) {
       var message = e.message || 'Failed to create request';
-      setMfsPinError(message);
+      if (isPinError(e)) {
+        showStep('mfsStepPin');
+        setMfsPinError(message);
+      } else if (typeof renderMfsResultError === 'function') {
+        renderMfsResultError(message);
+      }
       if (typeof showToast === 'function') showToast(message, 'error');
       if (isAuthError(e) && typeof window.userSessionExpired === 'function') {
         setTimeout(function(){ window.userSessionExpired(); }, 900);
       }
     } finally {
-      var finalConfirmBtn = byId('mfsConfirmBtn');
+      var finalConfirmBtn = byId('mfsSendBtn');
       if (finalConfirmBtn) {
         finalConfirmBtn.disabled = false;
-        finalConfirmBtn.textContent = confirmText || 'Confirm Send Money';
+        finalConfirmBtn.textContent = confirmText || 'Confirm & Send Money';
       }
       if (typeof setBusy === 'function') setBusy(false);
     }
@@ -514,41 +568,67 @@
     window.__zpayMfsFlowFixBound = true;
     document.querySelectorAll('.mfs-provider-choice').forEach(function(btn){ btn.addEventListener('click', function(){ setProvider(btn.getAttribute('data-provider') || 'BKASH'); }); });
     ['mfsReceiverNumber','mfsReference'].forEach(function(id){ var n = byId(id); if (n) n.addEventListener('input', function(){ serverPreview = null; renderPreview(); }); });
-    var bdt = byId('mfsAmountBdt'); if (bdt) bdt.addEventListener('input', function(){ serverPreview = null; syncAmounts('bdt'); renderPreview(); });
-    var rm = byId('mfsAmountRm'); if (rm) rm.addEventListener('input', function(){ serverPreview = null; syncAmounts('rm'); renderPreview(); });
-    var preview = byId('mfsPreviewBtn'); if (preview) preview.addEventListener('click', async function(e){
+    var bdt = byId('mfsAmountBdt'); if (bdt) bdt.addEventListener('input', function(){ serverPreview = null; setMfsAmountNotice(''); syncAmounts('bdt'); renderPreview(); });
+    var rm = byId('mfsAmountRm'); if (rm) rm.addEventListener('input', function(){ serverPreview = null; setMfsAmountNotice(''); syncAmounts('rm'); renderPreview(); });
+    var preview = byId('mfsPreviewBtn'); if (preview) preview.addEventListener('click', function(e){
       e.preventDefault();
-      if (!validBase()) return;
-      var originalText = preview.textContent;
+      if (!validNumberStep()) return;
+      updateCurrencyUi();
+      showStep('mfsStepAmount');
+      setTimeout(function(){ var amount = byId('mfsAmountBdt'); if (amount) amount.focus(); }, 50);
+    });
+    var amountBack = byId('mfsAmountBackBtn'); if (amountBack) amountBack.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepForm'); });
+    var amountNext = byId('mfsAmountNextBtn'); if (amountNext) amountNext.addEventListener('click', async function(e){
+      e.preventDefault();
+      if (!validNumberStep() || !validAmountStep()) return;
+      var originalText = amountNext.textContent;
       try {
-        preview.disabled = true;
-        preview.textContent = 'Checking...';
+        amountNext.disabled = true;
+        amountNext.textContent = 'Checking...';
         await loadServerPreview();
-        showStep('mfsStepPreview');
+        if (!previewCanContinue) {
+          setMfsAmountNotice('Insufficient available balance');
+          if (typeof showToast === 'function') showToast('Insufficient available balance', 'error');
+          return;
+        }
+        setMfsAmountNotice('');
+        showStep('mfsStepPin');
       } catch(err) {
         if (typeof showToast === 'function') showToast(err.message || 'Failed to load send money preview', 'error');
         if (isAuthError(err) && typeof window.userSessionExpired === 'function') {
           setTimeout(function(){ window.userSessionExpired(); }, 900);
         }
       } finally {
-        preview.disabled = false;
-        preview.textContent = originalText || 'Next';
+        amountNext.disabled = false;
+        amountNext.textContent = originalText || 'Next';
       }
     });
-    var back = byId('mfsBackBtn'); if (back) back.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepForm'); });
+    var back = byId('mfsBackBtn'); if (back) back.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepAmount'); });
     var send = byId('mfsSendBtn'); if (send) send.addEventListener('click', function(e){
       e.preventDefault();
       renderPreview();
       if (!validBase()) return;
       if (!previewCanContinue) {
         if (typeof showToast === 'function') showToast('Insufficient available balance', 'error');
+        showStep('mfsStepAmount');
+        setMfsAmountNotice('Insufficient available balance');
         return;
       }
-      showStep('mfsStepPin');
+      confirmMfs();
     });
-    var pinBack = byId('mfsPinBackBtn'); if (pinBack) pinBack.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepPreview'); });
-    var confirm = byId('mfsConfirmBtn'); if (confirm) confirm.addEventListener('click', function(e){ e.preventDefault(); confirmMfs(); });
-    var pin = byId('mfsPin'); if (pin) pin.addEventListener('keydown', function(e){ if (e.key === 'Enter') confirmMfs(); });
+    var pinBack = byId('mfsPinBackBtn'); if (pinBack) pinBack.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepAmount'); });
+    var confirm = byId('mfsConfirmBtn'); if (confirm) confirm.addEventListener('click', function(e){
+      e.preventDefault();
+      var d = data();
+      if (!d.pin) {
+        setMfsPinError('PIN is required');
+        if (typeof showToast === 'function') showToast('PIN is required', 'error');
+        return;
+      }
+      renderPreview();
+      showStep('mfsStepPreview');
+    });
+    var pin = byId('mfsPin'); if (pin) pin.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); var next = byId('mfsConfirmBtn'); if (next) next.click(); } });
     setProvider(selectedProvider());
     updateCurrencyUi();
     renderPreview();
@@ -568,6 +648,14 @@
   window.zpayMfsRefreshCurrencyUi = function(){
     updateCurrencyUi();
     renderPreview();
+  };
+
+  window.zpayOpenMfsPinStep = function(){
+    showStep('mfsStepPin');
+  };
+
+  window.zpayOpenMfsAmountStep = function(){
+    showStep('mfsStepAmount');
   };
 
   window.zpayCloseMfsFlow = function(){
