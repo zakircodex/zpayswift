@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
+    http_response_code(404);
+    exit('Not Found');
+}
+
 if (!function_exists('app_private_sms_bridge_path')) {
     $appPathsFile = __DIR__ . '/app_paths.php';
     if (is_file($appPathsFile)) {

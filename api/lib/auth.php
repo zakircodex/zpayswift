@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
+    http_response_code(404);
+    exit('Not Found');
+}
+
 function auth_clean_string($value): string
 {
     $s = trim((string)$value);

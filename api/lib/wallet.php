@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
+    http_response_code(404);
+    exit('Not Found');
+}
+
 function get_user_wallet(string $uid): ?array
 {
     $wallet = fb_get('USER_WALLETS/' . $uid);

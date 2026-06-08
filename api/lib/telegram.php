@@ -1,6 +1,11 @@
 <?php
 declare(strict_types=1);
 
+if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
+    http_response_code(404);
+    exit('Not Found');
+}
+
 function make_telegram_queue_id(): string
 {
     return 'TG' . date('YmdHis') . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6));

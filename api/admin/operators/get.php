@@ -28,6 +28,7 @@ api_response(true, 'SUCCESS', 'Operator loaded', [
     'dial_template' => (string)($r['dial_template'] ?? ''),
     'masked_template' => (string)($r['masked_template'] ?? ''),
     'requires_secret_pin' => (bool)($r['requires_secret_pin'] ?? true),
-    'retailer_secret_pin' => (string)($p['retailer_secret_pin'] ?? ''),
+    'retailer_secret_pin_set' => trim((string)($p['retailer_secret_pin'] ?? '')) !== '',
+    'retailer_secret_pin_masked' => trim((string)($p['retailer_secret_pin'] ?? '')) !== '' ? '********' : '',
     'updated_at' => (int)max((int)($r['updated_at'] ?? 0), (int)($p['updated_at'] ?? 0)),
 ]);

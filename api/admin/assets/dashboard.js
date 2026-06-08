@@ -2902,7 +2902,8 @@ async function editOperator(operator){
 
           <div class="form-full">
             <label>Retailer Secret PIN</label>
-            <input class="input" id="opRetailerPin" value="${esc(data.retailer_secret_pin || '')}">
+            <input class="input" id="opRetailerPin" value="" placeholder="${data.retailer_secret_pin_set ? 'Leave blank to keep existing PIN' : 'Enter retailer secret PIN'}">
+            <div class="hint">${data.retailer_secret_pin_set ? `Current PIN: ${esc(data.retailer_secret_pin_masked || '********')}` : 'PIN is stored privately and never displayed.'}</div>
           </div>
         </div>
       `,

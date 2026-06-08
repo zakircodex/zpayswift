@@ -6,6 +6,9 @@ Options -Indexes
   RewriteCond %{HTTPS} !=on
   RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L,NE]
 
+  RewriteRule ^(?:\.git|\.env|\.svn|\.hg)(?:/|$) - [F,L]
+  RewriteRule ^api/lib(?:/|$) - [F,L]
+
   RewriteRule ^(?:zpayswift|zawtopup)/api/?$ /api/ [R=301,L,NE]
   RewriteRule ^(?:zpayswift|zawtopup)/api/(.*)$ /api/$1 [R=301,L,NE]
 
@@ -13,9 +16,11 @@ Options -Indexes
   RewriteRule ^(user|admin|subadmin)/assets/(.*)$ /api/$1/assets/$2 [L,QSA]
   RewriteRule ^(user|admin|subadmin)/(.*\.php)$ /api/$1/$2 [L,QSA]
   RewriteRule ^user(?:/.*)?$ /api/user/dashboard.php [L,QSA]
+  RewriteRule ^admin(?:/.*)?$ /api/admin/dashboard.php [L,QSA]
+  RewriteRule ^subadmin(?:/.*)?$ /api/subadmin/dashboard.php [L,QSA]
 </IfModule>
 
-<FilesMatch "^(error_log|test_bundle_request\.php)$">
+<FilesMatch "^(error_log|composer\.(json|lock)|package(-lock)?\.json|yarn\.lock|pnpm-lock\.yaml|test_bundle_request\.php)$">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>
@@ -24,7 +29,7 @@ Options -Indexes
   </IfModule>
 </FilesMatch>
 
-<FilesMatch "\.(log|ini|sql|bak|old|zip|tar|gz)$">
+<FilesMatch "(^|/)\.(env|git|svn|hg)|\.(log|ini|sql|bak|old|zip|tar|gz|yml|yaml|lock|dist)$">
   <IfModule mod_authz_core.c>
     Require all denied
   </IfModule>

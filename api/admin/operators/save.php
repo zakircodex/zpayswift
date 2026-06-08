@@ -37,7 +37,14 @@ if ($requiresSecretPin && !str_contains($dialTemplate, '{PIN}')) {
 }
 
 if ($requiresSecretPin && $retailerSecretPin === '') {
-    api_response(false, 'VALIDATION_ERROR', 'retailer_secret_pin is required', ['field' => 'retailer_secret_pin'], 422);
+    $existingPrivate = fb_get('OPERATOR_PRIVATE/' . $operator);
+    $existingPin = is_array($existingPrivate) ? trim((string)($existingPrivate['retailer_secret_pin'] ?? '')) : '';
+
+    if ($existingPin === '') {
+        api_response(false, 'VALIDATION_ERROR', 'retailer_secret_pin is required', ['field' => 'retailer_secret_pin'], 422);
+    }
+
+    $retailerSecretPin = $existingPin;
 }
 
 $now = now_ts();
