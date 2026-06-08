@@ -370,7 +370,7 @@ header('Pragma: no-cache');
 
     <div id="mfsStepAmount" class="mfs-step">
       <div class="wizard-step-title">Enter Amount</div>
-      <div class="wizard-step-sub">Write amount and optional reference before PIN confirmation</div>
+      <div class="wizard-step-sub">Write amount before PIN confirmation</div>
 
       <div class="field field-top-gap">
         <label>Amount BDT</label>
@@ -384,11 +384,6 @@ header('Pragma: no-cache');
 
       <div id="mfsRateHint" class="mfs-rate-hint"></div>
 
-      <div class="field field-top-gap">
-        <label>Reference</label>
-        <input id="mfsReference" class="input" placeholder="Reference / note">
-      </div>
-
       <div id="mfsAmountNotice" class="mfs-step-notice"></div>
 
       <div class="wizard-actions">
@@ -401,6 +396,11 @@ header('Pragma: no-cache');
       <div class="result-card good">
         <div class="result-title">Review Send Money</div>
         <div id="mfsPreviewDetails" class="result-text">-</div>
+      </div>
+
+      <div class="field field-top-gap">
+        <label>Reference <span class="muted">Optional</span></label>
+        <input id="mfsReference" class="input" placeholder="Reference / note">
       </div>
 
       <div class="wizard-actions">
@@ -593,7 +593,7 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=17"></script>
-<script src="/api/user/assets/dashboard-ux.js?v=10"></script>
+<script src="/api/user/assets/dashboard.js?v=18"></script>
+<script src="/api/user/assets/dashboard-ux.js?v=11"></script>
 </body>
 </html>

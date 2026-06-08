@@ -357,9 +357,13 @@
     var code = String(err && err.code || '').toUpperCase();
     var status = Number(err && err.status || 0);
     var msg = String(err && err.message || '').toLowerCase();
-    return status === 401 || status === 403 ||
-      ['AUTH_ERROR','UNAUTHORIZED','FORBIDDEN','SESSION_EXPIRED','USER_SESSION_EXPIRED'].indexOf(code) >= 0 ||
-      msg.indexOf('session') >= 0 && msg.indexOf('expired') >= 0;
+    if (['INVALID_PIN','VALIDATION_ERROR','INSUFFICIENT_BALANCE'].indexOf(code) >= 0) {
+      return false;
+    }
+    return status === 401 ||
+      ['AUTH_ERROR','UNAUTHORIZED','SESSION_EXPIRED','USER_SESSION_EXPIRED'].indexOf(code) >= 0 ||
+      (code === 'FORBIDDEN' && msg.indexOf('session') >= 0) ||
+      (msg.indexOf('session') >= 0 && (msg.indexOf('expired') >= 0 || msg.indexOf('not found') >= 0));
   }
 
   function isPinError(err){
@@ -405,7 +409,23 @@
     await window.proxyPost('validate_pin', { pin: pin }, 'Checking PIN...', { busy: false });
   }
 
-  function showStep(id){
+  function mfsStepHistoryName(id){
+    if (id === 'mfsStepAmount') return 'amount';
+    if (id === 'mfsStepPin') return 'pin';
+    if (id === 'mfsStepPreview') return 'review';
+    return 'form';
+  }
+
+  function mfsStepIdFromName(name){
+    name = String(name || '').toLowerCase();
+    if (name === 'amount') return 'mfsStepAmount';
+    if (name === 'pin') return 'mfsStepPin';
+    if (name === 'review' || name === 'preview') return 'mfsStepPreview';
+    return 'mfsStepForm';
+  }
+
+  function showStep(id, options){
+    options = options || {};
     ['mfsStepForm','mfsStepAmount','mfsStepPreview','mfsStepPin'].forEach(function(stepId){
       var n = byId(stepId);
       if (n) n.classList.remove('active');
@@ -418,6 +438,14 @@
       window.syncUserModalLock();
     } else {
       document.body.classList.toggle('flow-modal-open', id === 'mfsStepAmount' || id === 'mfsStepPreview' || id === 'mfsStepPin');
+    }
+
+    if (!options.fromHistory) {
+      if (id === 'mfsStepForm') {
+        if (typeof window.replaceUserFlowHistory === 'function') window.replaceUserFlowHistory('dashboard', 'guard');
+      } else if (typeof window.pushUserFlowHistory === 'function') {
+        window.pushUserFlowHistory('mfs', mfsStepHistoryName(id));
+      }
     }
   }
 
@@ -498,7 +526,15 @@
     if (serverPreview && !previewCanContinue) {
       showStep('mfsStepAmount');
       setMfsAmountNotice('Insufficient available balance');
-      if (typeof showToast === 'function') showToast('Insufficient available balance', 'error');
+      if (typeof showMfsErrorModal === 'function') {
+        showMfsErrorModal(
+          'Insufficient Balance',
+          'Your available balance is not enough for this send money request.',
+          { retryStep: 'amount', editStep: 'amount' }
+        );
+      } else if (typeof showToast === 'function') {
+        showToast('Insufficient available balance', 'error');
+      }
       return;
     }
     try {
@@ -517,8 +553,16 @@
     } catch(e) {
       var message = e.message || 'Failed to create request';
       if (isPinError(e)) {
+        message = 'Please enter your correct transaction PIN.';
         showStep('mfsStepPin');
         setMfsPinError(message);
+        if (typeof showMfsErrorModal === 'function') {
+          showMfsErrorModal(
+            'Incorrect PIN',
+            message,
+            { retryStep: 'pin', editStep: 'pin' }
+          );
+        }
       } else if (typeof renderMfsResultError === 'function') {
         renderMfsResultError(message);
       }
@@ -572,7 +616,8 @@
     if (window.__zpayMfsFlowFixBound) return;
     window.__zpayMfsFlowFixBound = true;
     document.querySelectorAll('.mfs-provider-choice').forEach(function(btn){ btn.addEventListener('click', function(){ setProvider(btn.getAttribute('data-provider') || 'BKASH'); }); });
-    ['mfsReceiverNumber','mfsReference'].forEach(function(id){ var n = byId(id); if (n) n.addEventListener('input', function(){ serverPreview = null; renderPreview(); }); });
+    var receiver = byId('mfsReceiverNumber'); if (receiver) receiver.addEventListener('input', function(){ serverPreview = null; renderPreview(); });
+    var reference = byId('mfsReference'); if (reference) reference.addEventListener('input', function(){ renderPreview(); });
     var bdt = byId('mfsAmountBdt'); if (bdt) bdt.addEventListener('input', function(){ serverPreview = null; setMfsAmountNotice(''); syncAmounts('bdt'); renderPreview(); });
     var rm = byId('mfsAmountRm'); if (rm) rm.addEventListener('input', function(){ serverPreview = null; setMfsAmountNotice(''); syncAmounts('rm'); renderPreview(); });
     var preview = byId('mfsPreviewBtn'); if (preview) preview.addEventListener('click', function(e){
@@ -593,7 +638,15 @@
         await loadServerPreview();
         if (!previewCanContinue) {
           setMfsAmountNotice('Insufficient available balance');
-          if (typeof showToast === 'function') showToast('Insufficient available balance', 'error');
+          if (typeof showMfsErrorModal === 'function') {
+            showMfsErrorModal(
+              'Insufficient Balance',
+              'Your available balance is not enough for this send money request.',
+              { retryStep: 'amount', editStep: 'amount' }
+            );
+          } else if (typeof showToast === 'function') {
+            showToast('Insufficient available balance', 'error');
+          }
           return;
         }
         setMfsAmountNotice('');
@@ -614,9 +667,17 @@
       renderPreview();
       if (!validBase()) return;
       if (!previewCanContinue) {
-        if (typeof showToast === 'function') showToast('Insufficient available balance', 'error');
         showStep('mfsStepAmount');
         setMfsAmountNotice('Insufficient available balance');
+        if (typeof showMfsErrorModal === 'function') {
+          showMfsErrorModal(
+            'Insufficient Balance',
+            'Your available balance is not enough for this send money request.',
+            { retryStep: 'amount', editStep: 'amount' }
+          );
+        } else if (typeof showToast === 'function') {
+          showToast('Insufficient available balance', 'error');
+        }
         return;
       }
       confirmMfs();
@@ -639,9 +700,18 @@
         renderPreview();
         showStep('mfsStepPreview');
       } catch (err) {
-        var message = err.message || 'Invalid transaction PIN';
+        var invalidPin = String(err && err.code || '').toUpperCase() === 'INVALID_PIN' || isPinError(err);
+        var message = invalidPin ? 'Please enter your correct transaction PIN.' : (err.message || 'Invalid transaction PIN');
         setMfsPinError(message);
-        if (typeof showToast === 'function') showToast(message, 'error');
+        if (invalidPin && typeof showMfsErrorModal === 'function') {
+          showMfsErrorModal(
+            'Incorrect PIN',
+            'Please enter your correct transaction PIN.',
+            { retryStep: 'pin', editStep: 'pin' }
+          );
+        } else if (typeof showToast === 'function') {
+          showToast(message, 'error');
+        }
         if (isAuthError(err) && typeof window.userSessionExpired === 'function') {
           setTimeout(function(){ window.userSessionExpired(); }, 900);
         }
@@ -680,8 +750,16 @@
     showStep('mfsStepAmount');
   };
 
-  window.zpayCloseMfsFlow = function(){
-    showStep('mfsStepForm');
+  window.zpayOpenMfsStep = function(step){
+    showStep(mfsStepIdFromName(step));
+  };
+
+  window.zpayShowMfsHistoryStep = function(step){
+    showStep(mfsStepIdFromName(step), { fromHistory: true });
+  };
+
+  window.zpayCloseMfsFlow = function(options){
+    showStep('mfsStepForm', options || {});
   };
 
   function init(){ ensureQuickActions(); bindMfs(); }

@@ -38,6 +38,9 @@ const wizard = {
 
 let bundleLazyTimer = null;
 let bundleRenderToken = 0;
+let userBackHandlingReady = false;
+let userBackRestoring = false;
+let userBackExitAllowed = false;
 
 const BUNDLE_FIRST_RENDER_COUNT = 1;
 const BUNDLE_RENDER_CHUNK_SIZE = 1;
@@ -434,6 +437,115 @@ function hideModalById(id){
   syncUserModalLock();
 }
 
+function userHistoryUrl(){
+  return (window.location.pathname || '/user/') + (window.location.search || '');
+}
+
+function userFlowHistoryState(flow = 'dashboard', step = 'guard'){
+  return {
+    ...(window.history.state || {}),
+    zpayUserFlow: { flow, step }
+  };
+}
+
+function pushUserFlowHistory(flow, step){
+  if (!userBackHandlingReady || userBackRestoring || !window.history?.pushState) return;
+  window.history.pushState(userFlowHistoryState(flow, step), '', userHistoryUrl());
+}
+
+function replaceUserFlowHistory(flow = 'dashboard', step = 'guard'){
+  if (!userBackHandlingReady || userBackRestoring || !window.history?.replaceState) return;
+  window.history.replaceState(userFlowHistoryState(flow, step), '', userHistoryUrl());
+}
+
+function ensureUserExitModal(){
+  if (el('userExitModal')) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'userExitModal';
+  wrap.className = 'modal';
+  wrap.innerHTML = `
+    <div class="modal-card">
+      <button id="closeUserExitModalBtn" class="modal-close" type="button">&times;</button>
+      <h3 class="modal-title">Exit Z-Pay Swift?</h3>
+      <p class="modal-sub">Do you want to leave the user dashboard?</p>
+      <div class="wizard-actions">
+        <button id="stayUserDashboardBtn" class="btn green" type="button">Stay</button>
+        <button id="exitUserDashboardBtn" class="btn ghost" type="button">Exit</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  const stay = () => hideModalById('userExitModal');
+  el('closeUserExitModalBtn')?.addEventListener('click', stay);
+  el('stayUserDashboardBtn')?.addEventListener('click', stay);
+  el('exitUserDashboardBtn')?.addEventListener('click', () => {
+    userBackExitAllowed = true;
+    hideModalById('userExitModal');
+    window.history.go(-2);
+    setTimeout(() => {
+      if (document.visibilityState === 'visible') {
+        window.location.assign('/user/');
+      }
+    }, 900);
+  });
+}
+
+function showUserExitModal(){
+  ensureUserExitModal();
+  showModalById('userExitModal');
+}
+
+function handleUserPopState(event){
+  if (userBackExitAllowed) return;
+
+  const flowState = event.state?.zpayUserFlow || {};
+  const flow = String(flowState.flow || 'dashboard');
+  const step = String(flowState.step || 'base');
+
+  userBackRestoring = true;
+  try {
+    if (flow === 'topup' && ['operator','amount','pin','review'].includes(step)) {
+      showTopupFlowStep(step, { fromHistory: true });
+      return;
+    }
+
+    if (flow === 'mfs' && typeof window.zpayShowMfsHistoryStep === 'function') {
+      window.zpayShowMfsHistoryStep(step);
+      return;
+    }
+
+    let closedFlow = false;
+    if (el('topupFlowModal')?.classList.contains('show')) {
+      closeTopupFlowModal({ fromHistory: true });
+      closedFlow = true;
+    }
+    if (typeof window.zpayCloseMfsFlow === 'function') {
+      const mfsWasOpen = !!document.querySelector('#mfsStepAmount.active, #mfsStepPreview.active, #mfsStepPin.active');
+      window.zpayCloseMfsFlow({ fromHistory: true });
+      if (mfsWasOpen) {
+        closedFlow = true;
+      }
+    }
+    if (closedFlow) return;
+  } finally {
+    userBackRestoring = false;
+  }
+
+  showUserExitModal();
+  window.history.pushState(userFlowHistoryState('dashboard', 'guard'), '', userHistoryUrl());
+}
+
+function initUserBackHandling(){
+  if (userBackHandlingReady || !window.history?.pushState) return;
+
+  userBackHandlingReady = true;
+  window.history.replaceState(userFlowHistoryState('dashboard', 'base'), '', userHistoryUrl());
+  window.history.pushState(userFlowHistoryState('dashboard', 'guard'), '', userHistoryUrl());
+  window.addEventListener('popstate', handleUserPopState);
+}
+
 function setLoginError(msg = ''){
   const box = el('loginError');
   if (!box) return;
@@ -460,6 +572,7 @@ function showApp(){
 
   el('loginView')?.classList.add('hidden');
   el('appView')?.classList.remove('hidden');
+  initUserBackHandling();
 }
 
 /* =========================
@@ -1879,7 +1992,15 @@ function ensureMfsResultModal(){
   });
 }
 
-function showMfsResultModal({title = 'Send Money Request', subtitle = '', rows = [], link = '', type = 'info'} = {}){
+function showMfsResultModal({
+  title = 'Send Money Request',
+  subtitle = '',
+  rows = [],
+  link = '',
+  type = 'info',
+  retryStep = 'pin',
+  editStep = 'amount'
+} = {}){
   ensureMfsResultModal();
 
   const wrap = el('mfsCreateResultModal');
@@ -1924,7 +2045,7 @@ function showMfsResultModal({title = 'Send Money Request', subtitle = '', rows =
     retryBtn.classList.toggle('hidden', type !== 'error');
     retryBtn.onclick = () => {
       hideModalById('mfsCreateResultModal');
-      if (typeof window.zpayOpenMfsPinStep === 'function') window.zpayOpenMfsPinStep();
+      if (typeof window.zpayOpenMfsStep === 'function') window.zpayOpenMfsStep(retryStep);
     };
   }
 
@@ -1932,19 +2053,21 @@ function showMfsResultModal({title = 'Send Money Request', subtitle = '', rows =
     editBtn.classList.toggle('hidden', type !== 'error');
     editBtn.onclick = () => {
       hideModalById('mfsCreateResultModal');
-      if (typeof window.zpayOpenMfsAmountStep === 'function') window.zpayOpenMfsAmountStep();
+      if (typeof window.zpayOpenMfsStep === 'function') window.zpayOpenMfsStep(editStep);
     };
   }
 
   showModalById('mfsCreateResultModal');
 }
 
-function showMfsErrorModal(title, message){
+function showMfsErrorModal(title, message, options = {}){
   showMfsResultModal({
     title: title || 'Send Money Error',
     subtitle: message || 'Something went wrong',
     type: 'error',
-    rows: [['Message', message || 'Something went wrong']]
+    rows: [['Message', message || 'Something went wrong']],
+    retryStep: options.retryStep || 'pin',
+    editStep: options.editStep || 'amount'
   });
 }
 
@@ -2305,6 +2428,30 @@ function topupReviewRows(){
   ];
 }
 
+function topupTotalPay(){
+  return Number(wizardData().amount || 0);
+}
+
+function topupHasEnoughBalance(){
+  const wallet = topupWalletInfo();
+  const total = topupTotalPay();
+  return !Number.isFinite(wallet.available) || wallet.available >= total;
+}
+
+function topupStepNumber(step){
+  if (step === 'operator') return 2;
+  if (step === 'amount') return 3;
+  if (step === 'pin') return 4;
+  return 5;
+}
+
+function topupStepNameFromWizard(){
+  if (wizard.step === 2) return 'operator';
+  if (wizard.step === 3) return 'amount';
+  if (wizard.step === 4) return 'pin';
+  return 'review';
+}
+
 function ensureTopupFlowModal(){
   if (el('topupFlowModal')) return;
 
@@ -2394,20 +2541,26 @@ function openTopupFlowFromNumber(){
     setWizardOperator(detected);
   }
 
-  showTopupFlowStep('details');
+  showTopupFlowStep('operator');
 }
 
-function showTopupFlowStep(step){
+function showTopupFlowStep(step, options = {}){
   ensureTopupFlowModal();
-  wizard.step = step === 'details' ? 2 : step === 'pin' ? 3 : 4;
+  wizard.step = topupStepNumber(step);
   renderTopupFlowStep(step);
   showModalById('topupFlowModal');
+  if (!options.fromHistory) {
+    pushUserFlowHistory('topup', step);
+  }
 }
 
-function closeTopupFlowModal(){
+function closeTopupFlowModal(options = {}){
   hideModalById('topupFlowModal');
   wizard.step = 1;
   updateWizardUI();
+  if (!options.fromHistory) {
+    replaceUserFlowHistory('dashboard', 'guard');
+  }
 }
 
 function renderTopupFlowStep(step = ''){
@@ -2419,15 +2572,15 @@ function renderTopupFlowStep(step = ''){
   const back = el('topupFlowBackBtn');
   const next = el('topupFlowNextBtn');
 
-  const current = step || (wizard.step === 2 ? 'details' : wizard.step === 3 ? 'pin' : 'review');
+  const current = step || topupStepNameFromWizard();
   const data = wizardData();
 
-  if (back) back.textContent = current === 'details' ? 'Back / Edit' : 'Back';
+  if (back) back.textContent = current === 'operator' ? 'Back / Edit' : 'Back';
   if (next) next.textContent = current === 'review' ? 'Confirm Topup' : 'Next';
 
-  if (current === 'details') {
-    if (title) title.textContent = 'Topup Details';
-    if (sub) sub.textContent = 'Confirm operator and amount before PIN.';
+  if (current === 'operator') {
+    if (title) title.textContent = 'Select Operator';
+    if (sub) sub.textContent = 'Choose the mobile operator for this number.';
     if (body) body.innerHTML = `
       <div class="flow-choice-grid flow-choice-grid-operators">
         ${[
@@ -2443,6 +2596,15 @@ function renderTopupFlowStep(step = ''){
           </button>
         `).join('')}
       </div>
+      <div id="topupFlowError" class="mfs-pin-error"></div>
+    `;
+    return;
+  }
+
+  if (current === 'amount') {
+    if (title) title.textContent = 'Enter Amount';
+    if (sub) sub.textContent = 'Choose a preset amount or enter a custom amount.';
+    if (body) body.innerHTML = `
       <div class="flow-amount-grid">
         ${['20','30','50','100'].map(value => `
           <button type="button" class="flow-choice-btn topup-flow-amount ${String(data.amount) === value ? 'active' : ''}" data-amount="${value}">
@@ -2451,6 +2613,7 @@ function renderTopupFlowStep(step = ''){
         `).join('')}
       </div>
       <input id="topupFlowAmountInput" class="wizard-big-input" type="number" inputmode="decimal" step="0.01" min="1" placeholder="Enter amount" value="${esc(data.amount || '')}">
+      <div id="topupFlowError" class="mfs-pin-error"></div>
     `;
 
     const amountInput = el('topupFlowAmountInput');
@@ -2478,7 +2641,7 @@ function renderTopupFlowStep(step = ''){
   }
 
   if (title) title.textContent = 'Confirm with PIN';
-  if (sub) sub.textContent = 'Enter your transaction PIN to submit the topup.';
+  if (sub) sub.textContent = 'Enter your transaction PIN before final review.';
   if (body) body.innerHTML = `
     <input id="topupFlowPinInput" class="wizard-big-input" type="password" inputmode="numeric" placeholder="Enter PIN" value="${esc(data.pin || '')}">
     <div id="topupFlowError" class="mfs-pin-error"></div>
@@ -2497,22 +2660,46 @@ function renderTopupFlowStep(step = ''){
 }
 
 function topupFlowBack(){
-  if (wizard.step === 2) {
+  const current = topupStepNameFromWizard();
+  if (current === 'operator') {
     closeTopupFlowModal();
-  } else if (wizard.step === 3) {
-    showTopupFlowStep('details');
+  } else if (current === 'amount') {
+    showTopupFlowStep('operator');
+  } else if (current === 'pin') {
+    showTopupFlowStep('amount');
   } else {
     showTopupFlowStep('pin');
   }
 }
 
 async function topupFlowNext(){
-  if (wizard.step === 2) {
-    if (validateWizardStep(2) && validateWizardStep(3)) showTopupFlowStep('pin');
+  const current = topupStepNameFromWizard();
+
+  if (current === 'operator') {
+    if (validateWizardStep(2)) showTopupFlowStep('amount');
     return;
   }
 
-  if (wizard.step === 3) {
+  if (current === 'amount') {
+    if (!validateWizardStep(3)) return;
+    if (!topupHasEnoughBalance()) {
+      setTopupFlowError('Your available balance is not enough for this topup.');
+      showTopupResultModal({
+        title: 'Insufficient Balance',
+        subtitle: 'Your available balance is not enough for this topup.',
+        type: 'error',
+        rows: [['Message', 'Your available balance is not enough for this topup.']],
+        retryStep: 'amount',
+        editStep: 'amount'
+      });
+      return;
+    }
+    setTopupFlowError('');
+    showTopupFlowStep('pin');
+    return;
+  }
+
+  if (current === 'pin') {
     const pinInput = el('topupFlowPinInput');
     if (pinInput && el('wizardPin')) {
       el('wizardPin').value = pinInput.value || '';
@@ -2535,9 +2722,19 @@ async function topupFlowNext(){
       setTopupFlowError('');
       showTopupFlowStep('review');
     } catch (err) {
-      const message = err.message || 'Invalid transaction PIN';
+      const isInvalidPin = String(err?.code || '').toUpperCase() === 'INVALID_PIN';
+      const message = isInvalidPin
+        ? 'Please enter your correct transaction PIN.'
+        : (err.message || 'Invalid transaction PIN');
       setTopupFlowError(message);
-      showToast(message, 'error');
+      showTopupResultModal({
+        title: isInvalidPin ? 'Incorrect PIN' : 'PIN Check Failed',
+        subtitle: message,
+        type: 'error',
+        rows: [['Message', message]],
+        retryStep: 'pin',
+        editStep: 'pin'
+      });
       if (isSessionError(err)) {
         setTimeout(() => {
           showLogin();
@@ -2585,7 +2782,14 @@ function ensureTopupResultModal(){
   });
 }
 
-function showTopupResultModal({ title, subtitle, rows = [], type = 'success' } = {}){
+function showTopupResultModal({
+  title,
+  subtitle,
+  rows = [],
+  type = 'success',
+  retryStep = 'review',
+  editStep = 'amount'
+} = {}){
   ensureTopupResultModal();
 
   if (el('topupResultTitle')) el('topupResultTitle').textContent = title || 'Topup Request';
@@ -2613,7 +2817,7 @@ function showTopupResultModal({ title, subtitle, rows = [], type = 'success' } =
     retryBtn.classList.toggle('hidden', type !== 'error');
     retryBtn.onclick = () => {
       hideModalById('topupResultModal');
-      showTopupFlowStep('pin');
+      showTopupFlowStep(retryStep);
     };
   }
 
@@ -2621,7 +2825,7 @@ function showTopupResultModal({ title, subtitle, rows = [], type = 'success' } =
     editBtn.classList.toggle('hidden', type !== 'error');
     editBtn.onclick = () => {
       hideModalById('topupResultModal');
-      showTopupFlowStep('details');
+      showTopupFlowStep(editStep);
     };
   }
 
@@ -2649,7 +2853,9 @@ function renderTopupResultError(message){
     title: 'Topup Failed',
     subtitle: message || 'Unknown error',
     type: 'error',
-    rows: [['Message', message || 'Unknown error']]
+    rows: [['Message', message || 'Unknown error']],
+    retryStep: 'review',
+    editStep: 'amount'
   });
 }
 
@@ -2677,8 +2883,24 @@ async function submitTopup(){
     await safeRefreshAll(false);
     resetWizard();
   }catch(err){
-    renderTopupResultError(err.message || 'Failed to create topup');
-    showToast(err.message || 'Failed to create topup', 'error');
+    if (String(err?.code || '').toUpperCase() === 'INVALID_PIN') {
+      showTopupResultModal({
+        title: 'Incorrect PIN',
+        subtitle: 'Please enter your correct transaction PIN.',
+        type: 'error',
+        rows: [['Message', 'Please enter your correct transaction PIN.']],
+        retryStep: 'pin',
+        editStep: 'pin'
+      });
+    } else {
+      renderTopupResultError(err.message || 'Failed to create topup');
+    }
+    showToast(
+      String(err?.code || '').toUpperCase() === 'INVALID_PIN'
+        ? 'Please enter your correct transaction PIN.'
+        : (err.message || 'Failed to create topup'),
+      'error'
+    );
   }finally{
     setTopupFlowBusy(false);
   }
@@ -3178,6 +3400,8 @@ window.openSection = openSection;
 window.showToast = showToast;
 window.setBusy = setBusy;
 window.syncUserModalLock = syncUserModalLock;
+window.pushUserFlowHistory = pushUserFlowHistory;
+window.replaceUserFlowHistory = replaceUserFlowHistory;
 window.userSessionExpired = function(){
   showLogin();
   setLoginError('Session expired. Please login again.');

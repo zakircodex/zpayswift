@@ -12,6 +12,7 @@ Options -Indexes
   RewriteRule ^(user|admin|subadmin)/?$ /api/$1/dashboard.php [L,QSA]
   RewriteRule ^(user|admin|subadmin)/assets/(.*)$ /api/$1/assets/$2 [L,QSA]
   RewriteRule ^(user|admin|subadmin)/(.*\.php)$ /api/$1/$2 [L,QSA]
+  RewriteRule ^user(?:/.*)?$ /api/user/dashboard.php [L,QSA]
 </IfModule>
 
 <FilesMatch "^(error_log|test_bundle_request\.php)$">
