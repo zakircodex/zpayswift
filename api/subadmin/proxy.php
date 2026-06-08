@@ -5,6 +5,7 @@ require_once dirname(__DIR__) . '/lib/app_paths.php';
 require_once app_private_config_path();
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/subadmin_api.php';
+require_once dirname(__DIR__) . '/lib/topup.php';
 require_once dirname(__DIR__) . '/lib/bundle.php';
 require_once dirname(__DIR__) . '/lib/mfs.php';
 

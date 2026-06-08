@@ -150,6 +150,8 @@ system_log('ADMIN_DIRECT_TOPUP_CREATE', $requestId, 'Admin created direct topup 
     'admin_uid' => $adminUid,
 ]);
 
+topup_notify_telegram_request($row);
+
 api_response(true, 'TOPUP_REQUEST_CREATED', 'Admin direct topup request created', [
     'request_id' => $requestId,
     'status' => 'PENDING',

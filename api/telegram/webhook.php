@@ -7,6 +7,7 @@
  *
  * Routes:
  * - bndl|... callbacks go to bundle_webhook.php
+ * - topup|... callbacks go to topup_webhook.php
  * - known MFS callback formats go to mfs_webhook.php
  * - non-bundle callbacks fall back to the MFS parser
  * - normal Telegram messages go to mfs_webhook.php for sender details replies
@@ -30,6 +31,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
     tg_router_response(true, 'OK', 'Telegram router webhook is ready', [
         'routes' => [
             'bundle' => 'callback_data starts with bndl|',
+            'topup' => 'callback_data starts with topup|',
             'mfs' => 'known MFS formats and non-bundle callback fallback, plus normal messages',
         ],
         'time' => date('Y-m-d H:i:s'),
@@ -54,6 +56,12 @@ if (is_array($callback)) {
     if ($routePrefix === 'bndl|') {
         $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
         require __DIR__ . '/bundle_webhook.php';
+        exit;
+    }
+
+    if (strncasecmp($data, 'topup|', 6) === 0) {
+        $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
+        require __DIR__ . '/topup_webhook.php';
         exit;
     }
 

@@ -1973,6 +1973,8 @@ function user_proxy_create_topup_request(string $uid, array $body): array
         ]);
     }
 
+    topup_notify_telegram_request($row);
+
     return [
         'ok' => true,
         'code' => 'SUCCESS',

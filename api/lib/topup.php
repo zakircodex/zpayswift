@@ -3,6 +3,384 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/subadmin_api.php';
 
+function topup_now(): int
+{
+    return function_exists('now_ts') ? (int)now_ts() : time();
+}
+
+function topup_telegram_bot_token(): string
+{
+    return defined('TELEGRAM_BOT_TOKEN') ? trim((string)TELEGRAM_BOT_TOKEN) : '';
+}
+
+function topup_telegram_chat_id(): string
+{
+    return defined('TELEGRAM_CHAT_ID') ? trim((string)TELEGRAM_CHAT_ID) : '';
+}
+
+function topup_telegram_action_key(): string
+{
+    if (defined('TELEGRAM_TOPUP_ACTION_KEY') && trim((string)TELEGRAM_TOPUP_ACTION_KEY) !== '') {
+        return trim((string)TELEGRAM_TOPUP_ACTION_KEY);
+    }
+
+    return defined('APP_KEY') ? trim((string)APP_KEY) : '';
+}
+
+function topup_telegram_enabled(): bool
+{
+    return topup_telegram_bot_token() !== ''
+        && topup_telegram_chat_id() !== ''
+        && topup_telegram_action_key() !== '';
+}
+
+function topup_telegram_h($value): string
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+
+function topup_telegram_money($value): string
+{
+    return number_format((float)$value, 2, '.', '');
+}
+
+function topup_telegram_time($ts = null): string
+{
+    $time = (int)($ts ?: topup_now());
+    return date('Y-m-d H:i:s', $time);
+}
+
+function topup_telegram_action_details(string $value): array
+{
+    $action = strtolower(trim($value));
+    $map = [
+        'p' => 'PROCESSING',
+        's' => 'SUCCESS',
+        'f' => 'FAILED',
+    ];
+
+    if (!isset($map[$action])) {
+        return [
+            'ok' => false,
+            'code' => '',
+            'status' => '',
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'code' => $action,
+        'status' => $map[$action],
+    ];
+}
+
+function topup_telegram_signature(string $requestId, string $actionCode): string
+{
+    $details = topup_telegram_action_details($actionCode);
+    $code = (string)($details['code'] ?? strtolower(trim($actionCode)));
+
+    return substr(hash_hmac('sha256', $code . '|' . trim($requestId), topup_telegram_action_key()), 0, 16);
+}
+
+function topup_telegram_callback_data(string $actionCode, string $requestId): string
+{
+    $requestId = trim($requestId);
+    $details = topup_telegram_action_details($actionCode);
+
+    if (!($details['ok'] ?? false) || $requestId === '' || !preg_match('/^[A-Za-z0-9_-]{6,39}$/', $requestId)) {
+        return '';
+    }
+
+    $code = (string)$details['code'];
+    $callbackData = 'topup|' . $code . '|' . $requestId . '|' . topup_telegram_signature($requestId, $code);
+
+    return strlen($callbackData) <= 64 ? $callbackData : '';
+}
+
+function topup_telegram_parse_callback_data(string $callbackData): array
+{
+    $parts = explode('|', trim($callbackData));
+
+    if (count($parts) !== 4 || strtolower((string)$parts[0]) !== 'topup') {
+        return [
+            'ok' => false,
+            'code' => 'INVALID_CALLBACK',
+            'message' => 'Invalid callback data',
+            'data' => ['reason' => 'format'],
+        ];
+    }
+
+    $details = topup_telegram_action_details((string)$parts[1]);
+    $requestId = trim((string)$parts[2]);
+    $signature = trim((string)$parts[3]);
+
+    if (!($details['ok'] ?? false)) {
+        return [
+            'ok' => false,
+            'code' => 'INVALID_CALLBACK',
+            'message' => 'Invalid callback data',
+            'data' => ['reason' => 'action'],
+        ];
+    }
+
+    if ($requestId === '' || !preg_match('/^[A-Za-z0-9_-]{6,39}$/', $requestId)) {
+        return [
+            'ok' => false,
+            'code' => 'INVALID_CALLBACK',
+            'message' => 'Invalid callback data',
+            'data' => ['reason' => 'request_id'],
+        ];
+    }
+
+    if ($signature === '' || !hash_equals(topup_telegram_signature($requestId, (string)$details['code']), $signature)) {
+        return [
+            'ok' => false,
+            'code' => 'INVALID_SIGNATURE',
+            'message' => 'Invalid callback signature',
+            'data' => [
+                'reason' => 'signature',
+                'request_id' => $requestId,
+                'action' => (string)$details['status'],
+            ],
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'code' => 'SUCCESS',
+        'message' => 'Callback verified',
+        'data' => [
+            'request_id' => $requestId,
+            'action' => (string)$details['status'],
+            'action_code' => (string)$details['code'],
+        ],
+    ];
+}
+
+function topup_telegram_keyboard_active(string $requestId): array
+{
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => '🔄 Processing', 'callback_data' => topup_telegram_callback_data('p', $requestId)],
+            ],
+            [
+                ['text' => '✅ Success', 'callback_data' => topup_telegram_callback_data('s', $requestId)],
+                ['text' => '❌ Failed', 'callback_data' => topup_telegram_callback_data('f', $requestId)],
+            ],
+        ],
+    ];
+}
+
+function topup_telegram_keyboard_after_processing(string $requestId): array
+{
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => '✅ Success', 'callback_data' => topup_telegram_callback_data('s', $requestId)],
+                ['text' => '❌ Failed', 'callback_data' => topup_telegram_callback_data('f', $requestId)],
+            ],
+        ],
+    ];
+}
+
+function topup_telegram_effective_role(array $row): string
+{
+    $role = strtoupper(trim((string)($row['user_role'] ?? $row['role'] ?? '')));
+    if ($role !== '') {
+        return $role;
+    }
+
+    $uid = trim((string)($row['uid'] ?? ''));
+    if ($uid !== '') {
+        $user = fb_get('USERS/' . $uid);
+        if (is_array($user)) {
+            $role = strtoupper(trim((string)($user['role'] ?? '')));
+            if ($role !== '') {
+                return $role;
+            }
+        }
+    }
+
+    return '-';
+}
+
+function topup_telegram_build_request_message(array $row): string
+{
+    $requestId = (string)($row['request_id'] ?? '');
+    $uid = (string)($row['uid'] ?? '');
+    $userPhone = (string)($row['user_phone'] ?? '');
+    $role = topup_telegram_effective_role($row);
+    $topupNumber = (string)($row['topup_number'] ?? '');
+    $operator = (string)($row['operator'] ?? '');
+    $amount = (float)($row['amount'] ?? 0);
+    $createdAt = (int)($row['created_at'] ?? topup_now());
+
+    return "🔔 <b>New Topup Request</b>\n\n"
+        . "Request ID: <code>" . topup_telegram_h($requestId) . "</code>\n"
+        . "UID: <code>" . topup_telegram_h($uid) . "</code>\n"
+        . "User Phone: <code>" . topup_telegram_h($userPhone) . "</code>\n"
+        . "User Role: <b>" . topup_telegram_h($role) . "</b>\n\n"
+        . "Topup Number: <code>" . topup_telegram_h($topupNumber) . "</code>\n"
+        . "Operator: <b>" . topup_telegram_h($operator) . "</b>\n"
+        . "Amount BDT: BDT " . topup_telegram_money($amount) . "\n"
+        . "Status: <b>PENDING</b>\n"
+        . "Created: " . topup_telegram_h(topup_telegram_time($createdAt));
+}
+
+function topup_telegram_build_status_message(array $row, string $status, string $message): string
+{
+    $status = strtoupper(trim($status));
+    $icon = $status === 'SUCCESS' ? '✅' : ($status === 'FAILED' ? '❌' : '🔄');
+    $requestId = (string)($row['request_id'] ?? '');
+    $uid = (string)($row['uid'] ?? '');
+    $userPhone = (string)($row['user_phone'] ?? '');
+    $topupNumber = (string)($row['topup_number'] ?? '');
+    $operator = (string)($row['operator'] ?? '');
+    $amount = (float)($row['amount'] ?? 0);
+
+    return $icon . " <b>Topup " . topup_telegram_h($status) . "</b>\n\n"
+        . "Request ID: <code>" . topup_telegram_h($requestId) . "</code>\n"
+        . "UID: <code>" . topup_telegram_h($uid) . "</code>\n"
+        . "User Phone: <code>" . topup_telegram_h($userPhone) . "</code>\n\n"
+        . "Topup Number: <code>" . topup_telegram_h($topupNumber) . "</code>\n"
+        . "Operator: <b>" . topup_telegram_h($operator) . "</b>\n"
+        . "Amount BDT: BDT " . topup_telegram_money($amount) . "\n\n"
+        . "Message: " . topup_telegram_h($message !== '' ? $message : $status) . "\n"
+        . "Updated: " . topup_telegram_h(topup_telegram_time());
+}
+
+function topup_telegram_api(string $method, array $payload): array
+{
+    if (!topup_telegram_enabled()) {
+        return [
+            'ok' => false,
+            'code' => 'CONFIG_ERROR',
+            'message' => 'Telegram topup config missing',
+            'data' => [],
+        ];
+    }
+
+    if (!function_exists('curl_init')) {
+        return [
+            'ok' => false,
+            'code' => 'CURL_MISSING',
+            'message' => 'PHP cURL extension is not available',
+            'data' => [],
+        ];
+    }
+
+    $ch = curl_init('https://api.telegram.org/bot' . topup_telegram_bot_token() . '/' . ltrim($method, '/'));
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Accept: application/json',
+        ],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    ]);
+
+    $raw = curl_exec($ch);
+    $err = curl_error($ch);
+    $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $json = is_string($raw) ? json_decode($raw, true) : null;
+    $ok = $http >= 200 && $http < 300 && is_array($json) && !empty($json['ok']);
+    $description = is_array($json) ? (string)($json['description'] ?? '') : '';
+
+    return [
+        'ok' => $ok,
+        'code' => $ok ? 'SUCCESS' : 'TELEGRAM_ERROR',
+        'message' => $ok ? 'Telegram request sent' : ($description !== '' ? $description : ($err !== '' ? $err : 'Telegram request failed')),
+        'data' => [
+            'http' => $http,
+            'response' => is_array($json) ? $json : [],
+        ],
+    ];
+}
+
+function topup_telegram_patch_request(string $requestId, array $patch): void
+{
+    $row = topup_find_request($requestId);
+    if (!is_array($row)) {
+        return;
+    }
+
+    $bucket = (string)($row['_bucket'] ?? '');
+    if ($bucket === '') {
+        return;
+    }
+
+    $patch['updated_at'] = topup_now();
+    fb_patch('TOPUP_REQUESTS/' . $bucket . '/' . $requestId, $patch);
+}
+
+function topup_notify_telegram_request(array $row): array
+{
+    $requestId = trim((string)($row['request_id'] ?? ''));
+    if ($requestId === '') {
+        return [
+            'ok' => false,
+            'code' => 'VALIDATION_ERROR',
+            'message' => 'Missing request id for Telegram topup notification',
+            'data' => [],
+        ];
+    }
+
+    if (!topup_telegram_enabled()) {
+        topup_telegram_patch_request($requestId, [
+            'telegram_sent' => false,
+            'telegram_error' => 'Telegram topup config missing',
+        ]);
+
+        return [
+            'ok' => false,
+            'code' => 'CONFIG_ERROR',
+            'message' => 'Telegram topup config missing',
+            'data' => [],
+        ];
+    }
+
+    $res = topup_telegram_api('sendMessage', [
+        'chat_id' => topup_telegram_chat_id(),
+        'text' => topup_telegram_build_request_message($row),
+        'parse_mode' => 'HTML',
+        'disable_web_page_preview' => true,
+        'reply_markup' => topup_telegram_keyboard_active($requestId),
+    ]);
+
+    if (!($res['ok'] ?? false)) {
+        topup_telegram_patch_request($requestId, [
+            'telegram_sent' => false,
+            'telegram_error' => substr((string)($res['message'] ?? 'Telegram send failed'), 0, 400),
+        ]);
+        return $res;
+    }
+
+    $result = (array)($res['data']['response']['result'] ?? []);
+    topup_telegram_patch_request($requestId, [
+        'telegram_sent' => true,
+        'telegram_error' => '',
+        'telegram_message_id' => (int)($result['message_id'] ?? 0),
+        'telegram_chat_id' => (string)($result['chat']['id'] ?? topup_telegram_chat_id()),
+        'telegram_sent_at' => topup_now(),
+    ]);
+
+    return [
+        'ok' => true,
+        'code' => 'SUCCESS',
+        'message' => 'Topup Telegram notification sent',
+        'data' => [
+            'message_id' => (int)($result['message_id'] ?? 0),
+            'chat_id' => (string)($result['chat']['id'] ?? topup_telegram_chat_id()),
+        ],
+    ];
+}
+
 function create_request_status(
     string $requestId,
     string $type,
@@ -97,6 +475,108 @@ function topup_write_history(array $done): void
         'created_by_admin' => (bool)($done['created_by_admin'] ?? false),
         'request_source' => $requestSource,
     ]);
+}
+
+function topup_mark_processing(string $requestId, string $message): array
+{
+    $row = topup_find_request($requestId);
+
+    if (!is_array($row)) {
+        return [
+            'ok' => false,
+            'code' => 'NOT_FOUND',
+            'message' => 'Topup request not found',
+        ];
+    }
+
+    $bucket = (string)($row['_bucket'] ?? '');
+    if ($bucket === 'DONE') {
+        return [
+            'ok' => false,
+            'code' => 'ALREADY_DONE',
+            'message' => 'Topup request already completed',
+        ];
+    }
+
+    if ($bucket === 'PROCESSING') {
+        return [
+            'ok' => true,
+            'code' => 'ALREADY_PROCESSING',
+            'message' => 'Topup request is already processing',
+            'data' => [
+                'request' => $row,
+            ],
+        ];
+    }
+
+    if (!in_array($bucket, ['PENDING', 'CLAIMED'], true)) {
+        return [
+            'ok' => false,
+            'code' => 'INVALID_STATE',
+            'message' => 'Topup request cannot be moved to processing',
+        ];
+    }
+
+    $processing = $row;
+    unset($processing['_bucket']);
+
+    $now = topup_now();
+    $processing['status'] = 'PROCESSING';
+    $processing['message'] = $message;
+    $processing['final_message'] = $message;
+    $processing['manual_processing'] = true;
+    $processing['processing_source'] = 'TELEGRAM';
+    $processing['processing_at'] = $now;
+    $processing['assigned_device_id'] = '';
+    $processing['assigned_slot'] = '';
+    $processing['updated_at'] = $now;
+
+    if (!fb_put('TOPUP_REQUESTS/PROCESSING/' . $requestId, $processing)) {
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to move request to processing bucket',
+        ];
+    }
+
+    if (!fb_delete('TOPUP_REQUESTS/' . $bucket . '/' . $requestId)) {
+        fb_delete('TOPUP_REQUESTS/PROCESSING/' . $requestId);
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to clear previous request bucket',
+        ];
+    }
+
+    update_request_status($requestId, 'PROCESSING', $message);
+
+    if (
+        strtoupper(trim((string)($row['source'] ?? ''))) === 'SUBADMIN_API'
+        && trim((string)($row['uid'] ?? '')) !== ''
+    ) {
+        fb_patch('USER_API_REQUESTS/' . (string)$row['uid'] . '/' . $requestId, [
+            'status' => 'PROCESSING',
+            'message' => $message,
+            'updated_at' => $now,
+        ]);
+    }
+
+    if (function_exists('system_log')) {
+        system_log('TOPUP_PROCESSING', $requestId, 'Topup marked as processing manually from Telegram', [
+            'uid' => (string)($row['uid'] ?? ''),
+            'amount' => (float)($row['amount'] ?? 0),
+            'previous_bucket' => $bucket,
+        ]);
+    }
+
+    return [
+        'ok' => true,
+        'code' => 'TOPUP_PROCESSING',
+        'message' => 'Topup request marked as processing',
+        'data' => [
+            'request' => $processing,
+        ],
+    ];
 }
 
 function topup_mark_success(string $requestId, string $message): array

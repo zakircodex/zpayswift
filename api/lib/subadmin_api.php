@@ -887,6 +887,10 @@ function subapi_create_panel_topup(
         ]);
     }
 
+    if (function_exists('topup_notify_telegram_request')) {
+        topup_notify_telegram_request($topupRow);
+    }
+
     return [
         'ok' => true,
         'code' => 'SUCCESS',

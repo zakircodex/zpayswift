@@ -162,6 +162,11 @@ system_log('TOPUP_SUBMIT', $requestId, 'Topup request created successfully', [
     'operator_active' => (bool)($runtime['active'] ?? false),
 ]);
 
+$topupRow = topup_find_request($requestId);
+if (is_array($topupRow)) {
+    topup_notify_telegram_request($topupRow);
+}
+
 api_response(true, 'TOPUP_REQUEST_CREATED', 'Topup request submitted', [
     'request_id' => $requestId,
     'status' => 'PENDING',

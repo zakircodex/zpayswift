@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/subadmin_api.php';
+require_once dirname(__DIR__) . '/lib/topup.php';
 
 api_require_method('POST');
 
@@ -185,6 +186,8 @@ if (function_exists('system_log')) {
         'note' => $note,
     ]);
 }
+
+topup_notify_telegram_request($requestRow);
 
 api_response(true, 'SUCCESS', 'Topup request created successfully', [
     'request_id' => $requestId,

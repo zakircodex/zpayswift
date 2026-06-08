@@ -41,6 +41,7 @@ define('TELEGRAM_CHAT_ID', '');
 define('TELEGRAM_WEBHOOK_SECRET', '');
 define('TELEGRAM_BUNDLE_ACTION_KEY', '');
 define('TELEGRAM_MFS_ACTION_KEY', '');
+define('TELEGRAM_TOPUP_ACTION_KEY', '');
 define('TELEGRAM_BUNDLE_CHAT_ID', '');
 define('ZAW_TELEGRAM_BOT_TOKEN', '');
 define('ZAW_TELEGRAM_CHAT_ID', '');
