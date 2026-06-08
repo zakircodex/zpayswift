@@ -41,37 +41,40 @@ function zps_docs_service(string $name, string $description, string $safeRoute):
 }
 
 $mainLinks = [
-    ['label' => 'User Panel', 'url' => app_url('user'), 'description' => 'Customer dashboard, wallet, topup, send money, bundle, and history.'],
-    ['label' => 'Admin Panel', 'url' => app_url('admin'), 'description' => 'Protected admin operations and approvals.'],
-    ['label' => 'Subadmin Panel', 'url' => app_url('subadmin'), 'description' => 'Protected subadmin wallet, API keys, users, and request tools.'],
-    ['label' => 'API Base', 'url' => app_api_url(), 'description' => 'Application API base URL for authenticated integrations.'],
+    ['label' => 'User Panel', 'url' => 'https://zpayswift.com/user', 'description' => 'Customer dashboard, wallet, topup, send money, bundle, and history.'],
+    ['label' => 'Track Request', 'url' => 'https://zpayswift.com/track', 'description' => 'Open a token-based request tracking link.'],
+    ['label' => 'Download APK', 'url' => 'https://zpayswift.com/download-apk', 'description' => 'Download the Android app when available.'],
+    ['label' => 'Apply as Partner', 'url' => 'https://zpayswift.com/apply-subadmin', 'description' => 'Apply for partner access through the public partner form.'],
+    ['label' => 'API Base', 'url' => 'https://zpayswift.com/api', 'description' => 'Clean public API base for app integrations.'],
 ];
 
 $publicTracking = [
     'title' => 'MFS Tracking / Receipt',
-    'description' => 'Tracking links are token-based. Replace TRACKING_TOKEN with a valid token from a successful request response.',
-    'example_url' => app_api_url('mfs/receipt.php?t=TRACKING_TOKEN'),
-    'json_example_url' => app_api_url('mfs/receipt_api.php?t=TRACKING_TOKEN'),
+    'description' => 'Tracking links are token-based. Paste a valid token or Z-Pay Swift tracking link on the public tracking page.',
+    'tracking_url' => 'https://zpayswift.com/track',
+    'token_url' => 'https://zpayswift.com/track/TRACKING_TOKEN',
+    'api_base' => 'https://zpayswift.com/api',
 ];
 
 $serviceActions = [
-    zps_docs_service('Login', 'Secure OTP/session based login for users, admins, and subadmins.', '/user, /admin, /subadmin'),
+    zps_docs_service('Login', 'Secure OTP/session based login for users.', '/user'),
     zps_docs_service('Register', 'Customer registration and OTP verification.', '/user'),
     zps_docs_service('Dashboard', 'Wallet balance, request summaries, and quick services.', '/user'),
     zps_docs_service('Topup', 'Create and track mobile topup requests.', '/user'),
     zps_docs_service('bKash/Nagad Send Money', 'Create MFS send money requests and track status with receipt links.', '/user'),
     zps_docs_service('Bundle', 'Browse and request available bundle offers.', '/user'),
     zps_docs_service('History', 'View current and previous request history where available.', '/user'),
-    zps_docs_service('Tracking', 'Open token-based receipt/tracking links.', '/api/mfs/receipt.php?t=TRACKING_TOKEN'),
+    zps_docs_service('Tracking', 'Open token-based receipt/tracking links.', '/track'),
+    zps_docs_service('Partner Apply', 'Apply for partner access without sharing any secret key.', '/apply-subadmin'),
 ];
 
 $developerAccess = [
     'summary' => 'Developer and app access requires valid credentials. Secret values are never displayed on this page.',
     'headers' => [
         ['name' => 'X-APP-KEY', 'purpose' => 'Required by app endpoints where configured.', 'value' => 'Hidden'],
-        ['name' => 'X-SESSION-TOKEN', 'purpose' => 'User/admin/subadmin session token where applicable.', 'value' => 'Hidden'],
+        ['name' => 'X-SESSION-TOKEN', 'purpose' => 'User session token where applicable.', 'value' => 'Hidden'],
         ['name' => 'Authorization: Bearer', 'purpose' => 'Bearer session token where supported.', 'value' => 'Hidden'],
-        ['name' => 'X-API-KEY', 'purpose' => 'Subadmin public API integration key.', 'value' => 'Hidden'],
+        ['name' => 'X-API-KEY', 'purpose' => 'Partner public API integration key.', 'value' => 'Hidden'],
         ['name' => 'X-WORKER-KEY', 'purpose' => 'Worker app access only.', 'value' => 'Hidden'],
     ],
 ];
@@ -83,31 +86,31 @@ $securityNotice = [
 ];
 
 $developerEndpoints = [
-    'User and App' => [
-        zps_docs_endpoint('POST', '/api/auth/user_login_start.php', 'Protected app access', 'Start user login.'),
-        zps_docs_endpoint('POST', '/api/auth/user_login_verify_otp.php', 'Protected app access', 'Verify login and create a session.'),
-        zps_docs_endpoint('POST', '/api/auth/user_register_send_otp.php', 'Protected app access', 'Start registration.'),
-        zps_docs_endpoint('POST', '/api/auth/user_register_confirm.php', 'Protected app access', 'Confirm registration.'),
-        zps_docs_endpoint('GET/POST', '/api/user/proxy.php', 'Protected user session', 'User dashboard actions.'),
-        zps_docs_endpoint('GET', '/api/topup/status.php?request_id=ID', 'Protected user session', 'Check own topup status.'),
-        zps_docs_endpoint('GET', '/api/mfs/receipt.php?t=TRACKING_TOKEN', 'Public token', 'Open MFS tracking/receipt page.'),
-        zps_docs_endpoint('GET', '/api/mfs/receipt_api.php?t=TRACKING_TOKEN', 'Public token', 'Read sanitized receipt JSON.'),
+    'User APIs' => [
+        zps_docs_endpoint('POST', 'user.login.start', 'Protected app access', 'Start user login.'),
+        zps_docs_endpoint('POST', 'user.login.verify', 'Protected app access', 'Verify login and create a session.'),
+        zps_docs_endpoint('POST', 'user.register.start', 'Protected app access', 'Start registration.'),
+        zps_docs_endpoint('POST', 'user.register.confirm', 'Protected app access', 'Confirm registration.'),
+        zps_docs_endpoint('GET/POST', 'user.dashboard', 'Protected user session', 'User dashboard actions.'),
+        zps_docs_endpoint('POST', 'topup.create', 'Protected user session', 'Create a topup request.'),
+        zps_docs_endpoint('POST', 'send_money.create', 'Protected user session', 'Create a bKash/Nagad send money request.'),
+        zps_docs_endpoint('GET', 'request.tracking', 'Public token', 'Open public tracking page.'),
     ],
-    'Subadmin Public API' => [
-        zps_docs_endpoint('POST', '/api/public_api/topup_create.php', 'Protected API key', 'Create topup request.'),
-        zps_docs_endpoint('GET', '/api/public_api/bundle_offers.php', 'Protected API key', 'List available bundle offers.'),
-        zps_docs_endpoint('POST', '/api/public_api/bundle_create.php', 'Protected API key', 'Create bundle request.'),
+    'Subadmin Public APIs' => [
+        zps_docs_endpoint('POST', 'partner.topup.create', 'Protected API key', 'Create topup request.'),
+        zps_docs_endpoint('GET', 'partner.bundle.offers', 'Protected API key', 'List available bundle offers.'),
+        zps_docs_endpoint('POST', 'partner.bundle.create', 'Protected API key', 'Create bundle request.'),
     ],
-    'Admin and Subadmin Panels' => [
-        zps_docs_endpoint('GET/POST', '/api/admin/proxy.php', 'Protected admin session', 'Admin panel actions.'),
-        zps_docs_endpoint('GET/POST', '/api/subadmin/proxy.php', 'Protected subadmin session', 'Subadmin panel actions.'),
-        zps_docs_endpoint('GET/POST', '/api/admin/mfs.php', 'Protected admin session', 'Admin MFS page/actions.'),
+    'Worker App' => [
+        zps_docs_endpoint('POST', 'worker.heartbeat', 'Protected worker key', 'Worker heartbeat.'),
+        zps_docs_endpoint('POST', 'worker.claim', 'Protected worker key', 'Claim pending topup.'),
+        zps_docs_endpoint('POST', 'worker.result', 'Protected worker key', 'Submit topup result.'),
     ],
-    'Worker and Webhook' => [
-        zps_docs_endpoint('POST', '/api/worker/heartbeat.php', 'Protected worker key', 'Worker heartbeat.'),
-        zps_docs_endpoint('POST', '/api/worker/claim.php', 'Protected worker key', 'Claim pending topup.'),
-        zps_docs_endpoint('POST', '/api/worker/result.php', 'Protected worker key', 'Submit topup result.'),
-        zps_docs_endpoint('POST', '/api/telegram/webhook.php', 'Protected webhook secret', 'Unified Telegram webhook router.'),
+    'Telegram Webhook' => [
+        zps_docs_endpoint('POST', 'telegram.webhook', 'Protected webhook secret', 'Unified Telegram webhook route.'),
+        zps_docs_endpoint('POST', 'telegram.bundle_callback', 'Protected webhook secret', 'Bundle callback route.'),
+        zps_docs_endpoint('POST', 'telegram.mfs_callback', 'Protected webhook secret', 'MFS callback route.'),
+        zps_docs_endpoint('POST', 'telegram.topup_callback', 'Protected webhook secret', 'Topup callback route.'),
     ],
 ];
 
@@ -274,7 +277,7 @@ header('Content-Type: text/html; charset=utf-8');
     <div>
       <span class="badge">Z-Pay Swift</span>
       <h1>Z-Pay Swift API & Service Links</h1>
-      <p>Clean public links for panels, tracking, and secure app access. Internal endpoints and secret values are intentionally hidden from the default view.</p>
+      <p>Clean public links for user services, tracking, partner access, and app setup. Internal operations and secret values are intentionally hidden.</p>
       <p>
         <a class="btn" href="?view=developer">Developer View</a>
         <a class="btn secondary" href="?format=json">JSON</a>
@@ -309,15 +312,15 @@ header('Content-Type: text/html; charset=utf-8');
       <div class="card">
         <h3>Receipt Page</h3>
         <div class="url-row">
-          <code><?= zps_docs_h($publicTracking['example_url']) ?></code>
-          <button class="btn secondary" type="button" data-copy="<?= zps_docs_h($publicTracking['example_url']) ?>">Copy</button>
+          <code><?= zps_docs_h($publicTracking['token_url']) ?></code>
+          <button class="btn secondary" type="button" data-copy="<?= zps_docs_h($publicTracking['token_url']) ?>">Copy</button>
         </div>
       </div>
       <div class="card">
-        <h3>Receipt JSON</h3>
+        <h3>API Base</h3>
         <div class="url-row">
-          <code><?= zps_docs_h($publicTracking['json_example_url']) ?></code>
-          <button class="btn secondary" type="button" data-copy="<?= zps_docs_h($publicTracking['json_example_url']) ?>">Copy</button>
+          <code><?= zps_docs_h($publicTracking['api_base']) ?></code>
+          <button class="btn secondary" type="button" data-copy="<?= zps_docs_h($publicTracking['api_base']) ?>">Copy</button>
         </div>
       </div>
     </div>
@@ -365,7 +368,7 @@ header('Content-Type: text/html; charset=utf-8');
         <h2><?= zps_docs_h($title) ?></h2>
         <table>
           <thead>
-            <tr><th>Method</th><th>Path</th><th>Access</th><th>Description</th></tr>
+            <tr><th>Method</th><th>Route Name</th><th>Access</th><th>Description</th></tr>
           </thead>
           <tbody>
             <?php foreach ($endpoints as $endpoint): ?>

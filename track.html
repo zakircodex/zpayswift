@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111f">
+  <title>Track Request | Z-Pay Swift</title>
+  <style>
+    :root{color-scheme:dark;--bg:#07111f;--bg2:#0b1c35;--card:rgba(18,40,77,.94);--card2:rgba(11,31,67,.94);--line:rgba(110,149,221,.20);--text:#ecf4ff;--muted:#9fb5d8;--green:#1fd760;--green2:#5be99c;--blue:#60afe5}
+    *{box-sizing:border-box}
+    body{min-height:100vh;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:radial-gradient(circle at 18% -10%,rgba(31,215,96,.18),transparent 32%),radial-gradient(circle at 88% 0%,rgba(96,175,229,.16),transparent 30%),linear-gradient(135deg,var(--bg) 0%,var(--bg2) 44%,#081325 100%);color:var(--text)}
+    a{color:inherit;text-decoration:none}
+    .page{width:min(860px,calc(100% - 28px));margin:0 auto;padding:26px 0}
+    .nav{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+    .brand{display:flex;align-items:center;gap:10px}
+    .mark{width:42px;height:42px;display:grid;place-items:center;border-radius:15px;color:#04120b;font-weight:1000;background:linear-gradient(135deg,var(--green),var(--green2))}
+    .brand strong{display:block;color:#f8fbff;font-size:16px}
+    .brand span{display:block;color:var(--muted);font-size:12px}
+    .btn{min-height:40px;display:inline-flex;align-items:center;justify-content:center;padding:0 14px;border-radius:14px;font-size:13px;font-weight:900;background:linear-gradient(135deg,var(--green),var(--green2));color:#04120b}
+    .btn.secondary{color:#e6f0ff;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03))}
+    .card{padding:24px;border:1px solid var(--line);border-radius:26px;background:linear-gradient(180deg,var(--card),var(--card2));box-shadow:0 24px 70px rgba(0,0,0,.32)}
+    h1{margin:0;color:#f8fbff;font-size:clamp(30px,5vw,46px);line-height:1.04;letter-spacing:-.045em}
+    p{margin:10px 0 0;color:var(--muted);font-size:15px;line-height:1.6}
+    form{display:grid;gap:12px;margin-top:20px}
+    label{color:#cfe1ff;font-size:13px;font-weight:900}
+    input{width:100%;min-height:48px;padding:0 14px;border:1px solid #2b456c;border-radius:16px;background:#0e213d;color:#f7fbff;outline:none}
+    input::placeholder{color:#7187aa}
+    input:focus{border-color:rgba(31,215,96,.52);box-shadow:0 0 0 3px rgba(31,215,96,.12)}
+    .message{min-height:20px;margin:0;color:var(--muted);font-size:13px;line-height:1.45}
+    .message.error{color:#ffd6df}
+    .message.ok{color:#a8f7c2}
+    footer{margin-top:18px;color:#8da4c7;text-align:center;font-size:12px}
+    @media(max-width:520px){.page{padding:16px 0}.nav{align-items:flex-start;flex-direction:column}.nav .btn{width:100%}.card{padding:18px;border-radius:22px}h1{font-size:30px}}
+  </style>
+</head>
+<body>
+  <main class="page">
+    <nav class="nav">
+      <a class="brand" href="/">
+        <span class="mark">Z</span>
+        <span><strong>Z-Pay Swift</strong><span>Secure tracking</span></span>
+      </a>
+      <a class="btn secondary" href="/user">User Panel</a>
+    </nav>
+    <section class="card">
+      <h1>Track Your Request</h1>
+      <p>Paste your receipt/tracking token or a Z-Pay Swift tracking URL. Only zpayswift.com tracking links are accepted.</p>
+      <form id="trackForm" novalidate>
+        <label for="trackInput">Receipt / Tracking Token or URL</label>
+        <input id="trackInput" autocomplete="off" placeholder="Paste tracking token or Z-Pay Swift tracking link">
+        <button class="btn" type="submit">Open Tracking</button>
+        <p class="message" id="trackMessage" aria-live="polite"></p>
+      </form>
+    </section>
+    <footer>&copy; <span id="year"></span> Z-Pay Swift</footer>
+  </main>
+  <script>
+    (function(){
+      var year = document.getElementById('year');
+      if (year) year.textContent = String(new Date().getFullYear());
+      var form = document.getElementById('trackForm');
+      var input = document.getElementById('trackInput');
+      var message = document.getElementById('trackMessage');
+      function setMessage(text, type){message.textContent = text || ''; message.className = 'message' + (type ? ' ' + type : '');}
+      function allowed(host){return String(host || '').toLowerCase() === 'zpayswift.com';}
+      function token(value){return /^[A-Za-z0-9_-]{12,180}$/.test(value);}
+      form.addEventListener('submit', function(event){
+        event.preventDefault();
+        var raw = String(input.value || '').trim();
+        if (!raw) { setMessage('Please enter your receipt token or tracking link.', 'error'); input.focus(); return; }
+        if (/^https?:\/\//i.test(raw)) {
+          try {
+            var url = new URL(raw);
+            if (!allowed(url.hostname)) { setMessage('Only zpayswift.com tracking links are allowed.', 'error'); return; }
+            setMessage('Opening secure tracking link...', 'ok');
+            window.location.href = url.pathname + url.search + url.hash;
+            return;
+          } catch (error) {
+            setMessage('This tracking URL is not valid.', 'error');
+            return;
+          }
+        }
+        raw = raw.replace(/^t=/i, '').trim();
+        if (token(raw)) {
+          setMessage('Opening secure tracking link...', 'ok');
+          window.location.href = '/track/' + encodeURIComponent(raw);
+          return;
+        }
+        setMessage('Please paste a valid tracking token or Z-Pay Swift tracking URL.', 'error');
+      });
+    })();
+  </script>
+</body>
+</html>

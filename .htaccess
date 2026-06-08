@@ -15,6 +15,14 @@ DirectoryIndex index.html
 
   RewriteRule ^index/?$ /index.html [L,QSA,NC]
 
+  RewriteRule ^track/([A-Za-z0-9_-]+)/?$ /api/mfs/receipt.php?t=$1 [L,QSA,NC]
+  RewriteRule ^track/?$ /track.html [L,QSA,NC]
+  RewriteRule ^download-apk/?$ /download.php [L,QSA,NC]
+  RewriteRule ^api-docs/?$ /api/endpoints.php [L,QSA,NC]
+  RewriteRule ^apply-subadmin/?$ /apply-subadmin.html [L,QSA,NC]
+  RewriteRule ^privacy/?$ /privacy.html [L,QSA,NC]
+  RewriteRule ^terms/?$ /terms.html [L,QSA,NC]
+
   RewriteRule ^(user|admin|subadmin)/?$ /api/$1/dashboard.php [L,QSA]
   RewriteRule ^(user|admin|subadmin)/assets/(.*)$ /api/$1/assets/$2 [L,QSA]
   RewriteRule ^(user|admin|subadmin)/(.*\.php)$ /api/$1/$2 [L,QSA]

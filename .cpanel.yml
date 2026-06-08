@@ -8,3 +8,7 @@ deployment:
     - /bin/cp -f index.html $DEPLOYPATH/index.html
     - /bin/cp -f download.php $DEPLOYPATH/download.php
     - /bin/sh -c 'if [ -d downloads ]; then /bin/cp -R downloads "$DEPLOYPATH"; fi'
+    - /bin/cp -f track.html $DEPLOYPATH/track.html
+    - /bin/cp -f apply-subadmin.html $DEPLOYPATH/apply-subadmin.html
+    - /bin/cp -f privacy.html $DEPLOYPATH/privacy.html
+    - /bin/cp -f terms.html $DEPLOYPATH/terms.html
