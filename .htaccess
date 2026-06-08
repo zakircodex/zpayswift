@@ -1,4 +1,5 @@
 Options -Indexes
+DirectoryIndex index.html
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
@@ -11,6 +12,8 @@ Options -Indexes
 
   RewriteRule ^(?:zpayswift|zawtopup)/api/?$ /api/ [R=301,L,NE]
   RewriteRule ^(?:zpayswift|zawtopup)/api/(.*)$ /api/$1 [R=301,L,NE]
+
+  RewriteRule ^index/?$ /index.html [L,QSA,NC]
 
   RewriteRule ^(user|admin|subadmin)/?$ /api/$1/dashboard.php [L,QSA]
   RewriteRule ^(user|admin|subadmin)/assets/(.*)$ /api/$1/assets/$2 [L,QSA]
