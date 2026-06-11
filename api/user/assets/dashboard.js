@@ -11,8 +11,6 @@ const state = {
   historyVisited: false,
   historyLimit: 50,
   walletHistory: [],
-  walletHistoryLoaded: false,
-  walletHistoryLoading: false,
   bundleOffers: [],
   busyCount: 0,
   filter: 'ALL',
@@ -139,6 +137,8 @@ function operatorName(code){
 }
 
 function requestTypeOf(row){
+  if (String(row?._history_type || '').toUpperCase() === 'WALLET') return 'WALLET';
+  if (row?.transfer_id && String(row?.direction || '').toUpperCase() === 'CREDIT') return 'WALLET';
   return String(row?.request_type || row?.type || row?.action || 'TOPUP').toUpperCase();
 }
 
@@ -754,11 +754,6 @@ function openSection(sectionId){
       showToast(err.message || 'Failed to load history', 'error');
     });
 
-    ensureWalletHistoryLoaded({ force: !state.walletHistoryLoaded }).catch(err => {
-      if (!isSessionError(err)) {
-        showToast(err.message || 'Failed to load wallet history', 'error');
-      }
-    });
   }
 
   const main = document.querySelector('.main-panel');
@@ -786,6 +781,9 @@ function applyDashboardBootstrap(data){
   if (Array.isArray(logWrap.items)) {
     state.requestLogs = logWrap.items;
     state.historyLoaded = true;
+  }
+  if (Array.isArray(logWrap.wallet_history)) {
+    state.walletHistory = logWrap.wallet_history;
   }
 }
 
@@ -829,6 +827,7 @@ async function loadRequestLogs(options = {}){
   const limit = Number(options.limit || state.historyLimit || 50);
 
   state.historyLoading = true;
+  renderHistory();
 
   try {
     const data = await proxyGet(
@@ -840,12 +839,13 @@ async function loadRequestLogs(options = {}){
 
     state.historyMonth = normalizeMonthKey(data.month || month);
     state.requestLogs = Array.isArray(data.items) ? data.items : [];
+    state.walletHistory = Array.isArray(data.wallet_history) ? data.wallet_history : [];
     state.historyLoaded = true;
     syncHistoryMonthControls();
     renderHero();
-    renderHistory();
   } finally {
     state.historyLoading = false;
+    renderHistory();
   }
 }
 
@@ -855,86 +855,12 @@ async function ensureHistoryLoaded(options = {}){
     return;
   }
 
-  try {
-    await loadRequestLogs({
-      month: state.historyMonth,
-      limit: state.historyLimit,
-      busy: options.busy !== false,
-      busyText: options.busyText || 'Loading this month history...'
-    });
-  } finally {
-    state.historyLoading = false;
-  }
-}
-
-function renderWalletHistory(){
-  const list = el('walletHistoryList');
-  if (!list) return;
-
-  if (state.walletHistoryLoading) {
-    list.innerHTML = '<div class="history-item history-empty"><div class="history-id">Loading wallet history...</div></div>';
-    return;
-  }
-
-  if (!state.walletHistory.length) {
-    list.innerHTML = '<div class="history-item history-empty"><div class="history-id">No wallet credit found for this month.</div></div>';
-    return;
-  }
-
-  list.innerHTML = state.walletHistory.map(item => `
-    <div class="history-item">
-      <div class="history-top">
-        <div>
-          <div class="history-id">${esc(item.transfer_id || '-')}</div>
-          <div class="history-small">Balance received from ${esc(item.sender_name || item.sender_role || 'account')}</div>
-        </div>
-        ${statusPill(item.status || 'SUCCESS')}
-      </div>
-      <div class="history-meta">
-        <div class="mini"><label>From</label><strong>${esc(item.sender_name || item.sender_uid || '-')}</strong></div>
-        <div class="mini"><label>Phone / Role</label><strong>${esc(item.sender_phone || '-')} - ${esc(item.sender_role || '-')}</strong></div>
-        <div class="mini"><label>Amount</label><strong>${esc(item.currency || 'BDT')} ${money(item.amount || 0)}</strong></div>
-        <div class="mini"><label>Date</label><strong>${esc(fmtTs(item.created_at || 0))}</strong></div>
-      </div>
-      <div class="history-meta history-meta-extra">
-        <div class="mini"><label>Balance Before</label><strong>${money(item.before_available ?? item.before_balance ?? 0)}</strong></div>
-        <div class="mini"><label>Balance After</label><strong>${money(item.after_available ?? item.after_balance ?? 0)}</strong></div>
-        <div class="mini"><label>Note</label><strong>${esc(item.note || '-')}</strong></div>
-        <div class="mini"><label>Reference</label><strong>${esc(item.reference || '-')}</strong></div>
-      </div>
-    </div>
-  `).join('');
-}
-
-async function loadWalletHistory(options = {}){
-  if (state.walletHistoryLoading) return;
-
-  state.walletHistoryLoading = true;
-  renderWalletHistory();
-
-  try{
-    const data = await proxyGet(
-      'wallet_history',
-      { month: state.historyMonth, limit: 50 },
-      options.busyText || 'Loading wallet history...',
-      { busy: options.busy !== false }
-    );
-
-    state.walletHistory = Array.isArray(data.items) ? data.items : [];
-    state.walletHistoryLoaded = true;
-  } finally {
-    state.walletHistoryLoading = false;
-    renderWalletHistory();
-  }
-}
-
-async function ensureWalletHistoryLoaded(options = {}){
-  if (state.walletHistoryLoaded && !options.force) {
-    renderWalletHistory();
-    return;
-  }
-
-  await loadWalletHistory(options);
+  await loadRequestLogs({
+    month: state.historyMonth,
+    limit: state.historyLimit,
+    busy: options.busy !== false,
+    busyText: options.busyText || 'Loading this month history...'
+  });
 }
 
 async function loadInitialDashboard(showBusy = true, busyText = 'Checking session...'){
@@ -1308,12 +1234,56 @@ function statusMatchesFilter(row, filter){
   return status === filter;
 }
 
+function historyTimestamp(row){
+  const candidates = [
+    row?.updated_at,
+    row?.completed_at,
+    row?.success_at,
+    row?.created_at,
+    row?.timestamp,
+    row?.date
+  ];
+
+  for (const value of candidates) {
+    const numeric = Number(value || 0);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return String(Math.trunc(numeric)).length > 10 ? Math.floor(numeric / 1000) : numeric;
+    }
+
+    const parsed = Date.parse(String(value || ''));
+    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed / 1000);
+  }
+
+  return 0;
+}
+
+function normalizeWalletHistoryItem(row){
+  const transferId = String(row?.transfer_id || row?.ledger_id || '').trim();
+
+  return {
+    ...(row || {}),
+    _history_type: 'WALLET',
+    request_id: transferId,
+    request_type: 'WALLET',
+    type: 'WALLET',
+    service: 'Wallet Received',
+    status: String(row?.status || 'SUCCESS').toUpperCase(),
+    amount: Number(row?.amount || 0),
+    created_at: historyTimestamp(row),
+    message: String(row?.note || row?.message || ''),
+    raw: row || {}
+  };
+}
+
 function getFilteredHistory(){
-  const rows = [...(state.requestLogs || [])];
+  const rows = [
+    ...(state.requestLogs || []),
+    ...(state.walletHistory || []).map(normalizeWalletHistoryItem)
+  ];
 
   rows.sort((a,b) => {
-    const aa = Number(a.updated_at || a.completed_at || a.created_at || 0);
-    const bb = Number(b.updated_at || b.completed_at || b.created_at || 0);
+    const aa = historyTimestamp(a);
+    const bb = historyTimestamp(b);
     return bb - aa;
   });
 
@@ -1429,13 +1399,21 @@ function renderHistory(){
     const number = requestNumberOf(item);
     const prefix = amountPrefixOf(item);
     const isMfs = type === 'MFS';
+    const isWallet = type === 'WALLET';
     const receiptLink = isMfs ? mfsTrackingUrl(item) : String(item.receipt_url || '').trim();
 
     const displayAmount = type === 'BUNDLE'
       ? (item.you_pay ?? item.payable_amount ?? item.net_cost_after_commission ?? item.amount ?? 0)
       : (item.amount || 0);
 
-    const metaHtml = isMfs
+    const metaHtml = isWallet
+      ? `
+          <div class="mini"><label>From</label><strong>${esc(item.sender_name || item.sender_uid || '-')}</strong></div>
+          <div class="mini"><label>Phone / Role</label><strong>${esc(item.sender_phone || '-')} - ${esc(item.sender_role || '-')}</strong></div>
+          <div class="mini"><label>Amount</label><strong>${esc(item.currency || 'BDT')} ${money(item.amount || 0)}</strong></div>
+          <div class="mini"><label>Date</label><strong>${esc(fmtTs(item.created_at || 0))}</strong></div>
+        `
+      : isMfs
       ? `
           <div class="mini"><label>Service</label><strong>${esc(mfsProviderLabel(item))}</strong></div>
           <div class="mini"><label>Receiver</label><strong>${esc(number || '-')}</strong></div>
@@ -1449,6 +1427,17 @@ function renderHistory(){
           <div class="mini"><label>Created</label><strong>${esc(fmtTs(item.created_at || 0))}</strong></div>
         `;
 
+    const walletExtraHtml = isWallet
+      ? `
+          <div class="history-meta history-meta-extra">
+            <div class="mini"><label>Balance Before</label><strong>${esc(item.currency || 'BDT')} ${money(item.before_available ?? item.before_balance ?? 0)}</strong></div>
+            <div class="mini"><label>Balance After</label><strong>${esc(item.currency || 'BDT')} ${money(item.after_available ?? item.after_balance ?? 0)}</strong></div>
+            <div class="mini"><label>Note</label><strong>${esc(item.note || '-')}</strong></div>
+            <div class="mini"><label>Reference</label><strong>${esc(item.reference || '-')}</strong></div>
+          </div>
+        `
+      : '';
+
     return `
       <div class="history-item">
         <div class="history-top">
@@ -1456,7 +1445,13 @@ function renderHistory(){
             <div class="history-id">${esc(item.request_id || '-')}</div>
             <div class="history-small">
               <span class="history-type-badge">${esc(type)}</span>
-              ${isMfs ? esc(mfsProviderLabel(item)) + ' Send Money' : esc(type === 'BUNDLE' ? 'Bundle Request' : 'Topup Request')}
+              ${
+                isWallet
+                  ? 'Wallet Received'
+                  : isMfs
+                    ? esc(mfsProviderLabel(item)) + ' Send Money'
+                    : esc(type === 'BUNDLE' ? 'Bundle Request' : 'Topup Request')
+              }
             </div>
           </div>
           ${statusPill(item.status || '-')}
@@ -1465,6 +1460,8 @@ function renderHistory(){
         <div class="history-meta">
           ${metaHtml}
         </div>
+
+        ${walletExtraHtml}
 
         ${
           type === 'BUNDLE'
@@ -1479,10 +1476,10 @@ function renderHistory(){
             : ''
         }
 
-        ${historyMessageHtml(item)}
+        ${isWallet ? '' : historyMessageHtml(item)}
 
         <div class="history-actions">
-          <button class="btn blue sm" type="button" onclick="openHistoryDetail('${esc(item.request_id || '')}')">View</button>
+          ${isWallet ? '' : `<button class="btn blue sm" type="button" onclick="openHistoryDetail('${esc(item.request_id || '')}')">View</button>`}
           <button class="btn ghost sm" type="button" onclick="copyHistoryId('${esc(item.request_id || '')}')">Copy ID</button>
           ${receiptLink ? `<button class="btn green sm" type="button" onclick="openReceiptLink('${esc(receiptLink)}')">Receipt</button>` : ''}
         </div>
@@ -1492,7 +1489,7 @@ function renderHistory(){
 }
 
 window.copyHistoryId = function(requestId){
-  copyText(requestId, 'Request ID copied');
+  copyText(requestId, 'History ID copied');
 };
 
 window.openReceiptLink = function(url){
@@ -3175,6 +3172,9 @@ async function doLogout(){
   state.csrf = '';
   state.walletSummary = null;
   state.requestLogs = [];
+  state.walletHistory = [];
+  state.historyLoaded = false;
+  state.historyLoading = false;
   state.bundleOffers = [];
   state.bundleBuy = {
     offerId: '',
@@ -3325,7 +3325,6 @@ function bindEvents(){
     historyMonthInput.addEventListener('change', () => {
       state.historyMonth = normalizeMonthKey(historyMonthInput.value);
       state.historyLoaded = false;
-      state.walletHistoryLoaded = false;
       ensureHistoryLoaded({ force: true, busyText: 'Loading selected month...' }).catch(err => {
         if (isSessionError(err)) {
           showLogin();
@@ -3334,23 +3333,6 @@ function bindEvents(){
         }
 
         showToast(err.message || 'Failed to load history', 'error');
-      });
-      ensureWalletHistoryLoaded({ force: true, busyText: 'Loading wallet history...' }).catch(err => {
-        if (!isSessionError(err)) {
-          showToast(err.message || 'Failed to load wallet history', 'error');
-        }
-      });
-    });
-  }
-
-  const walletHistoryRefreshBtn = el('walletHistoryRefreshBtn');
-  if (walletHistoryRefreshBtn && walletHistoryRefreshBtn.dataset.bound !== '1') {
-    walletHistoryRefreshBtn.dataset.bound = '1';
-    walletHistoryRefreshBtn.addEventListener('click', () => {
-      ensureWalletHistoryLoaded({ force: true, busyText: 'Refreshing wallet history...' }).catch(err => {
-        if (!isSessionError(err)) {
-          showToast(err.message || 'Failed to refresh wallet history', 'error');
-        }
       });
     });
   }

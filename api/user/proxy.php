@@ -1792,6 +1792,14 @@ function user_proxy_collect_request_logs(string $uid, int $limit = 100, bool $le
     return user_proxy_collect_legacy_request_logs($uid, $limit, $month);
 }
 
+function user_proxy_collect_wallet_received(string $uid, string $month, int $limit = 100): array
+{
+    return array_values(array_filter(
+        wallet_list_user_history($uid, $month, $limit),
+        static fn(array $row): bool => strtoupper((string)($row['direction'] ?? '')) === 'CREDIT'
+    ));
+}
+
 /* =========================================================
    Create Topup
 ========================================================= */
@@ -3373,6 +3381,7 @@ switch ($action) {
                 'uid' => $uid,
                 'month' => $month,
                 'items' => user_proxy_collect_request_logs($uid, $limit, false, $month),
+                'wallet_history' => user_proxy_collect_wallet_received($uid, $month, $limit),
             ],
             'loaded_at' => user_proxy_now(),
         ]);
@@ -3400,10 +3409,7 @@ switch ($action) {
         $uid = trim((string)($sessionUser['uid'] ?? ''));
         $month = user_proxy_valid_month_key($_GET['month'] ?? null);
         $limit = (int)($_GET['limit'] ?? 50);
-        $items = array_values(array_filter(
-            wallet_list_user_history($uid, $month, $limit),
-            static fn(array $row): bool => strtoupper((string)($row['direction'] ?? '')) === 'CREDIT'
-        ));
+        $items = user_proxy_collect_wallet_received($uid, $month, $limit);
 
         user_proxy_response(true, 'SUCCESS', 'Wallet received history loaded', [
             'uid' => $uid,
@@ -3434,6 +3440,7 @@ switch ($action) {
             'uid' => $uid,
             'month' => $month,
             'items' => user_proxy_collect_request_logs($uid, $limit, $legacy, $month),
+            'wallet_history' => user_proxy_collect_wallet_received($uid, $month, $limit),
             'mode' => $legacy ? 'fast_with_legacy_fallback' : 'fast',
         ]);
         break;
