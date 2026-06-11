@@ -8,6 +8,7 @@ require_once dirname(__DIR__) . '/lib/subadmin_api.php';
 require_once dirname(__DIR__) . '/lib/topup.php';
 require_once dirname(__DIR__) . '/lib/bundle.php';
 require_once dirname(__DIR__) . '/lib/mfs.php';
+require_once dirname(__DIR__) . '/lib/wallet.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -2670,6 +2671,34 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
             'LEDGER_LOAD_FAILED',
             'Failed to load wallet ledger'
         );
+        break;
+
+    case 'wallet_history':
+    case 'transfer_history':
+        sub_proxy_require_method('GET');
+
+        $actor = sub_proxy_require_login(true);
+        $actorUid = trim((string)($actor['uid'] ?? ''));
+        $month = wallet_valid_month_key((string)($_GET['month'] ?? ''));
+        $limit = (int)($_GET['limit'] ?? 200);
+
+        if ($actorUid === '') {
+            sub_proxy_response(false, 'SESSION_EXPIRED', 'Subadmin session not found', [], 401);
+        }
+
+        $items = wallet_list_transfer_history($month, [
+            'sender_uid' => $actorUid,
+            'receiver' => trim((string)($_GET['receiver'] ?? '')),
+            'receiver_role' => trim((string)($_GET['receiver_role'] ?? '')),
+            'type' => 'SUBADMIN_BALANCE_TRANSFER',
+        ], $limit);
+
+        sub_proxy_response(true, 'SUCCESS', 'Transfer history loaded', [
+            'uid' => $actorUid,
+            'month' => $month,
+            'items' => $items,
+            'count' => count($items),
+        ]);
         break;
 
     case 'user_create_send_otp':

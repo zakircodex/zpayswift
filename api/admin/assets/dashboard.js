@@ -2808,6 +2808,107 @@ async function openLedger(uid){
   }
 }
 
+async function loadWalletTransferHistory(){
+  const month = document.getElementById('walletHistoryMonth')?.value || new Date().toISOString().slice(0,7);
+  const receiver = document.getElementById('walletHistoryReceiver')?.value.trim() || '';
+  const senderRole = document.getElementById('walletHistorySenderRole')?.value || '';
+  const receiverRole = document.getElementById('walletHistoryReceiverRole')?.value || '';
+  const type = document.getElementById('walletHistoryType')?.value || '';
+  const target = document.getElementById('walletHistoryRows');
+
+  if (target) {
+    target.innerHTML = '<tr><td colspan="7" class="empty">Loading balance history...</td></tr>';
+  }
+
+  try{
+    const data = await proxyGet('wallet_history', {
+      month,
+      receiver,
+      sender_role: senderRole,
+      receiver_role: receiverRole,
+      type,
+      limit: 300
+    }, { busyText: 'Loading balance history...' });
+    const items = Array.isArray(data.items) ? data.items : [];
+
+    if (!target) return;
+    if (!items.length) {
+      target.innerHTML = '<tr><td colspan="7" class="empty">No balance transfer found for this month.</td></tr>';
+      return;
+    }
+
+    target.innerHTML = items.map(item => `
+      <tr>
+        <td>${fmtTs(item.created_at)}</td>
+        <td><strong>${esc(item.sender_name || item.sender_uid || '-')}</strong><br><span class="muted">${esc(item.sender_phone || '-')} - ${esc(item.sender_role || '-')}</span></td>
+        <td><strong>${esc(item.receiver_name || item.receiver_uid || '-')}</strong><br><span class="muted">${esc(item.receiver_phone || '-')} - ${esc(item.receiver_role || '-')}</span></td>
+        <td>${esc(item.currency || 'BDT')} ${money(item.amount)}</td>
+        <td>${esc(item.type || '-')}<br><span class="muted">${esc(item.transfer_id || '-')}</span></td>
+        <td>${esc(item.note || '-')}<br><span class="muted">${esc(item.reference || '-')}</span></td>
+        <td>${money(item.before_available ?? item.before_balance)} to ${money(item.after_available ?? item.after_balance)}</td>
+      </tr>
+    `).join('');
+  }catch(err){
+    if (target) {
+      target.innerHTML = `<tr><td colspan="7" class="empty">${esc(err.message || 'Failed to load balance history')}</td></tr>`;
+    }
+  }
+}
+
+function openWalletTransferHistory(){
+  const month = new Date().toISOString().slice(0,7);
+
+  openModal(
+    'Wallet Transfers',
+    `
+      <div class="toolbar" style="padding:0 0 16px;">
+        <div class="toolbar-left">
+          <input class="input md" id="walletHistoryMonth" type="month" value="${month}">
+          <input class="input md" id="walletHistoryReceiver" placeholder="Receiver phone or UID">
+          <select class="input md" id="walletHistorySenderRole">
+            <option value="">All sender roles</option>
+            <option value="ADMIN">ADMIN</option>
+            <option value="SUBADMIN">SUBADMIN</option>
+          </select>
+          <select class="input md" id="walletHistoryReceiverRole">
+            <option value="">All receiver roles</option>
+            <option value="SUBADMIN">SUBADMIN</option>
+            <option value="RETAILER">RETAILER</option>
+            <option value="USER">USER</option>
+          </select>
+          <select class="input md" id="walletHistoryType">
+            <option value="">All transfer types</option>
+            <option value="ADMIN_BALANCE_ADD">Admin Balance Add</option>
+            <option value="SUBADMIN_BALANCE_TRANSFER">Subadmin Transfer</option>
+          </select>
+          <button class="btn brand" type="button" onclick="loadWalletTransferHistory()">Apply</button>
+        </div>
+      </div>
+      <div class="table-wrap" style="padding:0;max-height:calc(100vh - 290px);overflow:auto;">
+        <table style="min-width:980px;">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>From</th>
+              <th>To</th>
+              <th>Amount</th>
+              <th>Type</th>
+              <th>Note / Reference</th>
+              <th>Receiver Before / After</th>
+            </tr>
+          </thead>
+          <tbody id="walletHistoryRows">
+            <tr><td colspan="7" class="empty">Loading balance history...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    `,
+    `<button class="btn ghost" onclick="closeModal()">Close</button>`
+  );
+
+  loadWalletTransferHistory();
+}
+
 /* =========================
    OPERATORS
 ========================= */
@@ -3662,6 +3763,7 @@ document.getElementById('bundleOfferSearch')?.addEventListener('input', renderBu
 document.getElementById('bundleOfferStatusFilter')?.addEventListener('change', renderBundleOffers);
 
 document.getElementById('reloadUsersBtn')?.addEventListener('click', () => loadUsers({ busyText:'Reloading users...' }));
+document.getElementById('walletHistoryBtn')?.addEventListener('click', openWalletTransferHistory);
 document.getElementById('reloadOperatorsBtn')?.addEventListener('click', () => loadOperators({ busyText:'Reloading operators...' }));
 document.getElementById('reloadWorkersBtn')?.addEventListener('click', () => loadWorkersStatus({ busyText:'Reloading workers...' }));
 
@@ -3731,6 +3833,7 @@ window.submitEditUser = submitEditUser;
 window.openWalletAction = openWalletAction;
 window.submitWalletAction = submitWalletAction;
 window.openLedger = openLedger;
+window.loadWalletTransferHistory = loadWalletTransferHistory;
 
 window.editOperator = editOperator;
 window.saveOperator = saveOperator;

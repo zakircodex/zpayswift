@@ -584,6 +584,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                 <option value="DISABLED">DISABLED</option>
               </select>
 
+              <button class="btn green" id="transferHistoryBtn">Transfer History</button>
               <button class="btn blue" id="reloadUsersBtn">Reload Users</button>
             </div>
 
@@ -1132,6 +1133,52 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
     <div class="actions mt-14">
       <button id="reloadWalletLedgerBtn" class="btn blue">Reload Ledger</button>
       <button id="closeWalletLedgerModalBtn2" class="btn ghost">Close</button>
+    </div>
+  </div>
+</div>
+
+<div id="transferHistoryModalWrap" class="modal-wrap">
+  <div class="modal-card modal-card-wide">
+    <div class="modal-head">
+      <div>
+        <h3>Balance Transfer History</h3>
+        <p>Balance sent from your wallet to your users and retailers</p>
+      </div>
+      <button id="closeTransferHistoryModalBtn" class="modal-close">Close</button>
+    </div>
+
+    <div class="actions mb-14">
+      <input id="transferHistoryMonth" class="input filter-input" type="month">
+      <input id="transferHistoryReceiver" class="input filter-input" placeholder="Receiver phone or UID">
+      <select id="transferHistoryRole" class="input filter-input">
+        <option value="">All receiver roles</option>
+        <option value="USER">USER</option>
+        <option value="RETAILER">RETAILER</option>
+      </select>
+      <button id="reloadTransferHistoryBtn" class="btn blue">Apply Filter</button>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Receiver</th>
+            <th>Amount</th>
+            <th>Receiver Balance</th>
+            <th>My Balance</th>
+            <th>Note / Reference</th>
+            <th>Transfer ID</th>
+          </tr>
+        </thead>
+        <tbody id="transferHistoryTableBody">
+          <tr><td colspan="7" class="muted">No transfer history loaded yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="actions mt-14">
+      <button id="closeTransferHistoryModalBtn2" class="btn ghost">Close</button>
     </div>
   </div>
 </div>

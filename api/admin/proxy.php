@@ -1479,6 +1479,19 @@ switch ($action) {
         ]);
         break;
 
+    case 'wallet_history':
+    case 'transfer_history':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('wallet/history.php', [
+            'month' => trim((string)($_GET['month'] ?? '')),
+            'receiver' => trim((string)($_GET['receiver'] ?? '')),
+            'sender_role' => trim((string)($_GET['sender_role'] ?? '')),
+            'receiver_role' => trim((string)($_GET['receiver_role'] ?? '')),
+            'type' => trim((string)($_GET['type'] ?? '')),
+            'limit' => (int)($_GET['limit'] ?? 200),
+        ]);
+        break;
+
     case 'operators':
         proxy_require_method('GET');
         proxy_forward_admin_get('operators/list.php');

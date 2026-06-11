@@ -488,6 +488,7 @@ header('Pragma: no-cache');
   </div>
   <div class="row-actions user-head-actions">
     <button class="btn brand" id="createUserBtn">Create User</button>
+    <button class="btn blue" id="walletHistoryBtn">Balance History</button>
     <button class="btn ghost" id="reloadUsersBtn">Reload Users</button>
   </div>
 </div>

@@ -1244,6 +1244,68 @@ async function openWalletLedgerModal(uid){
   }
 }
 
+function closeTransferHistoryModal(){
+  el('transferHistoryModalWrap')?.classList.remove('open');
+}
+
+function renderTransferHistoryRows(items){
+  const tbody = el('transferHistoryTableBody');
+  if (!tbody) return;
+
+  if (!Array.isArray(items) || !items.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="muted">No balance transfer found for this month.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = items.map(item => `
+    <tr>
+      <td>${fmtTs(item.created_at || 0)}</td>
+      <td><strong>${esc(item.receiver_name || item.receiver_uid || '-')}</strong><br><span class="muted">${esc(item.receiver_phone || '-')} - ${esc(item.receiver_role || '-')}</span></td>
+      <td>${esc(item.currency || 'BDT')} ${money(item.amount || 0)}</td>
+      <td>${money(item.receiver_before_available ?? item.before_available ?? item.before_balance ?? 0)} to ${money(item.receiver_after_available ?? item.after_available ?? item.after_balance ?? 0)}</td>
+      <td>${money(item.sender_before_available ?? 0)} to ${money(item.sender_after_available ?? 0)}</td>
+      <td>${esc(item.note || '-')}<br><span class="muted">${esc(item.reference || '-')}</span></td>
+      <td>${esc(item.transfer_id || '-')}</td>
+    </tr>
+  `).join('');
+}
+
+async function loadTransferHistory(){
+  const month = el('transferHistoryMonth')?.value || new Date().toISOString().slice(0, 7);
+  const receiver = el('transferHistoryReceiver')?.value.trim() || '';
+  const receiverRole = el('transferHistoryRole')?.value || '';
+  const tbody = el('transferHistoryTableBody');
+
+  if (tbody) {
+    tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading transfer history...</td></tr>';
+  }
+
+  try{
+    const data = await proxyGet('wallet_history', {
+      month,
+      receiver,
+      receiver_role: receiverRole,
+      limit: 300
+    }, 'Loading transfer history...');
+
+    renderTransferHistoryRows(data.items || []);
+  }catch(err){
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="7" class="muted">${esc(err.message || 'Failed to load transfer history')}</td></tr>`;
+    }
+    showToast(err.message || 'Failed to load transfer history', 'error');
+  }
+}
+
+function openTransferHistoryModal(){
+  if (el('transferHistoryMonth') && !el('transferHistoryMonth').value) {
+    el('transferHistoryMonth').value = new Date().toISOString().slice(0, 7);
+  }
+
+  el('transferHistoryModalWrap')?.classList.add('open');
+  loadTransferHistory();
+}
+
 function getPanelTopupRows(){
   return (state.requestLogs || [])
     .filter(item =>
@@ -4245,6 +4307,10 @@ el('addBalanceModalWrap')?.addEventListener('click', (e) => {
 
 el('closeWalletLedgerModalBtn')?.addEventListener('click', closeWalletLedgerModal);
 el('closeWalletLedgerModalBtn2')?.addEventListener('click', closeWalletLedgerModal);
+el('transferHistoryBtn')?.addEventListener('click', openTransferHistoryModal);
+el('reloadTransferHistoryBtn')?.addEventListener('click', loadTransferHistory);
+el('closeTransferHistoryModalBtn')?.addEventListener('click', closeTransferHistoryModal);
+el('closeTransferHistoryModalBtn2')?.addEventListener('click', closeTransferHistoryModal);
 
 el('reloadWalletLedgerBtn')?.addEventListener('click', async () => {
   const uid = state.walletLedger.targetUid;

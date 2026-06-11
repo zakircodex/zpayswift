@@ -3393,6 +3393,26 @@ switch ($action) {
         user_proxy_response(true, 'SUCCESS', 'Wallet summary loaded', $payload);
         break;
 
+    case 'wallet_history':
+        user_proxy_require_method('GET');
+
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $month = user_proxy_valid_month_key($_GET['month'] ?? null);
+        $limit = (int)($_GET['limit'] ?? 50);
+        $items = array_values(array_filter(
+            wallet_list_user_history($uid, $month, $limit),
+            static fn(array $row): bool => strtoupper((string)($row['direction'] ?? '')) === 'CREDIT'
+        ));
+
+        user_proxy_response(true, 'SUCCESS', 'Wallet received history loaded', [
+            'uid' => $uid,
+            'month' => $month,
+            'items' => $items,
+            'count' => count($items),
+        ]);
+        break;
+
     case 'request_logs':
         user_proxy_require_method('GET');
 

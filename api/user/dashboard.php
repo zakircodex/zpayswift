@@ -459,6 +459,20 @@ header('Pragma: no-cache');
               <div class="history-id">No history found for this month.</div>
             </div>
           </div>
+
+          <div class="section-head" style="margin-top:22px;">
+            <div>
+              <h3 class="section-title">Wallet Received</h3>
+              <p class="section-sub">Balance credited by admin or your subadmin this month</p>
+            </div>
+            <button id="walletHistoryRefreshBtn" class="btn ghost" type="button">Refresh</button>
+          </div>
+
+          <div id="walletHistoryList" class="history-list">
+            <div class="history-item">
+              <div class="history-id">No wallet credit found for this month.</div>
+            </div>
+          </div>
         </div>
       </section>
     </main>
