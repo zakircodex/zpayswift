@@ -31,7 +31,7 @@ $adminUser = $auth['user'];
 
 $body = api_read_json_body();
 
-$commissionPer1000 = (float)($body['commission_per_1000'] ?? 0);
+$commissionProvided = array_key_exists('commission_per_1000', $body);
 $apiEnabled = (bool)($body['api_enabled'] ?? false);
 $topupEnabled = (bool)($body['topup_enabled'] ?? true);
 $bundleEnabled = (bool)($body['bundle_enabled'] ?? true);
@@ -45,6 +45,9 @@ $password = (string)($body['password'] ?? '');
 $pin = (string)($body['pin'] ?? '');
 $role = normalize_admin_role($body['role'] ?? 'USER');
 $status = normalize_admin_status($body['status'] ?? 'ACTIVE');
+$commissionPer1000 = $commissionProvided
+    ? (float)$body['commission_per_1000']
+    : role_default_commission_per_1000($role);
 
 if ($name === '') {
     api_response(false, 'VALIDATION_ERROR', 'Name is required', ['field' => 'name'], 422);

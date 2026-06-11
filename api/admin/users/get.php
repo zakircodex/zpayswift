@@ -42,6 +42,8 @@ $walletDisplay = function_exists('mfs_wallet_display_payload') ? mfs_wallet_disp
 $roleSettings = fb_get('USER_ROLE_SETTINGS/' . $uid);
 if (!is_array($roleSettings)) {
     $roleSettings = role_default_settings($role);
+} elseif (function_exists('role_settings_with_defaults')) {
+    $roleSettings = role_settings_with_defaults($roleSettings, $role);
 }
 
 api_response(true, 'SUCCESS', 'User loaded', [

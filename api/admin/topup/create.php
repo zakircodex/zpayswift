@@ -73,15 +73,17 @@ if ($adminUid === '') {
 }
 
 $requestId = make_topup_request_id();
+$financials = topup_commission_breakdown($adminUid, $amount, $adminUser);
+$walletDebit = (float)$financials['wallet_debit_bdt'];
 
-$hold = wallet_hold_amount($adminUid, $amount, $requestId, 'TOPUP_HOLD');
+$hold = wallet_hold_amount($adminUid, $walletDebit, $requestId, 'TOPUP_HOLD');
 if (!($hold['ok'] ?? false)) {
     $code = (string)($hold['code'] ?? 'SERVER_ERROR');
 
     if ($code === 'INSUFFICIENT_BALANCE') {
         api_response(false, 'INSUFFICIENT_BALANCE', 'Not enough admin balance', [
             'available_balance' => (float)($hold['available_balance'] ?? 0),
-            'required_amount' => (float)($hold['required_amount'] ?? $amount),
+            'required_amount' => (float)($hold['required_amount'] ?? $walletDebit),
         ], 422);
     }
 
@@ -97,8 +99,15 @@ $row = [
     'topup_number' => $topupNumber,
     'operator' => $operator,
     'amount' => $amount,
+    'amount_bdt' => $amount,
+    'commission_per_1000' => $financials['commission_per_1000'],
+    'commission_bdt' => $financials['commission_bdt'],
+    'commission_amount' => $financials['commission_bdt'],
+    'wallet_debit_bdt' => $walletDebit,
+    'total_debit' => $walletDebit,
+    'charged_amount' => $walletDebit,
     'request_pin_verified' => true,
-    'wallet_hold_amount' => $amount,
+    'wallet_hold_amount' => $walletDebit,
     'status' => 'PENDING',
     'assigned_device_id' => '',
     'assigned_slot' => '',
@@ -114,7 +123,7 @@ $row = [
 ];
 
 if (!fb_put('TOPUP_REQUESTS/PENDING/' . $requestId, $row)) {
-    wallet_refund_hold($adminUid, $amount, $requestId, 'TOPUP_REFUND');
+    wallet_refund_hold($adminUid, $walletDebit, $requestId, 'TOPUP_REFUND');
     api_response(false, 'SERVER_ERROR', 'Failed to create admin topup request', [], 500);
 }
 
@@ -128,7 +137,7 @@ $statusSaved = create_request_status(
 
 if (!$statusSaved) {
     fb_delete('TOPUP_REQUESTS/PENDING/' . $requestId);
-    wallet_refund_hold($adminUid, $amount, $requestId, 'TOPUP_REFUND');
+    wallet_refund_hold($adminUid, $walletDebit, $requestId, 'TOPUP_REFUND');
     api_response(false, 'SERVER_ERROR', 'Failed to create request status', [], 500);
 }
 
@@ -137,6 +146,9 @@ admin_action_log('ADMIN_DIRECT_TOPUP_CREATE', $requestId, 'Admin created direct 
     'topup_number' => $topupNumber,
     'operator' => $operator,
     'amount' => $amount,
+    'commission_per_1000' => $financials['commission_per_1000'],
+    'commission_bdt' => $financials['commission_bdt'],
+    'wallet_debit_bdt' => $walletDebit,
     'admin_uid' => $adminUid,
     'admin_note' => $note,
 ]);
@@ -146,6 +158,9 @@ system_log('ADMIN_DIRECT_TOPUP_CREATE', $requestId, 'Admin created direct topup 
     'topup_number' => $topupNumber,
     'operator' => $operator,
     'amount' => $amount,
+    'commission_per_1000' => $financials['commission_per_1000'],
+    'commission_bdt' => $financials['commission_bdt'],
+    'wallet_debit_bdt' => $walletDebit,
     'operator_active' => (bool)($runtime['active'] ?? false),
     'admin_uid' => $adminUid,
 ]);
@@ -158,5 +173,10 @@ api_response(true, 'TOPUP_REQUEST_CREATED', 'Admin direct topup request created'
     'topup_number' => $topupNumber,
     'operator' => $operator,
     'amount' => $amount,
+    'amount_bdt' => $amount,
+    'commission_per_1000' => $financials['commission_per_1000'],
+    'commission_bdt' => $financials['commission_bdt'],
+    'wallet_debit_bdt' => $walletDebit,
+    'total_debit' => $walletDebit,
     'created_by_admin' => true,
 ]);

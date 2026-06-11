@@ -214,23 +214,6 @@ function deduct_otp_confirm_actor_can_access_target(array $actor, array $target)
     return false;
 }
 
-function deduct_otp_confirm_load_commission_per_1000(string $targetUid): float
-{
-    $settings = fb_get('USER_ROLE_SETTINGS/' . $targetUid);
-
-    if (!is_array($settings)) {
-        return 0.0;
-    }
-
-    $commission = deduct_otp_confirm_money($settings['commission_per_1000'] ?? 0, 0.0);
-
-    if ($commission < 0) {
-        return 0.0;
-    }
-
-    return $commission;
-}
-
 deduct_otp_confirm_require_method('POST');
 
 $actor = deduct_otp_confirm_require_actor();
@@ -337,14 +320,9 @@ if ($isSubadminTransfer) {
         deduct_otp_confirm_response(false, 'VALIDATION_ERROR', 'You cannot deduct from your own account here', [], 422);
     }
 
-    $commissionPer1000 = deduct_otp_confirm_load_commission_per_1000($targetUid);
-
-    if ($commissionPer1000 > 0) {
-        $commissionAmount = round(($baseAmount / 1000) * $commissionPer1000, 2);
-    }
 }
 
-$totalDebit = round($baseAmount + $commissionAmount, 2);
+$totalDebit = round($baseAmount, 2);
 
 $beforeAvailable = deduct_otp_confirm_money($wallet['available_balance'] ?? 0, 0.0);
 $beforeHold = deduct_otp_confirm_money($wallet['hold_balance'] ?? 0, 0.0);
@@ -406,8 +384,6 @@ $baseNote = trim((string)($request['note'] ?? ''));
 $finalNote = $baseNote !== '' ? $baseNote : 'Wallet deducted';
 
 $finalNote .= ' | Base: BDT ' . number_format($baseAmount, 2, '.', '');
-$finalNote .= ' | Commission/1000: BDT ' . number_format($commissionPer1000, 2, '.', '');
-$finalNote .= ' | Commission: BDT ' . number_format($commissionAmount, 2, '.', '');
 $finalNote .= ' | Total Debit: BDT ' . number_format($totalDebit, 2, '.', '');
 
 fb_put('WALLET_LEDGER/' . $targetUid . '/' . $month . '/' . $ledgerId, [

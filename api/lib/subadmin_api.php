@@ -95,6 +95,8 @@ function subapi_load_role_settings(string $uid, ?string $role = null): array
 
     if (!is_array($settings)) {
         $settings = role_default_settings($role ?: 'USER');
+    } elseif (function_exists('role_settings_with_defaults')) {
+        $settings = role_settings_with_defaults($settings, $role ?: 'USER');
     }
 
     return is_array($settings) ? $settings : [];
@@ -759,15 +761,17 @@ function subapi_create_panel_topup(
     $wallet = subapi_load_wallet($uid);
     $availableBalance = subapi_round_money((float)($wallet['available_balance'] ?? 0));
     $holdBalance = subapi_round_money((float)($wallet['hold_balance'] ?? 0));
+    $financials = topup_commission_breakdown($uid, $amount, $user, $roleSettings);
+    $walletDebit = (float)$financials['wallet_debit_bdt'];
 
-    if ($availableBalance < $amount) {
+    if ($availableBalance < $walletDebit) {
         return [
             'ok' => false,
             'code' => 'INSUFFICIENT_BALANCE',
             'message' => 'Insufficient available balance',
             'data' => [
                 'available_balance' => $availableBalance,
-                'required_amount' => $amount,
+                'required_amount' => $walletDebit,
             ],
         ];
     }
@@ -775,8 +779,8 @@ function subapi_create_panel_topup(
     $requestId = subapi_make_uid('REQ');
     $now = subapi_now();
 
-    $newAvailable = subapi_round_money($availableBalance - $amount);
-    $newHold = subapi_round_money($holdBalance + $amount);
+    $newAvailable = subapi_round_money($availableBalance - $walletDebit);
+    $newHold = subapi_round_money($holdBalance + $walletDebit);
 
     $walletOk = fb_patch('USER_WALLETS/' . $uid, [
         'available_balance' => $newAvailable,
@@ -800,10 +804,17 @@ function subapi_create_panel_topup(
         'topup_number' => $topupNumber,
         'operator' => $operator,
         'amount' => $amount,
+        'amount_bdt' => $amount,
+        'commission_per_1000' => $financials['commission_per_1000'],
+        'commission_bdt' => $financials['commission_bdt'],
+        'commission_amount' => $financials['commission_bdt'],
+        'wallet_debit_bdt' => $walletDebit,
+        'total_debit' => $walletDebit,
+        'charged_amount' => $walletDebit,
         'status' => 'PENDING',
         'request_pin_verified' => true,
         'wallet_hold_amount' => 0,
-        'held_amount' => $amount,
+        'held_amount' => $walletDebit,
         'hold_settled_at' => 0,
         'hold_settlement_status' => 'PENDING',
         'assigned_device_id' => '',
@@ -852,7 +863,11 @@ function subapi_create_panel_topup(
         'uid' => $uid,
         'type' => 'SUBADMIN_PANEL_TOPUP_HOLD',
         'direction' => 'HOLD',
-        'amount' => $amount,
+        'amount' => $walletDebit,
+        'topup_amount_bdt' => $amount,
+        'commission_per_1000' => $financials['commission_per_1000'],
+        'commission_bdt' => $financials['commission_bdt'],
+        'wallet_debit_bdt' => $walletDebit,
         'before_available' => $availableBalance,
         'after_available' => $newAvailable,
         'before_hold' => $holdBalance,
@@ -872,6 +887,9 @@ function subapi_create_panel_topup(
         'operator' => $operator,
         'topup_number' => $topupNumber,
         'amount' => $amount,
+        'commission_per_1000' => $financials['commission_per_1000'],
+        'commission_bdt' => $financials['commission_bdt'],
+        'wallet_debit_bdt' => $walletDebit,
         'message' => $note !== '' ? $note : 'Topup created from subadmin panel',
         'source' => 'SUBADMIN_PANEL',
         'created_at' => $now,
@@ -884,6 +902,9 @@ function subapi_create_panel_topup(
             'operator' => $operator,
             'topup_number' => $topupNumber,
             'amount' => $amount,
+            'commission_per_1000' => $financials['commission_per_1000'],
+            'commission_bdt' => $financials['commission_bdt'],
+            'wallet_debit_bdt' => $walletDebit,
         ]);
     }
 
@@ -901,6 +922,11 @@ function subapi_create_panel_topup(
             'operator' => $operator,
             'topup_number' => $topupNumber,
             'amount' => $amount,
+            'amount_bdt' => $amount,
+            'commission_per_1000' => $financials['commission_per_1000'],
+            'commission_bdt' => $financials['commission_bdt'],
+            'wallet_debit_bdt' => $walletDebit,
+            'total_debit' => $walletDebit,
             'status' => 'PENDING',
             'available_balance' => $newAvailable,
             'hold_balance' => $newHold,

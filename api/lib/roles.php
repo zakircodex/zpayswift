@@ -33,7 +33,7 @@ function role_default_settings(string $role = 'USER'): array
     switch ($role) {
         case 'SUBADMIN':
             return [
-                'commission_per_1000' => 20,
+                'commission_per_1000' => 18,
                 'api_enabled' => true,
                 'topup_enabled' => true,
                 'bundle_enabled' => true,
@@ -44,7 +44,7 @@ function role_default_settings(string $role = 'USER'): array
 
         case 'RETAILER':
             return [
-                'commission_per_1000' => 20,
+                'commission_per_1000' => 18,
                 'api_enabled' => false,
                 'topup_enabled' => true,
                 'bundle_enabled' => true,
@@ -76,6 +76,17 @@ function role_default_settings(string $role = 'USER'): array
                 'updated_at' => $now,
             ];
     }
+}
+
+function role_default_commission_per_1000(string $role = 'USER'): float
+{
+    $defaults = role_default_settings($role);
+    return round(max(0, (float)($defaults['commission_per_1000'] ?? 0)), 2);
+}
+
+function role_settings_with_defaults(array $settings, string $role = 'USER'): array
+{
+    return array_replace(role_default_settings($role), $settings);
 }
 
 function normalize_role_settings(array $input, string $role = 'USER'): array

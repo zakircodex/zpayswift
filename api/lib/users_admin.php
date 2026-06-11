@@ -35,7 +35,7 @@ function admin_users_default_retailer_settings(): array
 {
     $row = admin_users_role_default('RETAILER');
 
-    $row['commission_per_1000'] = 20;
+    $row['commission_per_1000'] = 18;
     $row['api_enabled'] = false;
     $row['topup_enabled'] = true;
     $row['bundle_enabled'] = true;
@@ -62,7 +62,9 @@ function admin_users_load_role_settings(string $uid, ?string $role = null): arra
 {
     $row = fb_get('USER_ROLE_SETTINGS/' . $uid);
     if (is_array($row)) {
-        return $row;
+        return function_exists('role_settings_with_defaults')
+            ? role_settings_with_defaults($row, $role ?: 'USER')
+            : array_replace(admin_users_role_default($role ?: 'USER'), $row);
     }
 
     return admin_users_role_default($role ?: 'USER');

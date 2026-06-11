@@ -586,7 +586,9 @@ function user_proxy_load_role_settings(string $uid, ?string $role = null): array
     $row = fb_get('USER_ROLE_SETTINGS/' . $uid);
 
     if (is_array($row)) {
-        return $row;
+        return function_exists('role_settings_with_defaults')
+            ? role_settings_with_defaults($row, $role ?: 'USER')
+            : array_replace(user_proxy_default_role_settings($role ?: 'USER'), $row);
     }
 
     return user_proxy_default_role_settings($role ?: 'USER');
@@ -1887,10 +1889,12 @@ function user_proxy_create_topup_request(string $uid, array $body): array
     }
 
     $requestId = user_proxy_make_id('TR');
+    $financials = topup_commission_breakdown($uid, $amount, $userRow, $roleSettings);
+    $walletDebit = (float)$financials['wallet_debit_bdt'];
 
     $hold = user_proxy_hold_balance(
         $uid,
-        $amount,
+        $walletDebit,
         $requestId,
         'USER_WEB_TOPUP_HOLD',
         'Balance held for web topup request'
@@ -1915,10 +1919,17 @@ function user_proxy_create_topup_request(string $uid, array $body): array
         'operator' => $operator,
         'operator_name' => user_proxy_operator_name($operator),
         'amount' => $amount,
+        'amount_bdt' => $amount,
+        'commission_per_1000' => $financials['commission_per_1000'],
+        'commission_bdt' => $financials['commission_bdt'],
+        'commission_amount' => $financials['commission_bdt'],
+        'wallet_debit_bdt' => $walletDebit,
+        'total_debit' => $walletDebit,
+        'charged_amount' => $walletDebit,
         'note' => $note,
         'request_pin_verified' => true,
-        'wallet_hold_amount' => $amount,
-        'held_amount' => $amount,
+        'wallet_hold_amount' => $walletDebit,
+        'held_amount' => $walletDebit,
         'status' => 'PENDING',
         'assigned_device_id' => '',
         'assigned_slot' => '',
@@ -1933,7 +1944,7 @@ function user_proxy_create_topup_request(string $uid, array $body): array
     if (!$ok) {
         user_proxy_release_hold_rollback(
             $uid,
-            $amount,
+            $walletDebit,
             $requestId,
             'USER_WEB_TOPUP_HOLD_ROLLBACK',
             'Topup hold rollback after request create failure'
@@ -1970,6 +1981,9 @@ function user_proxy_create_topup_request(string $uid, array $body): array
             'operator' => $operator,
             'topup_number' => $topupNumber,
             'amount' => $amount,
+            'commission_per_1000' => $financials['commission_per_1000'],
+            'commission_bdt' => $financials['commission_bdt'],
+            'wallet_debit_bdt' => $walletDebit,
         ]);
     }
 
@@ -1987,6 +2001,11 @@ function user_proxy_create_topup_request(string $uid, array $body): array
             'operator_name' => user_proxy_operator_name($operator),
             'topup_number' => $topupNumber,
             'amount' => $amount,
+            'amount_bdt' => $amount,
+            'commission_per_1000' => $financials['commission_per_1000'],
+            'commission_bdt' => $financials['commission_bdt'],
+            'wallet_debit_bdt' => $walletDebit,
+            'total_debit' => $walletDebit,
             'created_at' => $now,
             'wallet' => [
                 'available_balance' => (float)($hold['after_available'] ?? $hold['available_balance'] ?? 0),

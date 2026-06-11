@@ -507,7 +507,7 @@ header('Pragma: no-cache');
     <th>Status</th>
     <th>Role</th>
     <th>Country</th>
-    <th>Commission</th>
+    <th>Topup Commission / 1000 BDT</th>
     <th>API</th>
     <th>Available</th>
     <th>Hold</th>

@@ -34,23 +34,6 @@ function admin_wallet_round_money(float $amount): float
     return round($amount, 2);
 }
 
-function admin_wallet_load_commission_per_1000(string $uid): float
-{
-    $settings = fb_get('USER_ROLE_SETTINGS/' . $uid);
-
-    if (!is_array($settings)) {
-        return 0.0;
-    }
-
-    $commission = admin_wallet_float_value($settings['commission_per_1000'] ?? 0, 0.0);
-
-    if ($commission < 0) {
-        return 0.0;
-    }
-
-    return $commission;
-}
-
 function admin_wallet_safe_note(string $note): string
 {
     $note = trim($note);
@@ -84,33 +67,15 @@ if ($userStatus !== 'ACTIVE') {
     api_response(false, 'FORBIDDEN', 'User account is not active', [], 403);
 }
 
-/*
-|--------------------------------------------------------------------------
-| Commission Calculation
-|--------------------------------------------------------------------------
-| Example:
-| Add Amount: 1000 BDT
-| commission_per_1000: 22 BDT
-| Commission: 22 BDT
-| Total Credit: 1022 BDT
-*/
-
-$commissionPer1000 = admin_wallet_load_commission_per_1000($uid);
+$commissionPer1000 = 0.0;
 $commissionAmount = 0.0;
-
-if ($commissionPer1000 > 0) {
-    $commissionAmount = admin_wallet_round_money(($amount / 1000) * $commissionPer1000);
-}
-
-$totalCredit = admin_wallet_round_money($amount + $commissionAmount);
+$totalCredit = admin_wallet_round_money($amount);
 
 $refId = 'ADMIN_CREDIT_' . date('YmdHis') . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6));
 
 $finalNote = $note;
 
 $finalNote .= ' | Base: BDT ' . number_format($amount, 2, '.', '');
-$finalNote .= ' | Commission/1000: BDT ' . number_format($commissionPer1000, 2, '.', '');
-$finalNote .= ' | Commission: BDT ' . number_format($commissionAmount, 2, '.', '');
 $finalNote .= ' | Total Credit: BDT ' . number_format($totalCredit, 2, '.', '');
 
 $res = wallet_admin_add_balance($uid, $totalCredit, $refId, $finalNote);
@@ -141,11 +106,11 @@ $logData = [
 ];
 
 if (function_exists('admin_action_log')) {
-    admin_action_log('ADD_BALANCE', $uid, 'Admin added balance with commission', $logData);
+    admin_action_log('ADD_BALANCE', $uid, 'Admin added balance', $logData);
 }
 
 if (function_exists('system_log')) {
-    system_log('ADMIN_ADD_BALANCE', $uid, 'Admin added balance with commission', $logData);
+    system_log('ADMIN_ADD_BALANCE', $uid, 'Admin added balance', $logData);
 }
 
 api_response(true, 'SUCCESS', 'Balance added successfully', [

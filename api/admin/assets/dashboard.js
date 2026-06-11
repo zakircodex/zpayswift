@@ -2060,7 +2060,7 @@ async function deleteBundleOffer(offerId){
 function syncUserRoleFields(){
   const role = (document.getElementById('userRole')?.value || 'USER').toUpperCase();
 
-  const showCommission = role === 'RETAILER' || role === 'SUBADMIN';
+  const showCommission = true;
   const showApi = role === 'SUBADMIN';
   const showLimits = role === 'RETAILER' || role === 'SUBADMIN';
 
@@ -2069,9 +2069,9 @@ function syncUserRoleFields(){
   document.getElementById('minAmountField')?.classList.toggle('hidden', !showLimits);
   document.getElementById('maxAmountField')?.classList.toggle('hidden', !showLimits);
 
-  if (!showCommission) {
-    const node = document.getElementById('userCommissionPer1000');
-    if (node) node.value = '0';
+  const commissionNode = document.getElementById('userCommissionPer1000');
+  if (commissionNode && commissionNode.dataset.userEdited !== '1') {
+    commissionNode.value = (role === 'RETAILER' || role === 'SUBADMIN') ? '18' : '0';
   }
 
   if (!showApi) {
@@ -2091,7 +2091,7 @@ function syncUserRoleFields(){
 function syncEditUserRoleFields(){
   const role = (document.getElementById('editUserRole')?.value || 'USER').toUpperCase();
 
-  const showCommission = role === 'RETAILER' || role === 'SUBADMIN';
+  const showCommission = true;
   const showApi = role === 'SUBADMIN';
   const showLimits = role === 'RETAILER' || role === 'SUBADMIN';
 
@@ -2099,11 +2099,6 @@ function syncEditUserRoleFields(){
   document.getElementById('editApiEnabledField')?.classList.toggle('hidden', !showApi);
   document.getElementById('editMinAmountField')?.classList.toggle('hidden', !showLimits);
   document.getElementById('editMaxAmountField')?.classList.toggle('hidden', !showLimits);
-
-  if (!showCommission) {
-    const node = document.getElementById('editUserCommissionPer1000');
-    if (node) node.value = '0';
-  }
 
   if (!showApi) {
     const node = document.getElementById('editUserApiEnabled');
@@ -2145,6 +2140,7 @@ function resetUserRoleFields(role = 'USER'){
   if (roleEl) roleEl.value = role;
   if (statusEl) statusEl.value = 'ACTIVE';
   if (commissionEl) commissionEl.value = '0';
+  if (commissionEl) commissionEl.dataset.userEdited = '0';
   if (apiEl) apiEl.value = '0';
   if (topupEl) topupEl.value = '1';
   if (bundleEl) bundleEl.value = '1';
@@ -2227,7 +2223,7 @@ async function viewUser(uid){
           <div class="detail-item"><label>Status</label><strong>${esc(data.status || '-')}</strong></div>
           <div class="detail-item"><label>Role</label><strong>${esc(data.role || 'USER')}</strong></div>
           <div class="detail-item"><label>Country</label><strong>${esc(data.country_code || data.country || '-')}</strong></div>
-          <div class="detail-item"><label>Commission / 1000</label><strong>${Number(data.commission_per_1000 || 0).toFixed(2)}</strong></div>
+          <div class="detail-item"><label>Topup Commission / 1000 BDT</label><strong>${Number(data.commission_per_1000 || 0).toFixed(2)}</strong></div>
           <div class="detail-item"><label>API Enabled</label><strong>${data.api_enabled ? 'Yes' : 'No'}</strong></div>
           <div class="detail-item"><label>Topup Enabled</label><strong>${data.topup_enabled ? 'Yes' : 'No'}</strong></div>
           <div class="detail-item"><label>Bundle Enabled</label><strong>${data.bundle_enabled ? 'Yes' : 'No'}</strong></div>
@@ -2323,8 +2319,9 @@ async function openEditUserModal(uid){
 
                 <div class="form-grid">
                   <div id="editCommissionField">
-                    <label>Commission per 1000</label>
+                    <label>Topup Commission / 1000 BDT</label>
                     <input class="input" id="editUserCommissionPer1000" type="number" step="0.01" min="0" value="${esc(String(data.commission_per_1000 || 0))}">
+                    <small class="muted">Normal mobile topup only. Balance transfer and bundle are excluded.</small>
                   </div>
 
                   <div id="editApiEnabledField">
@@ -2493,8 +2490,9 @@ function openCreateUserModal(){
 
               <div class="form-grid">
                 <div class="field" id="commissionField">
-                  <label>Commission per 1000</label>
+                  <label>Topup Commission / 1000 BDT</label>
                   <input id="userCommissionPer1000" class="input" type="number" step="0.01" min="0" value="0">
+                  <small class="muted">Normal mobile topup only. Balance transfer and bundle are excluded.</small>
                 </div>
 
                 <div class="field" id="apiEnabledField">
@@ -3681,6 +3679,12 @@ document.addEventListener('change', (e) => {
 
   if (e.target.id === 'editUserRole') {
     syncEditUserRoleFields();
+  }
+});
+
+document.addEventListener('input', (e) => {
+  if (e.target?.id === 'userCommissionPer1000') {
+    e.target.dataset.userEdited = '1';
   }
 });
 

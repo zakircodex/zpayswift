@@ -101,15 +101,17 @@ if ($userPinHash === '' || !password_verify($pin, $userPinHash)) {
 |--------------------------------------------------------------------------
 */
 $requestId = make_topup_request_id();
+$financials = topup_commission_breakdown($uid, $amount, $user);
+$walletDebit = (float)$financials['wallet_debit_bdt'];
 
-$hold = wallet_hold_amount($uid, $amount, $requestId, 'TOPUP_HOLD');
+$hold = wallet_hold_amount($uid, $walletDebit, $requestId, 'TOPUP_HOLD');
 if (!($hold['ok'] ?? false)) {
     $code = (string)($hold['code'] ?? 'SERVER_ERROR');
 
     if ($code === 'INSUFFICIENT_BALANCE') {
         api_response(false, 'INSUFFICIENT_BALANCE', 'Not enough balance', [
             'available_balance' => (float)($hold['available_balance'] ?? 0),
-            'required_amount' => (float)($hold['required_amount'] ?? $amount),
+            'required_amount' => (float)($hold['required_amount'] ?? $walletDebit),
         ], 422);
     }
 
@@ -127,11 +129,12 @@ $pendingSaved = create_topup_pending_request(
     $userPhone,
     $topupNumber,
     $operator,
-    $amount
+    $amount,
+    $financials
 );
 
 if (!$pendingSaved) {
-    wallet_refund_hold($uid, $amount, $requestId, 'TOPUP_REFUND');
+    wallet_refund_hold($uid, $walletDebit, $requestId, 'TOPUP_REFUND');
     api_response(false, 'SERVER_ERROR', 'Failed to create topup request', [], 500);
 }
 
@@ -150,7 +153,7 @@ $statusSaved = create_request_status(
 
 if (!$statusSaved) {
     fb_delete('TOPUP_REQUESTS/PENDING/' . $requestId);
-    wallet_refund_hold($uid, $amount, $requestId, 'TOPUP_REFUND');
+    wallet_refund_hold($uid, $walletDebit, $requestId, 'TOPUP_REFUND');
     api_response(false, 'SERVER_ERROR', 'Failed to create request status', [], 500);
 }
 
@@ -158,6 +161,9 @@ system_log('TOPUP_SUBMIT', $requestId, 'Topup request created successfully', [
     'uid' => $uid,
     'operator' => $operator,
     'amount' => $amount,
+    'commission_per_1000' => $financials['commission_per_1000'],
+    'commission_bdt' => $financials['commission_bdt'],
+    'wallet_debit_bdt' => $walletDebit,
     'topup_number' => $topupNumber,
     'operator_active' => (bool)($runtime['active'] ?? false),
 ]);
@@ -173,4 +179,9 @@ api_response(true, 'TOPUP_REQUEST_CREATED', 'Topup request submitted', [
     'topup_number' => $topupNumber,
     'operator' => $operator,
     'amount' => $amount,
+    'amount_bdt' => $amount,
+    'commission_per_1000' => $financials['commission_per_1000'],
+    'commission_bdt' => $financials['commission_bdt'],
+    'wallet_debit_bdt' => $walletDebit,
+    'total_debit' => $walletDebit,
 ]);

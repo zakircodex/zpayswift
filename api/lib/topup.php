@@ -13,6 +13,58 @@ function topup_now(): int
     return function_exists('now_ts') ? (int)now_ts() : time();
 }
 
+function topup_commission_breakdown(
+    string $uid,
+    float $amount,
+    array $user = [],
+    array $roleSettings = []
+): array {
+    $amount = round(max(0, $amount), 2);
+    $uid = trim($uid);
+
+    if (!$user && $uid !== '') {
+        $loadedUser = fb_get('USERS/' . $uid);
+        $user = is_array($loadedUser) ? $loadedUser : [];
+    }
+
+    $role = strtoupper(trim((string)($user['role'] ?? 'USER')));
+    if (!in_array($role, ['USER', 'RETAILER', 'SUBADMIN', 'ADMIN'], true)) {
+        $role = 'USER';
+    }
+
+    if (!$roleSettings && $uid !== '') {
+        $loadedSettings = fb_get('USER_ROLE_SETTINGS/' . $uid);
+        $roleSettings = is_array($loadedSettings) ? $loadedSettings : [];
+    }
+
+    if (function_exists('role_settings_with_defaults')) {
+        $roleSettings = role_settings_with_defaults($roleSettings, $role);
+    }
+
+    $defaultRate = function_exists('role_default_commission_per_1000')
+        ? role_default_commission_per_1000($role)
+        : (in_array($role, ['RETAILER', 'SUBADMIN'], true) ? 18.0 : 0.0);
+
+    $rate = array_key_exists('commission_per_1000', $roleSettings)
+        ? (float)$roleSettings['commission_per_1000']
+        : $defaultRate;
+    $rate = round(max(0, $rate), 2);
+
+    $commission = round(($amount * $rate) / 1000, 2);
+    $commission = min($amount, max(0, $commission));
+    $walletDebit = round(max(0, $amount - $commission), 2);
+
+    return [
+        'role' => $role,
+        'amount_bdt' => $amount,
+        'commission_per_1000' => $rate,
+        'commission_bdt' => $commission,
+        'wallet_debit_bdt' => $walletDebit,
+        'total_debit' => $walletDebit,
+        'charged_amount' => $walletDebit,
+    ];
+}
+
 function topup_telegram_bot_token(): string
 {
     return defined('TELEGRAM_BOT_TOKEN') ? trim((string)TELEGRAM_BOT_TOKEN) : '';
@@ -421,8 +473,18 @@ function create_topup_pending_request(
     string $userPhone,
     string $topupNumber,
     string $operator,
-    float $amount
+    float $amount,
+    array $financials = []
 ): bool {
+    $financials = array_replace([
+        'amount_bdt' => $amount,
+        'commission_per_1000' => 0,
+        'commission_bdt' => 0,
+        'wallet_debit_bdt' => $amount,
+        'total_debit' => $amount,
+        'charged_amount' => $amount,
+    ], $financials);
+
     $row = [
         'request_id' => $requestId,
         'uid' => $uid,
@@ -430,8 +492,15 @@ function create_topup_pending_request(
         'topup_number' => $topupNumber,
         'operator' => $operator,
         'amount' => $amount,
+        'amount_bdt' => (float)$financials['amount_bdt'],
+        'commission_per_1000' => (float)$financials['commission_per_1000'],
+        'commission_bdt' => (float)$financials['commission_bdt'],
+        'commission_amount' => (float)$financials['commission_bdt'],
+        'wallet_debit_bdt' => (float)$financials['wallet_debit_bdt'],
+        'total_debit' => (float)$financials['total_debit'],
+        'charged_amount' => (float)$financials['charged_amount'],
         'request_pin_verified' => true,
-        'wallet_hold_amount' => $amount,
+        'wallet_hold_amount' => (float)$financials['wallet_debit_bdt'],
         'status' => 'PENDING',
         'assigned_device_id' => '',
         'assigned_slot' => '',
@@ -473,6 +542,11 @@ function topup_write_history(array $done): void
         'topup_number' => (string)($done['topup_number'] ?? ''),
         'operator' => (string)($done['operator'] ?? ''),
         'amount' => (float)($done['amount'] ?? 0),
+        'amount_bdt' => (float)($done['amount_bdt'] ?? $done['amount'] ?? 0),
+        'commission_per_1000' => (float)($done['commission_per_1000'] ?? 0),
+        'commission_bdt' => (float)($done['commission_bdt'] ?? $done['commission_amount'] ?? 0),
+        'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $done['wallet_hold_amount'] ?? $done['amount'] ?? 0),
+        'total_debit' => (float)($done['total_debit'] ?? $done['wallet_hold_amount'] ?? $done['amount'] ?? 0),
         'status' => (string)($done['status'] ?? ''),
         'message' => (string)($done['final_message'] ?? ''),
         'created_at' => (int)($done['created_at'] ?? now_ts()),

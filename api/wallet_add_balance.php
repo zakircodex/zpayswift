@@ -214,23 +214,6 @@ function wallet_add_actor_can_access_target(array $actor, array $target): bool
     return false;
 }
 
-function wallet_add_load_commission_per_1000(string $targetUid): float
-{
-    $settings = fb_get('USER_ROLE_SETTINGS/' . $targetUid);
-
-    if (!is_array($settings)) {
-        return 0.0;
-    }
-
-    $commission = wallet_add_money($settings['commission_per_1000'] ?? 0, 0.0);
-
-    if ($commission < 0) {
-        return 0.0;
-    }
-
-    return $commission;
-}
-
 wallet_add_require_method('POST');
 
 $actor = wallet_add_require_actor();
@@ -291,14 +274,9 @@ $now = wallet_add_now();
 $beforeAvailable = wallet_add_money($targetWallet['available_balance'] ?? 0, 0.0);
 $beforeHold      = wallet_add_money($targetWallet['hold_balance'] ?? 0, 0.0);
 
-$commissionPer1000 = wallet_add_load_commission_per_1000($targetUid);
+$commissionPer1000 = 0.0;
 $commissionAmount  = 0.0;
-
-if ($commissionPer1000 > 0) {
-    $commissionAmount = round(($amount / 1000) * $commissionPer1000, 2);
-}
-
-$totalCredit = round($amount + $commissionAmount, 2);
+$totalCredit = round($amount, 2);
 $afterAvailable = round($beforeAvailable + $totalCredit, 2);
 
 $actorBeforeAvailable = 0.0;
@@ -359,8 +337,6 @@ $ledgerId = wallet_add_make_id('WL');
 $baseNote = $note !== '' ? $note : 'Balance added';
 $finalNote = $baseNote;
 $finalNote .= ' | Base: BDT ' . number_format($amount, 2, '.', '');
-$finalNote .= ' | Commission/1000: BDT ' . number_format($commissionPer1000, 2, '.', '');
-$finalNote .= ' | Commission: BDT ' . number_format($commissionAmount, 2, '.', '');
 $finalNote .= ' | Total Credit: BDT ' . number_format($totalCredit, 2, '.', '');
 
 fb_put('WALLET_LEDGER/' . $targetUid . '/' . $month . '/' . $ledgerId, [

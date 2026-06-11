@@ -46,6 +46,8 @@ foreach ($users as $uid => $user) {
     $roleSettings = fb_get('USER_ROLE_SETTINGS/' . $uid);
     if (!is_array($roleSettings)) {
         $roleSettings = role_default_settings($role);
+    } elseif (function_exists('role_settings_with_defaults')) {
+        $roleSettings = role_settings_with_defaults($roleSettings, $role);
     }
 
     $items[] = [

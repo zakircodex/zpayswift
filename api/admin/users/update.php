@@ -236,6 +236,8 @@ if ($emailProvided && $emailChanged) {
 $currentRoleSettings = fb_get('USER_ROLE_SETTINGS/' . $uid);
 if (!is_array($currentRoleSettings)) {
     $currentRoleSettings = role_default_settings($role);
+} elseif (function_exists('role_settings_with_defaults')) {
+    $currentRoleSettings = role_settings_with_defaults($currentRoleSettings, $role);
 }
 
 $roleSettings = normalize_role_settings([
