@@ -29,7 +29,10 @@ if (!empty($_SESSION['subadmin_session_token']) && !empty($_SESSION['subadmin_us
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Subadmin Login</title>
+  <meta name="theme-color" content="#07111f">
+  <title>Z-Pay Swift Partner Login</title>
+  <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <style>
     *{box-sizing:border-box}
     html,body{margin:0;padding:0}
@@ -410,15 +413,16 @@ if (!empty($_SESSION['subadmin_session_token']) && !empty($_SESSION['subadmin_us
       }
     }
   </style>
+  <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
 
 <div class="page">
   <div class="card">
     <div class="brand">
-      <div class="logo">S</div>
+      <img class="logo brand-icon" src="/assets/brand/zpay-icon.png" alt="">
       <div>
-        <h1>Subadmin Panel</h1>
+        <h1>Z-Pay Swift Partner</h1>
         <p class="sub">Secure access for wallet, users, requests and API tools</p>
       </div>
     </div>

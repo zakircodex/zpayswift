@@ -149,7 +149,10 @@ header('Content-Type: text/html; charset=utf-8');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111f">
   <title>Z-Pay Swift API & Service Links</title>
+  <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <style>
     :root {
       color-scheme: dark;
@@ -270,11 +273,16 @@ header('Content-Type: text/html; charset=utf-8');
       td::before { content: attr(data-label); display: block; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
     }
   </style>
+  <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
 <main>
   <header class="hero">
     <div>
+      <div class="brand-page-header">
+        <img class="brand-icon" src="/assets/brand/zpay-icon.png" alt="">
+        <span class="brand-copy"><strong class="brand-title">Z-Pay Swift API Docs</strong><span class="brand-subtitle">Public service and developer access guide</span></span>
+      </div>
       <span class="badge">Z-Pay Swift</span>
       <h1>Z-Pay Swift API & Service Links</h1>
       <p>Clean public links for user services, tracking, partner access, and app setup. Internal operations and secret values are intentionally hidden.</p>

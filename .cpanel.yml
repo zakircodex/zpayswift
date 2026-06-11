@@ -4,6 +4,7 @@ deployment:
     - export DEPLOYPATH=/home/zedpayhe/public_html/
     - /bin/mkdir -p $DEPLOYPATH
     - /bin/cp -R api $DEPLOYPATH
+    - /bin/cp -R assets $DEPLOYPATH
     - /bin/cp -f .htaccess $DEPLOYPATH/.htaccess
     - /bin/cp -f index.html $DEPLOYPATH/index.html
     - /bin/cp -f download.php $DEPLOYPATH/download.php

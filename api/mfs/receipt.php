@@ -119,7 +119,10 @@ if (!$isMy && $totalBdt <= 0) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111f">
   <title><?= receipt_h($title) ?></title>
+  <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <style>
     :root{color-scheme:dark;--bg:#07101d;--card:#101827;--line:rgba(148,163,184,.22);--text:#f8fafc;--muted:#94a3b8;--green:#22c55e;--blue:#3b82f6}
     *{box-sizing:border-box}
@@ -167,6 +170,7 @@ if (!$isMy && $totalBdt <= 0) {
       h1{font-size:22px !important}
     }
   </style>
+  <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
   <main class="wrap">
@@ -179,7 +183,7 @@ if (!$isMy && $totalBdt <= 0) {
       <?php else: ?>
         <header class="head">
           <div class="brand">
-            <div class="logo">Z</div>
+            <img class="logo brand-icon" src="/assets/brand/zpay-icon.png" alt="">
             <div>
               <h1><?= receipt_h($title) ?></h1>
               <p><?= receipt_h($subtitle) ?></p>

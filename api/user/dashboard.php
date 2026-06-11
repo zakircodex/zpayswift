@@ -9,16 +9,20 @@ header('Pragma: no-cache');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07111f">
   <title>Z-Pay Swift User Dashboard</title>
+  <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=12">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
+  <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
 
 <div id="loginView" class="login-wrap">
   <div class="login-card">
     <div class="brand">
-      <div class="logo">Z</div>
+      <img class="logo brand-icon" src="/assets/brand/zpay-icon.png" alt="">
       <div>
         <h1>Z-Pay Swift<br>User</h1>
         <p>Secure wallet, topup, bundle and bKash/Nagad requests</p>
@@ -59,7 +63,7 @@ header('Pragma: no-cache');
   <div class="app-shell">
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-brand">
-        <div class="logo">Z</div>
+        <img class="logo brand-icon" src="/assets/brand/zpay-icon.png" alt="">
         <div>
           <h3>Z-Pay Swift<br>User</h3>
           <p>Wallet, topup, bundles, bKash/Nagad and request history</p>

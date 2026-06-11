@@ -9,15 +9,19 @@ header('Pragma: no-cache');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#07111f">
   <title>Recover Z-Pay Swift User Account</title>
+  <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/api/user/assets/forgot.css?v=1">
+  <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
 
 <div class="page">
   <div class="card">
     <div class="brand">
-      <div class="logo">U</div>
+      <img class="logo brand-icon" src="/assets/brand/zpay-icon.png" alt="">
       <div>
         <h1>Recover Account</h1>
         <p>Reset your password or transaction PIN with OTP verification</p>

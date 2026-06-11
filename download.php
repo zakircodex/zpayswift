@@ -35,6 +35,8 @@ header('X-Content-Type-Options: nosniff');
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07111f">
   <title>APK Download | Z-Pay Swift</title>
+  <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <style>
     :root{
       color-scheme:dark;
@@ -138,10 +140,11 @@ header('X-Content-Type-Options: nosniff');
       .actions{grid-template-columns:1fr}
     }
   </style>
+  <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
   <main class="card">
-    <div class="mark">APK</div>
+    <img class="mark brand-icon" src="/assets/brand/zpay-icon.png" alt="Z-Pay Swift">
     <h1>Android APK</h1>
     <p>Download the latest Z-Pay Swift app when available.</p>
     <div class="message">APK download is not available yet. Please contact support.</div>

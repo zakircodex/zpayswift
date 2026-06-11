@@ -9,15 +9,19 @@ header('Pragma: no-cache');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07111f">
   <title>Z-Pay Swift Admin - bKash / Nagad Requests</title>
+  <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=21">
   <link rel="stylesheet" href="/api/admin/assets/mfs-panel.css?v=5">
+  <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body class="mfs-body">
   <div class="mfs-app">
     <aside class="mfs-sidebar" id="mfsSidebar">
       <div class="sidebar-brand">
-        <div class="logo">Z</div>
+        <img class="logo brand-icon" src="/assets/brand/zpay-icon.png" alt="">
         <div>
           <h1>Z-Pay Swift Admin</h1>
           <p>MFS operations panel</p>

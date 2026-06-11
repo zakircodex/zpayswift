@@ -24,7 +24,10 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Recover Subadmin Access</title>
+  <meta name="theme-color" content="#07111f">
+  <title>Recover Z-Pay Swift Partner Access</title>
+  <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
+  <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <style>
     *{box-sizing:border-box}
     html,body{margin:0;padding:0}
@@ -360,15 +363,16 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
       }
     }
   </style>
+  <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
 
 <div class="fp-page">
   <div class="fp-card">
     <div class="fp-brand">
-      <div class="fp-logo">S</div>
+      <img class="fp-logo brand-icon" src="/assets/brand/zpay-icon.png" alt="">
       <div>
-        <h1 class="fp-title">Recover Subadmin Access</h1>
+        <h1 class="fp-title">Recover Partner Access</h1>
         <p class="fp-subtitle">Reset password or PIN with OTP verification</p>
       </div>
     </div>
