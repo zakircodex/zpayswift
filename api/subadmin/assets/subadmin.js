@@ -74,7 +74,8 @@ bundleRenderToken: '',
   addBalance: {
     targetUid: '',
     targetName: '',
-    targetPhone: ''
+    targetPhone: '',
+    targetCurrency: 'BDT'
   },
 
   walletLedger: {
@@ -116,6 +117,15 @@ function fmtMoney(v, prefix = 'BDT'){
 
 function walletPrefix(currency){
   return String(currency || 'BDT').toUpperCase() === 'MYR' ? 'RM' : 'BDT';
+}
+
+function walletNativeCurrency(row){
+  const country = String(row?.country_code || row?.country || '').trim().toUpperCase();
+  if (country === 'MY') return 'MYR';
+  if (country === 'BD') return 'BDT';
+
+  const currency = String(row?.wallet_currency || row?.currency || row?.display_currency || 'BDT').trim().toUpperCase();
+  return ['MYR', 'RM'].includes(currency) ? 'MYR' : 'BDT';
 }
 
 function fmtWalletMoney(row, type = 'available'){
@@ -1065,13 +1075,16 @@ function resetAddBalanceState(){
   state.addBalance = {
     targetUid: '',
     targetName: '',
-    targetPhone: ''
+    targetPhone: '',
+    targetCurrency: 'BDT'
   };
 
   if (el('addBalanceTargetName')) el('addBalanceTargetName').textContent = '-';
   if (el('addBalanceTargetPhone')) el('addBalanceTargetPhone').textContent = '-';
   if (el('addBalanceTargetBalance')) el('addBalanceTargetBalance').textContent = '0.00';
   if (el('addBalanceTargetRole')) el('addBalanceTargetRole').textContent = '-';
+  if (el('addBalanceTargetCurrency')) el('addBalanceTargetCurrency').textContent = 'BDT';
+  if (el('addBalanceAmountLabel')) el('addBalanceAmountLabel').textContent = 'Add Amount (BDT)';
   if (el('addBalanceAmountInput')) el('addBalanceAmountInput').value = '';
   if (el('addBalanceNoteInput')) el('addBalanceNoteInput').value = '';
 
@@ -1098,11 +1111,18 @@ function openAddBalanceModal(uid){
   state.addBalance.targetUid = String(row.uid || '');
   state.addBalance.targetName = String(row.name || '');
   state.addBalance.targetPhone = String(row.phone || '');
+  state.addBalance.targetCurrency = walletNativeCurrency(row);
 
   if (el('addBalanceTargetName')) el('addBalanceTargetName').textContent = row.name || '-';
   if (el('addBalanceTargetPhone')) el('addBalanceTargetPhone').textContent = row.phone || '-';
   if (el('addBalanceTargetBalance')) el('addBalanceTargetBalance').textContent = fmtWalletMoney(row, 'available');
   if (el('addBalanceTargetRole')) el('addBalanceTargetRole').textContent = row.role || '-';
+  if (el('addBalanceTargetCurrency')) {
+    el('addBalanceTargetCurrency').textContent = state.addBalance.targetCurrency === 'MYR' ? 'MYR (RM)' : 'BDT';
+  }
+  if (el('addBalanceAmountLabel')) {
+    el('addBalanceAmountLabel').textContent = `Add Amount (${walletPrefix(state.addBalance.targetCurrency)})`;
+  }
 
   el('addBalanceModalWrap')?.classList.add('open');
 }
@@ -1128,12 +1148,14 @@ async function submitAddBalance(){
       amount,
       note
     }, 'Adding balance...');
+    const currency = String(data.currency || data.wallet_currency || state.addBalance.targetCurrency || 'BDT').toUpperCase();
+    const prefix = walletPrefix(currency);
 
     setBoxMessage('addBalanceStatusBox', 'ok', 'Balance Added', [
       `Target: ${data.target_name || state.addBalance.targetName || '-'}`,
       `Phone: ${data.target_phone || state.addBalance.targetPhone || '-'}`,
-      `Added: ${fmtMoney(data.amount || amount)}`,
-      `Available Balance: ${fmtMoney(data.available_balance_after || data.after_available || 0)}`,
+      `Added: ${prefix} ${money(data.amount || amount)}`,
+      `Available Balance: ${prefix} ${money(data.available_balance_after || data.after_available || 0)}`,
       `${data.message || 'Wallet balance updated successfully.'}`
     ]);
 
@@ -1198,9 +1220,9 @@ function renderWalletLedgerRows(items){
       <td>${fmtTs(item.created_at || 0)}</td>
       <td>${esc(item.type || '-')}</td>
       <td>${statusPill(item.direction || '-')}</td>
-      <td>${esc(item.currency || 'BDT')} ${money(item.amount || 0)}</td>
-      <td>${money(item.before_available || 0)}</td>
-      <td>${money(item.after_available || 0)}</td>
+      <td>${walletPrefix(item.currency)} ${money(item.amount || 0)}</td>
+      <td>${walletPrefix(item.currency)} ${money(item.before_available || 0)}</td>
+      <td>${walletPrefix(item.currency)} ${money(item.after_available || 0)}</td>
       <td>${esc(item.note || '-')}</td>
       <td>${esc(item.created_by_role || '-')}<br>${esc(item.created_by_uid || '-')}</td>
     </tr>
@@ -1261,9 +1283,9 @@ function renderTransferHistoryRows(items){
     <tr>
       <td>${fmtTs(item.created_at || 0)}</td>
       <td><strong>${esc(item.receiver_name || item.receiver_uid || '-')}</strong><br><span class="muted">${esc(item.receiver_phone || '-')} - ${esc(item.receiver_role || '-')}</span></td>
-      <td>${esc(item.currency || 'BDT')} ${money(item.amount || 0)}</td>
-      <td>${money(item.receiver_before_available ?? item.before_available ?? item.before_balance ?? 0)} to ${money(item.receiver_after_available ?? item.after_available ?? item.after_balance ?? 0)}</td>
-      <td>${money(item.sender_before_available ?? 0)} to ${money(item.sender_after_available ?? 0)}</td>
+      <td>${walletPrefix(item.currency)} ${money(item.amount || 0)}</td>
+      <td>${walletPrefix(item.currency)} ${money(item.receiver_before_available ?? item.before_available ?? item.before_balance ?? 0)} to ${walletPrefix(item.currency)} ${money(item.receiver_after_available ?? item.after_available ?? item.after_balance ?? 0)}</td>
+      <td>${walletPrefix(item.sender_currency || item.currency)} ${money(item.sender_before_available ?? 0)} to ${walletPrefix(item.sender_currency || item.currency)} ${money(item.sender_after_available ?? 0)}</td>
       <td>${esc(item.note || '-')}<br><span class="muted">${esc(item.reference || '-')}</span></td>
       <td>${esc(item.transfer_id || '-')}</td>
     </tr>

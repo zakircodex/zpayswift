@@ -1073,11 +1073,13 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
       <div class="box"><label>Phone</label><strong id="addBalanceTargetPhone">-</strong></div>
       <div class="box"><label>Available Balance</label><strong id="addBalanceTargetBalance">0.00</strong></div>
       <div class="box"><label>Role</label><strong id="addBalanceTargetRole">-</strong></div>
+      <div class="box"><label>Receiver Currency</label><strong id="addBalanceTargetCurrency">BDT</strong></div>
     </div>
 
     <div class="field">
-      <label>Add Amount</label>
+      <label id="addBalanceAmountLabel">Add Amount (BDT)</label>
       <input id="addBalanceAmountInput" class="input" type="number" step="0.01" min="0.01" placeholder="Enter amount">
+      <small class="muted">The amount is transferred directly in the receiver wallet currency. No exchange conversion is applied.</small>
     </div>
 
     <div class="field">

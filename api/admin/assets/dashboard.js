@@ -79,6 +79,15 @@ function walletPrefix(currency){
   return String(currency || 'BDT').toUpperCase() === 'MYR' ? 'RM' : 'BDT';
 }
 
+function walletNativeCurrency(row){
+  const country = String(row?.country_code || row?.country || '').trim().toUpperCase();
+  if (country === 'MY') return 'MYR';
+  if (country === 'BD') return 'BDT';
+
+  const currency = String(row?.wallet_currency || row?.currency || row?.display_currency || 'BDT').trim().toUpperCase();
+  return ['MYR', 'RM'].includes(currency) ? 'MYR' : 'BDT';
+}
+
 function walletMoney(row, type = 'available'){
   const currency = String(row?.display_currency || row?.wallet_currency || row?.currency || 'BDT').toUpperCase();
   const key = type === 'hold' ? 'display_hold_balance' : 'display_available_balance';
@@ -2709,6 +2718,28 @@ async function updateUserApiKeyStatus(uid, keyId, status){
 }
 
 function openWalletAction(type, uid){
+  const target = state.users.find(item => String(item.uid || '') === String(uid)) || {};
+  const currency = walletNativeCurrency(target);
+  const prefix = walletPrefix(currency);
+  const currencyFields = type === 'add' ? `
+    <div>
+      <label>Receiver Currency</label>
+      <input class="input" id="walletCurrency" value="${esc(currency === 'MYR' ? 'MYR (RM)' : 'BDT')}" readonly>
+    </div>
+
+    <div>
+      <label>Amount (${esc(prefix)})</label>
+      <input class="input" id="walletAmount" type="number" step="0.01" min="0">
+    </div>
+
+    <div class="form-full muted">The amount is credited directly in the receiver wallet currency. No exchange conversion is applied.</div>
+  ` : `
+    <div>
+      <label>Amount</label>
+      <input class="input" id="walletAmount" type="number" step="0.01" min="0">
+    </div>
+  `;
+
   openModal(
     type === 'add' ? 'Add Balance' : 'Deduct Balance',
     `
@@ -2718,10 +2749,7 @@ function openWalletAction(type, uid){
           <input class="input" id="walletUid" value="${esc(uid)}" readonly>
         </div>
 
-        <div>
-          <label>Amount</label>
-          <input class="input" id="walletAmount" type="number" step="0.01" min="0">
-        </div>
+        ${currencyFields}
 
         <div>
           <label>Note</label>
@@ -2742,7 +2770,7 @@ async function submitWalletAction(type){
   const note = document.getElementById('walletNote')?.value.trim() || '';
 
   try{
-    await proxyPost(type === 'add' ? 'wallet_add' : 'wallet_deduct', {
+    const data = await proxyPost(type === 'add' ? 'wallet_add' : 'wallet_deduct', {
       uid,
       amount,
       note
@@ -2750,8 +2778,15 @@ async function submitWalletAction(type){
 
     closeModal();
 
-    log(`${type === 'add' ? 'Added' : 'Deducted'} balance for ${uid}.`);
-    showToast(`${type === 'add' ? 'Balance added' : 'Balance deducted'} for ${uid}`, 'ok');
+    if (type === 'add') {
+      const currency = String(data.currency || data.wallet_currency || 'BDT').toUpperCase();
+      const amountLabel = `${walletPrefix(currency)} ${money(data.total_credit ?? data.amount ?? amount)}`;
+      log(`Added ${amountLabel} for ${uid}.`);
+      showToast(`Balance added: ${amountLabel}`, 'ok');
+    } else {
+      log(`Deducted balance for ${uid}.`);
+      showToast(`Balance deducted for ${uid}`, 'ok');
+    }
 
     await loadUsers({ busy:false, silentLog:true });
     await viewUser(uid);
@@ -2792,7 +2827,7 @@ async function openLedger(uid){
                 <tr>
                   <td>${fmtTs(item.created_at || item.ts)}</td>
                   <td>${esc(item.type || '-')}</td>
-                  <td>${money(item.amount)}</td>
+                  <td>${walletPrefix(item.currency)} ${money(item.amount)}</td>
                   <td>${esc(item.note || '-')}</td>
                   <td>${esc(item.ref_id || item.ref || '-')}</td>
                 </tr>
@@ -2842,10 +2877,10 @@ async function loadWalletTransferHistory(){
         <td>${fmtTs(item.created_at)}</td>
         <td><strong>${esc(item.sender_name || item.sender_uid || '-')}</strong><br><span class="muted">${esc(item.sender_phone || '-')} - ${esc(item.sender_role || '-')}</span></td>
         <td><strong>${esc(item.receiver_name || item.receiver_uid || '-')}</strong><br><span class="muted">${esc(item.receiver_phone || '-')} - ${esc(item.receiver_role || '-')}</span></td>
-        <td>${esc(item.currency || 'BDT')} ${money(item.amount)}</td>
+        <td>${walletPrefix(item.currency)} ${money(item.amount)}</td>
         <td>${esc(item.type || '-')}<br><span class="muted">${esc(item.transfer_id || '-')}</span></td>
         <td>${esc(item.note || '-')}<br><span class="muted">${esc(item.reference || '-')}</span></td>
-        <td>${money(item.before_available ?? item.before_balance)} to ${money(item.after_available ?? item.after_balance)}</td>
+        <td>${walletPrefix(item.currency)} ${money(item.before_available ?? item.before_balance)} to ${walletPrefix(item.currency)} ${money(item.after_available ?? item.after_balance)}</td>
       </tr>
     `).join('');
   }catch(err){

@@ -63,6 +63,79 @@ function wallet_normalize_role($role, string $fallback = 'USER'): string
     return $role !== '' ? $role : $fallback;
 }
 
+function wallet_normalize_currency_code($currency, string $fallback = ''): string
+{
+    $currency = strtoupper(trim((string)$currency));
+
+    if (function_exists('security_normalize_currency')) {
+        $normalized = security_normalize_currency($currency);
+        if ($normalized !== '') {
+            return $normalized;
+        }
+    }
+
+    if (in_array($currency, ['MYR', 'RM', 'RINGGIT'], true)) {
+        return 'MYR';
+    }
+
+    if (in_array($currency, ['BDT', 'TK', 'TAKA'], true)) {
+        return 'BDT';
+    }
+
+    return $fallback;
+}
+
+function wallet_account_country_code(array $user): string
+{
+    if (function_exists('security_user_country_code')) {
+        $country = security_user_country_code($user);
+        if ($country !== '') {
+            return $country;
+        }
+    }
+
+    foreach (['country_code', 'country', 'user_country'] as $key) {
+        $country = strtoupper(trim((string)($user[$key] ?? '')));
+
+        if (in_array($country, ['MY', 'MYS', 'MALAYSIA'], true)) {
+            return 'MY';
+        }
+
+        if (in_array($country, ['BD', 'BGD', 'BANGLADESH'], true)) {
+            return 'BD';
+        }
+    }
+
+    return '';
+}
+
+function wallet_account_currency(array $user, array $wallet = []): string
+{
+    $country = wallet_account_country_code($user);
+
+    if ($country === 'MY') {
+        return 'MYR';
+    }
+
+    if ($country === 'BD') {
+        return 'BDT';
+    }
+
+    foreach ([
+        $user['wallet_currency'] ?? '',
+        $user['currency'] ?? '',
+        $wallet['wallet_currency'] ?? '',
+        $wallet['currency'] ?? '',
+    ] as $candidate) {
+        $currency = wallet_normalize_currency_code($candidate);
+        if ($currency !== '') {
+            return $currency;
+        }
+    }
+
+    return 'BDT';
+}
+
 function wallet_identity(string $uid, array $user = [], string $fallbackRole = 'USER'): array
 {
     if (!$user && $uid !== '') {
@@ -436,6 +509,16 @@ function wallet_credit_available(
         $updated['available_balance'] = $afterAvailable;
         $updated['updated_at'] = $now;
 
+        $creditCurrency = wallet_normalize_currency_code(
+            $extraLedger['currency']
+            ?? $extraLedger['wallet_currency']
+            ?? ''
+        );
+        if ($creditCurrency !== '') {
+            $updated['currency'] = $creditCurrency;
+            $updated['wallet_currency'] = $creditCurrency;
+        }
+
         $save = fb_put_if_match('USER_WALLETS/' . $uid, $updated, $res['etag']);
 
         if (($save['status'] ?? 0) === 412) {
@@ -475,6 +558,10 @@ function wallet_credit_available(
             'hold_balance' => wallet_round_money($beforeHold),
             'before_available' => wallet_round_money($beforeAvailable),
             'after_available' => $afterAvailable,
+            'currency' => $creditCurrency !== '' ? $creditCurrency : wallet_normalize_currency_code(
+                $wallet['wallet_currency'] ?? $wallet['currency'] ?? '',
+                'BDT'
+            ),
         ];
     }
 

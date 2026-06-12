@@ -270,6 +270,8 @@ if ($isSubadminTransfer) {
 
 $targetWallet = fb_get('USER_WALLETS/' . $targetUid);
 $targetWallet = is_array($targetWallet) ? $targetWallet : [];
+$targetCurrency = wallet_account_currency($targetUser, $targetWallet);
+$targetCountry = wallet_account_country_code($targetUser);
 
 $now = wallet_add_now();
 $transferId = wallet_make_transfer_id();
@@ -290,10 +292,23 @@ $actorBeforeAvailable = 0.0;
 $actorAfterAvailable = 0.0;
 $actorBeforeHold = 0.0;
 $actorAfterHold = 0.0;
+$actorCurrency = '';
+$actorCountry = '';
 
 if ($isSubadminTransfer) {
     $actorWallet = fb_get('USER_WALLETS/' . $actorUid);
     $actorWallet = is_array($actorWallet) ? $actorWallet : [];
+    $actorUser = fb_get('USERS/' . $actorUid);
+    $actorUser = is_array($actorUser) ? $actorUser : $actor;
+    $actorCurrency = wallet_account_currency($actorUser, $actorWallet);
+    $actorCountry = wallet_account_country_code($actorUser);
+
+    if ($actorCurrency !== $targetCurrency) {
+        wallet_add_response(false, 'CURRENCY_MISMATCH', 'Sender and receiver wallet currencies must match', [
+            'sender_currency' => $actorCurrency,
+            'receiver_currency' => $targetCurrency,
+        ], 422);
+    }
 
     $actorBeforeAvailable = wallet_add_money($actorWallet['available_balance'] ?? 0, 0.0);
     $actorBeforeHold = wallet_add_money($actorWallet['hold_balance'] ?? 0, 0.0);
@@ -307,6 +322,7 @@ if ($isSubadminTransfer) {
             'commission_per_1000' => $commissionPer1000,
             'commission_amount' => $commissionAmount,
             'total_credit' => $totalCredit,
+            'currency' => $targetCurrency,
         ], 422);
     }
 
@@ -314,6 +330,8 @@ if ($isSubadminTransfer) {
 
     $actorDebitOk = fb_patch('USER_WALLETS/' . $actorUid, [
         'available_balance' => $actorAfterAvailable,
+        'currency' => $actorCurrency,
+        'wallet_currency' => $actorCurrency,
         'updated_at' => $now,
     ]);
 
@@ -324,6 +342,8 @@ if ($isSubadminTransfer) {
 
 $targetCreditOk = fb_patch('USER_WALLETS/' . $targetUid, [
     'available_balance' => $afterAvailable,
+    'currency' => $targetCurrency,
+    'wallet_currency' => $targetCurrency,
     'updated_at' => $now,
 ]);
 
@@ -340,8 +360,8 @@ if (!$targetCreditOk) {
 
 $baseNote = $note !== '' ? $note : 'Balance added';
 $finalNote = $baseNote;
-$finalNote .= ' | Base: BDT ' . number_format($amount, 2, '.', '');
-$finalNote .= ' | Total Credit: BDT ' . number_format($totalCredit, 2, '.', '');
+$finalNote .= ' | Base: ' . $targetCurrency . ' ' . number_format($amount, 2, '.', '');
+$finalNote .= ' | Total Credit: ' . $targetCurrency . ' ' . number_format($totalCredit, 2, '.', '');
 
 $transferType = $isSubadminTransfer ? 'SUBADMIN_BALANCE_TRANSFER' : 'ADMIN_BALANCE_ADD';
 $transfer = [
@@ -352,7 +372,11 @@ $transfer = [
     'type' => $transferType,
     'direction' => 'CREDIT',
     'amount' => $totalCredit,
-    'currency' => 'BDT',
+    'currency' => $targetCurrency,
+    'sender_currency' => $isSubadminTransfer ? $actorCurrency : '',
+    'sender_country_code' => $isSubadminTransfer ? $actorCountry : '',
+    'receiver_currency' => $targetCurrency,
+    'receiver_country_code' => $targetCountry,
     'sender_uid' => $senderIdentity['uid'],
     'sender_name' => $senderIdentity['name'],
     'sender_phone' => $senderIdentity['phone'],
@@ -462,7 +486,7 @@ if (function_exists('system_log')) {
         'commission_per_1000' => $commissionPer1000,
         'commission_amount' => $commissionAmount,
         'total_credit' => $totalCredit,
-        'currency' => 'BDT',
+        'currency' => $targetCurrency,
         'created_by_uid' => $actorUid,
         'created_by_role' => $actorRole,
         'subadmin_debited' => $isSubadminTransfer,
@@ -484,7 +508,9 @@ wallet_add_response(true, 'SUCCESS', 'Balance added successfully', [
     'commission_per_1000' => $commissionPer1000,
     'commission_amount' => $commissionAmount,
     'total_credit' => $totalCredit,
-    'currency' => 'BDT',
+    'currency' => $targetCurrency,
+    'wallet_currency' => $targetCurrency,
+    'country_code' => $targetCountry,
     'reference' => $transfer['reference'],
 
     'before_available' => $beforeAvailable,
