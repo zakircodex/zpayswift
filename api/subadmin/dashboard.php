@@ -87,7 +87,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
           </button>
 
           <button class="side-btn" data-page-section="requestLogsSection">
-            <span>Request Logs</span>
+            <span>History Logs</span>
             <span>›</span>
           </button>
 
@@ -162,9 +162,9 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
             </div>
 
             <div class="card">
-              <div class="metric-title">Request Logs</div>
+              <div class="metric-title">History Logs</div>
               <div class="metric-value" id="requestLogCount">0</div>
-              <div class="metric-sub">Recent request activity</div>
+              <div class="metric-sub">Requests and received balance</div>
             </div>
           </div>
 
@@ -534,8 +534,8 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
           <div class="card">
             <div class="topbar mb-14">
               <div>
-                <h3>Request Logs</h3>
-                <p>Recent API request history</p>
+                <h3>History Logs</h3>
+                <p>Recent requests and received balance activity</p>
               </div>
 
               <div class="actions">
@@ -546,8 +546,8 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
               </div>
             </div>
 
-            <div class="table-wrap">
-              <table>
+            <div class="table-wrap history-logs-table-wrap">
+              <table class="history-logs-table">
                 <thead>
                   <tr>
                     <th>Request ID</th>
@@ -562,10 +562,11 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                   </tr>
                 </thead>
                 <tbody id="logsTableBody">
-                  <tr><td colspan="9" class="muted">No request logs yet.</td></tr>
+                  <tr><td colspan="9" class="muted">No history logs yet.</td></tr>
                 </tbody>
               </table>
             </div>
+            <div id="historyLogsMobileList" class="history-logs-mobile-list"></div>
           </div>
         </div>
 
@@ -967,12 +968,12 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
     </div>
 
     <div class="info-grid">
-      <div class="box"><label>Request ID</label><strong id="logRequestId">-</strong></div>
-      <div class="box"><label>Key ID</label><strong id="logKeyId">-</strong></div>
+      <div class="box"><label id="logRequestIdLabel">Request ID</label><strong id="logRequestId">-</strong></div>
+      <div class="box"><label id="logKeyIdLabel">Key ID</label><strong id="logKeyId">-</strong></div>
       <div class="box"><label>Type</label><strong id="logType">-</strong></div>
       <div class="box"><label>Status</label><strong id="logStatusText">-</strong></div>
-      <div class="box"><label>Operator</label><strong id="logOperator">-</strong></div>
-      <div class="box"><label>Number</label><strong id="logNumber">-</strong></div>
+      <div class="box"><label id="logServiceLabel">Operator</label><strong id="logOperator">-</strong></div>
+      <div class="box"><label id="logNumberLabel">Number</label><strong id="logNumber">-</strong></div>
       <div class="box"><label>Amount</label><strong id="logAmount">0.00</strong></div>
       <div class="box"><label>Created</label><strong id="logCreated">-</strong></div>
       <div class="box"><label>Updated</label><strong id="logUpdated">-</strong></div>

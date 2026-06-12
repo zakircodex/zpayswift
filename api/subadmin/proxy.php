@@ -1982,6 +1982,7 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
         $user = sub_proxy_require_login(true);
         $uid = trim((string) ($user['uid'] ?? ''));
         $limit = (int) ($_GET['limit'] ?? 100);
+        $month = wallet_valid_month_key((string)($_GET['month'] ?? ''));
 
         if ($limit <= 0) $limit = 100;
         if ($limit > 500) $limit = 500;
@@ -2017,6 +2018,62 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
             ];
         }
 
+        $walletHistory = array_values(array_filter(
+            wallet_list_user_history($uid, $month, $limit),
+            static function (array $row) use ($uid): bool {
+                $direction = strtoupper(trim((string)($row['direction'] ?? '')));
+                $receiverUid = trim((string)($row['receiver_uid'] ?? ''));
+                return $direction === 'CREDIT' && ($receiverUid === '' || $receiverUid === $uid);
+            }
+        ));
+
+        foreach ($walletHistory as $row) {
+            $transferId = trim((string)($row['transfer_id'] ?? $row['ledger_id'] ?? ''));
+            if ($transferId === '') {
+                continue;
+            }
+
+            $currency = wallet_normalize_currency_code($row['currency'] ?? '', 'BDT');
+            $senderRole = wallet_normalize_role($row['sender_role'] ?? '', 'ADMIN');
+            $senderName = trim((string)($row['sender_name'] ?? ''));
+            $senderPhone = trim((string)($row['sender_phone'] ?? ''));
+            $note = trim((string)($row['note'] ?? ''));
+            $reference = trim((string)($row['reference'] ?? $row['ref_id'] ?? ''));
+
+            $out[] = [
+                'request_id' => $transferId,
+                'uid' => $uid,
+                'key_id' => 'WALLET',
+                'action' => 'BALANCE_RECEIVED',
+                'request_type' => 'WALLET',
+                'status' => 'SUCCESS',
+                'operator' => '',
+                'topup_number' => $senderPhone,
+                'bundle_number' => '',
+                'offer_id' => '',
+                'bundle_name' => '',
+                'amount' => (float)($row['amount'] ?? 0),
+                'currency' => $currency,
+                'message' => $note !== '' ? $note : 'Balance received',
+                'created_at' => (int)($row['created_at'] ?? 0),
+                'updated_at' => (int)($row['updated_at'] ?? $row['created_at'] ?? 0),
+                'is_wallet_history' => true,
+                'service' => 'Balance Received',
+                'sender_uid' => (string)($row['sender_uid'] ?? ''),
+                'sender_name' => $senderName,
+                'sender_phone' => $senderPhone,
+                'sender_role' => $senderRole,
+                'receiver_uid' => (string)($row['receiver_uid'] ?? $uid),
+                'receiver_role' => (string)($row['receiver_role'] ?? 'SUBADMIN'),
+                'before_balance' => (float)($row['before_available'] ?? $row['before_balance'] ?? 0),
+                'after_balance' => (float)($row['after_available'] ?? $row['after_balance'] ?? 0),
+                'note' => $note,
+                'reference' => $reference,
+                'transfer_id' => $transferId,
+                'ledger_id' => (string)($row['ledger_id'] ?? ''),
+            ];
+        }
+
         usort($out, static function (array $a, array $b): int {
             return (int) ($b['created_at'] ?? 0) <=> (int) ($a['created_at'] ?? 0);
         });
@@ -2025,9 +2082,11 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
             $out = array_slice($out, 0, $limit);
         }
 
-        sub_proxy_response(true, 'SUCCESS', 'API request logs loaded', [
+        sub_proxy_response(true, 'SUCCESS', 'History logs loaded', [
             'uid' => $uid,
+            'month' => $month,
             'items' => array_values($out),
+            'wallet_history' => $walletHistory,
         ]);
         break;
 

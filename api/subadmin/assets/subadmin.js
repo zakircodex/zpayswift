@@ -954,7 +954,8 @@ function renderKeys(){
 
 function renderLogs(){
   const tbody = el('logsTableBody');
-  if (!tbody) return;
+  const mobile = el('historyLogsMobileList');
+  if (!tbody && !mobile) return;
 
   let rows = state.requestLogs || [];
 
@@ -963,27 +964,46 @@ function renderLogs(){
   }
 
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="muted">No request logs found for this filter.</td></tr>';
+    if (tbody) {
+      tbody.innerHTML = '<tr><td colspan="9" class="muted">No history logs found for this filter.</td></tr>';
+    }
+    if (mobile) {
+      mobile.innerHTML = '<div class="history-log-empty">No history logs found for this filter.</div>';
+    }
     return;
   }
 
-  tbody.innerHTML = rows.map(item => {
+  const details = rows.map(item => {
     const type = String(item.request_type || item.action || '').toUpperCase();
     const isMfs = type === 'MFS';
+    const isWallet = type === 'WALLET' || item.is_wallet_history === true;
     const number = item.topup_number || item.bundle_number || item.receiver_number || item.number || '';
-    const service = isMfs ? (item.provider_name || mfsProviderName(item.provider || item.service)) : (item.operator || '-');
-    const amountText = isMfs
-      ? `${mfsAmountText(item)} / ${mfsFeePayText(item)}`
-      : money(item.amount || 0);
-    return `
+    const service = isWallet
+      ? `${item.sender_name || 'Admin'} (${item.sender_role || 'ADMIN'})`
+      : (isMfs ? (item.provider_name || mfsProviderName(item.provider || item.service)) : (item.operator || '-'));
+    const amountText = isWallet
+      ? `${walletPrefix(item.currency)} ${money(item.amount || 0)}`
+      : (isMfs ? `${mfsAmountText(item)} / ${mfsFeePayText(item)}` : money(item.amount || 0));
+    const typeLabel = isWallet ? 'Balance Received' : (type || '-');
+    return { item, isMfs, isWallet, number, service, amountText, typeLabel };
+  });
+
+  if (tbody) {
+    tbody.innerHTML = details.map(({ item, isMfs, isWallet, number, service, amountText, typeLabel }) => `
       <tr>
-        <td>${esc(item.request_id || '-')}</td>
+        <td class="history-log-id">${esc(item.request_id || '-')}</td>
         <td>${esc(item.key_id || '-')}</td>
-        <td>${esc(type || '-')} ${isMfs ? statusPill(item.provider_name || mfsProviderName(item.provider || item.service)) : ''}</td>
+        <td>${esc(typeLabel)} ${isMfs ? statusPill(item.provider_name || mfsProviderName(item.provider || item.service)) : ''}</td>
         <td>${statusPill(item.status || '-')}</td>
-        <td>${esc(service)}</td>
+        <td>
+          ${esc(service)}
+          ${isWallet ? `<br><span class="muted history-log-meta">${esc(item.note || item.message || '-')}<br>${esc(item.reference || '-')}</span>` : ''}
+        </td>
         <td>${esc(number || '-')}</td>
-        <td>${esc(amountText)}</td>
+        <td>
+          ${esc(amountText)}
+          ${isWallet ? `<br><span class="muted history-log-meta">${walletPrefix(item.currency)} ${money(item.before_balance || 0)} to ${walletPrefix(item.currency)} ${money(item.after_balance || 0)}</span>` : ''}
+        </td>
         <td>${fmtTs(item.created_at || 0)}</td>
         <td>
           <div class="row-actions">
@@ -992,8 +1012,34 @@ function renderLogs(){
           </div>
         </td>
       </tr>
-    `;
-  }).join('');
+    `).join('');
+  }
+
+  if (mobile) {
+    mobile.innerHTML = details.map(({ item, isWallet, number, service, amountText, typeLabel }) => `
+      <article class="history-log-card ${isWallet ? 'wallet-received' : ''}">
+        <div class="history-log-card-top">
+          <div>
+            <span class="history-log-type">${esc(typeLabel)}</span>
+            <strong>${esc(item.request_id || '-')}</strong>
+          </div>
+          ${statusPill(item.status || '-')}
+        </div>
+        <div class="history-log-card-grid">
+          <span>${isWallet ? 'From' : 'Service'}</span><b>${esc(service)}</b>
+          <span>${isWallet ? 'Phone' : 'Number'}</span><b>${esc(number || '-')}</b>
+          <span>Amount</span><b>${esc(amountText)}</b>
+          ${isWallet ? `<span>Balance</span><b>${walletPrefix(item.currency)} ${money(item.before_balance || 0)} to ${walletPrefix(item.currency)} ${money(item.after_balance || 0)}</b>` : ''}
+          ${isWallet ? `<span>Note / Ref</span><b>${esc(item.note || item.message || '-')}<br><small>${esc(item.reference || '-')}</small></b>` : ''}
+          <span>Date</span><b>${fmtTs(item.created_at || 0)}</b>
+        </div>
+        <div class="row-actions">
+          <button class="mini-btn blue" onclick="viewRequestLog('${String(item.request_id || '')}')">View</button>
+          <button class="mini-btn green" onclick="copyRequestId('${String(item.request_id || '')}')">Copy ID</button>
+        </div>
+      </article>
+    `).join('');
+  }
 }
 
 function getUserRowByUidForWallet(uid){
@@ -3549,33 +3595,48 @@ function viewRequestLog(requestId){
 
   const type = String(row.request_type || row.action || '').toUpperCase();
   const isMfs = type === 'MFS';
+  const isWallet = type === 'WALLET' || row.is_wallet_history === true;
   const number = row.topup_number || row.bundle_number || row.receiver_number || row.number || '';
-  const service = isMfs ? (row.provider_name || mfsProviderName(row.provider || row.service)) : (row.operator || '-');
-  const amountText = isMfs
-    ? `${mfsAmountText(row)} / ${mfsFeePayText(row)}`
-    : fmtMoney(row.amount || 0);
+  const service = isWallet
+    ? `${row.sender_name || 'Admin'} (${row.sender_role || 'ADMIN'})`
+    : (isMfs ? (row.provider_name || mfsProviderName(row.provider || row.service)) : (row.operator || '-'));
+  const amountText = isWallet
+    ? `${walletPrefix(row.currency)} ${money(row.amount || 0)}`
+    : (isMfs ? `${mfsAmountText(row)} / ${mfsFeePayText(row)}` : fmtMoney(row.amount || 0));
+  const typeLabel = isWallet ? 'Balance Received' : (isMfs ? `${type} - ${service}` : (type || '-'));
 
   if (el('logRequestId')) el('logRequestId').textContent = row.request_id || '-';
   if (el('logKeyId')) el('logKeyId').textContent = row.key_id || '-';
-  if (el('logType')) el('logType').textContent = isMfs ? `${type} - ${service}` : (type || '-');
+  if (el('logType')) el('logType').textContent = typeLabel;
   if (el('logStatusText')) el('logStatusText').textContent = row.status || '-';
-  const logServiceLabel = el('logOperator')?.parentElement?.querySelector('label');
-  if (logServiceLabel) logServiceLabel.textContent = isMfs ? 'Service' : 'Operator';
+  if (el('logRequestIdLabel')) el('logRequestIdLabel').textContent = isWallet ? 'Transfer ID' : 'Request ID';
+  if (el('logKeyIdLabel')) el('logKeyIdLabel').textContent = isWallet ? 'Source' : 'Key ID';
+  if (el('logServiceLabel')) el('logServiceLabel').textContent = isWallet ? 'From' : (isMfs ? 'Service' : 'Operator');
+  if (el('logNumberLabel')) el('logNumberLabel').textContent = isWallet ? 'Sender Phone' : 'Number';
   if (el('logOperator')) el('logOperator').textContent = service;
   if (el('logNumber')) el('logNumber').textContent = number || '-';
   if (el('logAmount')) el('logAmount').textContent = amountText;
   if (el('logCreated')) el('logCreated').textContent = fmtTs(row.created_at || 0);
   if (el('logUpdated')) el('logUpdated').textContent = fmtTs(row.updated_at || row.created_at || 0);
   if (el('logMessage')) el('logMessage').textContent = row.message || '-';
+  if (el('logModalTitle')) el('logModalTitle').textContent = isWallet ? 'Balance Received Details' : 'Request Details';
+  if (el('logModalSub')) el('logModalSub').textContent = isWallet
+    ? 'Admin credit and wallet balance summary'
+    : 'Request summary and details';
 
   setDetailBox('logRawJson', 'Request Details', [
-    ['Request ID', row.request_id || '-'],
-    ['Key ID', row.key_id || '-'],
-    ['Type', isMfs ? `${type} - ${service}` : (type || '-')],
+    [isWallet ? 'Transfer ID' : 'Request ID', row.request_id || '-'],
+    [isWallet ? 'Source' : 'Key ID', row.key_id || '-'],
+    ['Type', typeLabel],
     ['Status', row.status || '-'],
-    [isMfs ? 'Service' : 'Operator', service],
-    ['Number', number || '-'],
+    [isWallet ? 'From' : (isMfs ? 'Service' : 'Operator'), service],
+    [isWallet ? 'Sender Phone' : 'Number', number || '-'],
     ['Amount', amountText],
+    ...(isWallet ? [
+      ['Balance Before', `${walletPrefix(row.currency)} ${money(row.before_balance || 0)}`],
+      ['Balance After', `${walletPrefix(row.currency)} ${money(row.after_balance || 0)}`],
+      ['Reference', row.reference || '-']
+    ] : []),
     ['Created', fmtTs(row.created_at || 0)],
     ['Updated', fmtTs(row.updated_at || row.created_at || 0)],
     ['Message', row.message || '-']
@@ -3585,6 +3646,7 @@ function viewRequestLog(requestId){
 
   const copyBtn = el('copyLogRequestBtn');
   if (copyBtn) {
+    copyBtn.textContent = isWallet ? 'Copy Transfer ID' : 'Copy Request ID';
     copyBtn.onclick = () => copyRequestId(row.request_id || '');
   }
 }
@@ -3617,7 +3679,7 @@ function startLogsAutoRefresh(){
       renderLogs();
       renderPanelTopupRequests();
     }catch(_){}
-  }, 10000);
+  }, 60000);
 }
 
 
@@ -3682,7 +3744,10 @@ async function loadKeys(){
 }
 
 async function loadLogs(){
-  const data = await proxyGet('request_logs', { limit: 100 }, 'Loading request logs...');
+  const data = await proxyGet('request_logs', {
+    limit: 100,
+    month: new Date().toISOString().slice(0, 7)
+  }, 'Loading history logs...');
   state.requestLogs = data.items || [];
   state.loaded.logs = true;
 }
