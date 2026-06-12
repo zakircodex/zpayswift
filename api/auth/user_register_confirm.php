@@ -24,8 +24,12 @@ function user_reg_confirm_email_key(string $email): string
     return md5(strtolower(trim($email)));
 }
 
-function user_reg_confirm_find_uid_by_phone(string $phone): string
+function user_reg_confirm_find_uid_by_phone(string $phone, string $country): string
 {
+    if (function_exists('auth_find_uid_by_phone_country')) {
+        return auth_find_uid_by_phone_country($phone, $country);
+    }
+
     $phone = preg_replace('/\D+/', '', trim($phone)) ?? '';
     if ($phone === '') {
         return '';
@@ -136,6 +140,19 @@ $phone = preg_replace('/\D+/', '', trim((string)($preAuthRow['phone'] ?? ''))) ?
 $email = strtolower(trim((string)($preAuthRow['email'] ?? '')));
 $passwordHash = trim((string)($preAuthRow['password_hash'] ?? ''));
 $pinHash = trim((string)($preAuthRow['pin_hash'] ?? ''));
+$phoneCountry = auth_normalize_country_code((string)($preAuthRow['phone_country'] ?? ''));
+$pricingCountry = auth_normalize_country_code((string)($preAuthRow['pricing_country'] ?? $preAuthRow['service_country'] ?? ''));
+$ipCountry = auth_normalize_country_code((string)($preAuthRow['ip_country'] ?? ''));
+$currency = auth_country_currency($pricingCountry !== '' ? $pricingCountry : 'BD');
+
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country($phone) ?: 'BD';
+}
+
+if ($pricingCountry === '') {
+    $pricingCountry = auth_normalize_country_code((string)($preAuthRow['country'] ?? '')) ?: 'BD';
+    $currency = auth_country_currency($pricingCountry);
+}
 
 if ($uid === '' || $name === '' || $phone === '' || $email === '' || $passwordHash === '' || $pinHash === '') {
     user_reg_confirm_response(false, 'REGISTER_SESSION_INVALID', 'Register session is invalid. Please start again.', [], 400);
@@ -183,7 +200,7 @@ if ($codeHash === '' || !password_verify($otp, $codeHash)) {
     user_reg_confirm_response(false, 'OTP_INVALID', 'Invalid OTP', [], 400);
 }
 
-if (user_reg_confirm_find_uid_by_phone($phone) !== '') {
+if (user_reg_confirm_find_uid_by_phone($phone, $phoneCountry) !== '') {
     user_reg_confirm_response(false, 'DUPLICATE_PHONE', 'Phone number already registered', [], 409);
 }
 
@@ -195,6 +212,20 @@ $userRow = [
     'uid' => $uid,
     'name' => $name,
     'phone' => $phone,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
+    'country_code' => $pricingCountry,
+    'country' => $pricingCountry,
+    'currency' => $currency,
+    'wallet_currency' => $currency,
+    'ip_country' => $ipCountry,
+    'country_mismatch' => (bool)($preAuthRow['country_mismatch'] ?? ($ipCountry !== '' && $ipCountry !== $phoneCountry)),
+    'registration_ip' => (string)($preAuthRow['registration_ip'] ?? $preAuthRow['created_ip'] ?? ''),
+    'created_ip' => (string)($preAuthRow['created_ip'] ?? $preAuthRow['registration_ip'] ?? ''),
+    'last_login_ip' => '',
+    'browser_timezone' => (string)($preAuthRow['browser_timezone'] ?? ''),
+    'user_agent' => (string)($preAuthRow['user_agent'] ?? ''),
     'email' => $email,
     'role' => 'USER',
     'status' => 'ACTIVE',
@@ -213,6 +244,8 @@ $userRow = [
 $walletRow = [
     'available_balance' => 0,
     'hold_balance' => 0,
+    'currency' => $currency,
+    'wallet_currency' => $currency,
     'total_topup_spent' => 0,
     'total_bundle_spent' => 0,
     'total_refund' => 0,
@@ -228,14 +261,24 @@ $emailIndexKey = user_reg_confirm_email_key($email);
 $okUser = fb_put('USERS/' . $uid, $userRow);
 $okWallet = $okUser ? fb_put('USER_WALLETS/' . $uid, $walletRow) : false;
 $okRole = $okWallet ? fb_put('USER_ROLE_SETTINGS/' . $uid, $roleSettings) : false;
-$okPhone = $okRole ? fb_put('USER_INDEX/PHONE/' . $phone, $uid) : false;
+$phoneIndexes = auth_phone_index_candidates($phone, $phoneCountry);
+$okPhone = $okRole;
+
+foreach ($phoneIndexes as $phoneIndex) {
+    if (!$okPhone || !fb_put('USER_INDEX/PHONE/' . $phoneIndex, $uid)) {
+        $okPhone = false;
+        break;
+    }
+}
 $okEmail = $okPhone ? fb_put('USER_INDEX/EMAIL/' . $emailIndexKey, $uid) : false;
 
 if (!($okUser && $okWallet && $okRole && $okPhone && $okEmail)) {
     user_reg_confirm_delete_if_exists('USERS/' . $uid);
     user_reg_confirm_delete_if_exists('USER_WALLETS/' . $uid);
     user_reg_confirm_delete_if_exists('USER_ROLE_SETTINGS/' . $uid);
-    user_reg_confirm_delete_if_exists('USER_INDEX/PHONE/' . $phone);
+    foreach ($phoneIndexes as $phoneIndex) {
+        user_reg_confirm_delete_if_exists('USER_INDEX/PHONE/' . $phoneIndex);
+    }
     user_reg_confirm_delete_if_exists('USER_INDEX/EMAIL/' . $emailIndexKey);
 
     user_reg_confirm_response(false, 'SERVER_ERROR', 'Failed to create account', [], 500);
@@ -259,6 +302,8 @@ if (function_exists('system_log')) {
     system_log('USER_REGISTER_COMPLETED', $uid, 'User register completed with OTP', [
         'uid' => $uid,
         'phone' => $phone,
+        'phone_country' => $phoneCountry,
+        'pricing_country' => $pricingCountry,
         'email' => $email,
     ]);
 }
@@ -268,4 +313,7 @@ user_reg_confirm_response(true, 'SUCCESS', 'Account created successfully', [
     'role' => 'USER',
     'phone' => $phone,
     'email' => $email,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
+    'currency' => $currency,
 ]);

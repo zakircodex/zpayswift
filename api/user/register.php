@@ -38,8 +38,26 @@ header('Pragma: no-cache');
       </div>
 
       <div class="field">
+        <label>Phone Country</label>
+        <select id="regPhoneCountry" class="input">
+          <option value="BD">Bangladesh (+880)</option>
+          <option value="MY">Malaysia (+60)</option>
+        </select>
+        <small class="field-help">Used only for phone validation and OTP delivery.</small>
+      </div>
+
+      <div class="field">
         <label>Phone Number</label>
-        <input id="regPhone" class="input" type="tel" inputmode="tel" placeholder="Enter phone number">
+        <input id="regPhone" class="input" type="tel" inputmode="tel" placeholder="01XXXXXXXXX">
+      </div>
+
+      <div class="field">
+        <label>Pricing Country</label>
+        <select id="regPricingCountry" class="input" disabled>
+          <option value="BD">Bangladesh service (BDT)</option>
+          <option value="MY">Malaysia service (MYR)</option>
+        </select>
+        <small class="field-help">Assigned from phone/IP context. Only admin can change it later.</small>
       </div>
 
       <div class="field">
@@ -76,7 +94,7 @@ header('Pragma: no-cache');
     </div>
 
     <div class="note">
-      OTP will be sent to your registered phone number. Your account will be created only after OTP verification.
+      <span id="regCountryHint">OTP gateway follows Phone Country. Wallet and fees follow Pricing Country.</span>
     </div>
   </div>
 </div>

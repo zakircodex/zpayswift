@@ -6,7 +6,14 @@ require_once dirname(__DIR__, 2) . '/lib/mfs.php';
 
 function admin_users_list_country_code(array $user): string
 {
-    $country = strtoupper(trim((string)($user['country_code'] ?? $user['country'] ?? $user['user_country'] ?? '')));
+    $country = strtoupper(trim((string)(
+        $user['pricing_country']
+        ?? $user['service_country']
+        ?? $user['country_code']
+        ?? $user['country']
+        ?? $user['user_country']
+        ?? ''
+    )));
     $map = [
         'BD' => 'BD',
         'BGD' => 'BD',
@@ -59,6 +66,13 @@ foreach ($users as $uid => $user) {
         'role' => $role,
         'country_code' => admin_users_list_country_code($user),
         'country' => admin_users_list_country_code($user),
+        'phone_country' => auth_phone_country_from_user($user),
+        'pricing_country' => admin_users_list_country_code($user),
+        'service_country' => admin_users_list_country_code($user),
+        'ip_country' => auth_normalize_country_code((string)($user['ip_country'] ?? '')),
+        'country_mismatch' => (bool)($user['country_mismatch'] ?? false),
+        'created_ip' => (string)($user['created_ip'] ?? $user['registration_ip'] ?? ''),
+        'last_login_ip' => (string)($user['last_login_ip'] ?? ''),
 
         'available_balance' => (float)($wallet['available_balance'] ?? 0),
         'hold_balance' => (float)($wallet['hold_balance'] ?? 0),

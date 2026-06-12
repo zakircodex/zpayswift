@@ -8,23 +8,37 @@ api_require_app_key();
 
 $body = api_read_json_body();
 
-$phone = normalize_login_phone($body['phone'] ?? '');
+$phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country((string)($body['phone'] ?? '')) ?: 'BD';
+}
+$phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);
 $password = (string)($body['password'] ?? '');
 $deviceId = trim((string)($body['device_id'] ?? ''));
 $deviceName = trim((string)($body['device_name'] ?? 'Android App'));
 
 if ($phone === '' || $password === '') {
-    api_response(false, 'VALIDATION_ERROR', 'Phone and password are required', [], 422);
+    api_response(
+        false,
+        'VALIDATION_ERROR',
+        $phone === '' ? auth_phone_validation_message($phoneCountry) : 'Phone and password are required',
+        [],
+        422
+    );
 }
 
-$uid = fb_get('USER_INDEX/PHONE/' . $phone);
-if (!is_string($uid) || $uid === '') {
-    api_response(false, 'INVALID_CREDENTIALS', 'Invalid phone or password', [], 401);
+$uid = auth_find_uid_by_phone_country($phone, $phoneCountry);
+if ($uid === '') {
+    api_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found for selected country/number', [], 404);
 }
 
 $user = fb_get('USERS/' . $uid);
 if (!is_array($user)) {
     api_response(false, 'INVALID_CREDENTIALS', 'Invalid phone or password', [], 401);
+}
+
+if (auth_phone_country_from_user($user) !== $phoneCountry) {
+    api_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found for selected country/number', [], 404);
 }
 
 if (($user['status'] ?? '') !== 'ACTIVE') {
@@ -60,6 +74,10 @@ if (!fb_put('USER_SESSIONS/' . $hash, $session)) {
 
 fb_patch('USERS/' . $uid, [
     'last_login_at' => $now,
+    'last_login_ip' => auth_request_ip($body),
+    'last_login_ip_country' => auth_request_ip_country($body),
+    'last_login_user_agent' => auth_request_user_agent($body),
+    'browser_timezone' => auth_request_browser_timezone($body),
     'updated_at' => $now,
 ]);
 
@@ -74,4 +92,9 @@ api_response(true, 'SUCCESS', 'Login successful', [
     'name' => (string)$user['name'],
     'phone' => (string)$user['phone'],
     'session_token' => $token,
+    'phone_country' => auth_phone_country_from_user($user),
+    'pricing_country' => auth_pricing_country_from_user(
+        $user,
+        (array)(fb_get('USER_WALLETS/' . $uid) ?: [])
+    ),
 ]);

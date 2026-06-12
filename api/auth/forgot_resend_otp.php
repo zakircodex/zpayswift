@@ -165,7 +165,11 @@ if (!in_array($storedResetType, ['PASSWORD', 'PIN'], true)) {
 }
 
 $uid = trim((string)($preAuthRow['uid'] ?? ''));
-$phone = auth_normalize_phone((string)($preAuthRow['phone'] ?? ''));
+$phoneCountry = auth_normalize_country_code((string)($preAuthRow['phone_country'] ?? ''));
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country((string)($preAuthRow['phone'] ?? '')) ?: 'BD';
+}
+$phone = normalize_phone_by_country((string)($preAuthRow['phone'] ?? ''), $phoneCountry);
 
 if ($uid === '' || $phone === '') {
     auth_response(false, 'FORGOT_SESSION_INVALID', 'Forgot session is invalid. Please start again.', [], 400);
@@ -219,13 +223,14 @@ if (!($okOtp && $okPre)) {
     auth_response(false, 'SERVER_ERROR', 'Failed to prepare resend OTP', [], 500);
 }
 
-$smsOk = auth_send_forgot_otp_sms($phone, $message);
+$smsResult = auth_send_otp_sms_by_country($phoneCountry, $phone, $message, $otpRequestId);
+$smsPatch = auth_sms_result_log_fields($smsResult);
 
-if (!$smsOk) {
+if (empty($smsResult['ok'])) {
     @fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
         'status' => 'SMS_FAILED',
         'updated_at' => auth_now(),
-    ]);
+    ] + $smsPatch);
 
     @fb_patch('AUTH_FORGOT_PREAUTH/' . $preAuthToken, [
         'status' => 'SMS_FAILED',
@@ -234,6 +239,14 @@ if (!$smsOk) {
 
     auth_response(false, 'SMS_FAILED', 'Failed to send OTP SMS', [], 500);
 }
+
+@fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+    'phone_country' => $phoneCountry,
+    'country' => $phoneCountry,
+    'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
+    'phone_e164' => $phone,
+    'updated_at' => auth_now(),
+] + $smsPatch);
 
 $pendingSession = [
     'uid' => $uid,

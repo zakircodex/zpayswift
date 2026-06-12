@@ -201,6 +201,7 @@ async function handleLogin(){
   loginSetSuccess('');
 
   const phone = ($id('loginPhone')?.value || '').trim();
+  const phoneCountry = ($id('loginPhoneCountry')?.value || 'BD').toUpperCase();
   const password = $id('loginPassword')?.value || '';
   const trustDevice = !!$id('rememberTrustedDevice')?.checked;
 
@@ -216,11 +217,22 @@ async function handleLogin(){
     return;
   }
 
+  const digits = phone.replace(/\D+/g, '');
+  const validPhone = phoneCountry === 'MY'
+    ? /^(?:011\d{8}|01[02-9]\d{7}|6011\d{8}|601[02-9]\d{7}|11\d{8}|1[02-9]\d{7})$/.test(digits)
+    : /^(?:01[3-9]\d{8}|8801[3-9]\d{8}|1[3-9]\d{8})$/.test(digits);
+  if (!validPhone) {
+    loginSetError(phoneCountry === 'MY' ? 'Invalid Malaysia number' : 'Invalid Bangladesh number');
+    return;
+  }
+
   try {
     const data = await loginProxyPost('login', {
       phone,
+      phone_country: phoneCountry,
       password,
-      trust_device: trustDevice
+      trust_device: trustDevice,
+      browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
     }, 'Checking login...');
 
     if (data.require_otp) {
@@ -242,6 +254,24 @@ async function handleLogin(){
     loginSetError(err.message || 'Login failed');
     loginShowToast(err.message || 'Login failed', 'error');
   }
+}
+
+function updatePartnerLoginCountry(){
+  const country = ($id('loginPhoneCountry')?.value || 'BD').toUpperCase();
+  if ($id('loginPhone')) {
+    $id('loginPhone').placeholder = country === 'MY' ? '01XXXXXXXX or +60XXXXXXXXX' : '01XXXXXXXXX or +8801XXXXXXXXX';
+  }
+}
+
+async function loadPartnerLoginCountry(){
+  try {
+    const data = await loginProxyPost('country_defaults', {}, 'Detecting country...');
+    const country = String(data.phone_country || 'BD').toUpperCase();
+    if ($id('loginPhoneCountry') && ['BD','MY'].includes(country)) {
+      $id('loginPhoneCountry').value = country;
+    }
+  } catch (_) {}
+  updatePartnerLoginCountry();
 }
 
 async function handleVerifyLoginOtp(){
@@ -317,6 +347,7 @@ async function handleResendLoginOtp(){
 
 function bindLoginEvents(){
   $id('loginBtn')?.addEventListener('click', handleLogin);
+  $id('loginPhoneCountry')?.addEventListener('change', updatePartnerLoginCountry);
 
   $id('loginPassword')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
@@ -344,3 +375,4 @@ function bindLoginEvents(){
 }
 
 bindLoginEvents();
+loadPartnerLoginCountry();

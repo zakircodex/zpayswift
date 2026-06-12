@@ -80,7 +80,10 @@ $nameProvided = array_key_exists('name', $body);
 $emailProvided = array_key_exists('email', $body);
 $roleProvided = array_key_exists('role', $body);
 $statusProvided = array_key_exists('status', $body);
-$countryProvided = array_key_exists('country', $body) || array_key_exists('country_code', $body);
+$countryProvided = array_key_exists('pricing_country', $body)
+    || array_key_exists('service_country', $body)
+    || array_key_exists('country', $body)
+    || array_key_exists('country_code', $body);
 
 $commissionProvided = array_key_exists('commission_per_1000', $body);
 $apiEnabledProvided = array_key_exists('api_enabled', $body);
@@ -91,7 +94,13 @@ $maxAmountProvided = array_key_exists('max_amount', $body);
 
 $name = trim((string)($body['name'] ?? ''));
 $email = strtolower(trim((string)($body['email'] ?? '')));
-$country = normalize_admin_country((string)($body['country_code'] ?? $body['country'] ?? ''));
+$country = normalize_admin_country((string)(
+    $body['pricing_country']
+    ?? $body['service_country']
+    ?? $body['country_code']
+    ?? $body['country']
+    ?? ''
+));
 
 $commissionPer1000 = $commissionProvided ? (float)$body['commission_per_1000'] : null;
 $apiEnabled = $apiEnabledProvided ? admin_bool_or_null($body['api_enabled']) : null;
@@ -129,6 +138,10 @@ $oldName = trim((string)($user['name'] ?? ''));
 $oldEmail = strtolower(trim((string)($user['email'] ?? '')));
 $oldRole = strtoupper(trim((string)($user['role'] ?? 'USER')));
 $oldStatus = strtoupper(trim((string)($user['status'] ?? 'ACTIVE')));
+$oldPricingCountry = auth_pricing_country_from_user(
+    $user,
+    (array)(fb_get('USER_WALLETS/' . $uid) ?: [])
+);
 
 $role = normalize_admin_role($body['role'] ?? $oldRole);
 $status = normalize_admin_status($body['status'] ?? $oldStatus);
@@ -183,8 +196,34 @@ if ($countryProvided) {
         api_response(false, 'VALIDATION_ERROR', 'Country must be BD or MY', ['field' => 'country'], 422);
     }
 
+    if ($country !== $oldPricingCountry) {
+        $walletRow = fb_get('USER_WALLETS/' . $uid);
+        $walletRow = is_array($walletRow) ? $walletRow : [];
+        $availableBalance = (float)($walletRow['available_balance'] ?? 0);
+        $holdBalance = (float)($walletRow['hold_balance'] ?? 0);
+
+        if (abs($availableBalance) > 0.000001 || abs($holdBalance) > 0.000001) {
+            api_response(
+                false,
+                'COUNTRY_MIGRATION_REQUIRES_ZERO_BALANCE',
+                'Pricing country can only be changed after available and hold balances are zero',
+                [
+                    'available_balance' => $availableBalance,
+                    'hold_balance' => $holdBalance,
+                    'current_pricing_country' => $oldPricingCountry,
+                    'requested_pricing_country' => $country,
+                ],
+                422
+            );
+        }
+    }
+
     $updates['country_code'] = $country;
     $updates['country'] = $country;
+    $updates['pricing_country'] = $country;
+    $updates['service_country'] = $country;
+    $updates['currency'] = $country === 'MY' ? 'MYR' : 'BDT';
+    $updates['wallet_currency'] = $country === 'MY' ? 'MYR' : 'BDT';
 }
 
 /*
@@ -209,6 +248,26 @@ if (!fb_patch('USERS/' . $uid, $updates)) {
     }
 
     api_response(false, 'SERVER_ERROR', 'Failed to update user', [], 500);
+}
+
+if ($countryProvided) {
+    $walletCurrency = $country === 'MY' ? 'MYR' : 'BDT';
+    if (!fb_patch('USER_WALLETS/' . $uid, [
+        'currency' => $walletCurrency,
+        'wallet_currency' => $walletCurrency,
+        'updated_at' => now_ts(),
+    ])) {
+        fb_patch('USERS/' . $uid, [
+            'country_code' => (string)($user['country_code'] ?? ''),
+            'country' => (string)($user['country'] ?? ''),
+            'pricing_country' => (string)($user['pricing_country'] ?? ''),
+            'service_country' => (string)($user['service_country'] ?? ''),
+            'currency' => (string)($user['currency'] ?? ''),
+            'wallet_currency' => (string)($user['wallet_currency'] ?? ''),
+            'updated_at' => now_ts(),
+        ]);
+        api_response(false, 'SERVER_ERROR', 'User updated but wallet currency migration failed', [], 500);
+    }
 }
 
 /*
@@ -269,6 +328,8 @@ admin_action_log('UPDATE_USER', $uid, 'Admin updated user account', [
     'old_status' => $oldStatus,
     'new_status' => (string)($finalUser['status'] ?? ''),
     'country_code' => (string)($finalUser['country_code'] ?? $finalUser['country'] ?? ''),
+    'phone_country' => auth_phone_country_from_user($finalUser),
+    'pricing_country' => auth_pricing_country_from_user($finalUser),
     'admin_uid' => (string)($adminUser['uid'] ?? ''),
 ]);
 
@@ -283,6 +344,8 @@ system_log('ADMIN_UPDATE_USER', $uid, 'Admin updated user account', [
     'old_status' => $oldStatus,
     'new_status' => (string)($finalUser['status'] ?? ''),
     'country_code' => (string)($finalUser['country_code'] ?? $finalUser['country'] ?? ''),
+    'phone_country' => auth_phone_country_from_user($finalUser),
+    'pricing_country' => auth_pricing_country_from_user($finalUser),
     'ip' => client_ip(),
     'admin_uid' => (string)($adminUser['uid'] ?? ''),
 ]);
@@ -296,6 +359,9 @@ api_response(true, 'SUCCESS', 'User account updated successfully', [
     'status' => (string)($finalUser['status'] ?? ''),
     'country_code' => (string)($finalUser['country_code'] ?? $finalUser['country'] ?? ''),
     'country' => (string)($finalUser['country_code'] ?? $finalUser['country'] ?? ''),
+    'phone_country' => auth_phone_country_from_user($finalUser),
+    'pricing_country' => auth_pricing_country_from_user($finalUser),
+    'service_country' => auth_pricing_country_from_user($finalUser),
     'updated_at' => (int)($finalUser['updated_at'] ?? now_ts()),
     'role_settings' => $roleSettings,
     'commission_per_1000' => (float)($roleSettings['commission_per_1000'] ?? 0),

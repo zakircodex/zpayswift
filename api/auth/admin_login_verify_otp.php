@@ -18,7 +18,13 @@ function admin_verify_bool_value($value): bool
     return in_array($value, ['1', 'TRUE', 'YES', 'ON'], true);
 }
 
-function admin_verify_issue_session(array $user, string $uid, string $deviceId, string $deviceName): string
+function admin_verify_issue_session(
+    array $user,
+    string $uid,
+    string $deviceId,
+    string $deviceName,
+    array $preAuthRow = []
+): string
 {
     $token = random_token(32);
     $hash = session_hash($token);
@@ -45,6 +51,10 @@ function admin_verify_issue_session(array $user, string $uid, string $deviceId, 
 
     fb_patch('USERS/' . $uid, [
         'last_login_at' => $now,
+        'last_login_ip' => (string)($preAuthRow['created_ip'] ?? ''),
+        'last_login_ip_country' => (string)($preAuthRow['ip_country'] ?? ''),
+        'last_login_user_agent' => (string)($preAuthRow['user_agent'] ?? ''),
+        'browser_timezone' => (string)($preAuthRow['browser_timezone'] ?? ($user['browser_timezone'] ?? '')),
         'updated_at' => $now,
     ]);
 
@@ -199,7 +209,7 @@ if ($userRole !== 'ADMIN') {
     api_response(false, 'FORBIDDEN', 'Admin access required', [], 403);
 }
 
-$sessionToken = admin_verify_issue_session($user, $uid, $deviceId, $deviceName);
+$sessionToken = admin_verify_issue_session($user, $uid, $deviceId, $deviceName, $preAuthRow);
 
 fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
     'used' => true,

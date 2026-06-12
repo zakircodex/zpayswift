@@ -869,6 +869,7 @@ async function doLogin(){
   setLoginError('');
 
   const phone = document.getElementById('loginPhone')?.value.trim() || '';
+  const phoneCountry = (document.getElementById('loginPhoneCountry')?.value || 'BD').toUpperCase();
   const password = document.getElementById('loginPassword')?.value || '';
 
   if (!phone || !password) {
@@ -876,13 +877,24 @@ async function doLogin(){
     return;
   }
 
+  const digits = phone.replace(/\D+/g, '');
+  const validPhone = phoneCountry === 'MY'
+    ? /^(?:011\d{8}|01[02-9]\d{7}|6011\d{8}|601[02-9]\d{7}|11\d{8}|1[02-9]\d{7})$/.test(digits)
+    : /^(?:01[3-9]\d{8}|8801[3-9]\d{8}|1[3-9]\d{8})$/.test(digits);
+  if (!validPhone) {
+    setLoginError(phoneCountry === 'MY' ? 'Invalid Malaysia number' : 'Invalid Bangladesh number');
+    return;
+  }
+
   try{
     const data = await proxyPost('login', {
       phone,
+      phone_country: phoneCountry,
       password,
       trust_device: true,
       device_id: 'ADMIN_WEB',
-      device_name: 'Admin Dashboard'
+      device_name: 'Admin Dashboard',
+      browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
     }, false, { busyText: 'Logging in...' });
 
     if (data.require_otp) {
@@ -2201,7 +2213,11 @@ function renderUsers(){
       <td>${esc(item.phone || '-')}</td>
       <td>${statusPill(item.status || 'ACTIVE')}</td>
       <td>${rolePill(item.role || 'USER')}</td>
-      <td>${esc(item.country_code || item.country || '-')}</td>
+      <td>
+        <div><strong>${esc(item.phone_country || '-')}</strong> <span class="muted">OTP</span></div>
+        <div class="muted" style="font-size:12px;">${esc(item.pricing_country || item.country_code || item.country || '-')} pricing</div>
+        ${item.country_mismatch ? '<div class="muted" style="font-size:11px;color:#ffb96a;">Country mismatch</div>' : ''}
+      </td>
       <td>${esc((Number(item.commission_per_1000 || 0)).toFixed(2))}</td>
       <td>${yesNoPill(!!item.api_enabled)}</td>
       <td>${walletMoney(item, 'available')}${walletRawHint(item, 'available')}</td>
@@ -2231,7 +2247,12 @@ async function viewUser(uid){
           <div class="detail-item"><label>Email</label><strong>${esc(data.email || '-')}</strong></div>
           <div class="detail-item"><label>Status</label><strong>${esc(data.status || '-')}</strong></div>
           <div class="detail-item"><label>Role</label><strong>${esc(data.role || 'USER')}</strong></div>
-          <div class="detail-item"><label>Country</label><strong>${esc(data.country_code || data.country || '-')}</strong></div>
+          <div class="detail-item"><label>Phone Country (OTP)</label><strong>${esc(data.phone_country || '-')}</strong></div>
+          <div class="detail-item"><label>Pricing Country (fee/wallet/service)</label><strong>${esc(data.pricing_country || data.country_code || data.country || '-')}</strong></div>
+          <div class="detail-item"><label>IP Country</label><strong>${esc(data.ip_country || '-')}</strong></div>
+          <div class="detail-item"><label>Country Mismatch</label><strong>${data.country_mismatch ? 'Yes - review recommended' : 'No'}</strong></div>
+          <div class="detail-item"><label>Registration IP</label><strong>${esc(data.created_ip || data.registration_ip || '-')}</strong></div>
+          <div class="detail-item"><label>Last Login IP</label><strong>${esc(data.last_login_ip || '-')}</strong></div>
           <div class="detail-item"><label>Topup Commission / 1000 BDT</label><strong>${Number(data.commission_per_1000 || 0).toFixed(2)}</strong></div>
           <div class="detail-item"><label>API Enabled</label><strong>${data.api_enabled ? 'Yes' : 'No'}</strong></div>
           <div class="detail-item"><label>Topup Enabled</label><strong>${data.topup_enabled ? 'Yes' : 'No'}</strong></div>
@@ -2313,12 +2334,18 @@ async function openEditUserModal(uid){
           </div>
 
           <div>
-            <label>Country</label>
+            <label>Pricing Country</label>
             <select id="editUserCountry">
               <option value="">Not Set / Auto fallback</option>
-              <option value="BD" ${(String(data.country_code || data.country || '').toUpperCase() === 'BD') ? 'selected' : ''}>Bangladesh (BD)</option>
-              <option value="MY" ${(String(data.country_code || data.country || '').toUpperCase() === 'MY') ? 'selected' : ''}>Malaysia (MY)</option>
+              <option value="BD" ${(String(data.pricing_country || data.country_code || data.country || '').toUpperCase() === 'BD') ? 'selected' : ''}>Bangladesh (BDT)</option>
+              <option value="MY" ${(String(data.pricing_country || data.country_code || data.country || '').toUpperCase() === 'MY') ? 'selected' : ''}>Malaysia (MYR)</option>
             </select>
+            <small class="muted">Admin-only. Controls wallet currency, fee and service pricing. Phone Country remains unchanged. Migration requires zero available and hold balance.</small>
+          </div>
+
+          <div>
+            <label>Phone Country (OTP)</label>
+            <input class="input" value="${esc(data.phone_country || '-')}" readonly>
           </div>
 
           <div class="form-full">
@@ -2415,6 +2442,8 @@ async function submitEditUser(){
     };
 
     if (country) {
+      payload.pricing_country = country;
+      payload.service_country = country;
       payload.country = country;
       payload.country_code = country;
     }
@@ -2455,8 +2484,24 @@ function openCreateUserModal(){
         </div>
 
         <div class="field">
+          <label>Phone Country</label>
+          <select id="userPhoneCountry" class="input">
+            <option value="BD">Bangladesh (+880)</option>
+            <option value="MY">Malaysia (+60)</option>
+          </select>
+        </div>
+
+        <div class="field">
           <label>Phone</label>
           <input class="input" id="userPhone" placeholder="Enter phone">
+        </div>
+
+        <div class="field">
+          <label>Pricing Country</label>
+          <select id="userPricingCountry" class="input">
+            <option value="BD">Bangladesh (BDT)</option>
+            <option value="MY">Malaysia (MYR)</option>
+          </select>
         </div>
 
         <div class="field">
@@ -2558,6 +2603,8 @@ function openCreateUserModal(){
       const payload = {
         name: document.getElementById('userName')?.value.trim() || '',
         phone: document.getElementById('userPhone')?.value.trim() || '',
+        phone_country: document.getElementById('userPhoneCountry')?.value || 'BD',
+        pricing_country: document.getElementById('userPricingCountry')?.value || 'BD',
         email: document.getElementById('userEmail')?.value.trim() || '',
         password: document.getElementById('userPassword')?.value || '',
         pin: document.getElementById('userPin')?.value || '',

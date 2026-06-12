@@ -308,6 +308,7 @@ async function handleSendForgotOtp() {
   forgotSetSuccess('');
 
   const phone = (fId('forgotPhone')?.value || '').trim();
+  const phoneCountry = (fId('forgotPhoneCountry')?.value || 'BD').toUpperCase();
   const resetType = String(
     fId('forgotResetType')?.value || forgotState.resetType || 'PASSWORD'
   ).toUpperCase();
@@ -319,10 +320,21 @@ async function handleSendForgotOtp() {
     return;
   }
 
+  const digits = phone.replace(/\D+/g, '');
+  const validPhone = phoneCountry === 'MY'
+    ? /^(?:011\d{8}|01[02-9]\d{7}|6011\d{8}|601[02-9]\d{7}|11\d{8}|1[02-9]\d{7})$/.test(digits)
+    : /^(?:01[3-9]\d{8}|8801[3-9]\d{8}|1[3-9]\d{8})$/.test(digits);
+  if (!validPhone) {
+    forgotSetError(phoneCountry === 'MY' ? 'Invalid Malaysia number' : 'Invalid Bangladesh number');
+    return;
+  }
+
   try {
     const data = await forgotProxyPost('forgot_send_otp', {
       phone,
-      reset_type: resetType
+      phone_country: phoneCountry,
+      reset_type: resetType,
+      browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
     }, 'Sending OTP...');
 
     forgotState.resetToken = String(
@@ -353,6 +365,24 @@ async function handleSendForgotOtp() {
     forgotSetError(err.message || 'Failed to send OTP');
     forgotShowToast(err.message || 'Failed to send OTP', 'error');
   }
+}
+
+function updatePartnerForgotCountry(){
+  const country = (fId('forgotPhoneCountry')?.value || 'BD').toUpperCase();
+  if (fId('forgotPhone')) {
+    fId('forgotPhone').placeholder = country === 'MY' ? '01XXXXXXXX or +60XXXXXXXXX' : '01XXXXXXXXX or +8801XXXXXXXXX';
+  }
+}
+
+async function loadPartnerForgotCountry(){
+  try {
+    const data = await forgotProxyPost('country_defaults', {}, 'Detecting country...');
+    const country = String(data.phone_country || 'BD').toUpperCase();
+    if (fId('forgotPhoneCountry') && ['BD','MY'].includes(country)) {
+      fId('forgotPhoneCountry').value = country;
+    }
+  } catch (_) {}
+  updatePartnerForgotCountry();
 }
 
 async function handleVerifyForgotOtp() {
@@ -473,6 +503,7 @@ async function handleResendForgotOtp() {
 function bindForgotEvents() {
   fId('forgotTypePasswordBtn')?.addEventListener('click', () => setForgotType('PASSWORD'));
   fId('forgotTypePinBtn')?.addEventListener('click', () => setForgotType('PIN'));
+  fId('forgotPhoneCountry')?.addEventListener('change', updatePartnerForgotCountry);
 
   fId('sendForgotOtpBtn')?.addEventListener('click', handleSendForgotOtp);
   fId('verifyForgotOtpBtn')?.addEventListener('click', handleVerifyForgotOtp);
@@ -495,3 +526,4 @@ function bindForgotEvents() {
 loadForgotState();
 setForgotType(forgotState.resetType || 'PASSWORD');
 bindForgotEvents();
+loadPartnerForgotCountry();

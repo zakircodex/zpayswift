@@ -33,10 +33,10 @@ function user_reg_make_uid(): string
     return 'U' . date('YmdHis') . strtoupper(bin2hex(random_bytes(5)));
 }
 
-function user_reg_normalize_phone(string $phone): string
+function user_reg_normalize_phone(string $phone, string $country = 'BD'): string
 {
-    if (function_exists('normalize_login_phone')) {
-        return (string)normalize_login_phone($phone);
+    if (function_exists('normalize_phone_by_country')) {
+        return normalize_phone_by_country($phone, $country);
     }
 
     return preg_replace('/\D+/', '', trim($phone)) ?? '';
@@ -44,7 +44,7 @@ function user_reg_normalize_phone(string $phone): string
 
 function user_reg_mask_phone(string $phone): string
 {
-    $phone = user_reg_normalize_phone($phone);
+    $phone = preg_replace('/\D+/', '', trim($phone)) ?? '';
     $len = strlen($phone);
 
     if ($len <= 4) {
@@ -63,9 +63,13 @@ function user_reg_email_key(string $email): string
     return md5(strtolower(trim($email)));
 }
 
-function user_reg_find_uid_by_phone(string $phone): string
+function user_reg_find_uid_by_phone(string $phone, string $country): string
 {
-    $phone = user_reg_normalize_phone($phone);
+    if (function_exists('auth_find_uid_by_phone_country')) {
+        return auth_find_uid_by_phone_country($phone, $country);
+    }
+
+    $phone = user_reg_normalize_phone($phone, $country);
     if ($phone === '') {
         return '';
     }
@@ -103,17 +107,30 @@ function user_reg_find_uid_by_email(string $email): string
     return '';
 }
 
-function user_reg_send_sms(string $phone, string $message): bool
+function user_reg_send_sms(string $country, string $phone, string $message, string $referenceId): array
 {
-    if (function_exists('auth_send_otp_sms')) {
-        return (bool)auth_send_otp_sms($phone, $message);
+    if (function_exists('auth_send_otp_sms_by_country')) {
+        return auth_send_otp_sms_by_country($country, $phone, $message, $referenceId);
     }
 
-    return false;
+    return ['ok' => false, 'gateway' => '', 'code' => 'SMS_HELPER_MISSING', 'message' => 'SMS helper missing'];
 }
 
 $name = trim((string)($body['name'] ?? ''));
-$phone = user_reg_normalize_phone((string)($body['phone'] ?? ''));
+$phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+$ipCountry = auth_request_ip_country($body);
+
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country((string)($body['phone'] ?? ''));
+}
+
+if ($phoneCountry === '') {
+    $phoneCountry = 'BD';
+}
+
+$pricingCountry = auth_registration_pricing_country($phoneCountry, $ipCountry);
+
+$phone = user_reg_normalize_phone((string)($body['phone'] ?? ''), $phoneCountry);
 $email = strtolower(trim((string)($body['email'] ?? '')));
 $password = (string)($body['password'] ?? '');
 $confirmPassword = (string)($body['confirm_password'] ?? '');
@@ -121,17 +138,19 @@ $pin = trim((string)($body['pin'] ?? ''));
 $confirmPin = trim((string)($body['confirm_pin'] ?? ''));
 $deviceId = trim((string)($body['device_id'] ?? 'USER_WEB'));
 $deviceName = trim((string)($body['device_name'] ?? 'User Register'));
+$createdIp = auth_request_ip($body);
+$userAgent = auth_request_user_agent($body);
+$browserTimezone = auth_request_browser_timezone($body);
+$currency = auth_country_currency($pricingCountry);
+$countryMismatch = $ipCountry !== '' && $ipCountry !== $phoneCountry;
 
 if ($name === '' || $phone === '' || $email === '' || $password === '' || $confirmPassword === '' || $pin === '' || $confirmPin === '') {
-    user_reg_response(false, 'VALIDATION_ERROR', 'All fields are required', [], 422);
+    $message = $phone === '' ? auth_phone_validation_message($phoneCountry) : 'All fields are required';
+    user_reg_response(false, 'VALIDATION_ERROR', $message, [], 422);
 }
 
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     user_reg_response(false, 'VALIDATION_ERROR', 'Valid email is required', [], 422);
-}
-
-if (strlen($phone) < 10) {
-    user_reg_response(false, 'VALIDATION_ERROR', 'Valid phone number is required', [], 422);
 }
 
 if (strlen($password) < 6) {
@@ -150,7 +169,7 @@ if ($pin !== $confirmPin) {
     user_reg_response(false, 'VALIDATION_ERROR', 'PIN confirmation does not match', [], 422);
 }
 
-if (user_reg_find_uid_by_phone($phone) !== '') {
+if (user_reg_find_uid_by_phone($phone, $phoneCountry) !== '') {
     user_reg_response(false, 'DUPLICATE_PHONE', 'Phone number already registered', [], 409);
 }
 
@@ -172,6 +191,14 @@ $otpRow = [
     'otp_request_id' => $otpRequestId,
     'uid' => $uid,
     'phone' => $phone,
+    'country' => $phoneCountry,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
+    'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
+    'phone_e164' => $phone,
+    'ip_country' => $ipCountry,
+    'created_ip' => $createdIp,
+    'user_agent' => $userAgent,
     'purpose' => 'USER_REGISTER',
     'code_hash' => password_hash($otpCode, PASSWORD_DEFAULT),
     'masked_phone' => user_reg_mask_phone($phone),
@@ -189,6 +216,16 @@ $preAuthRow = [
     'uid' => $uid,
     'name' => $name,
     'phone' => $phone,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
+    'currency' => $currency,
+    'ip_country' => $ipCountry,
+    'country_mismatch' => $countryMismatch,
+    'created_ip' => $createdIp,
+    'registration_ip' => $createdIp,
+    'user_agent' => $userAgent,
+    'browser_timezone' => $browserTimezone,
     'email' => $email,
     'password_hash' => password_hash($password, PASSWORD_DEFAULT),
     'pin_hash' => password_hash($pin, PASSWORD_DEFAULT),
@@ -214,13 +251,16 @@ if (!($okOtp && $okPre)) {
     user_reg_response(false, 'SERVER_ERROR', 'Failed to prepare register OTP', [], 500);
 }
 
-$smsOk = user_reg_send_sms($phone, $message);
+$smsResult = user_reg_send_sms($phoneCountry, $phone, $message, $otpRequestId);
+$smsPatch = function_exists('auth_sms_result_log_fields')
+    ? auth_sms_result_log_fields($smsResult)
+    : [];
 
-if (!$smsOk) {
+if (empty($smsResult['ok'])) {
     @fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
         'status' => 'SMS_FAILED',
         'updated_at' => user_reg_now(),
-    ]);
+    ] + $smsPatch);
 
     @fb_patch('AUTH_USER_REGISTER_PREAUTH/' . $preAuthToken, [
         'status' => 'SMS_FAILED',
@@ -230,10 +270,17 @@ if (!$smsOk) {
     user_reg_response(false, 'SMS_FAILED', 'Failed to send OTP SMS', [], 500);
 }
 
+@fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+    'updated_at' => user_reg_now(),
+] + $smsPatch);
+
 if (function_exists('system_log')) {
     system_log('USER_REGISTER_OTP_SENT', $otpRequestId, 'User register OTP sent', [
         'uid' => $uid,
         'phone' => $phone,
+        'phone_country' => $phoneCountry,
+        'pricing_country' => $pricingCountry,
+        'ip_country' => $ipCountry,
         'email' => $email,
         'device_id' => $deviceId,
         'device_name' => $deviceName,
@@ -246,4 +293,7 @@ user_reg_response(true, 'OTP_REQUIRED', 'OTP verification required', [
     'otp_request_id' => $otpRequestId,
     'masked_phone' => user_reg_mask_phone($phone),
     'expires_in_seconds' => 300,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
+    'currency' => $currency,
 ]);

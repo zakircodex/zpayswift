@@ -130,24 +130,20 @@ function ucotp_load_actor_from_session(): array
     return [
         'uid' => $uid,
         'name' => (string) ($user['name'] ?? ''),
-        'phone' => ucotp_normalize_phone((string) ($user['phone'] ?? '')),
+        'phone' => (string) ($user['phone'] ?? ''),
         'email' => (string) ($user['email'] ?? ''),
         'role' => $role,
+        'phone_country' => auth_phone_country_from_user($user),
+        'pricing_country' => auth_pricing_country_from_user(
+            $user,
+            (array)(fb_get('USER_WALLETS/' . $uid) ?: [])
+        ),
     ];
 }
 
 function ucotp_validate_email(string $email): bool
 {
     return filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
-}
-
-function ucotp_send_sms(string $phone, string $message): bool
-{
-    if (function_exists('auth_send_otp_sms')) {
-        return (bool) auth_send_otp_sms($phone, $message);
-    }
-
-    return false;
 }
 
 api_require_method('POST');
@@ -158,7 +154,17 @@ $body = api_read_json_body();
 $actor = ucotp_load_actor_from_session();
 
 $name = trim((string)($body['name'] ?? ''));
-$phone = ucotp_normalize_phone((string)($body['phone'] ?? ''));
+$phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country((string)($body['phone'] ?? '')) ?: 'BD';
+}
+$phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);
+$pricingCountry = auth_normalize_country_code((string)($body['pricing_country'] ?? $body['service_country'] ?? ''));
+if (strtoupper((string)($actor['role'] ?? '')) === 'SUBADMIN') {
+    $pricingCountry = (string)($actor['pricing_country'] ?? 'BD');
+} elseif ($pricingCountry === '') {
+    $pricingCountry = (string)($actor['pricing_country'] ?? 'BD');
+}
 $email = strtolower(trim((string)($body['email'] ?? '')));
 $password = (string)($body['password'] ?? '');
 $confirmPassword = (string)($body['confirm_password'] ?? '');
@@ -166,7 +172,13 @@ $pin = trim((string)($body['pin'] ?? ''));
 $confirmPin = trim((string)($body['confirm_pin'] ?? ''));
 
 if ($name === '' || $phone === '' || $email === '' || $password === '' || $confirmPassword === '' || $pin === '' || $confirmPin === '') {
-    ucotp_response(false, 'VALIDATION_ERROR', 'All fields are required', [], 422);
+    ucotp_response(
+        false,
+        'VALIDATION_ERROR',
+        $phone === '' ? auth_phone_validation_message($phoneCountry) : 'All fields are required',
+        [],
+        422
+    );
 }
 
 if (!ucotp_validate_email($email)) {
@@ -189,8 +201,8 @@ if ($pin !== $confirmPin) {
     ucotp_response(false, 'VALIDATION_ERROR', 'PIN confirmation does not match', [], 422);
 }
 
-$existingUid = fb_get('USER_INDEX/PHONE/' . $phone);
-if (is_string($existingUid) && trim($existingUid) !== '') {
+$existingUid = auth_find_uid_by_phone_country($phone, $phoneCountry);
+if ($existingUid !== '') {
     ucotp_response(false, 'PHONE_ALREADY_EXISTS', 'Phone number already exists', [], 409);
 }
 
@@ -203,18 +215,34 @@ $expiresAt = $now + 300;
 $payloadSecret = ucotp_encrypt_payload([
     'name' => $name,
     'phone' => $phone,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
     'email' => $email,
     'password' => $password,
     'pin' => $pin,
 ]);
 
+$actorPhoneCountry = auth_normalize_country_code((string)($actor['phone_country'] ?? '')) ?: 'BD';
+$actorPhone = normalize_phone_by_country((string)($actor['phone'] ?? ''), $actorPhoneCountry);
+if ($actorPhone === '') {
+    ucotp_response(false, 'VALIDATION_ERROR', 'Creator account phone number is invalid', [], 422);
+}
+
 $otpRow = [
     'otp_request_id' => $otpRequestId,
     'uid' => (string)($actor['uid'] ?? ''),
-    'phone' => (string)($actor['phone'] ?? ''),
+    'phone' => $actorPhone,
+    'country' => $actorPhoneCountry,
+    'phone_country' => $actorPhoneCountry,
+    'pricing_country' => (string)($actor['pricing_country'] ?? 'BD'),
+    'dial_code' => $actorPhoneCountry === 'MY' ? '+60' : '+880',
+    'phone_e164' => $actorPhone,
+    'ip_country' => auth_request_ip_country($body),
+    'created_ip' => auth_request_ip($body),
+    'user_agent' => auth_request_user_agent($body),
     'purpose' => 'SUBADMIN_USER_CREATE',
     'code_hash' => password_hash($otpCode, PASSWORD_DEFAULT),
-    'masked_phone' => ucotp_mask_phone((string)($actor['phone'] ?? '')),
+    'masked_phone' => ucotp_mask_phone($actorPhone),
     'status' => 'SENT',
     'used' => false,
     'resend_count' => 0,
@@ -227,10 +255,13 @@ $preAuthRow = [
     'pre_auth_token' => $preAuthToken,
     'otp_request_id' => $otpRequestId,
     'actor_uid' => (string)($actor['uid'] ?? ''),
-    'actor_phone' => (string)($actor['phone'] ?? ''),
+    'actor_phone' => $actorPhone,
+    'actor_phone_country' => $actorPhoneCountry,
     'actor_role' => (string)($actor['role'] ?? ''),
     'target_name' => $name,
     'target_phone' => $phone,
+    'target_phone_country' => $phoneCountry,
+    'target_pricing_country' => $pricingCountry,
     'target_email' => $email,
     'payload_secret' => $payloadSecret,
     'purpose' => 'SUBADMIN_USER_CREATE',
@@ -253,13 +284,14 @@ $message =
     ' is ' . $otpCode .
     '. Valid for 5 minutes. Do not share this code.';
 
-$smsOk = ucotp_send_sms((string)($actor['phone'] ?? ''), $message);
+$smsResult = auth_send_otp_sms_by_country($actorPhoneCountry, $actorPhone, $message, $otpRequestId);
+$smsPatch = auth_sms_result_log_fields($smsResult);
 
-if (!$smsOk) {
+if (empty($smsResult['ok'])) {
     @fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
         'status' => 'SMS_FAILED',
         'updated_at' => ucotp_now(),
-    ]);
+    ] + $smsPatch);
 
     @fb_patch('AUTH_USER_CREATE_PREAUTH/' . $preAuthToken, [
         'status' => 'SMS_FAILED',
@@ -269,11 +301,18 @@ if (!$smsOk) {
     ucotp_response(false, 'SMS_FAILED', 'Failed to send OTP SMS', [], 500);
 }
 
+@fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+    'updated_at' => ucotp_now(),
+] + $smsPatch);
+
 if (function_exists('system_log')) {
     system_log('SUBADMIN_USER_CREATE_OTP_SENT', $otpRequestId, 'User create OTP sent', [
         'actor_uid' => (string)($actor['uid'] ?? ''),
-        'actor_phone' => (string)($actor['phone'] ?? ''),
+        'actor_phone' => $actorPhone,
+        'actor_phone_country' => $actorPhoneCountry,
         'target_phone' => $phone,
+        'target_phone_country' => $phoneCountry,
+        'target_pricing_country' => $pricingCountry,
         'target_email' => $email,
     ]);
 }
@@ -281,9 +320,11 @@ if (function_exists('system_log')) {
 ucotp_response(true, 'SUCCESS', 'OTP sent successfully', [
     'pre_auth_token' => $preAuthToken,
     'otp_request_id' => $otpRequestId,
-    'masked_phone' => ucotp_mask_phone((string)($actor['phone'] ?? '')),
+    'masked_phone' => ucotp_mask_phone($actorPhone),
     'expires_in_seconds' => 300,
     'target_name' => $name,
     'target_phone' => $phone,
+    'target_phone_country' => $phoneCountry,
+    'target_pricing_country' => $pricingCountry,
     'target_email' => $email,
 ]);

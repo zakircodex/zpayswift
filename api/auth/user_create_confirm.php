@@ -297,7 +297,15 @@ if (!$payload) {
 }
 
 $name = trim((string)($payload['name'] ?? ''));
-$phone = ucc_normalize_phone((string)($payload['phone'] ?? ''));
+$phoneCountry = auth_normalize_country_code((string)($payload['phone_country'] ?? $preAuthRow['target_phone_country'] ?? ''));
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country((string)($payload['phone'] ?? '')) ?: 'BD';
+}
+$phone = normalize_phone_by_country((string)($payload['phone'] ?? ''), $phoneCountry);
+$pricingCountry = auth_normalize_country_code((string)($payload['pricing_country'] ?? $preAuthRow['target_pricing_country'] ?? ''));
+if ($pricingCountry === '') {
+    $pricingCountry = 'BD';
+}
 $email = strtolower(trim((string)($payload['email'] ?? '')));
 $password = (string)($payload['password'] ?? '');
 $pin = trim((string)($payload['pin'] ?? ''));
@@ -306,14 +314,15 @@ if ($name === '' || $phone === '' || $email === '' || $password === '' || $pin =
     ucc_response(false, 'PREAUTH_INVALID', 'Stored user creation payload is incomplete', [], 400);
 }
 
-$existingUid = fb_get('USER_INDEX/PHONE/' . $phone);
-if (is_string($existingUid) && trim($existingUid) !== '') {
+if (auth_find_uid_by_phone_country($phone, $phoneCountry) !== '') {
     ucc_response(false, 'PHONE_ALREADY_EXISTS', 'Phone number already exists', [], 409);
 }
 
 $createRes = ucc_internal_api_request('POST', 'user_create_by_subadmin.php', [
     'name' => $name,
     'phone' => $phone,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
     'email' => $email,
     'password' => $password,
     'confirm_password' => $password,
@@ -366,6 +375,8 @@ ucc_response(true, 'SUCCESS', 'User created successfully', [
     'otp_request_id' => $otpRequestId,
     'target_name' => $name,
     'target_phone' => $phone,
+    'target_phone_country' => $phoneCountry,
+    'target_pricing_country' => $pricingCountry,
     'target_email' => $email,
     'user' => $createdData,
 ]);

@@ -123,6 +123,14 @@ html,body{
   margin-bottom:8px;
 }
 
+.field-help{
+  display:block;
+  margin-top:7px;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.4;
+}
+
 .input{
   width:100%;
   border-radius:18px;
@@ -132,6 +140,10 @@ html,body{
   padding:14px 15px;
   font-size:15px;
   outline:none;
+}
+
+select.input{
+  appearance:auto;
 }
 
 .input::placeholder{

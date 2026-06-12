@@ -568,6 +568,12 @@ function showLogin(){
 
   el('loginView')?.classList.remove('hidden');
   el('appView')?.classList.add('hidden');
+
+  const countrySelect = el('loginPhoneCountry');
+  if (countrySelect && countrySelect.dataset.defaultsLoaded !== '1') {
+    countrySelect.dataset.defaultsLoaded = '1';
+    loadLoginCountryDefault();
+  }
 }
 
 function showApp(){
@@ -3041,6 +3047,7 @@ async function doLogin(){
   setLoginError('');
 
   const phone = (el('loginPhone')?.value || '').trim();
+  const phoneCountry = (el('loginPhoneCountry')?.value || 'BD').toUpperCase();
   const password = el('loginPassword')?.value || '';
   const trustDevice = !!el('rememberTrustedDevice')?.checked;
 
@@ -3049,15 +3056,27 @@ async function doLogin(){
     return;
   }
 
+  const phoneDigits = phone.replace(/\D+/g, '');
+  const validPhone = phoneCountry === 'MY'
+    ? /^(?:011\d{8}|01[02-9]\d{7}|6011\d{8}|601[02-9]\d{7}|11\d{8}|1[02-9]\d{7})$/.test(phoneDigits)
+    : /^(?:01[3-9]\d{8}|8801[3-9]\d{8}|1[3-9]\d{8})$/.test(phoneDigits);
+
+  if (!validPhone) {
+    setLoginError(phoneCountry === 'MY' ? 'Invalid Malaysia number' : 'Invalid Bangladesh number');
+    return;
+  }
+
   state.loginOtp.trustDevice = trustDevice;
 
   try{
     const data = await proxyPost('login', {
       phone,
+      phone_country: phoneCountry,
       password,
       trust_device: trustDevice,
       device_id: 'USER_WEB',
-      device_name: 'User Dashboard'
+      device_name: 'User Dashboard',
+      browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
     }, 'Logging in...');
 
     if (data.require_otp) {
@@ -3077,6 +3096,26 @@ async function doLogin(){
   }catch(err){
     setLoginError(err.message || 'Login failed');
   }
+}
+
+function updateLoginCountryUi(){
+  const country = (el('loginPhoneCountry')?.value || 'BD').toUpperCase();
+  if (el('loginPhone')) {
+    el('loginPhone').placeholder = country === 'MY' ? '01XXXXXXXX or +60XXXXXXXXX' : '01XXXXXXXXX or +8801XXXXXXXXX';
+  }
+}
+
+async function loadLoginCountryDefault(){
+  try {
+    const data = await proxyPost('country_defaults', {}, 'Detecting country...');
+    const country = String(data.phone_country || 'BD').toUpperCase();
+    if (el('loginPhoneCountry') && ['BD','MY'].includes(country)) {
+      el('loginPhoneCountry').value = country;
+    }
+  } catch (_) {
+    // Keep Bangladesh as the compatibility default.
+  }
+  updateLoginCountryUi();
 }
 
 async function verifyLoginOtp(){
@@ -3300,6 +3339,8 @@ function bindEvents(){
   el('loginPhone')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') el('loginPassword')?.focus();
   });
+
+  el('loginPhoneCountry')?.addEventListener('change', updateLoginCountryUi);
 
   el('openSidebarBtn')?.addEventListener('click', openSidebar);
   el('sidebarOverlay')?.addEventListener('click', closeSidebar);

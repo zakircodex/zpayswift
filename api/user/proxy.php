@@ -2374,7 +2374,9 @@ function user_proxy_country_code_from_user(array $user): string
     }
 
     $country = strtoupper(trim((string)(
-        $user['country_code']
+        $user['pricing_country']
+        ?? $user['service_country']
+        ?? $user['country_code']
         ?? $user['country']
         ?? $user['user_country']
         ?? ''
@@ -3165,6 +3167,21 @@ function user_proxy_forward_auth_post(string $relativePath, array $body, string 
 $action = trim((string)($_GET['action'] ?? ''));
 
 switch ($action) {
+    case 'country_defaults':
+        user_proxy_require_method('POST');
+
+        $body = user_proxy_read_json_body();
+        $ipCountry = function_exists('auth_request_ip_country') ? auth_request_ip_country($body) : '';
+        $defaultCountry = $ipCountry !== '' ? $ipCountry : 'BD';
+
+        user_proxy_response(true, 'SUCCESS', 'Country defaults loaded', [
+            'ip_country' => $ipCountry,
+            'phone_country' => $defaultCountry,
+            'pricing_country' => $defaultCountry,
+            'currency' => $defaultCountry === 'MY' ? 'MYR' : 'BDT',
+        ]);
+        break;
+
     case 'login':
         user_proxy_require_method('POST');
 
@@ -3176,6 +3193,7 @@ switch ($action) {
         $deviceId = trim((string)($body['device_id'] ?? 'USER_WEB'));
         $deviceName = trim((string)($body['device_name'] ?? 'User Dashboard'));
         $trustedDeviceCookie = user_proxy_get_trust_cookie();
+        $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
 
         if ($phone === '' || $password === '') {
             user_proxy_response(false, 'VALIDATION_ERROR', 'Phone and password are required', [], 422);
@@ -3183,11 +3201,16 @@ switch ($action) {
 
         $loginRes = user_proxy_internal_api_request('POST', 'auth/user_login_start.php', [
             'phone' => $phone,
+            'phone_country' => $phoneCountry,
             'password' => $password,
             'device_id' => $deviceId,
             'device_name' => $deviceName,
             'trust_device' => $trustDevice,
             'trusted_device_cookie' => $trustedDeviceCookie,
+            'client_ip' => security_client_ip(),
+            'ip_country' => auth_request_ip_country(),
+            'user_agent' => security_user_agent(),
+            'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
         ], [
             'X-APP-KEY' => APP_KEY,
         ]);
@@ -3788,6 +3811,8 @@ switch ($action) {
         user_proxy_forward_auth_post('auth/user_register_send_otp.php', [
             'name' => trim((string)($body['name'] ?? '')),
             'phone' => trim((string)($body['phone'] ?? '')),
+            'phone_country' => auth_normalize_country_code((string)($body['phone_country'] ?? '')),
+            'pricing_country' => auth_normalize_country_code((string)($body['pricing_country'] ?? $body['service_country'] ?? '')),
             'email' => trim((string)($body['email'] ?? '')),
             'password' => (string)($body['password'] ?? ''),
             'confirm_password' => (string)($body['confirm_password'] ?? ''),
@@ -3795,6 +3820,10 @@ switch ($action) {
             'confirm_pin' => trim((string)($body['confirm_pin'] ?? '')),
             'device_id' => trim((string)($body['device_id'] ?? 'USER_WEB')),
             'device_name' => trim((string)($body['device_name'] ?? 'User Register')),
+            'client_ip' => security_client_ip(),
+            'ip_country' => auth_request_ip_country(),
+            'user_agent' => security_user_agent(),
+            'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
         ], 'REGISTER_OTP_SEND_FAILED', 'Failed to send register OTP');
         break;
 
@@ -3844,6 +3873,7 @@ switch ($action) {
         $body = user_proxy_read_json_body();
 
         $phone = trim((string)($body['phone'] ?? ''));
+        $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
         $resetType = strtoupper(trim((string)($body['reset_type'] ?? 'PASSWORD')));
 
         if ($phone === '') {
@@ -3856,9 +3886,14 @@ switch ($action) {
 
         user_proxy_forward_auth_post('auth/user_forgot_send_otp.php', [
             'phone' => $phone,
+            'phone_country' => $phoneCountry,
             'reset_type' => $resetType,
             'device_id' => trim((string)($body['device_id'] ?? 'USER_WEB')),
             'device_name' => trim((string)($body['device_name'] ?? 'User Forgot')),
+            'client_ip' => security_client_ip(),
+            'ip_country' => auth_request_ip_country(),
+            'user_agent' => security_user_agent(),
+            'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
         ], 'FORGOT_OTP_SEND_FAILED', 'Failed to send forgot OTP');
         break;
 

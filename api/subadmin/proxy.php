@@ -1367,12 +1367,24 @@ function sub_proxy_mfs_paginate(array $items, int $page, int $limit): array
 $action = trim((string) ($_GET['action'] ?? ''));
 
 switch ($action) {
+    case 'country_defaults':
+        sub_proxy_require_method('POST');
+        $body = sub_proxy_read_json_body();
+        $ipCountry = auth_request_ip_country($body);
+        $defaultCountry = $ipCountry !== '' ? $ipCountry : 'BD';
+        sub_proxy_response(true, 'SUCCESS', 'Country defaults loaded', [
+            'ip_country' => $ipCountry,
+            'phone_country' => $defaultCountry,
+        ]);
+        break;
+
     case 'login':
         sub_proxy_require_method('POST');
 
         $body = sub_proxy_read_json_body();
         $phone = trim((string) ($body['phone'] ?? ''));
         $password = (string) ($body['password'] ?? '');
+        $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
         $trustDevice = sub_proxy_bool_value($body['trust_device'] ?? true);
         $deviceId = trim((string) ($body['device_id'] ?? 'SUBADMIN_WEB'));
         $deviceName = trim((string) ($body['device_name'] ?? 'Subadmin Panel'));
@@ -1385,11 +1397,16 @@ switch ($action) {
 
 $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
     'phone' => $phone,
+    'phone_country' => $phoneCountry,
     'password' => $password,
     'device_id' => $deviceId,
     'device_name' => $deviceName,
     'trust_device' => $trustDevice,
     'trusted_device_cookie' => $trustedDeviceCookie,
+    'client_ip' => security_client_ip(),
+    'ip_country' => auth_request_ip_country(),
+    'user_agent' => security_user_agent(),
+    'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
 ], [
     'X-APP-KEY' => APP_KEY,
 ]);
@@ -1533,6 +1550,7 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
 
         $body = sub_proxy_read_json_body();
         $phone = trim((string)($body['phone'] ?? ''));
+        $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
         $resetType = strtoupper(trim((string)($body['reset_type'] ?? 'PASSWORD')));
 
         if ($phone === '') {
@@ -1545,7 +1563,12 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
 
         $forgotRes = sub_proxy_internal_api_request('POST', 'auth/forgot_send_otp.php', [
             'phone' => $phone,
+            'phone_country' => $phoneCountry,
             'reset_type' => $resetType,
+            'client_ip' => security_client_ip(),
+            'ip_country' => auth_request_ip_country(),
+            'user_agent' => security_user_agent(),
+            'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
         ], [
             'X-APP-KEY' => APP_KEY,
         ]);
@@ -2579,56 +2602,14 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
     case 'user_country_update':
         sub_proxy_require_method('POST');
         sub_proxy_require_csrf();
-
-        $actor = sub_proxy_require_login(true);
-        $actorUid = trim((string)($actor['uid'] ?? ''));
-        $body = sub_proxy_read_json_body();
-        $targetUid = trim((string)($body['uid'] ?? ''));
-        $country = function_exists('mfs_normalize_country_code')
-            ? mfs_normalize_country_code((string)($body['country_code'] ?? $body['country'] ?? ''))
-            : strtoupper(trim((string)($body['country_code'] ?? $body['country'] ?? '')));
-
-        if ($actorUid === '') {
-            sub_proxy_response(false, 'SESSION_EXPIRED', 'Subadmin session not found', [], 401);
-        }
-
-        if ($targetUid === '') {
-            sub_proxy_response(false, 'VALIDATION_ERROR', 'User ID is required', ['field' => 'uid'], 422);
-        }
-
-        if (!in_array($country, ['BD', 'MY'], true)) {
-            sub_proxy_response(false, 'VALIDATION_ERROR', 'Country must be BD or MY', ['field' => 'country'], 422);
-        }
-
-        $targetUser = sub_proxy_load_user_row($targetUid);
-        if (!$targetUser) {
-            sub_proxy_response(false, 'NOT_FOUND', 'User not found', ['uid' => $targetUid], 404);
-        }
-
-        $parentSubadminUid = trim((string)($targetUser['parent_subadmin_uid'] ?? ''));
-        $createdByUid = trim((string)($targetUser['created_by_uid'] ?? ''));
-        $storedUid = trim((string)($targetUser['uid'] ?? $targetUid));
-        $canUpdateCountry = $storedUid === $actorUid
-            || ($parentSubadminUid !== '' && $parentSubadminUid === $actorUid)
-            || ($createdByUid !== '' && $createdByUid === $actorUid);
-
-        if (!$canUpdateCountry) {
-            sub_proxy_response(false, 'FORBIDDEN', 'You can only update your own users country', [], 403);
-        }
-
-        if (!fb_patch('USERS/' . $targetUid, [
-            'country_code' => $country,
-            'country' => $country,
-            'updated_at' => sub_proxy_now(),
-        ])) {
-            sub_proxy_response(false, 'SERVER_ERROR', 'Failed to update user country', [], 500);
-        }
-
-        sub_proxy_response(true, 'SUCCESS', 'User country updated', [
-            'uid' => $targetUid,
-            'country_code' => $country,
-            'country' => $country,
-        ]);
+        sub_proxy_require_login(true);
+        sub_proxy_response(
+            false,
+            'FORBIDDEN',
+            'Pricing country can only be changed by an administrator',
+            [],
+            403
+        );
         break;
 
     case 'user_convert_retailer':

@@ -1065,13 +1065,8 @@ function renderUsers(){
       <td>${statusPill(item.role || '-')}</td>
       <td>${statusPill(item.status || '-')}</td>
       <td>
-        <div class="country-editor">
-          <select class="input mini-country-select">
-            <option value="BD" ${String(item.country_code || item.country || '').toUpperCase() === 'BD' ? 'selected' : ''}>BD</option>
-            <option value="MY" ${String(item.country_code || item.country || '').toUpperCase() === 'MY' ? 'selected' : ''}>MY</option>
-          </select>
-          <button class="mini-btn blue" type="button" onclick="updateUserCountry(this,'${esc(String(item.uid || ''))}')">Save</button>
-        </div>
+        <div><strong>${esc(item.pricing_country || item.country_code || item.country || '-')}</strong></div>
+        <div class="muted" style="font-size:11px;">Pricing country (admin managed)</div>
       </td>
       <td>
         <div>${fmtWalletMoney(item, 'available')}</div>
@@ -1093,28 +1088,6 @@ function renderUsers(){
       </td>
     </tr>
   `).join('');
-}
-
-async function updateUserCountry(button, uid){
-  uid = String(uid || '').trim();
-  const wrap = button?.closest?.('.country-editor');
-  const country = String(wrap?.querySelector?.('select')?.value || '').toUpperCase();
-
-  if (!uid || !['BD', 'MY'].includes(country)) {
-    showToast('Valid user and country are required', 'error');
-    return;
-  }
-
-  try{
-    await withButtonLoading(button, 'Saving...', async () => {
-      await proxyPost('user_country_update', { uid, country, country_code: country }, 'Updating country...');
-    });
-
-    await loadUsers();
-    showToast('User country updated', 'ok');
-  }catch(err){
-    showToast(err.message || 'Failed to update country', 'error');
-  }
 }
 
 function resetAddBalanceState(){
@@ -3396,6 +3369,11 @@ function clearCreateUserForm(){
   if (el('newUserConfirmPassword')) el('newUserConfirmPassword').value = '';
   if (el('newUserPin')) el('newUserPin').value = '';
   if (el('newUserConfirmPin')) el('newUserConfirmPin').value = '';
+  if (el('newUserPhoneCountry')) el('newUserPhoneCountry').value = 'BD';
+  if (el('newUserPricingCountry')) {
+    const ownCountry = String(state.me?.pricing_country || state.me?.country_code || state.me?.country || 'BD').toUpperCase();
+    el('newUserPricingCountry').value = ownCountry === 'MY' ? 'MY' : 'BD';
+  }
 
   setBoxMessage('createUserOutput', 'info', 'Ready', [
     'No user created yet.'
@@ -4069,6 +4047,8 @@ async function createPanelTopup(){
 async function createSubadminUser(){
   const name = el('newUserName')?.value.trim() || '';
   const phone = el('newUserPhone')?.value.trim() || '';
+  const phoneCountry = String(el('newUserPhoneCountry')?.value || 'BD').toUpperCase();
+  const pricingCountry = String(el('newUserPricingCountry')?.value || 'BD').toUpperCase();
   const email = el('newUserEmail')?.value.trim() || '';
   const password = el('newUserPassword')?.value || '';
   const confirmPassword = el('newUserConfirmPassword')?.value || '';
@@ -4095,9 +4075,20 @@ async function createSubadminUser(){
     return;
   }
 
+  const phoneDigits = phone.replace(/\D+/g, '');
+  const validPhone = phoneCountry === 'MY'
+    ? /^(?:011\d{8}|01[02-9]\d{7}|6011\d{8}|601[02-9]\d{7}|11\d{8}|1[02-9]\d{7})$/.test(phoneDigits)
+    : /^(?:01[3-9]\d{8}|8801[3-9]\d{8}|1[3-9]\d{8})$/.test(phoneDigits);
+  if (!validPhone) {
+    showToast(phoneCountry === 'MY' ? 'Invalid Malaysia number' : 'Invalid Bangladesh number', 'error');
+    return;
+  }
+
   const payload = {
     name,
     phone,
+    phone_country: phoneCountry,
+    pricing_country: pricingCountry,
     email,
     password,
     confirm_password: confirmPassword,
@@ -4235,7 +4226,6 @@ window.loadUsers = loadUsers;
 window.renderSummary = renderSummary;
 window.renderLogs = renderLogs;
 window.renderUsers = renderUsers;
-window.updateUserCountry = updateUserCountry;
 window.renderPanelTopupRequests = renderPanelTopupRequests;
 window.loadMfsPanel = loadMfsPanel;
 window.loadMfsSummaryPanel = loadMfsSummaryPanel;

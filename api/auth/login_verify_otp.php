@@ -24,7 +24,7 @@ function sub_verify_allowed_role(string $role): bool
     return in_array($role, ['SUBADMIN', 'ADMIN'], true);
 }
 
-function sub_verify_issue_session(array $user, string $uid, string $deviceId, string $deviceName): string
+function sub_verify_issue_session(array $user, string $uid, string $deviceId, string $deviceName, array $preAuthRow = []): string
 {
     $token = random_token(32);
     $hash = session_hash($token);
@@ -51,6 +51,10 @@ function sub_verify_issue_session(array $user, string $uid, string $deviceId, st
 
     fb_patch('USERS/' . $uid, [
         'last_login_at' => $now,
+        'last_login_ip' => (string)($preAuthRow['created_ip'] ?? ''),
+        'last_login_ip_country' => (string)($preAuthRow['ip_country'] ?? ''),
+        'last_login_user_agent' => (string)($preAuthRow['user_agent'] ?? ''),
+        'browser_timezone' => (string)($preAuthRow['browser_timezone'] ?? ($user['browser_timezone'] ?? '')),
         'updated_at' => $now,
     ]);
 
@@ -184,7 +188,7 @@ if (!sub_verify_allowed_role($role)) {
     api_response(false, 'FORBIDDEN', 'Subadmin access required', [], 403);
 }
 
-$sessionToken = sub_verify_issue_session($user, $uid, $deviceId, $deviceName);
+$sessionToken = sub_verify_issue_session($user, $uid, $deviceId, $deviceName, $preAuthRow);
 $now = now_ts();
 
 fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [

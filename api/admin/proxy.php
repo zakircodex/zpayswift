@@ -943,6 +943,7 @@ switch ($action) {
         $body = proxy_read_json_body();
 
         $phone = trim((string)($body['phone'] ?? ''));
+        $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
         $password = (string)($body['password'] ?? '');
         $trustDevice = proxy_bool_value($body['trust_device'] ?? true);
         $deviceId = trim((string)($body['device_id'] ?? 'ADMIN_WEB'));
@@ -955,11 +956,16 @@ switch ($action) {
 
         $loginRes = proxy_internal_api_request('POST', 'auth/admin_login_start.php', [
             'phone' => $phone,
+            'phone_country' => $phoneCountry,
             'password' => $password,
             'device_id' => $deviceId,
             'device_name' => $deviceName,
             'trust_device' => $trustDevice,
             'trusted_device_cookie' => $trustedDeviceCookie,
+            'client_ip' => security_client_ip(),
+            'ip_country' => auth_request_ip_country(),
+            'user_agent' => security_user_agent(),
+            'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
         ], proxy_base_headers());
 
         if (!$loginRes['ok']) {

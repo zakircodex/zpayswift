@@ -24,7 +24,14 @@ api_require_app_key();
 $body = api_read_json_body();
 
 $name = trim((string)($body['name'] ?? ''));
-$phone = normalize_login_phone($body['phone'] ?? '');
+$phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country((string)($body['phone'] ?? '')) ?: 'BD';
+}
+$ipCountry = auth_request_ip_country($body);
+$pricingCountry = auth_registration_pricing_country($phoneCountry, $ipCountry);
+$currency = auth_country_currency($pricingCountry);
+$phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);
 $email = strtolower(trim((string)($body['email'] ?? '')));
 $password = (string)($body['password'] ?? '');
 $pin = (string)($body['pin'] ?? '');
@@ -33,8 +40,8 @@ if ($name === '') {
     api_response(false, 'VALIDATION_ERROR', 'Name is required', ['field' => 'name'], 422);
 }
 
-if ($phone === '' || strlen($phone) < 8) {
-    api_response(false, 'VALIDATION_ERROR', 'Valid phone is required', ['field' => 'phone'], 422);
+if ($phone === '') {
+    api_response(false, 'VALIDATION_ERROR', auth_phone_validation_message($phoneCountry), ['field' => 'phone'], 422);
 }
 
 if (!is_valid_email_or_empty($email)) {
@@ -54,8 +61,8 @@ if (!is_valid_user_pin($pin)) {
 | Check phone already exists
 |--------------------------------------------------------------------------
 */
-$existingUidByPhone = fb_get('USER_INDEX/PHONE/' . $phone);
-if (is_string($existingUidByPhone) && $existingUidByPhone !== '') {
+$existingUidByPhone = auth_find_uid_by_phone_country($phone, $phoneCountry);
+if ($existingUidByPhone !== '') {
     api_response(false, 'PHONE_EXISTS', 'Phone already registered', [], 409);
 }
 
@@ -81,6 +88,20 @@ $user = [
     'uid' => $uid,
     'name' => $name,
     'phone' => $phone,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
+    'country_code' => $pricingCountry,
+    'country' => $pricingCountry,
+    'currency' => $currency,
+    'wallet_currency' => $currency,
+    'ip_country' => $ipCountry,
+    'country_mismatch' => $ipCountry !== '' && $ipCountry !== $phoneCountry,
+    'registration_ip' => auth_request_ip($body),
+    'created_ip' => auth_request_ip($body),
+    'last_login_ip' => '',
+    'browser_timezone' => auth_request_browser_timezone($body),
+    'user_agent' => auth_request_user_agent($body),
     'email' => $email,
     'password_hash' => password_hash($password, PASSWORD_DEFAULT),
     'pin_hash' => password_hash($pin, PASSWORD_DEFAULT),
@@ -94,6 +115,8 @@ $user = [
 $wallet = [
     'available_balance' => 0,
     'hold_balance' => 0,
+    'currency' => $currency,
+    'wallet_currency' => $currency,
     'total_topup_spent' => 0,
     'total_bundle_spent' => 0,
     'total_refund' => 0,
@@ -114,7 +137,19 @@ if (!fb_put('USERS/' . $uid, $user)) {
 | Save phone index
 |--------------------------------------------------------------------------
 */
-if (!fb_put('USER_INDEX/PHONE/' . $phone, $uid)) {
+$phoneIndexes = auth_phone_index_candidates($phone, $phoneCountry);
+$savedPhoneIndexes = [];
+foreach ($phoneIndexes as $phoneIndex) {
+    if (!fb_put('USER_INDEX/PHONE/' . $phoneIndex, $uid)) {
+        foreach ($savedPhoneIndexes as $savedPhoneIndex) {
+            fb_delete('USER_INDEX/PHONE/' . $savedPhoneIndex);
+        }
+        fb_delete('USERS/' . $uid);
+        api_response(false, 'SERVER_ERROR', 'Failed to save phone index', [], 500);
+    }
+    $savedPhoneIndexes[] = $phoneIndex;
+}
+if (!$phoneIndexes) {
     fb_delete('USERS/' . $uid);
     api_response(false, 'SERVER_ERROR', 'Failed to save phone index', [], 500);
 }
@@ -125,7 +160,9 @@ if (!fb_put('USER_INDEX/PHONE/' . $phone, $uid)) {
 |--------------------------------------------------------------------------
 */
 if ($email !== '' && !fb_put('USER_INDEX/EMAIL/' . $emailKey, $uid)) {
-    fb_delete('USER_INDEX/PHONE/' . $phone);
+    foreach ($phoneIndexes as $phoneIndex) {
+        fb_delete('USER_INDEX/PHONE/' . $phoneIndex);
+    }
     fb_delete('USERS/' . $uid);
     api_response(false, 'SERVER_ERROR', 'Failed to save email index', [], 500);
 }
@@ -140,7 +177,9 @@ if (!fb_put('USER_WALLETS/' . $uid, $wallet)) {
         fb_delete('USER_INDEX/EMAIL/' . $emailKey);
     }
 
-    fb_delete('USER_INDEX/PHONE/' . $phone);
+    foreach ($phoneIndexes as $phoneIndex) {
+        fb_delete('USER_INDEX/PHONE/' . $phoneIndex);
+    }
     fb_delete('USERS/' . $uid);
 
     api_response(false, 'SERVER_ERROR', 'Failed to create wallet', [], 500);
@@ -155,7 +194,9 @@ if (!fb_put('USER_ROLE_SETTINGS/' . $uid, $roleSettings)) {
     }
 
     fb_delete('USER_WALLETS/' . $uid);
-    fb_delete('USER_INDEX/PHONE/' . $phone);
+    foreach ($phoneIndexes as $phoneIndex) {
+        fb_delete('USER_INDEX/PHONE/' . $phoneIndex);
+    }
     fb_delete('USERS/' . $uid);
 
     api_response(false, 'SERVER_ERROR', 'Failed to create role settings', [], 500);
@@ -170,6 +211,8 @@ if (!fb_put('USER_ROLE_SETTINGS/' . $uid, $roleSettings)) {
 system_log('REGISTER', $uid, 'User registered successfully', [
     'uid' => $uid,
     'phone' => $phone,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
     'email' => $email,
     'ip' => client_ip(),
 ]);
@@ -179,4 +222,7 @@ api_response(true, 'SUCCESS', 'Registration successful', [
     'name' => $name,
     'phone' => $phone,
     'email' => $email,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
+    'currency' => $currency,
 ]);

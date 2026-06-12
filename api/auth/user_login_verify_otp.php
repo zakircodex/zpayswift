@@ -24,7 +24,7 @@ function user_verify_allowed_role(string $role): bool
     return in_array($role, ['USER', 'RETAILER'], true);
 }
 
-function user_verify_issue_session(array $user, string $uid, string $deviceId, string $deviceName): string
+function user_verify_issue_session(array $user, string $uid, string $deviceId, string $deviceName, array $preAuthRow = []): string
 {
     $token = random_token(32);
     $hash = session_hash($token);
@@ -51,6 +51,10 @@ function user_verify_issue_session(array $user, string $uid, string $deviceId, s
 
     fb_patch('USERS/' . $uid, [
         'last_login_at' => $now,
+        'last_login_ip' => (string)($preAuthRow['created_ip'] ?? ''),
+        'last_login_ip_country' => (string)($preAuthRow['ip_country'] ?? ''),
+        'last_login_user_agent' => (string)($preAuthRow['user_agent'] ?? ''),
+        'browser_timezone' => (string)($preAuthRow['browser_timezone'] ?? ($user['browser_timezone'] ?? '')),
         'updated_at'    => $now,
     ]);
 
@@ -182,7 +186,7 @@ if (!user_verify_allowed_role($role)) {
     api_response(false, 'FORBIDDEN', 'User dashboard access required', [], 403);
 }
 
-$sessionToken = user_verify_issue_session($user, $uid, $deviceId, $deviceName);
+$sessionToken = user_verify_issue_session($user, $uid, $deviceId, $deviceName, $preAuthRow);
 
 $now = now_ts();
 

@@ -628,8 +628,25 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
               </div>
 
               <div class="field">
+                <label>Phone Country (OTP/number)</label>
+                <select id="newUserPhoneCountry" class="input">
+                  <option value="BD">Bangladesh (+880)</option>
+                  <option value="MY">Malaysia (+60)</option>
+                </select>
+              </div>
+
+              <div class="field">
                 <label>Phone</label>
                 <input id="newUserPhone" class="input" placeholder="Enter phone number">
+              </div>
+
+              <div class="field">
+                <label>Pricing Country (wallet/fees)</label>
+                <select id="newUserPricingCountry" class="input" disabled>
+                  <option value="BD">Bangladesh (BDT)</option>
+                  <option value="MY">Malaysia (MYR)</option>
+                </select>
+                <small class="muted">New users inherit this partner account's pricing country.</small>
               </div>
 
               <div class="field">

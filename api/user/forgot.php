@@ -39,8 +39,17 @@ header('Pragma: no-cache');
     <input id="resetType" type="hidden" value="PASSWORD">
 
     <div class="field">
+      <label>Phone Country</label>
+      <select id="forgotPhoneCountry" class="input">
+        <option value="BD">Bangladesh (+880)</option>
+        <option value="MY">Malaysia (+60)</option>
+      </select>
+      <small class="field-help">OTP gateway is selected from this country.</small>
+    </div>
+
+    <div class="field">
       <label>Phone Number</label>
-      <input id="forgotPhone" class="input" type="tel" inputmode="tel" placeholder="Enter registered phone number">
+      <input id="forgotPhone" class="input" type="tel" inputmode="tel" placeholder="01XXXXXXXXX">
     </div>
 
     <button id="sendForgotOtpBtn" class="btn green full-btn" type="button">Send OTP</button>
@@ -51,7 +60,7 @@ header('Pragma: no-cache');
     </div>
 
     <div class="note">
-      OTP will be sent to your registered phone number. Password or PIN will be changed only after OTP verification.
+      Bangladesh numbers use BulkSMSBD. Malaysia numbers use SMS360. Your stored wallet/pricing country is not changed.
     </div>
   </div>
 </div>

@@ -47,7 +47,11 @@ if ($preAuthStatus !== 'OTP_PENDING') {
 }
 
 $uid = trim((string)($preAuthRow['uid'] ?? ''));
-$phone = normalize_login_phone((string)($preAuthRow['phone'] ?? ''));
+$phoneCountry = auth_normalize_country_code((string)($preAuthRow['phone_country'] ?? ''));
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country((string)($preAuthRow['phone'] ?? '')) ?: 'BD';
+}
+$phone = normalize_phone_by_country((string)($preAuthRow['phone'] ?? ''), $phoneCountry);
 
 if ($uid === '' || $phone === '') {
     api_response(false, 'PREAUTH_INVALID', 'Login session is invalid', [], 400);
@@ -113,16 +117,25 @@ if (!($okOtp && $okPre)) {
 }
 
 $message = 'Z-Pay Swift login OTP is ' . $newOtpCode . '. Valid for 5 minutes. Do not share this code.';
-$smsOk = auth_send_otp_sms($phone, $message);
+$smsResult = auth_send_otp_sms_by_country($phoneCountry, $phone, $message, $otpRequestId);
+$smsPatch = auth_sms_result_log_fields($smsResult);
 
-if (!$smsOk) {
+if (empty($smsResult['ok'])) {
     fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
         'status' => 'SMS_FAILED',
         'updated_at' => now_ts(),
-    ]);
+    ] + $smsPatch);
 
     api_response(false, 'SMS_FAILED', 'Failed to resend OTP SMS', [], 500);
 }
+
+fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+    'phone_country' => $phoneCountry,
+    'country' => $phoneCountry,
+    'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
+    'phone_e164' => $phone,
+    'updated_at' => now_ts(),
+] + $smsPatch);
 
 if (function_exists('system_log')) {
     system_log('USER_LOGIN_OTP_RESENT', $otpRequestId, 'User login OTP resent', [
@@ -136,4 +149,5 @@ api_response(true, 'SUCCESS', 'OTP resent successfully', [
     'otp_request_id' => $otpRequestId,
     'masked_phone' => user_resend_mask_phone($phone),
     'expires_in_seconds' => 300,
+    'phone_country' => $phoneCountry,
 ]);

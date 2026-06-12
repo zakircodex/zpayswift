@@ -35,13 +35,13 @@ function user_reg_res_mask_phone(string $phone): string
     return substr($phone, 0, 3) . str_repeat('*', max(1, $len - 6)) . substr($phone, -3);
 }
 
-function user_reg_res_send_sms(string $phone, string $message): bool
+function user_reg_res_send_sms(string $country, string $phone, string $message, string $referenceId): array
 {
-    if (function_exists('auth_send_otp_sms')) {
-        return (bool)auth_send_otp_sms($phone, $message);
+    if (function_exists('auth_send_otp_sms_by_country')) {
+        return auth_send_otp_sms_by_country($country, $phone, $message, $referenceId);
     }
 
-    return false;
+    return ['ok' => false, 'gateway' => '', 'code' => 'SMS_HELPER_MISSING', 'message' => 'SMS helper missing'];
 }
 
 $preAuthToken = trim((string)($body['pre_auth_token'] ?? ''));
@@ -71,6 +71,16 @@ if (!in_array($preAuthStatus, ['OTP_PENDING', 'SENT', 'RESENT'], true)) {
 
 $phone = trim((string)($preAuthRow['phone'] ?? ''));
 $uid = trim((string)($preAuthRow['uid'] ?? ''));
+$phoneCountry = auth_normalize_country_code((string)($preAuthRow['phone_country'] ?? ''));
+$pricingCountry = auth_normalize_country_code((string)($preAuthRow['pricing_country'] ?? $preAuthRow['service_country'] ?? ''));
+
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country($phone) ?: 'BD';
+}
+
+if ($pricingCountry === '') {
+    $pricingCountry = $phoneCountry;
+}
 
 if ($phone === '' || $uid === '') {
     user_reg_res_response(false, 'REGISTER_SESSION_INVALID', 'Register session is invalid. Please start again.', [], 400);
@@ -94,6 +104,14 @@ $otpRow = [
     'otp_request_id' => $newOtpRequestId,
     'uid' => $uid,
     'phone' => $phone,
+    'country' => $phoneCountry,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
+    'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
+    'phone_e164' => $phone,
+    'ip_country' => (string)($preAuthRow['ip_country'] ?? ''),
+    'created_ip' => (string)($preAuthRow['created_ip'] ?? $preAuthRow['registration_ip'] ?? ''),
+    'user_agent' => (string)($preAuthRow['user_agent'] ?? ''),
     'purpose' => 'USER_REGISTER',
     'code_hash' => password_hash($newOtpCode, PASSWORD_DEFAULT),
     'masked_phone' => user_reg_res_mask_phone($phone),
@@ -127,16 +145,23 @@ if (!$okPre) {
 }
 
 $message = 'Z-Pay Swift register OTP is ' . $newOtpCode . '. Valid for 5 minutes. Do not share this code.';
-$smsOk = user_reg_res_send_sms($phone, $message);
+$smsResult = user_reg_res_send_sms($phoneCountry, $phone, $message, $newOtpRequestId);
+$smsPatch = function_exists('auth_sms_result_log_fields')
+    ? auth_sms_result_log_fields($smsResult)
+    : [];
 
-if (!$smsOk) {
+if (empty($smsResult['ok'])) {
     @fb_patch('AUTH_OTP_REQUESTS/' . $newOtpRequestId, [
         'status' => 'SMS_FAILED',
         'updated_at' => user_reg_res_now(),
-    ]);
+    ] + $smsPatch);
 
     user_reg_res_response(false, 'SMS_FAILED', 'Failed to send OTP SMS', [], 500);
 }
+
+@fb_patch('AUTH_OTP_REQUESTS/' . $newOtpRequestId, [
+    'updated_at' => user_reg_res_now(),
+] + $smsPatch);
 
 if (function_exists('system_log')) {
     system_log('USER_REGISTER_OTP_RESENT', $newOtpRequestId, 'User register OTP resent', [
@@ -151,4 +176,6 @@ user_reg_res_response(true, 'SUCCESS', 'OTP resent successfully', [
     'otp_request_id' => $newOtpRequestId,
     'masked_phone' => user_reg_res_mask_phone($phone),
     'expires_in_seconds' => 300,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
 ]);

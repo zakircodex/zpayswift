@@ -6,7 +6,14 @@ require_once dirname(__DIR__, 2) . '/lib/mfs.php';
 
 function admin_user_get_country_code(array $user): string
 {
-    $country = strtoupper(trim((string)($user['country_code'] ?? $user['country'] ?? $user['user_country'] ?? '')));
+    $country = strtoupper(trim((string)(
+        $user['pricing_country']
+        ?? $user['service_country']
+        ?? $user['country_code']
+        ?? $user['country']
+        ?? $user['user_country']
+        ?? ''
+    )));
     $map = [
         'BD' => 'BD',
         'BGD' => 'BD',
@@ -55,6 +62,16 @@ api_response(true, 'SUCCESS', 'User loaded', [
     'role' => $role,
     'country_code' => admin_user_get_country_code($user),
     'country' => admin_user_get_country_code($user),
+    'phone_country' => auth_phone_country_from_user($user),
+    'pricing_country' => admin_user_get_country_code($user),
+    'service_country' => admin_user_get_country_code($user),
+    'ip_country' => auth_normalize_country_code((string)($user['ip_country'] ?? '')),
+    'country_mismatch' => (bool)($user['country_mismatch'] ?? false),
+    'created_ip' => (string)($user['created_ip'] ?? $user['registration_ip'] ?? ''),
+    'registration_ip' => (string)($user['registration_ip'] ?? $user['created_ip'] ?? ''),
+    'last_login_ip' => (string)($user['last_login_ip'] ?? ''),
+    'browser_timezone' => (string)($user['browser_timezone'] ?? ''),
+    'user_agent' => (string)($user['user_agent'] ?? ''),
     'created_at' => (int)($user['created_at'] ?? 0),
     'last_login_at' => (int)($user['last_login_at'] ?? 0),
 

@@ -32,8 +32,16 @@ header('Pragma: no-cache');
     <div id="loginError" class="login-error"></div>
 
     <div class="field">
+      <label>Phone Country</label>
+      <select id="loginPhoneCountry" class="input">
+        <option value="BD">Bangladesh (+880)</option>
+        <option value="MY">Malaysia (+60)</option>
+      </select>
+    </div>
+
+    <div class="field">
       <label>Phone Number</label>
-      <input id="loginPhone" class="input" type="tel" inputmode="tel" placeholder="Enter phone number">
+      <input id="loginPhone" class="input" type="tel" inputmode="tel" placeholder="01XXXXXXXXX">
     </div>
 
     <div class="field">

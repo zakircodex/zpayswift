@@ -31,8 +31,16 @@ header('Pragma: no-cache');
       <div id="loginError" class="login-error hidden"></div>
 
       <div class="field">
+        <label>Phone Country</label>
+        <select class="input" id="loginPhoneCountry">
+          <option value="BD">Bangladesh (+880)</option>
+          <option value="MY">Malaysia (+60)</option>
+        </select>
+      </div>
+
+      <div class="field">
         <label>Phone</label>
-        <input class="input" id="loginPhone" placeholder="Enter admin phone">
+        <input class="input" id="loginPhone" placeholder="01XXXXXXXXX">
       </div>
 
       <div class="field">
@@ -511,7 +519,7 @@ header('Pragma: no-cache');
     <th>Phone</th>
     <th>Status</th>
     <th>Role</th>
-    <th>Country</th>
+    <th>Phone / Pricing Country</th>
     <th>Topup Commission / 1000 BDT</th>
     <th>API</th>
     <th>Available</th>

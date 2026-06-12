@@ -73,14 +73,14 @@ function auth_make_token(int $bytes = 32): string
     return bin2hex(random_bytes($bytes));
 }
 
-function auth_normalize_phone(string $phone): string
+function auth_normalize_phone(string $phone, string $country = 'BD'): string
 {
-    return preg_replace('/\D+/', '', trim($phone)) ?? '';
+    return normalize_phone_by_country($phone, $country);
 }
 
 function auth_mask_phone(string $phone): string
 {
-    $phone = auth_normalize_phone($phone);
+    $phone = preg_replace('/\D+/', '', trim($phone)) ?? '';
     $len = strlen($phone);
 
     if ($len <= 4) {
@@ -100,24 +100,9 @@ function auth_allowed_role(string $role): bool
     return in_array($role, ['SUBADMIN', 'ADMIN'], true);
 }
 
-function auth_find_uid_by_phone(string $phone): string
+function auth_find_uid_by_phone(string $phone, string $country): string
 {
-    $phone = auth_normalize_phone($phone);
-    if ($phone === '') {
-        return '';
-    }
-
-    $row = fb_get('USER_INDEX/PHONE/' . $phone);
-
-    if (is_string($row)) {
-        return trim($row);
-    }
-
-    if (is_array($row)) {
-        return trim((string)($row['uid'] ?? $row['value'] ?? ''));
-    }
-
-    return '';
+    return auth_find_uid_by_phone_country($phone, $country);
 }
 
 function auth_load_user(string $uid): array
@@ -186,23 +171,27 @@ if (function_exists('api_require_app_key')) {
 
 $body = auth_read_json_body();
 
-$phone = auth_normalize_phone((string)($body['phone'] ?? ''));
+$phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country((string)($body['phone'] ?? '')) ?: 'BD';
+}
+$phone = auth_normalize_phone((string)($body['phone'] ?? ''), $phoneCountry);
 $resetType = strtoupper(trim((string)($body['reset_type'] ?? 'PASSWORD')));
 $deviceId = trim((string)($body['device_id'] ?? 'SUBADMIN_WEB'));
 $deviceName = trim((string)($body['device_name'] ?? 'Subadmin Panel'));
 $now = auth_now();
 
 if ($phone === '') {
-    auth_response(false, 'VALIDATION_ERROR', 'Phone is required', [], 422);
+    auth_response(false, 'VALIDATION_ERROR', auth_phone_validation_message($phoneCountry), [], 422);
 }
 
 if (!in_array($resetType, ['PASSWORD', 'PIN'], true)) {
     auth_response(false, 'VALIDATION_ERROR', 'Invalid reset type', [], 422);
 }
 
-$uid = auth_find_uid_by_phone($phone);
+$uid = auth_find_uid_by_phone($phone, $phoneCountry);
 if ($uid === '') {
-    auth_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found', [], 404);
+    auth_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found for selected country/number', [], 404);
 }
 
 $user = auth_load_user($uid);
@@ -212,6 +201,17 @@ if (!$user) {
 
 $role = strtoupper(trim((string)($user['role'] ?? '')));
 $status = strtoupper(trim((string)($user['status'] ?? 'INACTIVE')));
+$storedPhoneCountry = auth_phone_country_from_user($user);
+$pricingCountry = auth_pricing_country_from_user($user, (array)(fb_get('USER_WALLETS/' . $uid) ?: []));
+
+if ($storedPhoneCountry !== $phoneCountry) {
+    auth_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found for selected country/number', [], 404);
+}
+
+$otpPhone = normalize_phone_by_country((string)($user['phone'] ?? $phone), $storedPhoneCountry);
+if ($otpPhone === '') {
+    $otpPhone = $phone;
+}
 
 if (!auth_allowed_role($role)) {
     auth_response(false, 'FORBIDDEN', 'Subadmin access required', [], 403);
@@ -229,7 +229,7 @@ $pending = auth_get_pending_forgot_session();
 $binding = auth_session_binding();
 
 if ($pending) {
-    $pendingPhone = auth_normalize_phone((string)($pending['phone'] ?? ''));
+        $pendingPhone = auth_normalize_phone((string)($pending['phone'] ?? ''), $storedPhoneCountry);
     $pendingResetType = strtoupper(trim((string)($pending['reset_type'] ?? 'PASSWORD')));
     $pendingExpiresAt = (int)($pending['expires_at'] ?? 0);
     $pendingBinding = trim((string)($pending['session_binding'] ?? ''));
@@ -276,11 +276,19 @@ if ($resetType === 'PIN') {
 $otpRow = [
     'otp_request_id' => $otpRequestId,
     'uid' => $uid,
-    'phone' => $phone,
+    'phone' => $otpPhone,
+    'country' => $storedPhoneCountry,
+    'phone_country' => $storedPhoneCountry,
+    'pricing_country' => $pricingCountry,
+    'dial_code' => $storedPhoneCountry === 'MY' ? '+60' : '+880',
+    'phone_e164' => $otpPhone,
+    'ip_country' => auth_request_ip_country($body),
+    'created_ip' => auth_request_ip($body),
+    'user_agent' => auth_request_user_agent($body),
     'purpose' => $purpose,
     'reset_type' => $resetType,
     'code_hash' => password_hash($otpCode, PASSWORD_DEFAULT),
-    'masked_phone' => auth_mask_phone($phone),
+    'masked_phone' => auth_mask_phone($otpPhone),
     'status' => 'SENT',
     'used' => false,
     'resend_count' => 0,
@@ -292,7 +300,13 @@ $otpRow = [
 $preAuthRow = [
     'pre_auth_token' => $preAuthToken,
     'uid' => $uid,
-    'phone' => $phone,
+    'phone' => $otpPhone,
+    'phone_country' => $storedPhoneCountry,
+    'pricing_country' => $pricingCountry,
+    'ip_country' => auth_request_ip_country($body),
+    'created_ip' => auth_request_ip($body),
+    'user_agent' => auth_request_user_agent($body),
+    'browser_timezone' => auth_request_browser_timezone($body),
     'device_id' => $deviceId,
     'device_name' => $deviceName,
     'otp_request_id' => $otpRequestId,
@@ -312,13 +326,14 @@ if (!($okOtp && $okPre)) {
     auth_response(false, 'SERVER_ERROR', 'Failed to prepare OTP verification', [], 500);
 }
 
-$smsOk = auth_send_forgot_otp_sms($phone, $message);
+$smsResult = auth_send_otp_sms_by_country($storedPhoneCountry, $otpPhone, $message, $otpRequestId);
+$smsPatch = auth_sms_result_log_fields($smsResult);
 
-if (!$smsOk) {
+if (empty($smsResult['ok'])) {
     @fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
         'status' => 'SMS_FAILED',
         'updated_at' => auth_now(),
-    ]);
+    ] + $smsPatch);
 
     @fb_patch('AUTH_FORGOT_PREAUTH/' . $preAuthToken, [
         'status' => 'SMS_FAILED',
@@ -328,10 +343,15 @@ if (!$smsOk) {
     auth_response(false, 'SMS_FAILED', 'Failed to send OTP SMS', [], 500);
 }
 
+@fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+    'updated_at' => auth_now(),
+] + $smsPatch);
+
 $pendingSession = [
     'uid' => $uid,
-    'phone' => $phone,
-    'masked_phone' => auth_mask_phone($phone),
+    'phone' => $otpPhone,
+    'phone_country' => $storedPhoneCountry,
+    'masked_phone' => auth_mask_phone($otpPhone),
     'pre_auth_token' => $preAuthToken,
     'otp_request_id' => $otpRequestId,
     'device_id' => $deviceId,
@@ -348,7 +368,9 @@ auth_set_pending_forgot_session($pendingSession);
 if (function_exists('system_log')) {
     system_log('SUBADMIN_FORGOT_OTP_SENT', $otpRequestId, 'Subadmin forgot OTP sent', [
         'uid' => $uid,
-        'phone' => $phone,
+        'phone' => $otpPhone,
+        'phone_country' => $storedPhoneCountry,
+        'pricing_country' => $pricingCountry,
         'device_id' => $deviceId,
         'device_name' => $deviceName,
         'reset_type' => $resetType,
@@ -362,7 +384,8 @@ auth_response(true, 'OTP_REQUIRED', 'OTP verification required', [
     'pre_auth_token' => $preAuthToken,
     'otp_request_id' => $otpRequestId,
     'request_id' => $otpRequestId,
-    'masked_phone' => auth_mask_phone($phone),
+    'masked_phone' => auth_mask_phone($otpPhone),
     'expires_in_seconds' => 300,
     'reset_type' => $resetType,
+    'phone_country' => $storedPhoneCountry,
 ]);

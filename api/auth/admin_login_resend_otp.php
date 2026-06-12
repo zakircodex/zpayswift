@@ -114,7 +114,15 @@ if ($resendCount >= 5) {
     api_response(false, 'RESEND_LIMIT_REACHED', 'OTP resend limit reached. Please login again.', [], 429);
 }
 
-$phone = preg_replace('/\D+/', '', (string)($preAuthRow['phone'] ?? $otpRow['phone'] ?? $user['phone'] ?? '')) ?? '';
+$phoneCountry = auth_normalize_country_code((string)($preAuthRow['phone_country'] ?? $otpRow['phone_country'] ?? ''));
+if ($phoneCountry === '') {
+    $phoneCountry = auth_phone_country_from_user($user);
+}
+
+$phone = normalize_phone_by_country(
+    (string)($preAuthRow['phone'] ?? $otpRow['phone'] ?? $user['phone'] ?? ''),
+    $phoneCountry
+);
 
 if ($phone === '') {
     api_response(false, 'VALIDATION_ERROR', 'Phone number missing for OTP resend', [], 422);
@@ -146,13 +154,14 @@ if (!($okOtp && $okPre)) {
     api_response(false, 'SERVER_ERROR', 'Failed to prepare OTP resend', [], 500);
 }
 
-$smsOk = auth_send_otp_sms($phone, $message);
+$smsResult = auth_send_otp_sms_by_country($phoneCountry, $phone, $message, $otpRequestId);
+$smsPatch = auth_sms_result_log_fields($smsResult);
 
-if (!$smsOk) {
+if (empty($smsResult['ok'])) {
     fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
         'status' => 'SMS_FAILED',
         'updated_at' => now_ts(),
-    ]);
+    ] + $smsPatch);
 
     fb_patch('AUTH_ADMIN_LOGIN_PREAUTH/' . $preAuthToken, [
         'status' => 'SMS_FAILED',
@@ -162,10 +171,20 @@ if (!$smsOk) {
     api_response(false, 'SMS_FAILED', 'Failed to resend OTP SMS', [], 500);
 }
 
+fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+    'phone' => $phone,
+    'country' => $phoneCountry,
+    'phone_country' => $phoneCountry,
+    'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
+    'phone_e164' => $phone,
+    'updated_at' => now_ts(),
+] + $smsPatch);
+
 if (function_exists('system_log')) {
     system_log('ADMIN_LOGIN_OTP_RESENT', $otpRequestId, 'Admin login OTP resent', [
         'uid' => $uid,
         'phone' => $phone,
+        'phone_country' => $phoneCountry,
         'resend_count' => $resendCount + 1,
         'ip' => client_ip(),
     ]);
@@ -177,4 +196,5 @@ api_response(true, 'SUCCESS', 'OTP resent successfully', [
     'otp_request_id' => $otpRequestId,
     'masked_phone' => admin_resend_mask_phone($phone),
     'expires_in_seconds' => 300,
+    'phone_country' => $phoneCountry,
 ]);

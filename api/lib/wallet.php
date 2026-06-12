@@ -94,7 +94,7 @@ function wallet_account_country_code(array $user): string
         }
     }
 
-    foreach (['country_code', 'country', 'user_country'] as $key) {
+    foreach (['pricing_country', 'service_country', 'country_code', 'country', 'user_country'] as $key) {
         $country = strtoupper(trim((string)($user[$key] ?? '')));
 
         if (in_array($country, ['MY', 'MYS', 'MALAYSIA'], true)) {

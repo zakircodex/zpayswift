@@ -99,7 +99,14 @@ function admin_users_normalize_country(?string $country): string
 
 function admin_users_country_code(array $user): string
 {
-    return admin_users_normalize_country((string)($user['country_code'] ?? $user['country'] ?? $user['user_country'] ?? ''));
+    return admin_users_normalize_country((string)(
+        $user['pricing_country']
+        ?? $user['service_country']
+        ?? $user['country_code']
+        ?? $user['country']
+        ?? $user['user_country']
+        ?? ''
+    ));
 }
 
 function admin_users_find_user_by_uid(string $uid): array
@@ -123,6 +130,14 @@ function admin_users_find_user_by_uid(string $uid): array
         'status' => admin_users_normalize_status((string)($user['status'] ?? 'ACTIVE')),
         'country_code' => admin_users_country_code($user),
         'country' => admin_users_country_code($user),
+        'phone_country' => function_exists('auth_phone_country_from_user') ? auth_phone_country_from_user($user) : '',
+        'pricing_country' => admin_users_country_code($user),
+        'service_country' => admin_users_country_code($user),
+        'currency' => (string)($user['currency'] ?? $user['wallet_currency'] ?? ''),
+        'ip_country' => admin_users_normalize_country((string)($user['ip_country'] ?? '')),
+        'country_mismatch' => (bool)($user['country_mismatch'] ?? false),
+        'created_ip' => (string)($user['created_ip'] ?? $user['registration_ip'] ?? ''),
+        'last_login_ip' => (string)($user['last_login_ip'] ?? ''),
         'created_at' => (int)($user['created_at'] ?? 0),
         'updated_at' => (int)($user['updated_at'] ?? 0),
         'last_login_at' => (int)($user['last_login_at'] ?? 0),
@@ -363,6 +378,13 @@ function admin_users_list_users(
             'status' => $status,
             'country_code' => admin_users_country_code($row),
             'country' => admin_users_country_code($row),
+            'phone_country' => function_exists('auth_phone_country_from_user') ? auth_phone_country_from_user($row) : '',
+            'pricing_country' => admin_users_country_code($row),
+            'service_country' => admin_users_country_code($row),
+            'ip_country' => admin_users_normalize_country((string)($row['ip_country'] ?? '')),
+            'country_mismatch' => (bool)($row['country_mismatch'] ?? false),
+            'created_ip' => (string)($row['created_ip'] ?? $row['registration_ip'] ?? ''),
+            'last_login_ip' => (string)($row['last_login_ip'] ?? ''),
             'created_at' => (int)($row['created_at'] ?? 0),
             'updated_at' => (int)($row['updated_at'] ?? 0),
             'last_login_at' => (int)($row['last_login_at'] ?? 0),

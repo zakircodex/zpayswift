@@ -243,7 +243,22 @@ $actor = subadmin_create_user_require_actor();
 $body = subadmin_create_user_read_json_body();
 
 $name = trim((string)($body['name'] ?? ''));
-$phone = subadmin_create_user_normalize_phone((string)($body['phone'] ?? ''));
+$phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country((string)($body['phone'] ?? '')) ?: 'BD';
+}
+$phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);
+$pricingCountry = auth_normalize_country_code((string)($body['pricing_country'] ?? $body['service_country'] ?? ''));
+$actorUidForCountry = trim((string)($actor['uid'] ?? ''));
+$actorUser = (array)(fb_get('USERS/' . $actorUidForCountry) ?: []);
+$actorPricingCountry = auth_pricing_country_from_user(
+    $actorUser,
+    (array)(fb_get('USER_WALLETS/' . $actorUidForCountry) ?: [])
+);
+if (strtoupper((string)($actor['role'] ?? '')) === 'SUBADMIN' || $pricingCountry === '') {
+    $pricingCountry = $actorPricingCountry;
+}
+$currency = auth_country_currency($pricingCountry);
 $email = strtolower(trim((string)($body['email'] ?? '')));
 $password = (string)($body['password'] ?? '');
 $confirmPassword = (string)($body['confirm_password'] ?? '');
@@ -258,8 +273,8 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     subadmin_create_user_response(false, 'VALIDATION_ERROR', 'Valid email is required', [], 422);
 }
 
-if (strlen($phone) < 10) {
-    subadmin_create_user_response(false, 'VALIDATION_ERROR', 'Valid phone number is required', [], 422);
+if ($phone === '') {
+    subadmin_create_user_response(false, 'VALIDATION_ERROR', auth_phone_validation_message($phoneCountry), [], 422);
 }
 
 if (strlen($password) < 6) {
@@ -278,7 +293,7 @@ if ($pin !== $confirmPin) {
     subadmin_create_user_response(false, 'VALIDATION_ERROR', 'PIN confirmation does not match', [], 422);
 }
 
-if (subadmin_create_user_find_uid_by_phone($phone) !== '') {
+if (auth_find_uid_by_phone_country($phone, $phoneCountry) !== '') {
     subadmin_create_user_response(false, 'DUPLICATE_PHONE', 'Phone number already registered', [], 409);
 }
 
@@ -300,6 +315,12 @@ $userRow = [
     'uid' => $uid,
     'name' => $name,
     'phone' => $phone,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
+    'country' => $pricingCountry,
+    'country_code' => $pricingCountry,
+    'currency' => $currency,
     'email' => $email,
     'role' => 'USER',
     'status' => 'ACTIVE',
@@ -316,6 +337,10 @@ $userRow = [
 ];
 
 $walletRow = [
+    'currency' => $currency,
+    'country' => $pricingCountry,
+    'country_code' => $pricingCountry,
+    'pricing_country' => $pricingCountry,
     'available_balance' => 0,
     'hold_balance' => 0,
     'total_topup_spent' => 0,
@@ -329,14 +354,23 @@ $emailIndexKey = subadmin_create_user_email_index_key($email);
 $okUser = fb_put('USERS/' . $uid, $userRow);
 $okWallet = $okUser ? fb_put('USER_WALLETS/' . $uid, $walletRow) : false;
 $okRole = $okWallet ? fb_put('USER_ROLE_SETTINGS/' . $uid, $roleSettings) : false;
-$okPhone = $okRole ? fb_put('USER_INDEX/PHONE/' . $phone, $uid) : false;
+$phoneIndexKeys = auth_phone_index_candidates($phone, $phoneCountry);
+$okPhone = $okRole;
+foreach ($phoneIndexKeys as $phoneIndexKey) {
+    if (!$okPhone || !fb_put('USER_INDEX/PHONE/' . $phoneIndexKey, $uid)) {
+        $okPhone = false;
+        break;
+    }
+}
 $okEmail = $okPhone ? fb_put('USER_INDEX/EMAIL/' . $emailIndexKey, $uid) : false;
 
 if (!($okUser && $okWallet && $okRole && $okPhone && $okEmail)) {
     fb_delete('USERS/' . $uid);
     fb_delete('USER_WALLETS/' . $uid);
     fb_delete('USER_ROLE_SETTINGS/' . $uid);
-    fb_delete('USER_INDEX/PHONE/' . $phone);
+    foreach ($phoneIndexKeys as $phoneIndexKey) {
+        fb_delete('USER_INDEX/PHONE/' . $phoneIndexKey);
+    }
     fb_delete('USER_INDEX/EMAIL/' . $emailIndexKey);
 
     subadmin_create_user_response(false, 'SERVER_ERROR', 'Failed to create account', [], 500);
@@ -346,6 +380,9 @@ if (function_exists('system_log')) {
     system_log('SUBADMIN_CREATE_USER', $uid, 'User created by subadmin/admin panel', [
         'uid' => $uid,
         'phone' => $phone,
+        'phone_country' => $phoneCountry,
+        'pricing_country' => $pricingCountry,
+        'currency' => $currency,
         'email' => $email,
         'actor_uid' => $actorUid,
         'actor_role' => $actorRole,

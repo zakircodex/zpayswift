@@ -41,7 +41,13 @@ function sub_login_allowed_role(string $role): bool
     return in_array($role, ['SUBADMIN', 'ADMIN'], true);
 }
 
-function sub_login_issue_session(array $user, string $uid, string $deviceId, string $deviceName): string
+function sub_login_issue_session(
+    array $user,
+    string $uid,
+    string $deviceId,
+    string $deviceName,
+    array $requestMeta = []
+): string
 {
     $token = random_token(32);
     $hash = session_hash($token);
@@ -68,6 +74,10 @@ function sub_login_issue_session(array $user, string $uid, string $deviceId, str
 
     fb_patch('USERS/' . $uid, [
         'last_login_at' => $now,
+        'last_login_ip' => (string)($requestMeta['created_ip'] ?? ''),
+        'last_login_ip_country' => (string)($requestMeta['ip_country'] ?? ''),
+        'last_login_user_agent' => (string)($requestMeta['user_agent'] ?? ''),
+        'browser_timezone' => (string)($requestMeta['browser_timezone'] ?? ($user['browser_timezone'] ?? '')),
         'updated_at' => $now,
     ]);
 
@@ -112,20 +122,25 @@ function sub_login_has_valid_trusted_device(string $uid, string $cookieValue): b
     return true;
 }
 
-$phone = normalize_login_phone($body['phone'] ?? '');
+$phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+if ($phoneCountry === '') {
+    $phoneCountry = detect_phone_country((string)($body['phone'] ?? '')) ?: 'BD';
+}
+$phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);
 $password = (string)($body['password'] ?? '');
 $deviceId = trim((string)($body['device_id'] ?? 'SUBADMIN_WEB'));
 $deviceName = trim((string)($body['device_name'] ?? 'Subadmin Panel'));
 $trustDevice = sub_login_bool_value($body['trust_device'] ?? true);
 $trustedDeviceCookie = trim((string)($body['trusted_device_cookie'] ?? ''));
+$requestMeta = auth_request_metadata($body);
 
 if ($phone === '' || $password === '') {
-    api_response(false, 'VALIDATION_ERROR', 'Phone and password are required', [], 422);
+    api_response(false, 'VALIDATION_ERROR', $phone === '' ? auth_phone_validation_message($phoneCountry) : 'Phone and password are required', [], 422);
 }
 
-$uid = fb_get('USER_INDEX/PHONE/' . $phone);
-if (!is_string($uid) || $uid === '') {
-    api_response(false, 'INVALID_CREDENTIALS', 'Invalid phone or password', [], 401);
+$uid = auth_find_uid_by_phone_country($phone, $phoneCountry);
+if ($uid === '') {
+    api_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found for selected country/number', [], 404);
 }
 
 $user = fb_get('USERS/' . $uid);
@@ -136,6 +151,17 @@ if (!is_array($user)) {
 $status = strtoupper(trim((string)($user['status'] ?? '')));
 $role = strtoupper(trim((string)($user['role'] ?? '')));
 $passwordHash = (string)($user['password_hash'] ?? '');
+$storedPhoneCountry = auth_phone_country_from_user($user);
+$pricingCountry = auth_pricing_country_from_user($user, (array)(fb_get('USER_WALLETS/' . $uid) ?: []));
+
+if ($storedPhoneCountry !== $phoneCountry) {
+    api_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found for selected country/number', [], 404);
+}
+
+$otpPhone = normalize_phone_by_country((string)($user['phone'] ?? $phone), $storedPhoneCountry);
+if ($otpPhone === '') {
+    $otpPhone = $phone;
+}
 
 if ($status !== 'ACTIVE') {
     api_response(false, 'FORBIDDEN', 'User account is not active', [], 403);
@@ -150,7 +176,7 @@ if ($passwordHash === '' || !password_verify($password, $passwordHash)) {
 }
 
 if (sub_login_has_valid_trusted_device($uid, $trustedDeviceCookie)) {
-    $sessionToken = sub_login_issue_session($user, $uid, $deviceId, $deviceName);
+    $sessionToken = sub_login_issue_session($user, $uid, $deviceId, $deviceName, $requestMeta);
 
     if (function_exists('system_log')) {
         system_log('SUBADMIN_TRUSTED_LOGIN', $uid, 'Trusted device login successful', [
@@ -181,10 +207,18 @@ $message = 'Z-Pay Swift login OTP is ' . $otpCode . '. Valid for 5 minutes. Do n
 $otpRow = [
     'otp_request_id' => $otpRequestId,
     'uid' => $uid,
-    'phone' => $phone,
+    'phone' => $otpPhone,
+    'country' => $storedPhoneCountry,
+    'phone_country' => $storedPhoneCountry,
+    'pricing_country' => $pricingCountry,
+    'dial_code' => $storedPhoneCountry === 'MY' ? '+60' : '+880',
+    'phone_e164' => $otpPhone,
+    'ip_country' => auth_request_ip_country($body),
+    'created_ip' => auth_request_ip($body),
+    'user_agent' => auth_request_user_agent($body),
     'purpose' => 'SUBADMIN_LOGIN',
     'code_hash' => password_hash($otpCode, PASSWORD_DEFAULT),
-    'masked_phone' => sub_login_mask_phone($phone),
+    'masked_phone' => sub_login_mask_phone($otpPhone),
     'status' => 'SENT',
     'used' => false,
     'created_at' => $now,
@@ -195,7 +229,13 @@ $otpRow = [
 $preAuthRow = [
     'pre_auth_token' => $preAuthToken,
     'uid' => $uid,
-    'phone' => $phone,
+    'phone' => $otpPhone,
+    'phone_country' => $storedPhoneCountry,
+    'pricing_country' => $pricingCountry,
+    'ip_country' => auth_request_ip_country($body),
+    'created_ip' => auth_request_ip($body),
+    'user_agent' => auth_request_user_agent($body),
+    'browser_timezone' => auth_request_browser_timezone($body),
     'device_id' => $deviceId,
     'device_name' => $deviceName,
     'trust_device' => $trustDevice,
@@ -215,21 +255,28 @@ if (!($okOtp && $okPre)) {
     api_response(false, 'SERVER_ERROR', 'Failed to prepare OTP verification', [], 500);
 }
 
-$smsOk = auth_send_otp_sms($phone, $message);
+$smsResult = auth_send_otp_sms_by_country($storedPhoneCountry, $otpPhone, $message, $otpRequestId);
+$smsPatch = auth_sms_result_log_fields($smsResult);
 
-if (!$smsOk) {
+if (empty($smsResult['ok'])) {
     fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
         'status' => 'SMS_FAILED',
         'updated_at' => now_ts(),
-    ]);
+    ] + $smsPatch);
 
     api_response(false, 'SMS_FAILED', 'Failed to send OTP SMS', [], 500);
 }
 
+fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+    'updated_at' => now_ts(),
+] + $smsPatch);
+
 if (function_exists('system_log')) {
     system_log('SUBADMIN_LOGIN_OTP_SENT', $otpRequestId, 'Subadmin login OTP sent', [
         'uid' => $uid,
-        'phone' => $phone,
+        'phone' => $otpPhone,
+        'phone_country' => $storedPhoneCountry,
+        'pricing_country' => $pricingCountry,
         'device_id' => $deviceId,
         'device_name' => $deviceName,
     ]);
@@ -239,6 +286,7 @@ api_response(true, 'OTP_REQUIRED', 'OTP verification required', [
     'require_otp' => true,
     'pre_auth_token' => $preAuthToken,
     'otp_request_id' => $otpRequestId,
-    'masked_phone' => sub_login_mask_phone($phone),
+    'masked_phone' => sub_login_mask_phone($otpPhone),
     'expires_in_seconds' => 300,
+    'phone_country' => $storedPhoneCountry,
 ]);

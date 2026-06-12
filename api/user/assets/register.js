@@ -3,6 +3,7 @@ const USER_LOGIN_URL = window.USER_LOGIN_URL || '/user/';
 
 const state = {
   busyCount: 0,
+  ipCountry: '',
   registerOtp: {
     preAuthToken: '',
     otpRequestId: '',
@@ -118,13 +119,16 @@ function getFormData(){
   return {
     name: (el('regName')?.value || '').trim(),
     phone: (el('regPhone')?.value || '').trim(),
+    phone_country: (el('regPhoneCountry')?.value || 'BD').toUpperCase(),
+    pricing_country: (el('regPricingCountry')?.value || 'BD').toUpperCase(),
     email: (el('regEmail')?.value || '').trim(),
     password: el('regPassword')?.value || '',
     confirm_password: el('regConfirmPassword')?.value || '',
     pin: (el('regPin')?.value || '').trim(),
     confirm_pin: (el('regConfirmPin')?.value || '').trim(),
     device_id: 'USER_WEB',
-    device_name: 'User Register'
+    device_name: 'User Register',
+    browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
   };
 }
 
@@ -138,8 +142,15 @@ function validateForm(data){
   }
 
   const phoneDigits = data.phone.replace(/\D+/g, '');
-  if (phoneDigits.length < 10) {
-    return 'Valid phone number is required';
+  const validBd = /^(?:01[3-9]\d{8}|8801[3-9]\d{8}|1[3-9]\d{8})$/.test(phoneDigits);
+  const validMy = /^(?:011\d{8}|01[02-9]\d{7}|6011\d{8}|601[02-9]\d{7}|11\d{8}|1[02-9]\d{7})$/.test(phoneDigits);
+
+  if (data.phone_country === 'BD' && !validBd) {
+    return 'Invalid Bangladesh number';
+  }
+
+  if (data.phone_country === 'MY' && !validMy) {
+    return 'Invalid Malaysia number';
   }
 
   if (data.password.length < 6) {
@@ -159,6 +170,45 @@ function validateForm(data){
   }
 
   return '';
+}
+
+function updateCountryUi(){
+  const phoneCountry = (el('regPhoneCountry')?.value || 'BD').toUpperCase();
+  const pricingCountry = phoneCountry === 'MY' || state.ipCountry === 'MY' ? 'MY' : 'BD';
+
+  if (el('regPricingCountry')) {
+    el('regPricingCountry').value = pricingCountry;
+  }
+
+  if (el('regPhone')) {
+    el('regPhone').placeholder = phoneCountry === 'MY' ? '01XXXXXXXX or +60XXXXXXXXX' : '01XXXXXXXXX or +8801XXXXXXXXX';
+  }
+
+  if (el('regCountryHint')) {
+    const gateway = phoneCountry === 'MY' ? 'SMS360' : 'BulkSMSBD';
+    const currency = pricingCountry === 'MY' ? 'MYR' : 'BDT';
+    el('regCountryHint').textContent = `OTP: ${gateway}. Wallet and pricing: ${currency}.`;
+  }
+}
+
+async function loadCountryDefaults(){
+  try {
+    const data = await proxyPost('country_defaults', {}, 'Detecting country...');
+    const phoneCountry = String(data.phone_country || 'BD').toUpperCase();
+    const pricingCountry = String(data.pricing_country || phoneCountry).toUpperCase();
+    state.ipCountry = String(data.ip_country || '').toUpperCase();
+
+    if (el('regPhoneCountry') && ['BD','MY'].includes(phoneCountry)) {
+      el('regPhoneCountry').value = phoneCountry;
+    }
+    if (el('regPricingCountry') && ['BD','MY'].includes(pricingCountry)) {
+      el('regPricingCountry').value = pricingCountry;
+    }
+  } catch (_) {
+    // Keep safe Bangladesh defaults when IP country is unavailable.
+  }
+
+  updateCountryUi();
 }
 
 function updateOtpState(data){
@@ -340,6 +390,10 @@ function bindEvents(){
       }
     });
   });
+
+  el('regPhoneCountry')?.addEventListener('change', updateCountryUi);
+  el('regPricingCountry')?.addEventListener('change', updateCountryUi);
 }
 
 bindEvents();
+loadCountryDefaults();

@@ -1001,7 +1001,9 @@ function security_service_mode_from_currency(string $walletCurrency): string
 function security_user_country_code(array $user): string
 {
     return security_normalize_country_code((string)(
-        $user['country_code']
+        $user['pricing_country']
+        ?? $user['service_country']
+        ?? $user['country_code']
         ?? $user['country']
         ?? $user['user_country']
         ?? ''

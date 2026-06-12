@@ -390,8 +390,16 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
       <input type="hidden" id="forgotResetType" value="PASSWORD">
 
       <div class="fp-field">
+        <label>Phone Country</label>
+        <select id="forgotPhoneCountry" class="fp-input">
+          <option value="BD">Bangladesh (+880)</option>
+          <option value="MY">Malaysia (+60)</option>
+        </select>
+      </div>
+
+      <div class="fp-field">
         <label>Phone</label>
-        <input id="forgotPhone" class="fp-input" placeholder="Enter registered phone number">
+        <input id="forgotPhone" class="fp-input" placeholder="01XXXXXXXXX">
       </div>
 
       <button id="sendForgotOtpBtn" class="fp-btn fp-btn-orange" type="button">Send OTP</button>

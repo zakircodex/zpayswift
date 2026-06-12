@@ -30,6 +30,11 @@ define('BULKSMSBD_SMS_API_URL', 'https://bulksmsbd.net/api/smsapi');
 define('BULKSMSBD_API_KEY', '');
 define('BULKSMSBD_SENDER_ID', '');
 
+/* SMS360 Malaysia OTP SMS */
+define('SMSS360_API_URL', 'https://www.smss360.com/api/sendsms.php');
+define('SMSS360_EMAIL', '');
+define('SMSS360_API_KEY', '');
+
 /* Wallet deduction OTP */
 define('WALLET_DEDUCT_OTP_COOLDOWN_SECONDS', 60);
 define('WALLET_DEDUCT_OTP_TTL_SECONDS', 300);
