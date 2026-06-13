@@ -221,9 +221,11 @@ if ($status !== 'ACTIVE') {
     auth_response(false, 'FORBIDDEN', 'Account is inactive', [], 403);
 }
 
+$purposePrefix = $role === 'ADMIN' ? 'ADMIN' : 'SUBADMIN';
 $purpose = $resetType === 'PIN'
-    ? 'SUBADMIN_FORGOT_PIN'
-    : 'SUBADMIN_FORGOT_PASSWORD';
+    ? $purposePrefix . '_FORGOT_PIN'
+    : $purposePrefix . '_FORGOT_PASSWORD';
+$smsTemplateKey = $role === 'ADMIN' ? 'ADMIN_RESET' : 'SUBADMIN_RESET';
 
 $pending = auth_get_pending_forgot_session();
 $binding = auth_session_binding();
@@ -280,12 +282,15 @@ $otpRow = [
     'country' => $storedPhoneCountry,
     'phone_country' => $storedPhoneCountry,
     'pricing_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
+    'currency' => $pricingCountry === 'MY' ? 'MYR' : 'BDT',
     'dial_code' => $storedPhoneCountry === 'MY' ? '+60' : '+880',
     'phone_e164' => $otpPhone,
     'ip_country' => auth_request_ip_country($body),
     'created_ip' => auth_request_ip($body),
     'user_agent' => auth_request_user_agent($body),
     'purpose' => $purpose,
+    'account_role' => $role,
     'reset_type' => $resetType,
     'code_hash' => password_hash($otpCode, PASSWORD_DEFAULT),
     'masked_phone' => auth_mask_phone($otpPhone),
@@ -313,6 +318,7 @@ $preAuthRow = [
     'purpose' => $purpose,
     'reset_type' => $resetType,
     'status' => 'OTP_PENDING',
+    'account_role' => $role,
     'created_at' => $now,
     'expires_at' => $expiresAt,
 ];
@@ -326,7 +332,14 @@ if (!($okOtp && $okPre)) {
     auth_response(false, 'SERVER_ERROR', 'Failed to prepare OTP verification', [], 500);
 }
 
-$smsResult = auth_send_otp_sms_by_country($storedPhoneCountry, $otpPhone, $message, $otpRequestId);
+$smsResult = auth_send_otp_sms_by_country(
+    $storedPhoneCountry,
+    $otpPhone,
+    $message,
+    $otpRequestId,
+    $smsTemplateKey,
+    $otpCode
+);
 $smsPatch = auth_sms_result_log_fields($smsResult);
 
 if (empty($smsResult['ok'])) {

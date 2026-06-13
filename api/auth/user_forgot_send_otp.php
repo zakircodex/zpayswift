@@ -79,10 +79,23 @@ function user_forgot_send_allowed_role(string $role): bool
     return in_array($role, ['USER', 'RETAILER'], true);
 }
 
-function user_forgot_send_sms(string $country, string $phone, string $message, string $referenceId): array
+function user_forgot_send_sms(
+    string $country,
+    string $phone,
+    string $message,
+    string $referenceId,
+    string $otpCode
+): array
 {
     if (function_exists('auth_send_otp_sms_by_country')) {
-        return auth_send_otp_sms_by_country($country, $phone, $message, $referenceId);
+        return auth_send_otp_sms_by_country(
+            $country,
+            $phone,
+            $message,
+            $referenceId,
+            'USER_RESET',
+            $otpCode
+        );
     }
 
     return ['ok' => false, 'gateway' => '', 'code' => 'SMS_HELPER_MISSING', 'message' => 'SMS helper missing'];
@@ -162,6 +175,8 @@ $otpRow = [
     'country' => $storedPhoneCountry,
     'phone_country' => $storedPhoneCountry,
     'pricing_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
+    'currency' => $pricingCountry === 'MY' ? 'MYR' : 'BDT',
     'dial_code' => $storedPhoneCountry === 'MY' ? '+60' : '+880',
     'phone_e164' => $otpPhone,
     'ip_country' => auth_request_ip_country($body),
@@ -213,7 +228,13 @@ if (!($okOtp && $okPre)) {
     user_forgot_send_response(false, 'SERVER_ERROR', 'Failed to prepare OTP verification', [], 500);
 }
 
-$smsResult = user_forgot_send_sms($storedPhoneCountry, $otpPhone, $message, $otpRequestId);
+$smsResult = user_forgot_send_sms(
+    $storedPhoneCountry,
+    $otpPhone,
+    $message,
+    $otpRequestId,
+    $otpCode
+);
 $smsPatch = auth_sms_result_log_fields($smsResult);
 
 if (empty($smsResult['ok'])) {

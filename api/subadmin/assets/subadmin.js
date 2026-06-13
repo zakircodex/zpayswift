@@ -67,6 +67,7 @@ bundleRenderToken: '',
     otpRequestId: '',
     targetName: '',
     targetPhone: '',
+    targetCurrency: 'BDT',
     amount: 0,
     note: ''
   },
@@ -120,7 +121,9 @@ function walletPrefix(currency){
 }
 
 function walletNativeCurrency(row){
-  const country = String(row?.country_code || row?.country || '').trim().toUpperCase();
+  const country = String(
+    row?.pricing_country || row?.service_country || row?.country_code || row?.country || ''
+  ).trim().toUpperCase();
   if (country === 'MY') return 'MYR';
   if (country === 'BD') return 'BDT';
 
@@ -136,6 +139,7 @@ function fmtWalletMoney(row, type = 'available'){
 }
 
 function walletRawHint(row, type = 'available'){
+  if (walletNativeCurrency(row) === 'MYR') return '';
   const note = String(row?.conversion_note || '').trim();
   if (!note) return '';
   const rawKey = type === 'hold' ? 'hold_balance_bdt' : 'available_balance_bdt';

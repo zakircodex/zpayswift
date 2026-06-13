@@ -2,7 +2,8 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
-require_once __DIR__ . '/lib/sms_bulksmsbd.php';
+require_once __DIR__ . '/lib/auth_sms.php';
+require_once __DIR__ . '/lib/wallet.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -252,6 +253,23 @@ if (!deduct_otp_send_actor_can_access_target($actor, $targetUser)) {
 
 $wallet = fb_get('USER_WALLETS/' . $targetUid);
 $wallet = is_array($wallet) ? $wallet : [];
+$targetCurrency = wallet_account_currency($targetUser, $wallet);
+$targetPricingCountry = auth_pricing_country_from_user($targetUser, $wallet);
+$targetPhoneCountry = auth_phone_country_from_user($targetUser);
+$targetPhone = normalize_phone_by_country(
+    (string)($targetUser['phone'] ?? ''),
+    $targetPhoneCountry
+);
+
+if ($targetPhone === '') {
+    deduct_otp_send_response(
+        false,
+        'VALIDATION_ERROR',
+        auth_phone_validation_message($targetPhoneCountry),
+        [],
+        422
+    );
+}
 
 $available = (float)($wallet['available_balance'] ?? 0);
 if ($available < $amount) {
@@ -281,10 +299,21 @@ $otpRequestId = deduct_otp_send_make_id('OD');
 $expiresAt = $now + (defined('WALLET_DEDUCT_OTP_TTL_SECONDS') ? WALLET_DEDUCT_OTP_TTL_SECONDS : 300);
 $maxAttempts = defined('WALLET_DEDUCT_OTP_MAX_ATTEMPTS') ? (int)WALLET_DEDUCT_OTP_MAX_ATTEMPTS : 5;
 
-$targetPhone = trim((string)($targetUser['phone'] ?? ''));
-$message = 'Z-Pay Swift: OTP for deducting BDT ' . number_format($amount, 2, '.', '') . ' from your wallet is ' . $otp . '. Valid for 5 minutes. Do not share this code.';
+$currencyLabel = $targetCurrency === 'MYR' ? 'RM' : 'BDT';
+$message = 'Z-Pay Swift: OTP for deducting ' . $currencyLabel . ' '
+    . number_format($amount, 2, '.', '')
+    . ' from your wallet is ' . $otp
+    . '. Valid for 5 minutes. Do not share this code.';
 
-$smsRes = bulksmsbd_send_sms($targetPhone, $message);
+$smsRes = auth_send_otp_sms_by_country(
+    $targetPhoneCountry,
+    $targetPhone,
+    $message,
+    $otpRequestId,
+    'PIN_VERIFY',
+    $otp
+);
+$smsPatch = auth_sms_result_log_fields($smsRes);
 
 $dataRow = [
     'otp_request_id' => $otpRequestId,
@@ -292,10 +321,16 @@ $dataRow = [
     'target_role' => $targetRole,
     'target_name' => (string)($targetUser['name'] ?? ''),
     'target_phone' => $targetPhone,
+    'country' => $targetPhoneCountry,
+    'phone_country' => $targetPhoneCountry,
+    'pricing_country' => $targetPricingCountry,
+    'service_country' => $targetPricingCountry,
+    'phone_e164' => $targetPhone,
     'requested_by_uid' => $actorUid,
     'requested_by_role' => (string)($actor['role'] ?? ''),
     'amount' => $amount,
-    'currency' => 'BDT',
+    'currency' => $targetCurrency,
+    'wallet_currency' => $targetCurrency,
     'note' => $note,
     'otp_hash' => password_hash($otp, PASSWORD_DEFAULT),
     'otp_last4' => substr($otp, -4),
@@ -307,11 +342,11 @@ $dataRow = [
     'updated_at' => $now,
     'verified_at' => 0,
     'completed_at' => 0,
-    'sms_provider' => 'BULKSMSBD',
+    'sms_provider' => (string)($smsRes['gateway'] ?? ''),
     'sms_status' => ($smsRes['ok'] ?? false) ? 'SENT' : 'FAILED',
     'sms_code' => (string)($smsRes['code'] ?? ''),
-    'sms_raw' => (string)($smsRes['raw'] ?? ''),
-];
+    'sms_raw' => '',
+] + $smsPatch;
 
 fb_put('WALLET_DEDUCT_OTP/' . $otpRequestId, $dataRow);
 fb_put($latestPath, [
@@ -337,7 +372,11 @@ if (function_exists('system_log')) {
         'target_uid' => $targetUid,
         'requested_by_uid' => $actorUid,
         'amount' => $amount,
-        'currency' => 'BDT',
+        'currency' => $targetCurrency,
+        'phone_country' => $targetPhoneCountry,
+        'pricing_country' => $targetPricingCountry,
+        'sms_gateway' => (string)($smsRes['gateway'] ?? ''),
+        'sms_template_key' => (string)($smsRes['template_key'] ?? ''),
     ]);
 }
 
@@ -347,7 +386,10 @@ deduct_otp_send_response(true, 'SUCCESS', 'OTP sent successfully', [
     'target_name' => (string)($targetUser['name'] ?? ''),
     'masked_phone' => deduct_otp_send_mask_phone($targetPhone),
     'amount' => $amount,
-    'currency' => 'BDT',
+    'currency' => $targetCurrency,
+    'wallet_currency' => $targetCurrency,
+    'phone_country' => $targetPhoneCountry,
+    'pricing_country' => $targetPricingCountry,
     'expires_at' => $expiresAt,
     'expires_in_seconds' => max(0, $expiresAt - $now),
 ]);

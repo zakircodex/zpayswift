@@ -117,7 +117,14 @@ if (!($okOtp && $okPre)) {
 }
 
 $message = 'Z-Pay Swift login OTP is ' . $newOtpCode . '. Valid for 5 minutes. Do not share this code.';
-$smsResult = auth_send_otp_sms_by_country($phoneCountry, $phone, $message, $otpRequestId);
+$smsResult = auth_send_otp_sms_by_country(
+    $phoneCountry,
+    $phone,
+    $message,
+    $otpRequestId,
+    'USER_LOGIN',
+    $newOtpCode
+);
 $smsPatch = auth_sms_result_log_fields($smsResult);
 
 if (empty($smsResult['ok'])) {

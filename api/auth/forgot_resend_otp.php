@@ -175,6 +175,19 @@ if ($uid === '' || $phone === '') {
     auth_response(false, 'FORGOT_SESSION_INVALID', 'Forgot session is invalid. Please start again.', [], 400);
 }
 
+$accountRole = strtoupper(trim((string)($preAuthRow['account_role'] ?? '')));
+if ($accountRole === '') {
+    $forgotUser = fb_get('USERS/' . $uid);
+    $accountRole = is_array($forgotUser)
+        ? strtoupper(trim((string)($forgotUser['role'] ?? 'SUBADMIN')))
+        : 'SUBADMIN';
+}
+$smsTemplateKey = $accountRole === 'ADMIN' ? 'ADMIN_RESET' : 'SUBADMIN_RESET';
+$purposePrefix = $accountRole === 'ADMIN' ? 'ADMIN' : 'SUBADMIN';
+$forgotPurpose = $storedResetType === 'PIN'
+    ? $purposePrefix . '_FORGOT_PIN'
+    : $purposePrefix . '_FORGOT_PASSWORD';
+
 $otpRow = fb_get('AUTH_OTP_REQUESTS/' . $otpRequestId);
 if (!is_array($otpRow)) {
     auth_response(false, 'OTP_NOT_FOUND', 'OTP request not found', [], 404);
@@ -204,9 +217,11 @@ $updatedOtpRow = [
     'updated_at' => $now,
     'expires_at' => $newExpiresAt,
     'reset_type' => $storedResetType,
-    'purpose' => $storedResetType === 'PIN' ? 'SUBADMIN_FORGOT_PIN' : 'SUBADMIN_FORGOT_PASSWORD',
+    'purpose' => $forgotPurpose,
     'masked_phone' => auth_mask_phone($phone),
     'resend_count' => ((int)($otpRow['resend_count'] ?? 0)) + 1,
+    'account_role' => $accountRole,
+    'purpose' => $forgotPurpose,
 ];
 
 $updatedPreAuthRow = [
@@ -214,6 +229,7 @@ $updatedPreAuthRow = [
     'updated_at' => $now,
     'expires_at' => $newExpiresAt,
     'reset_type' => $storedResetType,
+    'account_role' => $accountRole,
 ];
 
 $okOtp = fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, $updatedOtpRow);
@@ -223,7 +239,14 @@ if (!($okOtp && $okPre)) {
     auth_response(false, 'SERVER_ERROR', 'Failed to prepare resend OTP', [], 500);
 }
 
-$smsResult = auth_send_otp_sms_by_country($phoneCountry, $phone, $message, $otpRequestId);
+$smsResult = auth_send_otp_sms_by_country(
+    $phoneCountry,
+    $phone,
+    $message,
+    $otpRequestId,
+    $smsTemplateKey,
+    $newOtp
+);
 $smsPatch = auth_sms_result_log_fields($smsResult);
 
 if (empty($smsResult['ok'])) {
@@ -256,7 +279,7 @@ $pendingSession = [
     'otp_request_id' => $otpRequestId,
     'device_id' => (string)($preAuthRow['device_id'] ?? 'SUBADMIN_WEB'),
     'device_name' => (string)($preAuthRow['device_name'] ?? 'Subadmin Panel'),
-    'purpose' => $storedResetType === 'PIN' ? 'SUBADMIN_FORGOT_PIN' : 'SUBADMIN_FORGOT_PASSWORD',
+    'purpose' => $forgotPurpose,
     'reset_type' => $storedResetType,
     'created_at' => (int)($preAuthRow['created_at'] ?? $now),
     'expires_at' => $newExpiresAt,

@@ -201,6 +201,8 @@ $otpRequestId = 'OTP' . strtoupper(bin2hex(random_bytes(6)));
 $preAuthToken = random_token(24);
 $now = now_ts();
 $expiresAt = $now + 300;
+$smsTemplateKey = $role === 'ADMIN' ? 'ADMIN_LOGIN' : 'SUBADMIN_LOGIN';
+$loginPurpose = $role === 'ADMIN' ? 'ADMIN_LOGIN' : 'SUBADMIN_LOGIN';
 
 $message = 'Z-Pay Swift login OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
 
@@ -211,12 +213,15 @@ $otpRow = [
     'country' => $storedPhoneCountry,
     'phone_country' => $storedPhoneCountry,
     'pricing_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
+    'currency' => $pricingCountry === 'MY' ? 'MYR' : 'BDT',
     'dial_code' => $storedPhoneCountry === 'MY' ? '+60' : '+880',
     'phone_e164' => $otpPhone,
     'ip_country' => auth_request_ip_country($body),
     'created_ip' => auth_request_ip($body),
     'user_agent' => auth_request_user_agent($body),
-    'purpose' => 'SUBADMIN_LOGIN',
+    'purpose' => $loginPurpose,
+    'account_role' => $role,
     'code_hash' => password_hash($otpCode, PASSWORD_DEFAULT),
     'masked_phone' => sub_login_mask_phone($otpPhone),
     'status' => 'SENT',
@@ -240,7 +245,9 @@ $preAuthRow = [
     'device_name' => $deviceName,
     'trust_device' => $trustDevice,
     'otp_request_id' => $otpRequestId,
+    'purpose' => $loginPurpose,
     'status' => 'OTP_PENDING',
+    'account_role' => $role,
     'created_at' => $now,
     'expires_at' => $expiresAt,
     'updated_at' => $now,
@@ -255,7 +262,14 @@ if (!($okOtp && $okPre)) {
     api_response(false, 'SERVER_ERROR', 'Failed to prepare OTP verification', [], 500);
 }
 
-$smsResult = auth_send_otp_sms_by_country($storedPhoneCountry, $otpPhone, $message, $otpRequestId);
+$smsResult = auth_send_otp_sms_by_country(
+    $storedPhoneCountry,
+    $otpPhone,
+    $message,
+    $otpRequestId,
+    $smsTemplateKey,
+    $otpCode
+);
 $smsPatch = auth_sms_result_log_fields($smsResult);
 
 if (empty($smsResult['ok'])) {

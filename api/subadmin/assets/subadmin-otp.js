@@ -47,16 +47,21 @@
   }
 
   function fillDeductBaseInfo(row){
+    const currency = window.walletNativeCurrency
+      ? window.walletNativeCurrency(row)
+      : (String(row?.pricing_country || row?.country_code || '').toUpperCase() === 'MY' ? 'MYR' : 'BDT');
+    const prefix = currency === 'MYR' ? 'RM' : 'BDT';
     setText('deductTargetName', row.name || '-');
     setText('deductTargetPhone', row.phone || '-');
-    setText('deductTargetBalance', window.money(row.available_balance || 0));
+    setText('deductTargetBalance', prefix + ' ' + window.money(row.available_balance || 0));
     setText('deductTargetRole', row.role || '-');
   }
 
   function fillConfirmInfo(){
+    const prefix = state.deductOtp.targetCurrency === 'MYR' ? 'RM' : 'BDT';
     setText('deductConfirmName', state.deductOtp.targetName || '-');
     setText('deductConfirmPhone', state.deductOtp.targetPhone || '-');
-    setText('deductConfirmAmount', 'BDT ' + window.money(state.deductOtp.amount || 0));
+    setText('deductConfirmAmount', prefix + ' ' + window.money(state.deductOtp.amount || 0));
     setText('deductConfirmRole', state.deductOtp.targetRole || '-');
   }
 
@@ -67,6 +72,7 @@
       targetName: '',
       targetPhone: '',
       targetRole: '',
+      targetCurrency: 'BDT',
       amount: 0,
       note: ''
     };
@@ -116,6 +122,9 @@
     state.deductOtp.targetName = String(row.name || '');
     state.deductOtp.targetPhone = String(row.phone || '');
     state.deductOtp.targetRole = String(row.role || '');
+    state.deductOtp.targetCurrency = window.walletNativeCurrency
+      ? window.walletNativeCurrency(row)
+      : (String(row.pricing_country || row.country_code || '').toUpperCase() === 'MY' ? 'MYR' : 'BDT');
 
     fillDeductBaseInfo(row);
     openModal('deductOtpModalWrap');
@@ -150,6 +159,9 @@
       }, 'Sending OTP...');
 
       state.deductOtp.otpRequestId = String(data.otp_request_id || '');
+      state.deductOtp.targetCurrency = String(
+        data.currency || data.wallet_currency || state.deductOtp.targetCurrency || 'BDT'
+      ).toUpperCase() === 'MYR' ? 'MYR' : 'BDT';
 
       fillConfirmInfo();
 
@@ -161,7 +173,7 @@
 
       setStatus(
         'deductOtpConfirmStatus',
-        `OTP sent to ${data.masked_phone || state.deductOtp.targetPhone}. Amount: BDT ${window.money(amount)}.`,
+        `OTP sent to ${data.masked_phone || state.deductOtp.targetPhone}. Amount: ${state.deductOtp.targetCurrency === 'MYR' ? 'RM' : 'BDT'} ${window.money(amount)}.`,
         'success'
       );
 
@@ -201,10 +213,13 @@
       }, 'Resending OTP...');
 
       state.deductOtp.otpRequestId = String(data.otp_request_id || '');
+      state.deductOtp.targetCurrency = String(
+        data.currency || data.wallet_currency || state.deductOtp.targetCurrency || 'BDT'
+      ).toUpperCase() === 'MYR' ? 'MYR' : 'BDT';
 
       setStatus(
         'deductOtpConfirmStatus',
-        `New OTP sent to ${data.masked_phone || state.deductOtp.targetPhone}. Amount: BDT ${window.money(amount)}.`,
+        `New OTP sent to ${data.masked_phone || state.deductOtp.targetPhone}. Amount: ${state.deductOtp.targetCurrency === 'MYR' ? 'RM' : 'BDT'} ${window.money(amount)}.`,
         'success'
       );
 
@@ -245,10 +260,12 @@
       }, 'Confirming deduction...');
 
       const deductedAmount = Number(data.amount || state.deductOtp.amount || 0);
+      const currency = String(data.currency || data.wallet_currency || state.deductOtp.targetCurrency || 'BDT').toUpperCase();
+      const prefix = currency === 'MYR' ? 'RM' : 'BDT';
 
       setStatus(
         'deductOtpConfirmStatus',
-        `Successfully deducted BDT ${window.money(deductedAmount)} from ${state.deductOtp.targetName}.`,
+        `Successfully deducted ${prefix} ${window.money(deductedAmount)} from ${state.deductOtp.targetName}.`,
         'success'
       );
 
@@ -292,6 +309,9 @@
       state.deductOtp.targetName = String(row.name || '');
       state.deductOtp.targetPhone = String(row.phone || '');
       state.deductOtp.targetRole = String(row.role || '');
+      state.deductOtp.targetCurrency = window.walletNativeCurrency
+        ? window.walletNativeCurrency(row)
+        : (String(row.pricing_country || row.country_code || '').toUpperCase() === 'MY' ? 'MYR' : 'BDT');
       fillDeductBaseInfo(row);
     }
   });

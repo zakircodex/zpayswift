@@ -35,10 +35,23 @@ function user_forgot_res_mask_phone(string $phone): string
     return substr($phone, 0, 3) . str_repeat('*', max(1, $len - 6)) . substr($phone, -3);
 }
 
-function user_forgot_res_send_sms(string $country, string $phone, string $message, string $referenceId): array
+function user_forgot_res_send_sms(
+    string $country,
+    string $phone,
+    string $message,
+    string $referenceId,
+    string $otpCode
+): array
 {
     if (function_exists('auth_send_otp_sms_by_country')) {
-        return auth_send_otp_sms_by_country($country, $phone, $message, $referenceId);
+        return auth_send_otp_sms_by_country(
+            $country,
+            $phone,
+            $message,
+            $referenceId,
+            'USER_RESET',
+            $otpCode
+        );
     }
 
     return ['ok' => false, 'gateway' => '', 'code' => 'SMS_HELPER_MISSING', 'message' => 'SMS helper missing'];
@@ -110,6 +123,8 @@ $otpRow = [
     'country' => $phoneCountry,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
+    'currency' => $pricingCountry === 'MY' ? 'MYR' : 'BDT',
     'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
     'phone_e164' => $phone,
     'ip_country' => (string)($preAuthRow['ip_country'] ?? ''),
@@ -151,7 +166,13 @@ if (!$okPre) {
 $label = $resetType === 'PIN' ? 'PIN reset' : 'password reset';
 $message = 'Z-Pay Swift ' . $label . ' OTP is ' . $newOtpCode . '. Valid for 5 minutes. Do not share this code.';
 
-$smsResult = user_forgot_res_send_sms($phoneCountry, $phone, $message, $newOtpRequestId);
+$smsResult = user_forgot_res_send_sms(
+    $phoneCountry,
+    $phone,
+    $message,
+    $newOtpRequestId,
+    $newOtpCode
+);
 $smsPatch = auth_sms_result_log_fields($smsResult);
 
 if (empty($smsResult['ok'])) {

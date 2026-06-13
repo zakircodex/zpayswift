@@ -67,7 +67,21 @@
     var wallet = summary.wallet || {};
     var me = appState.me || {};
     var currency = normalizeCurrency(wallet.display_currency || wallet.wallet_currency || wallet.currency || summary.wallet_currency || '');
-    var country = normalizeCountry(summary.country_code || summary.country || wallet.country_code || wallet.country || me.country_code || me.country || '');
+    var country = normalizeCountry(
+      summary.pricing_country ||
+      summary.service_country ||
+      wallet.pricing_country ||
+      wallet.service_country ||
+      me.pricing_country ||
+      me.service_country ||
+      summary.country_code ||
+      summary.country ||
+      wallet.country_code ||
+      wallet.country ||
+      me.country_code ||
+      me.country ||
+      ''
+    );
     var preview = serverPreview || {};
     var rate = Number(preview.rate_myr_to_bdt || preview.exchange_rate || wallet.rate_myr_bdt || wallet.rate_myr_to_bdt || summary.rate_myr_bdt || 0);
 
@@ -141,7 +155,19 @@
       if (normalized) return normalized;
     }
 
-    var country = String(p.country_code || p.country || summary.country_code || wallet.country_code || '').toUpperCase();
+    var country = String(
+      p.pricing_country ||
+      p.service_country ||
+      p.country_code ||
+      p.country ||
+      summary.pricing_country ||
+      summary.service_country ||
+      wallet.pricing_country ||
+      wallet.service_country ||
+      summary.country_code ||
+      wallet.country_code ||
+      ''
+    ).toUpperCase();
     if (country === 'MY' || remittance) return 'MYR';
     return 'BDT';
   }
@@ -200,7 +226,14 @@
   function previewFacts(d){
     var p = serverPreview || {};
     var meta = walletMeta();
-    var country = normalizeCountry(p.country_code || p.country || p.display_country || meta.country);
+    var country = normalizeCountry(
+      p.pricing_country ||
+      p.service_country ||
+      p.country_code ||
+      p.country ||
+      p.display_country ||
+      meta.country
+    );
     var mode = String(p.service_mode || p.mode || '').toUpperCase().trim();
     var reviewCurrency = walletCurrencyForPreview(p, false);
     var localBd = country === 'BD' && (mode === '' || mode === 'LOCAL');

@@ -150,6 +150,16 @@ if ($uid === '' || $phone === '') {
     auth_response(false, 'LOGIN_SESSION_INVALID', 'Login session invalid. Please login again.', [], 400);
 }
 
+$accountRole = strtoupper(trim((string)($preAuthRow['account_role'] ?? '')));
+if ($accountRole === '') {
+    $loginUser = fb_get('USERS/' . $uid);
+    $accountRole = is_array($loginUser)
+        ? strtoupper(trim((string)($loginUser['role'] ?? 'SUBADMIN')))
+        : 'SUBADMIN';
+}
+$smsTemplateKey = $accountRole === 'ADMIN' ? 'ADMIN_LOGIN' : 'SUBADMIN_LOGIN';
+$loginPurpose = $accountRole === 'ADMIN' ? 'ADMIN_LOGIN' : 'SUBADMIN_LOGIN';
+
 $otpRow = fb_get('AUTH_OTP_REQUESTS/' . $otpRequestId);
 if (!is_array($otpRow)) {
     auth_response(false, 'OTP_NOT_FOUND', 'OTP request not found', [], 404);
@@ -178,12 +188,16 @@ $updatedOtpRow = [
     'expires_at' => $newExpiresAt,
     'masked_phone' => auth_mask_phone($phone),
     'resend_count' => ((int)($otpRow['resend_count'] ?? 0)) + 1,
+    'account_role' => $accountRole,
+    'purpose' => $loginPurpose,
 ];
 
 $updatedPreAuthRow = [
     'status' => 'OTP_PENDING',
     'updated_at' => $now,
     'expires_at' => $newExpiresAt,
+    'account_role' => $accountRole,
+    'purpose' => $loginPurpose,
 ];
 
 $okOtp = fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, $updatedOtpRow);
@@ -193,7 +207,14 @@ if (!($okOtp && $okPre)) {
     auth_response(false, 'SERVER_ERROR', 'Failed to prepare resend OTP', [], 500);
 }
 
-$smsResult = auth_send_otp_sms_by_country($phoneCountry, $phone, $message, $otpRequestId);
+$smsResult = auth_send_otp_sms_by_country(
+    $phoneCountry,
+    $phone,
+    $message,
+    $otpRequestId,
+    $smsTemplateKey,
+    $newOtp
+);
 $smsPatch = auth_sms_result_log_fields($smsResult);
 
 if (empty($smsResult['ok'])) {

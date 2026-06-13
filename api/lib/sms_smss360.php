@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/otp_templates.php';
+
 function smss360_xml_value(string $xml, array $names): string
 {
     if (function_exists('simplexml_load_string')) {
@@ -53,15 +55,22 @@ function smss360_send_sms(string $phone, string $message, string $referenceId): 
         : (preg_replace('/\D+/', '', trim($phone)) ?? '');
 
     $message = trim($message);
-    if (!str_starts_with($message, 'RM0.00 ') && !str_starts_with($message, 'Free msg/RM0.00 ')) {
-        $message = 'RM0.00 ' . $message;
-    }
 
     if ($phone === '' || $message === '') {
         return [
             'ok' => false,
             'code' => 'LOCAL_INVALID_INPUT',
             'message' => 'Invalid Malaysia SMS input',
+            'reference_id' => $referenceId,
+            'raw' => '',
+        ];
+    }
+
+    if (!str_starts_with($message, 'RM0 ') || !otp_my_message_is_approved($message)) {
+        return [
+            'ok' => false,
+            'code' => 'LOCAL_TEMPLATE_REJECTED',
+            'message' => 'Malaysia SMS must use an approved OTP template',
             'reference_id' => $referenceId,
             'raw' => '',
         ];

@@ -235,6 +235,8 @@ $otpRow = [
     'country' => $actorPhoneCountry,
     'phone_country' => $actorPhoneCountry,
     'pricing_country' => (string)($actor['pricing_country'] ?? 'BD'),
+    'service_country' => (string)($actor['pricing_country'] ?? 'BD'),
+    'currency' => (string)($actor['pricing_country'] ?? 'BD') === 'MY' ? 'MYR' : 'BDT',
     'dial_code' => $actorPhoneCountry === 'MY' ? '+60' : '+880',
     'phone_e164' => $actorPhone,
     'ip_country' => auth_request_ip_country($body),
@@ -284,7 +286,14 @@ $message =
     ' is ' . $otpCode .
     '. Valid for 5 minutes. Do not share this code.';
 
-$smsResult = auth_send_otp_sms_by_country($actorPhoneCountry, $actorPhone, $message, $otpRequestId);
+$smsResult = auth_send_otp_sms_by_country(
+    $actorPhoneCountry,
+    $actorPhone,
+    $message,
+    $otpRequestId,
+    'PIN_VERIFY',
+    $otpCode
+);
 $smsPatch = auth_sms_result_log_fields($smsResult);
 
 if (empty($smsResult['ok'])) {

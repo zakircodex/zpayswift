@@ -80,7 +80,9 @@ function walletPrefix(currency){
 }
 
 function walletNativeCurrency(row){
-  const country = String(row?.country_code || row?.country || '').trim().toUpperCase();
+  const country = String(
+    row?.pricing_country || row?.service_country || row?.country_code || row?.country || ''
+  ).trim().toUpperCase();
   if (country === 'MY') return 'MYR';
   if (country === 'BD') return 'BDT';
 
@@ -96,6 +98,7 @@ function walletMoney(row, type = 'available'){
 }
 
 function walletRawHint(row, type = 'available'){
+  if (walletNativeCurrency(row) === 'MYR') return '';
   const note = String(row?.conversion_note || '').trim();
   if (!note) return '';
 

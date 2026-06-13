@@ -14,6 +14,7 @@ if (!function_exists('app_private_sms_bridge_path')) {
 }
 
 require_once __DIR__ . '/phone_country.php';
+require_once __DIR__ . '/otp_templates.php';
 require_once __DIR__ . '/sms_bulksmsbd.php';
 require_once __DIR__ . '/sms_smss360.php';
 
@@ -83,7 +84,16 @@ function auth_send_otp_sms(string $phone, string $message): bool
         $country = 'BD';
     }
 
-    $result = auth_send_otp_sms_by_country($country, $phone, $message, 'OTP' . strtoupper(bin2hex(random_bytes(4))));
+    if ($country === 'MY') {
+        return false;
+    }
+
+    $result = auth_send_otp_sms_by_country(
+        $country,
+        $phone,
+        $message,
+        'OTP' . strtoupper(bin2hex(random_bytes(4)))
+    );
     return !empty($result['ok']);
 }
 
@@ -151,16 +161,35 @@ function auth_send_otp_sms_by_country(
     string $country,
     string $phone,
     string $message,
-    string $referenceId
+    string $referenceId,
+    string $templateKey = '',
+    string $otpCode = ''
 ): array {
     $country = auth_normalize_country_code($country);
+    $templateKey = otp_normalize_template_key($templateKey);
 
     if ($country === 'MY') {
-        return auth_send_my_sms360($phone, $message, $referenceId);
+        $approvedMessage = otp_my_build_message($templateKey, $otpCode);
+        if ($approvedMessage === '') {
+            return [
+                'ok' => false,
+                'gateway' => 'SMS360',
+                'code' => 'MY_TEMPLATE_REQUIRED',
+                'message' => 'Approved Malaysia OTP template is required',
+                'reference_id' => $referenceId,
+                'template_key' => $templateKey,
+            ];
+        }
+
+        return auth_send_my_sms360($phone, $approvedMessage, $referenceId) + [
+            'template_key' => $templateKey,
+        ];
     }
 
     if ($country === 'BD') {
-        return auth_send_bd_sms($phone, $message, $referenceId);
+        return auth_send_bd_sms($phone, $message, $referenceId) + [
+            'template_key' => $templateKey,
+        ];
     }
 
     return [
@@ -169,6 +198,7 @@ function auth_send_otp_sms_by_country(
         'code' => 'UNSUPPORTED_COUNTRY',
         'message' => 'Unsupported phone country',
         'reference_id' => $referenceId,
+        'template_key' => $templateKey,
     ];
 }
 
@@ -179,5 +209,6 @@ function auth_sms_result_log_fields(array $result): array
         'sms_reference_id' => (string)($result['reference_id'] ?? ''),
         'sms_status_code' => (string)($result['code'] ?? ''),
         'sms_status_msg' => substr((string)($result['message'] ?? ''), 0, 300),
+        'sms_template_key' => (string)($result['template_key'] ?? ''),
     ];
 }

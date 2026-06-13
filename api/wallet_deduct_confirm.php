@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/bootstrap.php';
+require_once __DIR__ . '/lib/wallet.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -299,6 +300,11 @@ if (!deduct_otp_confirm_actor_can_access_target($actor, $targetUser)) {
 
 $wallet = fb_get('USER_WALLETS/' . $targetUid);
 $wallet = is_array($wallet) ? $wallet : [];
+$operationCurrency = wallet_normalize_currency_code(
+    $request['currency'] ?? $request['wallet_currency'] ?? '',
+    wallet_account_currency($targetUser, $wallet)
+);
+$currencyLabel = $operationCurrency === 'MYR' ? 'RM' : 'BDT';
 
 $baseAmount = deduct_otp_confirm_money($request['amount'] ?? 0, 0.0);
 
@@ -383,8 +389,8 @@ $ledgerId = deduct_otp_confirm_make_id('WL');
 $baseNote = trim((string)($request['note'] ?? ''));
 $finalNote = $baseNote !== '' ? $baseNote : 'Wallet deducted';
 
-$finalNote .= ' | Base: BDT ' . number_format($baseAmount, 2, '.', '');
-$finalNote .= ' | Total Debit: BDT ' . number_format($totalDebit, 2, '.', '');
+$finalNote .= ' | Base: ' . $currencyLabel . ' ' . number_format($baseAmount, 2, '.', '');
+$finalNote .= ' | Total Debit: ' . $currencyLabel . ' ' . number_format($totalDebit, 2, '.', '');
 
 fb_put('WALLET_LEDGER/' . $targetUid . '/' . $month . '/' . $ledgerId, [
     'ledger_id' => $ledgerId,
@@ -398,7 +404,7 @@ fb_put('WALLET_LEDGER/' . $targetUid . '/' . $month . '/' . $ledgerId, [
     'commission_amount' => $commissionAmount,
     'total_debit' => $totalDebit,
 
-    'currency' => 'BDT',
+    'currency' => $operationCurrency,
     'before_available' => $beforeAvailable,
     'after_available' => $afterAvailable,
     'before_hold' => $beforeHold,
@@ -425,7 +431,7 @@ if ($isSubadminTransfer) {
         'commission_amount' => $commissionAmount,
         'total_credit' => $totalDebit,
 
-        'currency' => 'BDT',
+        'currency' => $operationCurrency,
         'before_available' => $actorBeforeAvailable,
         'after_available' => $actorAfterAvailable,
         'ref_id' => $ledgerId,
@@ -454,6 +460,8 @@ fb_patch('WALLET_DEDUCT_OTP/' . $otpRequestId, [
     'commission_amount' => $commissionAmount,
     'total_debit' => $totalDebit,
     'subadmin_credited' => $isSubadminTransfer,
+    'currency' => $operationCurrency,
+    'wallet_currency' => $operationCurrency,
 ]);
 
 fb_put('WALLET_DEDUCT_OTP_LATEST/' . $targetUid . '/' . $actorUid, [
@@ -473,7 +481,7 @@ if (function_exists('system_log')) {
         'commission_per_1000' => $commissionPer1000,
         'commission_amount' => $commissionAmount,
         'total_debit' => $totalDebit,
-        'currency' => 'BDT',
+        'currency' => $operationCurrency,
         'ledger_id' => $ledgerId,
         'actor_ledger_id' => $actorLedgerId,
         'subadmin_credited' => $isSubadminTransfer,
@@ -492,7 +500,8 @@ deduct_otp_confirm_response(true, 'SUCCESS', 'OTP verified and wallet deducted s
     'commission_amount' => $commissionAmount,
     'total_debit' => $totalDebit,
 
-    'currency' => 'BDT',
+    'currency' => $operationCurrency,
+    'wallet_currency' => $operationCurrency,
     'before_available' => $beforeAvailable,
     'after_available' => $afterAvailable,
 

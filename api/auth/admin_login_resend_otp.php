@@ -154,7 +154,14 @@ if (!($okOtp && $okPre)) {
     api_response(false, 'SERVER_ERROR', 'Failed to prepare OTP resend', [], 500);
 }
 
-$smsResult = auth_send_otp_sms_by_country($phoneCountry, $phone, $message, $otpRequestId);
+$smsResult = auth_send_otp_sms_by_country(
+    $phoneCountry,
+    $phone,
+    $message,
+    $otpRequestId,
+    'ADMIN_LOGIN',
+    $newOtpCode
+);
 $smsPatch = auth_sms_result_log_fields($smsResult);
 
 if (empty($smsResult['ok'])) {

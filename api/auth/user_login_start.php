@@ -234,6 +234,8 @@ $otpRow = [
     'country'        => $storedPhoneCountry,
     'phone_country'  => $storedPhoneCountry,
     'pricing_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
+    'currency'       => $pricingCountry === 'MY' ? 'MYR' : 'BDT',
     'dial_code'      => $storedPhoneCountry === 'MY' ? '+60' : '+880',
     'phone_e164'     => $otpPhone,
     'ip_country'     => (string)$requestMeta['ip_country'],
@@ -280,7 +282,14 @@ if (!($okOtp && $okPre)) {
     api_response(false, 'SERVER_ERROR', 'Failed to prepare OTP verification', [], 500);
 }
 
-$smsResult = auth_send_otp_sms_by_country($storedPhoneCountry, $otpPhone, $message, $otpRequestId);
+$smsResult = auth_send_otp_sms_by_country(
+    $storedPhoneCountry,
+    $otpPhone,
+    $message,
+    $otpRequestId,
+    'USER_LOGIN',
+    $otpCode
+);
 $smsPatch = auth_sms_result_log_fields($smsResult);
 
 if (empty($smsResult['ok'])) {

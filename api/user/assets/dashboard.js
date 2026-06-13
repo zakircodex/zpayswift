@@ -93,6 +93,15 @@ function walletDisplayAmount(wallet, type = 'available'){
 }
 
 function walletDisplayCurrency(wallet){
+  const pricingCountry = String(
+    wallet?.pricing_country ||
+    wallet?.service_country ||
+    state.me?.pricing_country ||
+    state.me?.service_country ||
+    ''
+  ).toUpperCase();
+  if (pricingCountry === 'MY') return 'RM';
+  if (pricingCountry === 'BD') return 'BDT';
   return walletPrefix(wallet?.display_currency || wallet?.wallet_currency || wallet?.currency || 'BDT');
 }
 
@@ -146,7 +155,10 @@ function requestNumberOf(row){
   return String(row?.bundle_number || row?.topup_number || row?.receiver_number || row?.number || '');
 }
 
-function amountPrefixOf(){
+function amountPrefixOf(row){
+  if (requestTypeOf(row) === 'WALLET') {
+    return walletPrefix(row?.currency || row?.wallet_currency || 'BDT');
+  }
   return 'BDT';
 }
 
@@ -163,7 +175,9 @@ function mfsProviderLabel(row){
 
 function mfsIsRemittance(row){
   const mode = String(row?.service_mode || '').toUpperCase();
-  const country = String(row?.country_code || row?.country || '').toUpperCase();
+  const country = String(
+    row?.pricing_country || row?.service_country || row?.country_code || row?.country || ''
+  ).toUpperCase();
   if (country === 'BD' && (!mode || mode === 'LOCAL')) return false;
   if (country === 'MY' || mode === 'REMITTANCE') return true;
   return Number(row?.amount_rm ?? row?.amount_myr ?? 0) > 0;
