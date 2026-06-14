@@ -398,14 +398,43 @@ function statusClass(v){
     'RESENT',
     'WAITING',
     'WAITING_ADMIN',
+    'WAITING_APPROVAL',
+    'ADMIN_PENDING',
     'OTP_PENDING'
   ].includes(t)) return 'warning';
 
   return 'info';
 }
 
+function userStatusLabel(v){
+  const t = String(v || '').trim().toUpperCase();
+
+  if (['PENDING','WAITING','WAITING_ADMIN','WAITING_APPROVAL','ADMIN_PENDING'].includes(t)) {
+    return 'Pending';
+  }
+
+  if (['CLAIMED','PROCESSING','DIALING'].includes(t)) {
+    return 'Processing';
+  }
+
+  if (['SUCCESS','SUCCESSFUL','COMPLETED','APPROVED','DONE'].includes(t)) {
+    return 'Successful';
+  }
+
+  if (['FAILED','REJECTED','CANCELLED'].includes(t)) {
+    return 'Failed';
+  }
+
+  if (!t || t === '-') return '-';
+
+  return t
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, letter => letter.toUpperCase());
+}
+
 function statusPill(v){
-  return `<span class="pill ${statusClass(v)}">${esc(v || '-')}</span>`;
+  return `<span class="pill ${statusClass(v)}">${esc(userStatusLabel(v))}</span>`;
 }
 
 function setBusy(on, text = 'Loading...'){
@@ -1238,7 +1267,7 @@ function statusMatchesFilter(row, filter){
   if (filter === 'BUNDLE') return type === 'BUNDLE';
 
   if (filter === 'PENDING') {
-    return ['PENDING','WAITING','WAITING_ADMIN'].includes(status);
+    return ['PENDING','WAITING','WAITING_ADMIN','WAITING_APPROVAL','ADMIN_PENDING'].includes(status);
   }
 
   if (filter === 'PROCESSING') {
@@ -1246,7 +1275,7 @@ function statusMatchesFilter(row, filter){
   }
 
   if (filter === 'SUCCESS') {
-    return ['SUCCESS','COMPLETED','APPROVED','DONE'].includes(status);
+    return ['SUCCESS','SUCCESSFUL','COMPLETED','APPROVED','DONE'].includes(status);
   }
 
   if (filter === 'FAILED') {
@@ -1377,7 +1406,11 @@ function detailMessageText(row){
     return 'Request completed successfully.';
   }
 
-  if (['PENDING','WAITING','WAITING_ADMIN','CLAIMED','PROCESSING','DIALING'].includes(status)) {
+  if (['PENDING','WAITING','WAITING_ADMIN','WAITING_APPROVAL','ADMIN_PENDING'].includes(status)) {
+    return 'Request is pending.';
+  }
+
+  if (['CLAIMED','PROCESSING','DIALING'].includes(status)) {
     return 'Request is processing.';
   }
 
@@ -1906,7 +1939,7 @@ function renderBundleResultSuccess(data){
       <div class="result-title">Bundle request created successfully</div>
       <div class="result-text">
 Request ID: ${esc(data.request_id || '-')}
-Status: ${esc(data.status || 'WAITING_ADMIN')}
+Status: ${esc(userStatusLabel(data.status || 'WAITING_ADMIN'))}
 Number: ${esc(data.bundle_number || '-')}
 Operator: ${esc(operatorName(data.operator || '-'))}
 Bundle: ${esc(data.bundle_name || '-')}
@@ -1925,7 +1958,7 @@ function renderBundleBuyOutputSuccess(data){
   box.className = 'bundle-result-box success';
   box.textContent =
 `Request ID: ${data.request_id || '-'}
-Status: ${data.status || 'WAITING_ADMIN'}
+Status: ${userStatusLabel(data.status || 'WAITING_ADMIN')}
 You Pay: BDT ${money(data.you_pay || data.payable_amount || data.amount || 0)}`;
 }
 
@@ -2214,7 +2247,7 @@ Total Paid: BDT ${money(totalBdt)}`;
       ...(isRemit ? [['Amount RM', `RM ${money(amountRm)}`]] : []),
       ['Fee', isRemit ? `RM ${money(feeRm)}` : `BDT ${money(data.fee_bdt || 0)}`],
       ['Total Pay/Hold', isRemit ? `RM ${money(totalRm)}` : `BDT ${money(totalBdt)}`],
-      ['Status', data.status || 'PENDING'],
+      ['Status', userStatusLabel(data.status || 'PENDING')],
       ['Reference', data.reference || '-']
     ]
   });
@@ -2966,7 +2999,7 @@ function renderTopupResultSuccess(data){
       ['Number', data.topup_number || '-'],
       ['Operator', operatorName(data.operator || '-')],
       ['Amount', 'BDT ' + money(data.amount || 0)],
-      ['Status', data.status || 'PENDING'],
+      ['Status', userStatusLabel(data.status || 'PENDING')],
       ['Created', fmtTs(data.created_at || 0)]
     ]
   });

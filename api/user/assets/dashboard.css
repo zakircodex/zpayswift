@@ -424,6 +424,13 @@ a{
   margin-bottom:14px;
 }
 
+body[data-active-section="topupSection"] .hero-card,
+body[data-active-section="bundleSection"] .hero-card,
+body[data-active-section="mfsSection"] .hero-card,
+body[data-active-section="historySection"] .hero-card{
+  display:none;
+}
+
 .hero-top{
   display:flex;
   align-items:flex-start;

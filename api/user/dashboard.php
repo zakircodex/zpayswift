@@ -13,7 +13,7 @@ header('Pragma: no-cache');
   <title>Z-Pay Swift User Dashboard</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
-  <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=12">
+  <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=13">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
@@ -605,7 +605,7 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=19"></script>
+<script src="/api/user/assets/dashboard.js?v=20"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=12"></script>
 </body>
 </html>
