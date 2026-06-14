@@ -1224,14 +1224,14 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
     <div class="modal-head">
       <div>
         <h3>Create User OTP Verification</h3>
-        <p>OTP verify করার পরে নতুন user create হবে</p>
+        <p>Verify the OTP sent to the new user's phone before creating the account.</p>
       </div>
       <button id="closeCreateUserOtpModalBtn" class="modal-close" type="button">Close</button>
     </div>
 
     <div class="info-grid mb-14">
       <div class="box">
-        <label>Phone</label>
+        <label>New User Phone</label>
         <strong id="createUserOtpMaskedPhone">-</strong>
       </div>
       <div class="box">

@@ -165,6 +165,7 @@ if (strtoupper((string)($actor['role'] ?? '')) === 'SUBADMIN') {
 } elseif ($pricingCountry === '') {
     $pricingCountry = (string)($actor['pricing_country'] ?? 'BD');
 }
+$targetCurrency = auth_country_currency($pricingCountry);
 $email = strtolower(trim((string)($body['email'] ?? '')));
 $password = (string)($body['password'] ?? '');
 $confirmPassword = (string)($body['confirm_password'] ?? '');
@@ -222,29 +223,30 @@ $payloadSecret = ucotp_encrypt_payload([
     'pin' => $pin,
 ]);
 
-$actorPhoneCountry = auth_normalize_country_code((string)($actor['phone_country'] ?? '')) ?: 'BD';
-$actorPhone = normalize_phone_by_country((string)($actor['phone'] ?? ''), $actorPhoneCountry);
-if ($actorPhone === '') {
-    ucotp_response(false, 'VALIDATION_ERROR', 'Creator account phone number is invalid', [], 422);
-}
-
 $otpRow = [
     'otp_request_id' => $otpRequestId,
     'uid' => (string)($actor['uid'] ?? ''),
-    'phone' => $actorPhone,
-    'country' => $actorPhoneCountry,
-    'phone_country' => $actorPhoneCountry,
-    'pricing_country' => (string)($actor['pricing_country'] ?? 'BD'),
-    'service_country' => (string)($actor['pricing_country'] ?? 'BD'),
-    'currency' => (string)($actor['pricing_country'] ?? 'BD') === 'MY' ? 'MYR' : 'BDT',
-    'dial_code' => $actorPhoneCountry === 'MY' ? '+60' : '+880',
-    'phone_e164' => $actorPhone,
+    'requested_by_uid' => (string)($actor['uid'] ?? ''),
+    'created_by_uid' => (string)($actor['uid'] ?? ''),
+    'created_by_role' => (string)($actor['role'] ?? ''),
+    'phone' => $phone,
+    'country' => $phoneCountry,
+    'phone_country' => $phoneCountry,
+    'pricing_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
+    'currency' => $targetCurrency,
+    'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
+    'phone_e164' => $phone,
+    'target_phone_country' => $phoneCountry,
+    'target_phone_e164' => $phone,
+    'target_pricing_country' => $pricingCountry,
+    'target_currency' => $targetCurrency,
     'ip_country' => auth_request_ip_country($body),
     'created_ip' => auth_request_ip($body),
     'user_agent' => auth_request_user_agent($body),
     'purpose' => 'SUBADMIN_USER_CREATE',
     'code_hash' => password_hash($otpCode, PASSWORD_DEFAULT),
-    'masked_phone' => ucotp_mask_phone($actorPhone),
+    'masked_phone' => ucotp_mask_phone($phone),
     'status' => 'SENT',
     'used' => false,
     'resend_count' => 0,
@@ -257,13 +259,20 @@ $preAuthRow = [
     'pre_auth_token' => $preAuthToken,
     'otp_request_id' => $otpRequestId,
     'actor_uid' => (string)($actor['uid'] ?? ''),
-    'actor_phone' => $actorPhone,
-    'actor_phone_country' => $actorPhoneCountry,
+    'actor_phone' => (string)($actor['phone'] ?? ''),
+    'actor_phone_country' => (string)($actor['phone_country'] ?? ''),
     'actor_role' => (string)($actor['role'] ?? ''),
+    'created_by_uid' => (string)($actor['uid'] ?? ''),
+    'created_by_role' => (string)($actor['role'] ?? ''),
+    'created_by_subadmin_uid' => strtoupper((string)($actor['role'] ?? '')) === 'SUBADMIN'
+        ? (string)($actor['uid'] ?? '')
+        : '',
     'target_name' => $name,
     'target_phone' => $phone,
+    'target_phone_e164' => $phone,
     'target_phone_country' => $phoneCountry,
     'target_pricing_country' => $pricingCountry,
+    'target_currency' => $targetCurrency,
     'target_email' => $email,
     'payload_secret' => $payloadSecret,
     'purpose' => 'SUBADMIN_USER_CREATE',
@@ -281,17 +290,15 @@ if (!($okOtp && $okPre)) {
     ucotp_response(false, 'SERVER_ERROR', 'Failed to prepare user creation OTP', [], 500);
 }
 
-$message =
-    'Z-Pay Swift OTP to create user ' . $phone .
-    ' is ' . $otpCode .
+$message = 'Z-Pay Swift registration OTP is ' . $otpCode .
     '. Valid for 5 minutes. Do not share this code.';
 
 $smsResult = auth_send_otp_sms_by_country(
-    $actorPhoneCountry,
-    $actorPhone,
+    $phoneCountry,
+    $phone,
     $message,
     $otpRequestId,
-    'PIN_VERIFY',
+    'USER_REGISTER',
     $otpCode
 );
 $smsPatch = auth_sms_result_log_fields($smsResult);
@@ -317,23 +324,24 @@ if (empty($smsResult['ok'])) {
 if (function_exists('system_log')) {
     system_log('SUBADMIN_USER_CREATE_OTP_SENT', $otpRequestId, 'User create OTP sent', [
         'actor_uid' => (string)($actor['uid'] ?? ''),
-        'actor_phone' => $actorPhone,
-        'actor_phone_country' => $actorPhoneCountry,
-        'target_phone' => $phone,
+        'actor_role' => (string)($actor['role'] ?? ''),
+        'target_phone_masked' => ucotp_mask_phone($phone),
         'target_phone_country' => $phoneCountry,
         'target_pricing_country' => $pricingCountry,
-        'target_email' => $email,
+        'target_currency' => $targetCurrency,
     ]);
 }
 
-ucotp_response(true, 'SUCCESS', 'OTP sent successfully', [
+ucotp_response(true, 'SUCCESS', 'OTP sent to the new user phone number', [
     'pre_auth_token' => $preAuthToken,
     'otp_request_id' => $otpRequestId,
-    'masked_phone' => ucotp_mask_phone($actorPhone),
+    'masked_phone' => ucotp_mask_phone($phone),
     'expires_in_seconds' => 300,
     'target_name' => $name,
     'target_phone' => $phone,
+    'target_phone_e164' => $phone,
     'target_phone_country' => $phoneCountry,
     'target_pricing_country' => $pricingCountry,
+    'target_currency' => $targetCurrency,
     'target_email' => $email,
 ]);

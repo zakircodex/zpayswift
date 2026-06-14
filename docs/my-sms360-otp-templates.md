@@ -10,13 +10,13 @@ template. No SMS360 credential is stored in this repository.
 | Template key | Approved message | Flow | Send function/file | Verify function/file |
 |---|---|---|---|---|
 | `USER_LOGIN` | `RM0 Z-Pay Swift login OTP is %%. Valid for 5 minutes. Do not share this code.` | User login and resend | `auth_send_otp_sms_by_country()` from `api/auth/user_login_start.php` and `api/auth/user_login_resend_otp.php` | `api/auth/user_login_verify_otp.php` |
-| `USER_REGISTER` | `RM0 Z-Pay Swift registration OTP is %%. Valid for 5 minutes. Do not share this code.` | User registration and resend | `api/auth/user_register_send_otp.php`, `api/auth/user_register_resend_otp.php` | `api/auth/user_register_confirm.php` |
+| `USER_REGISTER` | `RM0 Z-Pay Swift registration OTP is %%. Valid for 5 minutes. Do not share this code.` | User registration, resend, and admin/subadmin create-user confirmation | `api/auth/user_register_send_otp.php`, `api/auth/user_register_resend_otp.php`, `api/auth/user_create_send_otp.php` | `api/auth/user_register_confirm.php`, `api/auth/user_create_confirm.php` |
 | `USER_RESET` | `RM0 Z-Pay Swift account reset OTP is %%. Valid for 5 minutes. Do not share this code.` | User password or PIN reset and resend | `api/auth/user_forgot_send_otp.php`, `api/auth/user_forgot_resend_otp.php` | `api/auth/user_forgot_verify_otp.php` |
 | `ADMIN_LOGIN` | `RM0 Z-Pay Swift admin login OTP is %%. Valid for 5 minutes. Do not share this code.` | Admin login and resend | `api/auth/admin_login_start.php`, `api/auth/admin_login_resend_otp.php`; generic role-aware login compatibility | `api/auth/admin_login_verify_otp.php`; generic compatibility verifier |
 | `ADMIN_RESET` | `RM0 Z-Pay Swift admin reset OTP is %%. Valid for 5 minutes. Do not share this code.` | Protected admin password or PIN reset compatibility | Role-aware `api/auth/forgot_send_otp.php`, `api/auth/forgot_resend_otp.php` | `api/auth/forgot_verify_otp.php` |
 | `SUBADMIN_LOGIN` | `RM0 Z-Pay Swift subadmin login OTP is %%. Valid for 5 minutes. Do not share this code.` | Subadmin login and resend | `api/auth/login_start.php`, `api/auth/login_resend_otp.php` | `api/auth/login_verify_otp.php` |
 | `SUBADMIN_RESET` | `RM0 Z-Pay Swift subadmin reset OTP is %%. Valid for 5 minutes. Do not share this code.` | Subadmin password or PIN reset and resend | `api/auth/forgot_send_otp.php`, `api/auth/forgot_resend_otp.php` | `api/auth/forgot_verify_otp.php` |
-| `PIN_VERIFY` | `RM0 Z-Pay Swift PIN verification OTP is %%. Valid for 5 minutes. Do not share this code.` | Privileged create-user confirmation and wallet deduction OTP | `api/auth/user_create_send_otp.php`, `api/wallet_deduct_send_otp.php` | `api/auth/user_create_confirm.php`, `api/wallet_deduct_confirm.php` |
+| `PIN_VERIFY` | `RM0 Z-Pay Swift PIN verification OTP is %%. Valid for 5 minutes. Do not share this code.` | Wallet deduction OTP | `api/wallet_deduct_send_otp.php` | `api/wallet_deduct_confirm.php` |
 
 ## OTP Audit
 
@@ -29,7 +29,7 @@ template. No SMS360 credential is stored in this repository.
 | Admin reset compatibility | BD: BulkSMSBD, MY: SMS360 | `ADMIN_RESET` | 5 minutes | Generic protected forgot verifier | Role-aware template selection added |
 | Subadmin login | BD: BulkSMSBD, MY: SMS360 | `SUBADMIN_LOGIN` | 5 minutes | `login_verify_otp.php` | Role-aware template selection added |
 | Subadmin forgot password/PIN | BD: BulkSMSBD, MY: SMS360 | `SUBADMIN_RESET` | 5 minutes | `forgot_verify_otp.php` | Role-aware template selection added |
-| Admin/subadmin create-user confirmation | BD: BulkSMSBD, MY: SMS360 | `PIN_VERIFY` | 5 minutes | `user_create_confirm.php` | Approved MY template added |
+| Admin/subadmin create-user confirmation | BD: BulkSMSBD, MY: SMS360 | `USER_REGISTER` | 5 minutes | `user_create_confirm.php` | OTP is bound to the target user's normalized phone |
 | Wallet deduction confirmation | BD: BulkSMSBD, MY: SMS360 | `PIN_VERIFY` | Configured TTL, default 5 minutes | `wallet_deduct_confirm.php` | BD-only gateway and BDT hardcoding fixed |
 
 Transaction PIN checks used by topup, bundle, MFS preview/create, and user

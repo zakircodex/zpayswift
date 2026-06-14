@@ -3454,7 +3454,7 @@ function updateCreateUserOtpModal(data = {}){
 
   if (el('createUserOtpStatus')) {
     el('createUserOtpStatus').textContent =
-      'OTP sent to ' + (state.userCreateOtp.maskedPhone || 'your phone') + '. OTP verify করলে user create হবে।';
+      'OTP sent to the new user at ' + (state.userCreateOtp.maskedPhone || 'the target phone') + '. Verify it to create the user.';
   }
 }
 
@@ -3479,7 +3479,6 @@ async function confirmCreateUserOtp(){
 
   try{
     const body = {
-      ...state.userCreateOtp.formData,
       otp: otp,
       otp_request_id: state.userCreateOtp.otpRequestId,
       request_id: state.userCreateOtp.otpRequestId,
@@ -3540,7 +3539,7 @@ async function resendCreateUserOtp(){
 
     if (statusBox) {
       statusBox.textContent =
-        'OTP resent successfully to ' + (state.userCreateOtp.maskedPhone || 'your phone') + '.';
+        'OTP resent successfully to the new user at ' + (state.userCreateOtp.maskedPhone || 'the target phone') + '.';
     }
 
     showToast('OTP resent successfully', 'ok');
@@ -4103,7 +4102,12 @@ async function createSubadminUser(){
   try{
     const data = await proxyPost('user_create_send_otp', payload, 'Sending create user OTP...');
 
-    state.userCreateOtp.formData = payload;
+    state.userCreateOtp.formData = {
+      ...payload,
+      phone: String(data.target_phone_e164 || data.target_phone || payload.phone || '').trim(),
+      phone_country: String(data.target_phone_country || payload.phone_country || '').toUpperCase(),
+      pricing_country: String(data.target_pricing_country || payload.pricing_country || '').toUpperCase()
+    };
     updateCreateUserOtpModal(data);
     openCreateUserOtpModal();
 

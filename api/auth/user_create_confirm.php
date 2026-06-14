@@ -261,6 +261,35 @@ if ((string)($otpRow['uid'] ?? '') !== (string)($actor['uid'] ?? '')) {
     ucc_response(false, 'OTP_UID_MISMATCH', 'OTP does not match this account', [], 400);
 }
 
+$pendingPhoneCountry = auth_normalize_country_code(
+    (string)($preAuthRow['target_phone_country'] ?? '')
+);
+$pendingPhone = normalize_phone_by_country(
+    (string)($preAuthRow['target_phone_e164'] ?? $preAuthRow['target_phone'] ?? ''),
+    $pendingPhoneCountry
+);
+$otpPhoneCountry = auth_normalize_country_code(
+    (string)($otpRow['target_phone_country'] ?? $otpRow['phone_country'] ?? $otpRow['country'] ?? '')
+);
+$otpPhone = normalize_phone_by_country(
+    (string)($otpRow['target_phone_e164'] ?? $otpRow['phone_e164'] ?? $otpRow['phone'] ?? ''),
+    $otpPhoneCountry
+);
+if (
+    $pendingPhone === ''
+    || $otpPhone === ''
+    || $pendingPhoneCountry !== $otpPhoneCountry
+    || $pendingPhone !== $otpPhone
+) {
+    if (function_exists('system_log')) {
+        system_log('SUBADMIN_USER_CREATE_OTP_TARGET_MISMATCH', $otpRequestId, 'Create-user OTP target mismatch', [
+            'actor_uid' => (string)($actor['uid'] ?? ''),
+            'actor_role' => (string)($actor['role'] ?? ''),
+        ]);
+    }
+    ucc_response(false, 'OTP_TARGET_MISMATCH', 'OTP target phone validation failed', [], 400);
+}
+
 if ((bool)($otpRow['used'] ?? false)) {
     ucc_response(false, 'OTP_ALREADY_USED', 'OTP already used', [], 400);
 }
@@ -312,6 +341,23 @@ $pin = trim((string)($payload['pin'] ?? ''));
 
 if ($name === '' || $phone === '' || $email === '' || $password === '' || $pin === '') {
     ucc_response(false, 'PREAUTH_INVALID', 'Stored user creation payload is incomplete', [], 400);
+}
+
+$pendingPricingCountry = auth_normalize_country_code(
+    (string)($preAuthRow['target_pricing_country'] ?? $pricingCountry)
+);
+if (
+    $phoneCountry !== $pendingPhoneCountry
+    || $phone !== $pendingPhone
+    || $pricingCountry !== $pendingPricingCountry
+) {
+    if (function_exists('system_log')) {
+        system_log('SUBADMIN_USER_CREATE_PENDING_DATA_MISMATCH', $otpRequestId, 'Create-user pending data mismatch', [
+            'actor_uid' => (string)($actor['uid'] ?? ''),
+            'actor_role' => (string)($actor['role'] ?? ''),
+        ]);
+    }
+    ucc_response(false, 'PREAUTH_INVALID', 'Stored user creation target validation failed', [], 400);
 }
 
 if (auth_find_uid_by_phone_country($phone, $phoneCountry) !== '') {
