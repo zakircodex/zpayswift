@@ -239,8 +239,13 @@ if (!is_array($targetUser)) {
 $targetRole = strtoupper(trim((string)($targetUser['role'] ?? '')));
 $targetStatus = strtoupper(trim((string)($targetUser['status'] ?? 'INACTIVE')));
 
-if (!in_array($targetRole, ['USER', 'RETAILER'], true)) {
-    deduct_otp_send_response(false, 'FORBIDDEN', 'Only USER or RETAILER wallet can be deducted here', [], 403);
+$actorRole = strtoupper(trim((string)($actor['role'] ?? '')));
+$allowedTargetRoles = $actorRole === 'ADMIN'
+    ? ['USER', 'RETAILER', 'SUBADMIN']
+    : ['USER', 'RETAILER'];
+
+if (!in_array($targetRole, $allowedTargetRoles, true)) {
+    deduct_otp_send_response(false, 'FORBIDDEN', 'This account role cannot be deducted here', [], 403);
 }
 
 if ($targetStatus !== 'ACTIVE') {
@@ -269,6 +274,29 @@ if ($targetPhone === '') {
         [],
         422
     );
+}
+
+if ($actorRole === 'SUBADMIN') {
+    $actorUidForCurrency = trim((string)($actor['uid'] ?? ''));
+    $actorUser = $actorUidForCurrency !== '' ? fb_get('USERS/' . $actorUidForCurrency) : [];
+    $actorWallet = $actorUidForCurrency !== '' ? fb_get('USER_WALLETS/' . $actorUidForCurrency) : [];
+    $actorCurrency = wallet_account_currency(
+        is_array($actorUser) ? $actorUser : $actor,
+        is_array($actorWallet) ? $actorWallet : []
+    );
+
+    if ($actorCurrency !== $targetCurrency) {
+        deduct_otp_send_response(
+            false,
+            'CURRENCY_MISMATCH',
+            'Subadmin and target wallet currency must match',
+            [
+                'subadmin_currency' => $actorCurrency,
+                'target_currency' => $targetCurrency,
+            ],
+            422
+        );
+    }
 }
 
 $available = (float)($wallet['available_balance'] ?? 0);
@@ -310,7 +338,7 @@ $smsRes = auth_send_otp_sms_by_country(
     $targetPhone,
     $message,
     $otpRequestId,
-    'PIN_VERIFY',
+    'BALANCE_DEDUCT',
     $otp
 );
 $smsPatch = auth_sms_result_log_fields($smsRes);

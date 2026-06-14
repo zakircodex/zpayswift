@@ -538,6 +538,9 @@ function subapi_settle_topup_success(array &$request, string $message = 'Topup c
     $now = subapi_now();
 
     $wallet = subapi_load_wallet($uid);
+    $walletCurrency = function_exists('wallet_currency_for_uid')
+        ? wallet_currency_for_uid($uid, $wallet)
+        : (string)($request['wallet_debit_currency'] ?? $request['wallet_currency'] ?? 'BDT');
     $currentAvailable = subapi_round_money((float)($wallet['available_balance'] ?? 0));
     $currentHold = subapi_round_money((float)($wallet['hold_balance'] ?? 0));
     $currentTopupSpent = subapi_round_money((float)($wallet['total_topup_spent'] ?? 0));
@@ -566,6 +569,8 @@ function subapi_settle_topup_success(array &$request, string $message = 'Topup c
         'type' => 'API_TOPUP_SUCCESS',
         'direction' => 'DEBIT_HOLD',
         'amount' => $amount,
+        'currency' => $walletCurrency,
+        'wallet_currency' => $walletCurrency,
         'before_available' => $currentAvailable,
         'after_available' => $newAvailable,
         'before_hold' => $currentHold,
@@ -606,6 +611,9 @@ function subapi_settle_topup_failed(array &$request, string $message = 'Topup fa
     $now = subapi_now();
 
     $wallet = subapi_load_wallet($uid);
+    $walletCurrency = function_exists('wallet_currency_for_uid')
+        ? wallet_currency_for_uid($uid, $wallet)
+        : (string)($request['wallet_debit_currency'] ?? $request['wallet_currency'] ?? 'BDT');
     $currentAvailable = subapi_round_money((float)($wallet['available_balance'] ?? 0));
     $currentHold = subapi_round_money((float)($wallet['hold_balance'] ?? 0));
     $currentRefund = subapi_round_money((float)($wallet['total_refund'] ?? 0));
@@ -634,6 +642,8 @@ function subapi_settle_topup_failed(array &$request, string $message = 'Topup fa
         'type' => 'API_TOPUP_FAILED_RELEASE',
         'direction' => 'RELEASE_HOLD',
         'amount' => $amount,
+        'currency' => $walletCurrency,
+        'wallet_currency' => $walletCurrency,
         'before_available' => $currentAvailable,
         'after_available' => $newAvailable,
         'before_hold' => $currentHold,
@@ -762,7 +772,7 @@ function subapi_create_panel_topup(
     $availableBalance = subapi_round_money((float)($wallet['available_balance'] ?? 0));
     $holdBalance = subapi_round_money((float)($wallet['hold_balance'] ?? 0));
     $financials = topup_commission_breakdown($uid, $amount, $user, $roleSettings);
-    $walletDebit = (float)$financials['wallet_debit_bdt'];
+    $walletDebit = (float)$financials['wallet_debit_amount'];
 
     if ($availableBalance < $walletDebit) {
         return [
@@ -808,7 +818,12 @@ function subapi_create_panel_topup(
         'commission_per_1000' => $financials['commission_per_1000'],
         'commission_bdt' => $financials['commission_bdt'],
         'commission_amount' => $financials['commission_bdt'],
-        'wallet_debit_bdt' => $walletDebit,
+        'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => $financials['wallet_debit_currency'],
+        'wallet_currency' => $financials['wallet_currency'],
+        'rate_used' => $financials['rate_used'],
+        'total_debit_bdt' => $financials['total_debit_bdt'],
         'total_debit' => $walletDebit,
         'charged_amount' => $walletDebit,
         'status' => 'PENDING',
@@ -867,7 +882,11 @@ function subapi_create_panel_topup(
         'topup_amount_bdt' => $amount,
         'commission_per_1000' => $financials['commission_per_1000'],
         'commission_bdt' => $financials['commission_bdt'],
-        'wallet_debit_bdt' => $walletDebit,
+        'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => $financials['wallet_debit_currency'],
+        'wallet_currency' => $financials['wallet_currency'],
+        'rate_used' => $financials['rate_used'],
         'before_available' => $availableBalance,
         'after_available' => $newAvailable,
         'before_hold' => $holdBalance,
@@ -889,7 +908,10 @@ function subapi_create_panel_topup(
         'amount' => $amount,
         'commission_per_1000' => $financials['commission_per_1000'],
         'commission_bdt' => $financials['commission_bdt'],
-        'wallet_debit_bdt' => $walletDebit,
+        'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => $financials['wallet_debit_currency'],
+        'rate_used' => $financials['rate_used'],
         'message' => $note !== '' ? $note : 'Topup created from subadmin panel',
         'source' => 'SUBADMIN_PANEL',
         'created_at' => $now,
@@ -904,7 +926,10 @@ function subapi_create_panel_topup(
             'amount' => $amount,
             'commission_per_1000' => $financials['commission_per_1000'],
             'commission_bdt' => $financials['commission_bdt'],
-            'wallet_debit_bdt' => $walletDebit,
+            'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+            'wallet_debit_amount' => $walletDebit,
+            'wallet_debit_currency' => $financials['wallet_debit_currency'],
+            'rate_used' => $financials['rate_used'],
         ]);
     }
 
@@ -925,7 +950,10 @@ function subapi_create_panel_topup(
             'amount_bdt' => $amount,
             'commission_per_1000' => $financials['commission_per_1000'],
             'commission_bdt' => $financials['commission_bdt'],
-            'wallet_debit_bdt' => $walletDebit,
+            'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+            'wallet_debit_amount' => $walletDebit,
+            'wallet_debit_currency' => $financials['wallet_debit_currency'],
+            'rate_used' => $financials['rate_used'],
             'total_debit' => $walletDebit,
             'status' => 'PENDING',
             'available_balance' => $newAvailable,
@@ -1622,15 +1650,17 @@ function subapi_create_panel_bundle(
     $wallet = subapi_load_wallet($uid);
     $currentAvailable = subapi_round_money((float)($wallet['available_balance'] ?? 0));
     $currentHold = subapi_round_money((float)($wallet['hold_balance'] ?? 0));
+    $bundleFinancials = bundle_wallet_breakdown($uid, $payableAmount, $user, $wallet);
+    $walletHoldAmount = (float)$bundleFinancials['wallet_hold_amount'];
 
-    if ($currentAvailable < $payableAmount) {
+    if ($currentAvailable < $walletHoldAmount) {
         return [
             'ok' => false,
             'code' => 'INSUFFICIENT_BALANCE',
             'message' => 'Not enough available balance',
             'data' => [
                 'available_balance' => $currentAvailable,
-                'required_amount' => $payableAmount,
+                'required_amount' => $walletHoldAmount,
                 'price_amount' => $priceAmount,
                 'user_commission' => $userCommission,
             ],
@@ -1641,8 +1671,8 @@ function subapi_create_panel_bundle(
     $now = function_exists('bundle_now') ? bundle_now() : subapi_now();
     $userPhone = trim((string)($user['phone'] ?? ''));
 
-    $newAvailable = subapi_round_money($currentAvailable - $payableAmount);
-    $newHold = subapi_round_money($currentHold + $payableAmount);
+    $newAvailable = subapi_round_money($currentAvailable - $walletHoldAmount);
+    $newHold = subapi_round_money($currentHold + $walletHoldAmount);
 
     $walletHoldOk = fb_patch('USER_WALLETS/' . $uid, [
         'available_balance' => $newAvailable,
@@ -1672,6 +1702,7 @@ function subapi_create_panel_bundle(
         'offer_price' => $priceAmount,
         'you_pay' => $payableAmount,
         'payable_amount' => $payableAmount,
+        'payable_amount_bdt' => $payableAmount,
 
         'admin_commission' => $adminCommission,
         'user_commission' => $userCommission,
@@ -1680,8 +1711,12 @@ function subapi_create_panel_bundle(
         'subadmin_uid' => $subadminUid,
         'customized_by_subadmin' => $customizedBySubadmin,
 
-        'wallet_hold_amount' => $payableAmount,
-        'held_amount' => $payableAmount,
+        'wallet_hold_amount' => $walletHoldAmount,
+        'held_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+        'wallet_currency' => $bundleFinancials['wallet_currency'],
+        'rate_used' => $bundleFinancials['rate_used'],
         'hold_settled_at' => 0,
         'hold_settlement_status' => 'PENDING',
     ];
@@ -1716,8 +1751,12 @@ function subapi_create_panel_bundle(
             'you_pay' => $payableAmount,
             'payable_amount' => $payableAmount,
             'note' => $note,
-            'wallet_hold_amount' => $payableAmount,
-            'held_amount' => $payableAmount,
+            'wallet_hold_amount' => $walletHoldAmount,
+            'held_amount' => $walletHoldAmount,
+            'wallet_debit_amount' => $walletHoldAmount,
+            'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+            'wallet_currency' => $bundleFinancials['wallet_currency'],
+            'rate_used' => $bundleFinancials['rate_used'],
             'status' => 'WAITING_ADMIN',
             'telegram_sent' => false,
             'telegram_queue_id' => '',
@@ -1762,10 +1801,13 @@ function subapi_create_panel_bundle(
         'uid' => $uid,
         'type' => 'SUBADMIN_PANEL_BUNDLE_HOLD',
         'direction' => 'HOLD',
-        'amount' => $payableAmount,
+        'amount' => $walletHoldAmount,
+        'currency' => $bundleFinancials['wallet_currency'],
+        'wallet_currency' => $bundleFinancials['wallet_currency'],
         'price_amount' => $priceAmount,
         'you_pay' => $payableAmount,
         'payable_amount' => $payableAmount,
+        'payable_amount_bdt' => $payableAmount,
         'admin_commission' => $adminCommission,
         'user_commission' => $userCommission,
         'subadmin_profit' => $subadminProfit,
@@ -1796,6 +1838,11 @@ function subapi_create_panel_bundle(
         'price_amount' => $priceAmount,
         'you_pay' => $payableAmount,
         'payable_amount' => $payableAmount,
+        'payable_amount_bdt' => $payableAmount,
+        'wallet_hold_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+        'rate_used' => $bundleFinancials['rate_used'],
         'admin_commission' => $adminCommission,
         'user_commission' => $userCommission,
         'subadmin_profit' => $subadminProfit,
@@ -1816,7 +1863,10 @@ function subapi_create_panel_bundle(
             'bundle_name' => $bundleName,
             'price_amount' => $priceAmount,
             'payable_amount' => $payableAmount,
-            'wallet_hold_amount' => $payableAmount,
+            'wallet_hold_amount' => $walletHoldAmount,
+            'wallet_debit_amount' => $walletHoldAmount,
+            'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+            'rate_used' => $bundleFinancials['rate_used'],
             'admin_commission' => $adminCommission,
             'user_commission' => $userCommission,
             'subadmin_profit' => $subadminProfit,
@@ -1839,7 +1889,10 @@ function subapi_create_panel_bundle(
             'price_amount' => $priceAmount,
             'you_pay' => $payableAmount,
             'payable_amount' => $payableAmount,
-            'wallet_hold_amount' => $payableAmount,
+            'wallet_hold_amount' => $walletHoldAmount,
+            'wallet_debit_amount' => $walletHoldAmount,
+            'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+            'rate_used' => $bundleFinancials['rate_used'],
             'admin_commission' => $adminCommission,
             'user_commission' => $userCommission,
             'subadmin_profit' => $subadminProfit,

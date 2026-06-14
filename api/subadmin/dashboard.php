@@ -1023,11 +1023,13 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
       <div class="box"><label>Phone</label><strong id="deductTargetPhone">-</strong></div>
       <div class="box"><label>Available Balance</label><strong id="deductTargetBalance">0.00</strong></div>
       <div class="box"><label>Role</label><strong id="deductTargetRole">-</strong></div>
+      <div class="box"><label>Receiver Currency</label><strong id="deductTargetCurrency">BDT</strong></div>
     </div>
 
     <div class="field">
-      <label>Deduct Amount (BDT)</label>
+      <label id="deductAmountLabel">Deduct Amount (BDT)</label>
       <input id="deductAmountInput" class="input" type="number" step="0.01" min="0.01" placeholder="Enter amount">
+      <small class="muted">The amount is deducted directly in the receiver wallet currency. No exchange conversion is applied.</small>
     </div>
 
     <div class="field">

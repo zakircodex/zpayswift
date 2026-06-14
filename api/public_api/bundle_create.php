@@ -98,11 +98,13 @@ if ($amount <= 0) {
 
 $currentAvailable = (float)($wallet['available_balance'] ?? 0);
 $currentHold = (float)($wallet['hold_balance'] ?? 0);
+$bundleFinancials = bundle_wallet_breakdown($uid, $amount, $user, $wallet);
+$walletHoldAmount = (float)$bundleFinancials['wallet_hold_amount'];
 
-if ($currentAvailable < $amount) {
+if ($currentAvailable < $walletHoldAmount) {
     api_response(false, 'INSUFFICIENT_BALANCE', 'Not enough available balance', [
         'available_balance' => $currentAvailable,
-        'required_amount' => $amount,
+        'required_amount' => $walletHoldAmount,
     ], 422);
 }
 
@@ -110,8 +112,8 @@ $requestId = function_exists('bundle_make_request_id') ? bundle_make_request_id(
 $now = function_exists('bundle_now') ? bundle_now() : now_ts();
 $userPhone = trim((string)($user['phone'] ?? ''));
 
-$newAvailable = $currentAvailable - $amount;
-$newHold = $currentHold + $amount;
+$newAvailable = $currentAvailable - $walletHoldAmount;
+$newHold = $currentHold + $walletHoldAmount;
 
 /*
 |--------------------------------------------------------------------------
@@ -147,8 +149,13 @@ $extra = [
     'subadmin_uid' => $subadminUid,
     'customized_by_subadmin' => $customizedBySubadmin,
 
-    'wallet_hold_amount' => $amount,
-    'held_amount' => $amount,
+    'payable_amount_bdt' => $amount,
+    'wallet_hold_amount' => $walletHoldAmount,
+    'held_amount' => $walletHoldAmount,
+    'wallet_debit_amount' => $walletHoldAmount,
+    'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+    'wallet_currency' => $bundleFinancials['wallet_currency'],
+    'rate_used' => $bundleFinancials['rate_used'],
     'hold_settled_at' => 0,
     'hold_settlement_status' => 'PENDING',
     'source_key_id' => $keyId,
@@ -180,8 +187,12 @@ if (function_exists('create_bundle_pending_request')) {
         'bundle_name' => $bundleName,
         'amount' => $amount,
         'note' => $note,
-        'wallet_hold_amount' => $amount,
-        'held_amount' => $amount,
+        'wallet_hold_amount' => $walletHoldAmount,
+        'held_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+        'wallet_currency' => $bundleFinancials['wallet_currency'],
+        'rate_used' => $bundleFinancials['rate_used'],
         'status' => 'WAITING_ADMIN',
         'telegram_sent' => false,
         'telegram_queue_id' => '',
@@ -240,7 +251,12 @@ fb_put('WALLET_LEDGER/' . $uid . '/' . $ledgerMonth . '/' . $ledgerId, [
     'uid' => $uid,
     'type' => 'API_BUNDLE_HOLD',
     'direction' => 'HOLD',
-    'amount' => $amount,
+    'amount' => $walletHoldAmount,
+    'currency' => $bundleFinancials['wallet_currency'],
+    'wallet_currency' => $bundleFinancials['wallet_currency'],
+    'payable_amount_bdt' => $amount,
+    'wallet_debit_amount' => $walletHoldAmount,
+    'rate_used' => $bundleFinancials['rate_used'],
     'before_available' => $currentAvailable,
     'after_available' => $newAvailable,
     'before_hold' => $currentHold,
@@ -271,6 +287,11 @@ if (function_exists('subapi_log_request')) {
     'offer_id' => $offerId,
     'bundle_name' => $bundleName,
     'amount' => $amount,
+    'payable_amount_bdt' => $amount,
+    'wallet_hold_amount' => $walletHoldAmount,
+    'wallet_debit_amount' => $walletHoldAmount,
+    'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+    'rate_used' => $bundleFinancials['rate_used'],
     'message' => 'Bundle request created via subadmin API',
     'note' => $note,
     'created_at' => $now,
@@ -287,6 +308,9 @@ if (function_exists('system_log')) {
         'bundle_number' => $bundleNumber,
         'bundle_name' => $bundleName,
         'amount' => $amount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+        'rate_used' => $bundleFinancials['rate_used'],
         'note' => $note,
     ]);
 }
@@ -300,6 +324,10 @@ api_response(true, 'SUCCESS', 'Bundle request created successfully', [
     'bundle_number' => $bundleNumber,
     'bundle_name' => $bundleName,
     'amount' => $amount,
+    'wallet_hold_amount' => $walletHoldAmount,
+    'wallet_debit_amount' => $walletHoldAmount,
+    'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+    'rate_used' => $bundleFinancials['rate_used'],
     'admin_commission' => $adminCommission,
     'user_commission' => $userCommission,
     'subadmin_profit' => $subadminProfit,

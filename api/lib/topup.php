@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/subadmin_api.php';
+require_once __DIR__ . '/wallet.php';
 
 function topup_now(): int
 {
@@ -52,16 +53,26 @@ function topup_commission_breakdown(
 
     $commission = round(($amount * $rate) / 1000, 2);
     $commission = min($amount, max(0, $commission));
-    $walletDebit = round(max(0, $amount - $commission), 2);
+    $walletDebitBdt = round(max(0, $amount - $commission), 2);
+    $walletBreakdown = wallet_service_bdt_to_native($uid, $walletDebitBdt, $user);
+    $walletDebitAmount = (float)($walletBreakdown['wallet_amount'] ?? $walletDebitBdt);
+    $walletCurrency = (string)($walletBreakdown['wallet_currency'] ?? 'BDT');
+    $rateUsed = (float)($walletBreakdown['rate_used'] ?? 0);
 
     return [
         'role' => $role,
         'amount_bdt' => $amount,
         'commission_per_1000' => $rate,
         'commission_bdt' => $commission,
-        'wallet_debit_bdt' => $walletDebit,
-        'total_debit' => $walletDebit,
-        'charged_amount' => $walletDebit,
+        'commission_amount' => $commission,
+        'wallet_debit_bdt' => $walletDebitBdt,
+        'wallet_debit_amount' => $walletDebitAmount,
+        'wallet_debit_currency' => $walletCurrency,
+        'wallet_currency' => $walletCurrency,
+        'rate_used' => $rateUsed,
+        'total_debit_bdt' => $walletDebitBdt,
+        'total_debit' => $walletDebitAmount,
+        'charged_amount' => $walletDebitAmount,
     ];
 }
 
@@ -481,6 +492,11 @@ function create_topup_pending_request(
         'commission_per_1000' => 0,
         'commission_bdt' => 0,
         'wallet_debit_bdt' => $amount,
+        'wallet_debit_amount' => $amount,
+        'wallet_debit_currency' => 'BDT',
+        'wallet_currency' => 'BDT',
+        'rate_used' => 0,
+        'total_debit_bdt' => $amount,
         'total_debit' => $amount,
         'charged_amount' => $amount,
     ], $financials);
@@ -497,10 +513,15 @@ function create_topup_pending_request(
         'commission_bdt' => (float)$financials['commission_bdt'],
         'commission_amount' => (float)$financials['commission_bdt'],
         'wallet_debit_bdt' => (float)$financials['wallet_debit_bdt'],
+        'wallet_debit_amount' => (float)$financials['wallet_debit_amount'],
+        'wallet_debit_currency' => (string)$financials['wallet_debit_currency'],
+        'wallet_currency' => (string)$financials['wallet_currency'],
+        'rate_used' => (float)$financials['rate_used'],
+        'total_debit_bdt' => (float)$financials['total_debit_bdt'],
         'total_debit' => (float)$financials['total_debit'],
         'charged_amount' => (float)$financials['charged_amount'],
         'request_pin_verified' => true,
-        'wallet_hold_amount' => (float)$financials['wallet_debit_bdt'],
+        'wallet_hold_amount' => (float)$financials['wallet_debit_amount'],
         'status' => 'PENDING',
         'assigned_device_id' => '',
         'assigned_slot' => '',
@@ -546,6 +567,11 @@ function topup_write_history(array $done): void
         'commission_per_1000' => (float)($done['commission_per_1000'] ?? 0),
         'commission_bdt' => (float)($done['commission_bdt'] ?? $done['commission_amount'] ?? 0),
         'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $done['wallet_hold_amount'] ?? $done['amount'] ?? 0),
+        'wallet_debit_amount' => (float)($done['wallet_debit_amount'] ?? $done['wallet_hold_amount'] ?? $done['wallet_debit_bdt'] ?? $done['amount'] ?? 0),
+        'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),
+        'wallet_currency' => (string)($done['wallet_currency'] ?? $done['wallet_debit_currency'] ?? 'BDT'),
+        'rate_used' => (float)($done['rate_used'] ?? 0),
+        'total_debit_bdt' => (float)($done['total_debit_bdt'] ?? $done['wallet_debit_bdt'] ?? $done['amount'] ?? 0),
         'total_debit' => (float)($done['total_debit'] ?? $done['wallet_hold_amount'] ?? $done['amount'] ?? 0),
         'status' => (string)($done['status'] ?? ''),
         'message' => (string)($done['final_message'] ?? ''),

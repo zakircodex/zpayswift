@@ -52,7 +52,7 @@ if (!$amountOk) {
 $currentAvailable = (float)($wallet['available_balance'] ?? 0);
 $currentHold = (float)($wallet['hold_balance'] ?? 0);
 $financials = topup_commission_breakdown($uid, $amount, $user, $roleSettings);
-$walletDebit = (float)$financials['wallet_debit_bdt'];
+$walletDebit = (float)$financials['wallet_debit_amount'];
 
 if ($currentAvailable < $walletDebit) {
     api_response(false, 'INSUFFICIENT_BALANCE', 'Not enough available balance', [
@@ -98,7 +98,12 @@ $requestRow = [
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
     'commission_amount' => $financials['commission_bdt'],
-    'wallet_debit_bdt' => $walletDebit,
+    'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_currency' => $financials['wallet_debit_currency'],
+    'wallet_currency' => $financials['wallet_currency'],
+    'rate_used' => $financials['rate_used'],
+    'total_debit_bdt' => $financials['total_debit_bdt'],
     'total_debit' => $walletDebit,
     'charged_amount' => $walletDebit,
     'request_pin_verified' => true,
@@ -155,10 +160,15 @@ fb_put('WALLET_LEDGER/' . $uid . '/' . $ledgerMonth . '/' . $ledgerId, [
     'type' => 'API_TOPUP_HOLD',
     'direction' => 'HOLD',
     'amount' => $walletDebit,
+    'currency' => $financials['wallet_debit_currency'],
+    'wallet_currency' => $financials['wallet_debit_currency'],
     'topup_amount_bdt' => $amount,
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
-    'wallet_debit_bdt' => $walletDebit,
+    'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_currency' => $financials['wallet_debit_currency'],
+    'rate_used' => $financials['rate_used'],
     'before_available' => $currentAvailable,
     'after_available' => $newAvailable,
     'before_hold' => $currentHold,
@@ -185,7 +195,10 @@ subapi_log_request($uid, [
     'amount' => $amount,
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
-    'wallet_debit_bdt' => $walletDebit,
+    'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_currency' => $financials['wallet_debit_currency'],
+    'rate_used' => $financials['rate_used'],
     'message' => 'Topup request created via subadmin API',
     'note' => $note,
     'created_at' => $now,
@@ -201,7 +214,10 @@ if (function_exists('system_log')) {
         'amount' => $amount,
         'commission_per_1000' => $financials['commission_per_1000'],
         'commission_bdt' => $financials['commission_bdt'],
-        'wallet_debit_bdt' => $walletDebit,
+        'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => $financials['wallet_debit_currency'],
+        'rate_used' => $financials['rate_used'],
         'note' => $note,
     ]);
 }
@@ -218,7 +234,10 @@ api_response(true, 'SUCCESS', 'Topup request created successfully', [
     'amount_bdt' => $amount,
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
-    'wallet_debit_bdt' => $walletDebit,
+    'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_currency' => $financials['wallet_debit_currency'],
+    'rate_used' => $financials['rate_used'],
     'total_debit' => $walletDebit,
     'created_at' => $now,
     'wallet' => [

@@ -55,6 +55,8 @@
     setText('deductTargetPhone', row.phone || '-');
     setText('deductTargetBalance', prefix + ' ' + window.money(row.available_balance || 0));
     setText('deductTargetRole', row.role || '-');
+    setText('deductTargetCurrency', currency === 'MYR' ? 'MYR (RM)' : 'BDT');
+    setText('deductAmountLabel', `Deduct Amount (${prefix})`);
   }
 
   function fillConfirmInfo(){
@@ -89,6 +91,8 @@
     setText('deductTargetPhone', '-');
     setText('deductTargetBalance', '0.00');
     setText('deductTargetRole', '-');
+    setText('deductTargetCurrency', 'BDT');
+    setText('deductAmountLabel', 'Deduct Amount (BDT)');
 
     setText('deductConfirmName', '-');
     setText('deductConfirmPhone', '-');

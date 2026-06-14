@@ -1898,7 +1898,7 @@ function user_proxy_create_topup_request(string $uid, array $body): array
 
     $requestId = user_proxy_make_id('TR');
     $financials = topup_commission_breakdown($uid, $amount, $userRow, $roleSettings);
-    $walletDebit = (float)$financials['wallet_debit_bdt'];
+    $walletDebit = (float)$financials['wallet_debit_amount'];
 
     $hold = user_proxy_hold_balance(
         $uid,
@@ -1931,7 +1931,12 @@ function user_proxy_create_topup_request(string $uid, array $body): array
         'commission_per_1000' => $financials['commission_per_1000'],
         'commission_bdt' => $financials['commission_bdt'],
         'commission_amount' => $financials['commission_bdt'],
-        'wallet_debit_bdt' => $walletDebit,
+        'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => $financials['wallet_debit_currency'],
+        'wallet_currency' => $financials['wallet_currency'],
+        'rate_used' => $financials['rate_used'],
+        'total_debit_bdt' => $financials['total_debit_bdt'],
         'total_debit' => $walletDebit,
         'charged_amount' => $walletDebit,
         'note' => $note,
@@ -1991,7 +1996,10 @@ function user_proxy_create_topup_request(string $uid, array $body): array
             'amount' => $amount,
             'commission_per_1000' => $financials['commission_per_1000'],
             'commission_bdt' => $financials['commission_bdt'],
-            'wallet_debit_bdt' => $walletDebit,
+            'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+            'wallet_debit_amount' => $walletDebit,
+            'wallet_debit_currency' => $financials['wallet_debit_currency'],
+            'rate_used' => $financials['rate_used'],
         ]);
     }
 
@@ -2012,7 +2020,10 @@ function user_proxy_create_topup_request(string $uid, array $body): array
             'amount_bdt' => $amount,
             'commission_per_1000' => $financials['commission_per_1000'],
             'commission_bdt' => $financials['commission_bdt'],
-            'wallet_debit_bdt' => $walletDebit,
+            'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+            'wallet_debit_amount' => $walletDebit,
+            'wallet_debit_currency' => $financials['wallet_debit_currency'],
+            'rate_used' => $financials['rate_used'],
             'total_debit' => $walletDebit,
             'created_at' => $now,
             'wallet' => [
@@ -2132,10 +2143,13 @@ function user_proxy_create_bundle_request(string $uid, string $offerId, string $
 
     $requestId = user_proxy_make_id('BR');
     $userPhone = trim((string)($user['phone'] ?? ''));
+    $wallet = user_proxy_load_wallet($uid);
+    $bundleFinancials = bundle_wallet_breakdown($uid, $payableAmount, $user, $wallet);
+    $walletHoldAmount = (float)$bundleFinancials['wallet_hold_amount'];
 
     $hold = user_proxy_hold_balance(
         $uid,
-        $payableAmount,
+        $walletHoldAmount,
         $requestId,
         'USER_WEB_BUNDLE_HOLD',
         'Balance held for web bundle request'
@@ -2176,8 +2190,13 @@ function user_proxy_create_bundle_request(string $uid, string $offerId, string $
         'net_cost_after_commission' => $payableAmount,
         'you_pay' => $payableAmount,
         'payable_amount' => $payableAmount,
-        'wallet_hold_amount' => $payableAmount,
-        'held_amount' => $payableAmount,
+        'payable_amount_bdt' => $payableAmount,
+        'wallet_hold_amount' => $walletHoldAmount,
+        'held_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+        'wallet_currency' => $bundleFinancials['wallet_currency'],
+        'rate_used' => $bundleFinancials['rate_used'],
         'hold_settled_at' => 0,
         'hold_settlement_status' => 'PENDING',
     ];
@@ -2223,7 +2242,7 @@ function user_proxy_create_bundle_request(string $uid, string $offerId, string $
     if (!$requestSaved) {
         user_proxy_release_hold_rollback(
             $uid,
-            $payableAmount,
+            $walletHoldAmount,
             $requestId,
             'USER_WEB_BUNDLE_HOLD_ROLLBACK',
             'Bundle hold rollback after request create failure'
@@ -2302,7 +2321,10 @@ function user_proxy_create_bundle_request(string $uid, string $offerId, string $
             'net_cost_after_commission' => $payableAmount,
             'you_pay' => $payableAmount,
             'payable_amount' => $payableAmount,
-            'wallet_hold_amount' => $payableAmount,
+            'wallet_hold_amount' => $walletHoldAmount,
+            'wallet_debit_amount' => $walletHoldAmount,
+            'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+            'rate_used' => $bundleFinancials['rate_used'],
 
             'created_at' => $now,
             'wallet' => [
@@ -2679,12 +2701,12 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
     $walletHoldAmount = 0.00;
 
     if ($serviceMode === 'REMITTANCE') {
-        if ($amountMyrInput > 0) {
-            $amountMyr = $amountMyrInput;
-            $amountBdt = user_proxy_round_money($amountMyr * $rate);
-        } else {
+        if ($amountBdtInput > 0) {
             $amountBdt = $amountBdtInput;
             $amountMyr = $rate > 0 ? user_proxy_round_money($amountBdt / $rate) : 0.00;
+        } else {
+            $amountMyr = $amountMyrInput;
+            $amountBdt = user_proxy_round_money($amountMyr * $rate);
         }
 
         if ($amountBdt < 500 || $amountBdt > 50000 || $amountMyr <= 0) {

@@ -298,6 +298,15 @@ if (!deduct_otp_confirm_actor_can_access_target($actor, $targetUser)) {
     deduct_otp_confirm_response(false, 'FORBIDDEN', 'You cannot access this account', [], 403);
 }
 
+$targetRole = strtoupper(trim((string)($targetUser['role'] ?? '')));
+$allowedTargetRoles = $actorRole === 'ADMIN'
+    ? ['USER', 'RETAILER', 'SUBADMIN']
+    : ['USER', 'RETAILER'];
+
+if (!in_array($targetRole, $allowedTargetRoles, true)) {
+    deduct_otp_confirm_response(false, 'FORBIDDEN', 'This account role cannot be deducted here', [], 403);
+}
+
 $wallet = fb_get('USER_WALLETS/' . $targetUid);
 $wallet = is_array($wallet) ? $wallet : [];
 $operationCurrency = wallet_normalize_currency_code(
@@ -353,6 +362,16 @@ $actorLedgerId = '';
 if ($isSubadminTransfer) {
     $actorWallet = fb_get('USER_WALLETS/' . $actorUid);
     $actorWallet = is_array($actorWallet) ? $actorWallet : [];
+    $actorUser = fb_get('USERS/' . $actorUid);
+    $actorUser = is_array($actorUser) ? $actorUser : $actor;
+    $actorCurrency = wallet_account_currency($actorUser, $actorWallet);
+
+    if ($actorCurrency !== $operationCurrency) {
+        deduct_otp_confirm_response(false, 'CURRENCY_MISMATCH', 'Subadmin and target wallet currency must match', [
+            'subadmin_currency' => $actorCurrency,
+            'target_currency' => $operationCurrency,
+        ], 422);
+    }
 
     $actorBeforeAvailable = deduct_otp_confirm_money($actorWallet['available_balance'] ?? 0, 0.0);
     $actorAfterAvailable = round($actorBeforeAvailable + $totalDebit, 2);

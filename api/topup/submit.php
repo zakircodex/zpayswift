@@ -102,7 +102,7 @@ if ($userPinHash === '' || !password_verify($pin, $userPinHash)) {
 */
 $requestId = make_topup_request_id();
 $financials = topup_commission_breakdown($uid, $amount, $user);
-$walletDebit = (float)$financials['wallet_debit_bdt'];
+$walletDebit = (float)$financials['wallet_debit_amount'];
 
 $hold = wallet_hold_amount($uid, $walletDebit, $requestId, 'TOPUP_HOLD');
 if (!($hold['ok'] ?? false)) {
@@ -163,7 +163,10 @@ system_log('TOPUP_SUBMIT', $requestId, 'Topup request created successfully', [
     'amount' => $amount,
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
-    'wallet_debit_bdt' => $walletDebit,
+    'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_currency' => $financials['wallet_debit_currency'],
+    'rate_used' => $financials['rate_used'],
     'topup_number' => $topupNumber,
     'operator_active' => (bool)($runtime['active'] ?? false),
 ]);
@@ -182,6 +185,9 @@ api_response(true, 'TOPUP_REQUEST_CREATED', 'Topup request submitted', [
     'amount_bdt' => $amount,
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
-    'wallet_debit_bdt' => $walletDebit,
+    'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_currency' => $financials['wallet_debit_currency'],
+    'rate_used' => $financials['rate_used'],
     'total_debit' => $walletDebit,
 ]);

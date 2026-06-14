@@ -74,7 +74,7 @@ if ($adminUid === '') {
 
 $requestId = make_topup_request_id();
 $financials = topup_commission_breakdown($adminUid, $amount, $adminUser);
-$walletDebit = (float)$financials['wallet_debit_bdt'];
+$walletDebit = (float)$financials['wallet_debit_amount'];
 
 $hold = wallet_hold_amount($adminUid, $walletDebit, $requestId, 'TOPUP_HOLD');
 if (!($hold['ok'] ?? false)) {
@@ -103,7 +103,12 @@ $row = [
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
     'commission_amount' => $financials['commission_bdt'],
-    'wallet_debit_bdt' => $walletDebit,
+    'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_currency' => $financials['wallet_debit_currency'],
+    'wallet_currency' => $financials['wallet_currency'],
+    'rate_used' => $financials['rate_used'],
+    'total_debit_bdt' => $financials['total_debit_bdt'],
     'total_debit' => $walletDebit,
     'charged_amount' => $walletDebit,
     'request_pin_verified' => true,
@@ -148,7 +153,10 @@ admin_action_log('ADMIN_DIRECT_TOPUP_CREATE', $requestId, 'Admin created direct 
     'amount' => $amount,
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
-    'wallet_debit_bdt' => $walletDebit,
+    'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_currency' => $financials['wallet_debit_currency'],
+    'rate_used' => $financials['rate_used'],
     'admin_uid' => $adminUid,
     'admin_note' => $note,
 ]);
@@ -160,7 +168,10 @@ system_log('ADMIN_DIRECT_TOPUP_CREATE', $requestId, 'Admin created direct topup 
     'amount' => $amount,
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
-    'wallet_debit_bdt' => $walletDebit,
+    'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_currency' => $financials['wallet_debit_currency'],
+    'rate_used' => $financials['rate_used'],
     'operator_active' => (bool)($runtime['active'] ?? false),
     'admin_uid' => $adminUid,
 ]);
@@ -176,7 +187,10 @@ api_response(true, 'TOPUP_REQUEST_CREATED', 'Admin direct topup request created'
     'amount_bdt' => $amount,
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
-    'wallet_debit_bdt' => $walletDebit,
+    'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_currency' => $financials['wallet_debit_currency'],
+    'rate_used' => $financials['rate_used'],
     'total_debit' => $walletDebit,
     'created_by_admin' => true,
 ]);

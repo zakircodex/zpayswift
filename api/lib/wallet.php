@@ -136,6 +136,84 @@ function wallet_account_currency(array $user, array $wallet = []): string
     return 'BDT';
 }
 
+function wallet_currency_for_uid(string $uid, array $wallet = []): string
+{
+    $uid = trim($uid);
+    $user = $uid !== '' ? fb_get('USERS/' . $uid) : [];
+
+    return wallet_account_currency(
+        is_array($user) ? $user : [],
+        $wallet
+    );
+}
+
+function wallet_myr_to_bdt_rate(): float
+{
+    $paths = [
+        'MFS_SETTINGS/rate_myr_bdt',
+        'MFS_SETTINGS/rates/myr_to_bdt',
+        'MFS_CONFIG/RATE/MYR_TO_BDT',
+        'MFS_CONFIG/RATES/MYR_TO_BDT',
+        'APP_CONFIG/MYR_TO_BDT_RATE',
+        'APP_CONFIG/RINGGIT_RATE',
+    ];
+
+    foreach ($paths as $path) {
+        $value = fb_get($path);
+
+        if (is_numeric($value) && (float)$value > 0) {
+            return wallet_round_money((float)$value);
+        }
+
+        if (is_array($value)) {
+            foreach (['rate', 'value', 'amount', 'bdt'] as $key) {
+                if (isset($value[$key]) && is_numeric($value[$key]) && (float)$value[$key] > 0) {
+                    return wallet_round_money((float)$value[$key]);
+                }
+            }
+        }
+    }
+
+    if (defined('MYR_TO_BDT_RATE') && (float)MYR_TO_BDT_RATE > 0) {
+        return wallet_round_money((float)MYR_TO_BDT_RATE);
+    }
+
+    return 31.00;
+}
+
+function wallet_service_bdt_to_native(
+    string $uid,
+    float $amountBdt,
+    array $user = [],
+    array $wallet = []
+): array {
+    $uid = trim($uid);
+    $amountBdt = wallet_round_money(max(0, $amountBdt));
+
+    if (!$user && $uid !== '') {
+        $loadedUser = fb_get('USERS/' . $uid);
+        $user = is_array($loadedUser) ? $loadedUser : [];
+    }
+
+    if (!$wallet && $uid !== '') {
+        $loadedWallet = fb_get('USER_WALLETS/' . $uid);
+        $wallet = is_array($loadedWallet) ? $loadedWallet : [];
+    }
+
+    $currency = wallet_account_currency($user, $wallet);
+    $rate = wallet_myr_to_bdt_rate();
+    $walletAmount = $currency === 'MYR' && $rate > 0
+        ? wallet_round_money($amountBdt / $rate)
+        : $amountBdt;
+
+    return [
+        'amount_bdt' => $amountBdt,
+        'wallet_currency' => $currency,
+        'wallet_amount' => $walletAmount,
+        'rate_used' => $currency === 'MYR' ? $rate : 0.0,
+    ];
+}
+
 function wallet_identity(string $uid, array $user = [], string $fallbackRole = 'USER'): array
 {
     if (!$user && $uid !== '') {
@@ -499,6 +577,7 @@ function wallet_credit_available(
 
         $wallet = $res['value'];
         $now = wallet_now();
+        $walletCurrency = wallet_currency_for_uid($uid, $wallet);
 
         $beforeAvailable = (float)($wallet['available_balance'] ?? 0);
         $beforeHold = (float)($wallet['hold_balance'] ?? 0);
@@ -538,6 +617,8 @@ function wallet_credit_available(
             'type' => $type,
             'direction' => 'CREDIT',
             'amount' => wallet_round_money($amount),
+            'currency' => $walletCurrency,
+            'wallet_currency' => $walletCurrency,
             'before_available' => wallet_round_money($beforeAvailable),
             'after_available' => $afterAvailable,
             'before_hold' => wallet_round_money($beforeHold),
@@ -558,10 +639,7 @@ function wallet_credit_available(
             'hold_balance' => wallet_round_money($beforeHold),
             'before_available' => wallet_round_money($beforeAvailable),
             'after_available' => $afterAvailable,
-            'currency' => $creditCurrency !== '' ? $creditCurrency : wallet_normalize_currency_code(
-                $wallet['wallet_currency'] ?? $wallet['currency'] ?? '',
-                'BDT'
-            ),
+            'currency' => $creditCurrency !== '' ? $creditCurrency : $walletCurrency,
         ];
     }
 
@@ -601,6 +679,7 @@ function wallet_debit_available(
 
         $wallet = $res['value'];
         $now = wallet_now();
+        $walletCurrency = wallet_currency_for_uid($uid, $wallet);
 
         $beforeAvailable = (float)($wallet['available_balance'] ?? 0);
         $beforeHold = (float)($wallet['hold_balance'] ?? 0);
@@ -640,6 +719,8 @@ function wallet_debit_available(
             'type' => $type,
             'direction' => 'DEBIT',
             'amount' => wallet_round_money($amount),
+            'currency' => $walletCurrency,
+            'wallet_currency' => $walletCurrency,
             'before_available' => wallet_round_money($beforeAvailable),
             'after_available' => $afterAvailable,
             'before_hold' => wallet_round_money($beforeHold),
@@ -693,6 +774,7 @@ function wallet_hold_amount(string $uid, float $amount, string $refId, string $t
 
         $wallet = $res['value'];
         $now = wallet_now();
+        $currency = wallet_currency_for_uid($uid, $wallet);
 
         $available = (float)($wallet['available_balance'] ?? 0);
         $hold = (float)($wallet['hold_balance'] ?? 0);
@@ -731,6 +813,8 @@ function wallet_hold_amount(string $uid, float $amount, string $refId, string $t
             'type' => $type,
             'direction' => 'HOLD',
             'amount' => wallet_round_money($amount),
+            'currency' => $currency,
+            'wallet_currency' => $currency,
             'before_available' => wallet_round_money($available),
             'after_available' => $updated['available_balance'],
             'before_hold' => wallet_round_money($hold),
@@ -779,6 +863,7 @@ function wallet_refund_hold(string $uid, float $amount, string $refId, string $t
 
         $wallet = $res['value'];
         $now = wallet_now();
+        $currency = wallet_currency_for_uid($uid, $wallet);
 
         $available = (float)($wallet['available_balance'] ?? 0);
         $hold = (float)($wallet['hold_balance'] ?? 0);
@@ -809,6 +894,8 @@ function wallet_refund_hold(string $uid, float $amount, string $refId, string $t
             'type' => $type,
             'direction' => 'RELEASE_HOLD',
             'amount' => wallet_round_money($amount),
+            'currency' => $currency,
+            'wallet_currency' => $currency,
             'before_available' => wallet_round_money($available),
             'after_available' => $updated['available_balance'],
             'before_hold' => wallet_round_money($hold),
@@ -857,6 +944,7 @@ function wallet_settle_hold(string $uid, float $amount, string $refId, string $t
 
         $wallet = $res['value'];
         $now = wallet_now();
+        $currency = wallet_currency_for_uid($uid, $wallet);
 
         $available = (float)($wallet['available_balance'] ?? 0);
         $hold = (float)($wallet['hold_balance'] ?? 0);
@@ -886,6 +974,8 @@ function wallet_settle_hold(string $uid, float $amount, string $refId, string $t
             'type' => $type,
             'direction' => 'DEBIT_FINAL',
             'amount' => wallet_round_money($amount),
+            'currency' => $currency,
+            'wallet_currency' => $currency,
             'before_available' => wallet_round_money($available),
             'after_available' => wallet_round_money($available),
             'before_hold' => wallet_round_money($hold),
@@ -934,6 +1024,7 @@ function wallet_settle_hold_bundle(string $uid, float $amount, string $refId, st
 
         $wallet = $res['value'];
         $now = wallet_now();
+        $currency = wallet_currency_for_uid($uid, $wallet);
 
         $available = (float)($wallet['available_balance'] ?? 0);
         $hold = (float)($wallet['hold_balance'] ?? 0);
@@ -963,6 +1054,8 @@ function wallet_settle_hold_bundle(string $uid, float $amount, string $refId, st
             'type' => $type,
             'direction' => 'DEBIT_FINAL',
             'amount' => wallet_round_money($amount),
+            'currency' => $currency,
+            'wallet_currency' => $currency,
             'before_available' => wallet_round_money($available),
             'after_available' => wallet_round_money($available),
             'before_hold' => wallet_round_money($hold),
@@ -1055,6 +1148,10 @@ function wallet_credit_bundle_subadmin_profit(
             'admin_commission' => wallet_round_money((float)($meta['admin_commission'] ?? 0)),
             'user_commission' => wallet_round_money((float)($meta['user_commission'] ?? 0)),
             'subadmin_profit' => wallet_round_money($profitAmount),
+            'subadmin_profit_bdt' => wallet_round_money((float)($meta['subadmin_profit_bdt'] ?? $profitAmount)),
+            'subadmin_profit_wallet_amount' => wallet_round_money($profitAmount),
+            'subadmin_profit_wallet_currency' => (string)($meta['subadmin_profit_wallet_currency'] ?? ''),
+            'subadmin_profit_rate_used' => wallet_round_money((float)($meta['subadmin_profit_rate_used'] ?? 0)),
         ]
     );
 }

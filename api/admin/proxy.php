@@ -739,6 +739,37 @@ function proxy_forward_admin_post(string $relativeAdminPath, array $body = []): 
     );
 }
 
+function proxy_forward_api_post(string $relativePath, array $body = []): void
+{
+    proxy_require_csrf();
+
+    $token = proxy_require_admin_token_only();
+    $path = ltrim($relativePath, '/');
+
+    proxy_unlock_session();
+
+    $res = proxy_internal_api_request('POST', $path, $body, proxy_base_headers($token));
+    $json = $res['json'] ?? [];
+
+    if (!$res['ok']) {
+        proxy_response(
+            false,
+            (string)($json['code'] ?? 'SERVER_ERROR'),
+            (string)($json['message'] ?? $res['error'] ?? 'Admin request failed'),
+            (array)($json['data'] ?? []),
+            $res['status'] > 0 ? $res['status'] : 500
+        );
+    }
+
+    proxy_response(
+        true,
+        (string)($json['code'] ?? 'SUCCESS'),
+        (string)($json['message'] ?? 'Success'),
+        (array)($json['data'] ?? []),
+        200
+    );
+}
+
 /* =========================
    COUNTS
 ========================= */
@@ -1475,6 +1506,16 @@ switch ($action) {
     case 'wallet_deduct':
         proxy_require_method('POST');
         proxy_forward_admin_post('wallet/deduct_balance.php', proxy_read_json_body());
+        break;
+
+    case 'wallet_deduct_send_otp':
+        proxy_require_method('POST');
+        proxy_forward_api_post('wallet_deduct_send_otp.php', proxy_read_json_body());
+        break;
+
+    case 'wallet_deduct_confirm':
+        proxy_require_method('POST');
+        proxy_forward_api_post('wallet_deduct_confirm.php', proxy_read_json_body());
         break;
 
     case 'wallet_ledger':

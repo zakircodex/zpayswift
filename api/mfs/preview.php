@@ -755,7 +755,7 @@ if ($countryCode === 'BD') {
     $amountRm = 0.0;
 } else {
     if ($inputCurrency === '') {
-        $inputCurrency = $amountRm > 0 ? 'MYR' : 'BDT';
+        $inputCurrency = $amountBdt > 0 ? 'BDT' : 'MYR';
     }
 
     if (!in_array($inputCurrency, ['MYR', 'BDT'], true)) {

@@ -296,6 +296,13 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
 
     $uid = (string)($processing['uid'] ?? '');
     $amount = (float)($processing['amount'] ?? 0);
+    $walletDebitAmount = (float)(
+        $processing['wallet_debit_amount']
+        ?? $processing['wallet_hold_amount']
+        ?? $processing['held_amount']
+        ?? $processing['wallet_debit_bdt']
+        ?? $amount
+    );
 
     if (function_exists('subapi_is_topup_hold_request') && subapi_is_topup_hold_request($processing)) {
         if (!subapi_settle_topup_success($processing, $resultMessage)) {
@@ -306,7 +313,7 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
             ];
         }
     } else {
-        $settle = wallet_settle_hold($uid, $amount, $requestId, 'TOPUP_SETTLE');
+        $settle = wallet_settle_hold($uid, $walletDebitAmount, $requestId, 'TOPUP_SETTLE');
         if (!($settle['ok'] ?? false)) {
             return $settle;
         }
@@ -328,6 +335,11 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
         'topup_number' => (string)($done['topup_number'] ?? ''),
         'operator' => (string)($done['operator'] ?? ''),
         'amount' => $amount,
+        'amount_bdt' => (float)($done['amount_bdt'] ?? $amount),
+        'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $amount),
+        'wallet_debit_amount' => $walletDebitAmount,
+        'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),
+        'rate_used' => (float)($done['rate_used'] ?? 0),
         'status' => 'SUCCESS',
         'message' => $resultMessage,
         'device_id' => $deviceId,
@@ -376,6 +388,13 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
 
     $uid = (string)($processing['uid'] ?? '');
     $amount = (float)($processing['amount'] ?? 0);
+    $walletDebitAmount = (float)(
+        $processing['wallet_debit_amount']
+        ?? $processing['wallet_hold_amount']
+        ?? $processing['held_amount']
+        ?? $processing['wallet_debit_bdt']
+        ?? $amount
+    );
 
     if (function_exists('subapi_is_topup_hold_request') && subapi_is_topup_hold_request($processing)) {
         if (!subapi_settle_topup_failed($processing, $resultMessage)) {
@@ -386,7 +405,7 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
             ];
         }
     } else {
-        $refund = wallet_refund_hold($uid, $amount, $requestId, 'TOPUP_REFUND');
+        $refund = wallet_refund_hold($uid, $walletDebitAmount, $requestId, 'TOPUP_REFUND');
         if (!($refund['ok'] ?? false)) {
             return $refund;
         }
@@ -408,6 +427,11 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
         'topup_number' => (string)($done['topup_number'] ?? ''),
         'operator' => (string)($done['operator'] ?? ''),
         'amount' => $amount,
+        'amount_bdt' => (float)($done['amount_bdt'] ?? $amount),
+        'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $amount),
+        'wallet_debit_amount' => $walletDebitAmount,
+        'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),
+        'rate_used' => (float)($done['rate_used'] ?? 0),
         'status' => 'FAILED',
         'message' => $resultMessage,
         'device_id' => $deviceId,

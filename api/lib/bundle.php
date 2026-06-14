@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/wallet.php';
+
 function bundle_now(): int
 {
     return function_exists('now_ts') ? (int)now_ts() : time();
@@ -23,6 +25,33 @@ function bundle_month_key(?int $ts = null): string
 function bundle_round_money(float $amount): float
 {
     return round($amount, 2);
+}
+
+function bundle_wallet_breakdown(
+    string $uid,
+    float $payableAmountBdt,
+    array $user = [],
+    array $wallet = []
+): array {
+    $payableAmountBdt = bundle_round_money(max(0, $payableAmountBdt));
+
+    if (function_exists('wallet_service_bdt_to_native')) {
+        $native = wallet_service_bdt_to_native($uid, $payableAmountBdt, $user, $wallet);
+
+        return [
+            'payable_amount_bdt' => $payableAmountBdt,
+            'wallet_hold_amount' => (float)($native['wallet_amount'] ?? $payableAmountBdt),
+            'wallet_currency' => (string)($native['wallet_currency'] ?? 'BDT'),
+            'rate_used' => (float)($native['rate_used'] ?? 0),
+        ];
+    }
+
+    return [
+        'payable_amount_bdt' => $payableAmountBdt,
+        'wallet_hold_amount' => $payableAmountBdt,
+        'wallet_currency' => 'BDT',
+        'rate_used' => 0.0,
+    ];
 }
 
 function bundle_clean_string(mixed $value): string
@@ -1276,9 +1305,15 @@ function create_bundle_pending_request(
     $payableAmount = bundle_round_money((float)(
         $extra['you_pay']
         ?? $extra['payable_amount']
-        ?? $extra['wallet_hold_amount']
         ?? max(0, $priceAmount - $userCommission)
     ));
+    $walletHoldAmount = bundle_round_money((float)(
+        $extra['wallet_hold_amount']
+        ?? $extra['held_amount']
+        ?? $payableAmount
+    ));
+    $walletCurrency = (string)($extra['wallet_currency'] ?? $extra['wallet_debit_currency'] ?? 'BDT');
+    $rateUsed = bundle_round_money((float)($extra['rate_used'] ?? 0));
 
     if ($payableAmount < 0) {
         $payableAmount = 0.0;
@@ -1300,8 +1335,13 @@ function create_bundle_pending_request(
         'payable_amount' => $payableAmount,
 
         'note' => $note,
-        'wallet_hold_amount' => $payableAmount,
-        'held_amount' => $payableAmount,
+        'payable_amount_bdt' => (float)($extra['payable_amount_bdt'] ?? $payableAmount),
+        'wallet_hold_amount' => $walletHoldAmount,
+        'held_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $walletCurrency,
+        'wallet_currency' => $walletCurrency,
+        'rate_used' => $rateUsed,
         'hold_settled_at' => 0,
         'hold_settlement_status' => 'PENDING',
         'status' => 'WAITING_ADMIN',
@@ -1389,6 +1429,7 @@ function bundle_write_history(array $done): void
 
     $priceAmount = bundle_round_money((float)($done['price_amount'] ?? $done['amount'] ?? 0));
     $payableAmount = bundle_round_money((float)($done['payable_amount'] ?? $done['you_pay'] ?? $done['wallet_hold_amount'] ?? $priceAmount));
+    $walletHoldAmount = bundle_round_money((float)($done['wallet_hold_amount'] ?? $done['held_amount'] ?? $payableAmount));
 
     fb_put('BUNDLE_HISTORY/' . $uid . '/' . bundle_month_key() . '/' . $requestId, [
         'request_id' => $requestId,
@@ -1401,6 +1442,12 @@ function bundle_write_history(array $done): void
         'offer_price' => $priceAmount,
         'you_pay' => $payableAmount,
         'payable_amount' => $payableAmount,
+        'payable_amount_bdt' => (float)($done['payable_amount_bdt'] ?? $payableAmount),
+        'wallet_hold_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => (float)($done['wallet_debit_amount'] ?? $walletHoldAmount),
+        'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),
+        'wallet_currency' => (string)($done['wallet_currency'] ?? $done['wallet_debit_currency'] ?? 'BDT'),
+        'rate_used' => (float)($done['rate_used'] ?? 0),
         'admin_commission' => (float)($done['admin_commission'] ?? 0),
         'user_commission' => (float)($done['user_commission'] ?? 0),
         'subadmin_profit' => (float)($done['subadmin_profit'] ?? 0),
@@ -1442,6 +1489,13 @@ function bundle_update_subadmin_request_log(array $row, string $status, string $
         ?? $row['held_amount']
         ?? $priceAmount
     ));
+    $walletHoldAmount = bundle_round_money((float)(
+        $row['wallet_debit_amount']
+        ?? $row['wallet_hold_amount']
+        ?? $row['held_amount']
+        ?? $payableAmount
+    ));
+    $walletCurrency = (string)($row['wallet_debit_currency'] ?? $row['wallet_currency'] ?? 'BDT');
 
     $patch = [
         'request_id' => $requestId,
@@ -1469,7 +1523,12 @@ function bundle_update_subadmin_request_log(array $row, string $status, string $
 
         'you_pay' => $payableAmount,
         'payable_amount' => $payableAmount,
-        'wallet_hold_amount' => $payableAmount,
+        'payable_amount_bdt' => (float)($row['payable_amount_bdt'] ?? $payableAmount),
+        'wallet_hold_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $walletCurrency,
+        'wallet_currency' => $walletCurrency,
+        'rate_used' => (float)($row['rate_used'] ?? 0),
 
         'admin_commission' => (float)($row['admin_commission'] ?? 0),
         'user_commission' => (float)($row['user_commission'] ?? 0),
@@ -1678,6 +1737,12 @@ function bundle_credit_commissions_after_success(array &$done): array
         ?? $done['held_amount']
         ?? $priceAmount
     ));
+    $walletHoldAmount = bundle_round_money((float)(
+        $done['wallet_debit_amount']
+        ?? $done['wallet_hold_amount']
+        ?? $done['held_amount']
+        ?? $payableAmount
+    ));
 
     $adminCommission = bundle_round_money((float)($done['admin_commission'] ?? 0));
 
@@ -1714,9 +1779,18 @@ function bundle_credit_commissions_after_success(array &$done): array
 
     $subadminProfit = bundle_round_money(max(0, $adminCommission - $userCommission));
     $subadminUid = trim((string)($done['subadmin_uid'] ?? ''));
+    $subadminProfitWalletAmount = $subadminProfit;
+    $subadminProfitWalletCurrency = 'BDT';
+    $subadminProfitRateUsed = 0.0;
 
     if ($subadminUid === '' || $subadminProfit <= 0) {
         $subadminProfit = 0.0;
+        $subadminProfitWalletAmount = 0.0;
+    } elseif (function_exists('wallet_service_bdt_to_native')) {
+        $subadminProfitNative = wallet_service_bdt_to_native($subadminUid, $subadminProfit);
+        $subadminProfitWalletAmount = bundle_round_money((float)($subadminProfitNative['wallet_amount'] ?? $subadminProfit));
+        $subadminProfitWalletCurrency = (string)($subadminProfitNative['wallet_currency'] ?? 'BDT');
+        $subadminProfitRateUsed = bundle_round_money((float)($subadminProfitNative['rate_used'] ?? 0));
     }
 
     $meta = [
@@ -1729,6 +1803,10 @@ function bundle_credit_commissions_after_success(array &$done): array
         'admin_commission' => $adminCommission,
         'user_commission' => $userCommission,
         'subadmin_profit' => $subadminProfit,
+        'subadmin_profit_bdt' => $subadminProfit,
+        'subadmin_profit_wallet_amount' => $subadminProfitWalletAmount,
+        'subadmin_profit_wallet_currency' => $subadminProfitWalletCurrency,
+        'subadmin_profit_rate_used' => $subadminProfitRateUsed,
         'target_uid' => $uid,
         'bundle_number' => (string)($done['bundle_number'] ?? ''),
         'commission_rule' => 'SUBADMIN_PROFIT_ONLY_AFTER_SUCCESS',
@@ -1736,8 +1814,13 @@ function bundle_credit_commissions_after_success(array &$done): array
 
     $creditedSubadmin = false;
 
-    if ($subadminProfit > 0 && $subadminUid !== '') {
-        $creditSub = bundle_credit_subadmin_profit_wallet($subadminUid, $subadminProfit, $requestId, $meta);
+    if ($subadminProfitWalletAmount > 0 && $subadminUid !== '') {
+        $creditSub = bundle_credit_subadmin_profit_wallet(
+            $subadminUid,
+            $subadminProfitWalletAmount,
+            $requestId,
+            $meta
+        );
 
         if (!($creditSub['ok'] ?? false)) {
             return [
@@ -1757,8 +1840,9 @@ function bundle_credit_commissions_after_success(array &$done): array
     $done['offer_price'] = $priceAmount;
     $done['you_pay'] = $payableAmount;
     $done['payable_amount'] = $payableAmount;
-    $done['wallet_hold_amount'] = $payableAmount;
-    $done['held_amount'] = $payableAmount;
+    $done['wallet_hold_amount'] = $walletHoldAmount;
+    $done['held_amount'] = $walletHoldAmount;
+    $done['wallet_debit_amount'] = $walletHoldAmount;
 
     $done['admin_commission'] = $adminCommission;
     $done['user_commission'] = $userCommission;
@@ -1766,6 +1850,10 @@ function bundle_credit_commissions_after_success(array &$done): array
     $done['user_discount'] = $userCommission;
     $done['subadmin_profit'] = $subadminProfit;
     $done['subadmin_commission'] = $subadminProfit;
+    $done['subadmin_profit_bdt'] = $subadminProfit;
+    $done['subadmin_profit_wallet_amount'] = $subadminProfitWalletAmount;
+    $done['subadmin_profit_wallet_currency'] = $subadminProfitWalletCurrency;
+    $done['subadmin_profit_rate_used'] = $subadminProfitRateUsed;
 
     $done['commission_status'] = $creditedSubadmin ? 'CREDITED' : 'NO_COMMISSION';
     $done['commission_credited_at'] = $now;

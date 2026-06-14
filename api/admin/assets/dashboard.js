@@ -2771,7 +2771,7 @@ function openWalletAction(type, uid){
   const target = state.users.find(item => String(item.uid || '') === String(uid)) || {};
   const currency = walletNativeCurrency(target);
   const prefix = walletPrefix(currency);
-  const currencyFields = type === 'add' ? `
+  const currencyFields = `
     <div>
       <label>Receiver Currency</label>
       <input class="input" id="walletCurrency" value="${esc(currency === 'MYR' ? 'MYR (RM)' : 'BDT')}" readonly>
@@ -2782,12 +2782,7 @@ function openWalletAction(type, uid){
       <input class="input" id="walletAmount" type="number" step="0.01" min="0">
     </div>
 
-    <div class="form-full muted">The amount is credited directly in the receiver wallet currency. No exchange conversion is applied.</div>
-  ` : `
-    <div>
-      <label>Amount</label>
-      <input class="input" id="walletAmount" type="number" step="0.01" min="0">
-    </div>
+    <div class="form-full muted">The amount is ${type === 'add' ? 'credited to' : 'deducted from'} the receiver wallet in ${esc(prefix)}. No exchange conversion is applied.</div>
   `;
 
   openModal(
@@ -2820,11 +2815,12 @@ async function submitWalletAction(type){
   const note = document.getElementById('walletNote')?.value.trim() || '';
 
   try{
-    const data = await proxyPost(type === 'add' ? 'wallet_add' : 'wallet_deduct', {
+    const action = type === 'add' ? 'wallet_add' : 'wallet_deduct_send_otp';
+    const data = await proxyPost(action, {
       uid,
       amount,
       note
-    }, true, { busyText: type === 'add' ? 'Adding balance...' : 'Deducting balance...' });
+    }, true, { busyText: type === 'add' ? 'Adding balance...' : 'Sending OTP...' });
 
     closeModal();
 
@@ -2834,8 +2830,17 @@ async function submitWalletAction(type){
       log(`Added ${amountLabel} for ${uid}.`);
       showToast(`Balance added: ${amountLabel}`, 'ok');
     } else {
-      log(`Deducted balance for ${uid}.`);
-      showToast(`Balance deducted for ${uid}`, 'ok');
+      state.walletDeductOtp = {
+        uid,
+        amount,
+        note,
+        otpRequestId: String(data.otp_request_id || ''),
+        maskedPhone: String(data.masked_phone || ''),
+        currency: String(data.currency || data.wallet_currency || 'BDT').toUpperCase() === 'MYR' ? 'MYR' : 'BDT'
+      };
+      openAdminWalletDeductOtpModal();
+      showToast('Deduction OTP sent to the target account', 'ok');
+      return;
     }
 
     await loadUsers({ busy:false, silentLog:true });
@@ -2847,6 +2852,82 @@ async function submitWalletAction(type){
     }
 
     alert(err.message || 'Wallet action failed');
+  }
+}
+
+function openAdminWalletDeductOtpModal(){
+  const otpState = state.walletDeductOtp || {};
+  const prefix = walletPrefix(otpState.currency || 'BDT');
+
+  openModal(
+    'Confirm Balance Deduction',
+    `
+      <div class="form-grid">
+        <div class="form-full muted">
+          OTP sent to ${esc(otpState.maskedPhone || 'the target account')}. Confirm ${esc(prefix)} ${money(otpState.amount || 0)} deduction.
+        </div>
+        <div class="form-full">
+          <label>OTP Code</label>
+          <input class="input" id="adminWalletDeductOtp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="Enter 6-digit OTP">
+        </div>
+      </div>
+    `,
+    `
+      <button class="btn ghost" onclick="resendAdminWalletDeductOtp()">Resend OTP</button>
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn orange" onclick="confirmAdminWalletDeductOtp()">Confirm Deduction</button>
+    `
+  );
+}
+
+async function resendAdminWalletDeductOtp(){
+  const otpState = state.walletDeductOtp || {};
+  if (!otpState.uid || !(Number(otpState.amount) > 0)) return;
+
+  try{
+    const data = await proxyPost('wallet_deduct_send_otp', {
+      uid: otpState.uid,
+      amount: otpState.amount,
+      note: otpState.note || ''
+    }, true, { busyText:'Resending OTP...' });
+
+    otpState.otpRequestId = String(data.otp_request_id || '');
+    otpState.maskedPhone = String(data.masked_phone || otpState.maskedPhone || '');
+    otpState.currency = String(data.currency || data.wallet_currency || otpState.currency || 'BDT').toUpperCase() === 'MYR' ? 'MYR' : 'BDT';
+    state.walletDeductOtp = otpState;
+    openAdminWalletDeductOtpModal();
+    showToast('OTP resent to the target account', 'ok');
+  }catch(err){
+    showToast(err.message || 'Failed to resend OTP', 'error');
+  }
+}
+
+async function confirmAdminWalletDeductOtp(){
+  const otpState = state.walletDeductOtp || {};
+  const otp = document.getElementById('adminWalletDeductOtp')?.value.trim() || '';
+
+  if (!otpState.otpRequestId || !/^\d{6}$/.test(otp)) {
+    showToast('Enter the 6-digit OTP', 'error');
+    return;
+  }
+
+  try{
+    const data = await proxyPost('wallet_deduct_confirm', {
+      otp_request_id: otpState.otpRequestId,
+      otp
+    }, true, { busyText:'Confirming deduction...' });
+
+    closeModal();
+    const currency = String(data.currency || data.wallet_currency || otpState.currency || 'BDT').toUpperCase();
+    const amountLabel = `${walletPrefix(currency)} ${money(data.amount ?? otpState.amount ?? 0)}`;
+    log(`Deducted ${amountLabel} for ${otpState.uid}.`);
+    showToast(`Balance deducted: ${amountLabel}`, 'ok');
+    state.walletDeductOtp = null;
+
+    await loadUsers({ busy:false, silentLog:true });
+    await viewUser(otpState.uid);
+  }catch(err){
+    showToast(err.message || 'Failed to confirm deduction OTP', 'error');
   }
 }
 

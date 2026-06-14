@@ -2497,37 +2497,61 @@ function detectTopupOperator(number = topupDigits()){
 }
 
 function topupWalletInfo(){
-  const wallet = (state.walletSummary || {}).wallet || {};
+  const summary = state.walletSummary || {};
+  const wallet = summary.wallet || {};
+  const roleSettings = summary.role_settings || {};
   const prefix = walletDisplayCurrency(wallet);
   const available = Number(wallet.display_available_balance ?? wallet.available_balance ?? 0);
+  const rate = Number(wallet.rate_myr_bdt ?? wallet.rate_myr_to_bdt ?? summary.rate_myr_bdt ?? 0);
+  const commissionPer1000 = Number(roleSettings.commission_per_1000 || 0);
 
   return {
     prefix,
-    available: Number.isFinite(available) ? available : NaN
+    currency: prefix === 'RM' || prefix === 'MYR' ? 'MYR' : 'BDT',
+    available: Number.isFinite(available) ? available : NaN,
+    rate: Number.isFinite(rate) && rate > 0 ? rate : 31,
+    commissionPer1000: Number.isFinite(commissionPer1000) ? Math.max(0, commissionPer1000) : 0
+  };
+}
+
+function topupDebitPreview(){
+  const amountBdt = Number(wizardData().amount || 0);
+  const wallet = topupWalletInfo();
+  const commissionBdt = Math.min(amountBdt, Math.max(0, amountBdt * wallet.commissionPer1000 / 1000));
+  const walletDebitBdt = Math.max(0, amountBdt - commissionBdt);
+  const walletDebitAmount = wallet.currency === 'MYR'
+    ? walletDebitBdt / wallet.rate
+    : walletDebitBdt;
+
+  return {
+    amountBdt,
+    commissionBdt,
+    walletDebitBdt,
+    walletDebitAmount,
+    wallet
   };
 }
 
 function topupReviewRows(){
   const data = wizardData();
-  const amount = Number(data.amount || 0);
-  const fee = 0;
-  const total = amount + fee;
-  const wallet = topupWalletInfo();
-  const after = Number.isFinite(wallet.available) ? wallet.available - total : NaN;
+  const debit = topupDebitPreview();
+  const wallet = debit.wallet;
+  const after = Number.isFinite(wallet.available) ? wallet.available - debit.walletDebitAmount : NaN;
 
   return [
     ['Number', data.topup_number || '-'],
     ['Operator', operatorName(data.operator || '-')],
-    ['Amount', 'BDT ' + money(amount)],
-    ['Fee / Charge', 'BDT ' + money(fee)],
-    ['Total Pay', 'BDT ' + money(total), true],
+    ['Topup Amount', 'BDT ' + money(debit.amountBdt)],
+    ...(debit.commissionBdt > 0 ? [['Commission Benefit', 'BDT ' + money(debit.commissionBdt)]] : []),
+    ['Wallet Debit', wallet.prefix + ' ' + money(debit.walletDebitAmount), true],
+    ...(wallet.currency === 'MYR' ? [['Rate', 'RM 1 = BDT ' + money(wallet.rate)]] : []),
     ...(Number.isFinite(wallet.available) ? [['Available Balance', wallet.prefix + ' ' + money(wallet.available)]] : []),
     ...(Number.isFinite(after) ? [['Balance After', wallet.prefix + ' ' + money(after)]] : [])
   ];
 }
 
 function topupTotalPay(){
-  return Number(wizardData().amount || 0);
+  return topupDebitPreview().walletDebitAmount;
 }
 
 function topupHasEnoughBalance(){

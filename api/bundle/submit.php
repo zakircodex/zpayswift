@@ -91,15 +91,17 @@ if ($userPinHash === '' || !password_verify($pin, $userPinHash)) {
 }
 
 $requestId = make_bundle_request_id();
+$bundleFinancials = bundle_wallet_breakdown($uid, $amount, $user);
+$walletHoldAmount = (float)$bundleFinancials['wallet_hold_amount'];
 
-$hold = wallet_hold_amount($uid, $amount, $requestId, 'BUNDLE_HOLD');
+$hold = wallet_hold_amount($uid, $walletHoldAmount, $requestId, 'BUNDLE_HOLD');
 if (!($hold['ok'] ?? false)) {
     $code = (string)($hold['code'] ?? 'SERVER_ERROR');
 
     if ($code === 'INSUFFICIENT_BALANCE') {
         api_response(false, 'INSUFFICIENT_BALANCE', 'Not enough balance', [
             'available_balance' => (float)($hold['available_balance'] ?? 0),
-            'required_amount' => (float)($hold['required_amount'] ?? $amount),
+            'required_amount' => (float)($hold['required_amount'] ?? $walletHoldAmount),
         ], 422);
     }
 
@@ -116,11 +118,20 @@ $pendingSaved = create_bundle_pending_request(
     $amount,
     $note,
     false,
-    ''
+    '',
+    [
+        'payable_amount_bdt' => $amount,
+        'wallet_hold_amount' => $walletHoldAmount,
+        'held_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+        'wallet_currency' => $bundleFinancials['wallet_currency'],
+        'rate_used' => $bundleFinancials['rate_used'],
+    ]
 );
 
 if (!$pendingSaved) {
-    wallet_refund_hold($uid, $amount, $requestId, 'BUNDLE_REFUND');
+    wallet_refund_hold($uid, $walletHoldAmount, $requestId, 'BUNDLE_REFUND');
     api_response(false, 'SERVER_ERROR', 'Failed to create bundle request', [], 500);
 }
 
@@ -134,7 +145,7 @@ $statusSaved = create_request_status(
 
 if (!$statusSaved) {
     fb_delete('BUNDLE_REQUESTS/PENDING/' . $requestId);
-    wallet_refund_hold($uid, $amount, $requestId, 'BUNDLE_REFUND');
+    wallet_refund_hold($uid, $walletHoldAmount, $requestId, 'BUNDLE_REFUND');
     api_response(false, 'SERVER_ERROR', 'Failed to create request status', [], 500);
 }
 
@@ -163,6 +174,9 @@ system_log('BUNDLE_SUBMIT', $requestId, 'Bundle request created successfully', [
     'uid' => $uid,
     'operator' => $operator,
     'amount' => $amount,
+    'wallet_debit_amount' => $walletHoldAmount,
+    'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+    'rate_used' => $bundleFinancials['rate_used'],
     'bundle_number' => $bundleNumber,
     'telegram_sent' => (bool)($send['ok'] ?? false),
 ]);
@@ -174,6 +188,9 @@ api_response(true, 'BUNDLE_REQUEST_CREATED', 'Bundle request submitted', [
     'operator' => $operator,
     'bundle_name' => $bundleName,
     'amount' => $amount,
+    'wallet_debit_amount' => $walletHoldAmount,
+    'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+    'rate_used' => $bundleFinancials['rate_used'],
     'telegram_sent' => (bool)($send['ok'] ?? false),
     'telegram_message' => (string)($send['message'] ?? ''),
 ]);

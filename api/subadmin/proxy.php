@@ -485,6 +485,9 @@ function sub_proxy_hold_balance_for_bundle_payable(string $uid, float $payableAm
 
     $wallet = sub_proxy_load_wallet_row($uid);
     $now = sub_proxy_now();
+    $currency = function_exists('wallet_currency_for_uid')
+        ? wallet_currency_for_uid($uid, $wallet)
+        : 'BDT';
 
     $available = sub_proxy_round_money((float)($wallet['available_balance'] ?? 0));
     $hold = sub_proxy_round_money((float)($wallet['hold_balance'] ?? 0));
@@ -528,7 +531,8 @@ function sub_proxy_hold_balance_for_bundle_payable(string $uid, float $payableAm
         'type' => 'SUBADMIN_PANEL_BUNDLE_HOLD',
         'direction' => 'HOLD',
         'amount' => $payableAmount,
-        'currency' => 'BDT',
+        'currency' => $currency,
+        'wallet_currency' => $currency,
         'before_available' => $available,
         'after_available' => $newAvailable,
         'before_hold' => $hold,
@@ -562,6 +566,9 @@ function sub_proxy_release_bundle_hold_rollback(string $uid, float $payableAmoun
 
     $wallet = sub_proxy_load_wallet_row($uid);
     $now = sub_proxy_now();
+    $currency = function_exists('wallet_currency_for_uid')
+        ? wallet_currency_for_uid($uid, $wallet)
+        : 'BDT';
 
     $available = sub_proxy_round_money((float)($wallet['available_balance'] ?? 0));
     $hold = sub_proxy_round_money((float)($wallet['hold_balance'] ?? 0));
@@ -584,7 +591,8 @@ function sub_proxy_release_bundle_hold_rollback(string $uid, float $payableAmoun
         'type' => 'SUBADMIN_PANEL_BUNDLE_HOLD_ROLLBACK',
         'direction' => 'RELEASE_HOLD',
         'amount' => $payableAmount,
-        'currency' => 'BDT',
+        'currency' => $currency,
+        'wallet_currency' => $currency,
         'before_available' => $available,
         'after_available' => $newAvailable,
         'before_hold' => $hold,
@@ -872,8 +880,12 @@ function sub_proxy_create_panel_bundle_fixed(string $uid, string $offerId, strin
     $requestId = sub_proxy_make_id('BR');
     $now = sub_proxy_now();
     $userPhone = trim((string)($userRow['phone'] ?? ''));
+    $walletRow = fb_get('USER_WALLETS/' . $uid);
+    $walletRow = is_array($walletRow) ? $walletRow : [];
+    $bundleFinancials = bundle_wallet_breakdown($uid, $payableAmount, $userRow, $walletRow);
+    $walletHoldAmount = (float)$bundleFinancials['wallet_hold_amount'];
 
-    $hold = sub_proxy_hold_balance_for_bundle_payable($uid, $payableAmount, $requestId);
+    $hold = sub_proxy_hold_balance_for_bundle_payable($uid, $walletHoldAmount, $requestId);
     if (!($hold['ok'] ?? false)) {
         return [
             'ok' => false,
@@ -915,8 +927,13 @@ function sub_proxy_create_panel_bundle_fixed(string $uid, string $offerId, strin
 
         'you_pay' => $payableAmount,
         'payable_amount' => $payableAmount,
-        'wallet_hold_amount' => $payableAmount,
-        'held_amount' => $payableAmount,
+        'payable_amount_bdt' => $payableAmount,
+        'wallet_hold_amount' => $walletHoldAmount,
+        'held_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+        'wallet_currency' => $bundleFinancials['wallet_currency'],
+        'rate_used' => $bundleFinancials['rate_used'],
 
         'hold_settled_at' => 0,
         'hold_settlement_status' => 'PENDING',
@@ -954,8 +971,12 @@ function sub_proxy_create_panel_bundle_fixed(string $uid, string $offerId, strin
             'payable_amount' => $payableAmount,
 
             'note' => $note !== '' ? $note : 'Bundle request created from subadmin panel',
-            'wallet_hold_amount' => $payableAmount,
-            'held_amount' => $payableAmount,
+            'wallet_hold_amount' => $walletHoldAmount,
+            'held_amount' => $walletHoldAmount,
+            'wallet_debit_amount' => $walletHoldAmount,
+            'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+            'wallet_currency' => $bundleFinancials['wallet_currency'],
+            'rate_used' => $bundleFinancials['rate_used'],
             'hold_settled_at' => 0,
             'hold_settlement_status' => 'PENDING',
             'status' => 'WAITING_ADMIN',
@@ -991,7 +1012,7 @@ function sub_proxy_create_panel_bundle_fixed(string $uid, string $offerId, strin
     }
 
     if (!$requestSaved) {
-        sub_proxy_release_bundle_hold_rollback($uid, $payableAmount, $requestId);
+        sub_proxy_release_bundle_hold_rollback($uid, $walletHoldAmount, $requestId);
 
         return [
             'ok' => false,
@@ -1013,7 +1034,10 @@ function sub_proxy_create_panel_bundle_fixed(string $uid, string $offerId, strin
         'offer_price' => $priceAmount,
         'you_pay' => $payableAmount,
         'payable_amount' => $payableAmount,
-        'wallet_hold_amount' => $payableAmount,
+        'wallet_hold_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+        'rate_used' => $bundleFinancials['rate_used'],
         'admin_commission' => $adminCommission,
         'customer_commission' => $customerCommission,
         'user_discount' => $customerCommission,
@@ -1070,8 +1094,11 @@ function sub_proxy_create_panel_bundle_fixed(string $uid, string $offerId, strin
 
             'you_pay' => $payableAmount,
             'payable_amount' => $payableAmount,
-            'wallet_hold_amount' => $payableAmount,
-            'held_amount' => $payableAmount,
+            'wallet_hold_amount' => $walletHoldAmount,
+            'held_amount' => $walletHoldAmount,
+            'wallet_debit_amount' => $walletHoldAmount,
+            'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+            'rate_used' => $bundleFinancials['rate_used'],
 
             'customized_by_subadmin' => $customized,
             'created_at' => $now,

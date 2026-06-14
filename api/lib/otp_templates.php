@@ -17,6 +17,7 @@ function otp_my_template_map(): array
         'SUBADMIN_LOGIN' => 'RM0 Z-Pay Swift subadmin login OTP is %%. Valid for 5 minutes. Do not share this code.',
         'SUBADMIN_RESET' => 'RM0 Z-Pay Swift subadmin reset OTP is %%. Valid for 5 minutes. Do not share this code.',
         'PIN_VERIFY' => 'RM0 Z-Pay Swift PIN verification OTP is %%. Valid for 5 minutes. Do not share this code.',
+        'BALANCE_DEDUCT' => 'RM0 Z-Pay Swift balance deduction OTP is %%. Valid for 5 minutes. Do not share this code.',
     ];
 }
 
