@@ -337,6 +337,7 @@ ucotp_response(true, 'SUCCESS', 'OTP sent to the new user phone number', [
     'otp_request_id' => $otpRequestId,
     'masked_phone' => ucotp_mask_phone($phone),
     'expires_in_seconds' => 300,
+    'expires_at' => $expiresAt,
     'target_name' => $name,
     'target_phone' => $phone,
     'target_phone_e164' => $phone,

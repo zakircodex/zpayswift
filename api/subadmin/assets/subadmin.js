@@ -90,6 +90,8 @@ bundleRenderToken: '',
     otpRequestId: '',
     maskedPhone: '',
     expiresInSeconds: 300,
+    expiresAt: 0,
+    timer: null,
     formData: null
   }
 };
@@ -3384,18 +3386,73 @@ function clearCreateUserForm(){
   ]);
 }
 
+function clearCreateUserOtpTimer(){
+  if (state.userCreateOtp.timer) {
+    clearInterval(state.userCreateOtp.timer);
+    state.userCreateOtp.timer = null;
+  }
+}
+
+function createUserOtpIsExpired(){
+  return state.userCreateOtp.expiresAt > 0 && Date.now() >= state.userCreateOtp.expiresAt;
+}
+
+function updateCreateUserOtpCountdown(){
+  const expiresNode = el('createUserOtpExpiresText');
+  const verifyButton = el('verifyCreateUserOtpBtn');
+  const resendButton = el('resendCreateUserOtpBtn');
+  const left = Math.max(0, Math.ceil((state.userCreateOtp.expiresAt - Date.now()) / 1000));
+
+  if (expiresNode) {
+    expiresNode.textContent = left > 0 ? left + ' seconds' : 'Expired';
+  }
+
+  if (verifyButton) {
+    verifyButton.disabled = left <= 0;
+  }
+
+  if (left <= 0) {
+    clearCreateUserOtpTimer();
+    if (resendButton) resendButton.disabled = false;
+
+    const statusBox = el('createUserOtpStatus');
+    if (statusBox && el('createUserOtpModalWrap')?.classList.contains('open')) {
+      statusBox.textContent = 'OTP expired. Please resend OTP to continue.';
+    }
+  }
+}
+
+function startCreateUserOtpTimer(){
+  clearCreateUserOtpTimer();
+
+  if (!state.userCreateOtp.expiresAt) {
+    state.userCreateOtp.expiresAt = Date.now() + (Math.max(0, state.userCreateOtp.expiresInSeconds) * 1000);
+  }
+
+  updateCreateUserOtpCountdown();
+
+  if (!createUserOtpIsExpired()) {
+    state.userCreateOtp.timer = setInterval(updateCreateUserOtpCountdown, 1000);
+  }
+}
+
 function resetCreateUserOtpState(){
+  clearCreateUserOtpTimer();
+
   state.userCreateOtp = {
     requestToken: '',
     otpRequestId: '',
     maskedPhone: '',
     expiresInSeconds: 300,
+    expiresAt: 0,
+    timer: null,
     formData: null
   };
 
   if (el('createUserOtpMaskedPhone')) el('createUserOtpMaskedPhone').textContent = '-';
   if (el('createUserOtpExpiresText')) el('createUserOtpExpiresText').textContent = '300 seconds';
   if (el('createUserOtpCode')) el('createUserOtpCode').value = '';
+  if (el('verifyCreateUserOtpBtn')) el('verifyCreateUserOtpBtn').disabled = false;
   if (el('createUserOtpStatus')) {
     el('createUserOtpStatus').textContent = 'OTP পাঠানোর পরে এখানে status দেখাবে।';
   }
@@ -3403,9 +3460,11 @@ function resetCreateUserOtpState(){
 
 function openCreateUserOtpModal(){
   el('createUserOtpModalWrap')?.classList.add('open');
+  startCreateUserOtpTimer();
 }
 
 function closeCreateUserOtpModal(){
+  clearCreateUserOtpTimer();
   el('createUserOtpModalWrap')?.classList.remove('open');
   resetCreateUserOtpState();
 }
@@ -3434,18 +3493,21 @@ function updateCreateUserOtpModal(data = {}){
     ''
   );
 
-  state.userCreateOtp.expiresInSeconds = Number(
-    data.expires_in_seconds ||
-    state.userCreateOtp.expiresInSeconds ||
-    300
-  );
+  const expiresInValue = data.expires_in_seconds
+    ?? data.expires_in
+    ?? state.userCreateOtp.expiresInSeconds
+    ?? 300;
+  const parsedExpiresIn = Number(expiresInValue);
+  state.userCreateOtp.expiresInSeconds = Number.isFinite(parsedExpiresIn)
+    ? Math.max(0, parsedExpiresIn)
+    : 300;
+  const serverExpiresAt = Number(data.expires_at || 0);
+  state.userCreateOtp.expiresAt = serverExpiresAt > 0
+    ? (serverExpiresAt < 1000000000000 ? serverExpiresAt * 1000 : serverExpiresAt)
+    : Date.now() + (state.userCreateOtp.expiresInSeconds * 1000);
 
   if (el('createUserOtpMaskedPhone')) {
     el('createUserOtpMaskedPhone').textContent = state.userCreateOtp.maskedPhone || '-';
-  }
-
-  if (el('createUserOtpExpiresText')) {
-    el('createUserOtpExpiresText').textContent = state.userCreateOtp.expiresInSeconds + ' seconds';
   }
 
   if (el('createUserOtpCode')) {
@@ -3456,6 +3518,8 @@ function updateCreateUserOtpModal(data = {}){
     el('createUserOtpStatus').textContent =
       'OTP sent to the new user at ' + (state.userCreateOtp.maskedPhone || 'the target phone') + '. Verify it to create the user.';
   }
+
+  startCreateUserOtpTimer();
 }
 
 async function confirmCreateUserOtp(){
@@ -3469,6 +3533,11 @@ async function confirmCreateUserOtp(){
 
   if (!state.userCreateOtp.otpRequestId) {
     if (statusBox) statusBox.textContent = 'OTP request ID missing. আবার OTP send করো।';
+    return;
+  }
+
+  if (createUserOtpIsExpired()) {
+    if (statusBox) statusBox.textContent = 'OTP expired. Please resend OTP to continue.';
     return;
   }
 
@@ -3501,6 +3570,7 @@ async function confirmCreateUserOtp(){
       statusBox.textContent = 'OTP verified successfully. User created.';
     }
 
+    clearCreateUserOtpTimer();
     clearCreateUserForm();
     await loadUsers();
     renderUsers();
@@ -3813,11 +3883,14 @@ async function doLogout(){
     note: ''
   };
 
+  clearCreateUserOtpTimer();
   state.userCreateOtp = {
     requestToken: '',
     otpRequestId: '',
     maskedPhone: '',
     expiresInSeconds: 300,
+    expiresAt: 0,
+    timer: null,
     formData: null
   };
 

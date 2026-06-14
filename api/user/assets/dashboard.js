@@ -25,6 +25,8 @@ const state = {
     otpRequestId: '',
     maskedPhone: '',
     expiresInSeconds: 300,
+    expiresAt: 0,
+    timer: null,
     trustDevice: true
   }
 };
@@ -3008,18 +3010,66 @@ async function submitTopup(){
    Login OTP Flow
 ========================= */
 
+function clearLoginOtpTimer(){
+  if (state.loginOtp.timer) {
+    clearInterval(state.loginOtp.timer);
+    state.loginOtp.timer = null;
+  }
+}
+
+function loginOtpIsExpired(){
+  return state.loginOtp.expiresAt > 0 && Date.now() >= state.loginOtp.expiresAt;
+}
+
+function updateLoginOtpCountdown(){
+  const expiresNode = el('loginOtpExpiresText');
+  const verifyButton = el('verifyLoginOtpBtn');
+  const resendButton = el('resendLoginOtpBtn');
+  const left = Math.max(0, Math.ceil((state.loginOtp.expiresAt - Date.now()) / 1000));
+
+  if (expiresNode) expiresNode.textContent = left > 0 ? left + ' seconds' : 'Expired';
+  if (verifyButton) verifyButton.disabled = left <= 0;
+
+  if (left <= 0) {
+    clearLoginOtpTimer();
+    if (resendButton) resendButton.disabled = false;
+
+    if (el('loginOtpStatus') && el('loginOtpModal')?.classList.contains('show')) {
+      el('loginOtpStatus').textContent = 'OTP expired. Please resend OTP to continue.';
+    }
+  }
+}
+
+function startLoginOtpTimer(){
+  clearLoginOtpTimer();
+
+  if (!state.loginOtp.expiresAt) {
+    state.loginOtp.expiresAt = Date.now() + (Math.max(0, state.loginOtp.expiresInSeconds) * 1000);
+  }
+
+  updateLoginOtpCountdown();
+
+  if (!loginOtpIsExpired()) {
+    state.loginOtp.timer = setInterval(updateLoginOtpCountdown, 1000);
+  }
+}
+
 function resetLoginOtpState(){
+  clearLoginOtpTimer();
   state.loginOtp = {
     preAuthToken: '',
     otpRequestId: '',
     maskedPhone: '',
     expiresInSeconds: 300,
+    expiresAt: 0,
+    timer: null,
     trustDevice: true
   };
 
   if (el('loginOtpMaskedPhone')) el('loginOtpMaskedPhone').textContent = '-';
   if (el('loginOtpExpiresText')) el('loginOtpExpiresText').textContent = '5 minutes';
   if (el('loginOtpCode')) el('loginOtpCode').value = '';
+  if (el('verifyLoginOtpBtn')) el('verifyLoginOtpBtn').disabled = false;
   if (el('loginOtpStatus')) el('loginOtpStatus').textContent = 'OTP পাঠানোর পরে এখানে status দেখাবে।';
 }
 
@@ -3027,15 +3077,18 @@ function updateLoginOtpModal(data){
   state.loginOtp.preAuthToken = String(data.pre_auth_token || '');
   state.loginOtp.otpRequestId = String(data.otp_request_id || '');
   state.loginOtp.maskedPhone = String(data.masked_phone || '');
-  state.loginOtp.expiresInSeconds = Number(data.expires_in_seconds || 300);
+  const expiresInValue = data.expires_in_seconds ?? data.expires_in ?? 300;
+  const parsedExpiresIn = Number(expiresInValue);
+  state.loginOtp.expiresInSeconds = Number.isFinite(parsedExpiresIn)
+    ? Math.max(0, parsedExpiresIn)
+    : 300;
+  const serverExpiresAt = Number(data.expires_at || 0);
+  state.loginOtp.expiresAt = serverExpiresAt > 0
+    ? (serverExpiresAt < 1000000000000 ? serverExpiresAt * 1000 : serverExpiresAt)
+    : Date.now() + (state.loginOtp.expiresInSeconds * 1000);
 
   if (el('loginOtpMaskedPhone')) {
     el('loginOtpMaskedPhone').textContent = state.loginOtp.maskedPhone || '-';
-  }
-
-  if (el('loginOtpExpiresText')) {
-    const sec = state.loginOtp.expiresInSeconds;
-    el('loginOtpExpiresText').textContent = sec >= 60 ? Math.ceil(sec / 60) + ' minutes' : sec + ' seconds';
   }
 
   if (el('loginOtpCode')) {
@@ -3046,13 +3099,17 @@ function updateLoginOtpModal(data){
     el('loginOtpStatus').textContent =
       'OTP sent to ' + (state.loginOtp.maskedPhone || 'your phone') + '. Enter the code to complete login.';
   }
+
+  startLoginOtpTimer();
 }
 
 function openLoginOtpModal(){
   el('loginOtpModal')?.classList.add('show');
+  startLoginOtpTimer();
 }
 
 function closeLoginOtpModal(){
+  clearLoginOtpTimer();
   el('loginOtpModal')?.classList.remove('show');
   resetLoginOtpState();
 }
@@ -3142,6 +3199,13 @@ async function verifyLoginOtp(){
     return;
   }
 
+  if (loginOtpIsExpired()) {
+    if (el('loginOtpStatus')) {
+      el('loginOtpStatus').textContent = 'OTP expired. Please resend OTP to continue.';
+    }
+    return;
+  }
+
   if (!otp) {
     if (el('loginOtpStatus')) {
       el('loginOtpStatus').textContent = 'Please enter the OTP first.';
@@ -3198,7 +3262,8 @@ async function resendLoginOtp(){
       pre_auth_token: data.pre_auth_token || state.loginOtp.preAuthToken,
       otp_request_id: data.otp_request_id || state.loginOtp.otpRequestId,
       masked_phone: data.masked_phone || state.loginOtp.maskedPhone,
-      expires_in_seconds: data.expires_in_seconds || 300
+      expires_in_seconds: data.expires_in_seconds || 300,
+      expires_at: data.expires_at || 0
     });
 
     if (el('loginOtpStatus')) {

@@ -1061,7 +1061,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 
     <div class="field">
       <label>OTP Code</label>
-      <input id="deductOtpCodeInput" class="input" maxlength="6" placeholder="Enter 6 digit OTP">
+      <input id="deductOtpCodeInput" class="input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6 digit OTP">
     </div>
 
     <div id="deductOtpConfirmStatus" class="status-note info mt-14">
@@ -1242,7 +1242,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 
     <div class="field">
       <label>OTP Code</label>
-      <input id="createUserOtpCode" class="input" maxlength="6" placeholder="Enter 6 digit OTP">
+      <input id="createUserOtpCode" class="input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6 digit OTP">
     </div>
 
     <div id="createUserOtpStatus" class="status-note info mt-14">

@@ -484,7 +484,7 @@ if (!empty($_SESSION['subadmin_session_token']) && !empty($_SESSION['subadmin_us
 
     <div class="field" style="margin-top:16px">
       <label>OTP Code</label>
-      <input id="loginOtpCode" class="input" maxlength="6" placeholder="Enter 6 digit OTP">
+      <input id="loginOtpCode" class="input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6 digit OTP">
     </div>
 
     <div class="actions">

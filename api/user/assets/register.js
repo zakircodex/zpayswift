@@ -8,7 +8,9 @@ const state = {
     preAuthToken: '',
     otpRequestId: '',
     maskedPhone: '',
-    expiresInSeconds: 300
+    expiresInSeconds: 300,
+    expiresAt: 0,
+    timer: null
   }
 };
 
@@ -211,19 +213,66 @@ async function loadCountryDefaults(){
   updateCountryUi();
 }
 
+function clearRegisterOtpTimer(){
+  if (state.registerOtp.timer) {
+    clearInterval(state.registerOtp.timer);
+    state.registerOtp.timer = null;
+  }
+}
+
+function registerOtpIsExpired(){
+  return state.registerOtp.expiresAt > 0 && Date.now() >= state.registerOtp.expiresAt;
+}
+
+function updateRegisterOtpCountdown(){
+  const expiresNode = el('otpExpiresText');
+  const verifyButton = el('verifyRegisterOtpBtn');
+  const resendButton = el('resendRegisterOtpBtn');
+  const left = Math.max(0, Math.ceil((state.registerOtp.expiresAt - Date.now()) / 1000));
+
+  if (expiresNode) expiresNode.textContent = left > 0 ? left + ' seconds' : 'Expired';
+  if (verifyButton) verifyButton.disabled = left <= 0;
+
+  if (left <= 0) {
+    clearRegisterOtpTimer();
+    if (resendButton) resendButton.disabled = false;
+
+    if (el('otpStatus') && el('registerOtpModal')?.classList.contains('show')) {
+      el('otpStatus').textContent = 'OTP expired. Please resend OTP to continue.';
+    }
+  }
+}
+
+function startRegisterOtpTimer(){
+  clearRegisterOtpTimer();
+
+  if (!state.registerOtp.expiresAt) {
+    state.registerOtp.expiresAt = Date.now() + (Math.max(0, state.registerOtp.expiresInSeconds) * 1000);
+  }
+
+  updateRegisterOtpCountdown();
+
+  if (!registerOtpIsExpired()) {
+    state.registerOtp.timer = setInterval(updateRegisterOtpCountdown, 1000);
+  }
+}
+
 function updateOtpState(data){
   state.registerOtp.preAuthToken = String(data.pre_auth_token || '');
   state.registerOtp.otpRequestId = String(data.otp_request_id || '');
   state.registerOtp.maskedPhone = String(data.masked_phone || '');
-  state.registerOtp.expiresInSeconds = Number(data.expires_in_seconds || 300);
+  const expiresInValue = data.expires_in_seconds ?? data.expires_in ?? 300;
+  const parsedExpiresIn = Number(expiresInValue);
+  state.registerOtp.expiresInSeconds = Number.isFinite(parsedExpiresIn)
+    ? Math.max(0, parsedExpiresIn)
+    : 300;
+  const serverExpiresAt = Number(data.expires_at || 0);
+  state.registerOtp.expiresAt = serverExpiresAt > 0
+    ? (serverExpiresAt < 1000000000000 ? serverExpiresAt * 1000 : serverExpiresAt)
+    : Date.now() + (state.registerOtp.expiresInSeconds * 1000);
 
   if (el('otpMaskedPhone')) {
     el('otpMaskedPhone').textContent = state.registerOtp.maskedPhone || '-';
-  }
-
-  if (el('otpExpiresText')) {
-    const sec = state.registerOtp.expiresInSeconds;
-    el('otpExpiresText').textContent = sec >= 60 ? Math.ceil(sec / 60) + ' minutes' : sec + ' seconds';
   }
 
   if (el('otpCode')) {
@@ -234,27 +283,35 @@ function updateOtpState(data){
     el('otpStatus').textContent =
       'OTP sent to ' + (state.registerOtp.maskedPhone || 'your phone') + '. Enter OTP to create account.';
   }
+
+  startRegisterOtpTimer();
 }
 
 function openOtpModal(){
   el('registerOtpModal')?.classList.add('show');
+  startRegisterOtpTimer();
 }
 
 function closeOtpModal(){
+  clearRegisterOtpTimer();
   el('registerOtpModal')?.classList.remove('show');
 }
 
 function resetOtpState(){
+  clearRegisterOtpTimer();
   state.registerOtp = {
     preAuthToken: '',
     otpRequestId: '',
     maskedPhone: '',
-    expiresInSeconds: 300
+    expiresInSeconds: 300,
+    expiresAt: 0,
+    timer: null
   };
 
   if (el('otpMaskedPhone')) el('otpMaskedPhone').textContent = '-';
   if (el('otpExpiresText')) el('otpExpiresText').textContent = '5 minutes';
   if (el('otpCode')) el('otpCode').value = '';
+  if (el('verifyRegisterOtpBtn')) el('verifyRegisterOtpBtn').disabled = false;
   if (el('otpStatus')) el('otpStatus').textContent = 'OTP পাঠানোর পরে এখানে status দেখাবে।';
 }
 
@@ -325,6 +382,13 @@ async function verifyRegisterOtp(){
   if (!state.registerOtp.preAuthToken || !state.registerOtp.otpRequestId) {
     if (el('otpStatus')) {
       el('otpStatus').textContent = 'Registration session missing. Please start again.';
+    }
+    return;
+  }
+
+  if (registerOtpIsExpired()) {
+    if (el('otpStatus')) {
+      el('otpStatus').textContent = 'OTP expired. Please resend OTP to continue.';
     }
     return;
   }

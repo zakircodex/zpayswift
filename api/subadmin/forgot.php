@@ -432,7 +432,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 
     <div class="fp-field">
       <label>OTP Code</label>
-      <input id="forgotOtpCode" class="fp-input" maxlength="6" placeholder="Enter 6 digit OTP">
+      <input id="forgotOtpCode" class="fp-input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6 digit OTP">
     </div>
 
     <div class="fp-field">

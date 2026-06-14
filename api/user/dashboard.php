@@ -498,7 +498,7 @@ header('Pragma: no-cache');
 
     <div class="field field-top-gap">
       <label>OTP Code</label>
-      <input id="loginOtpCode" class="input" maxlength="6" inputmode="numeric" placeholder="Enter 6 digit OTP">
+      <input id="loginOtpCode" class="input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6 digit OTP">
     </div>
 
     <div id="loginOtpStatus" class="otp-status">

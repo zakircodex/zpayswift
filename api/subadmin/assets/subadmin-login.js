@@ -4,6 +4,8 @@ const loginState = {
   otpRequestId: '',
   maskedPhone: '',
   expiresInSeconds: 300,
+  expiresAt: 0,
+  otpTimer: null,
   trustDevice: true
 };
 
@@ -142,19 +144,68 @@ async function loginProxyPost(action, body = {}, busyText = 'Processing...'){
   }
 }
 
+function clearLoginOtpTimer(){
+  if (loginState.otpTimer) {
+    clearInterval(loginState.otpTimer);
+    loginState.otpTimer = null;
+  }
+}
+
+function loginOtpIsExpired(){
+  return loginState.expiresAt > 0 && Date.now() >= loginState.expiresAt;
+}
+
+function updateLoginOtpCountdown(){
+  const expBox = $id('loginOtpExpiresText');
+  const verifyButton = $id('verifyLoginOtpBtn');
+  const resendButton = $id('resendLoginOtpBtn');
+  const left = Math.max(0, Math.ceil((loginState.expiresAt - Date.now()) / 1000));
+
+  if (expBox) expBox.textContent = left > 0 ? left + ' seconds' : 'Expired';
+  if (verifyButton) verifyButton.disabled = left <= 0;
+
+  if (left <= 0) {
+    clearLoginOtpTimer();
+    if (resendButton) resendButton.disabled = false;
+
+    const statusBox = $id('loginOtpStatus');
+    if (statusBox && $id('loginOtpModalWrap')?.classList.contains('open')) {
+      statusBox.textContent = 'OTP expired. Please resend OTP to continue.';
+    }
+  }
+}
+
+function startLoginOtpTimer(){
+  clearLoginOtpTimer();
+
+  if (!loginState.expiresAt) {
+    loginState.expiresAt = Date.now() + (Math.max(0, loginState.expiresInSeconds) * 1000);
+  }
+
+  updateLoginOtpCountdown();
+
+  if (!loginOtpIsExpired()) {
+    loginState.otpTimer = setInterval(updateLoginOtpCountdown, 1000);
+  }
+}
+
 function loginResetOtpState(){
+  clearLoginOtpTimer();
   loginState.preAuthToken = '';
   loginState.otpRequestId = '';
   loginState.maskedPhone = '';
   loginState.expiresInSeconds = 300;
+  loginState.expiresAt = 0;
 }
 
 function openLoginOtpModal(){
   const modal = $id('loginOtpModalWrap');
   if (modal) modal.classList.add('open');
+  startLoginOtpTimer();
 }
 
 function closeLoginOtpModal(resetState = true){
+  clearLoginOtpTimer();
   const modal = $id('loginOtpModalWrap');
   const otpInput = $id('loginOtpCode');
   const statusBox = $id('loginOtpStatus');
@@ -166,6 +217,7 @@ function closeLoginOtpModal(resetState = true){
   if (statusBox) statusBox.textContent = 'OTP পাঠানোর পরে এখানে status দেখাবে।';
   if (phoneBox) phoneBox.textContent = '-';
   if (expBox) expBox.textContent = '5 minutes';
+  if ($id('verifyLoginOtpBtn')) $id('verifyLoginOtpBtn').disabled = false;
 
   if (resetState) {
     loginResetOtpState();
@@ -176,7 +228,15 @@ function updateLoginOtpModal(data){
   loginState.preAuthToken = String(data.pre_auth_token || loginState.preAuthToken || '');
   loginState.otpRequestId = String(data.otp_request_id || loginState.otpRequestId || '');
   loginState.maskedPhone = String(data.masked_phone || loginState.maskedPhone || '');
-  loginState.expiresInSeconds = Number(data.expires_in_seconds || 300);
+  const expiresInValue = data.expires_in_seconds ?? data.expires_in ?? 300;
+  const parsedExpiresIn = Number(expiresInValue);
+  loginState.expiresInSeconds = Number.isFinite(parsedExpiresIn)
+    ? Math.max(0, parsedExpiresIn)
+    : 300;
+  const serverExpiresAt = Number(data.expires_at || 0);
+  loginState.expiresAt = serverExpiresAt > 0
+    ? (serverExpiresAt < 1000000000000 ? serverExpiresAt * 1000 : serverExpiresAt)
+    : Date.now() + (loginState.expiresInSeconds * 1000);
 
   const phoneBox = $id('loginOtpMaskedPhone');
   const expBox = $id('loginOtpExpiresText');
@@ -184,12 +244,13 @@ function updateLoginOtpModal(data){
   const otpInput = $id('loginOtpCode');
 
   if (phoneBox) phoneBox.textContent = loginState.maskedPhone || '-';
-  if (expBox) expBox.textContent = loginState.expiresInSeconds + ' seconds';
   if (otpInput) otpInput.value = '';
 
   if (statusBox) {
     statusBox.textContent = 'OTP sent to ' + (loginState.maskedPhone || 'your phone') + '. Enter the code to complete login.';
   }
+
+  startLoginOtpTimer();
 }
 
 function loginGoDashboard(){
@@ -283,6 +344,11 @@ async function handleVerifyLoginOtp(){
     return;
   }
 
+  if (loginOtpIsExpired()) {
+    if (statusBox) statusBox.textContent = 'OTP expired. Please resend OTP to continue.';
+    return;
+  }
+
   if (!otp) {
     if (statusBox) statusBox.textContent = 'Please enter OTP first.';
     return;
@@ -301,6 +367,7 @@ async function handleVerifyLoginOtp(){
     }
 
     loginShowToast('OTP verified successfully', 'ok');
+    clearLoginOtpTimer();
 
     if (data.login_complete || data.session_active || data.redirect === 'dashboard') {
       setTimeout(loginGoDashboard, 500);
