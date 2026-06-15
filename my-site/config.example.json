@@ -1,0 +1,58 @@
+{
+  "tenant_id": "tenant_placeholder",
+  "owner_uid": "owner_uid_placeholder",
+  "plan": "FREE",
+  "subscription_status": "TRIAL",
+  "trial_days": 7,
+  "subscription_expires_at": "YYYY-MM-DDTHH:MM:SSZ",
+  "site": {
+    "site_name": "My BD Topup",
+    "site_slug": "owner-id",
+    "free_url": "https://zpayswift.com/site/owner-id",
+    "custom_domain": "example.com",
+    "domain_status": "NONE",
+    "logo_url": "https://example.com/logo.png",
+    "theme_color": "#0b1b3a",
+    "powered_by": "Z-Pay Swift"
+  },
+  "service": {
+    "country": "BD",
+    "currency": "BDT",
+    "otp_sms_country": "BD",
+    "my_sms_enabled": false
+  },
+  "commission": {
+    "topup_per_1000": 18,
+    "bundle_per_1000": 0,
+    "mfs_fee_mode": "CONFIGURED"
+  },
+  "features": {
+    "topup_enabled": true,
+    "bundle_enabled": true,
+    "mfs_enabled": true,
+    "custom_telegram_enabled": false,
+    "worker_enabled": true,
+    "custom_worker_apk_enabled": false
+  },
+  "api": {
+    "base_url": "https://zpayswift.com/api",
+    "app_key": "PLACEHOLDER_DO_NOT_COMMIT_REAL_KEY",
+    "worker_key": "PLACEHOLDER_DO_NOT_COMMIT_REAL_KEY"
+  },
+  "telegram": {
+    "bot_token": "PLACEHOLDER_DO_NOT_COMMIT_REAL_TOKEN",
+    "chat_id": "PLACEHOLDER",
+    "webhook_secret": "PLACEHOLDER_DO_NOT_COMMIT_REAL_SECRET"
+  },
+  "worker": {
+    "setup_mode": "QR_OR_DEVICE_TOKEN",
+    "custom_apk_phase": "FUTURE",
+    "operators": ["GP", "ROBI", "AIRTEL", "BANGLALINK", "TELETALK"]
+  },
+  "security": {
+    "tenant_scope_required": true,
+    "subscription_check_required": true,
+    "domain_verification_required": true,
+    "audit_log_required": true
+  }
+}
