@@ -97,8 +97,10 @@ function walletDisplayAmount(wallet, type = 'available'){
 function walletDisplayCurrency(wallet){
   const pricingCountry = String(
     wallet?.pricing_country ||
+    wallet?.market_country ||
     wallet?.service_country ||
     state.me?.pricing_country ||
+    state.me?.market_country ||
     state.me?.service_country ||
     ''
   ).toUpperCase();
@@ -178,7 +180,7 @@ function mfsProviderLabel(row){
 function mfsIsRemittance(row){
   const mode = String(row?.service_mode || '').toUpperCase();
   const country = String(
-    row?.pricing_country || row?.service_country || row?.country_code || row?.country || ''
+    row?.pricing_country || row?.market_country || row?.service_country || row?.country_code || row?.country || ''
   ).toUpperCase();
   if (country === 'BD' && (!mode || mode === 'LOCAL')) return false;
   if (country === 'MY' || mode === 'REMITTANCE') return true;

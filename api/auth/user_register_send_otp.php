@@ -132,6 +132,12 @@ function user_reg_send_sms(
 $name = trim((string)($body['name'] ?? ''));
 $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
 $ipCountry = auth_request_ip_country($body);
+$marketCountry = auth_normalize_country_code((string)(
+    $body['market_country']
+    ?? $body['pricing_country']
+    ?? $body['service_country']
+    ?? ''
+));
 
 if ($phoneCountry === '') {
     $phoneCountry = detect_phone_country((string)($body['phone'] ?? ''));
@@ -141,7 +147,7 @@ if ($phoneCountry === '') {
     $phoneCountry = 'BD';
 }
 
-$pricingCountry = auth_registration_pricing_country($phoneCountry, $ipCountry);
+$pricingCountry = auth_registration_pricing_country($phoneCountry, $ipCountry, $marketCountry);
 
 $phone = user_reg_normalize_phone((string)($body['phone'] ?? ''), $phoneCountry);
 $email = strtolower(trim((string)($body['email'] ?? '')));
@@ -155,7 +161,7 @@ $createdIp = auth_request_ip($body);
 $userAgent = auth_request_user_agent($body);
 $browserTimezone = auth_request_browser_timezone($body);
 $currency = auth_country_currency($pricingCountry);
-$countryMismatch = $ipCountry !== '' && $ipCountry !== $phoneCountry;
+$countryMismatch = $pricingCountry !== $phoneCountry;
 
 if ($name === '' || $phone === '' || $email === '' || $password === '' || $confirmPassword === '' || $pin === '' || $confirmPin === '') {
     $message = $phone === '' ? auth_phone_validation_message($phoneCountry) : 'All fields are required';
@@ -207,11 +213,13 @@ $otpRow = [
     'country' => $phoneCountry,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
     'service_country' => $pricingCountry,
     'currency' => $currency,
     'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
     'phone_e164' => $phone,
     'ip_country' => $ipCountry,
+    'country_mismatch' => $countryMismatch,
     'created_ip' => $createdIp,
     'user_agent' => $userAgent,
     'purpose' => 'USER_REGISTER',
@@ -233,6 +241,7 @@ $preAuthRow = [
     'phone' => $phone,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
     'service_country' => $pricingCountry,
     'currency' => $currency,
     'ip_country' => $ipCountry,
@@ -310,5 +319,6 @@ user_reg_response(true, 'OTP_REQUIRED', 'OTP verification required', [
     'expires_in_seconds' => 300,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
     'currency' => $currency,
 ]);

@@ -81,7 +81,7 @@ function walletPrefix(currency){
 
 function walletNativeCurrency(row){
   const country = String(
-    row?.pricing_country || row?.service_country || row?.country_code || row?.country || ''
+    row?.pricing_country || row?.market_country || row?.service_country || row?.country_code || row?.country || ''
   ).trim().toUpperCase();
   if (country === 'MY') return 'MYR';
   if (country === 'BD') return 'BDT';
@@ -2218,7 +2218,7 @@ function renderUsers(){
       <td>${rolePill(item.role || 'USER')}</td>
       <td>
         <div><strong>${esc(item.phone_country || '-')}</strong> <span class="muted">OTP</span></div>
-        <div class="muted" style="font-size:12px;">${esc(item.pricing_country || item.country_code || item.country || '-')} pricing</div>
+        <div class="muted" style="font-size:12px;">${esc(item.pricing_country || item.market_country || item.country_code || item.country || '-')} pricing</div>
         ${item.country_mismatch ? '<div class="muted" style="font-size:11px;color:#ffb96a;">Country mismatch</div>' : ''}
       </td>
       <td>${esc((Number(item.commission_per_1000 || 0)).toFixed(2))}</td>
@@ -2251,7 +2251,7 @@ async function viewUser(uid){
           <div class="detail-item"><label>Status</label><strong>${esc(data.status || '-')}</strong></div>
           <div class="detail-item"><label>Role</label><strong>${esc(data.role || 'USER')}</strong></div>
           <div class="detail-item"><label>Phone Country (OTP)</label><strong>${esc(data.phone_country || '-')}</strong></div>
-          <div class="detail-item"><label>Pricing Country (fee/wallet/service)</label><strong>${esc(data.pricing_country || data.country_code || data.country || '-')}</strong></div>
+          <div class="detail-item"><label>Pricing Country (fee/wallet/service)</label><strong>${esc(data.pricing_country || data.market_country || data.country_code || data.country || '-')}</strong></div>
           <div class="detail-item"><label>IP Country</label><strong>${esc(data.ip_country || '-')}</strong></div>
           <div class="detail-item"><label>Country Mismatch</label><strong>${data.country_mismatch ? 'Yes - review recommended' : 'No'}</strong></div>
           <div class="detail-item"><label>Registration IP</label><strong>${esc(data.created_ip || data.registration_ip || '-')}</strong></div>
@@ -2340,8 +2340,8 @@ async function openEditUserModal(uid){
             <label>Pricing Country</label>
             <select id="editUserCountry">
               <option value="">Not Set / Auto fallback</option>
-              <option value="BD" ${(String(data.pricing_country || data.country_code || data.country || '').toUpperCase() === 'BD') ? 'selected' : ''}>Bangladesh (BDT)</option>
-              <option value="MY" ${(String(data.pricing_country || data.country_code || data.country || '').toUpperCase() === 'MY') ? 'selected' : ''}>Malaysia (MYR)</option>
+              <option value="BD" ${(String(data.pricing_country || data.market_country || data.country_code || data.country || '').toUpperCase() === 'BD') ? 'selected' : ''}>Bangladesh (BDT)</option>
+              <option value="MY" ${(String(data.pricing_country || data.market_country || data.country_code || data.country || '').toUpperCase() === 'MY') ? 'selected' : ''}>Malaysia (MYR)</option>
             </select>
             <small class="muted">Admin-only. Controls wallet currency, fee and service pricing. Phone Country remains unchanged. Migration requires zero available and hold balance.</small>
           </div>
@@ -2446,6 +2446,7 @@ async function submitEditUser(){
 
     if (country) {
       payload.pricing_country = country;
+      payload.market_country = country;
       payload.service_country = country;
       payload.country = country;
       payload.country_code = country;
@@ -2608,6 +2609,7 @@ function openCreateUserModal(){
         phone: document.getElementById('userPhone')?.value.trim() || '',
         phone_country: document.getElementById('userPhoneCountry')?.value || 'BD',
         pricing_country: document.getElementById('userPricingCountry')?.value || 'BD',
+        market_country: document.getElementById('userPricingCountry')?.value || 'BD',
         email: document.getElementById('userEmail')?.value.trim() || '',
         password: document.getElementById('userPassword')?.value || '',
         pin: document.getElementById('userPin')?.value || '',

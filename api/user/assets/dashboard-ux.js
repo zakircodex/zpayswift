@@ -69,10 +69,13 @@
     var currency = normalizeCurrency(wallet.display_currency || wallet.wallet_currency || wallet.currency || summary.wallet_currency || '');
     var country = normalizeCountry(
       summary.pricing_country ||
+      summary.market_country ||
       summary.service_country ||
       wallet.pricing_country ||
+      wallet.market_country ||
       wallet.service_country ||
       me.pricing_country ||
+      me.market_country ||
       me.service_country ||
       summary.country_code ||
       summary.country ||
@@ -157,12 +160,15 @@
 
     var country = String(
       p.pricing_country ||
+      p.market_country ||
       p.service_country ||
       p.country_code ||
       p.country ||
       summary.pricing_country ||
+      summary.market_country ||
       summary.service_country ||
       wallet.pricing_country ||
+      wallet.market_country ||
       wallet.service_country ||
       summary.country_code ||
       wallet.country_code ||
@@ -228,6 +234,7 @@
     var meta = walletMeta();
     var country = normalizeCountry(
       p.pricing_country ||
+      p.market_country ||
       p.service_country ||
       p.country_code ||
       p.country ||

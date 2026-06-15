@@ -829,10 +829,14 @@ function mfs_normalize_currency(string $currency): string
     return $map[$currency] ?? '';
 }
 
-function mfs_user_country_code(array $user): string
+function mfs_user_country_code(array $user, array $wallet = []): string
 {
+    if (function_exists('auth_pricing_country_from_user')) {
+        return auth_pricing_country_from_user($user, $wallet);
+    }
+
     if (function_exists('security_user_country_code')) {
-        $country = (string)security_user_country_code($user);
+        $country = (string)security_user_country_code($user, $wallet);
         if ($country !== '') {
             return $country;
         }
@@ -840,26 +844,13 @@ function mfs_user_country_code(array $user): string
 
     $country = mfs_normalize_country_code((string)(
         $user['pricing_country']
+        ?? $user['market_country']
         ?? $user['service_country']
         ?? $user['country_code']
         ?? $user['country']
         ?? $user['user_country']
         ?? ''
     ));
-
-    if ($country !== '') {
-        return $country;
-    }
-
-    $phone = (string)(
-        $user['phone']
-        ?? $user['mobile']
-        ?? $user['number']
-        ?? $user['login_phone']
-        ?? ''
-    );
-
-    $country = mfs_infer_country_from_phone($phone);
 
     if ($country !== '') {
         return $country;
@@ -921,7 +912,7 @@ function mfs_service_mode_from_currency(string $currency): string
 
 function mfs_country_wallet_check(array $user, array $wallet): array
 {
-    $country = mfs_user_country_code($user);
+    $country = mfs_user_country_code($user, $wallet);
     $currency = mfs_wallet_currency($user, $wallet);
 
     if (function_exists('security_validate_country_wallet_lock')) {
@@ -998,7 +989,7 @@ function mfs_country_wallet_check(array $user, array $wallet): array
 
 function mfs_wallet_display_payload(array $user, array $wallet): array
 {
-    $country = mfs_user_country_code($user);
+    $country = mfs_user_country_code($user, $wallet);
     $walletCurrency = mfs_wallet_currency($user, $wallet);
     $rate = mfs_myr_to_bdt_rate();
     $available = mfs_round_money((float)($wallet['available_balance'] ?? 0));

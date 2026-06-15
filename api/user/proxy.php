@@ -2386,10 +2386,14 @@ function user_proxy_mfs_type(string $type): string
     return $map[$type] ?? 'SEND_MONEY';
 }
 
-function user_proxy_country_code_from_user(array $user): string
+function user_proxy_country_code_from_user(array $user, array $wallet = []): string
 {
+    if (function_exists('auth_pricing_country_from_user')) {
+        return auth_pricing_country_from_user($user, $wallet);
+    }
+
     if (function_exists('security_user_country_code')) {
-        $code = security_user_country_code($user);
+        $code = security_user_country_code($user, $wallet);
         if ($code !== '') {
             return $code;
         }
@@ -2397,6 +2401,7 @@ function user_proxy_country_code_from_user(array $user): string
 
     $country = strtoupper(trim((string)(
         $user['pricing_country']
+        ?? $user['market_country']
         ?? $user['service_country']
         ?? $user['country_code']
         ?? $user['country']
@@ -2415,25 +2420,6 @@ function user_proxy_country_code_from_user(array $user): string
 
     if (isset($map[$country])) {
         return $map[$country];
-    }
-
-    $phone = trim((string)(
-        $user['phone']
-        ?? $user['mobile']
-        ?? $user['number']
-        ?? $user['login_phone']
-        ?? ''
-    ));
-    $digits = preg_replace('/\D+/', '', $phone) ?? '';
-
-    if ($digits !== '') {
-        if (strpos($phone, '+60') === 0 || preg_match('/^60\d{7,12}$/', $digits)) {
-            return 'MY';
-        }
-
-        if (strpos($phone, '+880') === 0 || preg_match('/^8801\d{9}$/', $digits) || preg_match('/^01\d{9}$/', $digits)) {
-            return 'BD';
-        }
     }
 
     if (defined('DEFAULT_USER_COUNTRY')) {
@@ -2680,7 +2666,7 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
         return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Receiver number must be 11 digits BD number', 'data' => []];
     }
 
-    $countryCode = user_proxy_country_code_from_user($user);
+    $countryCode = user_proxy_country_code_from_user($user, $wallet);
     $walletCurrency = user_proxy_wallet_currency_for_user($user, $wallet);
     $serviceMode = user_proxy_mfs_service_mode($countryCode, $walletCurrency);
     $rate = user_proxy_mfs_rate_myr_to_bdt();
@@ -3200,6 +3186,7 @@ switch ($action) {
             'ip_country' => $ipCountry,
             'phone_country' => $defaultCountry,
             'pricing_country' => $defaultCountry,
+            'market_country' => $defaultCountry,
             'currency' => $defaultCountry === 'MY' ? 'MYR' : 'BDT',
         ]);
         break;
@@ -3835,6 +3822,12 @@ switch ($action) {
             'phone' => trim((string)($body['phone'] ?? '')),
             'phone_country' => auth_normalize_country_code((string)($body['phone_country'] ?? '')),
             'pricing_country' => auth_normalize_country_code((string)($body['pricing_country'] ?? $body['service_country'] ?? '')),
+            'market_country' => auth_normalize_country_code((string)(
+                $body['market_country']
+                ?? $body['pricing_country']
+                ?? $body['service_country']
+                ?? ''
+            )),
             'email' => trim((string)($body['email'] ?? '')),
             'password' => (string)($body['password'] ?? ''),
             'confirm_password' => (string)($body['confirm_password'] ?? ''),

@@ -85,16 +85,20 @@ function wallet_normalize_currency_code($currency, string $fallback = ''): strin
     return $fallback;
 }
 
-function wallet_account_country_code(array $user): string
+function wallet_account_country_code(array $user, array $wallet = []): string
 {
+    if (function_exists('auth_pricing_country_from_user')) {
+        return auth_pricing_country_from_user($user, $wallet);
+    }
+
     if (function_exists('security_user_country_code')) {
-        $country = security_user_country_code($user);
+        $country = security_user_country_code($user, $wallet);
         if ($country !== '') {
             return $country;
         }
     }
 
-    foreach (['pricing_country', 'service_country', 'country_code', 'country', 'user_country'] as $key) {
+    foreach (['pricing_country', 'market_country', 'service_country', 'country_code', 'country', 'user_country'] as $key) {
         $country = strtoupper(trim((string)($user[$key] ?? '')));
 
         if (in_array($country, ['MY', 'MYS', 'MALAYSIA'], true)) {
@@ -111,7 +115,7 @@ function wallet_account_country_code(array $user): string
 
 function wallet_account_currency(array $user, array $wallet = []): string
 {
-    $country = wallet_account_country_code($user);
+    $country = wallet_account_country_code($user, $wallet);
 
     if ($country === 'MY') {
         return 'MYR';

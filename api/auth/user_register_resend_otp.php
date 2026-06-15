@@ -85,14 +85,19 @@ if (!in_array($preAuthStatus, ['OTP_PENDING', 'SENT', 'RESENT'], true)) {
 $phone = trim((string)($preAuthRow['phone'] ?? ''));
 $uid = trim((string)($preAuthRow['uid'] ?? ''));
 $phoneCountry = auth_normalize_country_code((string)($preAuthRow['phone_country'] ?? ''));
-$pricingCountry = auth_normalize_country_code((string)($preAuthRow['pricing_country'] ?? $preAuthRow['service_country'] ?? ''));
+$pricingCountry = auth_normalize_country_code((string)(
+    $preAuthRow['pricing_country']
+    ?? $preAuthRow['market_country']
+    ?? $preAuthRow['service_country']
+    ?? ''
+));
 
 if ($phoneCountry === '') {
     $phoneCountry = detect_phone_country($phone) ?: 'BD';
 }
 
 if ($pricingCountry === '') {
-    $pricingCountry = $phoneCountry;
+    $pricingCountry = 'BD';
 }
 
 if ($phone === '' || $uid === '') {
@@ -120,11 +125,13 @@ $otpRow = [
     'country' => $phoneCountry,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
     'service_country' => $pricingCountry,
     'currency' => $pricingCountry === 'MY' ? 'MYR' : 'BDT',
     'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
     'phone_e164' => $phone,
     'ip_country' => (string)($preAuthRow['ip_country'] ?? ''),
+    'country_mismatch' => (bool)($preAuthRow['country_mismatch'] ?? ($pricingCountry !== $phoneCountry)),
     'created_ip' => (string)($preAuthRow['created_ip'] ?? $preAuthRow['registration_ip'] ?? ''),
     'user_agent' => (string)($preAuthRow['user_agent'] ?? ''),
     'purpose' => 'USER_REGISTER',
@@ -199,4 +206,5 @@ user_reg_res_response(true, 'SUCCESS', 'OTP resent successfully', [
     'expires_in_seconds' => 300,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
 ]);

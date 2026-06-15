@@ -4,26 +4,9 @@ declare(strict_types=1);
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
 require_once dirname(__DIR__, 2) . '/lib/mfs.php';
 
-function admin_user_get_country_code(array $user): string
+function admin_user_get_country_code(array $user, array $wallet = []): string
 {
-    $country = strtoupper(trim((string)(
-        $user['pricing_country']
-        ?? $user['service_country']
-        ?? $user['country_code']
-        ?? $user['country']
-        ?? $user['user_country']
-        ?? ''
-    )));
-    $map = [
-        'BD' => 'BD',
-        'BGD' => 'BD',
-        'BANGLADESH' => 'BD',
-        'MY' => 'MY',
-        'MYS' => 'MY',
-        'MALAYSIA' => 'MY',
-    ];
-
-    return $map[$country] ?? '';
+    return auth_pricing_country_from_user($user, $wallet);
 }
 
 api_require_method('GET');
@@ -60,13 +43,16 @@ api_response(true, 'SUCCESS', 'User loaded', [
     'email' => (string)($user['email'] ?? ''),
     'status' => (string)($user['status'] ?? ''),
     'role' => $role,
-    'country_code' => admin_user_get_country_code($user),
-    'country' => admin_user_get_country_code($user),
+    'country_code' => admin_user_get_country_code($user, $wallet),
+    'country' => admin_user_get_country_code($user, $wallet),
     'phone_country' => auth_phone_country_from_user($user),
-    'pricing_country' => admin_user_get_country_code($user),
-    'service_country' => admin_user_get_country_code($user),
+    'pricing_country' => admin_user_get_country_code($user, $wallet),
+    'market_country' => admin_user_get_country_code($user, $wallet),
+    'service_country' => admin_user_get_country_code($user, $wallet),
     'ip_country' => auth_normalize_country_code((string)($user['ip_country'] ?? '')),
-    'country_mismatch' => (bool)($user['country_mismatch'] ?? false),
+    'country_mismatch' => array_key_exists('country_mismatch', $user)
+        ? (bool)$user['country_mismatch']
+        : auth_phone_country_from_user($user) !== admin_user_get_country_code($user, $wallet),
     'created_ip' => (string)($user['created_ip'] ?? $user['registration_ip'] ?? ''),
     'registration_ip' => (string)($user['registration_ip'] ?? $user['created_ip'] ?? ''),
     'last_login_ip' => (string)($user['last_login_ip'] ?? ''),

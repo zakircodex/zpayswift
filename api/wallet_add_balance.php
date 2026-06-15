@@ -271,7 +271,7 @@ if ($isSubadminTransfer) {
 $targetWallet = fb_get('USER_WALLETS/' . $targetUid);
 $targetWallet = is_array($targetWallet) ? $targetWallet : [];
 $targetCurrency = wallet_account_currency($targetUser, $targetWallet);
-$targetCountry = wallet_account_country_code($targetUser);
+$targetCountry = wallet_account_country_code($targetUser, $targetWallet);
 
 $now = wallet_add_now();
 $transferId = wallet_make_transfer_id();
@@ -301,7 +301,7 @@ if ($isSubadminTransfer) {
     $actorUser = fb_get('USERS/' . $actorUid);
     $actorUser = is_array($actorUser) ? $actorUser : $actor;
     $actorCurrency = wallet_account_currency($actorUser, $actorWallet);
-    $actorCountry = wallet_account_country_code($actorUser);
+    $actorCountry = wallet_account_country_code($actorUser, $actorWallet);
 
     if ($actorCurrency !== $targetCurrency) {
         wallet_add_response(false, 'CURRENCY_MISMATCH', 'Sender and receiver wallet currencies must match', [

@@ -124,7 +124,7 @@ function walletPrefix(currency){
 
 function walletNativeCurrency(row){
   const country = String(
-    row?.pricing_country || row?.service_country || row?.country_code || row?.country || ''
+    row?.pricing_country || row?.market_country || row?.service_country || row?.country_code || row?.country || ''
   ).trim().toUpperCase();
   if (country === 'MY') return 'MYR';
   if (country === 'BD') return 'BDT';
@@ -1071,7 +1071,7 @@ function renderUsers(){
       <td>${statusPill(item.role || '-')}</td>
       <td>${statusPill(item.status || '-')}</td>
       <td>
-        <div><strong>${esc(item.pricing_country || item.country_code || item.country || '-')}</strong></div>
+        <div><strong>${esc(item.pricing_country || item.market_country || item.country_code || item.country || '-')}</strong></div>
         <div class="muted" style="font-size:11px;">Pricing country (admin managed)</div>
       </td>
       <td>
@@ -3377,7 +3377,14 @@ function clearCreateUserForm(){
   if (el('newUserConfirmPin')) el('newUserConfirmPin').value = '';
   if (el('newUserPhoneCountry')) el('newUserPhoneCountry').value = 'BD';
   if (el('newUserPricingCountry')) {
-    const ownCountry = String(state.me?.pricing_country || state.me?.country_code || state.me?.country || 'BD').toUpperCase();
+    const ownCountry = String(
+      state.me?.pricing_country ||
+      state.me?.market_country ||
+      state.me?.service_country ||
+      state.me?.country_code ||
+      state.me?.country ||
+      'BD'
+    ).toUpperCase();
     el('newUserPricingCountry').value = ownCountry === 'MY' ? 'MY' : 'BD';
   }
 
@@ -4165,6 +4172,7 @@ async function createSubadminUser(){
     phone,
     phone_country: phoneCountry,
     pricing_country: pricingCountry,
+    market_country: pricingCountry,
     email,
     password,
     confirm_password: confirmPassword,
@@ -4179,7 +4187,7 @@ async function createSubadminUser(){
       ...payload,
       phone: String(data.target_phone_e164 || data.target_phone || payload.phone || '').trim(),
       phone_country: String(data.target_phone_country || payload.phone_country || '').toUpperCase(),
-      pricing_country: String(data.target_pricing_country || payload.pricing_country || '').toUpperCase()
+      pricing_country: String(data.target_pricing_country || data.target_market_country || payload.pricing_country || '').toUpperCase()
     };
     updateCreateUserOtpModal(data);
     openCreateUserOtpModal();

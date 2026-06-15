@@ -40,12 +40,21 @@ $maxAmount = (float)($body['max_amount'] ?? 0);
 
 $name = trim((string)($body['name'] ?? ''));
 $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
-$pricingCountry = auth_normalize_country_code((string)($body['pricing_country'] ?? $body['country'] ?? $body['country_code'] ?? ''));
+$pricingCountry = auth_normalize_country_code((string)(
+    $body['pricing_country']
+    ?? $body['market_country']
+    ?? $body['service_country']
+    ?? $body['country']
+    ?? $body['country_code']
+    ?? ''
+));
 if ($phoneCountry === '') {
     $phoneCountry = detect_phone_country((string)($body['phone'] ?? '')) ?: 'BD';
 }
 if ($pricingCountry === '') {
-    $pricingCountry = $phoneCountry;
+    $pricingCountry = auth_normalize_country_code(
+        defined('DEFAULT_USER_COUNTRY') ? (string)DEFAULT_USER_COUNTRY : 'BD'
+    ) ?: 'BD';
 }
 $phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);
 $currency = auth_country_currency($pricingCountry);
@@ -112,11 +121,13 @@ $user = [
     'phone' => $phone,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
     'service_country' => $pricingCountry,
     'country_code' => $pricingCountry,
     'country' => $pricingCountry,
     'currency' => $currency,
     'wallet_currency' => $currency,
+    'country_mismatch' => $pricingCountry !== $phoneCountry,
     'email' => $email,
     'password_hash' => password_hash($password, PASSWORD_DEFAULT),
     'pin_hash' => password_hash($pin, PASSWORD_DEFAULT),
@@ -134,6 +145,9 @@ $wallet = [
     'hold_balance' => 0,
     'currency' => $currency,
     'wallet_currency' => $currency,
+    'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
     'total_topup_spent' => 0,
     'total_bundle_spent' => 0,
     'total_refund' => 0,
@@ -258,5 +272,6 @@ api_response(true, 'SUCCESS', 'User account created successfully', [
     'status' => $status,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
     'currency' => $currency,
 ]);

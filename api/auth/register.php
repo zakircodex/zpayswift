@@ -29,7 +29,13 @@ if ($phoneCountry === '') {
     $phoneCountry = detect_phone_country((string)($body['phone'] ?? '')) ?: 'BD';
 }
 $ipCountry = auth_request_ip_country($body);
-$pricingCountry = auth_registration_pricing_country($phoneCountry, $ipCountry);
+$marketCountry = auth_normalize_country_code((string)(
+    $body['market_country']
+    ?? $body['pricing_country']
+    ?? $body['service_country']
+    ?? ''
+));
+$pricingCountry = auth_registration_pricing_country($phoneCountry, $ipCountry, $marketCountry);
 $currency = auth_country_currency($pricingCountry);
 $phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);
 $email = strtolower(trim((string)($body['email'] ?? '')));
@@ -90,13 +96,14 @@ $user = [
     'phone' => $phone,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
     'service_country' => $pricingCountry,
     'country_code' => $pricingCountry,
     'country' => $pricingCountry,
     'currency' => $currency,
     'wallet_currency' => $currency,
     'ip_country' => $ipCountry,
-    'country_mismatch' => $ipCountry !== '' && $ipCountry !== $phoneCountry,
+    'country_mismatch' => $pricingCountry !== $phoneCountry,
     'registration_ip' => auth_request_ip($body),
     'created_ip' => auth_request_ip($body),
     'last_login_ip' => '',
@@ -117,6 +124,9 @@ $wallet = [
     'hold_balance' => 0,
     'currency' => $currency,
     'wallet_currency' => $currency,
+    'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
     'total_topup_spent' => 0,
     'total_bundle_spent' => 0,
     'total_refund' => 0,

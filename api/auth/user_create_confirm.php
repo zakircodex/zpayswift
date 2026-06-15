@@ -331,7 +331,13 @@ if ($phoneCountry === '') {
     $phoneCountry = detect_phone_country((string)($payload['phone'] ?? '')) ?: 'BD';
 }
 $phone = normalize_phone_by_country((string)($payload['phone'] ?? ''), $phoneCountry);
-$pricingCountry = auth_normalize_country_code((string)($payload['pricing_country'] ?? $preAuthRow['target_pricing_country'] ?? ''));
+$pricingCountry = auth_normalize_country_code((string)(
+    $payload['pricing_country']
+    ?? $payload['market_country']
+    ?? $preAuthRow['target_pricing_country']
+    ?? $preAuthRow['target_market_country']
+    ?? ''
+));
 if ($pricingCountry === '') {
     $pricingCountry = 'BD';
 }

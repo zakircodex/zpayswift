@@ -97,10 +97,15 @@ function admin_users_normalize_country(?string $country): string
     return $map[$country] ?? '';
 }
 
-function admin_users_country_code(array $user): string
+function admin_users_country_code(array $user, array $wallet = []): string
 {
+    if (function_exists('auth_pricing_country_from_user')) {
+        return auth_pricing_country_from_user($user, $wallet);
+    }
+
     return admin_users_normalize_country((string)(
         $user['pricing_country']
+        ?? $user['market_country']
         ?? $user['service_country']
         ?? $user['country_code']
         ?? $user['country']
@@ -128,14 +133,20 @@ function admin_users_find_user_by_uid(string $uid): array
         'email' => (string)($user['email'] ?? ''),
         'role' => $role,
         'status' => admin_users_normalize_status((string)($user['status'] ?? 'ACTIVE')),
-        'country_code' => admin_users_country_code($user),
-        'country' => admin_users_country_code($user),
+        'country_code' => admin_users_country_code($user, $wallet),
+        'country' => admin_users_country_code($user, $wallet),
         'phone_country' => function_exists('auth_phone_country_from_user') ? auth_phone_country_from_user($user) : '',
-        'pricing_country' => admin_users_country_code($user),
-        'service_country' => admin_users_country_code($user),
+        'pricing_country' => admin_users_country_code($user, $wallet),
+        'market_country' => admin_users_country_code($user, $wallet),
+        'service_country' => admin_users_country_code($user, $wallet),
         'currency' => (string)($user['currency'] ?? $user['wallet_currency'] ?? ''),
         'ip_country' => admin_users_normalize_country((string)($user['ip_country'] ?? '')),
-        'country_mismatch' => (bool)($user['country_mismatch'] ?? false),
+        'country_mismatch' => array_key_exists('country_mismatch', $user)
+            ? (bool)$user['country_mismatch']
+            : (
+                function_exists('auth_phone_country_from_user')
+                && auth_phone_country_from_user($user) !== admin_users_country_code($user, $wallet)
+            ),
         'created_ip' => (string)($user['created_ip'] ?? $user['registration_ip'] ?? ''),
         'last_login_ip' => (string)($user['last_login_ip'] ?? ''),
         'created_at' => (int)($user['created_at'] ?? 0),
@@ -376,13 +387,19 @@ function admin_users_list_users(
             'email' => (string)($row['email'] ?? ''),
             'role' => $role,
             'status' => $status,
-            'country_code' => admin_users_country_code($row),
-            'country' => admin_users_country_code($row),
+            'country_code' => admin_users_country_code($row, $wallet),
+            'country' => admin_users_country_code($row, $wallet),
             'phone_country' => function_exists('auth_phone_country_from_user') ? auth_phone_country_from_user($row) : '',
-            'pricing_country' => admin_users_country_code($row),
-            'service_country' => admin_users_country_code($row),
+            'pricing_country' => admin_users_country_code($row, $wallet),
+            'market_country' => admin_users_country_code($row, $wallet),
+            'service_country' => admin_users_country_code($row, $wallet),
             'ip_country' => admin_users_normalize_country((string)($row['ip_country'] ?? '')),
-            'country_mismatch' => (bool)($row['country_mismatch'] ?? false),
+            'country_mismatch' => array_key_exists('country_mismatch', $row)
+                ? (bool)$row['country_mismatch']
+                : (
+                    function_exists('auth_phone_country_from_user')
+                    && auth_phone_country_from_user($row) !== admin_users_country_code($row, $wallet)
+                ),
             'created_ip' => (string)($row['created_ip'] ?? $row['registration_ip'] ?? ''),
             'last_login_ip' => (string)($row['last_login_ip'] ?? ''),
             'created_at' => (int)($row['created_at'] ?? 0),

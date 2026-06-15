@@ -998,10 +998,15 @@ function security_service_mode_from_currency(string $walletCurrency): string
     return 'UNKNOWN';
 }
 
-function security_user_country_code(array $user): string
+function security_user_country_code(array $user, array $wallet = []): string
 {
+    if (function_exists('auth_pricing_country_from_user')) {
+        return auth_pricing_country_from_user($user, $wallet);
+    }
+
     return security_normalize_country_code((string)(
         $user['pricing_country']
+        ?? $user['market_country']
         ?? $user['service_country']
         ?? $user['country_code']
         ?? $user['country']
@@ -1031,7 +1036,7 @@ function security_user_wallet_currency(array $user, array $wallet = []): string
 
 function security_validate_country_wallet_lock(array $user, array $wallet = []): array
 {
-    $countryCode = security_user_country_code($user);
+    $countryCode = security_user_country_code($user, $wallet);
     $walletCurrency = security_user_wallet_currency($user, $wallet);
     $expectedCurrency = security_expected_currency_for_country($countryCode);
     $countryLocked = array_key_exists('country_locked', $user) ? (bool)$user['country_locked'] : false;

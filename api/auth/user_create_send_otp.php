@@ -138,6 +138,10 @@ function ucotp_load_actor_from_session(): array
             $user,
             (array)(fb_get('USER_WALLETS/' . $uid) ?: [])
         ),
+        'market_country' => auth_pricing_country_from_user(
+            $user,
+            (array)(fb_get('USER_WALLETS/' . $uid) ?: [])
+        ),
     ];
 }
 
@@ -218,6 +222,7 @@ $payloadSecret = ucotp_encrypt_payload([
     'phone' => $phone,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
     'email' => $email,
     'password' => $password,
     'pin' => $pin,
@@ -233,6 +238,7 @@ $otpRow = [
     'country' => $phoneCountry,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
     'service_country' => $pricingCountry,
     'currency' => $targetCurrency,
     'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
@@ -240,7 +246,9 @@ $otpRow = [
     'target_phone_country' => $phoneCountry,
     'target_phone_e164' => $phone,
     'target_pricing_country' => $pricingCountry,
+    'target_market_country' => $pricingCountry,
     'target_currency' => $targetCurrency,
+    'country_mismatch' => $pricingCountry !== $phoneCountry,
     'ip_country' => auth_request_ip_country($body),
     'created_ip' => auth_request_ip($body),
     'user_agent' => auth_request_user_agent($body),
@@ -272,7 +280,9 @@ $preAuthRow = [
     'target_phone_e164' => $phone,
     'target_phone_country' => $phoneCountry,
     'target_pricing_country' => $pricingCountry,
+    'target_market_country' => $pricingCountry,
     'target_currency' => $targetCurrency,
+    'country_mismatch' => $pricingCountry !== $phoneCountry,
     'target_email' => $email,
     'payload_secret' => $payloadSecret,
     'purpose' => 'SUBADMIN_USER_CREATE',
@@ -343,6 +353,7 @@ ucotp_response(true, 'SUCCESS', 'OTP sent to the new user phone number', [
     'target_phone_e164' => $phone,
     'target_phone_country' => $phoneCountry,
     'target_pricing_country' => $pricingCountry,
+    'target_market_country' => $pricingCountry,
     'target_currency' => $targetCurrency,
     'target_email' => $email,
 ]);

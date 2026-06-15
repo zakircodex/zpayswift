@@ -123,6 +123,7 @@ function getFormData(){
     phone: (el('regPhone')?.value || '').trim(),
     phone_country: (el('regPhoneCountry')?.value || 'BD').toUpperCase(),
     pricing_country: (el('regPricingCountry')?.value || 'BD').toUpperCase(),
+    market_country: (el('regPricingCountry')?.value || 'BD').toUpperCase(),
     email: (el('regEmail')?.value || '').trim(),
     password: el('regPassword')?.value || '',
     confirm_password: el('regConfirmPassword')?.value || '',
@@ -176,7 +177,10 @@ function validateForm(data){
 
 function updateCountryUi(){
   const phoneCountry = (el('regPhoneCountry')?.value || 'BD').toUpperCase();
-  const pricingCountry = phoneCountry === 'MY' || state.ipCountry === 'MY' ? 'MY' : 'BD';
+  const selectedMarket = (el('regPricingCountry')?.value || 'BD').toUpperCase();
+  const pricingCountry = ['BD', 'MY'].includes(state.ipCountry)
+    ? state.ipCountry
+    : (['BD', 'MY'].includes(selectedMarket) ? selectedMarket : 'BD');
 
   if (el('regPricingCountry')) {
     el('regPricingCountry').value = pricingCountry;
@@ -197,7 +201,7 @@ async function loadCountryDefaults(){
   try {
     const data = await proxyPost('country_defaults', {}, 'Detecting country...');
     const phoneCountry = String(data.phone_country || 'BD').toUpperCase();
-    const pricingCountry = String(data.pricing_country || phoneCountry).toUpperCase();
+    const pricingCountry = String(data.pricing_country || data.market_country || el('regPricingCountry')?.value || 'BD').toUpperCase();
     state.ipCountry = String(data.ip_country || '').toUpperCase();
 
     if (el('regPhoneCountry') && ['BD','MY'].includes(phoneCountry)) {

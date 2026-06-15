@@ -141,7 +141,12 @@ $email = strtolower(trim((string)($preAuthRow['email'] ?? '')));
 $passwordHash = trim((string)($preAuthRow['password_hash'] ?? ''));
 $pinHash = trim((string)($preAuthRow['pin_hash'] ?? ''));
 $phoneCountry = auth_normalize_country_code((string)($preAuthRow['phone_country'] ?? ''));
-$pricingCountry = auth_normalize_country_code((string)($preAuthRow['pricing_country'] ?? $preAuthRow['service_country'] ?? ''));
+$pricingCountry = auth_normalize_country_code((string)(
+    $preAuthRow['pricing_country']
+    ?? $preAuthRow['market_country']
+    ?? $preAuthRow['service_country']
+    ?? ''
+));
 $ipCountry = auth_normalize_country_code((string)($preAuthRow['ip_country'] ?? ''));
 $currency = auth_country_currency($pricingCountry !== '' ? $pricingCountry : 'BD');
 
@@ -214,13 +219,14 @@ $userRow = [
     'phone' => $phone,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
     'service_country' => $pricingCountry,
     'country_code' => $pricingCountry,
     'country' => $pricingCountry,
     'currency' => $currency,
     'wallet_currency' => $currency,
     'ip_country' => $ipCountry,
-    'country_mismatch' => (bool)($preAuthRow['country_mismatch'] ?? ($ipCountry !== '' && $ipCountry !== $phoneCountry)),
+    'country_mismatch' => (bool)($preAuthRow['country_mismatch'] ?? ($pricingCountry !== $phoneCountry)),
     'registration_ip' => (string)($preAuthRow['registration_ip'] ?? $preAuthRow['created_ip'] ?? ''),
     'created_ip' => (string)($preAuthRow['created_ip'] ?? $preAuthRow['registration_ip'] ?? ''),
     'last_login_ip' => '',
@@ -246,6 +252,9 @@ $walletRow = [
     'hold_balance' => 0,
     'currency' => $currency,
     'wallet_currency' => $currency,
+    'pricing_country' => $pricingCountry,
+    'market_country' => $pricingCountry,
+    'service_country' => $pricingCountry,
     'total_topup_spent' => 0,
     'total_bundle_spent' => 0,
     'total_refund' => 0,

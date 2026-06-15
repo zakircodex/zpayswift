@@ -81,6 +81,7 @@ $emailProvided = array_key_exists('email', $body);
 $roleProvided = array_key_exists('role', $body);
 $statusProvided = array_key_exists('status', $body);
 $countryProvided = array_key_exists('pricing_country', $body)
+    || array_key_exists('market_country', $body)
     || array_key_exists('service_country', $body)
     || array_key_exists('country', $body)
     || array_key_exists('country_code', $body);
@@ -96,6 +97,7 @@ $name = trim((string)($body['name'] ?? ''));
 $email = strtolower(trim((string)($body['email'] ?? '')));
 $country = normalize_admin_country((string)(
     $body['pricing_country']
+    ?? $body['market_country']
     ?? $body['service_country']
     ?? $body['country_code']
     ?? $body['country']
@@ -221,9 +223,11 @@ if ($countryProvided) {
     $updates['country_code'] = $country;
     $updates['country'] = $country;
     $updates['pricing_country'] = $country;
+    $updates['market_country'] = $country;
     $updates['service_country'] = $country;
     $updates['currency'] = $country === 'MY' ? 'MYR' : 'BDT';
     $updates['wallet_currency'] = $country === 'MY' ? 'MYR' : 'BDT';
+    $updates['country_mismatch'] = auth_phone_country_from_user($user) !== $country;
 }
 
 /*
@@ -255,15 +259,20 @@ if ($countryProvided) {
     if (!fb_patch('USER_WALLETS/' . $uid, [
         'currency' => $walletCurrency,
         'wallet_currency' => $walletCurrency,
+        'pricing_country' => $country,
+        'market_country' => $country,
+        'service_country' => $country,
         'updated_at' => now_ts(),
     ])) {
         fb_patch('USERS/' . $uid, [
             'country_code' => (string)($user['country_code'] ?? ''),
             'country' => (string)($user['country'] ?? ''),
             'pricing_country' => (string)($user['pricing_country'] ?? ''),
+            'market_country' => (string)($user['market_country'] ?? ''),
             'service_country' => (string)($user['service_country'] ?? ''),
             'currency' => (string)($user['currency'] ?? ''),
             'wallet_currency' => (string)($user['wallet_currency'] ?? ''),
+            'country_mismatch' => (bool)($user['country_mismatch'] ?? false),
             'updated_at' => now_ts(),
         ]);
         api_response(false, 'SERVER_ERROR', 'User updated but wallet currency migration failed', [], 500);
@@ -361,6 +370,7 @@ api_response(true, 'SUCCESS', 'User account updated successfully', [
     'country' => (string)($finalUser['country_code'] ?? $finalUser['country'] ?? ''),
     'phone_country' => auth_phone_country_from_user($finalUser),
     'pricing_country' => auth_pricing_country_from_user($finalUser),
+    'market_country' => auth_pricing_country_from_user($finalUser),
     'service_country' => auth_pricing_country_from_user($finalUser),
     'updated_at' => (int)($finalUser['updated_at'] ?? now_ts()),
     'role_settings' => $roleSettings,

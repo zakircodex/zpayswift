@@ -30,12 +30,28 @@ function auth_country_currency(string $country): string
     return auth_normalize_country_code($country) === 'MY' ? 'MYR' : 'BDT';
 }
 
-function auth_registration_pricing_country(string $phoneCountry, string $ipCountry): string
+function auth_registration_pricing_country(
+    string $phoneCountry,
+    string $ipCountry,
+    string $marketCountry = ''
+): string
 {
-    $phoneCountry = auth_normalize_country_code($phoneCountry);
     $ipCountry = auth_normalize_country_code($ipCountry);
+    $marketCountry = auth_normalize_country_code($marketCountry);
 
-    return $phoneCountry === 'MY' || $ipCountry === 'MY' ? 'MY' : 'BD';
+    if ($ipCountry !== '') {
+        return $ipCountry;
+    }
+
+    if ($marketCountry !== '') {
+        return $marketCountry;
+    }
+
+    $defaultCountry = defined('DEFAULT_USER_COUNTRY')
+        ? auth_normalize_country_code((string)DEFAULT_USER_COUNTRY)
+        : '';
+
+    return $defaultCountry !== '' ? $defaultCountry : 'BD';
 }
 
 function normalize_phone_by_country(string $phone, string $country): string
@@ -131,7 +147,97 @@ function auth_pricing_country_from_user(array $user, array $wallet = []): string
 {
     foreach ([
         $user['pricing_country'] ?? '',
+        $user['market_country'] ?? '',
         $user['service_country'] ?? '',
+    ] as $candidate) {
+        $country = auth_normalize_country_code((string)$candidate);
+        if ($country !== '') {
+            return $country;
+        }
+    }
+
+    $evidence = [];
+
+    foreach ([
+        $user['wallet_currency'] ?? '',
+        $user['currency'] ?? '',
+        $wallet['wallet_currency'] ?? '',
+        $wallet['currency'] ?? '',
+    ] as $candidate) {
+        $currency = strtoupper(trim((string)$candidate));
+        if (in_array($currency, ['MYR', 'RM', 'RINGGIT'], true)) {
+            $evidence[] = 'MY';
+        } elseif (in_array($currency, ['BDT', 'TK', 'TAKA'], true)) {
+            $evidence[] = 'BD';
+        }
+    }
+
+    foreach ([
+        $user['ip_country'] ?? '',
+        $user['registration_country'] ?? '',
+        $user['created_ip_country'] ?? '',
+    ] as $candidate) {
+        $country = auth_normalize_country_code((string)$candidate);
+        if ($country !== '') {
+            $evidence[] = $country;
+        }
+    }
+
+    $parentUid = trim((string)($user['parent_subadmin_uid'] ?? ''));
+    if (
+        $parentUid === ''
+        && strtoupper(trim((string)($user['created_by_role'] ?? ''))) === 'SUBADMIN'
+    ) {
+        $parentUid = trim((string)($user['created_by_uid'] ?? ''));
+    }
+
+    if ($parentUid !== '' && function_exists('fb_get')) {
+        $parentUser = fb_get('USERS/' . $parentUid);
+        $parentWallet = fb_get('USER_WALLETS/' . $parentUid);
+        $parentUser = is_array($parentUser) ? $parentUser : [];
+        $parentWallet = is_array($parentWallet) ? $parentWallet : [];
+
+        foreach ([
+            $parentUser['pricing_country'] ?? '',
+            $parentUser['market_country'] ?? '',
+            $parentUser['service_country'] ?? '',
+            $parentUser['country_code'] ?? '',
+            $parentUser['country'] ?? '',
+        ] as $candidate) {
+            $country = auth_normalize_country_code((string)$candidate);
+            if ($country !== '') {
+                $evidence[] = $country;
+                break;
+            }
+        }
+
+        foreach ([
+            $parentUser['wallet_currency'] ?? '',
+            $parentUser['currency'] ?? '',
+            $parentWallet['wallet_currency'] ?? '',
+            $parentWallet['currency'] ?? '',
+        ] as $candidate) {
+            $currency = strtoupper(trim((string)$candidate));
+            if (in_array($currency, ['MYR', 'RM', 'RINGGIT'], true)) {
+                $evidence[] = 'MY';
+                break;
+            }
+            if (in_array($currency, ['BDT', 'TK', 'TAKA'], true)) {
+                $evidence[] = 'BD';
+                break;
+            }
+        }
+    }
+
+    if (in_array('MY', $evidence, true)) {
+        return 'MY';
+    }
+
+    if (in_array('BD', $evidence, true)) {
+        return 'BD';
+    }
+
+    foreach ([
         $user['country_code'] ?? '',
         $user['country'] ?? '',
         $user['user_country'] ?? '',
@@ -140,22 +246,6 @@ function auth_pricing_country_from_user(array $user, array $wallet = []): string
         if ($country !== '') {
             return $country;
         }
-    }
-
-    $currency = strtoupper(trim((string)(
-        $user['wallet_currency']
-        ?? $user['currency']
-        ?? $wallet['wallet_currency']
-        ?? $wallet['currency']
-        ?? ''
-    )));
-
-    if (in_array($currency, ['MYR', 'RM', 'RINGGIT'], true)) {
-        return 'MY';
-    }
-
-    if (in_array($currency, ['BDT', 'TK', 'TAKA'], true)) {
-        return 'BD';
     }
 
     return 'BD';
@@ -226,10 +316,10 @@ function auth_request_ip(array $body = []): string
 function auth_request_ip_country(array $body = []): string
 {
     foreach ([
-        $body['ip_country'] ?? '',
         $_SERVER['HTTP_CF_IPCOUNTRY'] ?? '',
         $_SERVER['HTTP_X_COUNTRY_CODE'] ?? '',
         $_SERVER['GEOIP_COUNTRY_CODE'] ?? '',
+        $body['ip_country'] ?? '',
     ] as $candidate) {
         $country = auth_normalize_country_code((string)$candidate);
         if ($country !== '') {
