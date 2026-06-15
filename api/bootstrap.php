@@ -14,6 +14,7 @@ require_once __DIR__ . '/lib/helpers.php';
 require_once __DIR__ . '/lib/firebase.php';
 require_once __DIR__ . '/lib/security.php';
 require_once __DIR__ . '/lib/phone_country.php';
+require_once __DIR__ . '/lib/market_detection.php';
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/roles.php';
 require_once __DIR__ . '/lib/subadmin_api.php';

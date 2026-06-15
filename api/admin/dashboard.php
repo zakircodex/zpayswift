@@ -519,7 +519,7 @@ header('Pragma: no-cache');
     <th>Phone</th>
     <th>Status</th>
     <th>Role</th>
-    <th>Phone / Pricing Country</th>
+    <th>Country / Risk</th>
     <th>Available</th>
     <th>Last Login</th>
     <th>Action</th>
@@ -610,7 +610,7 @@ header('Pragma: no-cache');
 <script>
 window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
-<script src="/api/admin/assets/dashboard.js?v=36"></script>
+<script src="/api/admin/assets/dashboard.js?v=37"></script>
 <script src="/api/admin/assets/admin-dashboard-ux.js?v=2"></script>
 
 </body>

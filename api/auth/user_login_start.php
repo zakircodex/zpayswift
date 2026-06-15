@@ -162,6 +162,7 @@ if (!is_array($user)) {
 }
 
 $status = strtoupper(trim((string)($user['status'] ?? '')));
+$accountStatus = strtoupper(trim((string)($user['account_status'] ?? $status)));
 $role = strtoupper(trim((string)($user['role'] ?? '')));
 $passwordHash = (string)($user['password_hash'] ?? '');
 $storedPhoneCountry = auth_phone_country_from_user($user);
@@ -174,6 +175,14 @@ if ($storedPhoneCountry !== $phoneCountry) {
 $otpPhone = normalize_phone_by_country((string)($user['phone'] ?? $phone), $storedPhoneCountry);
 if ($otpPhone === '') {
     $otpPhone = $phone;
+}
+
+if ($accountStatus === 'REVIEW' || $status === 'REVIEW') {
+    api_response(false, 'ACCOUNT_REVIEW_REQUIRED', 'Account is pending admin review', [], 403);
+}
+
+if ($accountStatus === 'BLOCKED' || $status === 'BLOCKED') {
+    api_response(false, 'ACCOUNT_BLOCKED', 'Account is blocked', [], 403);
 }
 
 if ($status !== 'ACTIVE') {

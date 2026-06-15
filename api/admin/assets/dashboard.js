@@ -2252,11 +2252,15 @@ function renderUsers(){
         <div class="muted" style="font-size:12px;">${esc(item.email || '-')}</div>
       </td>
       <td>${esc(item.phone || '-')}</td>
-      <td>${statusPill(item.status || 'ACTIVE')}</td>
+      <td>
+        ${statusPill(item.account_status || item.status || 'ACTIVE')}
+        ${item.vpn_suspected ? '<div class="muted" style="font-size:11px;color:#ff8f9f;margin-top:5px;">Risk review</div>' : ''}
+      </td>
       <td>${rolePill(item.role || 'USER')}</td>
       <td>
         <div><strong>${esc(item.phone_country || '-')}</strong> <span class="muted">OTP</span></div>
         <div class="muted" style="font-size:12px;">${esc(item.pricing_country || item.market_country || item.country_code || item.country || '-')} pricing</div>
+        <div class="muted" style="font-size:11px;">GPS ${esc(item.gps_country || '-')} / IP ${esc(item.ip_country || '-')}</div>
         ${item.country_mismatch ? '<div class="muted" style="font-size:11px;color:#ffb96a;">Country mismatch</div>' : ''}
       </td>
       <td>${walletMoney(item, 'available')}${walletRawHint(item, 'available')}</td>
@@ -2265,6 +2269,9 @@ function renderUsers(){
         <div class="row-actions">
           <button class="mini-btn" onclick="viewUser('${esc(item.uid || '')}')">View</button>
           <button class="mini-btn" onclick="openEditUserModal('${esc(item.uid || '')}')">Edit</button>
+          ${String(item.account_status || item.status || '').toUpperCase() === 'REVIEW'
+            ? `<button class="mini-btn" onclick="approveUserAccount('${esc(item.uid || '')}')">Approve</button>`
+            : ''}
         </div>
       </td>
     </tr>
@@ -2304,11 +2311,18 @@ async function viewUser(uid){
           <div class="detail-item"><label>Phone</label><strong>${esc(data.phone || '-')}</strong></div>
           <div class="detail-item"><label>Email</label><strong>${esc(data.email || '-')}</strong></div>
           <div class="detail-item"><label>Status</label><strong>${esc(data.status || '-')}</strong></div>
+          <div class="detail-item"><label>Account Review Status</label><strong>${esc(data.account_status || data.status || '-')}</strong></div>
           <div class="detail-item"><label>Role</label><strong>${esc(data.role || 'USER')}</strong></div>
           <div class="detail-item"><label>Phone Country (OTP)</label><strong>${esc(data.phone_country || '-')}</strong></div>
           <div class="detail-item"><label>Pricing Country (fee/wallet/service)</label><strong>${esc(data.pricing_country || data.market_country || data.country_code || data.country || '-')}</strong></div>
           <div class="detail-item"><label>IP Country</label><strong>${esc(data.ip_country || '-')}</strong></div>
+          <div class="detail-item"><label>GPS Country</label><strong>${esc(data.gps_country || '-')}</strong></div>
+          <div class="detail-item"><label>GPS Accuracy</label><strong>${Number(data.gps_accuracy || 0).toFixed(0)} m</strong></div>
           <div class="detail-item"><label>Country Mismatch</label><strong>${data.country_mismatch ? 'Yes - review recommended' : 'No'}</strong></div>
+          <div class="detail-item"><label>VPN / Proxy Suspected</label><strong>${data.vpn_suspected ? 'Yes' : 'No'}</strong></div>
+          <div class="detail-item"><label>Detection Source</label><strong>${esc(data.market_detection_source || '-')}</strong></div>
+          <div class="detail-item"><label>Review Reason</label><strong>${esc(data.account_review_reason || '-')}</strong></div>
+          <div class="detail-item"><label>IP Risk</label><strong>${esc(data.ip_risk_type || '-')} (${Number(data.ip_risk_score || 0)})</strong></div>
           <div class="detail-item"><label>Registration IP</label><strong>${esc(data.created_ip || data.registration_ip || '-')}</strong></div>
           <div class="detail-item"><label>Last Login IP</label><strong>${esc(data.last_login_ip || '-')}</strong></div>
           <div class="detail-item"><label>Topup Commission / 1000 BDT</label><strong>${Number(data.commission_per_1000 || 0).toFixed(2)}</strong></div>
@@ -2330,6 +2344,9 @@ async function viewUser(uid){
       `
         <button class="btn ghost" onclick="closeDrawer()">Close</button>
         <button class="btn blue" onclick="openEditUserModal('${esc(uid)}')">Edit User</button>
+        ${String(data.account_status || data.status || '').toUpperCase() === 'REVIEW'
+          ? `<button class="btn brand" onclick="approveUserAccount('${esc(uid)}')">Approve Account</button>`
+          : ''}
         ${
           canManageApiKeys(data.role)
             ? `<button class="btn blue" onclick="openUserApiKeys('${esc(uid)}')">API Keys</button>`
@@ -2388,6 +2405,8 @@ async function openEditUserModal(uid){
             <select id="editUserStatus">
               <option value="ACTIVE" ${(String(data.status || '').toUpperCase() === 'ACTIVE') ? 'selected' : ''}>ACTIVE</option>
               <option value="INACTIVE" ${(String(data.status || '').toUpperCase() === 'INACTIVE') ? 'selected' : ''}>INACTIVE</option>
+              <option value="REVIEW" ${(String(data.account_status || data.status || '').toUpperCase() === 'REVIEW') ? 'selected' : ''}>REVIEW</option>
+              <option value="BLOCKED" ${(String(data.account_status || data.status || '').toUpperCase() === 'BLOCKED') ? 'selected' : ''}>BLOCKED</option>
             </select>
           </div>
 
@@ -2527,6 +2546,28 @@ async function submitEditUser(){
     }
 
     alert(err.message || 'Failed to update user');
+  }
+}
+
+async function approveUserAccount(uid){
+  uid = String(uid || '').trim();
+  if (!uid) return;
+
+  if (!confirm(`Approve account ${uid}? Verify the GPS/IP risk details first.`)) {
+    return;
+  }
+
+  try {
+    await proxyPost('user_approve', { uid }, true, { busyText: 'Approving account...' });
+    showToast('Account approved successfully', 'ok');
+    await loadUsers({ busy:false, silentLog:true });
+
+    const drawer = document.getElementById('drawer');
+    if (drawer && drawer.classList.contains('open')) {
+      await viewUser(uid);
+    }
+  } catch (err) {
+    alert(err.message || 'Failed to approve account');
   }
 }
 

@@ -42,6 +42,7 @@ api_response(true, 'SUCCESS', 'User loaded', [
     'phone' => (string)($user['phone'] ?? ''),
     'email' => (string)($user['email'] ?? ''),
     'status' => (string)($user['status'] ?? ''),
+    'account_status' => (string)($user['account_status'] ?? $user['status'] ?? ''),
     'role' => $role,
     'country_code' => admin_user_get_country_code($user, $wallet),
     'country' => admin_user_get_country_code($user, $wallet),
@@ -49,10 +50,24 @@ api_response(true, 'SUCCESS', 'User loaded', [
     'pricing_country' => admin_user_get_country_code($user, $wallet),
     'market_country' => admin_user_get_country_code($user, $wallet),
     'service_country' => admin_user_get_country_code($user, $wallet),
-    'ip_country' => auth_normalize_country_code((string)($user['ip_country'] ?? '')),
+    'ip_country' => function_exists('market_iso_country_code')
+        ? market_iso_country_code($user['ip_country'] ?? '')
+        : strtoupper(trim((string)($user['ip_country'] ?? ''))),
+    'gps_country' => strtoupper(trim((string)($user['gps_country'] ?? ''))),
+    'gps_lat' => (float)($user['gps_lat'] ?? 0),
+    'gps_lng' => (float)($user['gps_lng'] ?? 0),
+    'gps_accuracy' => (float)($user['gps_accuracy'] ?? 0),
     'country_mismatch' => array_key_exists('country_mismatch', $user)
         ? (bool)$user['country_mismatch']
         : auth_phone_country_from_user($user) !== admin_user_get_country_code($user, $wallet),
+    'vpn_suspected' => (bool)($user['vpn_suspected'] ?? false),
+    'market_detection_source' => (string)($user['market_detection_source'] ?? ''),
+    'account_review_reason' => (string)($user['account_review_reason'] ?? ''),
+    'ip_risk_type' => (string)($user['ip_risk_type'] ?? ''),
+    'ip_risk_score' => (int)($user['ip_risk_score'] ?? 0),
+    'review_status' => (string)($user['review_status'] ?? ''),
+    'approved_by_uid' => (string)($user['approved_by_uid'] ?? ''),
+    'approved_at' => (int)($user['approved_at'] ?? 0),
     'created_ip' => (string)($user['created_ip'] ?? $user['registration_ip'] ?? ''),
     'registration_ip' => (string)($user['registration_ip'] ?? $user['created_ip'] ?? ''),
     'last_login_ip' => (string)($user['last_login_ip'] ?? ''),

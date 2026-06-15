@@ -115,6 +115,10 @@ html,body{
   margin-bottom:14px;
 }
 
+.form-full{
+  grid-column:1 / -1;
+}
+
 .field label{
   display:block;
   color:var(--muted);
@@ -153,6 +157,45 @@ select.input{
 .input:focus{
   border-color:#4e8fd0;
   box-shadow:0 0 0 3px rgba(96,175,229,.12);
+}
+
+.readonly-value{
+  width:100%;
+  min-height:49px;
+  border-radius:18px;
+  border:1px solid var(--line2);
+  background:#101d34;
+  color:#dce8ff;
+  padding:14px 15px;
+  font-size:14px;
+  font-weight:800;
+}
+
+.location-panel{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  border:1px solid rgba(96,175,229,.28);
+  background:rgba(16,32,58,.9);
+  border-radius:18px;
+  padding:14px;
+}
+
+.location-panel strong{
+  display:block;
+  font-size:14px;
+}
+
+.location-panel p{
+  margin:5px 0 0;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.45;
+}
+
+.location-panel .btn{
+  flex:0 0 auto;
 }
 
 .btn{
@@ -393,6 +436,19 @@ select.input{
   .form-grid{
     grid-template-columns:1fr;
     gap:0;
+  }
+
+  .form-full{
+    grid-column:auto;
+  }
+
+  .location-panel{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  .location-panel .btn{
+    width:100%;
   }
 
   .logo{

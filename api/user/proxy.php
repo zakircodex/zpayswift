@@ -3147,9 +3147,9 @@ function user_proxy_forward_auth_post(string $relativePath, array $body, string 
     $headers = [
         'X-APP-KEY' => APP_KEY,
     ];
-    $forwardedCountry = auth_normalize_country_code((string)(
-        $body['market_country_detected'] ?? ''
-    ));
+    $forwardedCountry = function_exists('market_request_ip_country')
+        ? auth_normalize_country_code(market_request_ip_country($body))
+        : '';
     $forwardedSignature = function_exists('auth_country_forwarding_signature')
         ? auth_country_forwarding_signature($forwardedCountry)
         : '';
@@ -3157,6 +3157,24 @@ function user_proxy_forward_auth_post(string $relativePath, array $body, string 
     if ($forwardedCountry !== '' && $forwardedSignature !== '') {
         $headers['X-ZPAY-REQUEST-COUNTRY'] = $forwardedCountry;
         $headers['X-ZPAY-REQUEST-COUNTRY-SIGNATURE'] = $forwardedSignature;
+    }
+
+    if (function_exists('market_request_ip') && function_exists('market_forwarding_signature')) {
+        $forwardedIp = market_request_ip();
+        $forwardedIpSignature = market_forwarding_signature('ip', $forwardedIp);
+
+        if ($forwardedIp !== '' && $forwardedIpSignature !== '') {
+            $headers['X-ZPAY-CLIENT-IP'] = $forwardedIp;
+            $headers['X-ZPAY-CLIENT-IP-SIGNATURE'] = $forwardedIpSignature;
+        }
+
+        $rawIpCountry = market_request_ip_country($body);
+        $ipCountrySignature = market_forwarding_signature('ip-country', $rawIpCountry);
+
+        if ($rawIpCountry !== '' && $ipCountrySignature !== '') {
+            $headers['X-ZPAY-IP-COUNTRY'] = $rawIpCountry;
+            $headers['X-ZPAY-IP-COUNTRY-SIGNATURE'] = $ipCountrySignature;
+        }
     }
 
     $res = user_proxy_internal_api_request('POST', $relativePath, $body, $headers);
@@ -3192,8 +3210,10 @@ switch ($action) {
         user_proxy_require_method('POST');
 
         $body = user_proxy_read_json_body();
-        $ipCountry = function_exists('get_request_country') ? get_request_country($body, 'MY') : 'MY';
-        $defaultCountry = $ipCountry !== '' ? $ipCountry : 'MY';
+        $ipCountry = function_exists('market_request_ip_country')
+            ? market_request_ip_country($body)
+            : '';
+        $defaultCountry = in_array($ipCountry, ['BD', 'MY'], true) ? $ipCountry : 'MY';
 
         user_proxy_response(true, 'SUCCESS', 'Country defaults loaded', [
             'ip_country' => $ipCountry,
@@ -3202,6 +3222,37 @@ switch ($action) {
             'market_country' => $defaultCountry,
             'currency' => $defaultCountry === 'MY' ? 'MYR' : 'BDT',
         ]);
+        break;
+
+    case 'registration_location_check':
+        user_proxy_require_method('POST');
+
+        $body = user_proxy_read_json_body();
+        $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+        $decision = market_registration_decision($body, $phoneCountry);
+
+        if (empty($decision['ok'])) {
+            user_proxy_response(
+                false,
+                (string)($decision['code'] ?? 'LOCATION_REQUIRED'),
+                (string)($decision['message'] ?? 'Location permission is required to create an account.'),
+                [],
+                422
+            );
+        }
+
+        unset(
+            $decision['ok'],
+            $decision['created_ip'],
+            $decision['ip_risk_reason']
+        );
+
+        user_proxy_response(
+            true,
+            (string)($decision['code'] ?? 'SUCCESS'),
+            (string)($decision['message'] ?? 'Registration market verified'),
+            $decision
+        );
         break;
 
     case 'login':
@@ -3829,17 +3880,11 @@ switch ($action) {
         user_proxy_require_method('POST');
 
         $body = user_proxy_read_json_body();
-        $detectedMarket = function_exists('get_request_country')
-            ? get_request_country($body, 'MY')
-            : 'MY';
 
         user_proxy_forward_auth_post('auth/user_register_send_otp.php', [
             'name' => trim((string)($body['name'] ?? '')),
             'phone' => trim((string)($body['phone'] ?? '')),
             'phone_country' => auth_normalize_country_code((string)($body['phone_country'] ?? '')),
-            'pricing_country' => $detectedMarket,
-            'market_country' => $detectedMarket,
-            'market_country_detected' => $detectedMarket,
             'email' => trim((string)($body['email'] ?? '')),
             'password' => (string)($body['password'] ?? ''),
             'confirm_password' => (string)($body['confirm_password'] ?? ''),
@@ -3847,10 +3892,11 @@ switch ($action) {
             'confirm_pin' => trim((string)($body['confirm_pin'] ?? '')),
             'device_id' => trim((string)($body['device_id'] ?? 'USER_WEB')),
             'device_name' => trim((string)($body['device_name'] ?? 'User Register')),
-            'client_ip' => security_client_ip(),
-            'ip_country' => $detectedMarket,
             'user_agent' => security_user_agent(),
             'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
+            'gps_lat' => $body['gps_lat'] ?? null,
+            'gps_lng' => $body['gps_lng'] ?? null,
+            'gps_accuracy' => $body['gps_accuracy'] ?? null,
         ], 'REGISTER_OTP_SEND_FAILED', 'Failed to send register OTP');
         break;
 

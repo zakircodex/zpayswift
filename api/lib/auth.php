@@ -119,6 +119,15 @@ function auth_require_user(bool $touchSession = true): array
     }
 
     $userStatus = auth_status_value($user['status'] ?? 'INACTIVE');
+    $accountStatus = auth_status_value($user['account_status'] ?? $userStatus);
+
+    if ($accountStatus === 'REVIEW') {
+        api_response(false, 'ACCOUNT_REVIEW_REQUIRED', 'Account is pending admin review', [], 403);
+    }
+
+    if ($accountStatus === 'BLOCKED') {
+        api_response(false, 'ACCOUNT_BLOCKED', 'Account is blocked', [], 403);
+    }
 
     if ($userStatus !== 'ACTIVE') {
         api_response(false, 'UNAUTHORIZED', 'User is not active', [], 401);
@@ -126,6 +135,7 @@ function auth_require_user(bool $touchSession = true): array
 
     $user['uid'] = $uid;
     $user['status'] = $userStatus;
+    $user['account_status'] = $accountStatus;
     $user['role'] = auth_status_value($user['role'] ?? '');
 
     if ($touchSession) {

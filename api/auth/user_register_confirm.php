@@ -147,8 +147,15 @@ $pricingCountry = auth_normalize_country_code((string)(
     ?? $preAuthRow['service_country']
     ?? ''
 ));
-$ipCountry = auth_normalize_country_code((string)($preAuthRow['ip_country'] ?? ''));
+$ipCountry = function_exists('market_iso_country_code')
+    ? market_iso_country_code($preAuthRow['ip_country'] ?? '')
+    : strtoupper(trim((string)($preAuthRow['ip_country'] ?? '')));
 $currency = auth_country_currency($pricingCountry !== '' ? $pricingCountry : 'BD');
+$accountStatus = strtoupper(trim((string)($preAuthRow['account_status'] ?? 'ACTIVE')));
+
+if (!in_array($accountStatus, ['ACTIVE', 'REVIEW', 'BLOCKED'], true)) {
+    $accountStatus = 'REVIEW';
+}
 
 if ($phoneCountry === '') {
     $phoneCountry = detect_phone_country($phone) ?: 'BD';
@@ -227,6 +234,17 @@ $userRow = [
     'wallet_currency' => $currency,
     'ip_country' => $ipCountry,
     'country_mismatch' => (bool)($preAuthRow['country_mismatch'] ?? ($pricingCountry !== $phoneCountry)),
+    'gps_lat' => (float)($preAuthRow['gps_lat'] ?? 0),
+    'gps_lng' => (float)($preAuthRow['gps_lng'] ?? 0),
+    'gps_accuracy' => (float)($preAuthRow['gps_accuracy'] ?? 0),
+    'gps_country' => (string)($preAuthRow['gps_country'] ?? ''),
+    'vpn_suspected' => (bool)($preAuthRow['vpn_suspected'] ?? false),
+    'market_detection_source' => (string)($preAuthRow['market_detection_source'] ?? 'BROWSER_GPS'),
+    'account_review_reason' => (string)($preAuthRow['account_review_reason'] ?? ''),
+    'account_status' => $accountStatus,
+    'ip_risk_type' => (string)($preAuthRow['ip_risk_type'] ?? ''),
+    'ip_risk_score' => (int)($preAuthRow['ip_risk_score'] ?? 0),
+    'ip_risk_source' => (string)($preAuthRow['ip_risk_source'] ?? ''),
     'registration_ip' => (string)($preAuthRow['registration_ip'] ?? $preAuthRow['created_ip'] ?? ''),
     'created_ip' => (string)($preAuthRow['created_ip'] ?? $preAuthRow['registration_ip'] ?? ''),
     'last_login_ip' => '',
@@ -234,7 +252,7 @@ $userRow = [
     'user_agent' => (string)($preAuthRow['user_agent'] ?? ''),
     'email' => $email,
     'role' => 'USER',
-    'status' => 'ACTIVE',
+    'status' => $accountStatus,
     'password_hash' => $passwordHash,
     'pin_hash' => $pinHash,
     'created_at' => $now,
@@ -313,11 +331,22 @@ if (function_exists('system_log')) {
         'phone' => $phone,
         'phone_country' => $phoneCountry,
         'pricing_country' => $pricingCountry,
+        'gps_country' => (string)($preAuthRow['gps_country'] ?? ''),
+        'ip_country' => $ipCountry,
+        'account_status' => $accountStatus,
         'email' => $email,
     ]);
 }
 
-user_reg_confirm_response(true, 'SUCCESS', 'Account created successfully', [
+$requiresReview = $accountStatus !== 'ACTIVE';
+
+user_reg_confirm_response(
+    true,
+    'SUCCESS',
+    $requiresReview
+        ? 'Account created and pending admin review'
+        : 'Account created successfully',
+    [
     'uid' => $uid,
     'role' => 'USER',
     'phone' => $phone,
@@ -325,4 +354,8 @@ user_reg_confirm_response(true, 'SUCCESS', 'Account created successfully', [
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
     'currency' => $currency,
+    'gps_country' => (string)($preAuthRow['gps_country'] ?? ''),
+    'ip_country' => $ipCountry,
+    'account_status' => $accountStatus,
+    'requires_admin_review' => $requiresReview,
 ]);

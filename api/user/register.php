@@ -53,11 +53,19 @@ header('Pragma: no-cache');
 
       <div class="field">
         <label>Pricing Country</label>
-        <select id="regPricingCountry" class="input" disabled>
-          <option value="MY" selected>Malaysia service (MYR)</option>
-          <option value="BD">Bangladesh service (BDT)</option>
-        </select>
-        <small class="field-help">Automatically assigned from your detected market. Phone Country only controls OTP delivery.</small>
+        <div id="regPricingCountryDisplay" class="readonly-value">Location verification required</div>
+        <small class="field-help">Assigned by verified GPS market. It cannot be selected manually.</small>
+      </div>
+
+      <div class="field form-full location-field">
+        <label>Market Location Verification</label>
+        <div class="location-panel">
+          <div>
+            <strong id="regLocationTitle">Location permission required</strong>
+            <p id="regLocationStatus">Verify your location before creating the account.</p>
+          </div>
+          <button id="verifyLocationBtn" class="btn blue" type="button">Verify Location</button>
+        </div>
       </div>
 
       <div class="field">
@@ -150,6 +158,6 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/register.js?v=2"></script>
+<script src="/api/user/assets/register.js?v=3"></script>
 </body>
 </html>

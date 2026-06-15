@@ -381,7 +381,6 @@ function get_request_country(
 
     foreach ([
         $_SERVER['HTTP_CF_IPCOUNTRY'] ?? '',
-        $_SERVER['HTTP_X_COUNTRY_CODE'] ?? '',
         $_SERVER['GEOIP_COUNTRY_CODE'] ?? '',
     ] as $candidate) {
         $country = auth_normalize_country_code((string)$candidate);

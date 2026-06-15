@@ -4,6 +4,18 @@ const USER_LOGIN_URL = window.USER_LOGIN_URL || '/user/';
 const state = {
   busyCount: 0,
   ipCountry: '',
+  registrationLocation: {
+    verified: false,
+    gpsLat: null,
+    gpsLng: null,
+    gpsAccuracy: null,
+    gpsCountry: '',
+    ipCountry: '',
+    pricingCountry: '',
+    currency: '',
+    accountStatus: '',
+    requiresAdminReview: false
+  },
   registerOtp: {
     preAuthToken: '',
     otpRequestId: '',
@@ -122,8 +134,6 @@ function getFormData(){
     name: (el('regName')?.value || '').trim(),
     phone: (el('regPhone')?.value || '').trim(),
     phone_country: (el('regPhoneCountry')?.value || 'BD').toUpperCase(),
-    pricing_country: (el('regPricingCountry')?.value || 'MY').toUpperCase(),
-    market_country: (el('regPricingCountry')?.value || 'MY').toUpperCase(),
     email: (el('regEmail')?.value || '').trim(),
     password: el('regPassword')?.value || '',
     confirm_password: el('regConfirmPassword')?.value || '',
@@ -131,13 +141,20 @@ function getFormData(){
     confirm_pin: (el('regConfirmPin')?.value || '').trim(),
     device_id: 'USER_WEB',
     device_name: 'User Register',
-    browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    gps_lat: state.registrationLocation.gpsLat,
+    gps_lng: state.registrationLocation.gpsLng,
+    gps_accuracy: state.registrationLocation.gpsAccuracy
   };
 }
 
 function validateForm(data){
   if (!data.name || !data.phone || !data.email || !data.password || !data.confirm_password || !data.pin || !data.confirm_pin) {
     return 'All fields are required';
+  }
+
+  if (!state.registrationLocation.verified) {
+    return 'Location permission is required to create an account.';
   }
 
   if (!/^\S+@\S+\.\S+$/.test(data.email)) {
@@ -177,13 +194,15 @@ function validateForm(data){
 
 function updateCountryUi(){
   const phoneCountry = (el('regPhoneCountry')?.value || 'BD').toUpperCase();
-  const selectedMarket = (el('regPricingCountry')?.value || 'MY').toUpperCase();
-  const pricingCountry = ['BD', 'MY'].includes(state.ipCountry)
-    ? state.ipCountry
-    : (['BD', 'MY'].includes(selectedMarket) ? selectedMarket : 'MY');
+  const pricingCountry = state.registrationLocation.pricingCountry || '';
+  const pricingDisplay = el('regPricingCountryDisplay');
 
-  if (el('regPricingCountry')) {
-    el('regPricingCountry').value = pricingCountry;
+  if (pricingDisplay) {
+    pricingDisplay.textContent = pricingCountry === 'MY'
+      ? 'Malaysia service (MYR)'
+      : pricingCountry === 'BD'
+        ? 'Bangladesh service (BDT)'
+        : 'Location verification required';
   }
 
   if (el('regPhone')) {
@@ -192,8 +211,10 @@ function updateCountryUi(){
 
   if (el('regCountryHint')) {
     const gateway = phoneCountry === 'MY' ? 'SMS360' : 'BulkSMSBD';
-    const currency = pricingCountry === 'MY' ? 'MYR' : 'BDT';
-    el('regCountryHint').textContent = `OTP: ${gateway}. Wallet and pricing: ${currency}.`;
+    const pricingText = pricingCountry
+      ? (pricingCountry === 'MY' ? 'MYR / Malaysia pricing' : 'BDT / Bangladesh pricing')
+      : 'pending GPS verification';
+    el('regCountryHint').textContent = `OTP: ${gateway}. Wallet and pricing: ${pricingText}.`;
   }
 }
 
@@ -201,22 +222,117 @@ async function loadCountryDefaults(){
   try {
     const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
     const data = await proxyPost('country_defaults', { browser_timezone: browserTimezone }, 'Detecting country...');
-    const phoneCountry = String(data.phone_country || data.pricing_country || 'MY').toUpperCase();
-    const pricingCountry = String(data.pricing_country || data.market_country || 'MY').toUpperCase();
+    const phoneCountry = String(data.phone_country || 'MY').toUpperCase();
     state.ipCountry = String(data.ip_country || '').toUpperCase();
 
     if (el('regPhoneCountry') && ['BD','MY'].includes(phoneCountry)) {
       el('regPhoneCountry').value = phoneCountry;
     }
-    if (el('regPricingCountry') && ['BD','MY'].includes(pricingCountry)) {
-      el('regPricingCountry').value = pricingCountry;
-    }
   } catch (_) {
-    state.ipCountry = 'MY';
-    if (el('regPricingCountry')) el('regPricingCountry').value = 'MY';
+    state.ipCountry = '';
   }
 
   updateCountryUi();
+}
+
+function resetLocationVerification(message = 'Verify your location before creating the account.'){
+  state.registrationLocation = {
+    verified: false,
+    gpsLat: null,
+    gpsLng: null,
+    gpsAccuracy: null,
+    gpsCountry: '',
+    ipCountry: state.ipCountry || '',
+    pricingCountry: '',
+    currency: '',
+    accountStatus: '',
+    requiresAdminReview: false
+  };
+
+  if (el('regLocationTitle')) el('regLocationTitle').textContent = 'Location permission required';
+  if (el('regLocationStatus')) el('regLocationStatus').textContent = message;
+  if (el('verifyLocationBtn')) el('verifyLocationBtn').textContent = 'Verify Location';
+  updateCountryUi();
+}
+
+function browserPosition(){
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Location permission is required to create an account.'));
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      resolve,
+      () => reject(new Error('Location permission is required to create an account.')),
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
+    );
+  });
+}
+
+async function verifyRegistrationLocation(){
+  showNode('registerError', '');
+
+  try {
+    const position = await browserPosition();
+    const latitude = Number(position.coords.latitude);
+    const longitude = Number(position.coords.longitude);
+    const accuracy = Number(position.coords.accuracy);
+    const phoneCountry = (el('regPhoneCountry')?.value || 'BD').toUpperCase();
+
+    const data = await proxyPost('registration_location_check', {
+      phone_country: phoneCountry,
+      gps_lat: latitude,
+      gps_lng: longitude,
+      gps_accuracy: accuracy,
+      browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    }, 'Verifying location...');
+
+    state.registrationLocation = {
+      verified: true,
+      gpsLat: latitude,
+      gpsLng: longitude,
+      gpsAccuracy: accuracy,
+      gpsCountry: String(data.gps_country || '').toUpperCase(),
+      ipCountry: String(data.ip_country || '').toUpperCase(),
+      pricingCountry: String(data.pricing_country || '').toUpperCase(),
+      currency: String(data.currency || '').toUpperCase(),
+      accountStatus: String(data.account_status || '').toUpperCase(),
+      requiresAdminReview: !!data.requires_admin_review
+    };
+
+    if (el('regLocationTitle')) {
+      el('regLocationTitle').textContent = data.requires_admin_review
+        ? 'Location verified - review required'
+        : 'Location verified';
+    }
+
+    if (el('regLocationStatus')) {
+      const gpsLabel = state.registrationLocation.gpsCountry || 'Unknown';
+      const ipLabel = state.registrationLocation.ipCountry || 'Unknown';
+      const pricingLabel = state.registrationLocation.pricingCountry === 'MY' ? 'Malaysia / MYR' : 'Bangladesh / BDT';
+      el('regLocationStatus').textContent = `GPS: ${gpsLabel}. IP: ${ipLabel}. Pricing: ${pricingLabel}.`;
+    }
+
+    if (el('verifyLocationBtn')) el('verifyLocationBtn').textContent = 'Recheck Location';
+
+    updateCountryUi();
+    showToast(data.requires_admin_review
+      ? 'Location verified. Account will require admin review.'
+      : 'Location verified successfully', data.requires_admin_review ? 'info' : 'ok');
+
+    return true;
+  } catch (error) {
+    resetLocationVerification('Location permission was denied or unavailable.');
+    const message = error.message || 'Location permission is required to create an account.';
+    showError(message);
+    showToast(message, 'error');
+    return false;
+  }
 }
 
 function clearRegisterOtpTimer(){
@@ -331,6 +447,11 @@ async function sendRegisterOtp(){
   showNode('registerError', '');
   showNode('registerSuccess', '');
 
+  if (!state.registrationLocation.verified) {
+    const locationReady = await verifyRegistrationLocation();
+    if (!locationReady) return;
+  }
+
   const data = getFormData();
   const err = validateForm(data);
 
@@ -413,19 +534,29 @@ async function verifyRegisterOtp(){
       otp
     }, 'Creating account...');
 
+    const requiresReview = !!res.requires_admin_review || String(res.account_status || '').toUpperCase() === 'REVIEW';
+    const successMessage = requiresReview
+      ? 'Account created and pending admin review. You can login after approval.'
+      : 'Account created successfully. Please login.';
+
     if (el('otpStatus')) {
-      el('otpStatus').textContent = 'Account created successfully. Redirecting to login...';
+      el('otpStatus').textContent = successMessage;
     }
 
-    showSuccess('Account created successfully. Please login.');
-    showToast('Account created successfully', 'ok');
+    showSuccess(successMessage);
+    showToast(requiresReview ? 'Account pending admin review' : 'Account created successfully', requiresReview ? 'info' : 'ok');
 
     clearForm();
     resetOtpState();
+    resetLocationVerification();
 
-    setTimeout(() => {
-      window.location.href = USER_LOGIN_URL;
-    }, 1200);
+    if (!requiresReview) {
+      setTimeout(() => {
+        window.location.href = USER_LOGIN_URL;
+      }, 1200);
+    } else {
+      closeOtpModal();
+    }
   }catch(error){
     if (el('otpStatus')) {
       el('otpStatus').textContent = error.message || 'Failed to verify OTP.';
@@ -436,6 +567,7 @@ async function verifyRegisterOtp(){
 
 function bindEvents(){
   el('sendRegisterOtpBtn')?.addEventListener('click', sendRegisterOtp);
+  el('verifyLocationBtn')?.addEventListener('click', verifyRegistrationLocation);
   el('verifyRegisterOtpBtn')?.addEventListener('click', verifyRegisterOtp);
   el('resendRegisterOtpBtn')?.addEventListener('click', resendRegisterOtp);
 
@@ -461,9 +593,11 @@ function bindEvents(){
     });
   });
 
-  el('regPhoneCountry')?.addEventListener('change', updateCountryUi);
-  el('regPricingCountry')?.addEventListener('change', updateCountryUi);
+  el('regPhoneCountry')?.addEventListener('change', () => {
+    resetLocationVerification('Phone Country changed. Verify location again before creating the account.');
+  });
 }
 
 bindEvents();
+resetLocationVerification();
 loadCountryDefaults();

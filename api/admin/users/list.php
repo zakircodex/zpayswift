@@ -133,6 +133,7 @@ foreach ($users as $uid => $user) {
     $wallet = is_array($wallets[$uid] ?? null) ? $wallets[$uid] : [];
     $role = strtoupper(trim((string)($user['role'] ?? 'USER')));
     $status = strtoupper(trim((string)($user['status'] ?? 'ACTIVE')));
+    $accountStatus = strtoupper(trim((string)($user['account_status'] ?? $status)));
 
     if ($roleFilter !== '' && $role !== $roleFilter) {
         continue;
@@ -168,16 +169,23 @@ foreach ($users as $uid => $user) {
         'email' => $email,
         'role' => $role,
         'status' => $status,
+        'account_status' => $accountStatus,
         'phone_country' => $phoneCountry,
         'pricing_country' => $country,
         'market_country' => $country,
         'service_country' => $country,
         'country_code' => $country,
         'country' => $country,
-        'ip_country' => auth_normalize_country_code((string)($user['ip_country'] ?? '')),
+        'ip_country' => function_exists('market_iso_country_code')
+            ? market_iso_country_code($user['ip_country'] ?? '')
+            : strtoupper(trim((string)($user['ip_country'] ?? ''))),
+        'gps_country' => strtoupper(trim((string)($user['gps_country'] ?? ''))),
         'country_mismatch' => array_key_exists('country_mismatch', $user)
             ? (bool)$user['country_mismatch']
             : $phoneCountry !== $country,
+        'vpn_suspected' => (bool)($user['vpn_suspected'] ?? false),
+        'market_detection_source' => (string)($user['market_detection_source'] ?? ''),
+        'account_review_reason' => (string)($user['account_review_reason'] ?? ''),
         'available_balance' => $availableBalance,
         'hold_balance' => $holdBalance,
         'currency' => $currency,

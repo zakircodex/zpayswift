@@ -28,9 +28,18 @@ $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? '
 if ($phoneCountry === '') {
     $phoneCountry = detect_phone_country((string)($body['phone'] ?? '')) ?: 'BD';
 }
-$ipCountry = get_request_country($body, 'MY');
-$marketCountry = $ipCountry;
-$pricingCountry = auth_registration_pricing_country($phoneCountry, $ipCountry, $marketCountry);
+$marketDecision = market_registration_decision($body, $phoneCountry);
+if (empty($marketDecision['ok'])) {
+    api_response(
+        false,
+        (string)($marketDecision['code'] ?? 'LOCATION_REQUIRED'),
+        (string)($marketDecision['message'] ?? 'Location permission is required to create an account.'),
+        [],
+        422
+    );
+}
+$ipCountry = (string)$marketDecision['ip_country'];
+$pricingCountry = (string)$marketDecision['pricing_country'];
 $currency = auth_country_currency($pricingCountry);
 $phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);
 $email = strtolower(trim((string)($body['email'] ?? '')));
@@ -98,16 +107,26 @@ $user = [
     'currency' => $currency,
     'wallet_currency' => $currency,
     'ip_country' => $ipCountry,
-    'country_mismatch' => $pricingCountry !== $phoneCountry,
-    'registration_ip' => auth_request_ip($body),
-    'created_ip' => auth_request_ip($body),
+    'country_mismatch' => (bool)$marketDecision['country_mismatch'],
+    'gps_lat' => (float)$marketDecision['gps_lat'],
+    'gps_lng' => (float)$marketDecision['gps_lng'],
+    'gps_accuracy' => (float)$marketDecision['gps_accuracy'],
+    'gps_country' => (string)$marketDecision['gps_country'],
+    'vpn_suspected' => (bool)$marketDecision['vpn_suspected'],
+    'market_detection_source' => (string)$marketDecision['market_detection_source'],
+    'account_review_reason' => (string)$marketDecision['account_review_reason'],
+    'account_status' => (string)$marketDecision['account_status'],
+    'ip_risk_type' => (string)$marketDecision['ip_risk_type'],
+    'ip_risk_score' => (int)$marketDecision['ip_risk_score'],
+    'registration_ip' => (string)$marketDecision['created_ip'],
+    'created_ip' => (string)$marketDecision['created_ip'],
     'last_login_ip' => '',
     'browser_timezone' => auth_request_browser_timezone($body),
     'user_agent' => auth_request_user_agent($body),
     'email' => $email,
     'password_hash' => password_hash($password, PASSWORD_DEFAULT),
     'pin_hash' => password_hash($pin, PASSWORD_DEFAULT),
-    'status' => 'ACTIVE',
+    'status' => (string)$marketDecision['account_status'],
     'role' => 'USER',
     'created_at' => $now,
     'updated_at' => $now,
@@ -218,11 +237,17 @@ system_log('REGISTER', $uid, 'User registered successfully', [
     'phone' => $phone,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
+    'gps_country' => (string)$marketDecision['gps_country'],
+    'ip_country' => $ipCountry,
+    'account_status' => (string)$marketDecision['account_status'],
+    'requires_admin_review' => (bool)$marketDecision['requires_admin_review'],
     'email' => $email,
     'ip' => client_ip(),
 ]);
 
-api_response(true, 'SUCCESS', 'Registration successful', [
+api_response(true, 'SUCCESS', !empty($marketDecision['requires_admin_review'])
+    ? 'Registration completed and pending admin review'
+    : 'Registration successful', [
     'uid' => $uid,
     'name' => $name,
     'phone' => $phone,
@@ -230,4 +255,8 @@ api_response(true, 'SUCCESS', 'Registration successful', [
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
     'currency' => $currency,
+    'gps_country' => (string)$marketDecision['gps_country'],
+    'ip_country' => $ipCountry,
+    'account_status' => (string)$marketDecision['account_status'],
+    'requires_admin_review' => (bool)$marketDecision['requires_admin_review'],
 ]);
