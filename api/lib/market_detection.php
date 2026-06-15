@@ -222,10 +222,18 @@ function market_registration_decision(array $body, string $phoneCountry): array
     $accountStatus = 'ACTIVE';
     $vpnSuspected = false;
     $reviewReasons = [];
+    $detectionSource = 'BROWSER_GPS';
 
     if (!in_array($gpsCountry, ['BD', 'MY'], true)) {
         $accountStatus = 'REVIEW';
         $reviewReasons[] = 'GPS_OUTSIDE_SUPPORTED_MARKET';
+        $detectionSource = 'BROWSER_GPS_UNSUPPORTED';
+    }
+
+    if ($ipCountry === '') {
+        $accountStatus = 'REVIEW';
+        $reviewReasons[] = 'IP_COUNTRY_UNKNOWN';
+        $detectionSource = 'BROWSER_GPS_IP_UNKNOWN';
     }
 
     if (
@@ -236,6 +244,12 @@ function market_registration_decision(array $body, string $phoneCountry): array
         $accountStatus = 'REVIEW';
         $vpnSuspected = true;
         $reviewReasons[] = 'GPS_IP_COUNTRY_MISMATCH';
+        $detectionSource = 'BROWSER_GPS_IP_MISMATCH';
+    } elseif (
+        in_array($gpsCountry, ['BD', 'MY'], true)
+        && $ipCountry === $gpsCountry
+    ) {
+        $detectionSource = 'BROWSER_GPS_IP_MATCH';
     }
 
     $maxAccuracy = defined('REGISTRATION_GPS_MAX_ACCURACY_METERS')
@@ -304,9 +318,10 @@ function market_registration_decision(array $body, string $phoneCountry): array
         'created_ip' => $createdIp,
         'country_mismatch' => $countryMismatch,
         'vpn_suspected' => $vpnSuspected,
-        'market_detection_source' => 'BROWSER_GPS',
+        'market_detection_source' => $detectionSource,
         'account_review_reason' => $reason,
         'account_status' => $accountStatus,
+        'review_required' => $accountStatus !== 'ACTIVE',
         'requires_admin_review' => $accountStatus !== 'ACTIVE',
         'ip_risk_type' => $riskType,
         'ip_risk_score' => (int)($risk['risk_score'] ?? 0),

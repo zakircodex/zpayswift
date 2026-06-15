@@ -170,6 +170,7 @@ foreach ($users as $uid => $user) {
         'role' => $role,
         'status' => $status,
         'account_status' => $accountStatus,
+        'review_required' => (bool)($user['review_required'] ?? $user['requires_admin_review'] ?? ($accountStatus === 'REVIEW')),
         'phone_country' => $phoneCountry,
         'pricing_country' => $country,
         'market_country' => $country,

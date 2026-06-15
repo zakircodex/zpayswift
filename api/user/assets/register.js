@@ -144,7 +144,8 @@ function getFormData(){
     browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
     gps_lat: state.registrationLocation.gpsLat,
     gps_lng: state.registrationLocation.gpsLng,
-    gps_accuracy: state.registrationLocation.gpsAccuracy
+    gps_accuracy: state.registrationLocation.gpsAccuracy,
+    terms_accepted: !!el('regTermsAccepted')?.checked
   };
 }
 
@@ -187,6 +188,10 @@ function validateForm(data){
 
   if (data.pin !== data.confirm_pin) {
     return 'PIN confirmation does not match';
+  }
+
+  if (!data.terms_accepted) {
+    return 'You must accept the Terms & Conditions.';
   }
 
   return '';
@@ -419,6 +424,14 @@ function closeOtpModal(){
   el('registerOtpModal')?.classList.remove('show');
 }
 
+function openReviewModal(){
+  el('registerReviewModal')?.classList.add('show');
+}
+
+function closeReviewModal(){
+  el('registerReviewModal')?.classList.remove('show');
+}
+
 function resetOtpState(){
   clearRegisterOtpTimer();
   state.registerOtp = {
@@ -434,13 +447,14 @@ function resetOtpState(){
   if (el('otpExpiresText')) el('otpExpiresText').textContent = '5 minutes';
   if (el('otpCode')) el('otpCode').value = '';
   if (el('verifyRegisterOtpBtn')) el('verifyRegisterOtpBtn').disabled = false;
-  if (el('otpStatus')) el('otpStatus').textContent = 'OTP পাঠানোর পরে এখানে status দেখাবে।';
+  if (el('otpStatus')) el('otpStatus').textContent = 'OTP status will appear here after sending.';
 }
 
 function clearForm(){
   ['regName','regPhone','regEmail','regPassword','regConfirmPassword','regPin','regConfirmPin'].forEach(id => {
     if (el(id)) el(id).value = '';
   });
+  if (el('regTermsAccepted')) el('regTermsAccepted').checked = false;
 }
 
 async function sendRegisterOtp(){
@@ -448,8 +462,10 @@ async function sendRegisterOtp(){
   showNode('registerSuccess', '');
 
   if (!state.registrationLocation.verified) {
-    const locationReady = await verifyRegistrationLocation();
-    if (!locationReady) return;
+    const message = 'Location permission is required to create an account.';
+    showError(message);
+    showToast(message, 'error');
+    return;
   }
 
   const data = getFormData();
@@ -536,16 +552,17 @@ async function verifyRegisterOtp(){
 
     const requiresReview = !!res.requires_admin_review || String(res.account_status || '').toUpperCase() === 'REVIEW';
     const successMessage = requiresReview
-      ? 'Account created and pending admin review. You can login after approval.'
-      : 'Account created successfully. Please login.';
+      ? 'Your account is under admin review.'
+      : 'Account created successfully. You can login now.';
 
     if (el('otpStatus')) {
       el('otpStatus').textContent = successMessage;
     }
 
     showSuccess(successMessage);
-    showToast(requiresReview ? 'Account pending admin review' : 'Account created successfully', requiresReview ? 'info' : 'ok');
+    showToast(requiresReview ? 'Account is under admin review' : successMessage, requiresReview ? 'info' : 'ok');
 
+    closeOtpModal();
     clearForm();
     resetOtpState();
     resetLocationVerification();
@@ -555,7 +572,7 @@ async function verifyRegisterOtp(){
         window.location.href = USER_LOGIN_URL;
       }, 1200);
     } else {
-      closeOtpModal();
+      openReviewModal();
     }
   }catch(error){
     if (el('otpStatus')) {
@@ -574,6 +591,7 @@ function bindEvents(){
   el('cancelRegisterOtpBtn')?.addEventListener('click', () => {
     closeOtpModal();
   });
+  el('closeRegisterReviewBtn')?.addEventListener('click', closeReviewModal);
 
   el('otpCode')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') verifyRegisterOtp();
@@ -582,6 +600,12 @@ function bindEvents(){
   el('registerOtpModal')?.addEventListener('click', (e) => {
     if (e.target && e.target.id === 'registerOtpModal') {
       closeOtpModal();
+    }
+  });
+
+  el('registerReviewModal')?.addEventListener('click', (e) => {
+    if (e.target && e.target.id === 'registerReviewModal') {
+      closeReviewModal();
     }
   });
 

@@ -2270,7 +2270,10 @@ function renderUsers(){
           <button class="mini-btn" onclick="viewUser('${esc(item.uid || '')}')">View</button>
           <button class="mini-btn" onclick="openEditUserModal('${esc(item.uid || '')}')">Edit</button>
           ${String(item.account_status || item.status || '').toUpperCase() === 'REVIEW'
-            ? `<button class="mini-btn" onclick="approveUserAccount('${esc(item.uid || '')}')">Approve</button>`
+            ? `
+              <button class="mini-btn" onclick="approveUserAccount('${esc(item.uid || '')}')">Approve</button>
+              <button class="mini-btn" onclick="rejectUserAccount('${esc(item.uid || '')}')">Reject</button>
+            `
             : ''}
         </div>
       </td>
@@ -2345,7 +2348,10 @@ async function viewUser(uid){
         <button class="btn ghost" onclick="closeDrawer()">Close</button>
         <button class="btn blue" onclick="openEditUserModal('${esc(uid)}')">Edit User</button>
         ${String(data.account_status || data.status || '').toUpperCase() === 'REVIEW'
-          ? `<button class="btn brand" onclick="approveUserAccount('${esc(uid)}')">Approve Account</button>`
+          ? `
+            <button class="btn brand" onclick="approveUserAccount('${esc(uid)}')">Approve Account</button>
+            <button class="btn orange" onclick="rejectUserAccount('${esc(uid)}')">Reject Account</button>
+          `
           : ''}
         ${
           canManageApiKeys(data.role)
@@ -2407,6 +2413,7 @@ async function openEditUserModal(uid){
               <option value="INACTIVE" ${(String(data.status || '').toUpperCase() === 'INACTIVE') ? 'selected' : ''}>INACTIVE</option>
               <option value="REVIEW" ${(String(data.account_status || data.status || '').toUpperCase() === 'REVIEW') ? 'selected' : ''}>REVIEW</option>
               <option value="BLOCKED" ${(String(data.account_status || data.status || '').toUpperCase() === 'BLOCKED') ? 'selected' : ''}>BLOCKED</option>
+              <option value="REJECTED" ${(String(data.account_status || data.status || '').toUpperCase() === 'REJECTED') ? 'selected' : ''}>REJECTED</option>
             </select>
           </div>
 
@@ -2568,6 +2575,28 @@ async function approveUserAccount(uid){
     }
   } catch (err) {
     alert(err.message || 'Failed to approve account');
+  }
+}
+
+async function rejectUserAccount(uid){
+  uid = String(uid || '').trim();
+  if (!uid) return;
+
+  if (!confirm(`Reject account ${uid}? This user will not be able to login.`)) {
+    return;
+  }
+
+  try {
+    await proxyPost('user_reject', { uid }, true, { busyText: 'Rejecting account...' });
+    showToast('Account rejected successfully', 'ok');
+    await loadUsers({ busy:false, silentLog:true });
+
+    const drawer = document.getElementById('drawer');
+    if (drawer && drawer.classList.contains('open')) {
+      await viewUser(uid);
+    }
+  } catch (err) {
+    alert(err.message || 'Failed to reject account');
   }
 }
 

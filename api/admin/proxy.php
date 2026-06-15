@@ -1509,6 +1509,11 @@ switch ($action) {
         proxy_forward_admin_post('users/approve.php', proxy_read_json_body());
         break;
 
+    case 'user_reject':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('users/reject.php', proxy_read_json_body());
+        break;
+
     case 'wallet_add':
         proxy_require_method('POST');
         proxy_forward_admin_post('wallet/add_balance.php', proxy_read_json_body());

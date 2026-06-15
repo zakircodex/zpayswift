@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/account_review.php';
 
 /**
  * Firebase path key-এ raw email রাখা যায় না।
@@ -16,6 +17,15 @@ function email_to_index_key(string $email): string
         [',', '_', '_', '(', ')', '_'],
         $email
     );
+}
+
+function register_bool($value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    return in_array(strtolower(trim((string)$value)), ['1', 'true', 'yes', 'on'], true);
 }
 
 api_require_method('POST');
@@ -45,6 +55,7 @@ $phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountr
 $email = strtolower(trim((string)($body['email'] ?? '')));
 $password = (string)($body['password'] ?? '');
 $pin = (string)($body['pin'] ?? '');
+$termsAccepted = register_bool($body['terms_accepted'] ?? false);
 
 if ($name === '') {
     api_response(false, 'VALIDATION_ERROR', 'Name is required', ['field' => 'name'], 422);
@@ -64,6 +75,12 @@ if (strlen($password) < MIN_PASSWORD_LENGTH) {
 
 if (!is_valid_user_pin($pin)) {
     api_response(false, 'VALIDATION_ERROR', 'PIN must be exactly 4 digits', ['field' => 'pin'], 422);
+}
+
+if (!$termsAccepted) {
+    api_response(false, 'TERMS_REQUIRED', 'You must accept the Terms & Conditions.', [
+        'field' => 'terms_accepted',
+    ], 422);
 }
 
 /*
@@ -98,6 +115,7 @@ $user = [
     'uid' => $uid,
     'name' => $name,
     'phone' => $phone,
+    'phone_e164' => $phone,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
     'market_country' => $pricingCountry,
@@ -116,6 +134,8 @@ $user = [
     'market_detection_source' => (string)$marketDecision['market_detection_source'],
     'account_review_reason' => (string)$marketDecision['account_review_reason'],
     'account_status' => (string)$marketDecision['account_status'],
+    'review_required' => (bool)$marketDecision['review_required'],
+    'requires_admin_review' => (bool)$marketDecision['requires_admin_review'],
     'ip_risk_type' => (string)$marketDecision['ip_risk_type'],
     'ip_risk_score' => (int)$marketDecision['ip_risk_score'],
     'registration_ip' => (string)$marketDecision['created_ip'],
@@ -131,6 +151,7 @@ $user = [
     'created_at' => $now,
     'updated_at' => $now,
     'last_login_at' => 0,
+    'terms_accepted_at' => $now,
 ];
 
 $wallet = [
@@ -245,7 +266,33 @@ system_log('REGISTER', $uid, 'User registered successfully', [
     'ip' => client_ip(),
 ]);
 
-api_response(true, 'SUCCESS', !empty($marketDecision['requires_admin_review'])
+$requiresReview = !empty($marketDecision['requires_admin_review']);
+if ($requiresReview) {
+    $telegramResult = account_review_send_telegram($uid, $user);
+    $telegramSent = !empty($telegramResult['ok']);
+    $telegramPatch = [
+        'telegram_review_sent' => $telegramSent,
+        'telegram_review_updated_at' => $now,
+        'updated_at' => $now,
+    ];
+
+    if ($telegramSent) {
+        $telegramPatch['telegram_review_message_id'] = (int)($telegramResult['data']['message_id'] ?? 0);
+        $telegramPatch['telegram_review_chat_id'] = (string)($telegramResult['data']['chat_id'] ?? '');
+        $telegramPatch['telegram_review_error'] = '';
+        $telegramPatch['telegram_review_sent_at'] = $now;
+    } else {
+        $telegramPatch['telegram_review_error'] = substr(
+            (string)($telegramResult['message'] ?? 'Telegram review notification failed'),
+            0,
+            300
+        );
+    }
+
+    @fb_patch('USERS/' . $uid, $telegramPatch);
+}
+
+api_response(true, 'SUCCESS', $requiresReview
     ? 'Registration completed and pending admin review'
     : 'Registration successful', [
     'uid' => $uid,
@@ -258,5 +305,6 @@ api_response(true, 'SUCCESS', !empty($marketDecision['requires_admin_review'])
     'gps_country' => (string)$marketDecision['gps_country'],
     'ip_country' => $ipCountry,
     'account_status' => (string)$marketDecision['account_status'],
-    'requires_admin_review' => (bool)$marketDecision['requires_admin_review'],
+    'review_required' => $requiresReview,
+    'requires_admin_review' => $requiresReview,
 ]);

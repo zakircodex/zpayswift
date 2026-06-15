@@ -610,7 +610,7 @@ header('Pragma: no-cache');
 <script>
 window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
-<script src="/api/admin/assets/dashboard.js?v=37"></script>
+<script src="/api/admin/assets/dashboard.js?v=38"></script>
 <script src="/api/admin/assets/admin-dashboard-ux.js?v=2"></script>
 
 </body>

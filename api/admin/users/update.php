@@ -22,7 +22,7 @@ function normalize_admin_role(?string $role): string
 function normalize_admin_status(?string $status): string
 {
     $status = strtoupper(trim((string)$status));
-    return in_array($status, ['ACTIVE', 'INACTIVE', 'REVIEW', 'BLOCKED'], true) ? $status : 'ACTIVE';
+    return in_array($status, ['ACTIVE', 'INACTIVE', 'REVIEW', 'BLOCKED', 'REJECTED'], true) ? $status : 'ACTIVE';
 }
 
 function admin_bool_or_null(mixed $value): ?bool
@@ -192,11 +192,17 @@ if ($roleProvided) {
 if ($statusProvided) {
     $updates['status'] = $status;
     $updates['account_status'] = $status;
+    $updates['review_required'] = $status === 'REVIEW';
+    $updates['requires_admin_review'] = $status === 'REVIEW';
 
     if ($status === 'ACTIVE') {
         $updates['review_status'] = 'APPROVED';
         $updates['approved_by_uid'] = (string)($adminUser['uid'] ?? '');
         $updates['approved_at'] = now_ts();
+    } elseif ($status === 'REJECTED') {
+        $updates['review_status'] = 'REJECTED';
+        $updates['rejected_by_uid'] = (string)($adminUser['uid'] ?? '');
+        $updates['rejected_at'] = now_ts();
     }
 }
 

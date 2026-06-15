@@ -33,6 +33,15 @@ function user_reg_make_uid(): string
     return 'U' . date('YmdHis') . strtoupper(bin2hex(random_bytes(5)));
 }
 
+function user_reg_bool($value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    return in_array(strtolower(trim((string)$value)), ['1', 'true', 'yes', 'on'], true);
+}
+
 function user_reg_normalize_phone(string $phone, string $country = 'BD'): string
 {
     if (function_exists('normalize_phone_by_country')) {
@@ -168,10 +177,17 @@ $browserTimezone = auth_request_browser_timezone($body);
 $currency = auth_country_currency($pricingCountry);
 $createdIp = (string)$marketDecision['created_ip'];
 $countryMismatch = (bool)$marketDecision['country_mismatch'];
+$termsAccepted = user_reg_bool($body['terms_accepted'] ?? false);
 
 if ($name === '' || $phone === '' || $email === '' || $password === '' || $confirmPassword === '' || $pin === '' || $confirmPin === '') {
     $message = $phone === '' ? auth_phone_validation_message($phoneCountry) : 'All fields are required';
     user_reg_response(false, 'VALIDATION_ERROR', $message, [], 422);
+}
+
+if (!$termsAccepted) {
+    user_reg_response(false, 'TERMS_REQUIRED', 'You must accept the Terms & Conditions.', [
+        'field' => 'terms_accepted',
+    ], 422);
 }
 
 if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -204,6 +220,7 @@ if (user_reg_find_uid_by_email($email) !== '') {
 
 $now = user_reg_now();
 $expiresAt = $now + 300;
+$termsAcceptedAt = $now;
 
 $uid = user_reg_make_uid();
 $otpCode = (string)random_int(100000, 999999);
@@ -216,6 +233,7 @@ $otpRow = [
     'otp_request_id' => $otpRequestId,
     'uid' => $uid,
     'phone' => $phone,
+    'phone_e164' => $phone,
     'country' => $phoneCountry,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
@@ -223,7 +241,6 @@ $otpRow = [
     'service_country' => $pricingCountry,
     'currency' => $currency,
     'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
-    'phone_e164' => $phone,
     'ip_country' => $ipCountry,
     'country_mismatch' => $countryMismatch,
     'gps_lat' => (float)$marketDecision['gps_lat'],
@@ -234,6 +251,8 @@ $otpRow = [
     'market_detection_source' => (string)$marketDecision['market_detection_source'],
     'account_review_reason' => (string)$marketDecision['account_review_reason'],
     'account_status' => (string)$marketDecision['account_status'],
+    'review_required' => (bool)$marketDecision['review_required'],
+    'requires_admin_review' => (bool)$marketDecision['requires_admin_review'],
     'ip_risk_type' => (string)$marketDecision['ip_risk_type'],
     'ip_risk_score' => (int)$marketDecision['ip_risk_score'],
     'created_ip' => $createdIp,
@@ -255,6 +274,7 @@ $preAuthRow = [
     'uid' => $uid,
     'name' => $name,
     'phone' => $phone,
+    'phone_e164' => $phone,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
     'market_country' => $pricingCountry,
@@ -270,6 +290,8 @@ $preAuthRow = [
     'market_detection_source' => (string)$marketDecision['market_detection_source'],
     'account_review_reason' => (string)$marketDecision['account_review_reason'],
     'account_status' => (string)$marketDecision['account_status'],
+    'review_required' => (bool)$marketDecision['review_required'],
+    'requires_admin_review' => (bool)$marketDecision['requires_admin_review'],
     'ip_risk_type' => (string)$marketDecision['ip_risk_type'],
     'ip_risk_score' => (int)$marketDecision['ip_risk_score'],
     'ip_risk_source' => (string)$marketDecision['ip_risk_source'],
@@ -285,6 +307,7 @@ $preAuthRow = [
     'device_id' => $deviceId,
     'device_name' => $deviceName,
     'masked_phone' => user_reg_mask_phone($phone),
+    'terms_accepted_at' => $termsAcceptedAt,
     'created_at' => $now,
     'updated_at' => $now,
     'expires_at' => $expiresAt,
@@ -347,6 +370,7 @@ user_reg_response(true, 'OTP_REQUIRED', 'OTP verification required', [
     'otp_request_id' => $otpRequestId,
     'masked_phone' => user_reg_mask_phone($phone),
     'expires_in_seconds' => 300,
+    'expires_at' => $expiresAt,
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
     'market_country' => $pricingCountry,
@@ -354,5 +378,6 @@ user_reg_response(true, 'OTP_REQUIRED', 'OTP verification required', [
     'gps_country' => (string)$marketDecision['gps_country'],
     'ip_country' => $ipCountry,
     'account_status' => (string)$marketDecision['account_status'],
+    'review_required' => (bool)$marketDecision['review_required'],
     'requires_admin_review' => (bool)$marketDecision['requires_admin_review'],
 ]);

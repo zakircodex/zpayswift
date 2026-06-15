@@ -185,6 +185,10 @@ if ($accountStatus === 'BLOCKED' || $status === 'BLOCKED') {
     api_response(false, 'ACCOUNT_BLOCKED', 'Account is blocked', [], 403);
 }
 
+if ($accountStatus === 'REJECTED' || $status === 'REJECTED') {
+    api_response(false, 'ACCOUNT_REJECTED', 'Account registration was rejected', [], 403);
+}
+
 if ($status !== 'ACTIVE') {
     api_response(false, 'FORBIDDEN', 'User account is not active', [], 403);
 }

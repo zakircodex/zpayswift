@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once __DIR__ . '/../lib/roles.php';
+require_once __DIR__ . '/../lib/account_review.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -152,6 +153,7 @@ $ipCountry = function_exists('market_iso_country_code')
     : strtoupper(trim((string)($preAuthRow['ip_country'] ?? '')));
 $currency = auth_country_currency($pricingCountry !== '' ? $pricingCountry : 'BD');
 $accountStatus = strtoupper(trim((string)($preAuthRow['account_status'] ?? 'ACTIVE')));
+$termsAcceptedAt = (int)($preAuthRow['terms_accepted_at'] ?? 0);
 
 if (!in_array($accountStatus, ['ACTIVE', 'REVIEW', 'BLOCKED'], true)) {
     $accountStatus = 'REVIEW';
@@ -168,6 +170,10 @@ if ($pricingCountry === '') {
 
 if ($uid === '' || $name === '' || $phone === '' || $email === '' || $passwordHash === '' || $pinHash === '') {
     user_reg_confirm_response(false, 'REGISTER_SESSION_INVALID', 'Register session is invalid. Please start again.', [], 400);
+}
+
+if ($termsAcceptedAt <= 0) {
+    user_reg_confirm_response(false, 'TERMS_REQUIRED', 'Terms & Conditions acceptance is required. Please start again.', [], 422);
 }
 
 $otpRow = fb_get('AUTH_OTP_REQUESTS/' . $otpRequestId);
@@ -224,6 +230,7 @@ $userRow = [
     'uid' => $uid,
     'name' => $name,
     'phone' => $phone,
+    'phone_e164' => (string)($preAuthRow['phone_e164'] ?? $phone),
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
     'market_country' => $pricingCountry,
@@ -242,6 +249,8 @@ $userRow = [
     'market_detection_source' => (string)($preAuthRow['market_detection_source'] ?? 'BROWSER_GPS'),
     'account_review_reason' => (string)($preAuthRow['account_review_reason'] ?? ''),
     'account_status' => $accountStatus,
+    'review_required' => $accountStatus !== 'ACTIVE',
+    'requires_admin_review' => $accountStatus !== 'ACTIVE',
     'ip_risk_type' => (string)($preAuthRow['ip_risk_type'] ?? ''),
     'ip_risk_score' => (int)($preAuthRow['ip_risk_score'] ?? 0),
     'ip_risk_source' => (string)($preAuthRow['ip_risk_source'] ?? ''),
@@ -263,6 +272,7 @@ $userRow = [
     'created_by_uid' => '',
     'created_by_role' => 'SELF',
     'register_source' => 'USER_WEB_OTP',
+    'terms_accepted_at' => $termsAcceptedAt,
 ];
 
 $walletRow = [
@@ -339,6 +349,47 @@ if (function_exists('system_log')) {
 }
 
 $requiresReview = $accountStatus !== 'ACTIVE';
+$telegramReviewSent = false;
+
+if ($requiresReview) {
+    $telegramResult = account_review_send_telegram($uid, $userRow);
+    $telegramReviewSent = !empty($telegramResult['ok']);
+    $telegramPatch = [
+        'telegram_review_sent' => $telegramReviewSent,
+        'telegram_review_updated_at' => $now,
+        'updated_at' => $now,
+    ];
+
+    if ($telegramReviewSent) {
+        $telegramPatch['telegram_review_message_id'] = (int)($telegramResult['data']['message_id'] ?? 0);
+        $telegramPatch['telegram_review_chat_id'] = (string)($telegramResult['data']['chat_id'] ?? '');
+        $telegramPatch['telegram_review_error'] = '';
+        $telegramPatch['telegram_review_sent_at'] = $now;
+    } else {
+        $telegramPatch['telegram_review_error'] = substr(
+            (string)($telegramResult['message'] ?? 'Telegram review notification failed'),
+            0,
+            300
+        );
+    }
+
+    @fb_patch('USERS/' . $uid, $telegramPatch);
+
+    if (function_exists('system_log')) {
+        system_log(
+            $telegramReviewSent ? 'ACCOUNT_REVIEW_TELEGRAM_SENT' : 'ACCOUNT_REVIEW_TELEGRAM_FAILED',
+            $uid,
+            $telegramReviewSent
+                ? 'Account review Telegram alert sent'
+                : 'Account review Telegram alert failed',
+            [
+                'uid' => $uid,
+                'account_status' => $accountStatus,
+                'error' => $telegramReviewSent ? '' : (string)($telegramResult['code'] ?? 'TELEGRAM_ERROR'),
+            ]
+        );
+    }
+}
 
 user_reg_confirm_response(
     true,
@@ -347,15 +398,16 @@ user_reg_confirm_response(
         ? 'Account created and pending admin review'
         : 'Account created successfully',
     [
-    'uid' => $uid,
-    'role' => 'USER',
-    'phone' => $phone,
-    'email' => $email,
-    'phone_country' => $phoneCountry,
-    'pricing_country' => $pricingCountry,
-    'currency' => $currency,
-    'gps_country' => (string)($preAuthRow['gps_country'] ?? ''),
-    'ip_country' => $ipCountry,
-    'account_status' => $accountStatus,
-    'requires_admin_review' => $requiresReview,
-]);
+        'uid' => $uid,
+        'role' => 'USER',
+        'phone' => $phone,
+        'email' => $email,
+        'phone_country' => $phoneCountry,
+        'pricing_country' => $pricingCountry,
+        'currency' => $currency,
+        'gps_country' => (string)($preAuthRow['gps_country'] ?? ''),
+        'ip_country' => $ipCountry,
+        'account_status' => $accountStatus,
+        'review_required' => $requiresReview,
+        'requires_admin_review' => $requiresReview,
+    ]);

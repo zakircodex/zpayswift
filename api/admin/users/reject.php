@@ -17,7 +17,7 @@ if ($uid === '') {
 
 $result = account_review_apply(
     $uid,
-    'APPROVE',
+    'REJECT',
     (string)($adminUser['uid'] ?? ''),
     'ADMIN'
 );
@@ -25,7 +25,7 @@ $result = account_review_apply(
 api_response(
     !empty($result['ok']),
     (string)($result['code'] ?? 'SERVER_ERROR'),
-    (string)($result['message'] ?? 'Failed to approve account'),
+    (string)($result['message'] ?? 'Failed to reject account'),
     (array)($result['data'] ?? []),
     !empty($result['ok'])
         ? 200

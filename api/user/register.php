@@ -13,7 +13,7 @@ header('Pragma: no-cache');
   <title>Create Z-Pay Swift User Account</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
-  <link rel="stylesheet" href="/api/user/assets/register.css?v=1">
+  <link rel="stylesheet" href="/api/user/assets/register.css?v=2">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
@@ -32,7 +32,7 @@ header('Pragma: no-cache');
     <div id="registerSuccess" class="alert success hidden"></div>
 
     <div class="form-grid">
-      <div class="field">
+      <div class="field form-full">
         <label>Full Name</label>
         <input id="regName" class="input" placeholder="Enter full name">
       </div>
@@ -51,24 +51,7 @@ header('Pragma: no-cache');
         <input id="regPhone" class="input" type="tel" inputmode="tel" placeholder="01XXXXXXXXX">
       </div>
 
-      <div class="field">
-        <label>Pricing Country</label>
-        <div id="regPricingCountryDisplay" class="readonly-value">Location verification required</div>
-        <small class="field-help">Assigned by verified GPS market. It cannot be selected manually.</small>
-      </div>
-
-      <div class="field form-full location-field">
-        <label>Market Location Verification</label>
-        <div class="location-panel">
-          <div>
-            <strong id="regLocationTitle">Location permission required</strong>
-            <p id="regLocationStatus">Verify your location before creating the account.</p>
-          </div>
-          <button id="verifyLocationBtn" class="btn blue" type="button">Verify Location</button>
-        </div>
-      </div>
-
-      <div class="field">
+      <div class="field form-full">
         <label>Email</label>
         <input id="regEmail" class="input" type="email" placeholder="Enter email address">
       </div>
@@ -92,6 +75,27 @@ header('Pragma: no-cache');
         <label>Confirm PIN</label>
         <input id="regConfirmPin" class="input" type="password" inputmode="numeric" placeholder="Confirm PIN">
       </div>
+
+      <div class="field form-full location-field">
+        <label>Verify Location & Pricing Country</label>
+        <div class="location-panel">
+          <div>
+            <strong id="regLocationTitle">Location permission required</strong>
+            <p id="regLocationStatus">Click Verify Location before creating your account.</p>
+          </div>
+          <button id="verifyLocationBtn" class="btn blue" type="button">Verify Location</button>
+        </div>
+        <div class="pricing-result">
+          <span>Detected Pricing Country</span>
+          <strong id="regPricingCountryDisplay">Location verification required</strong>
+        </div>
+        <small class="field-help">Pricing country is assigned from verified GPS/IP market and cannot be selected manually.</small>
+      </div>
+
+      <label class="terms-check form-full" for="regTermsAccepted">
+        <input id="regTermsAccepted" type="checkbox" value="1">
+        <span>I accept the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a>.</span>
+      </label>
     </div>
 
     <button id="sendRegisterOtpBtn" class="btn green full-btn" type="button">Create Account</button>
@@ -134,13 +138,27 @@ header('Pragma: no-cache');
     </div>
 
     <div id="otpStatus" class="status-box">
-      OTP পাঠানোর পরে এখানে status দেখাবে।
+      OTP status will appear here after sending.
     </div>
 
     <div class="modal-actions">
-      <button id="verifyRegisterOtpBtn" class="btn green" type="button">Verify & Create</button>
+      <button id="verifyRegisterOtpBtn" class="btn green" type="button">Verify &amp; Create Account</button>
       <button id="resendRegisterOtpBtn" class="btn blue" type="button">Resend OTP</button>
       <button id="cancelRegisterOtpBtn" class="btn ghost" type="button">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="registerReviewModal" class="modal" role="dialog" aria-modal="true" aria-labelledby="registerReviewTitle">
+  <div class="modal-card review-modal-card">
+    <div class="review-icon" aria-hidden="true">!</div>
+    <div class="modal-head review-modal-head">
+      <h3 id="registerReviewTitle">Account Under Review</h3>
+      <p>Your account is under admin review. Please wait for approval. For urgent help, contact us on WhatsApp.</p>
+    </div>
+    <div class="modal-actions">
+      <a id="registerWhatsAppSupport" class="btn green btn-link" href="https://api.whatsapp.com/send?text=I%20need%20support%20with%20my%20Z-Pay%20Swift%20account%20review" target="_blank" rel="noopener">WhatsApp Support</a>
+      <button id="closeRegisterReviewBtn" class="btn ghost" type="button">Close</button>
     </div>
   </div>
 </div>
@@ -158,6 +176,6 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/register.js?v=3"></script>
+<script src="/api/user/assets/register.js?v=4"></script>
 </body>
 </html>

@@ -3890,6 +3890,7 @@ switch ($action) {
             'confirm_password' => (string)($body['confirm_password'] ?? ''),
             'pin' => trim((string)($body['pin'] ?? '')),
             'confirm_pin' => trim((string)($body['confirm_pin'] ?? '')),
+            'terms_accepted' => user_proxy_bool_value($body['terms_accepted'] ?? false),
             'device_id' => trim((string)($body['device_id'] ?? 'USER_WEB')),
             'device_name' => trim((string)($body['device_name'] ?? 'User Register')),
             'user_agent' => security_user_agent(),
