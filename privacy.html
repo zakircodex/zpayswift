@@ -1,4 +1,5 @@
 <!doctype html>
+
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -12,27 +13,126 @@
     *{box-sizing:border-box}body{margin:0;min-height:100vh;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:radial-gradient(circle at 18% -10%,rgba(31,215,96,.18),transparent 32%),linear-gradient(135deg,var(--bg) 0%,var(--bg2) 44%,#081325 100%);color:var(--text)}
     a{color:inherit}.page{width:min(880px,calc(100% - 28px));margin:0 auto;padding:26px 0}.card{padding:24px;border:1px solid var(--line);border-radius:26px;background:linear-gradient(180deg,var(--card),var(--card2));box-shadow:0 24px 70px rgba(0,0,0,.32)}
     h1{margin:0 0 14px;color:#f8fbff;font-size:clamp(30px,5vw,46px);letter-spacing:-.045em}h2{margin:22px 0 8px;color:#f8fbff;font-size:20px}p,li{color:var(--muted);font-size:15px;line-height:1.65}.btn{display:inline-flex;min-height:40px;align-items:center;justify-content:center;margin-bottom:14px;padding:0 14px;border-radius:14px;background:linear-gradient(135deg,var(--green),var(--green2));color:#04120b;text-decoration:none;font-weight:900}
+    .note{margin:14px 0;padding:14px;border:1px solid rgba(31,215,96,.22);border-radius:18px;background:rgba(31,215,96,.08);color:#c9f8dd}
+    .muted-small{font-size:13px;color:var(--muted)}
   </style>
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
   <main class="page">
     <a class="brand-page-header brand-lockup" href="/"><img class="brand-icon" src="/assets/brand/zpay-icon.png" alt=""><span class="brand-copy"><strong class="brand-title">Z-Pay Swift</strong><span class="brand-subtitle">Privacy and security</span></span></a>
-    <a class="btn" href="/">Back Home</a>
-    <section class="card">
-      <h1>Privacy Policy</h1>
-      <p>Z-Pay Swift uses customer information only to provide account access, request processing, support, and tracking services.</p>
-      <h2>Information we handle</h2>
-      <ul>
-        <li>Account contact details required for login and support.</li>
-        <li>Request details such as provider, receiver number, amount, status, and tracking token.</li>
-        <li>Security data needed to protect accounts and prevent unauthorized access.</li>
-      </ul>
-      <h2>Security</h2>
-      <p>Passwords, PINs, tokens, hashes, and private keys are never shown on public pages.</p>
-      <h2>Support</h2>
-      <p>For privacy questions, contact Z-Pay Swift support from the user panel or WhatsApp support link.</p>
-    </section>
+    <a class="btn" href="/">Back Home</a><section class="card">
+  <h1>Privacy Policy</h1>
+  <p class="muted-small">Last updated: 15 June 2026</p>
+
+  <p>Z-Pay Swift is a private digital request, wallet, top-up, bundle, bKash/Nagad request, and tracking support platform. This Privacy Policy explains what information we collect, why we collect it, how we protect it, and what rules apply when you use Z-Pay Swift.</p>
+
+  <p class="note">By creating an account, submitting a request, using a tracking link, or contacting support, you agree that Z-Pay Swift may process the information needed to provide the service, protect accounts, prevent abuse, and keep request records.</p>
+
+  <h2>1. Services covered by this policy</h2>
+  <p>This policy applies to Z-Pay Swift user panel, subadmin/partner panel, admin panel, API services, tracking pages, OTP verification, wallet balance tools, top-up requests, bundle requests, bKash/Nagad requests, Telegram request controls, and WhatsApp/support communication.</p>
+
+  <h2>2. Information we collect</h2>
+  <ul>
+    <li><strong>Account information:</strong> name, phone number, email address, account role, status, country settings, wallet currency, and account creation details.</li>
+    <li><strong>Security information:</strong> password hash, PIN hash, OTP records, session tokens, login time, device/browser information, IP address, GPS/location verification result, and risk/review status.</li>
+    <li><strong>Request information:</strong> service type, provider, operator, receiver number, amount, fee, commission, exchange rate, request status, tracking token, receipt ID, reference, and request history.</li>
+    <li><strong>Wallet information:</strong> balance add/deduct records, ledger records, balance before/after, sender/receiver role, note, reference, and approval information.</li>
+    <li><strong>Support information:</strong> messages, screenshots, request IDs, issue details, and communication sent through WhatsApp, Telegram, or the support channel.</li>
+  </ul>
+
+  <h2>3. Phone country and pricing country</h2>
+  <p>Z-Pay Swift separates phone country from pricing country. Phone country is used only for phone validation and OTP/SMS delivery. Pricing country is used for wallet currency, service fee, local/international mode, and request pricing.</p>
+  <ul>
+    <li>If your phone country is Bangladesh, OTP may be sent through the Bangladesh SMS gateway.</li>
+    <li>If your phone country is Malaysia, OTP may be sent through the Malaysia SMS gateway.</li>
+    <li>If your verified market/location is Malaysia, your wallet and pricing may use MYR/RM even if you register with a Bangladesh phone number.</li>
+    <li>If your verified market/location is Bangladesh, your account may use BDT and local Bangladesh pricing rules.</li>
+  </ul>
+
+  <h2>4. Location verification and account review</h2>
+  <p>To prevent fake accounts, fee abuse, VPN/proxy misuse, and unauthorized local pricing, Z-Pay Swift may require GPS/location permission during registration. If location permission is denied, registration may be blocked. If GPS, IP, phone country, or risk signals do not match, the account may be placed under admin review.</p>
+  <ul>
+    <li>Accounts under review cannot use normal services until approved.</li>
+    <li>Admin may approve, reject, suspend, or request more information.</li>
+    <li>VPN, proxy, datacenter, anonymous IP, fake GPS, or suspicious activity may cause review or account restriction.</li>
+  </ul>
+
+  <h2>5. How we use information</h2>
+  <ul>
+    <li>To create, verify, login, and protect user accounts.</li>
+    <li>To send OTP, account alerts, request alerts, and status updates.</li>
+    <li>To process top-up, bundle, bKash/Nagad, wallet, and tracking requests.</li>
+    <li>To calculate balance, fee, commission, rate, refund, and request status.</li>
+    <li>To detect duplicate accounts, fraud, fake location, VPN/proxy abuse, and unauthorized access.</li>
+    <li>To provide support, resolve disputes, and keep request records.</li>
+    <li>To improve service reliability, security, and user experience.</li>
+  </ul>
+
+  <h2>6. User roles and permissions</h2>
+  <p>Z-Pay Swift may provide different access levels depending on account role.</p>
+  <ul>
+    <li><strong>User:</strong> can use allowed services, view own wallet, create requests, and track own history.</li>
+    <li><strong>Retailer:</strong> may receive different fee/commission rules and service limits.</li>
+    <li><strong>Subadmin/Partner:</strong> may manage users under their account, create requests, use API features, and view related history based on permission.</li>
+    <li><strong>Admin:</strong> can manage users, wallet actions, request status, service settings, review accounts, and security controls.</li>
+  </ul>
+
+  <h2>7. OTP, password, and PIN security</h2>
+  <p>OTP codes, passwords, PINs, tokens, private keys, and hashes must be kept secret. Z-Pay Swift will never ask you to share your password, PIN, or OTP outside the secure verification flow.</p>
+  <ul>
+    <li>Do not share OTP or PIN with anyone.</li>
+    <li>Use your own phone number and correct account information.</li>
+    <li>Report unauthorized access or suspicious activity immediately.</li>
+  </ul>
+
+  <h2>8. Request processing and tracking</h2>
+  <p>Each request may receive a tracking token, receipt ID, or request ID. Tracking pages may show request status such as Pending, Processing, Successful, Failed, or Under Review. Some requests may require manual verification or admin/subadmin processing.</p>
+  <p>Request information may be sent to Telegram/admin tools so authorized operators can update status, mark success/failed, or process support actions.</p>
+
+  <h2>9. Wallet, fees, commission, and refund records</h2>
+  <p>Z-Pay Swift stores wallet and ledger history to show who added or deducted balance, what amount was used, which currency was applied, and whether a request was successful or refunded. Fees and commissions depend on account role, pricing country, service type, rate, and active configuration.</p>
+  <p>If a request fails, refund rules follow the original wallet currency and the exact debit record where applicable.</p>
+
+  <h2>10. Sharing of information</h2>
+  <p>We do not sell personal information. We may share limited information only when needed to operate the service, including:</p>
+  <ul>
+    <li>SMS gateway providers for OTP delivery.</li>
+    <li>Hosting, database, and technical service providers.</li>
+    <li>Telegram or support channels for request processing and admin alerts.</li>
+    <li>Authorized admin/subadmin accounts according to role permissions.</li>
+    <li>Legal, security, or compliance requests where required by applicable law or to protect the platform.</li>
+  </ul>
+
+  <h2>11. Data retention</h2>
+  <p>We keep account, wallet, request, OTP, security, and support records only as long as needed for service operation, security, dispute handling, fraud prevention, accounting, and legal or business record purposes. Some logs may be kept longer where required for safety or investigation.</p>
+
+  <h2>12. User responsibilities</h2>
+  <ul>
+    <li>Use correct name, phone number, email, and location information.</li>
+    <li>Do not create fake, duplicate, or misleading accounts.</li>
+    <li>Do not use VPN/proxy/fake GPS to get wrong pricing or local fee.</li>
+    <li>Do not submit illegal, fraudulent, unauthorized, or third-party requests.</li>
+    <li>Check receiver number, amount, provider, and reference before confirming a request.</li>
+    <li>Keep receipts and tracking links for support and verification.</li>
+  </ul>
+
+  <h2>13. Account restriction, review, or suspension</h2>
+  <p>Z-Pay Swift may review, restrict, suspend, reject, or close an account if we detect suspicious activity, wrong country/pricing information, fake location, repeated failed OTP attempts, abusive behavior, fraud risk, unauthorized access, or violation of service rules.</p>
+
+  <h2>14. Your privacy choices</h2>
+  <p>You may contact support to request account information, correction of wrong account details, review of account status, or deletion/closure where possible. Some records may be retained if needed for security, dispute, fraud prevention, or legal/business purposes.</p>
+
+  <h2>15. Children and unauthorized users</h2>
+  <p>Z-Pay Swift is intended for users who are allowed to use digital wallet/top-up/request services in their location. If you are not authorized to use the service, do not create an account or submit requests.</p>
+
+  <h2>16. Changes to this policy</h2>
+  <p>We may update this Privacy Policy when services, security rules, country/pricing rules, or legal requirements change. The latest version will be available on the Z-Pay Swift website.</p>
+
+  <h2>17. Support</h2>
+  <p>For privacy, account review, tracking, wallet, OTP, or request questions, contact Z-Pay Swift support from the user panel or WhatsApp support link.</p>
+</section>
+
   </main>
 </body>
 </html>
