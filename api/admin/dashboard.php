@@ -13,7 +13,7 @@ header('Pragma: no-cache');
   <title>Z-Pay Swift Admin Dashboard</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
-  <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=21">
+  <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=22">
   <link rel="stylesheet" href="/api/admin/assets/admin-ux.css?v=2">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
@@ -520,17 +520,22 @@ header('Pragma: no-cache');
     <th>Status</th>
     <th>Role</th>
     <th>Phone / Pricing Country</th>
-    <th>Topup Commission / 1000 BDT</th>
-    <th>API</th>
     <th>Available</th>
-    <th>Hold</th>
+    <th>Last Login</th>
     <th>Action</th>
   </tr>
 </thead>
 <tbody id="usersTableBody">
-  <tr><td colspan="10" class="empty">No data yet.</td></tr>
+  <tr><td colspan="8" class="empty">No data yet.</td></tr>
 </tbody>
             </table>
+          </div>
+          <div class="users-pagination" id="usersPagination">
+            <span id="usersPaginationText">0 users</span>
+            <div class="row-actions">
+              <button class="btn ghost" id="usersPrevBtn" type="button">Previous</button>
+              <button class="btn ghost" id="usersNextBtn" type="button">Next</button>
+            </div>
           </div>
         </div>
       </section>
@@ -605,7 +610,7 @@ header('Pragma: no-cache');
 <script>
 window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
-<script src="/api/admin/assets/dashboard.js?v=35"></script>
+<script src="/api/admin/assets/dashboard.js?v=36"></script>
 <script src="/api/admin/assets/admin-dashboard-ux.js?v=2"></script>
 
 </body>

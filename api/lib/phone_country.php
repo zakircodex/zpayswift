@@ -47,11 +47,11 @@ function auth_registration_pricing_country(
         return $marketCountry;
     }
 
-    $defaultCountry = defined('DEFAULT_USER_COUNTRY')
-        ? auth_normalize_country_code((string)DEFAULT_USER_COUNTRY)
+    $defaultCountry = defined('PUBLIC_REGISTRATION_DEFAULT_COUNTRY')
+        ? auth_normalize_country_code((string)PUBLIC_REGISTRATION_DEFAULT_COUNTRY)
         : '';
 
-    return $defaultCountry !== '' ? $defaultCountry : 'BD';
+    return $defaultCountry !== '' ? $defaultCountry : 'MY';
 }
 
 function normalize_phone_by_country(string $phone, string $country): string
@@ -313,13 +313,76 @@ function auth_request_ip(array $body = []): string
     return trim((string)($_SERVER['REMOTE_ADDR'] ?? ''));
 }
 
-function auth_request_ip_country(array $body = []): string
+function auth_country_forwarding_key(): string
 {
+    foreach ([
+        'INTERNAL_REQUEST_SIGNING_KEY',
+        'SECURITY_HASH_SECRET',
+        'TELEGRAM_WEBHOOK_SECRET',
+        'ADMIN_KEY',
+        'WORKER_KEY',
+    ] as $constant) {
+        if (!defined($constant)) {
+            continue;
+        }
+
+        $value = trim((string)constant($constant));
+        if ($value !== '') {
+            return $value;
+        }
+    }
+
+    return '';
+}
+
+function auth_country_forwarding_signature(string $country): string
+{
+    $country = auth_normalize_country_code($country);
+    $key = auth_country_forwarding_key();
+
+    if ($country === '' || $key === '') {
+        return '';
+    }
+
+    return hash_hmac('sha256', 'request-country|' . $country, $key);
+}
+
+function auth_trusted_forwarded_country(): string
+{
+    $country = auth_normalize_country_code((string)(
+        $_SERVER['HTTP_X_ZPAY_REQUEST_COUNTRY'] ?? ''
+    ));
+    $signature = trim((string)(
+        $_SERVER['HTTP_X_ZPAY_REQUEST_COUNTRY_SIGNATURE'] ?? ''
+    ));
+
+    if ($country === '' || $signature === '') {
+        return '';
+    }
+
+    $expected = auth_country_forwarding_signature($country);
+    if ($expected === '' || !hash_equals($expected, $signature)) {
+        return '';
+    }
+
+    return $country;
+}
+
+function get_request_country(
+    array $body = [],
+    string $defaultCountry = 'MY',
+    bool $allowForwardedCountry = false
+): string
+{
+    $trustedForwardedCountry = auth_trusted_forwarded_country();
+    if ($trustedForwardedCountry !== '') {
+        return $trustedForwardedCountry;
+    }
+
     foreach ([
         $_SERVER['HTTP_CF_IPCOUNTRY'] ?? '',
         $_SERVER['HTTP_X_COUNTRY_CODE'] ?? '',
         $_SERVER['GEOIP_COUNTRY_CODE'] ?? '',
-        $body['ip_country'] ?? '',
     ] as $candidate) {
         $country = auth_normalize_country_code((string)$candidate);
         if ($country !== '') {
@@ -327,7 +390,35 @@ function auth_request_ip_country(array $body = []): string
         }
     }
 
-    return '';
+    if ($allowForwardedCountry) {
+        foreach ([
+            $body['market_country_detected'] ?? '',
+            $body['detected_country'] ?? '',
+            $body['ip_country'] ?? '',
+        ] as $candidate) {
+            $country = auth_normalize_country_code((string)$candidate);
+            if ($country !== '') {
+                return $country;
+            }
+        }
+    }
+
+    $timezone = strtolower(trim((string)(
+        $body['browser_timezone']
+        ?? $_SERVER['HTTP_X_BROWSER_TIMEZONE']
+        ?? ''
+    )));
+
+    if (in_array($timezone, ['asia/kuala_lumpur', 'asia/kuching'], true)) {
+        return 'MY';
+    }
+
+    return auth_normalize_country_code($defaultCountry);
+}
+
+function auth_request_ip_country(array $body = []): string
+{
+    return get_request_country($body, '', true);
 }
 
 function auth_request_user_agent(array $body = []): string

@@ -10,6 +10,13 @@ const state = {
   doneTopups: [],
   doneBundles: [],
   users: [],
+  usersPagination: {
+    page: 1,
+    limit: 50,
+    total: 0,
+    total_pages: 1,
+    has_more: false
+  },
   workers: [],
   operators: [],
 
@@ -55,6 +62,7 @@ const state = {
 };
 
 const submitLocks = {};
+let usersSearchTimer = null;
 
 /* =========================
    BASIC HELPERS
@@ -2175,34 +2183,64 @@ function resetUserRoleFields(role = 'USER'){
 }
 
 async function loadUsers(options = {}){
-  const data = await proxyGet('users', {}, options);
+  const tbody = document.getElementById('usersTableBody');
+  const page = Math.max(1, Number(options.page || state.usersPagination.page || 1));
+  const search = document.getElementById('usersSearch')?.value.trim() || '';
 
-  state.users = data.items || [];
-  state.loaded.users = true;
+  if (tbody) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">Loading users...</td></tr>';
+  }
 
-  renderUsers();
+  try {
+    const data = await proxyGet('users', {
+      page,
+      limit: state.usersPagination.limit,
+      search
+    }, options);
 
-  const dashUsersCount = document.getElementById('dashUsersCount');
-  const dashBalanceTotal = document.getElementById('dashBalanceTotal');
+    state.users = Array.isArray(data.items) ? data.items : [];
+    state.usersPagination = {
+      ...state.usersPagination,
+      ...(data.pagination || {}),
+      page: Number(data.pagination?.page || page),
+      total: Number(data.pagination?.total || 0),
+      total_pages: Number(data.pagination?.total_pages || 1),
+      has_more: !!data.pagination?.has_more
+    };
+    state.loaded.users = true;
 
-  if (dashUsersCount) dashUsersCount.textContent = state.users.length;
+    renderUsers();
+    renderUsersPagination();
 
-  const totalBalance = state.users.reduce((sum, row) => sum + Number(row.available_balance || 0), 0);
+    const dashUsersCount = document.getElementById('dashUsersCount');
+    const dashBalanceTotal = document.getElementById('dashBalanceTotal');
+    const summary = data.summary || {};
 
-  if (dashBalanceTotal) dashBalanceTotal.textContent = money(totalBalance);
+    if (dashUsersCount) dashUsersCount.textContent = String(summary.total_users ?? state.usersPagination.total);
+    if (dashBalanceTotal) dashBalanceTotal.textContent = money(summary.total_available_balance || 0);
 
-  if (!options.silentLog) log('Loaded users list.');
+    if (!options.silentLog) log('Loaded users list.');
+  } catch (err) {
+    state.loaded.users = false;
+    if (tbody) {
+      tbody.innerHTML = `<tr><td colspan="8" class="empty">${esc(err.message || 'Unable to load users.')}</td></tr>`;
+    }
+    renderUsersPagination();
+    if (!options.silentLog) {
+      showToast(err.message || 'Unable to load users.', 'error');
+    }
+    throw err;
+  }
 }
 
 function renderUsers(){
-  const q = document.getElementById('usersSearch')?.value.trim().toLowerCase() || '';
-  const rows = state.users.filter(item => !q || JSON.stringify(item).toLowerCase().includes(q));
+  const rows = state.users;
   const tbody = document.getElementById('usersTableBody');
 
   if (!tbody) return;
 
   if (!rows.length){
-    tbody.innerHTML = '<tr><td colspan="10" class="empty">No user found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">No user found.</td></tr>';
     return;
   }
 
@@ -2221,10 +2259,8 @@ function renderUsers(){
         <div class="muted" style="font-size:12px;">${esc(item.pricing_country || item.market_country || item.country_code || item.country || '-')} pricing</div>
         ${item.country_mismatch ? '<div class="muted" style="font-size:11px;color:#ffb96a;">Country mismatch</div>' : ''}
       </td>
-      <td>${esc((Number(item.commission_per_1000 || 0)).toFixed(2))}</td>
-      <td>${yesNoPill(!!item.api_enabled)}</td>
       <td>${walletMoney(item, 'available')}${walletRawHint(item, 'available')}</td>
-      <td>${walletMoney(item, 'hold')}${walletRawHint(item, 'hold')}</td>
+      <td>${fmtTs(item.last_login_at || 0)}</td>
       <td>
         <div class="row-actions">
           <button class="mini-btn" onclick="viewUser('${esc(item.uid || '')}')">View</button>
@@ -2233,6 +2269,25 @@ function renderUsers(){
       </td>
     </tr>
   `).join('');
+}
+
+function renderUsersPagination(){
+  const pagination = state.usersPagination;
+  const text = document.getElementById('usersPaginationText');
+  const prev = document.getElementById('usersPrevBtn');
+  const next = document.getElementById('usersNextBtn');
+
+  if (text) {
+    text.textContent = `${pagination.total} users • Page ${pagination.page} of ${pagination.total_pages}`;
+  }
+  if (prev) prev.disabled = pagination.page <= 1;
+  if (next) next.disabled = pagination.page >= pagination.total_pages || !pagination.has_more;
+}
+
+function loadUsersPage(page){
+  const target = Math.max(1, Math.min(Number(page || 1), state.usersPagination.total_pages || 1));
+  if (target === state.usersPagination.page && state.loaded.users) return;
+  loadUsers({ page: target, busyText: 'Loading users...' }).catch(() => {});
 }
 
 async function viewUser(uid){
@@ -3919,7 +3974,14 @@ document.querySelectorAll('[data-topup-tab]').forEach(btn => {
 });
 
 document.getElementById('topupSearch')?.addEventListener('input', renderTopups);
-document.getElementById('usersSearch')?.addEventListener('input', renderUsers);
+document.getElementById('usersSearch')?.addEventListener('input', () => {
+  clearTimeout(usersSearchTimer);
+  usersSearchTimer = setTimeout(() => {
+    state.usersPagination.page = 1;
+    state.loaded.users = false;
+    loadUsers({ page: 1, busy:false, silentLog:true }).catch(() => {});
+  }, 350);
+});
 
 document.getElementById('refreshBtn')?.addEventListener('click', () => refreshCurrentView(false));
 document.getElementById('reloadTopupBtn')?.addEventListener('click', () => loadTopups({ busyText:'Reloading topup...' }));
@@ -3930,7 +3992,12 @@ document.getElementById('reloadBundleOffersBtn')?.addEventListener('click', () =
 document.getElementById('bundleOfferSearch')?.addEventListener('input', renderBundleOffers);
 document.getElementById('bundleOfferStatusFilter')?.addEventListener('change', renderBundleOffers);
 
-document.getElementById('reloadUsersBtn')?.addEventListener('click', () => loadUsers({ busyText:'Reloading users...' }));
+document.getElementById('reloadUsersBtn')?.addEventListener('click', () => {
+  state.usersPagination.page = 1;
+  loadUsers({ page: 1, busyText:'Reloading users...' }).catch(() => {});
+});
+document.getElementById('usersPrevBtn')?.addEventListener('click', () => loadUsersPage(state.usersPagination.page - 1));
+document.getElementById('usersNextBtn')?.addEventListener('click', () => loadUsersPage(state.usersPagination.page + 1));
 document.getElementById('walletHistoryBtn')?.addEventListener('click', openWalletTransferHistory);
 document.getElementById('reloadOperatorsBtn')?.addEventListener('click', () => loadOperators({ busyText:'Reloading operators...' }));
 document.getElementById('reloadWorkersBtn')?.addEventListener('click', () => loadWorkersStatus({ busyText:'Reloading workers...' }));

@@ -2,86 +2,192 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
-require_once dirname(__DIR__, 2) . '/lib/mfs.php';
 
-function admin_users_list_country_code(array $user, array $wallet = []): string
+function admin_users_list_currency(array $user, array $wallet, string $country): string
 {
-    return auth_pricing_country_from_user($user, $wallet);
+    $country = auth_normalize_country_code($country);
+    if ($country !== '') {
+        return $country === 'MY' ? 'MYR' : 'BDT';
+    }
+
+    foreach ([
+        $wallet['wallet_currency'] ?? '',
+        $wallet['currency'] ?? '',
+        $user['wallet_currency'] ?? '',
+        $user['currency'] ?? '',
+    ] as $candidate) {
+        $currency = strtoupper(trim((string)$candidate));
+
+        if (in_array($currency, ['MYR', 'RM', 'RINGGIT'], true)) {
+            return 'MYR';
+        }
+
+        if (in_array($currency, ['BDT', 'TK', 'TAKA'], true)) {
+            return 'BDT';
+        }
+    }
+
+    return 'BDT';
+}
+
+function admin_users_list_country_code(
+    array $user,
+    array $wallet,
+    array $users,
+    array $wallets
+): string {
+    foreach ([
+        $user['pricing_country'] ?? '',
+        $user['market_country'] ?? '',
+        $user['service_country'] ?? '',
+    ] as $candidate) {
+        $country = auth_normalize_country_code((string)$candidate);
+        if ($country !== '') {
+            return $country;
+        }
+    }
+
+    $currency = admin_users_list_currency($user, $wallet, '');
+    if ($currency === 'MYR') {
+        return 'MY';
+    }
+
+    foreach ([
+        $user['ip_country'] ?? '',
+        $user['registration_country'] ?? '',
+        $user['created_ip_country'] ?? '',
+    ] as $candidate) {
+        $country = auth_normalize_country_code((string)$candidate);
+        if ($country !== '') {
+            return $country;
+        }
+    }
+
+    $parentUid = trim((string)($user['parent_subadmin_uid'] ?? ''));
+    if (
+        $parentUid === ''
+        && strtoupper(trim((string)($user['created_by_role'] ?? ''))) === 'SUBADMIN'
+    ) {
+        $parentUid = trim((string)($user['created_by_uid'] ?? ''));
+    }
+
+    if ($parentUid !== '' && is_array($users[$parentUid] ?? null)) {
+        $parent = $users[$parentUid];
+        $parentWallet = is_array($wallets[$parentUid] ?? null) ? $wallets[$parentUid] : [];
+
+        foreach ([
+            $parent['pricing_country'] ?? '',
+            $parent['market_country'] ?? '',
+            $parent['service_country'] ?? '',
+            $parent['country_code'] ?? '',
+            $parent['country'] ?? '',
+        ] as $candidate) {
+            $country = auth_normalize_country_code((string)$candidate);
+            if ($country !== '') {
+                return $country;
+            }
+        }
+
+        if (admin_users_list_currency($parent, $parentWallet, '') === 'MYR') {
+            return 'MY';
+        }
+    }
+
+    foreach ([
+        $user['country_code'] ?? '',
+        $user['country'] ?? '',
+        $user['user_country'] ?? '',
+    ] as $candidate) {
+        $country = auth_normalize_country_code((string)$candidate);
+        if ($country !== '') {
+            return $country;
+        }
+    }
+
+    return 'BD';
 }
 
 api_require_method('GET');
 auth_require_admin_session();
 
+$page = max(1, (int)($_GET['page'] ?? 1));
+$limit = max(1, min(100, (int)($_GET['limit'] ?? 50)));
+$search = strtolower(trim((string)($_GET['search'] ?? '')));
+$roleFilter = strtoupper(trim((string)($_GET['role'] ?? '')));
+$statusFilter = strtoupper(trim((string)($_GET['status'] ?? '')));
+
 $users = fb_get('USERS');
 $wallets = fb_get('USER_WALLETS');
 
-if (!is_array($users)) {
-    $users = [];
-}
-if (!is_array($wallets)) {
-    $wallets = [];
-}
-
+$users = is_array($users) ? $users : [];
+$wallets = is_array($wallets) ? $wallets : [];
 $items = [];
+$totalAvailableBalance = 0.0;
 
 foreach ($users as $uid => $user) {
     if (!is_array($user)) {
         continue;
     }
 
+    $uid = (string)$uid;
     $wallet = is_array($wallets[$uid] ?? null) ? $wallets[$uid] : [];
-    $walletDisplay = function_exists('mfs_wallet_display_payload') ? mfs_wallet_display_payload($user, $wallet) : [];
-    $role = (string)($user['role'] ?? 'USER');
+    $role = strtoupper(trim((string)($user['role'] ?? 'USER')));
+    $status = strtoupper(trim((string)($user['status'] ?? 'ACTIVE')));
 
-    $roleSettings = fb_get('USER_ROLE_SETTINGS/' . $uid);
-    if (!is_array($roleSettings)) {
-        $roleSettings = role_default_settings($role);
-    } elseif (function_exists('role_settings_with_defaults')) {
-        $roleSettings = role_settings_with_defaults($roleSettings, $role);
+    if ($roleFilter !== '' && $role !== $roleFilter) {
+        continue;
     }
 
+    if ($statusFilter !== '' && $status !== $statusFilter) {
+        continue;
+    }
+
+    $name = trim((string)($user['name'] ?? ''));
+    $phone = trim((string)($user['phone'] ?? ''));
+    $email = trim((string)($user['email'] ?? ''));
+
+    if ($search !== '') {
+        $haystack = strtolower(implode(' ', [$uid, $name, $phone, $email, $role, $status]));
+        if (!str_contains($haystack, $search)) {
+            continue;
+        }
+    }
+
+    $country = admin_users_list_country_code($user, $wallet, $users, $wallets);
+    $currency = admin_users_list_currency($user, $wallet, $country);
+    $availableBalance = (float)($wallet['available_balance'] ?? 0);
+    $holdBalance = (float)($wallet['hold_balance'] ?? 0);
+    $phoneCountry = auth_phone_country_from_user($user);
+
+    $totalAvailableBalance += $availableBalance;
+
     $items[] = [
-        'uid' => (string)$uid,
-        'name' => (string)($user['name'] ?? ''),
-        'phone' => (string)($user['phone'] ?? ''),
-        'email' => (string)($user['email'] ?? ''),
-        'status' => (string)($user['status'] ?? ''),
+        'uid' => $uid,
+        'name' => $name,
+        'phone' => $phone,
+        'email' => $email,
         'role' => $role,
-        'country_code' => admin_users_list_country_code($user, $wallet),
-        'country' => admin_users_list_country_code($user, $wallet),
-        'phone_country' => auth_phone_country_from_user($user),
-        'pricing_country' => admin_users_list_country_code($user, $wallet),
-        'market_country' => admin_users_list_country_code($user, $wallet),
-        'service_country' => admin_users_list_country_code($user, $wallet),
+        'status' => $status,
+        'phone_country' => $phoneCountry,
+        'pricing_country' => $country,
+        'market_country' => $country,
+        'service_country' => $country,
+        'country_code' => $country,
+        'country' => $country,
         'ip_country' => auth_normalize_country_code((string)($user['ip_country'] ?? '')),
         'country_mismatch' => array_key_exists('country_mismatch', $user)
             ? (bool)$user['country_mismatch']
-            : auth_phone_country_from_user($user) !== admin_users_list_country_code($user, $wallet),
-        'created_ip' => (string)($user['created_ip'] ?? $user['registration_ip'] ?? ''),
-        'last_login_ip' => (string)($user['last_login_ip'] ?? ''),
-
-        'available_balance' => (float)($wallet['available_balance'] ?? 0),
-        'hold_balance' => (float)($wallet['hold_balance'] ?? 0),
-        'currency' => (string)($walletDisplay['currency'] ?? $wallet['currency'] ?? $wallet['wallet_currency'] ?? 'BDT'),
-        'wallet_currency' => (string)($walletDisplay['wallet_currency'] ?? $wallet['wallet_currency'] ?? $wallet['currency'] ?? 'BDT'),
-        'display_currency' => (string)($walletDisplay['display_currency'] ?? $wallet['currency'] ?? 'BDT'),
-        'display_available_balance' => (float)($walletDisplay['display_available_balance'] ?? $wallet['available_balance'] ?? 0),
-        'display_hold_balance' => (float)($walletDisplay['display_hold_balance'] ?? $wallet['hold_balance'] ?? 0),
-        'available_balance_bdt' => (float)($walletDisplay['available_balance_bdt'] ?? $wallet['available_balance'] ?? 0),
-        'hold_balance_bdt' => (float)($walletDisplay['hold_balance_bdt'] ?? $wallet['hold_balance'] ?? 0),
-        'available_balance_myr' => (float)($walletDisplay['available_balance_myr'] ?? 0),
-        'hold_balance_myr' => (float)($walletDisplay['hold_balance_myr'] ?? 0),
-        'rate_myr_bdt' => (float)($walletDisplay['rate_myr_bdt'] ?? 0),
-        'conversion_note' => (string)($walletDisplay['conversion_note'] ?? ''),
+            : $phoneCountry !== $country,
+        'available_balance' => $availableBalance,
+        'hold_balance' => $holdBalance,
+        'currency' => $currency,
+        'wallet_currency' => $currency,
+        'display_currency' => $currency,
+        'display_available_balance' => $availableBalance,
+        'display_hold_balance' => $holdBalance,
         'created_at' => (int)($user['created_at'] ?? 0),
-
-        'role_settings' => $roleSettings,
-        'commission_per_1000' => (float)($roleSettings['commission_per_1000'] ?? 0),
-        'api_enabled' => (bool)($roleSettings['api_enabled'] ?? false),
-        'topup_enabled' => (bool)($roleSettings['topup_enabled'] ?? true),
-        'bundle_enabled' => (bool)($roleSettings['bundle_enabled'] ?? true),
-        'min_amount' => (float)($roleSettings['min_amount'] ?? 0),
-        'max_amount' => (float)($roleSettings['max_amount'] ?? 0),
+        'last_login_at' => (int)($user['last_login_at'] ?? 0),
+        'last_login' => (int)($user['last_login_at'] ?? 0),
     ];
 }
 
@@ -89,6 +195,26 @@ usort($items, static function (array $a, array $b): int {
     return (int)$b['created_at'] <=> (int)$a['created_at'];
 });
 
+$total = count($items);
+$totalPages = max(1, (int)ceil($total / $limit));
+if ($page > $totalPages) {
+    $page = $totalPages;
+}
+
+$offset = ($page - 1) * $limit;
+$pageItems = array_values(array_slice($items, $offset, $limit));
+
 api_response(true, 'SUCCESS', 'User list loaded', [
-    'items' => $items,
+    'items' => $pageItems,
+    'pagination' => [
+        'page' => $page,
+        'limit' => $limit,
+        'total' => $total,
+        'total_pages' => $totalPages,
+        'has_more' => $page < $totalPages,
+    ],
+    'summary' => [
+        'total_users' => $total,
+        'total_available_balance' => round($totalAvailableBalance, 2),
+    ],
 ]);

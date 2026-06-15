@@ -28,13 +28,8 @@ $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? '
 if ($phoneCountry === '') {
     $phoneCountry = detect_phone_country((string)($body['phone'] ?? '')) ?: 'BD';
 }
-$ipCountry = auth_request_ip_country($body);
-$marketCountry = auth_normalize_country_code((string)(
-    $body['market_country']
-    ?? $body['pricing_country']
-    ?? $body['service_country']
-    ?? ''
-));
+$ipCountry = get_request_country($body, 'MY');
+$marketCountry = $ipCountry;
 $pricingCountry = auth_registration_pricing_country($phoneCountry, $ipCountry, $marketCountry);
 $currency = auth_country_currency($pricingCountry);
 $phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);

@@ -131,13 +131,8 @@ function user_reg_send_sms(
 
 $name = trim((string)($body['name'] ?? ''));
 $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
-$ipCountry = auth_request_ip_country($body);
-$marketCountry = auth_normalize_country_code((string)(
-    $body['market_country']
-    ?? $body['pricing_country']
-    ?? $body['service_country']
-    ?? ''
-));
+$ipCountry = get_request_country($body, 'MY');
+$marketCountry = $ipCountry;
 
 if ($phoneCountry === '') {
     $phoneCountry = detect_phone_country((string)($body['phone'] ?? ''));

@@ -54,10 +54,10 @@ header('Pragma: no-cache');
       <div class="field">
         <label>Pricing Country</label>
         <select id="regPricingCountry" class="input" disabled>
+          <option value="MY" selected>Malaysia service (MYR)</option>
           <option value="BD">Bangladesh service (BDT)</option>
-          <option value="MY">Malaysia service (MYR)</option>
         </select>
-        <small class="field-help">Assigned from phone/IP context. Only admin can change it later.</small>
+        <small class="field-help">Automatically assigned from your detected market. Phone Country only controls OTP delivery.</small>
       </div>
 
       <div class="field">
@@ -150,6 +150,6 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/register.js?v=1"></script>
+<script src="/api/user/assets/register.js?v=2"></script>
 </body>
 </html>

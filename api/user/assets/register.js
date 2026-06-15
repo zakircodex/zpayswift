@@ -122,8 +122,8 @@ function getFormData(){
     name: (el('regName')?.value || '').trim(),
     phone: (el('regPhone')?.value || '').trim(),
     phone_country: (el('regPhoneCountry')?.value || 'BD').toUpperCase(),
-    pricing_country: (el('regPricingCountry')?.value || 'BD').toUpperCase(),
-    market_country: (el('regPricingCountry')?.value || 'BD').toUpperCase(),
+    pricing_country: (el('regPricingCountry')?.value || 'MY').toUpperCase(),
+    market_country: (el('regPricingCountry')?.value || 'MY').toUpperCase(),
     email: (el('regEmail')?.value || '').trim(),
     password: el('regPassword')?.value || '',
     confirm_password: el('regConfirmPassword')?.value || '',
@@ -177,10 +177,10 @@ function validateForm(data){
 
 function updateCountryUi(){
   const phoneCountry = (el('regPhoneCountry')?.value || 'BD').toUpperCase();
-  const selectedMarket = (el('regPricingCountry')?.value || 'BD').toUpperCase();
+  const selectedMarket = (el('regPricingCountry')?.value || 'MY').toUpperCase();
   const pricingCountry = ['BD', 'MY'].includes(state.ipCountry)
     ? state.ipCountry
-    : (['BD', 'MY'].includes(selectedMarket) ? selectedMarket : 'BD');
+    : (['BD', 'MY'].includes(selectedMarket) ? selectedMarket : 'MY');
 
   if (el('regPricingCountry')) {
     el('regPricingCountry').value = pricingCountry;
@@ -199,9 +199,10 @@ function updateCountryUi(){
 
 async function loadCountryDefaults(){
   try {
-    const data = await proxyPost('country_defaults', {}, 'Detecting country...');
-    const phoneCountry = String(data.phone_country || 'BD').toUpperCase();
-    const pricingCountry = String(data.pricing_country || data.market_country || el('regPricingCountry')?.value || 'BD').toUpperCase();
+    const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+    const data = await proxyPost('country_defaults', { browser_timezone: browserTimezone }, 'Detecting country...');
+    const phoneCountry = String(data.phone_country || data.pricing_country || 'MY').toUpperCase();
+    const pricingCountry = String(data.pricing_country || data.market_country || 'MY').toUpperCase();
     state.ipCountry = String(data.ip_country || '').toUpperCase();
 
     if (el('regPhoneCountry') && ['BD','MY'].includes(phoneCountry)) {
@@ -211,7 +212,8 @@ async function loadCountryDefaults(){
       el('regPricingCountry').value = pricingCountry;
     }
   } catch (_) {
-    // Keep safe Bangladesh defaults when IP country is unavailable.
+    state.ipCountry = 'MY';
+    if (el('regPricingCountry')) el('regPricingCountry').value = 'MY';
   }
 
   updateCountryUi();

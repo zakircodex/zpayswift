@@ -1478,7 +1478,13 @@ switch ($action) {
 
     case 'users':
         proxy_require_method('GET');
-        proxy_forward_admin_get('users/list.php');
+        proxy_forward_admin_get('users/list.php', [
+            'page' => max(1, (int)($_GET['page'] ?? 1)),
+            'limit' => max(1, min(100, (int)($_GET['limit'] ?? 50))),
+            'search' => trim((string)($_GET['search'] ?? '')),
+            'role' => trim((string)($_GET['role'] ?? '')),
+            'status' => trim((string)($_GET['status'] ?? '')),
+        ]);
         break;
 
     case 'user_get':
