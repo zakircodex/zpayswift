@@ -6,7 +6,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
-function my_site_now_iso(int $ts = null): string
+function my_site_now_iso(?int $ts = null): string
 {
     return date('c', $ts ?? time());
 }
@@ -69,6 +69,7 @@ function my_site_subscription_state(array $tenant): array
         $open = false;
         $reason = 'SITE_NOT_ACTIVE';
     } elseif (!in_array($status, ['ACTIVE', 'TRIALING'], true)) {
+        $open = false;
         $reason = 'SUBSCRIPTION_' . $status;
     } elseif ($expiredByDate) {
         $open = false;
