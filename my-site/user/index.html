@@ -10,10 +10,15 @@
   <main class="shell">
     <nav class="nav">
       <div class="brand-lockup">
+        <img class="logo-img" data-site-logo hidden alt="Tenant logo">
         <span class="logo-mark">Z</span>
         <span data-site-name>Z-Pay Swift Demo Site</span>
       </div>
-      <span class="badge">Plan: <strong data-plan-label>Loading</strong></span>
+      <div class="nav-links">
+        <span class="badge">Plan: <strong data-plan-label>Loading</strong></span>
+        <a class="btn small secondary" href="../onboarding/index.html">Edit Demo</a>
+        <a class="btn small secondary" href="../control/index.html">Owner Control</a>
+      </div>
     </nav>
 
     <section class="hero">
@@ -21,7 +26,7 @@
         <span class="badge">BD white-label user panel demo</span>
         <h1>Fast topup and payment support from <span data-site-name>Z-Pay Swift Demo Site</span></h1>
         <p data-expiry-text>Loading tenant status...</p>
-        <div class="notice expired-only">This tenant site is expired. Customer actions are blocked until the owner renews subscription.</div>
+        <div class="notice danger expired-only">This tenant site is expired. Customer actions are blocked until the owner renews subscription.</div>
         <div class="actions hide-when-expired">
           <button class="btn" data-demo-action="Login">Login</button>
           <button class="btn secondary" data-demo-action="Register">Register</button>
@@ -33,9 +38,10 @@
         <h2>Dashboard preview</h2>
         <div class="grid two">
           <div class="stat-card">Currency<strong>BDT</strong></div>
-          <div class="stat-card">Status<strong data-plan-label>Loading</strong></div>
+          <div class="stat-card">Days left<strong data-expiry-days>-</strong></div>
         </div>
-        <p>This is UI skeleton only. Real wallet, OTP, API, history, and transaction data will be connected later.</p>
+        <div class="kv"><span>Tenant URL</span><strong data-tenant-url>-</strong></div>
+        <div class="kv"><span>OTP/SMS</span><strong>BD only via Z-Pay Swift backend later</strong></div>
       </div>
     </section>
 
@@ -57,8 +63,8 @@
       </article>
     </section>
 
-    <section class="card hero-card" style="margin-top: 14px;">
-      <h2>Recent history demo</h2>
+    <section class="card hero-card section hide-when-expired">
+      <h2>Tracking and history demo</h2>
       <div class="table-card">
         <div class="table-row"><span>Type</span><span>Status</span><span>Amount</span></div>
         <div class="table-row"><span>Topup</span><span>Pending</span><span>BDT 20</span></div>
@@ -67,9 +73,19 @@
       </div>
     </section>
 
-    <footer class="footer">Powered by Z-Pay Swift backend. Tenant UI skeleton only.</footer>
+    <section class="card hero-card section">
+      <h2>Demo guard tools</h2>
+      <p>These buttons only change localStorage demo status. Real subscription guard must be enforced by backend later.</p>
+      <div class="actions">
+        <button class="btn secondary" data-expire-demo>Set Expired</button>
+        <button class="btn secondary" data-renew-demo>Renew Demo</button>
+      </div>
+    </section>
+
+    <footer class="footer">Powered by Z-Pay Swift backend later. Tenant UI skeleton only.</footer>
   </main>
 
+  <script src="../assets/js/demo-store.js"></script>
   <script src="../assets/js/tenant-config.js"></script>
   <script src="../assets/js/user-panel.js"></script>
 </body>
