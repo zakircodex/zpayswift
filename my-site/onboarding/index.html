@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My-Site Onboarding</title>
+  <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+  <main class="shell">
+    <nav class="nav">
+      <div class="brand-lockup">
+        <span class="logo-mark">Z</span>
+        <span>My-Site Onboarding</span>
+      </div>
+      <div class="nav-links">
+        <a class="btn small secondary" href="../index.html">Home</a>
+        <a class="btn small secondary" href="../user/index.html">User Panel</a>
+        <a class="btn small secondary" href="../control/index.html">Control Panel</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <form class="card hero-card" id="tenantForm">
+        <span class="badge">Demo wizard — localStorage only</span>
+        <h1>Create a tenant site</h1>
+        <p>No live backend call happens here. This wizard only creates a demo tenant config in browser localStorage.</p>
+
+        <div class="wizard-steps">
+          <span class="wizard-step-pill active">1 Plan</span>
+          <span class="wizard-step-pill active">2 Branding</span>
+          <span class="wizard-step-pill active">3 Controls</span>
+          <span class="wizard-step-pill active">4 Publish</span>
+        </div>
+
+        <div class="form-grid">
+          <div class="form-field">
+            <label for="plan">Plan</label>
+            <select id="plan" name="plan">
+              <option value="FREE_TRIAL">Free Trial — 7 days</option>
+              <option value="SUBSCRIPTION">Subscription — demo 30 days</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="site_name">Site name</label>
+            <input id="site_name" name="site_name" value="Zakir Pay Demo" required>
+          </div>
+          <div class="form-field">
+            <label for="primary_color">Theme color</label>
+            <input id="primary_color" name="primary_color" type="color" value="#0b5cff">
+          </div>
+          <div class="form-field">
+            <label for="logo_url">Logo URL placeholder</label>
+            <input id="logo_url" name="logo_url" placeholder="https://example.com/logo.png">
+          </div>
+          <div class="form-field full">
+            <label for="custom_domain">Custom domain placeholder</label>
+            <input id="custom_domain" name="custom_domain" placeholder="pay.example.com">
+          </div>
+          <div class="form-field">
+            <label for="topup_per_1000">Topup commission per 1000</label>
+            <input id="topup_per_1000" name="topup_per_1000" type="number" min="0" value="18">
+          </div>
+          <div class="form-field">
+            <label for="bundle_per_1000">Bundle commission per 1000</label>
+            <input id="bundle_per_1000" name="bundle_per_1000" type="number" min="0" value="0">
+          </div>
+          <div class="form-field">
+            <label for="telegram_enabled">Telegram control</label>
+            <select id="telegram_enabled" name="telegram_enabled">
+              <option value="false">Off for now</option>
+              <option value="true">Enable placeholder</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="worker_enabled">Worker app</label>
+            <select id="worker_enabled" name="worker_enabled">
+              <option value="true">Use existing worker QR/token</option>
+              <option value="false">Setup later</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="notice section">BD-only OTP/SMS rule is fixed for this phase. MY SMS is not included in this white-label demo.</div>
+
+        <div class="actions">
+          <button class="btn" type="submit">Publish demo site</button>
+          <button class="btn secondary" type="button" data-expire-demo>Save as expired demo</button>
+          <button class="btn danger" type="button" data-clear-demo>Clear demo</button>
+        </div>
+      </form>
+
+      <aside class="preview-phone">
+        <div class="preview-screen">
+          <span class="badge" id="previewPlan">Free Trial</span>
+          <h2 id="previewName">Zakir Pay Demo</h2>
+          <p id="previewUrl">https://zpayswift.com/site/zakir-pay-demo</p>
+          <div class="grid two">
+            <div class="stat-card">Currency<strong>BDT</strong></div>
+            <div class="stat-card">SMS<strong>BD Only</strong></div>
+          </div>
+          <div class="section">
+            <div class="service-card"><h3>Topup</h3><p>Tenant-branded customer flow.</p></div>
+            <div class="service-card section"><h3>Control</h3><p>Owner control panel after publish.</p></div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="footer">This onboarding is demo only. Real tenant API will be connected later.</footer>
+  </main>
+
+  <script src="../assets/js/demo-store.js"></script>
+  <script src="../assets/js/onboarding.js"></script>
+</body>
+</html>
