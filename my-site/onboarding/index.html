@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>My-Site Onboarding</title>
+  <title>Z Builder Onboarding</title>
   <link rel="stylesheet" href="../assets/css/style.css">
 </head>
 <body>
   <main class="shell">
     <nav class="nav">
       <div class="brand-lockup">
-        <span class="logo-mark">Z</span>
-        <span>My-Site Onboarding</span>
+        <span class="logo-mark">ZB</span>
+        <span>Z Builder</span>
       </div>
       <div class="nav-links">
         <a class="btn small secondary" href="../index.html">Home</a>
@@ -22,9 +22,9 @@
 
     <section class="hero">
       <form class="card hero-card" id="tenantForm">
-        <span class="badge">Demo wizard — localStorage only</span>
-        <h1>Create a tenant site</h1>
-        <p>No live backend call happens here. This wizard only creates a demo tenant config in browser localStorage.</p>
+        <span class="badge">Z Builder demo — localStorage only</span>
+        <h1>Build your own site</h1>
+        <p>এই wizard দিয়ে demo site তৈরি হবে। Real backend connect হলে owner account, subscription, payment approval এবং tenant control server-side হবে।</p>
 
         <div class="wizard-steps">
           <span class="wizard-step-pill active">1 Plan</span>
@@ -75,13 +75,13 @@
           <div class="form-field">
             <label for="worker_enabled">Worker app</label>
             <select id="worker_enabled" name="worker_enabled">
-              <option value="true">Use existing worker QR/token</option>
+              <option value="true">Use existing worker QR/link code</option>
               <option value="false">Setup later</option>
             </select>
           </div>
         </div>
 
-        <div class="notice section">BD-only OTP/SMS rule is fixed for this phase. MY SMS is not included in this white-label demo.</div>
+        <div class="notice section">BD-only OTP/SMS rule is fixed for this phase. MY SMS is not included in Z Builder white-label flow.</div>
 
         <div class="actions">
           <button class="btn" type="submit">Publish demo site</button>
@@ -107,7 +107,7 @@
       </aside>
     </section>
 
-    <footer class="footer">This onboarding is demo only. Real tenant API will be connected later.</footer>
+    <footer class="footer">Z Builder demo only. Real tenant API/account/subscription flow will be connected later.</footer>
   </main>
 
   <script src="../assets/js/demo-store.js"></script>
