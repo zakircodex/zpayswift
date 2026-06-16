@@ -1,4 +1,4 @@
-// My-Site tenant config helper. Public tenant reads can use /api/my_site when URL has ?tenant_id= or ?slug=.
+// Z Builder tenant config helper. Public tenant reads can use /api/my_site when URL has ?tenant_id= or ?slug=.
 window.MySiteTenant = {
   tenant: null,
 
@@ -13,7 +13,7 @@ window.MySiteTenant = {
   fallbackTenant() {
     if (window.MySiteDemoStore) return window.MySiteDemoStore.defaultTenant();
     return {
-      site_name: 'Z-Pay Swift Demo Site',
+      site_name: 'Z Builder Demo Site',
       plan: 'FREE_TRIAL',
       subscription_status: 'TRIALING',
       subscription_expires_at: '',
@@ -38,7 +38,7 @@ window.MySiteTenant = {
         this.tenant = this.normalize(data.tenant || {});
         return this.tenant;
       } catch (error) {
-        console.warn('Tenant API read failed, using local/demo config:', error.message);
+        console.warn('Z Builder tenant API read failed, using local/demo config:', error.message);
       }
     }
 
@@ -54,7 +54,7 @@ window.MySiteTenant = {
       this.tenant = this.normalize(await response.json());
     } catch (error) {
       this.tenant = this.normalize(this.fallbackTenant());
-      console.warn('Using fallback tenant config:', error.message);
+      console.warn('Using Z Builder fallback tenant config:', error.message);
     }
     return this.tenant;
   },
@@ -95,7 +95,7 @@ window.MySiteTenant = {
     root.style.setProperty('--brand', color);
 
     document.querySelectorAll('[data-site-name]').forEach((el) => {
-      el.textContent = tenant?.site_name || 'Z-Pay Swift Demo Site';
+      el.textContent = tenant?.site_name || 'Z Builder Demo Site';
     });
 
     document.querySelectorAll('[data-plan-label]').forEach((el) => {
@@ -108,7 +108,7 @@ window.MySiteTenant = {
     });
 
     document.querySelectorAll('[data-tenant-url]').forEach((el) => {
-      el.textContent = tenant?.custom_domain || tenant?.free_url || 'https://zpayswift.com/site/demo-site';
+      el.textContent = tenant?.custom_domain || tenant?.free_url || 'https://zpayswift.com/site/z-builder-demo';
     });
 
     document.querySelectorAll('[data-site-logo]').forEach((el) => {
