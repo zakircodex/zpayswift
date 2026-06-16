@@ -44,57 +44,24 @@
     </section>
 
     <section class="grid hide-when-expired">
-      <article class="control-card">
-        <h3>Commission</h3>
-        <p>Set tenant-specific topup, bundle, and MFS commission rules.</p>
-        <button class="btn secondary" data-demo-action="Commission Setting">Manage</button>
-      </article>
-      <article class="control-card">
-        <h3>Users</h3>
-        <p>View, active, disable, and manage tenant customers only.</p>
-        <button class="btn secondary" data-demo-action="User Control">Manage</button>
-      </article>
-      <article class="control-card">
-        <h3>Requests</h3>
-        <p>Control pending, successful, failed, and manual processing.</p>
-        <button class="btn secondary" data-demo-action="Request Control">Manage</button>
-      </article>
-      <article class="control-card">
-        <h3>Balance Tools</h3>
-        <p>Add/deduct tenant user balances with scoped audit logs.</p>
-        <button class="btn secondary" data-demo-action="Balance Tools">Manage</button>
-      </article>
-      <article class="control-card">
-        <h3>Telegram</h3>
-        <p>Configure tenant bot/control without exposing global secrets.</p>
-        <button class="btn secondary" data-demo-action="Telegram Setting">Setup</button>
-      </article>
-      <article class="control-card">
-        <h3>Worker App</h3>
-        <p>Link existing Z-Pay Swift worker app using QR/token.</p>
-        <button class="btn secondary" data-demo-action="Worker Setup">Setup</button>
-      </article>
+      <article class="control-card"><h3>Commission</h3><p>Set tenant-specific topup, bundle, and MFS commission rules.</p><button class="btn secondary" data-demo-action="Commission Setting">Manage</button></article>
+      <article class="control-card"><h3>Users</h3><p>View, active, disable, and manage tenant customers only.</p><button class="btn secondary" data-demo-action="User Control">Manage</button></article>
+      <article class="control-card"><h3>Requests</h3><p>Control pending, successful, failed, and manual processing.</p><button class="btn secondary" data-demo-action="Request Control">Manage</button></article>
+      <article class="control-card"><h3>Balance Tools</h3><p>Add/deduct tenant user balances with scoped audit logs.</p><button class="btn secondary" data-demo-action="Balance Tools">Manage</button></article>
+      <article class="control-card"><h3>Telegram</h3><p>Configure tenant bot/control without exposing global secrets.</p><button class="btn secondary" data-demo-action="Telegram Setting">Setup</button></article>
+      <article class="control-card"><h3>Worker App</h3><p>Link existing Z-Pay Swift worker app using QR/link code.</p><button class="btn secondary" data-demo-action="Worker Setup">Setup</button></article>
     </section>
 
     <section class="grid two section hide-when-expired">
-      <div class="card hero-card">
-        <h2>Worker QR/token demo</h2>
-        <div class="notice success">DEMO-TENANT-WORKER-TOKEN</div>
-        <p>Real worker token must be generated server-side and tenant-scoped later.</p>
-      </div>
-      <div class="card hero-card">
-        <h2>Report preview</h2>
-        <div class="grid two">
-          <div class="stat-card">Today Requests<strong>0</strong></div>
-          <div class="stat-card">Pending<strong>0</strong></div>
-        </div>
-      </div>
+      <div class="card hero-card"><h2>Worker QR/link demo</h2><div class="notice success">DEMO-WORKER-LINK-CODE</div><p>Real worker link code must be generated server-side and tenant-scoped later.</p></div>
+      <div class="card hero-card"><h2>Report preview</h2><div class="grid two"><div class="stat-card">Today Requests<strong>0</strong></div><div class="stat-card">Pending<strong>0</strong></div></div></div>
     </section>
 
     <footer class="footer">Control panel skeleton only. Backend/database remain Z-Pay Swift owned.</footer>
   </main>
 
   <script src="../assets/js/demo-store.js"></script>
+  <script src="../assets/js/my-site-api.js"></script>
   <script src="../assets/js/tenant-config.js"></script>
   <script src="../assets/js/control-panel.js"></script>
 </body>
