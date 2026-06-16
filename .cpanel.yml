@@ -5,6 +5,7 @@ deployment:
     - /bin/mkdir -p $DEPLOYPATH
     - /bin/cp -R api $DEPLOYPATH
     - /bin/cp -R assets $DEPLOYPATH
+    - /bin/rm -rf $DEPLOYPATH/my-site
     - /bin/rm -rf $DEPLOYPATH/z-builder
     - /bin/cp -R z-builder $DEPLOYPATH/z-builder
     - /bin/cp -f .htaccess $DEPLOYPATH/.htaccess
