@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Verify</title><link rel="stylesheet" href="../assets/css/style.css"></head>
+<body>
+<main class="shell">
+<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Verify</span></div><div class="nav-links"><a class="btn small secondary" href="../index.html">Home</a></div></nav>
+<section class="card hero-card section"><span class="badge">Email verification</span><h1 data-verify-title>Verifying account...</h1><p data-verify-message>Please wait.</p><div class="actions"><a class="btn" href="../plans/index.html" hidden data-continue-plans>Continue to Plans</a><a class="btn secondary" href="register.html">Back to Account</a></div></section>
+<footer class="footer">Z Builder verification.</footer>
+</main>
+<script>
+(async function(){
+  const params = new URLSearchParams(location.search);
+  const token = params.get('token') || '';
+  const title = document.querySelector('[data-verify-title]');
+  const msg = document.querySelector('[data-verify-message]');
+  const next = document.querySelector('[data-continue-plans]');
+  if (!token) { title.textContent = 'Invalid link'; msg.textContent = 'Token missing.'; return; }
+  try {
+    const res = await fetch('/api/my_site/auth_verify.php?token=' + encodeURIComponent(token), { headers: { 'Accept': 'application/json' } });
+    const json = await res.json();
+    if (!res.ok || !json.ok) throw new Error(json.message || 'Verification failed');
+    localStorage.setItem('z_builder_owner_demo', JSON.stringify(json.data.owner || {}, null, 2));
+    if (json.data.session_token) localStorage.setItem('z_builder_owner_session', json.data.session_token);
+    localStorage.removeItem('z_builder_verify_url');
+    title.textContent = 'Account verified';
+    msg.textContent = 'Your Z Builder account is ready.';
+    next.hidden = false;
+  } catch (error) {
+    title.textContent = 'Verification failed';
+    msg.textContent = error.message;
+  }
+})();
+</script>
+</body></html>
