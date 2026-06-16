@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Z-Pay Swift My-Site</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+  <main class="shell">
+    <nav class="nav">
+      <div class="brand-lockup">
+        <span class="logo-mark">Z</span>
+        <span>Z-Pay Swift My-Site</span>
+      </div>
+      <div class="nav-links">
+        <a class="btn small secondary" href="onboarding/index.html">Create Demo Site</a>
+        <a class="btn small secondary" href="user/index.html">User Panel</a>
+        <a class="btn small secondary" href="control/index.html">Control Panel</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div class="card hero-card">
+        <span class="badge">White-label SaaS demo foundation</span>
+        <h1>Create a Z-Pay Swift powered site in under 5 minutes</h1>
+        <p>Free plan runs on Z-Pay Swift domain for 7 days. Subscription plan unlocks custom branding, domain, commission, control panel, Telegram, and worker setup.</p>
+        <div class="actions">
+          <a class="btn" href="onboarding/index.html">Start onboarding</a>
+          <a class="btn secondary" href="docs/IMPLEMENTATION_PLAN.md">Read plan</a>
+        </div>
+      </div>
+
+      <div class="card hero-card">
+        <h2>How it works</h2>
+        <div class="kv"><span>Backend</span><strong>Z-Pay Swift owned</strong></div>
+        <div class="kv"><span>Database</span><strong>Z-Pay Swift Firebase</strong></div>
+        <div class="kv"><span>Tenant</span><strong>Own users/requests only</strong></div>
+        <div class="kv"><span>SMS</span><strong>BD OTP only in this phase</strong></div>
+        <div class="kv"><span>Worker</span><strong>Existing app QR/token link</strong></div>
+      </div>
+    </section>
+
+    <section class="grid section">
+      <article class="plan-card">
+        <span class="badge">Free</span>
+        <h2>Free Trial</h2>
+        <p>Hosted URL like zpayswift.com/site/{user_id}, Z-Pay Swift branding, user-panel-like interface, 7-day expiry.</p>
+        <a class="btn secondary" href="onboarding/index.html?plan=free">Try free</a>
+      </article>
+      <article class="plan-card featured">
+        <span class="badge">Subscription</span>
+        <h2>Custom Site</h2>
+        <p>Custom name, logo, color, domain, commission, reports, user/request controls, Telegram, worker setup.</p>
+        <a class="btn" href="onboarding/index.html?plan=paid">Create custom site</a>
+      </article>
+      <article class="plan-card">
+        <span class="badge">Control</span>
+        <h2>Owner Panel</h2>
+        <p>Site owner manages only tenant scoped users, balances, requests, success/failed control, reports and workers.</p>
+        <a class="btn secondary" href="control/index.html">Open demo</a>
+      </article>
+    </section>
+
+    <section class="card hero-card section">
+      <h2>Demo status</h2>
+      <p>This folder is frontend/demo only. No real API, Firebase, Telegram, SMS, worker, or live Z-Pay Swift code is modified here.</p>
+      <div class="actions">
+        <button class="btn secondary" data-expire-demo>Set demo expired</button>
+        <button class="btn secondary" data-renew-demo>Renew demo</button>
+        <button class="btn danger" data-reset-demo>Reset demo</button>
+      </div>
+    </section>
+
+    <footer class="footer">My-Site demo foundation. Powered by Z-Pay Swift backend later.</footer>
+  </main>
+
+  <script src="assets/js/demo-store.js"></script>
+  <script>
+    document.querySelector('[data-expire-demo]')?.addEventListener('click', () => {
+      window.MySiteDemoStore.expireDemoTenant();
+      alert('Demo tenant is now expired. Open user/control panel to test guard.');
+    });
+    document.querySelector('[data-renew-demo]')?.addEventListener('click', () => {
+      window.MySiteDemoStore.renewDemoTenant(30);
+      alert('Demo tenant renewed for 30 days.');
+    });
+    document.querySelector('[data-reset-demo]')?.addEventListener('click', () => {
+      window.MySiteDemoStore.clear();
+      alert('Demo tenant localStorage cleared.');
+    });
+  </script>
+</body>
+</html>
