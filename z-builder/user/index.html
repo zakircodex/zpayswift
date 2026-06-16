@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Z Builder User Panel</title>
+  <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+  <main class="shell">
+    <nav class="nav">
+      <div class="brand-lockup"><img class="logo-img" data-site-logo hidden alt="Tenant logo"><span class="logo-mark">ZB</span><span data-site-name>Z Builder Demo Site</span></div>
+      <div class="nav-links"><span class="badge">Plan: <strong data-plan-label>Loading</strong></span><a class="btn small secondary" href="../onboarding/index.html">Edit Demo</a><a class="btn small secondary" href="../control/index.html">Owner Control</a></div>
+    </nav>
+    <section class="hero">
+      <div class="card hero-card"><span class="badge">BD white-label user panel demo</span><h1>Service support from <span data-site-name>Z Builder Demo Site</span></h1><p data-expiry-text>Loading tenant status...</p><div class="notice danger expired-only">This tenant site is expired.</div><div class="actions hide-when-expired"><button class="btn" data-demo-action="Login">Login</button><button class="btn secondary" data-demo-action="Register">Register</button><button class="btn secondary" data-demo-action="Track">Track</button></div></div>
+      <div class="card hero-card"><h2>Dashboard preview</h2><div class="grid two"><div class="stat-card">Currency<strong>BDT</strong></div><div class="stat-card">Days left<strong data-expiry-days>-</strong></div></div><div class="kv"><span>Tenant URL</span><strong data-tenant-url>-</strong></div><div class="kv"><span>SMS</span><strong>BD only later</strong></div></div>
+    </section>
+    <section class="grid hide-when-expired"><article class="service-card"><h3>Mobile Topup</h3><p>Demo service card.</p><button class="btn secondary" data-demo-action="Topup">Open</button></article><article class="service-card"><h3>Bundle</h3><p>Demo service card.</p><button class="btn secondary" data-demo-action="Bundle">Open</button></article><article class="service-card"><h3>Payment Support</h3><p>Demo service card.</p><button class="btn secondary" data-demo-action="Payment">Open</button></article></section>
+    <section class="card hero-card section"><h2>Demo guard tools</h2><div class="actions"><button class="btn secondary" data-expire-demo>Set Expired</button><button class="btn secondary" data-renew-demo>Renew Demo</button></div></section>
+    <footer class="footer">Z Builder tenant UI skeleton only.</footer>
+  </main>
+  <script src="../assets/js/demo-store.js"></script>
+  <script src="../assets/js/tenant-config.js"></script>
+  <script src="../assets/js/user-panel.js"></script>
+</body>
+</html>
