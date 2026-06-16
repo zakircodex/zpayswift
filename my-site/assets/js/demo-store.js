@@ -1,6 +1,7 @@
-// My-Site demo storage only. No real API, token, or secret is stored here.
+// Z Builder demo storage only. No real API key or secret is stored here.
 (function attachMySiteDemoStore() {
-  const KEY = 'zpayswift_my_site_demo_tenant';
+  const KEY = 'z_builder_demo_tenant';
+  const LEGACY_KEY = 'zpayswift_my_site_demo_tenant';
 
   function daysFromNow(days) {
     const date = new Date();
@@ -15,16 +16,16 @@
       plan: 'FREE_TRIAL',
       subscription_status: 'TRIALING',
       subscription_expires_at: daysFromNow(7),
-      site_name: 'Z-Pay Swift Demo Site',
-      site_slug: 'demo-site',
-      free_url: 'https://zpayswift.com/site/demo-site',
+      site_name: 'Z Builder Demo Site',
+      site_slug: 'z-builder-demo',
+      free_url: 'https://zpayswift.com/site/z-builder-demo',
       custom_domain: '',
       domain_status: 'NOT_CONFIGURED',
       logo_url: '',
       primary_color: '#0b5cff',
       service_country: 'BD',
       currency: 'BDT',
-      sms_brand_name: 'Demo Site',
+      sms_brand_name: 'Z Builder Demo',
       features: {
         topup: true,
         bundle: true,
@@ -40,8 +41,8 @@
       },
       worker: {
         mode: 'EXISTING_ZPAY_WORKER_APP',
-        link_mode: 'QR_OR_TOKEN',
-        demo_token: 'DEMO-TENANT-WORKER-TOKEN'
+        link_mode: 'QR_OR_LINK_CODE',
+        demo_link_code: 'DEMO-WORKER-LINK-CODE'
       },
       telegram: {
         enabled: false,
@@ -51,11 +52,11 @@
   }
 
   function slugify(value) {
-    return String(value || 'demo-site')
+    return String(value || 'z-builder-demo')
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '') || 'demo-site';
+      .replace(/^-+|-+$/g, '') || 'z-builder-demo';
   }
 
   function normalizeTenant(input) {
@@ -74,10 +75,10 @@
 
   function load() {
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = localStorage.getItem(KEY) || localStorage.getItem(LEGACY_KEY);
       return raw ? normalizeTenant(JSON.parse(raw)) : null;
     } catch (error) {
-      console.warn('Demo tenant load failed:', error.message);
+      console.warn('Z Builder demo tenant load failed:', error.message);
       return null;
     }
   }
@@ -85,11 +86,13 @@
   function save(tenant) {
     const next = normalizeTenant(tenant);
     localStorage.setItem(KEY, JSON.stringify(next, null, 2));
+    localStorage.removeItem(LEGACY_KEY);
     return next;
   }
 
   function clear() {
     localStorage.removeItem(KEY);
+    localStorage.removeItem(LEGACY_KEY);
   }
 
   function makeTrialTenant(formData) {
