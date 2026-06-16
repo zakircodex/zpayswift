@@ -1,21 +1,26 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Account</title><link rel="stylesheet" href="../assets/css/style.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Register</title><link rel="stylesheet" href="../assets/css/style.css"></head>
 <body>
 <main class="shell">
-<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Account</span></div><div class="nav-links"><a class="btn small secondary" href="../index.html">Home</a><a class="btn small secondary" href="login.html">Login</a></div></nav>
+<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Register</span></div><div class="nav-links"><a class="btn small secondary" href="../index.html">Home</a><a class="btn small secondary" href="login.html">Login</a></div></nav>
 <section class="hero">
 <form class="card hero-card" data-owner-form>
-<span class="badge">Step 1 — Owner account</span><h1>Create your Z Builder account</h1><p>This account is separate from normal Z-Pay Swift user account.</p>
-<div class="form-grid"><div class="form-field"><label>Full name</label><input name="name" required placeholder="Your name"></div><div class="form-field"><label>Email</label><input name="email" type="email" required placeholder="you@gmail.com"></div></div>
-<div class="actions"><button class="btn" type="submit">Create account</button><button class="btn secondary" type="button" data-google-demo>Continue with Google demo</button></div>
+<span class="badge">Step 1 — Owner profile</span><h1>Create your Z Builder account</h1><p>BD number দিয়ে OTP verify করলে account তৈরি হবে।</p>
+<div class="form-grid">
+<div class="form-field"><label>Full Name</label><input name="name" required placeholder="Your full name"></div>
+<div class="form-field"><label>BD Number</label><input name="phone" inputmode="tel" required placeholder="01XXXXXXXXX"></div>
+<div class="form-field"><label>Email</label><input name="email" type="email" required placeholder="you@example.com"></div>
+<div class="form-field"><label>Date of Birth</label><input name="dob" type="date" required></div>
+<div class="form-field full"><label>Address</label><textarea name="address" rows="3" required placeholder="Your address"></textarea></div>
+</div>
+<div class="notice section">OTP যাবে BD number-এ। SMS template হবে Z Builder নামে।</div>
 <div class="notice section" data-auth-result hidden></div>
-<div class="notice section">After email signup, a verification link will be sent later. For live test, click Verify Email Demo after creating account.</div>
-<div class="actions"><button class="btn secondary" type="button" data-verify-demo>Verify Email Demo</button><a class="btn secondary" href="../plans/index.html">Go to Plans</a></div>
+<div class="actions"><button class="btn" type="submit">Continue</button></div>
 </form>
-<div class="card hero-card"><h2>Account status</h2><div class="kv"><span>Email</span><strong data-owner-email>Not logged in</strong></div><div class="kv"><span>Status</span><strong data-owner-status>Not verified</strong></div><p>Real Google login will be connected later with private backend settings.</p></div>
+<div class="card hero-card"><h2>Account status</h2><div class="kv"><span>Phone</span><strong data-owner-phone>Not started</strong></div><div class="kv"><span>Email</span><strong data-owner-email>Not started</strong></div><div class="kv"><span>Status</span><strong data-owner-status>Waiting for OTP</strong></div><p>Z Builder account normal Z-Pay Swift user account থেকে আলাদা।</p></div>
 </section>
-<footer class="footer">Z Builder account.</footer>
+<footer class="footer">Z Builder BD OTP account flow.</footer>
 </main>
-<script src="../assets/js/auth-demo.js"></script>
+<script src="../assets/js/auth-bd-otp.js"></script>
 </body></html>
