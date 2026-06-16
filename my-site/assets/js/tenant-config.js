@@ -1,4 +1,4 @@
-// My-Site tenant config helper. Demo only; real backend API will be connected later.
+// My-Site tenant config helper. Public tenant reads can use /api/my_site when URL has ?tenant_id= or ?slug=.
 window.MySiteTenant = {
   tenant: null,
 
@@ -31,6 +31,17 @@ window.MySiteTenant = {
   },
 
   async load() {
+    const apiRef = window.MySiteAPI?.refFromUrl?.();
+    if (apiRef) {
+      try {
+        const data = await window.MySiteAPI.getTenant(apiRef);
+        this.tenant = this.normalize(data.tenant || {});
+        return this.tenant;
+      } catch (error) {
+        console.warn('Tenant API read failed, using local/demo config:', error.message);
+      }
+    }
+
     const stored = window.MySiteDemoStore?.load?.();
     if (stored) {
       this.tenant = this.normalize(stored);
