@@ -10,10 +10,15 @@
   <main class="shell">
     <nav class="nav">
       <div class="brand-lockup">
+        <img class="logo-img" data-site-logo hidden alt="Tenant logo">
         <span class="logo-mark">Z</span>
         <span><span data-site-name>Z-Pay Swift Demo Site</span> Control</span>
       </div>
-      <span class="badge">Owner Panel: <strong data-plan-label>Loading</strong></span>
+      <div class="nav-links">
+        <span class="badge">Owner Panel: <strong data-plan-label>Loading</strong></span>
+        <a class="btn small secondary" href="../onboarding/index.html">Edit Demo</a>
+        <a class="btn small secondary" href="../user/index.html">User Panel</a>
+      </div>
     </nav>
 
     <section class="hero">
@@ -21,22 +26,20 @@
         <span class="badge">Tenant owner control panel demo</span>
         <h1>Manage your white-label site in one place</h1>
         <p data-control-status>Loading control status...</p>
-        <div class="notice expired-only">Subscription expired. Owner actions are limited to renewal/payment until the site becomes active again.</div>
+        <div class="notice danger expired-only">Subscription expired. Owner actions are limited to renewal/payment until the site becomes active again.</div>
         <div class="actions">
-          <button class="btn" data-demo-action="Renew Subscription">Renew</button>
+          <button class="btn" data-renew-demo>Renew Demo</button>
           <button class="btn secondary hide-when-expired" data-demo-action="Publish Site">Publish</button>
-          <a class="btn secondary" href="../user/index.html">Open User Panel</a>
+          <button class="btn danger" data-expire-demo>Set Expired</button>
         </div>
       </div>
 
       <div class="card hero-card">
         <h2>Site settings</h2>
-        <div class="table-card">
-          <div class="table-row"><span>Setting</span><span>Value</span><span>Status</span></div>
-          <div class="table-row"><span>Site Name</span><span data-setting-value="site_name">-</span><span>Editable</span></div>
-          <div class="table-row"><span>Domain</span><span data-setting-value="custom_domain">-</span><span>Subscription</span></div>
-          <div class="table-row"><span>Currency</span><span data-setting-value="currency">-</span><span>BD only</span></div>
-        </div>
+        <div class="kv"><span>Site Name</span><strong data-setting-value="site_name">-</strong></div>
+        <div class="kv"><span>Domain/URL</span><strong data-tenant-url>-</strong></div>
+        <div class="kv"><span>Currency</span><strong data-setting-value="currency">-</strong></div>
+        <div class="kv"><span>Days Left</span><strong data-expiry-days>-</strong></div>
       </div>
     </section>
 
@@ -73,18 +76,25 @@
       </article>
     </section>
 
-    <section class="card hero-card" style="margin-top: 14px;">
-      <h2>Report preview</h2>
-      <div class="grid two">
-        <div class="stat-card">Today Requests<strong>0</strong></div>
-        <div class="stat-card">Pending<strong>0</strong></div>
+    <section class="grid two section hide-when-expired">
+      <div class="card hero-card">
+        <h2>Worker QR/token demo</h2>
+        <div class="notice success">DEMO-TENANT-WORKER-TOKEN</div>
+        <p>Real worker token must be generated server-side and tenant-scoped later.</p>
       </div>
-      <p>Real report data will come from tenant-scoped backend APIs later.</p>
+      <div class="card hero-card">
+        <h2>Report preview</h2>
+        <div class="grid two">
+          <div class="stat-card">Today Requests<strong>0</strong></div>
+          <div class="stat-card">Pending<strong>0</strong></div>
+        </div>
+      </div>
     </section>
 
     <footer class="footer">Control panel skeleton only. Backend/database remain Z-Pay Swift owned.</footer>
   </main>
 
+  <script src="../assets/js/demo-store.js"></script>
   <script src="../assets/js/tenant-config.js"></script>
   <script src="../assets/js/control-panel.js"></script>
 </body>
