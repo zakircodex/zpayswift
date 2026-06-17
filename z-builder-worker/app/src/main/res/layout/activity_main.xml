@@ -14,31 +14,33 @@
         android:focusableInTouchMode="true"
         android:descendantFocusability="beforeDescendants">
 
-        <EditText
-            android:id="@+id/etBaseUrl"
+        <TextView
+            android:id="@+id/tvAppTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Base URL (e.g. https://yourdomain.com/api)"
-            android:inputType="textUri" />
+            android:text="Z Builder Worker"
+            android:textSize="24sp"
+            android:textStyle="bold" />
 
-        <EditText
-            android:id="@+id/etWorkerKey"
+        <TextView
+            android:id="@+id/tvConnectionInfo"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:hint="Worker Key" />
+            android:text="Pre-configured app. Set SIM operators, allow permissions, then start worker." />
 
-        <EditText
-            android:id="@+id/etDeviceId"
+        <TextView
+            android:id="@+id/tvDeviceId"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:hint="Device ID (e.g. phone_01)" />
+            android:layout_marginTop="12dp"
+            android:text="Device ID: loading"
+            android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="14dp"
             android:text="SIM1 Operator" />
 
         <Spinner
@@ -62,7 +64,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Save Config" />
+            android:text="Save SIM Setup" />
 
         <Button
             android:id="@+id/btnOpenAccessibility"
