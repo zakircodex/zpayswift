@@ -2,6 +2,7 @@ package com.zworker.app
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.provider.Settings
 
 data class WorkerConfig(
     val baseUrl: String,
@@ -11,20 +12,31 @@ data class WorkerConfig(
     val sim2Operator: String
 )
 
-class Prefs(context: Context) {
+class Prefs(private val context: Context) {
     private val sp: SharedPreferences =
-        context.getSharedPreferences("z_worker_prefs", Context.MODE_PRIVATE)
+        context.getSharedPreferences("z_builder_worker_prefs", Context.MODE_PRIVATE)
 
     var baseUrl: String
-        get() = sp.getString("base_url", "") ?: ""
+        get() = sp.getString("base_url", BuildConfig.ZB_API_BASE) ?: BuildConfig.ZB_API_BASE
         set(v) = sp.edit().putString("base_url", v.trim().trimEnd('/')).apply()
 
     var workerKey: String
-        get() = sp.getString("worker_key", "") ?: ""
+        get() = sp.getString("worker_key", BuildConfig.ZB_WORKER_APP_TOKEN) ?: BuildConfig.ZB_WORKER_APP_TOKEN
         set(v) = sp.edit().putString("worker_key", v.trim()).apply()
 
+    var workerAppId: String
+        get() = sp.getString("worker_app_id", BuildConfig.ZB_WORKER_APP_ID) ?: BuildConfig.ZB_WORKER_APP_ID
+        set(v) = sp.edit().putString("worker_app_id", v.trim()).apply()
+
     var deviceId: String
-        get() = sp.getString("device_id", "") ?: ""
+        get() {
+            val saved = sp.getString("device_id", "") ?: ""
+            if (saved.isNotBlank()) return saved
+            val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: ""
+            val generated = if (androidId.isNotBlank()) "ZBW_$androidId" else "ZBW_${System.currentTimeMillis()}"
+            sp.edit().putString("device_id", generated).apply()
+            return generated
+        }
         set(v) = sp.edit().putString("device_id", v.trim()).apply()
 
     var sim1Operator: String
