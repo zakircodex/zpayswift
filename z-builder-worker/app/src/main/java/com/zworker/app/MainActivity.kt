@@ -6,10 +6,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
-import android.view.inputmethod.InputMethodManager
 import android.widget.ArrayAdapter
 import android.widget.Button
-import android.widget.EditText
 import android.widget.Spinner
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,11 +18,11 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var prefs: Prefs
 
-    private lateinit var etBaseUrl: EditText
-    private lateinit var etWorkerKey: EditText
-    private lateinit var etDeviceId: EditText
     private lateinit var spSim1Operator: Spinner
     private lateinit var spSim2Operator: Spinner
+    private lateinit var tvAppTitle: TextView
+    private lateinit var tvConnectionInfo: TextView
+    private lateinit var tvDeviceId: TextView
     private lateinit var tvAccessibility: TextView
     private lateinit var tvLog: TextView
 
@@ -39,9 +37,9 @@ class MainActivity : AppCompatActivity() {
 
         prefs = Prefs(this)
 
-        etBaseUrl = findViewById(R.id.etBaseUrl)
-        etWorkerKey = findViewById(R.id.etWorkerKey)
-        etDeviceId = findViewById(R.id.etDeviceId)
+        tvAppTitle = findViewById(R.id.tvAppTitle)
+        tvConnectionInfo = findViewById(R.id.tvConnectionInfo)
+        tvDeviceId = findViewById(R.id.tvDeviceId)
         spSim1Operator = findViewById(R.id.spSim1Operator)
         spSim2Operator = findViewById(R.id.spSim2Operator)
         tvAccessibility = findViewById(R.id.tvAccessibility)
@@ -103,9 +101,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadConfig() {
-        etBaseUrl.setText(prefs.baseUrl)
-        etWorkerKey.setText(prefs.workerKey)
-        etDeviceId.setText(prefs.deviceId)
+        tvAppTitle.text = BuildConfig.ZB_APP_NAME.ifBlank { getString(R.string.app_name) }
+        tvConnectionInfo.text = "Connected to Z Builder API. App ID: " + (prefs.workerAppId.ifBlank { "embedded" })
+        tvDeviceId.text = "Device ID: ${prefs.deviceId}"
 
         spSim1Operator.setSelection(operatorItems.indexOf(prefs.sim1Operator).coerceAtLeast(0))
         spSim2Operator.setSelection(operatorItems.indexOf(prefs.sim2Operator).coerceAtLeast(0))
@@ -114,12 +112,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun saveConfig() {
-        prefs.baseUrl = etBaseUrl.text.toString()
-        prefs.workerKey = etWorkerKey.text.toString()
-        prefs.deviceId = etDeviceId.text.toString()
         prefs.sim1Operator = spSim1Operator.selectedItem?.toString().orEmpty()
         prefs.sim2Operator = spSim2Operator.selectedItem?.toString().orEmpty()
-        prefs.lastLog = "Config saved"
+        prefs.lastLog = "SIM setup saved"
+        tvDeviceId.text = "Device ID: ${prefs.deviceId}"
         tvLog.text = prefs.lastLog
     }
 
