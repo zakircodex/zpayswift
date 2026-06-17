@@ -1,17 +1,17 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Plans</title><link rel="stylesheet" href="../assets/css/style.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Plans</title><link rel="stylesheet" href="../assets/css/style.css?v=20260617-plan-flow"></head>
 <body>
 <main class="shell">
-<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Plans</span></div><div class="nav-links"><a class="btn small secondary" href="../auth/register.html">Account</a><a class="btn small secondary" href="../index.html">Home</a></div></nav>
-<section class="card hero-card section"><span class="badge">Step 2</span><h1>Choose plan</h1><p>Free plan creates a basic 7-day site. Paid plans unlock extra controls.</p></section>
-<section class="grid section">
-<article class="plan-card"><span class="badge">Free</span><h2>Free Trial</h2><p>7 days. Basic site. Some options locked.</p><button class="btn secondary" data-select-plan="FREE_TRIAL" data-months="0">Select Free</button></article>
-<article class="plan-card featured"><span class="badge">3 Months</span><h2>Starter</h2><p>Custom branding, domain option, reports and controls.</p><button class="btn" data-select-plan="SUBSCRIPTION_3M" data-months="3">Select 3 Months</button></article>
-<article class="plan-card featured"><span class="badge">6 Months</span><h2>Business</h2><p>More time and full owner tools.</p><button class="btn" data-select-plan="SUBSCRIPTION_6M" data-months="6">Select 6 Months</button></article>
+<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Plans</span></div><div class="nav-links"><a class="btn small secondary" href="../dashboard/index.html">Dashboard</a></div></nav>
+<section class="card hero-card section"><span class="badge">Step 2</span><h1>Choose plan</h1><p>Plan price, discount and benefit দেখে আপনার জন্য best plan select করুন।</p><div class="notice section" data-plan-result hidden></div></section>
+<section class="grid section" data-plan-list>
+<article class="plan-card" data-plan-card="FREE_TRIAL"><span class="badge" data-plan-tag>Free</span><h2 data-plan-title>Free Trial</h2><p data-plan-best>7 days basic site test.</p><div class="kv"><span>Price</span><strong data-plan-price>৳0</strong></div><div class="kv"><span>Discount</span><strong data-plan-discount>0%</strong></div><p data-plan-features>Basic site, paid options locked.</p><button class="btn secondary" data-select-plan="FREE_TRIAL">Select Free</button></article>
+<article class="plan-card featured" data-plan-card="SUBSCRIPTION_3M"><span class="badge" data-plan-tag>3 Months</span><h2 data-plan-title>Starter</h2><p data-plan-best>New owner / small business.</p><div class="kv"><span>Price</span><strong data-plan-price>Set by admin</strong></div><div class="kv"><span>Discount</span><strong data-plan-discount>0%</strong></div><p data-plan-features>Custom branding, reports, controls.</p><button class="btn" data-select-plan="SUBSCRIPTION_3M">Select 3 Months</button></article>
+<article class="plan-card featured" data-plan-card="SUBSCRIPTION_6M"><span class="badge" data-plan-tag>6 Months</span><h2 data-plan-title>Business</h2><p data-plan-best>Regular business.</p><div class="kv"><span>Price</span><strong data-plan-price>Set by admin</strong></div><div class="kv"><span>Discount</span><strong data-plan-discount>0%</strong></div><p data-plan-features>More time and full owner tools.</p><button class="btn" data-select-plan="SUBSCRIPTION_6M">Select 6 Months</button></article>
 </section>
-<section class="grid section"><article class="plan-card featured"><span class="badge">1 Year</span><h2>Professional</h2><p>Best for business. Full Z Builder controls.</p><button class="btn" data-select-plan="SUBSCRIPTION_12M" data-months="12">Select 1 Year</button></article><article class="plan-card"><span class="badge">Paid only</span><h2>Locked on Free</h2><p>Custom domain, advanced commission, Telegram, worker, reports.</p></article></section>
-<footer class="footer">Manual approval flow will be connected later.</footer>
+<section class="grid section"><article class="plan-card featured" data-plan-card="SUBSCRIPTION_12M"><span class="badge" data-plan-tag>1 Year</span><h2 data-plan-title>Professional</h2><p data-plan-best>Best value / professional owner.</p><div class="kv"><span>Price</span><strong data-plan-price>Set by admin</strong></div><div class="kv"><span>Discount</span><strong data-plan-discount>0%</strong></div><p data-plan-features>Full year access, priority setup.</p><button class="btn" data-select-plan="SUBSCRIPTION_12M">Select 1 Year</button></article><article class="plan-card"><span class="badge">Paid only</span><h2>Paid features</h2><p>Custom domain, advanced commission, Telegram, worker, reports paid plan-এ unlock হবে।</p></article></section>
+<footer class="footer">Paid plan payment manual approval by Z-Pay Swift admin.</footer>
 </main>
-<script src="../assets/js/plan-demo.js"></script>
+<script src="../assets/js/plan.js?v=20260617-plan-flow"></script>
 </body></html>
