@@ -2,10 +2,10 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Login</title><link rel="stylesheet" href="../assets/css/style.css"></head>
 <body>
-<main class="shell">
-<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Login</span></div><div class="nav-links"><a class="btn small secondary" href="../index.html">Home</a><a class="btn small secondary" href="register.html">Create Account</a></div></nav>
-<section class="hero"><div class="card hero-card"><span class="badge">Owner login</span><h1>Login to Z Builder</h1><p>For demo, use Google demo button. Real login will be added later.</p><div class="actions"><button class="btn" data-google-demo>Continue with Google demo</button><a class="btn secondary" href="../plans/index.html">Continue</a></div></div><div class="card hero-card"><h2>Status</h2><div class="kv"><span>Email</span><strong data-owner-email>Not logged in</strong></div><div class="kv"><span>Status</span><strong data-owner-status>Not verified</strong></div></div></section>
-<footer class="footer">Z Builder login demo.</footer>
+<main class="shell auth-shell">
+<nav class="nav compact-nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Login</span></div><div class="nav-links"><a class="btn small secondary" href="../index.html">Home</a><a class="btn small secondary" href="register.html">Register</a></div></nav>
+<section class="hero auth-hero"><form class="card hero-card auth-card" data-login-form><span class="badge">Owner login</span><h1>Login</h1><p>BD number দিয়ে OTP verify করুন।</p><div class="form-grid"><div class="form-field full"><label>BD Number</label><input name="phone" inputmode="tel" required placeholder="01XXXXXXXXX"></div></div><div class="notice section" data-auth-result hidden></div><div class="actions"><button class="btn" type="submit">Send OTP</button></div></form><div class="card hero-card auth-side"><h2>Need account?</h2><p>Account না থাকলে আগে register করুন।</p><a class="btn secondary" href="register.html">Create Account</a></div></section>
+<footer class="footer">Z Builder login.</footer>
 </main>
-<script src="../assets/js/auth-demo.js"></script>
+<script src="../assets/js/auth-bd-otp.js"></script>
 </body></html>
