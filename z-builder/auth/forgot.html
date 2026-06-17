@@ -1,10 +1,32 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Forgot</title><link rel="stylesheet" href="../assets/css/style.css"><link rel="stylesheet" href="../assets/css/auth.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Forgot</title><link rel="stylesheet" href="../assets/css/style.css"><link rel="stylesheet" href="../assets/css/auth.css?v=20260617-forgot"></head>
 <body>
 <main class="shell auth-shell">
-<nav class="nav compact-nav auth-top-nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Help</span></div></nav>
-<section class="hero auth-hero auth-hero-single"><div class="card hero-card auth-card auth-login-card"><h1>Forgot?</h1><p>এখন Z Builder login BD number OTP দিয়ে হয়। আপনার number access থাকলে login page থেকে OTP নিয়ে login করুন।</p><div class="actions"><a class="btn auth-main-btn" href="login.html">Back to Login</a><a class="btn secondary auth-main-btn" href="register.html">Register</a></div></div></section>
-<footer class="footer">Z Builder help.</footer>
+<nav class="nav compact-nav auth-top-nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Forgot</span></div></nav>
+<section class="hero auth-hero auth-hero-single">
+<form class="card hero-card auth-card auth-login-card" data-login-form>
+<h1>Recover</h1><p>আপনার registered BD number দিন। OTP verify হলে account open হবে।</p>
+<div class="form-grid"><div class="form-field full"><label>BD Number</label><input name="phone" inputmode="tel" required placeholder="01XXXXXXXXX"></div></div>
+<div class="notice section" data-auth-result hidden></div>
+<div class="actions auth-actions"><button class="btn auth-main-btn" type="submit">Continue</button></div>
+<div class="auth-bottom-actions"><a class="btn secondary auth-small-action" href="login.html">Login</a><a class="btn secondary auth-small-action" href="register.html">Register</a></div>
+</form>
+</section>
+<footer class="footer">Z Builder account recovery.</footer>
 </main>
+<div class="otp-modal" data-login-otp-modal hidden>
+  <div class="otp-modal-card">
+    <button class="otp-modal-close" type="button" data-modal-close>×</button>
+    <span class="badge">Account Recovery</span>
+    <h2>Verify OTP</h2>
+    <p>OTP sent to <strong data-login-otp-phone>-</strong></p>
+    <form data-login-otp-form>
+      <div class="form-field full"><label>6 Digit OTP</label><input name="otp" inputmode="numeric" maxlength="6" required placeholder="123456"></div>
+      <div class="notice section" data-login-otp-result hidden></div>
+      <div class="actions otp-actions"><button class="btn auth-main-btn" type="submit">Verify</button><button class="btn secondary auth-main-btn" type="button" data-login-resend-otp>Resend OTP</button></div>
+    </form>
+  </div>
+</div>
+<script src="../assets/js/auth-bd-otp.js"></script>
 </body></html>
