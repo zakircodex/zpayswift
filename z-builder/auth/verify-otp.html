@@ -1,19 +1,11 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder OTP Verify</title><link rel="stylesheet" href="../assets/css/style.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder OTP</title><link rel="stylesheet" href="../assets/css/style.css"></head>
 <body>
-<main class="shell">
-<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder OTP</span></div><div class="nav-links"><a class="btn small secondary" href="register.html">Back</a></div></nav>
-<section class="hero">
-<form class="card hero-card" data-otp-form>
-<span class="badge">Step 2 — OTP Verify</span><h1>Verify your BD number</h1><p>OTP sent to <strong data-otp-phone>-</strong></p>
-<div class="form-grid"><div class="form-field full"><label>6 Digit OTP</label><input name="otp" inputmode="numeric" maxlength="6" required placeholder="123456"></div></div>
-<div class="notice section" data-auth-result hidden></div>
-<div class="actions"><button class="btn" type="submit">Verify & Create Account</button><button class="btn secondary" type="button" data-resend-otp>Resend OTP</button></div>
-</form>
-<div class="card hero-card"><h2>Next</h2><p>OTP verify হলে profile তৈরি হবে, তারপর dashboard open হবে।</p><div class="kv"><span>Status</span><strong>Waiting for OTP</strong></div></div>
-</section>
-<footer class="footer">Z Builder OTP verification.</footer>
+<main class="shell auth-shell">
+<nav class="nav compact-nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder OTP</span></div><div class="nav-links"><a class="btn small secondary" href="register.html">Register</a><a class="btn small secondary" href="login.html">Login</a></div></nav>
+<section class="hero auth-hero"><form class="card hero-card auth-card" data-otp-form><span class="badge" data-otp-mode>OTP</span><h1 data-otp-title>Verification</h1><p>OTP sent to <strong data-otp-phone>-</strong></p><div class="form-grid"><div class="form-field full"><label>6 Digit OTP</label><input name="otp" inputmode="numeric" maxlength="6" required placeholder="123456"></div></div><div class="notice section" data-auth-result hidden></div><div class="actions otp-actions"><button class="btn" type="submit" data-otp-submit>Verify</button><button class="btn secondary resend-btn" type="button" data-resend-otp>Resend OTP</button></div></form><div class="card hero-card auth-side"><h2>Next</h2><p>After verification dashboard will open.</p></div></section>
+<footer class="footer">Z Builder verification.</footer>
 </main>
 <script src="../assets/js/auth-bd-otp.js"></script>
 </body></html>
