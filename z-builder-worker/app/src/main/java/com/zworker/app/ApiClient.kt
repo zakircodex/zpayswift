@@ -23,11 +23,12 @@ class ApiClient(private val prefs: Prefs) {
         if (cfg.baseUrl.isBlank() || cfg.workerKey.isBlank() || cfg.deviceId.isBlank()) return false
 
         val body = JSONObject().apply {
+            put("app_id", prefs.workerAppId)
             put("device_id", cfg.deviceId)
             put("device_name", android.os.Build.MODEL ?: "Android Worker")
             put("worker_enabled", true)
             put("accessibility_enabled", true)
-            put("app_version", "1.0.0")
+            put("app_version", BuildConfig.VERSION_NAME)
             put("sim_slots", JSONObject().apply {
                 put("SIM1", JSONObject().apply {
                     put("operator", cfg.sim1Operator)
@@ -41,9 +42,9 @@ class ApiClient(private val prefs: Prefs) {
         }
 
         val res = postJson(
-            "${cfg.baseUrl}/worker/heartbeat.php",
+            "${cfg.baseUrl}/api/my_site/worker_app_heartbeat.php",
             body,
-            mapOf("X-WORKER-KEY" to cfg.workerKey)
+            workerHeaders()
         )
 
         return res?.optBoolean("ok", false) == true
@@ -54,13 +55,14 @@ class ApiClient(private val prefs: Prefs) {
         if (cfg.baseUrl.isBlank() || cfg.workerKey.isBlank() || cfg.deviceId.isBlank()) return null
 
         val body = JSONObject().apply {
+            put("app_id", prefs.workerAppId)
             put("device_id", cfg.deviceId)
         }
 
         val res = postJson(
-            "${cfg.baseUrl}/worker/claim.php",
+            "${cfg.baseUrl}/api/my_site/worker_app_claim.php",
             body,
-            mapOf("X-WORKER-KEY" to cfg.workerKey)
+            workerHeaders()
         ) ?: return null
 
         if (!res.optBoolean("ok", false)) return null
@@ -87,6 +89,7 @@ class ApiClient(private val prefs: Prefs) {
         if (cfg.baseUrl.isBlank() || cfg.workerKey.isBlank() || cfg.deviceId.isBlank()) return false
 
         val body = JSONObject().apply {
+            put("app_id", prefs.workerAppId)
             put("device_id", cfg.deviceId)
             put("request_id", requestId)
             put("result_status", resultStatus)
@@ -95,12 +98,19 @@ class ApiClient(private val prefs: Prefs) {
         }
 
         val res = postJson(
-            "${cfg.baseUrl}/worker/result.php",
+            "${cfg.baseUrl}/api/my_site/worker_app_result.php",
             body,
-            mapOf("X-WORKER-KEY" to cfg.workerKey)
+            workerHeaders()
         )
 
         return res?.optBoolean("ok", false) == true
+    }
+
+    private fun workerHeaders(): Map<String, String> {
+        return mapOf(
+            "X-ZBUILDER-WORKER-APP-ID" to prefs.workerAppId,
+            "X-ZBUILDER-WORKER-TOKEN" to prefs.workerKey
+        )
     }
 
     private fun postJson(
