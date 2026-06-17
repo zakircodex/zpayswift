@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Worker App</title><link rel="stylesheet" href="../assets/css/style.css?v=20260617-worker"><link rel="stylesheet" href="../assets/css/dashboard.css?v=20260617-worker"></head>
+<body>
+<main class="shell">
+<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Worker App</span></div><div class="nav-links"><a class="btn small secondary" href="../dashboard/index.html">Dashboard</a><a class="btn small secondary" href="../setup/index.html">Setup</a></div></nav>
+<section class="hero">
+<div class="card hero-card"><span class="badge">Step 4</span><h1>Worker App</h1><p>Worker app আপনার phone থেকে USSD topup dial করবে। আগে connection code generate করুন, তারপর app install করে code দিয়ে connect করুন।</p><div class="notice section" data-worker-lock hidden></div><form class="section" data-worker-form><div class="form-grid"><div class="form-field"><label>App Name</label><input name="app_name" value="Z Builder Worker" required></div><div class="form-field"><label>Device Name</label><input name="device_name" placeholder="Phone A / GP Robi" required></div></div><div class="actions"><button class="btn" type="submit">Create Worker App</button><a class="btn secondary" href="/download-apk" data-worker-download>Download App</a></div></form><div class="notice section" data-worker-result hidden></div></div>
+<div class="card hero-card"><h2>Connection</h2><div class="worker-code-box" data-worker-code>- - - - - -</div><div class="kv"><span>Status</span><strong data-worker-status>Not created</strong></div><div class="kv"><span>Package</span><strong>com.zworker.app</strong></div><p class="section">App open করে connection code দিন। Connected হলে status এখানে update হবে।</p><div class="actions"><button class="btn secondary" type="button" data-refresh-worker>Refresh Status</button></div></div>
+</section>
+<section class="grid section"><article class="plan-card"><h2>1. Download</h2><p>Download App click করে Android worker app install করুন।</p></article><article class="plan-card"><h2>2. Connect</h2><p>App এ generated connection code দিন। Accessibility permission allow করুন।</p></article><article class="plan-card"><h2>3. Start</h2><p>SIM/operator mapping setup করে worker online রাখুন।</p></article></section>
+<section class="card hero-card section"><h2>Connected Workers</h2><div class="table-card" data-worker-list><div class="table-row"><strong>Device</strong><strong>Status</strong><strong>Last Seen</strong></div></div></section>
+<footer class="footer">Z Builder worker setup.</footer>
+</main>
+<script src="../assets/js/worker.js?v=20260617-worker"></script>
+</body></html>
