@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Forgot</title><link rel="stylesheet" href="../assets/css/style.css"><link rel="stylesheet" href="../assets/css/auth.css?v=20260617-forgot-reset"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Forgot</title><link rel="stylesheet" href="../assets/css/style.css"><link rel="stylesheet" href="../assets/css/auth.css?v=20260617-forgot-success"></head>
 <body>
 <main class="shell auth-shell">
 <nav class="nav compact-nav auth-top-nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Forgot</span></div></nav>
@@ -41,5 +41,13 @@
     </form>
   </div>
 </div>
-<script src="../assets/js/auth-bd-otp.js?v=20260617-forgot-reset"></script>
+<div class="otp-modal" data-reset-success-modal hidden>
+  <div class="otp-modal-card success-card">
+    <div class="success-icon">✓</div>
+    <h2>Password Updated</h2>
+    <p>Your password has been reset successfully. Please login with your new password.</p>
+    <div class="actions"><a class="btn auth-main-btn" href="login.html">Go to Login</a></div>
+  </div>
+</div>
+<script src="../assets/js/auth-bd-otp.js?v=20260617-forgot-success"></script>
 </body></html>
