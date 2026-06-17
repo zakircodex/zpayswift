@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Dashboard</title><link rel="stylesheet" href="../assets/css/style.css?v=20260617-dashboard-nav"><link rel="stylesheet" href="../assets/css/dashboard.css?v=20260617-profile-toggle"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Dashboard</title><link rel="stylesheet" href="../assets/css/style.css?v=20260617-dashboard-nav"><link rel="stylesheet" href="../assets/css/dashboard.css?v=20260617-plan-status"></head>
 <body>
 <div class="drawer-backdrop" data-drawer-backdrop hidden></div>
 <aside class="side-drawer" data-side-drawer aria-hidden="true">
@@ -12,8 +12,8 @@
 <main class="shell dashboard-shell">
 <nav class="nav dashboard-nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder</span></div><button class="btn small secondary dashboard-menu-btn" type="button" data-dashboard-menu>Menu</button><div class="nav-links dashboard-desktop-links"><a class="btn small secondary" href="../plans/index.html">Plans</a><a class="btn small secondary" href="../setup/index.html">Setup</a><a class="btn small secondary" href="../control/index.html">Control</a><button class="btn small secondary" data-logout>Logout</button></div></nav>
 <section class="hero dashboard-hero dashboard-analysis">
-<div class="card hero-card analysis-card"><span class="badge">Dashboard</span><h1>Analysis</h1><p>আপনার Z Builder site এবং subscription status এখানে দেখবেন।</p><div class="analysis-grid"><div class="stat-card"><span>Current Plan</span><strong data-plan-name>Free Trial</strong></div><div class="stat-card"><span>Days Left</span><strong data-days-left>7 days</strong></div><div class="stat-card"><span>Site Status</span><strong data-site-status>Not Published</strong></div><div class="stat-card"><span>Setup Progress</span><strong data-setup-progress>0%</strong></div></div></div>
-<div class="card hero-card dashboard-next"><h2>Next Step</h2><p>Plan select করে site setup করুন।</p><div class="actions dashboard-actions"><a class="btn" href="../plans/index.html">Choose Plan</a><a class="btn secondary" href="../setup/index.html">Setup Site</a></div></div>
+<div class="card hero-card analysis-card"><span class="badge">Dashboard</span><h1>Analysis</h1><p>আপনার Z Builder site এবং subscription status এখানে দেখবেন।</p><div class="analysis-grid"><div class="stat-card"><span>Current Plan</span><strong data-plan-name>No Plan</strong></div><div class="stat-card"><span>Days Left</span><strong data-days-left>-</strong></div><div class="stat-card"><span>Payment Status</span><strong data-payment-status>-</strong></div><div class="stat-card"><span>Setup Progress</span><strong data-setup-progress>Locked</strong></div></div></div>
+<div class="card hero-card dashboard-next"><h2>Next Step</h2><p data-next-message>Plan select করে site setup করুন।</p><div class="actions dashboard-actions"><a class="btn" href="../plans/index.html">Choose Plan</a><a class="btn secondary" href="../setup/index.html" data-setup-link>Setup Site</a></div></div>
 </section>
 <section class="grid section dashboard-cards"><article class="plan-card"><span class="badge">Subscription</span><h2>Plan</h2><p>Free trial শেষ হলে subscription নিতে হবে।</p></article><article class="plan-card featured"><span class="badge">Site</span><h2>Setup</h2><p>Site name, logo, color, services এবং commission setup করুন।</p></article><article class="plan-card"><span class="badge">Worker</span><h2>Connect</h2><p>Plan নেওয়ার পরে worker app setup/connect করুন।</p></article></section>
 <footer class="footer">Z Builder dashboard.</footer>
@@ -23,14 +23,16 @@
 const SK='z_builder_owner_session',OK='z_builder_owner_demo';
 function setText(sel,val){document.querySelectorAll(sel).forEach(function(el){el.textContent=val||'-';});}
 function fill(o){setText('[data-owner-name-menu]',o.name||'Owner');setText('[data-owner-phone]',o.phone_local||'-');setText('[data-owner-email]',o.email||'-');setText('[data-owner-dob]',o.dob||'-');setText('[data-owner-address]',o.address||'-');}
+async function getJson(url){const s=localStorage.getItem(SK)||'';const r=await fetch(url,{headers:{'Accept':'application/json','X-ZBUILDER-SESSION':s},cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j?.message||'Request failed');return j.data||{};}
 async function check(){const s=localStorage.getItem(SK)||'';if(!s){location.href='../auth/login.html';return;}try{const r=await fetch('/api/my_site/owner_session.php',{headers:{'Accept':'application/json','X-ZBUILDER-SESSION':s},cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)throw new Error('session');localStorage.setItem(OK,JSON.stringify(j.data.owner||{},null,2));fill(j.data.owner||{});}catch(e){localStorage.removeItem(SK);localStorage.removeItem(OK);location.href='../auth/login.html';}}
+async function loadPlan(){try{const d=await getJson('/api/my_site/plan_status.php');const p=d.plan||{};setText('[data-plan-name]',p.title||'No Plan');setText('[data-days-left]',d.days_left===null?'-':(d.days_left+' days'));setText('[data-payment-status]',p.status||d.status||'-');setText('[data-setup-progress]',d.setup_allowed?'Ready':'Locked');setText('[data-next-message]',d.setup_allowed?'Setup unlocked. এখন site setup করুন।':(p.status==='PAYMENT_PENDING'?'Payment pending. Admin approval হলে setup unlock হবে।':'Plan select করে site setup করুন।'));document.querySelector('[data-setup-link]')?.classList.toggle('danger',!d.setup_allowed);}catch(e){setText('[data-payment-status]','Load failed');}}
 function openDrawer(){document.querySelector('[data-side-drawer]')?.classList.add('is-open');const b=document.querySelector('[data-drawer-backdrop]');if(b)b.hidden=false;}
 function closeDrawer(){document.querySelector('[data-side-drawer]')?.classList.remove('is-open');const b=document.querySelector('[data-drawer-backdrop]');if(b)b.hidden=true;}
 function toggleProfile(){const p=document.querySelector('[data-profile-panel]');const btn=document.querySelector('[data-profile-toggle]');if(!p)return;p.hidden=!p.hidden;if(btn)btn.classList.toggle('is-active',!p.hidden);}
 document.querySelector('[data-profile-toggle]')?.addEventListener('click',toggleProfile);
 document.querySelector('[data-dashboard-menu]')?.addEventListener('click',openDrawer);document.querySelector('[data-drawer-close]')?.addEventListener('click',closeDrawer);document.querySelector('[data-drawer-backdrop]')?.addEventListener('click',closeDrawer);
 document.querySelectorAll('[data-logout]').forEach(function(btn){btn.addEventListener('click',async function(){const s=localStorage.getItem(SK)||'';try{if(s)await fetch('/api/my_site/owner_logout.php',{method:'POST',headers:{'Accept':'application/json','X-ZBUILDER-SESSION':s}});}catch(e){}localStorage.removeItem(SK);localStorage.removeItem(OK);location.href='../auth/login.html';});});
-await check();
+await check();await loadPlan();
 })();
 </script>
 </body></html>
