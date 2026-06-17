@@ -1,23 +1,32 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Dashboard</title><link rel="stylesheet" href="../assets/css/style.css?v=20260617-dashboard-nav"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Dashboard</title><link rel="stylesheet" href="../assets/css/style.css?v=20260617-dashboard-nav"><link rel="stylesheet" href="../assets/css/dashboard.css?v=20260617-side-menu"></head>
 <body>
+<div class="drawer-backdrop" data-drawer-backdrop hidden></div>
+<aside class="side-drawer" data-side-drawer aria-hidden="true">
+  <div class="drawer-head"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder</span></div><button class="drawer-close" type="button" data-drawer-close>×</button></div>
+  <div class="drawer-profile"><span class="badge">Profile</span><h2 data-owner-name-menu>Owner</h2><div class="kv"><span>Phone</span><strong data-owner-phone>-</strong></div><div class="kv"><span>Email</span><strong data-owner-email>-</strong></div><div class="kv"><span>DOB</span><strong data-owner-dob>-</strong></div><div class="kv"><span>Address</span><strong data-owner-address>-</strong></div></div>
+  <div class="drawer-links"><a class="btn secondary" href="../plans/index.html">Plans</a><a class="btn secondary" href="../setup/index.html">Setup Site</a><a class="btn secondary" href="../control/index.html">Control Panel</a><button class="btn secondary" data-logout>Logout</button></div>
+</aside>
 <main class="shell dashboard-shell">
-<nav class="nav dashboard-nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder</span></div><button class="btn small secondary dashboard-menu-btn" type="button" data-dashboard-menu>Menu</button><div class="nav-links dashboard-links" data-dashboard-links><a class="btn small secondary" href="../plans/index.html">Plans</a><a class="btn small secondary" href="../setup/index.html">Setup</a><a class="btn small secondary" href="../control/index.html">Control</a><button class="btn small secondary" data-logout>Logout</button></div></nav>
-<section class="hero dashboard-hero">
-<div class="card hero-card dashboard-profile"><span class="badge">Profile</span><h1 data-owner-name>Welcome</h1><p>Z Builder owner profile is ready.</p><div class="kv"><span>Phone</span><strong data-owner-phone>-</strong></div><div class="kv"><span>Email</span><strong data-owner-email>-</strong></div><div class="kv"><span>DOB</span><strong data-owner-dob>-</strong></div><div class="kv"><span>Address</span><strong data-owner-address>-</strong></div></div>
+<nav class="nav dashboard-nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder</span></div><button class="btn small secondary dashboard-menu-btn" type="button" data-dashboard-menu>Menu</button><div class="nav-links dashboard-desktop-links"><a class="btn small secondary" href="../plans/index.html">Plans</a><a class="btn small secondary" href="../setup/index.html">Setup</a><a class="btn small secondary" href="../control/index.html">Control</a><button class="btn small secondary" data-logout>Logout</button></div></nav>
+<section class="hero dashboard-hero dashboard-analysis">
+<div class="card hero-card analysis-card"><span class="badge">Dashboard</span><h1>Analysis</h1><p>আপনার Z Builder site এবং subscription status এখানে দেখবেন।</p><div class="analysis-grid"><div class="stat-card"><span>Current Plan</span><strong data-plan-name>Free Trial</strong></div><div class="stat-card"><span>Days Left</span><strong data-days-left>7 days</strong></div><div class="stat-card"><span>Site Status</span><strong data-site-status>Not Published</strong></div><div class="stat-card"><span>Setup Progress</span><strong data-setup-progress>0%</strong></div></div></div>
 <div class="card hero-card dashboard-next"><h2>Next Step</h2><p>Plan select করে site setup করুন।</p><div class="actions dashboard-actions"><a class="btn" href="../plans/index.html">Choose Plan</a><a class="btn secondary" href="../setup/index.html">Setup Site</a></div></div>
 </section>
-<section class="grid section dashboard-cards"><article class="plan-card"><span class="badge">Free</span><h2>Free Trial</h2><p>7 days basic site.</p></article><article class="plan-card featured"><span class="badge">Paid</span><h2>Subscription</h2><p>3, 6, 12 months plans.</p></article><article class="plan-card"><span class="badge">Worker</span><h2>Worker App</h2><p>Plan নেওয়ার পরে setup হবে।</p></article></section>
+<section class="grid section dashboard-cards"><article class="plan-card"><span class="badge">Subscription</span><h2>Plan</h2><p>Free trial শেষ হলে subscription নিতে হবে।</p></article><article class="plan-card featured"><span class="badge">Site</span><h2>Setup</h2><p>Site name, logo, color, services এবং commission setup করুন।</p></article><article class="plan-card"><span class="badge">Worker</span><h2>Connect</h2><p>Plan নেওয়ার পরে worker app setup/connect করুন।</p></article></section>
 <footer class="footer">Z Builder dashboard.</footer>
 </main>
 <script>
 (async function(){
 const SK='z_builder_owner_session',OK='z_builder_owner_demo';
-function fill(o){document.querySelector('[data-owner-name]').textContent='Welcome, '+(o.name||'Owner');document.querySelector('[data-owner-phone]').textContent=o.phone_local||'-';document.querySelector('[data-owner-email]').textContent=o.email||'-';document.querySelector('[data-owner-dob]').textContent=o.dob||'-';document.querySelector('[data-owner-address]').textContent=o.address||'-';}
+function setText(sel,val){document.querySelectorAll(sel).forEach(function(el){el.textContent=val||'-';});}
+function fill(o){setText('[data-owner-name-menu]',o.name||'Owner');setText('[data-owner-phone]',o.phone_local||'-');setText('[data-owner-email]',o.email||'-');setText('[data-owner-dob]',o.dob||'-');setText('[data-owner-address]',o.address||'-');}
 async function check(){const s=localStorage.getItem(SK)||'';if(!s){location.href='../auth/login.html';return;}try{const r=await fetch('/api/my_site/owner_session.php',{headers:{'Accept':'application/json','X-ZBUILDER-SESSION':s},cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)throw new Error('session');localStorage.setItem(OK,JSON.stringify(j.data.owner||{},null,2));fill(j.data.owner||{});}catch(e){localStorage.removeItem(SK);localStorage.removeItem(OK);location.href='../auth/login.html';}}
-document.querySelector('[data-dashboard-menu]')?.addEventListener('click',function(){document.querySelector('[data-dashboard-links]')?.classList.toggle('is-open');});
-document.querySelector('[data-logout]')?.addEventListener('click',async function(){const s=localStorage.getItem(SK)||'';try{if(s)await fetch('/api/my_site/owner_logout.php',{method:'POST',headers:{'Accept':'application/json','X-ZBUILDER-SESSION':s}});}catch(e){}localStorage.removeItem(SK);localStorage.removeItem(OK);location.href='../auth/login.html';});
+function openDrawer(){document.querySelector('[data-side-drawer]')?.classList.add('is-open');const b=document.querySelector('[data-drawer-backdrop]');if(b)b.hidden=false;}
+function closeDrawer(){document.querySelector('[data-side-drawer]')?.classList.remove('is-open');const b=document.querySelector('[data-drawer-backdrop]');if(b)b.hidden=true;}
+document.querySelector('[data-dashboard-menu]')?.addEventListener('click',openDrawer);document.querySelector('[data-drawer-close]')?.addEventListener('click',closeDrawer);document.querySelector('[data-drawer-backdrop]')?.addEventListener('click',closeDrawer);
+document.querySelectorAll('[data-logout]').forEach(function(btn){btn.addEventListener('click',async function(){const s=localStorage.getItem(SK)||'';try{if(s)await fetch('/api/my_site/owner_logout.php',{method:'POST',headers:{'Accept':'application/json','X-ZBUILDER-SESSION':s}});}catch(e){}localStorage.removeItem(SK);localStorage.removeItem(OK);location.href='../auth/login.html';});});
 await check();
 })();
 </script>
