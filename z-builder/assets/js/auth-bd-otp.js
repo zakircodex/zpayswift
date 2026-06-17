@@ -23,7 +23,28 @@
     return json.data || {};
   }
 
+  async function checkSession() {
+    const session = localStorage.getItem(SESSION_KEY) || '';
+    if (!session) return null;
+    try {
+      const res = await fetch('/api/my_site/owner_session.php', { headers: { 'Accept': 'application/json', 'X-ZBUILDER-SESSION': session }, cache: 'no-store' });
+      const json = await res.json().catch(function () { return null; });
+      if (!res.ok || !json || json.ok !== true) throw new Error('Invalid session');
+      if (json.data?.owner) localStorage.setItem(OWNER_KEY, JSON.stringify(json.data.owner, null, 2));
+      return json.data?.owner || null;
+    } catch (e) {
+      localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem(OWNER_KEY);
+      return null;
+    }
+  }
+
   const registerForm = document.querySelector('[data-owner-form]');
+  const loginForm = document.querySelector('[data-login-form]');
+  if (registerForm || loginForm) {
+    checkSession().then(function (owner) { if (owner) location.href = '../dashboard/index.html'; });
+  }
+
   registerForm?.addEventListener('submit', async function (event) {
     event.preventDefault();
     const data = new FormData(registerForm);
@@ -37,7 +58,6 @@
     } catch (error) { box(error.message, false); }
   });
 
-  const loginForm = document.querySelector('[data-login-form]');
   loginForm?.addEventListener('submit', async function (event) {
     event.preventDefault();
     const phone = String(new FormData(loginForm).get('phone') || '').trim();
@@ -57,6 +77,8 @@
     const start = getData(storeKey);
     document.querySelectorAll('[data-otp-phone]').forEach(function (el) { el.textContent = start?.phone || '-'; });
     document.querySelectorAll('[data-otp-mode]').forEach(function (el) { el.textContent = mode === 'login' ? 'Login' : 'Register'; });
+    document.querySelectorAll('[data-otp-title]').forEach(function (el) { el.textContent = mode === 'login' ? 'Login Verification' : 'Account Verification'; });
+    document.querySelectorAll('[data-otp-submit]').forEach(function (el) { el.textContent = mode === 'login' ? 'Login' : 'Create Account'; });
     if (!start?.otp_id) box('আবার শুরু করুন।', false);
     verifyForm.addEventListener('submit', async function (event) {
       event.preventDefault();
@@ -74,9 +96,10 @@
       } catch (error) { box(error.message, false); }
     });
     document.querySelector('[data-resend-otp]')?.addEventListener('click', async function () {
-      if (mode === 'login') { box('Login resend next update-এ add হবে। আবার login করুন।', false); return; }
       try {
-        const result = await postJson('/api/my_site/auth_resend_otp.php', { pre_auth_token: start.pre_auth_token });
+        const url = mode === 'login' ? '/api/my_site/auth_login_resend_otp.php' : '/api/my_site/auth_resend_otp.php';
+        const payload = mode === 'login' ? { login_token: start.login_token } : { pre_auth_token: start.pre_auth_token };
+        const result = await postJson(url, payload);
         start.otp_id = result.otp_id;
         setData(storeKey, start);
         box('নতুন OTP পাঠানো হয়েছে।', true);
