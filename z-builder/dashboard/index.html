@@ -3,7 +3,7 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Dashboard</title><link rel="stylesheet" href="../assets/css/style.css"></head>
 <body>
 <main class="shell">
-<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Dashboard</span></div><div class="nav-links"><a class="btn small secondary" href="../plans/index.html">Plans</a><a class="btn small secondary" href="../setup/index.html">Setup</a><a class="btn small secondary" href="../control/index.html">Control</a></div></nav>
+<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Dashboard</span></div><div class="nav-links"><a class="btn small secondary" href="../plans/index.html">Plans</a><a class="btn small secondary" href="../setup/index.html">Setup</a><a class="btn small secondary" href="../control/index.html">Control</a><button class="btn small secondary" data-logout>Logout</button></div></nav>
 <section class="hero">
 <div class="card hero-card"><span class="badge">Profile</span><h1 data-owner-name>Welcome</h1><p>Z Builder owner profile is ready.</p><div class="kv"><span>Phone</span><strong data-owner-phone>-</strong></div><div class="kv"><span>Email</span><strong data-owner-email>-</strong></div><div class="kv"><span>DOB</span><strong data-owner-dob>-</strong></div><div class="kv"><span>Address</span><strong data-owner-address>-</strong></div></div>
 <div class="card hero-card"><h2>Next Step</h2><p>Plan select করে site setup করুন।</p><div class="actions"><a class="btn" href="../plans/index.html">Choose Plan</a><a class="btn secondary" href="../setup/index.html">Setup Site</a></div></div>
@@ -12,6 +12,12 @@
 <footer class="footer">Z Builder dashboard.</footer>
 </main>
 <script>
-(function(){let o=null;try{o=JSON.parse(localStorage.getItem('z_builder_owner_demo')||'null');}catch(e){}if(!o){location.href='../auth/register.html';return;}document.querySelector('[data-owner-name]').textContent='Welcome, '+(o.name||'Owner');document.querySelector('[data-owner-phone]').textContent=o.phone_local||'-';document.querySelector('[data-owner-email]').textContent=o.email||'-';document.querySelector('[data-owner-dob]').textContent=o.dob||'-';document.querySelector('[data-owner-address]').textContent=o.address||'-';})();
+(async function(){
+const SK='z_builder_owner_session',OK='z_builder_owner_demo';
+function fill(o){document.querySelector('[data-owner-name]').textContent='Welcome, '+(o.name||'Owner');document.querySelector('[data-owner-phone]').textContent=o.phone_local||'-';document.querySelector('[data-owner-email]').textContent=o.email||'-';document.querySelector('[data-owner-dob]').textContent=o.dob||'-';document.querySelector('[data-owner-address]').textContent=o.address||'-';}
+async function check(){const s=localStorage.getItem(SK)||'';if(!s){location.href='../auth/login.html';return;}try{const r=await fetch('/api/my_site/owner_session.php',{headers:{'Accept':'application/json','X-ZBUILDER-SESSION':s},cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)throw new Error('session');localStorage.setItem(OK,JSON.stringify(j.data.owner||{},null,2));fill(j.data.owner||{});}catch(e){localStorage.removeItem(SK);localStorage.removeItem(OK);location.href='../auth/login.html';}}
+document.querySelector('[data-logout]')?.addEventListener('click',async function(){const s=localStorage.getItem(SK)||'';try{if(s)await fetch('/api/my_site/owner_logout.php',{method:'POST',headers:{'Accept':'application/json','X-ZBUILDER-SESSION':s}});}catch(e){}localStorage.removeItem(SK);localStorage.removeItem(OK);location.href='../auth/login.html';});
+await check();
+})();
 </script>
 </body></html>
