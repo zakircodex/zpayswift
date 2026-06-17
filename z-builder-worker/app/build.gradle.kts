@@ -3,20 +3,36 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
+val generatedAppName = providers.gradleProperty("zbuilderAppName").orElse("Z Builder Worker")
+val generatedPackageName = providers.gradleProperty("zbuilderPackageName").orElse("com.zbuilder.worker")
+val generatedApiBase = providers.gradleProperty("zbuilderApiBase").orElse("https://zpayswift.com")
+val generatedAppId = providers.gradleProperty("zbuilderAppId").orElse("")
+val generatedAppToken = providers.gradleProperty("zbuilderAppToken").orElse("")
+
 android {
-    namespace = "com.zworker.app"
+    namespace = generatedPackageName.get()
     compileSdk {
         version = release(36)
     }
 
     defaultConfig {
-        applicationId = "com.zworker.app"
+        applicationId = generatedPackageName.get()
         minSdk = 26
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
+        manifestPlaceholders["appLabel"] = generatedAppName.get()
+        buildConfigField("String", "ZB_APP_NAME", "\"${generatedAppName.get()}\"")
+        buildConfigField("String", "ZB_API_BASE", "\"${generatedApiBase.get().trimEnd('/')}\"")
+        buildConfigField("String", "ZB_WORKER_APP_ID", "\"${generatedAppId.get()}\"")
+        buildConfigField("String", "ZB_WORKER_APP_TOKEN", "\"${generatedAppToken.get()}\"")
+
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
