@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../bootstrap.php';
 require_once __DIR__ . '/_owner_auth.php';
+require_once __DIR__ . '/_worker_app_auth.php';
 
 api_require_method('POST');
 
@@ -17,42 +18,41 @@ if ($planStatus !== 'PAID_ACTIVE') {
 
 $body = api_read_json_body();
 $appName = trim((string)($body['app_name'] ?? ''));
-$deviceName = trim((string)($body['device_name'] ?? ''));
-if ($appName === '') { $appName = 'Z Builder Worker'; }
-if ($deviceName === '') { $deviceName = 'Worker Phone'; }
+$packageName = strtolower(trim((string)($body['package_name'] ?? '')));
+if ($appName === '') { api_response(false, 'APP_NAME_REQUIRED', 'App name is required', [], 422); }
+if (!preg_match('/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*){2,}$/', $packageName)) {
+    api_response(false, 'INVALID_PACKAGE_NAME', 'Package name must look like com.company.worker', [], 422);
+}
 
 $now = time();
-$workerId = 'ZBWRK_' . date('YmdHis') . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
-$connectCode = strtoupper(substr(bin2hex(random_bytes(3)), 0, 6));
-$codeHash = hash('sha256', $connectCode);
+$appId = 'ZBAPP_' . date('YmdHis') . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
+$appToken = random_token(32);
 $row = [
-    'worker_id' => $workerId,
+    'app_id' => $appId,
     'owner_id' => $ownerId,
     'owner_name' => (string)($owner['name'] ?? ''),
     'app_name' => $appName,
-    'device_name' => $deviceName,
-    'connect_code_hash' => $codeHash,
-    'status' => 'WAITING_CONNECT',
+    'package_name' => $packageName,
+    'app_token_hash' => hash('sha256', $appToken),
+    'status' => 'BUILD_READY',
+    'build_status' => 'READY_TO_BUILD',
     'created_at' => zb_now_iso($now),
-    'expires_at' => zb_now_iso($now + (30 * 60)),
-    'connected_at' => null,
-    'download_url' => '/download-apk',
-    'package_name' => 'com.zworker.app',
+    'updated_at' => zb_now_iso($now),
+    'download_url' => null,
+    'template_path' => 'z-builder-worker',
 ];
 
-fb_put('Z_BUILDER_WORKERS/' . $workerId, $row);
-fb_put('Z_BUILDER_OWNER_WORKERS/' . $ownerId . '/' . $workerId, $row);
-fb_put('Z_BUILDER_WORKER_CONNECT_CODES/' . $codeHash, [
-    'worker_id' => $workerId,
-    'owner_id' => $ownerId,
-    'status' => 'ACTIVE',
-    'created_at' => zb_now_iso($now),
-    'expires_at' => zb_now_iso($now + (30 * 60)),
-]);
+fb_put('Z_BUILDER_WORKER_APPS/' . $appId, $row);
+fb_put('Z_BUILDER_OWNER_WORKER_APPS/' . $ownerId . '/' . $appId, zb_worker_app_public($row));
 
-api_response(true, 'WORKER_READY', 'Worker connection code generated', [
-    'worker' => $row,
-    'connect_code' => $connectCode,
-    'download_url' => '/download-apk',
-    'expires_in' => 1800,
+api_response(true, 'WORKER_APP_READY', 'Worker app config generated. APK build is ready to start.', [
+    'app' => zb_worker_app_public($row),
+    'build' => [
+        'template_path' => 'z-builder-worker',
+        'app_name' => $appName,
+        'package_name' => $packageName,
+        'api_base' => 'https://zpayswift.com',
+        'app_id' => $appId,
+        'app_token' => $appToken,
+    ],
 ]);
