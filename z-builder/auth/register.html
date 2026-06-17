@@ -2,25 +2,17 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder Register</title><link rel="stylesheet" href="../assets/css/style.css"></head>
 <body>
-<main class="shell">
-<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Register</span></div><div class="nav-links"><a class="btn small secondary" href="../index.html">Home</a><a class="btn small secondary" href="login.html">Login</a></div></nav>
-<section class="hero">
-<form class="card hero-card" data-owner-form>
-<span class="badge">Step 1 — Owner profile</span><h1>Create your Z Builder account</h1><p>BD number দিয়ে OTP verify করলে account তৈরি হবে।</p>
-<div class="form-grid">
-<div class="form-field"><label>Full Name</label><input name="name" required placeholder="Your full name"></div>
-<div class="form-field"><label>BD Number</label><input name="phone" inputmode="tel" required placeholder="01XXXXXXXXX"></div>
-<div class="form-field"><label>Email</label><input name="email" type="email" required placeholder="you@example.com"></div>
-<div class="form-field"><label>Date of Birth</label><input name="dob" type="date" required></div>
-<div class="form-field full"><label>Address</label><textarea name="address" rows="3" required placeholder="Your address"></textarea></div>
-</div>
-<div class="notice section">OTP যাবে BD number-এ। SMS template হবে Z Builder নামে।</div>
-<div class="notice section" data-auth-result hidden></div>
-<div class="actions"><button class="btn" type="submit">Continue</button></div>
+<main class="shell auth-shell">
+<nav class="nav compact-nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder Register</span></div><div class="nav-links"><a class="btn small secondary" href="../index.html">Home</a><a class="btn small secondary" href="login.html">Login</a></div></nav>
+<section class="hero auth-hero">
+<form class="card hero-card auth-card" data-owner-form>
+<span class="badge">Create account</span><h1>Register</h1><p>Fill your profile details to continue.</p>
+<div class="form-grid auth-grid"><div class="form-field"><label>Full Name</label><input name="name" required placeholder="Your full name"></div><div class="form-field"><label>BD Number</label><input name="phone" inputmode="tel" required placeholder="01XXXXXXXXX"></div><div class="form-field"><label>Email</label><input name="email" type="email" required placeholder="you@example.com"></div><div class="form-field"><label>Date of Birth</label><input name="dob" type="date" required></div><div class="form-field full"><label>Address</label><textarea name="address" rows="3" required placeholder="Your address"></textarea></div></div>
+<div class="notice section" data-auth-result hidden></div><div class="actions"><button class="btn" type="submit">Continue</button></div>
 </form>
-<div class="card hero-card"><h2>Account status</h2><div class="kv"><span>Phone</span><strong data-owner-phone>Not started</strong></div><div class="kv"><span>Email</span><strong data-owner-email>Not started</strong></div><div class="kv"><span>Status</span><strong data-owner-status>Waiting for OTP</strong></div><p>Z Builder account normal Z-Pay Swift user account থেকে আলাদা।</p></div>
+<div class="card hero-card auth-side"><h2>Have an account?</h2><p>Login with your BD number.</p><a class="btn secondary" href="login.html">Login</a></div>
 </section>
-<footer class="footer">Z Builder BD OTP account flow.</footer>
+<footer class="footer">Z Builder register.</footer>
 </main>
 <script src="../assets/js/auth-bd-otp.js"></script>
 </body></html>
