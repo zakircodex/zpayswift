@@ -67,11 +67,38 @@ jobs:
           mkdir -p build-output
           cp z-builder-worker/app/build/outputs/apk/release/app-release.apk "build-output/${{ github.event.inputs.app_id }}.apk"
           echo "APK_PATH=build-output/${{ github.event.inputs.app_id }}.apk" >> "$GITHUB_ENV"
+          echo "ARTIFACT_NAME=${{ github.event.inputs.app_id }}-apk" >> "$GITHUB_ENV"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: "${{ github.event.inputs.app_id }}-apk"
+          name: "${{ env.ARTIFACT_NAME }}"
           path: ${{ env.APK_PATH }}
           if-no-files-found: error
           retention-days: 30
+
+      - name: Notify Z Builder callback
+        if: ${{ always() }}
+        env:
+          CALLBACK_URL: ${{ secrets.ZBUILDER_BUILD_CALLBACK_URL }}
+          CALLBACK_KEY: ${{ secrets.ZBUILDER_BUILD_CALLBACK_KEY }}
+          APP_ID: ${{ github.event.inputs.app_id }}
+          ARTIFACT_NAME: ${{ env.ARTIFACT_NAME }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          JOB_STATUS: ${{ job.status }}
+        shell: bash
+        run: |
+          if [ -z "$CALLBACK_URL" ] || [ -z "$CALLBACK_KEY" ]; then
+            echo "Callback not configured; skipping."
+            exit 0
+          fi
+          if [ "$JOB_STATUS" = "success" ]; then
+            STATUS="ARTIFACT_READY"
+          else
+            STATUS="BUILD_FAILED"
+          fi
+          curl -sS -X POST "$CALLBACK_URL" \
+            -H "Content-Type: application/json" \
+            -H "X-ADMIN-KEY: $CALLBACK_KEY" \
+            --data "{\"app_id\":\"$APP_ID\",\"build_status\":\"$STATUS\",\"artifact_name\":\"$ARTIFACT_NAME\",\"run_id\":\"$RUN_ID\",\"run_url\":\"$RUN_URL\"}"
