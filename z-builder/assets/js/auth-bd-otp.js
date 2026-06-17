@@ -12,8 +12,16 @@
     el.classList.toggle('success', !!ok);
     el.classList.toggle('danger', !ok);
   }
-  function otpBox(message, ok) {
+  function loginOtpBox(message, ok) {
     const el = document.querySelector('[data-login-otp-result]');
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = message;
+    el.classList.toggle('success', !!ok);
+    el.classList.toggle('danger', !ok);
+  }
+  function registerOtpBox(message, ok) {
+    const el = document.querySelector('[data-register-otp-result]');
     if (!el) return;
     el.hidden = false;
     el.textContent = message;
@@ -52,17 +60,62 @@
     checkSession().then(function (owner) { if (owner) location.href = '../dashboard/index.html'; });
   }
 
+  function openRegisterModal(phone) {
+    document.querySelectorAll('[data-register-otp-phone]').forEach(function (el) { el.textContent = phone || '-'; });
+    const modal = document.querySelector('[data-register-otp-modal]');
+    if (modal) modal.hidden = false;
+  }
+  function closeRegisterModal() {
+    const modal = document.querySelector('[data-register-otp-modal]');
+    if (modal) modal.hidden = true;
+  }
+
   registerForm?.addEventListener('submit', async function (event) {
     event.preventDefault();
     const data = new FormData(registerForm);
     const payload = { name: String(data.get('name') || '').trim(), phone: String(data.get('phone') || '').trim(), email: String(data.get('email') || '').trim(), dob: String(data.get('dob') || '').trim(), address: String(data.get('address') || '').trim() };
     if (!payload.name || !payload.phone || !payload.email || !payload.dob || !payload.address) { box('সব field পূরণ করুন।', false); return; }
     try {
-      box('OTP sent. Please wait...', true);
+      box('OTP sent. Please verify.', true);
       const result = await postJson('/api/my_site/auth_register_start.php', payload);
-      setData(REGISTER_KEY, { pre_auth_token: result.pre_auth_token, otp_id: result.otp_id, phone: result.phone || payload.phone, email: payload.email, name: payload.name });
-      location.href = 'verify-otp.html?mode=register';
+      const saved = { pre_auth_token: result.pre_auth_token, otp_id: result.otp_id, phone: result.phone || payload.phone, email: payload.email, name: payload.name };
+      setData(REGISTER_KEY, saved);
+      openRegisterModal(saved.phone);
     } catch (error) { box(error.message, false); }
+  });
+
+  document.querySelector('[data-register-modal-close]')?.addEventListener('click', closeRegisterModal);
+  document.querySelector('[data-register-otp-modal]')?.addEventListener('click', function (event) {
+    if (event.target === event.currentTarget) closeRegisterModal();
+  });
+
+  const registerOtpForm = document.querySelector('[data-register-otp-form]');
+  registerOtpForm?.addEventListener('submit', async function (event) {
+    event.preventDefault();
+    const start = getData(REGISTER_KEY);
+    const otp = String(new FormData(registerOtpForm).get('otp') || '').trim();
+    if (!start?.pre_auth_token || !start?.otp_id) { registerOtpBox('আবার register করুন।', false); return; }
+    if (otp.length !== 6) { registerOtpBox('৬ digit OTP দিন।', false); return; }
+    try {
+      registerOtpBox('Verifying...', true);
+      const result = await postJson('/api/my_site/auth_register_verify.php', { pre_auth_token: start.pre_auth_token, otp_id: start.otp_id, otp: otp });
+      localStorage.setItem(OWNER_KEY, JSON.stringify(result.owner || {}, null, 2));
+      if (result.session_token) localStorage.setItem(SESSION_KEY, result.session_token);
+      localStorage.removeItem(REGISTER_KEY);
+      location.href = '../dashboard/index.html';
+    } catch (error) { registerOtpBox(error.message, false); }
+  });
+
+  document.querySelector('[data-register-resend-otp]')?.addEventListener('click', async function () {
+    const start = getData(REGISTER_KEY);
+    if (!start?.pre_auth_token) { registerOtpBox('আবার register করুন।', false); return; }
+    try {
+      registerOtpBox('Sending new OTP...', true);
+      const result = await postJson('/api/my_site/auth_resend_otp.php', { pre_auth_token: start.pre_auth_token });
+      start.otp_id = result.otp_id;
+      setData(REGISTER_KEY, start);
+      registerOtpBox('নতুন OTP পাঠানো হয়েছে।', true);
+    } catch (error) { registerOtpBox(error.message, false); }
   });
 
   function openLoginModal(phone) {
@@ -98,28 +151,28 @@
     event.preventDefault();
     const start = getData(LOGIN_KEY);
     const otp = String(new FormData(loginOtpForm).get('otp') || '').trim();
-    if (!start?.login_token || !start?.otp_id) { otpBox('আবার login করুন।', false); return; }
-    if (otp.length !== 6) { otpBox('৬ digit OTP দিন।', false); return; }
+    if (!start?.login_token || !start?.otp_id) { loginOtpBox('আবার login করুন।', false); return; }
+    if (otp.length !== 6) { loginOtpBox('৬ digit OTP দিন।', false); return; }
     try {
-      otpBox('Verifying...', true);
+      loginOtpBox('Verifying...', true);
       const result = await postJson('/api/my_site/auth_login_verify.php', { login_token: start.login_token, otp_id: start.otp_id, otp: otp });
       localStorage.setItem(OWNER_KEY, JSON.stringify(result.owner || {}, null, 2));
       if (result.session_token) localStorage.setItem(SESSION_KEY, result.session_token);
       localStorage.removeItem(LOGIN_KEY);
       location.href = '../dashboard/index.html';
-    } catch (error) { otpBox(error.message, false); }
+    } catch (error) { loginOtpBox(error.message, false); }
   });
 
   document.querySelector('[data-login-resend-otp]')?.addEventListener('click', async function () {
     const start = getData(LOGIN_KEY);
-    if (!start?.login_token) { otpBox('আবার login করুন।', false); return; }
+    if (!start?.login_token) { loginOtpBox('আবার login করুন।', false); return; }
     try {
-      otpBox('Sending new OTP...', true);
+      loginOtpBox('Sending new OTP...', true);
       const result = await postJson('/api/my_site/auth_login_resend_otp.php', { login_token: start.login_token });
       start.otp_id = result.otp_id;
       setData(LOGIN_KEY, start);
-      otpBox('নতুন OTP পাঠানো হয়েছে।', true);
-    } catch (error) { otpBox(error.message, false); }
+      loginOtpBox('নতুন OTP পাঠানো হয়েছে।', true);
+    } catch (error) { loginOtpBox(error.message, false); }
   });
 
   const verifyForm = document.querySelector('[data-otp-form]');
@@ -131,31 +184,5 @@
     document.querySelectorAll('[data-otp-mode]').forEach(function (el) { el.textContent = mode === 'login' ? 'Login' : 'Register'; });
     document.querySelectorAll('[data-otp-title]').forEach(function (el) { el.textContent = mode === 'login' ? 'Login Verification' : 'Account Verification'; });
     document.querySelectorAll('[data-otp-submit]').forEach(function (el) { el.textContent = mode === 'login' ? 'Login' : 'Create Account'; });
-    if (!start?.otp_id) box('আবার শুরু করুন।', false);
-    verifyForm.addEventListener('submit', async function (event) {
-      event.preventDefault();
-      const otp = String(new FormData(verifyForm).get('otp') || '').trim();
-      if (otp.length !== 6) { box('৬ digit OTP দিন।', false); return; }
-      try {
-        box('OTP verify হচ্ছে...', true);
-        const url = mode === 'login' ? '/api/my_site/auth_login_verify.php' : '/api/my_site/auth_register_verify.php';
-        const payload = mode === 'login' ? { login_token: start.login_token, otp_id: start.otp_id, otp: otp } : { pre_auth_token: start.pre_auth_token, otp_id: start.otp_id, otp: otp };
-        const result = await postJson(url, payload);
-        localStorage.setItem(OWNER_KEY, JSON.stringify(result.owner || {}, null, 2));
-        if (result.session_token) localStorage.setItem(SESSION_KEY, result.session_token);
-        localStorage.removeItem(storeKey);
-        location.href = '../dashboard/index.html';
-      } catch (error) { box(error.message, false); }
-    });
-    document.querySelector('[data-resend-otp]')?.addEventListener('click', async function () {
-      try {
-        const url = mode === 'login' ? '/api/my_site/auth_login_resend_otp.php' : '/api/my_site/auth_resend_otp.php';
-        const payload = mode === 'login' ? { login_token: start.login_token } : { pre_auth_token: start.pre_auth_token };
-        const result = await postJson(url, payload);
-        start.otp_id = result.otp_id;
-        setData(storeKey, start);
-        box('নতুন OTP পাঠানো হয়েছে।', true);
-      } catch (error) { box(error.message, false); }
-    });
   }
 })();
