@@ -101,6 +101,7 @@
   function closeForgotOtpModal() { const modal = document.querySelector('[data-forgot-otp-modal]'); if (modal) modal.hidden = true; }
   function openForgotPasswordModal() { const modal = document.querySelector('[data-forgot-password-modal]'); if (modal) modal.hidden = false; }
   function closeForgotPasswordModal() { const modal = document.querySelector('[data-forgot-password-modal]'); if (modal) modal.hidden = true; }
+  function openResetSuccessModal() { closeForgotPasswordModal(); const modal = document.querySelector('[data-reset-success-modal]'); if (modal) modal.hidden = false; }
 
   forgotForm?.addEventListener('submit', async function (event) {
     event.preventDefault();
@@ -136,7 +137,7 @@
     if (!saved?.reset_token) { forgotPasswordBox('Reset session পাওয়া যায়নি। আবার শুরু করুন।', false); return; }
     if (password.length < 6) { forgotPasswordBox('Password কমপক্ষে 6 character দিন।', false); return; }
     if (password !== confirm) { forgotPasswordBox('Confirm password match করেনি।', false); return; }
-    try { forgotPasswordBox('Saving password...', true); await postJson('/api/my_site/auth_forgot_reset.php', { reset_token: saved.reset_token, password: password, confirm_password: confirm }); localStorage.removeItem(RESET_KEY); localStorage.removeItem(FORGOT_KEY); alert('Password reset successful. Please login.'); location.href = 'login.html'; } catch (error) { forgotPasswordBox(error.message, false); }
+    try { forgotPasswordBox('Saving password...', true); await postJson('/api/my_site/auth_forgot_reset.php', { reset_token: saved.reset_token, password: password, confirm_password: confirm }); localStorage.removeItem(RESET_KEY); localStorage.removeItem(FORGOT_KEY); openResetSuccessModal(); } catch (error) { forgotPasswordBox(error.message, false); }
   });
 
   const verifyForm = document.querySelector('[data-otp-form]');
