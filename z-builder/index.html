@@ -1,95 +1,14 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Z Builder by Z-Pay Swift</title>
-  <link rel="stylesheet" href="assets/css/style.css">
-</head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Z Builder by Z-Pay Swift</title><link rel="stylesheet" href="assets/css/style.css"></head>
 <body>
-  <main class="shell">
-    <nav class="nav">
-      <div class="brand-lockup">
-        <span class="logo-mark">ZB</span>
-        <span>Z Builder</span>
-      </div>
-      <div class="nav-links">
-        <a class="btn small secondary" href="onboarding/index.html">Create Demo Site</a>
-        <a class="btn small secondary" href="user/index.html">User Panel</a>
-        <a class="btn small secondary" href="control/index.html">Control Panel</a>
-      </div>
-    </nav>
-
-    <section class="hero">
-      <div class="card hero-card">
-        <span class="badge">Z Builder by Z-Pay Swift</span>
-        <h1>নিজের topup site নিজেই তৈরি করুন</h1>
-        <p>Create your own topup and payment support site in minutes. Free plan runs for 7 days; subscription plan unlocks custom branding, domain, commission, control panel, Telegram, and worker setup.</p>
-        <div class="actions">
-          <a class="btn" href="onboarding/index.html">Start Z Builder</a>
-          <a class="btn secondary" href="docs/IMPLEMENTATION_PLAN.md">Read plan</a>
-        </div>
-      </div>
-
-      <div class="card hero-card">
-        <h2>How Z Builder works</h2>
-        <div class="kv"><span>Product</span><strong>Z Builder</strong></div>
-        <div class="kv"><span>Backend</span><strong>Z-Pay Swift owned</strong></div>
-        <div class="kv"><span>Database</span><strong>Z-Pay Swift Firebase</strong></div>
-        <div class="kv"><span>Owner</span><strong>Own site/users/requests only</strong></div>
-        <div class="kv"><span>SMS</span><strong>BD OTP only in this phase</strong></div>
-        <div class="kv"><span>Worker</span><strong>Existing app QR/link code</strong></div>
-      </div>
-    </section>
-
-    <section class="grid section">
-      <article class="plan-card">
-        <span class="badge">Free</span>
-        <h2>Free Trial</h2>
-        <p>Hosted under Z-Pay Swift, Z Builder powered branding, user-panel-like interface, 7-day expiry.</p>
-        <a class="btn secondary" href="onboarding/index.html?plan=free">Try free</a>
-      </article>
-      <article class="plan-card featured">
-        <span class="badge">Subscription</span>
-        <h2>Custom Site</h2>
-        <p>Custom name, logo, color, domain, commission, reports, user/request controls, Telegram, worker setup.</p>
-        <a class="btn" href="onboarding/index.html?plan=paid">Create custom site</a>
-      </article>
-      <article class="plan-card">
-        <span class="badge">Control</span>
-        <h2>Owner Panel</h2>
-        <p>Site owner manages only tenant scoped users, balances, requests, success/failed control, reports and workers.</p>
-        <a class="btn secondary" href="control/index.html">Open demo</a>
-      </article>
-    </section>
-
-    <section class="card hero-card section">
-      <h2>Demo status</h2>
-      <p>This Z Builder demo is frontend/demo only. No live topup, MFS, wallet, Telegram, SMS, worker, or existing Z-Pay Swift business logic is modified here.</p>
-      <div class="actions">
-        <button class="btn secondary" data-expire-demo>Set demo expired</button>
-        <button class="btn secondary" data-renew-demo>Renew demo</button>
-        <button class="btn danger" data-reset-demo>Reset demo</button>
-      </div>
-    </section>
-
-    <footer class="footer">Z Builder by Z-Pay Swift. Backend integration will be connected step by step.</footer>
-  </main>
-
-  <script src="assets/js/demo-store.js"></script>
-  <script>
-    document.querySelector('[data-expire-demo]')?.addEventListener('click', () => {
-      window.ZBuilderDemoStore.expireDemoTenant();
-      alert('Demo tenant is now expired. Open user/control panel to test guard.');
-    });
-    document.querySelector('[data-renew-demo]')?.addEventListener('click', () => {
-      window.ZBuilderDemoStore.renewDemoTenant(30);
-      alert('Demo tenant renewed for 30 days.');
-    });
-    document.querySelector('[data-reset-demo]')?.addEventListener('click', () => {
-      window.ZBuilderDemoStore.clear();
-      alert('Demo tenant localStorage cleared.');
-    });
-  </script>
-</body>
-</html>
+<main class="shell">
+<nav class="nav"><div class="brand-lockup"><span class="logo-mark">ZB</span><span>Z Builder</span></div><div class="nav-links"><a class="btn small secondary" href="auth/login.html">Login</a><a class="btn small" href="auth/register.html">Register</a></div></nav>
+<section class="hero landing-hero"><div class="card hero-card landing-card"><span class="badge">Z Builder by Z-Pay Swift</span><h1 class="landing-title">নিজের topup site তৈরি করুন</h1><p>নিজের নামে একটি topup ও payment support site তৈরি করুন। customer আপনার site থেকে request করবে, আপনি control panel থেকে সব manage করবেন।</p><div class="actions"><a class="btn" href="auth/login.html">Start Z Builder</a><a class="btn secondary" href="plans/index.html">Read plan</a></div></div><div class="card hero-card"><h2>How it works</h2><div class="kv"><span>1</span><strong>Register / Login</strong></div><div class="kv"><span>2</span><strong>Plan select</strong></div><div class="kv"><span>3</span><strong>Site setup</strong></div><div class="kv"><span>4</span><strong>Publish & control</strong></div><div class="kv"><span>Backend</span><strong>Z-Pay Swift powered</strong></div></div></section>
+<section class="grid section"><article class="plan-card"><span class="badge">Free</span><h2>Free Trial</h2><p>৭ দিনের জন্য basic site তৈরি করে test করুন।</p><a class="btn secondary" href="auth/login.html">Try free</a></article><article class="plan-card featured"><span class="badge">Subscription</span><h2>Custom Site</h2><p>Custom name, color, domain, commission, report, control panel এবং worker setup.</p><a class="btn" href="auth/login.html">Create custom site</a></article><article class="plan-card"><span class="badge">Demo</span><h2>Panel Preview</h2><p>User panel এবং control panel দেখতে কেমন হবে demo দেখে নিন।</p><a class="btn secondary" href="demo/index.html">Open demo</a></article></section>
+<section class="card hero-card section info-section"><span class="badge">সহজ ভাষায়</span><h2>Z Builder দিয়ে কী করা যাবে?</h2><p>Z Builder হলো এমন একটি service, যেখানে আপনি নিজের নামে topup/payment support site বানাতে পারবেন। আলাদা developer লাগবে না, server কিনতে হবে না, app বানাতে হবে না। আপনি শুধু account করবেন, plan select করবেন, site name/color/logo/domain setup করবেন, তারপর publish করবেন।</p><div class="grid section"><article class="step-card"><h3>Customer কী করবে?</h3><p>Customer আপনার site open করে topup, bundle বা payment support request করবে। তারা tracking/status দেখতে পারবে।</p></article><article class="step-card"><h3>Owner কী করবে?</h3><p>Owner control panel থেকে user, request, balance, commission, success/failed status, report এবং worker setup manage করবে।</p></article><article class="step-card"><h3>Z-Pay Swift কী করবে?</h3><p>Backend, database, OTP SMS, security, tracking এবং worker system Z-Pay Swift থেকে powered থাকবে।</p></article></div></section>
+<section class="grid section"><article class="plan-card"><h2>উপকারিতা</h2><p>নিজের brand তৈরি হবে, customer আপনার নামেই service ব্যবহার করবে, manual কাজ কমবে, report ও request tracking সহজ হবে।</p></article><article class="plan-card"><h2>Free plan</h2><p>৭ দিন test করার জন্য। basic site থাকবে, paid features দেখা যাবে কিন্তু locked থাকবে।</p></article><article class="plan-card"><h2>Paid plan</h2><p>Custom domain, logo, color, commission, Telegram, worker app setup, report এবং full control panel unlock হবে।</p></article></section>
+<section class="card hero-card section"><h2>কার জন্য Z Builder?</h2><p>যারা নিজের topup/payment support business শুরু করতে চান, কিন্তু coding, server, database, SMS system বা worker app setup করতে পারেন না—তাদের জন্য Z Builder। সহজভাবে account create করুন, plan select করুন, site publish করুন, তারপর customer manage করুন।</p><div class="actions"><a class="btn" href="auth/register.html">Register Now</a><a class="btn secondary" href="auth/login.html">Login</a></div></section>
+<footer class="footer">Z Builder by Z-Pay Swift. Fast, secure, easy tracking.</footer>
+</main>
+</body></html>
