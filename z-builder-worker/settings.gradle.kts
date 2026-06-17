@@ -19,6 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Zaw Topup Worker"
+rootProject.name = "Z Builder Worker"
 include(":app")
- 
