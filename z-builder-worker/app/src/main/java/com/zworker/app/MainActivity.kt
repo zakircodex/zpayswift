@@ -22,6 +22,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var spSim2Operator: Spinner
     private lateinit var tvAppTitle: TextView
     private lateinit var tvConnectionInfo: TextView
+    private lateinit var tvStatusCard: TextView
     private lateinit var tvDeviceId: TextView
     private lateinit var tvAccessibility: TextView
     private lateinit var tvLog: TextView
@@ -39,6 +40,7 @@ class MainActivity : AppCompatActivity() {
 
         tvAppTitle = findViewById(R.id.tvAppTitle)
         tvConnectionInfo = findViewById(R.id.tvConnectionInfo)
+        tvStatusCard = findViewById(R.id.tvStatusCard)
         tvDeviceId = findViewById(R.id.tvDeviceId)
         spSim1Operator = findViewById(R.id.spSim1Operator)
         spSim2Operator = findViewById(R.id.spSim2Operator)
@@ -52,6 +54,13 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.btnSave).setOnClickListener {
             saveConfig()
+            refreshUi()
+            clearAllFocusAndHideKeyboard()
+        }
+
+        findViewById<Button>(R.id.btnTestConnection).setOnClickListener {
+            saveConfig()
+            testConnection()
             clearAllFocusAndHideKeyboard()
         }
 
@@ -67,6 +76,7 @@ class MainActivity : AppCompatActivity() {
                 action = WorkerConstants.ACTION_START_WORKER
             }
             ContextCompat.startForegroundService(this, intent)
+            prefs.lastLog = "Worker started"
             refreshUi()
         }
 
@@ -75,6 +85,7 @@ class MainActivity : AppCompatActivity() {
                 action = WorkerConstants.ACTION_STOP_WORKER
             }
             startService(intent)
+            prefs.lastLog = "Worker stopped"
             refreshUi()
         }
 
@@ -102,7 +113,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun loadConfig() {
         tvAppTitle.text = BuildConfig.ZB_APP_NAME.ifBlank { getString(R.string.app_name) }
-        tvConnectionInfo.text = "Connected to Z Builder API. App ID: " + (prefs.workerAppId.ifBlank { "embedded" })
+        tvConnectionInfo.text = "API: ${prefs.baseUrl}\nApp ID: ${prefs.workerAppId.ifBlank { "embedded" }}"
         tvDeviceId.text = "Device ID: ${prefs.deviceId}"
 
         spSim1Operator.setSelection(operatorItems.indexOf(prefs.sim1Operator).coerceAtLeast(0))
@@ -119,12 +130,38 @@ class MainActivity : AppCompatActivity() {
         tvLog.text = prefs.lastLog
     }
 
+    private fun testConnection() {
+        tvStatusCard.text = "Status: Testing server connection..."
+        tvLog.text = "Sending heartbeat..."
+        Thread {
+            val ok = try {
+                ApiClient(prefs).heartbeat()
+            } catch (_: Exception) {
+                false
+            }
+            runOnUiThread {
+                if (ok) {
+                    prefs.lastLog = "Server connected. Heartbeat saved."
+                    tvStatusCard.text = "Status: CONNECTED ✅"
+                } else {
+                    prefs.lastLog = "Connection failed. Check internet, app token, or server API."
+                    tvStatusCard.text = "Status: CONNECTION FAILED ❌"
+                }
+                refreshUi()
+            }
+        }.start()
+    }
+
     private fun refreshUi() {
         val enabled = isAccessibilityEnabled()
+        val simText = "SIM1: ${prefs.sim1Operator.ifBlank { "Not set" }} | SIM2: ${prefs.sim2Operator.ifBlank { "Not set" }}"
         tvAccessibility.text = if (enabled) {
             "Accessibility: ENABLED"
         } else {
             "Accessibility: DISABLED"
+        }
+        if (tvStatusCard.text.isNullOrBlank() || tvStatusCard.text.toString().contains("Checking")) {
+            tvStatusCard.text = "Status: Ready\n$simText"
         }
         tvLog.text = prefs.lastLog
     }
