@@ -8,6 +8,7 @@ require_once dirname(__DIR__) . '/lib/topup.php';
 require_once dirname(__DIR__) . '/lib/operators.php';
 require_once dirname(__DIR__) . '/lib/bundle.php';
 require_once dirname(__DIR__) . '/lib/mfs.php';
+require_once dirname(__DIR__) . '/lib/add_money.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -3478,6 +3479,7 @@ switch ($action) {
                 'month' => $month,
                 'items' => user_proxy_collect_request_logs($uid, $limit, false, $month),
                 'wallet_history' => user_proxy_collect_wallet_received($uid, $month, $limit),
+                'add_money_history' => add_money_list_user_history($uid, $limit),
             ],
             'loaded_at' => user_proxy_now(),
         ]);
@@ -3515,6 +3517,73 @@ switch ($action) {
         ]);
         break;
 
+    case 'add_money_settings':
+        user_proxy_require_method('GET');
+
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $userRow = user_proxy_load_user($uid);
+        if (!$userRow) {
+            $userRow = $sessionUser;
+        }
+        $walletRow = user_proxy_load_wallet($uid);
+
+        user_proxy_response(true, 'SUCCESS', 'Add money settings loaded', [
+            'profile' => add_money_user_payload($userRow, $walletRow),
+            'history' => add_money_list_user_history($uid, 25),
+        ]);
+        break;
+
+    case 'add_money_history':
+        user_proxy_require_method('GET');
+
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $limit = max(1, min(100, (int)($_GET['limit'] ?? 50)));
+
+        user_proxy_response(true, 'SUCCESS', 'Add money history loaded', [
+            'uid' => $uid,
+            'items' => add_money_list_user_history($uid, $limit),
+        ]);
+        break;
+
+    case 'add_money_submit':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $userRow = user_proxy_load_user($uid);
+        if (!$userRow) {
+            $userRow = $sessionUser;
+        }
+        $walletRow = user_proxy_load_wallet($uid);
+        $body = !empty($_POST) ? $_POST : user_proxy_read_json_body();
+        $res = add_money_create_request($uid, $userRow, $walletRow, $body, $_FILES);
+
+        if (empty($res['ok'])) {
+            $code = (string)($res['code'] ?? 'SERVER_ERROR');
+            $httpStatus = in_array($code, [
+                'VALIDATION_ERROR',
+                'INVALID_AMOUNT',
+                'INVALID_METHOD',
+                'TXN_REQUIRED',
+                'SENDER_REQUIRED',
+                'DUPLICATE_TXN_ID',
+                'DUPLICATE_TRANSACTION_ID',
+                'DUPLICATE_RECEIPT',
+                'RECEIPT_REQUIRED',
+                'INVALID_RECEIPT',
+                'INVALID_RECEIPT_SIZE',
+                'INVALID_RECEIPT_TYPE',
+                'ADD_MONEY_DISABLED',
+            ], true) ? 422 : 500;
+            user_proxy_response(false, $code, (string)($res['message'] ?? 'Failed to submit add money request'), (array)($res['data'] ?? []), $httpStatus);
+        }
+
+        user_proxy_response(true, 'SUCCESS', 'Add money request submitted. Please wait for approval.', (array)($res['data'] ?? []));
+        break;
+
     case 'request_logs':
         user_proxy_require_method('GET');
 
@@ -3537,6 +3606,7 @@ switch ($action) {
             'month' => $month,
             'items' => user_proxy_collect_request_logs($uid, $limit, $legacy, $month),
             'wallet_history' => user_proxy_collect_wallet_received($uid, $month, $limit),
+            'add_money_history' => add_money_list_user_history($uid, $limit),
             'mode' => $legacy ? 'fast_with_legacy_fallback' : 'fast',
         ]);
         break;

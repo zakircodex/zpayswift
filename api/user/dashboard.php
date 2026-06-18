@@ -13,7 +13,7 @@ header('Pragma: no-cache');
   <title>Z-Pay Swift User Dashboard</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
-  <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=13">
+  <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
@@ -100,6 +100,11 @@ header('Pragma: no-cache');
               <span>bKash / Nagad</span>
               <span>›</span>
               </button>
+
+        <button class="side-btn" data-page-section="addMoneySection" type="button">
+          <span>Add Money</span>
+          <span>&rsaquo;</span>
+        </button>
 
         <button class="side-btn" data-page-section="historySection" type="button">
           <span>My History</span>
@@ -440,6 +445,31 @@ header('Pragma: no-cache');
 </section>
 
 
+      <section id="addMoneySection" class="page-section">
+        <div class="history-card">
+          <div class="section-head">
+            <div>
+              <h3 class="section-title">Add Money</h3>
+              <p class="section-sub">Submit payment proof and wait for admin approval.</p>
+            </div>
+            <button id="addMoneyReloadBtn" class="btn ghost" type="button">Reload</button>
+          </div>
+
+          <div id="addMoneyContent" class="detail-grid">
+            <div class="detail-box">
+              <label>Status</label>
+              <strong>Loading add money settings...</strong>
+            </div>
+          </div>
+
+          <div class="history-list" id="addMoneyHistoryList">
+            <div class="history-item history-empty">
+              <div class="history-id">No add money request yet.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="historySection" class="page-section">
         <div class="history-card">
           <div class="section-head">
@@ -597,6 +627,7 @@ header('Pragma: no-cache');
     
     <button class="bottom-btn" data-page-section="mfsSection" type="button">Money</button>
     
+    <button class="bottom-btn" data-page-section="addMoneySection" type="button">Add</button>
     <button class="bottom-btn" data-page-section="historySection" type="button">History</button>
   </div>
 </div>
@@ -605,7 +636,7 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=20"></script>
+<script src="/api/user/assets/dashboard.js?v=21"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=12"></script>
 </body>
 </html>

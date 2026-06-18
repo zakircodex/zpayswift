@@ -9,6 +9,7 @@ require_once dirname(__DIR__) . '/lib/topup.php';
 require_once dirname(__DIR__) . '/lib/bundle.php';
 require_once dirname(__DIR__) . '/lib/mfs.php';
 require_once dirname(__DIR__) . '/lib/wallet.php';
+require_once dirname(__DIR__) . '/lib/add_money.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -2124,6 +2125,46 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
             ];
         }
 
+        $addMoneyHistory = add_money_list_user_history($uid, $limit);
+        foreach ($addMoneyHistory as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $requestId = trim((string)($row['request_id'] ?? ''));
+            if ($requestId === '') {
+                continue;
+            }
+
+            $out[] = [
+                'request_id' => $requestId,
+                'uid' => $uid,
+                'key_id' => 'ADD_MONEY',
+                'action' => 'ADD_MONEY',
+                'request_type' => 'ADD_MONEY',
+                'status' => (string)($row['status'] ?? 'PENDING'),
+                'operator' => (string)($row['method'] ?? ''),
+                'topup_number' => (string)($row['sender_number'] ?? ''),
+                'bundle_number' => '',
+                'offer_id' => '',
+                'bundle_name' => '',
+                'amount' => (float)($row['amount'] ?? 0),
+                'currency' => (string)($row['currency'] ?? 'BDT'),
+                'message' => (string)($row['reject_reason'] ?? $row['note'] ?? ''),
+                'created_at' => (int)($row['created_at'] ?? 0),
+                'updated_at' => (int)($row['updated_at'] ?? 0),
+                'is_add_money_history' => true,
+                'service' => 'Add Money',
+                'method' => (string)($row['method'] ?? ''),
+                'transaction_id' => (string)($row['transaction_id'] ?? ''),
+                'sender_number' => (string)($row['sender_number'] ?? ''),
+                'receipt_url' => (string)($row['receipt_url'] ?? ''),
+                'approved_at' => (int)($row['approved_at'] ?? 0),
+                'rejected_at' => (int)($row['rejected_at'] ?? 0),
+                'reject_reason' => (string)($row['reject_reason'] ?? ''),
+            ];
+        }
+
         usort($out, static function (array $a, array $b): int {
             return (int) ($b['created_at'] ?? 0) <=> (int) ($a['created_at'] ?? 0);
         });
@@ -2137,6 +2178,7 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
             'month' => $month,
             'items' => array_values($out),
             'wallet_history' => $walletHistory,
+            'add_money_history' => $addMoneyHistory,
         ]);
         break;
 
@@ -2766,6 +2808,73 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
             'items' => $items,
             'count' => count($items),
         ]);
+        break;
+
+    case 'add_money_settings':
+        sub_proxy_require_method('GET');
+
+        $actor = sub_proxy_require_login(true);
+        $uid = trim((string)($actor['uid'] ?? ''));
+        $userRow = sub_proxy_load_user_row($uid);
+        if (!$userRow) {
+            $userRow = $actor;
+        }
+        $walletRow = sub_proxy_load_wallet_row($uid);
+
+        sub_proxy_response(true, 'SUCCESS', 'Add money settings loaded', [
+            'profile' => add_money_user_payload($userRow, $walletRow),
+            'history' => add_money_list_user_history($uid, 25),
+        ]);
+        break;
+
+    case 'add_money_history':
+        sub_proxy_require_method('GET');
+
+        $actor = sub_proxy_require_login(true);
+        $uid = trim((string)($actor['uid'] ?? ''));
+        $limit = max(1, min(100, (int)($_GET['limit'] ?? 50)));
+
+        sub_proxy_response(true, 'SUCCESS', 'Add money history loaded', [
+            'uid' => $uid,
+            'items' => add_money_list_user_history($uid, $limit),
+        ]);
+        break;
+
+    case 'add_money_submit':
+        sub_proxy_require_method('POST');
+        sub_proxy_require_csrf();
+
+        $actor = sub_proxy_require_login(true);
+        $uid = trim((string)($actor['uid'] ?? ''));
+        $userRow = sub_proxy_load_user_row($uid);
+        if (!$userRow) {
+            $userRow = $actor;
+        }
+        $walletRow = sub_proxy_load_wallet_row($uid);
+        $body = !empty($_POST) ? $_POST : sub_proxy_read_json_body();
+        $res = add_money_create_request($uid, $userRow, $walletRow, $body, $_FILES);
+
+        if (empty($res['ok'])) {
+            $code = (string)($res['code'] ?? 'SERVER_ERROR');
+            $httpStatus = in_array($code, [
+                'VALIDATION_ERROR',
+                'INVALID_AMOUNT',
+                'INVALID_METHOD',
+                'TXN_REQUIRED',
+                'SENDER_REQUIRED',
+                'DUPLICATE_TXN_ID',
+                'DUPLICATE_TRANSACTION_ID',
+                'DUPLICATE_RECEIPT',
+                'RECEIPT_REQUIRED',
+                'INVALID_RECEIPT',
+                'INVALID_RECEIPT_SIZE',
+                'INVALID_RECEIPT_TYPE',
+                'ADD_MONEY_DISABLED',
+            ], true) ? 422 : 500;
+            sub_proxy_response(false, $code, (string)($res['message'] ?? 'Failed to submit add money request'), (array)($res['data'] ?? []), $httpStatus);
+        }
+
+        sub_proxy_response(true, 'SUCCESS', 'Add money request submitted. Please wait for approval.', (array)($res['data'] ?? []));
         break;
 
     case 'user_create_send_otp':

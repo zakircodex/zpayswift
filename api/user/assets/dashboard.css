@@ -1330,6 +1330,16 @@ textarea:focus{
   gap:10px;
 }
 
+.form-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+
+.form-full{
+  grid-column:1/-1;
+}
+
 .detail-box.full{
   grid-column:1/-1;
 }
@@ -1611,6 +1621,7 @@ body:not(.user-authenticated) .bottom-nav{
 
   .summary-grid,
   .review-grid,
+  .form-grid,
   .detail-grid{
     grid-template-columns:1fr;
   }

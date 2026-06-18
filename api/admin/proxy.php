@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/mfs.php';
+require_once dirname(__DIR__) . '/lib/add_money.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -1553,6 +1554,85 @@ switch ($action) {
             'type' => trim((string)($_GET['type'] ?? '')),
             'limit' => (int)($_GET['limit'] ?? 200),
         ]);
+        break;
+
+    case 'add_money_settings':
+        proxy_require_method('GET');
+        proxy_require_admin_login(true);
+
+        proxy_response(true, 'SUCCESS', 'Add money settings loaded', [
+            'settings' => add_money_settings(),
+        ]);
+        break;
+
+    case 'add_money_settings_save':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+
+        $adminUser = proxy_require_admin_login(true);
+        $body = proxy_read_json_body();
+        $res = add_money_save_settings($body, trim((string)($adminUser['uid'] ?? '')));
+
+        if (empty($res['ok'])) {
+            proxy_response(false, (string)($res['code'] ?? 'SAVE_FAILED'), (string)($res['message'] ?? 'Failed to save add money settings'), [], 500);
+        }
+
+        proxy_response(true, 'SUCCESS', 'Add money settings saved', [
+            'settings' => (array)($res['data'] ?? add_money_settings()),
+        ]);
+        break;
+
+    case 'add_money_requests':
+        proxy_require_method('GET');
+        proxy_require_admin_login(true);
+
+        $limit = max(1, min(300, (int)($_GET['limit'] ?? 150)));
+        $filters = [
+            'status' => trim((string)($_GET['status'] ?? '')),
+            'country' => trim((string)($_GET['country'] ?? '')),
+            'method' => trim((string)($_GET['method'] ?? '')),
+        ];
+
+        proxy_response(true, 'SUCCESS', 'Add money requests loaded', [
+            'items' => add_money_list_admin($filters, $limit),
+            'filters' => $filters,
+            'limit' => $limit,
+        ]);
+        break;
+
+    case 'add_money_approve':
+    case 'add_money_reject':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+
+        $adminUser = proxy_require_admin_login(true);
+        $body = proxy_read_json_body();
+        $requestId = trim((string)($body['request_id'] ?? ''));
+        $reason = trim((string)($body['reason'] ?? $body['reject_reason'] ?? ''));
+        $approve = $action === 'add_money_approve';
+        $res = add_money_process_request(
+            $requestId,
+            $approve ? 'APPROVE' : 'REJECT',
+            trim((string)($adminUser['uid'] ?? '')),
+            'ADMIN',
+            $reason
+        );
+
+        if (empty($res['ok'])) {
+            $code = (string)($res['code'] ?? 'PROCESS_FAILED');
+            $httpStatus = 500;
+            if ($code === 'NOT_FOUND') {
+                $httpStatus = 404;
+            } elseif ($code === 'ALREADY_PROCESSED') {
+                $httpStatus = 409;
+            } elseif ($code === 'VALIDATION_ERROR') {
+                $httpStatus = 422;
+            }
+
+            proxy_response(false, $code, (string)($res['message'] ?? 'Failed to process add money request'), (array)($res['data'] ?? []), $httpStatus);
+        }
+
+        proxy_response(true, 'SUCCESS', $approve ? 'Add money request approved' : 'Add money request rejected', (array)($res['data'] ?? []));
         break;
 
     case 'operators':

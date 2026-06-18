@@ -19,6 +19,8 @@ const state = window.subadminState = {
   wallet: null,
   apiKeys: [],
   requestLogs: [],
+  addMoneyProfile: null,
+  addMoneyHistory: [],
   bundleOffers: [],
   users: [],
   mfs: {
@@ -52,6 +54,7 @@ loaded: {
   wallet: false,
   keys: false,
   logs: false,
+  addMoney: false,
   users: false,
   bundleOffers: false,
   mfs: false,
@@ -470,6 +473,123 @@ async function ensureBundleOffersLoaded(force = false){
   }
 }
 
+function addMoneyHistoryCard(row){
+  const prefix = walletPrefix(row.currency || 'BDT');
+  const receipt = String(row.receipt_url || '').trim();
+  return `
+    <div class="history-log-card">
+      <div class="history-log-card-top">
+        <strong>${esc(row.request_id || '-')}</strong>
+        ${statusPill(row.status || 'PENDING')}
+      </div>
+      <div class="history-log-card-grid">
+        <span>Method</span><b>${esc(row.method || '-')}</b>
+        <span>Amount</span><b>${prefix} ${money(row.amount || 0)}</b>
+        <span>Submitted</span><b>${esc(fmtTs(row.created_at || 0))}</b>
+        <span>Processed</span><b>${esc(fmtTs(row.approved_at || row.rejected_at || 0))}</b>
+      </div>
+      ${row.reject_reason ? `<div class="muted">${esc(row.reject_reason)}</div>` : ''}
+      <div class="actions">
+        <button class="btn ghost" type="button" onclick="copyText('${esc(row.request_id || '')}','Request ID copied')">Copy ID</button>
+        ${receipt ? `<button class="btn green" type="button" onclick="window.open('${esc(receipt)}','_blank','noopener')">Receipt</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderAddMoneyHistory(){
+  const list = el('addMoneyHistoryList');
+  if (!list) return;
+
+  if (!state.addMoneyHistory.length) {
+    list.innerHTML = '<div class="muted">No add money request yet.</div>';
+    return;
+  }
+
+  list.innerHTML = state.addMoneyHistory.map(addMoneyHistoryCard).join('');
+}
+
+function renderAddMoneyPage(){
+  const wrap = el('addMoneyContent');
+  if (!wrap) return;
+
+  const profile = state.addMoneyProfile || {};
+  const settings = profile.settings || {};
+  const country = String(profile.pricing_country || '').toUpperCase();
+  const prefix = walletPrefix(profile.currency || (country === 'MY' ? 'MYR' : 'BDT'));
+
+  if (!settings.enabled) {
+    wrap.innerHTML = `
+      <div class="box">
+        <label>Add Money</label>
+        <strong>Temporarily unavailable</strong>
+        <p class="muted">Please contact support if you need help adding balance.</p>
+      </div>
+    `;
+    renderAddMoneyHistory();
+    return;
+  }
+
+  if (country === 'MY') {
+    wrap.innerHTML = `
+      <form id="addMoneyForm" class="form-grid" enctype="multipart/form-data">
+        <input type="hidden" name="method" value="BANK">
+        <div class="box"><label>Bank</label><strong>${esc(settings.bank_name || '-')}</strong><button class="btn ghost" type="button" data-copy-add-money="${esc(settings.bank_name || '')}">Copy</button></div>
+        <div class="box"><label>Account Holder</label><strong>${esc(settings.account_holder || '-')}</strong><button class="btn ghost" type="button" data-copy-add-money="${esc(settings.account_holder || '')}">Copy</button></div>
+        <div class="box"><label>Account Number</label><strong>${esc(settings.account_number || '-')}</strong><button class="btn ghost" type="button" data-copy-add-money="${esc(settings.account_number || '')}">Copy</button></div>
+        <div class="field form-full"><label>Instruction</label><p class="muted">${esc(settings.instruction || 'Transfer and upload your receipt.')}</p></div>
+        <div class="field"><label>Amount (${prefix})</label><input class="input" name="amount_rm" type="number" min="1" step="0.01" placeholder="Enter amount"></div>
+        <div class="field"><label>Receipt Upload</label><input class="input" name="receipt_upload" type="file" accept="image/jpeg,image/png,image/webp,application/pdf"></div>
+        <div class="field form-full"><label>Note / Reference</label><input class="input" name="note" placeholder="Optional note"></div>
+        <div class="actions form-full"><button class="btn green" type="submit">Submit Add Money Request</button></div>
+      </form>
+    `;
+  } else {
+    wrap.innerHTML = `
+      <form id="addMoneyForm" class="form-grid">
+        <div class="box"><label>bKash Number</label><strong>${esc(settings.bkash_number || '-')}</strong><small>${esc(settings.bkash_account_type || '')}</small><button class="btn ghost" type="button" data-copy-add-money="${esc(settings.bkash_number || '')}">Copy</button></div>
+        <div class="box"><label>Nagad Number</label><strong>${esc(settings.nagad_number || '-')}</strong><small>${esc(settings.nagad_account_type || '')}</small><button class="btn ghost" type="button" data-copy-add-money="${esc(settings.nagad_number || '')}">Copy</button></div>
+        <div class="field form-full"><label>Instruction</label><p class="muted">${esc(settings.instruction || 'Send money first, then submit transaction ID.')}</p></div>
+        <div class="field"><label>Method</label><select class="input" name="method"><option value="BKASH">bKash</option><option value="NAGAD">Nagad</option></select></div>
+        <div class="field"><label>Amount (${prefix})</label><input class="input" name="amount_bdt" type="number" min="1" step="0.01" placeholder="Enter amount"></div>
+        <div class="field"><label>Transaction ID</label><input class="input" name="transaction_id" placeholder="bKash/Nagad transaction ID"></div>
+        <div class="field"><label>Sender Number</label><input class="input" name="sender_number" placeholder="Number used to send payment"></div>
+        <div class="actions form-full"><button class="btn green" type="submit">Submit Add Money Request</button></div>
+      </form>
+    `;
+  }
+
+  const form = el('addMoneyForm');
+  if (form && form.dataset.bound !== '1') {
+    form.dataset.bound = '1';
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        await proxyFormPost('add_money_submit', new FormData(form), 'Submitting add money request...');
+        showToast('Add money request submitted. Please wait for approval.', 'ok');
+        form.reset();
+        state.loaded.addMoney = false;
+        await ensureAddMoneyLoaded(true);
+      } catch (err) {
+        showToast(err.message || 'Failed to submit add money request', 'error');
+      }
+    });
+  }
+
+  renderAddMoneyHistory();
+}
+
+async function ensureAddMoneyLoaded(force = false){
+  if (force || !state.loaded.addMoney) {
+    const data = await proxyGet('add_money_settings', {}, 'Loading add money...');
+    state.addMoneyProfile = data.profile || null;
+    state.addMoneyHistory = Array.isArray(data.history) ? data.history : [];
+    state.loaded.addMoney = true;
+  }
+
+  renderAddMoneyPage();
+}
+
 async function loadSectionData(sectionId, force = false){
   sectionId = sectionId || 'overviewSection';
 
@@ -500,6 +620,12 @@ async function loadSectionData(sectionId, force = false){
     if (sectionId === 'requestLogsSection') {
       await ensureWalletLoaded(false);
       await ensureLogsLoaded(force);
+      return;
+    }
+
+    if (sectionId === 'addMoneySection') {
+      await ensureWalletLoaded(false);
+      await ensureAddMoneyLoaded(force);
       return;
     }
 
@@ -717,6 +843,38 @@ async function proxyPost(action, body = {}, busyText = 'Processing...'){
       credentials: 'same-origin',
       headers,
       body: JSON.stringify(body)
+    });
+
+    const json = await readJsonSafe(res);
+
+    if (!res.ok || !json.ok) {
+      const err = new Error(json.message || 'Request failed');
+      err.code = json.code || 'ERROR';
+      err.data = json.data || {};
+      throw err;
+    }
+
+    return json.data || {};
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function proxyFormPost(action, formData, busyText = 'Processing...'){
+  setBusy(true, busyText);
+
+  try{
+    const headers = { 'Accept': 'application/json' };
+
+    if (state.csrf) {
+      headers['X-CSRF-TOKEN'] = state.csrf;
+    }
+
+    const res = await fetch((window.SUBADMIN_PROXY_URL || '/api/subadmin/proxy.php') + '?action=' + encodeURIComponent(action), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+      body: formData
     });
 
     const json = await readJsonSafe(res);
@@ -983,19 +1141,24 @@ function renderLogs(){
     const type = String(item.request_type || item.action || '').toUpperCase();
     const isMfs = type === 'MFS';
     const isWallet = type === 'WALLET' || item.is_wallet_history === true;
-    const number = item.topup_number || item.bundle_number || item.receiver_number || item.number || '';
+    const isAddMoney = type === 'ADD_MONEY' || item.is_add_money_history === true;
+    const number = isAddMoney ? (item.sender_number || item.transaction_id || '') : (item.topup_number || item.bundle_number || item.receiver_number || item.number || '');
     const service = isWallet
       ? `${item.sender_name || 'Admin'} (${item.sender_role || 'ADMIN'})`
+      : isAddMoney
+      ? `Add Money - ${item.method || '-'}`
       : (isMfs ? (item.provider_name || mfsProviderName(item.provider || item.service)) : (item.operator || '-'));
     const amountText = isWallet
       ? `${walletPrefix(item.currency)} ${money(item.amount || 0)}`
+      : isAddMoney
+      ? `${walletPrefix(item.currency)} ${money(item.amount || 0)}`
       : (isMfs ? `${mfsAmountText(item)} / ${mfsFeePayText(item)}` : money(item.amount || 0));
-    const typeLabel = isWallet ? 'Balance Received' : (type || '-');
-    return { item, isMfs, isWallet, number, service, amountText, typeLabel };
+    const typeLabel = isWallet ? 'Balance Received' : (isAddMoney ? 'Add Money' : (type || '-'));
+    return { item, isMfs, isWallet, isAddMoney, number, service, amountText, typeLabel };
   });
 
   if (tbody) {
-    tbody.innerHTML = details.map(({ item, isMfs, isWallet, number, service, amountText, typeLabel }) => `
+    tbody.innerHTML = details.map(({ item, isMfs, isWallet, isAddMoney, number, service, amountText, typeLabel }) => `
       <tr>
         <td class="history-log-id">${esc(item.request_id || '-')}</td>
         <td>${esc(item.key_id || '-')}</td>
@@ -1004,6 +1167,7 @@ function renderLogs(){
         <td>
           ${esc(service)}
           ${isWallet ? `<br><span class="muted history-log-meta">${esc(item.note || item.message || '-')}<br>${esc(item.reference || '-')}</span>` : ''}
+          ${isAddMoney ? `<br><span class="muted history-log-meta">${esc(item.note || item.message || '-')}</span>` : ''}
         </td>
         <td>${esc(number || '-')}</td>
         <td>
@@ -1022,7 +1186,7 @@ function renderLogs(){
   }
 
   if (mobile) {
-    mobile.innerHTML = details.map(({ item, isWallet, number, service, amountText, typeLabel }) => `
+    mobile.innerHTML = details.map(({ item, isWallet, isAddMoney, number, service, amountText, typeLabel }) => `
       <article class="history-log-card ${isWallet ? 'wallet-received' : ''}">
         <div class="history-log-card-top">
           <div>
@@ -1033,10 +1197,11 @@ function renderLogs(){
         </div>
         <div class="history-log-card-grid">
           <span>${isWallet ? 'From' : 'Service'}</span><b>${esc(service)}</b>
-          <span>${isWallet ? 'Phone' : 'Number'}</span><b>${esc(number || '-')}</b>
+          <span>${isWallet ? 'Phone' : (isAddMoney ? 'Txn / Sender' : 'Number')}</span><b>${esc(number || '-')}</b>
           <span>Amount</span><b>${esc(amountText)}</b>
           ${isWallet ? `<span>Balance</span><b>${walletPrefix(item.currency)} ${money(item.before_balance || 0)} to ${walletPrefix(item.currency)} ${money(item.after_balance || 0)}</b>` : ''}
           ${isWallet ? `<span>Note / Ref</span><b>${esc(item.note || item.message || '-')}<br><small>${esc(item.reference || '-')}</small></b>` : ''}
+          ${isAddMoney ? `<span>Note</span><b>${esc(item.note || item.message || '-')}</b>` : ''}
           <span>Date</span><b>${fmtTs(item.created_at || 0)}</b>
         </div>
         <div class="row-actions">
@@ -3654,14 +3819,19 @@ function viewRequestLog(requestId){
   const type = String(row.request_type || row.action || '').toUpperCase();
   const isMfs = type === 'MFS';
   const isWallet = type === 'WALLET' || row.is_wallet_history === true;
-  const number = row.topup_number || row.bundle_number || row.receiver_number || row.number || '';
+  const isAddMoney = type === 'ADD_MONEY' || row.is_add_money_history === true;
+  const number = isAddMoney ? (row.sender_number || row.transaction_id || '') : (row.topup_number || row.bundle_number || row.receiver_number || row.number || '');
   const service = isWallet
     ? `${row.sender_name || 'Admin'} (${row.sender_role || 'ADMIN'})`
+    : isAddMoney
+    ? `Add Money - ${row.method || '-'}`
     : (isMfs ? (row.provider_name || mfsProviderName(row.provider || row.service)) : (row.operator || '-'));
   const amountText = isWallet
     ? `${walletPrefix(row.currency)} ${money(row.amount || 0)}`
+    : isAddMoney
+    ? `${walletPrefix(row.currency)} ${money(row.amount || 0)}`
     : (isMfs ? `${mfsAmountText(row)} / ${mfsFeePayText(row)}` : fmtMoney(row.amount || 0));
-  const typeLabel = isWallet ? 'Balance Received' : (isMfs ? `${type} - ${service}` : (type || '-'));
+  const typeLabel = isWallet ? 'Balance Received' : (isAddMoney ? 'Add Money' : (isMfs ? `${type} - ${service}` : (type || '-')));
 
   if (el('logRequestId')) el('logRequestId').textContent = row.request_id || '-';
   if (el('logKeyId')) el('logKeyId').textContent = row.key_id || '-';
@@ -3669,17 +3839,19 @@ function viewRequestLog(requestId){
   if (el('logStatusText')) el('logStatusText').textContent = row.status || '-';
   if (el('logRequestIdLabel')) el('logRequestIdLabel').textContent = isWallet ? 'Transfer ID' : 'Request ID';
   if (el('logKeyIdLabel')) el('logKeyIdLabel').textContent = isWallet ? 'Source' : 'Key ID';
-  if (el('logServiceLabel')) el('logServiceLabel').textContent = isWallet ? 'From' : (isMfs ? 'Service' : 'Operator');
-  if (el('logNumberLabel')) el('logNumberLabel').textContent = isWallet ? 'Sender Phone' : 'Number';
+  if (el('logServiceLabel')) el('logServiceLabel').textContent = isWallet ? 'From' : (isAddMoney ? 'Method' : (isMfs ? 'Service' : 'Operator'));
+  if (el('logNumberLabel')) el('logNumberLabel').textContent = isWallet ? 'Sender Phone' : (isAddMoney ? 'Txn / Sender' : 'Number');
   if (el('logOperator')) el('logOperator').textContent = service;
   if (el('logNumber')) el('logNumber').textContent = number || '-';
   if (el('logAmount')) el('logAmount').textContent = amountText;
   if (el('logCreated')) el('logCreated').textContent = fmtTs(row.created_at || 0);
   if (el('logUpdated')) el('logUpdated').textContent = fmtTs(row.updated_at || row.created_at || 0);
   if (el('logMessage')) el('logMessage').textContent = row.message || '-';
-  if (el('logModalTitle')) el('logModalTitle').textContent = isWallet ? 'Balance Received Details' : 'Request Details';
+  if (el('logModalTitle')) el('logModalTitle').textContent = isWallet ? 'Balance Received Details' : (isAddMoney ? 'Add Money Details' : 'Request Details');
   if (el('logModalSub')) el('logModalSub').textContent = isWallet
     ? 'Admin credit and wallet balance summary'
+    : isAddMoney
+    ? 'Manual add money request summary'
     : 'Request summary and details';
 
   setDetailBox('logRawJson', 'Request Details', [
@@ -3687,13 +3859,19 @@ function viewRequestLog(requestId){
     [isWallet ? 'Source' : 'Key ID', row.key_id || '-'],
     ['Type', typeLabel],
     ['Status', row.status || '-'],
-    [isWallet ? 'From' : (isMfs ? 'Service' : 'Operator'), service],
-    [isWallet ? 'Sender Phone' : 'Number', number || '-'],
+    [isWallet ? 'From' : (isAddMoney ? 'Method' : (isMfs ? 'Service' : 'Operator')), service],
+    [isWallet ? 'Sender Phone' : (isAddMoney ? 'Txn / Sender' : 'Number'), number || '-'],
     ['Amount', amountText],
     ...(isWallet ? [
       ['Balance Before', `${walletPrefix(row.currency)} ${money(row.before_balance || 0)}`],
       ['Balance After', `${walletPrefix(row.currency)} ${money(row.after_balance || 0)}`],
       ['Reference', row.reference || '-']
+    ] : []),
+    ...(isAddMoney ? [
+      ['Transaction ID', row.transaction_id || '-'],
+      ['Sender Number', row.sender_number || '-'],
+      ['Receipt', row.receipt_url || '-'],
+      ['Reject Reason', row.reject_reason || '-']
     ] : []),
     ['Created', fmtTs(row.created_at || 0)],
     ['Updated', fmtTs(row.updated_at || row.created_at || 0)],
@@ -4364,6 +4542,18 @@ el('reloadLogsBtn')?.addEventListener('click', async () => {
   renderLogs();
   renderPanelTopupRequests();
   showToast('Logs reloaded', 'info');
+});
+
+el('reloadAddMoneyBtn')?.addEventListener('click', async () => {
+  state.loaded.addMoney = false;
+  await ensureAddMoneyLoaded(true);
+  showToast('Add money reloaded', 'info');
+});
+
+document.addEventListener('click', (event) => {
+  const btn = event.target?.closest?.('[data-copy-add-money]');
+  if (!btn) return;
+  copyText(btn.dataset.copyAddMoney || '', 'Copied');
 });
 
 el('copyPlainKeyBtn')?.addEventListener('click', copyLastPlainKey);

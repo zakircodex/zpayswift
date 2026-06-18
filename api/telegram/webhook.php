@@ -9,6 +9,7 @@
  * - bndl|... callbacks go to bundle_webhook.php
  * - topup|... callbacks go to topup_webhook.php
  * - acct|... callbacks go to account_review_webhook.php
+ * - am|... callbacks go to add_money_webhook.php
  * - known MFS callback formats go to mfs_webhook.php
  * - non-bundle callbacks fall back to the MFS parser
  * - normal Telegram messages go to mfs_webhook.php for sender details replies
@@ -34,6 +35,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
             'bundle' => 'callback_data starts with bndl|',
             'topup' => 'callback_data starts with topup|',
             'account_review' => 'callback_data starts with acct|',
+            'add_money' => 'callback_data starts with am|',
             'mfs' => 'known MFS formats and non-bundle callback fallback, plus normal messages',
         ],
         'time' => date('Y-m-d H:i:s'),
@@ -70,6 +72,12 @@ if (is_array($callback)) {
     if (strncasecmp($data, 'acct|', 5) === 0) {
         $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
         require __DIR__ . '/account_review_webhook.php';
+        exit;
+    }
+
+    if (strncasecmp($data, 'am|', 3) === 0) {
+        $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
+        require __DIR__ . '/add_money_webhook.php';
         exit;
     }
 

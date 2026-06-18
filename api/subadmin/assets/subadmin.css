@@ -679,6 +679,16 @@ textarea.input:focus{
   word-break:break-word;
 }
 
+.form-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+
+.form-full{
+  grid-column:1/-1;
+}
+
 .status-box-clean{
   min-height:120px;
   border-radius:18px;
@@ -1207,6 +1217,7 @@ code{
   }
 
   .grid,
+  .form-grid,
   .test-grid,
   .info-grid{
     grid-template-columns:1fr;

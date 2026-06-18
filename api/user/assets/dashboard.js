@@ -11,6 +11,9 @@ const state = {
   historyVisited: false,
   historyLimit: 50,
   walletHistory: [],
+  addMoneyProfile: null,
+  addMoneyHistory: [],
+  addMoneyLoaded: false,
   bundleOffers: [],
   busyCount: 0,
   filter: 'ALL',
@@ -150,6 +153,7 @@ function operatorName(code){
 }
 
 function requestTypeOf(row){
+  if (String(row?._history_type || '').toUpperCase() === 'ADD_MONEY') return 'ADD_MONEY';
   if (String(row?._history_type || '').toUpperCase() === 'WALLET') return 'WALLET';
   if (row?.transfer_id && String(row?.direction || '').toUpperCase() === 'CREDIT') return 'WALLET';
   return String(row?.request_type || row?.type || row?.action || 'TOPUP').toUpperCase();
@@ -160,6 +164,9 @@ function requestNumberOf(row){
 }
 
 function amountPrefixOf(row){
+  if (requestTypeOf(row) === 'ADD_MONEY') {
+    return walletPrefix(row?.currency || row?.wallet_currency || 'BDT');
+  }
   if (requestTypeOf(row) === 'WALLET') {
     return walletPrefix(row?.currency || row?.wallet_currency || 'BDT');
   }
@@ -758,6 +765,7 @@ function getInitialSection(){
 
   if (p === '/user/topup') return 'topupSection';
   if (p === '/user/bundle' || p === '/user/bundles') return 'bundleSection';
+  if (p === '/user/add-money') return 'addMoneySection';
   if (p === '/user/history') return 'historySection';
 
   return 'overviewSection';
@@ -809,6 +817,18 @@ function openSection(sectionId){
 
   }
 
+  if (sectionId === 'addMoneySection') {
+    loadAddMoneyPage({ force: !state.addMoneyLoaded }).catch(err => {
+      if (isSessionError(err)) {
+        showLogin();
+        setLoginError('Session expired. Please login again.');
+        return;
+      }
+
+      showToast(err.message || 'Failed to load add money', 'error');
+    });
+  }
+
   const main = document.querySelector('.main-panel');
   if (main) {
     main.scrollTo({ top: 0, behavior: 'smooth' });
@@ -837,6 +857,9 @@ function applyDashboardBootstrap(data){
   }
   if (Array.isArray(logWrap.wallet_history)) {
     state.walletHistory = logWrap.wallet_history;
+  }
+  if (Array.isArray(logWrap.add_money_history)) {
+    state.addMoneyHistory = logWrap.add_money_history;
   }
 }
 
@@ -893,6 +916,7 @@ async function loadRequestLogs(options = {}){
     state.historyMonth = normalizeMonthKey(data.month || month);
     state.requestLogs = Array.isArray(data.items) ? data.items : [];
     state.walletHistory = Array.isArray(data.wallet_history) ? data.wallet_history : [];
+    state.addMoneyHistory = Array.isArray(data.add_money_history) ? data.add_money_history : [];
     state.historyLoaded = true;
     syncHistoryMonthControls();
     renderHero();
@@ -1328,10 +1352,29 @@ function normalizeWalletHistoryItem(row){
   };
 }
 
+function normalizeAddMoneyHistoryItem(row){
+  const requestId = String(row?.request_id || '').trim();
+
+  return {
+    ...(row || {}),
+    _history_type: 'ADD_MONEY',
+    request_id: requestId,
+    request_type: 'ADD_MONEY',
+    type: 'ADD_MONEY',
+    service: 'Add Money',
+    status: String(row?.status || 'PENDING').toUpperCase(),
+    amount: Number(row?.amount || 0),
+    created_at: historyTimestamp(row),
+    message: String(row?.reject_reason || row?.note || ''),
+    raw: row || {}
+  };
+}
+
 function getFilteredHistory(){
   const rows = [
     ...(state.requestLogs || []),
-    ...(state.walletHistory || []).map(normalizeWalletHistoryItem)
+    ...(state.walletHistory || []).map(normalizeWalletHistoryItem),
+    ...(state.addMoneyHistory || []).map(normalizeAddMoneyHistoryItem)
   ];
 
   rows.sort((a,b) => {
@@ -1457,9 +1500,12 @@ function renderHistory(){
     const prefix = amountPrefixOf(item);
     const isMfs = type === 'MFS';
     const isWallet = type === 'WALLET';
+    const isAddMoney = type === 'ADD_MONEY';
     const receiptLink = isMfs ? mfsTrackingUrl(item) : String(item.receipt_url || '').trim();
 
-    const displayAmount = type === 'BUNDLE'
+    const displayAmount = isAddMoney
+      ? (item.amount || 0)
+      : type === 'BUNDLE'
       ? (item.you_pay ?? item.payable_amount ?? item.net_cost_after_commission ?? item.amount ?? 0)
       : (item.amount || 0);
 
@@ -1469,6 +1515,13 @@ function renderHistory(){
           <div class="mini"><label>Phone / Role</label><strong>${esc(item.sender_phone || '-')} - ${esc(item.sender_role || '-')}</strong></div>
           <div class="mini"><label>Amount</label><strong>${esc(item.currency || 'BDT')} ${money(item.amount || 0)}</strong></div>
           <div class="mini"><label>Date</label><strong>${esc(fmtTs(item.created_at || 0))}</strong></div>
+        `
+      : isAddMoney
+      ? `
+          <div class="mini"><label>Method</label><strong>${esc(item.method || '-')}</strong></div>
+          <div class="mini"><label>Amount</label><strong>${esc(prefix)} ${money(item.amount || 0)}</strong></div>
+          <div class="mini"><label>Submitted</label><strong>${esc(fmtTs(item.created_at || 0))}</strong></div>
+          <div class="mini"><label>Processed</label><strong>${esc(fmtTs(item.approved_at || item.rejected_at || 0))}</strong></div>
         `
       : isMfs
       ? `
@@ -1493,6 +1546,15 @@ function renderHistory(){
             <div class="mini"><label>Reference</label><strong>${esc(item.reference || '-')}</strong></div>
           </div>
         `
+      : isAddMoney
+      ? `
+          <div class="history-meta history-meta-extra">
+            <div class="mini"><label>Txn / Receipt</label><strong>${esc(item.transaction_id || item.receipt_hash || '-')}</strong></div>
+            <div class="mini"><label>Sender</label><strong>${esc(item.sender_number || '-')}</strong></div>
+            <div class="mini"><label>Note</label><strong>${esc(item.note || '-')}</strong></div>
+            <div class="mini"><label>Reject Reason</label><strong>${esc(item.reject_reason || '-')}</strong></div>
+          </div>
+        `
       : '';
 
     return `
@@ -1505,6 +1567,8 @@ function renderHistory(){
               ${
                 isWallet
                   ? 'Wallet Received'
+                  : isAddMoney
+                    ? 'Add Money Request'
                   : isMfs
                     ? esc(mfsProviderLabel(item)) + ' Send Money'
                     : esc(type === 'BUNDLE' ? 'Bundle Request' : 'Topup Request')
@@ -1533,10 +1597,10 @@ function renderHistory(){
             : ''
         }
 
-        ${isWallet ? '' : historyMessageHtml(item)}
+        ${isWallet || isAddMoney ? '' : historyMessageHtml(item)}
 
         <div class="history-actions">
-          ${isWallet ? '' : `<button class="btn blue sm" type="button" onclick="openHistoryDetail('${esc(item.request_id || '')}')">View</button>`}
+          ${isWallet || isAddMoney ? '' : `<button class="btn blue sm" type="button" onclick="openHistoryDetail('${esc(item.request_id || '')}')">View</button>`}
           <button class="btn ghost sm" type="button" onclick="copyHistoryId('${esc(item.request_id || '')}')">Copy ID</button>
           ${receiptLink ? `<button class="btn green sm" type="button" onclick="openReceiptLink('${esc(receiptLink)}')">Receipt</button>` : ''}
         </div>
@@ -1632,6 +1696,212 @@ function setHistoryFilter(filter, options = {}){
 
   if (options.skipRender) return;
   renderHistory();
+}
+
+/* =========================
+   Add Money
+========================= */
+
+function addMoneyStatusLabel(status){
+  const s = String(status || 'PENDING').toUpperCase();
+  if (s === 'APPROVED') return 'Approved';
+  if (s === 'REJECTED') return 'Rejected';
+  return 'Pending';
+}
+
+function addMoneyHistoryCard(row){
+  const prefix = walletPrefix(row.currency || 'BDT');
+  const receipt = String(row.receipt_url || '').trim();
+  return `
+    <div class="history-item">
+      <div class="history-top">
+        <div>
+          <div class="history-id">${esc(row.request_id || '-')}</div>
+          <div class="history-small">Add Money - ${esc(row.method || '-')}</div>
+        </div>
+        ${statusPill(addMoneyStatusLabel(row.status || 'PENDING'))}
+      </div>
+      <div class="history-meta">
+        <div class="mini"><label>Amount</label><strong>${prefix} ${money(row.amount || 0)}</strong></div>
+        <div class="mini"><label>Submitted</label><strong>${esc(fmtTs(row.created_at || 0))}</strong></div>
+        <div class="mini"><label>Txn / Sender</label><strong>${esc(row.transaction_id || row.sender_number || '-')}</strong></div>
+        <div class="mini"><label>Processed</label><strong>${esc(fmtTs(row.approved_at || row.rejected_at || 0))}</strong></div>
+      </div>
+      ${row.reject_reason ? `<div class="history-message">${esc(row.reject_reason)}</div>` : ''}
+      <div class="history-actions">
+        <button class="btn ghost sm" type="button" onclick="copyHistoryId('${esc(row.request_id || '')}')">Copy ID</button>
+        ${receipt ? `<button class="btn green sm" type="button" onclick="openReceiptLink('${esc(receipt)}')">Receipt</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function renderAddMoneyHistory(){
+  const list = el('addMoneyHistoryList');
+  if (!list) return;
+
+  if (!state.addMoneyHistory.length) {
+    list.innerHTML = `
+      <div class="history-item history-empty">
+        <div class="history-id">No add money request yet.</div>
+      </div>
+    `;
+    return;
+  }
+
+  list.innerHTML = state.addMoneyHistory.map(addMoneyHistoryCard).join('');
+}
+
+function renderAddMoneyPage(){
+  const wrap = el('addMoneyContent');
+  if (!wrap) return;
+
+  const profile = state.addMoneyProfile || {};
+  const settings = profile.settings || {};
+  const country = String(profile.pricing_country || '').toUpperCase();
+  const prefix = walletPrefix(profile.currency || (country === 'MY' ? 'MYR' : 'BDT'));
+  const enabled = !!settings.enabled;
+
+  if (!enabled) {
+    wrap.innerHTML = `
+      <div class="detail-box">
+        <label>Add Money</label>
+        <strong>Temporarily unavailable</strong>
+        <p class="muted">Please contact support if you need help adding balance.</p>
+      </div>
+    `;
+    renderAddMoneyHistory();
+    return;
+  }
+
+  if (country === 'MY') {
+    wrap.innerHTML = `
+      <form id="addMoneyForm" class="form-grid" enctype="multipart/form-data">
+        <input type="hidden" name="method" value="BANK">
+        <div class="detail-box">
+          <label>Bank</label>
+          <strong>${esc(settings.bank_name || '-')}</strong>
+          <button class="btn ghost sm" type="button" data-copy-add-money="${esc(settings.bank_name || '')}">Copy</button>
+        </div>
+        <div class="detail-box">
+          <label>Account Holder</label>
+          <strong>${esc(settings.account_holder || '-')}</strong>
+          <button class="btn ghost sm" type="button" data-copy-add-money="${esc(settings.account_holder || '')}">Copy</button>
+        </div>
+        <div class="detail-box">
+          <label>Account Number</label>
+          <strong>${esc(settings.account_number || '-')}</strong>
+          <button class="btn ghost sm" type="button" data-copy-add-money="${esc(settings.account_number || '')}">Copy</button>
+        </div>
+        <div class="field form-full">
+          <label>Instruction</label>
+          <p class="muted">${esc(settings.instruction || 'Transfer and upload your receipt.')}</p>
+        </div>
+        <div class="field">
+          <label>Amount (${prefix})</label>
+          <input class="input" name="amount_rm" type="number" min="1" step="0.01" placeholder="Enter amount">
+        </div>
+        <div class="field">
+          <label>Receipt Upload</label>
+          <input class="input" name="receipt_upload" type="file" accept="image/jpeg,image/png,image/webp,application/pdf">
+        </div>
+        <div class="field form-full">
+          <label>Note / Reference (optional)</label>
+          <input class="input" name="note" placeholder="Optional note">
+        </div>
+        <div class="form-actions form-full">
+          <button class="btn green" type="submit">Submit Add Money Request</button>
+        </div>
+      </form>
+    `;
+  } else {
+    wrap.innerHTML = `
+      <form id="addMoneyForm" class="form-grid">
+        <div class="detail-box">
+          <label>bKash Number</label>
+          <strong>${esc(settings.bkash_number || '-')}</strong>
+          <small>${esc(settings.bkash_account_type || '')}</small>
+          <button class="btn ghost sm" type="button" data-copy-add-money="${esc(settings.bkash_number || '')}">Copy</button>
+        </div>
+        <div class="detail-box">
+          <label>Nagad Number</label>
+          <strong>${esc(settings.nagad_number || '-')}</strong>
+          <small>${esc(settings.nagad_account_type || '')}</small>
+          <button class="btn ghost sm" type="button" data-copy-add-money="${esc(settings.nagad_number || '')}">Copy</button>
+        </div>
+        <div class="field form-full">
+          <label>Instruction</label>
+          <p class="muted">${esc(settings.instruction || 'Send money first, then submit your transaction ID.')}</p>
+        </div>
+        <div class="field">
+          <label>Method</label>
+          <select class="input" name="method">
+            <option value="BKASH">bKash</option>
+            <option value="NAGAD">Nagad</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Amount (${prefix})</label>
+          <input class="input" name="amount_bdt" type="number" min="1" step="0.01" placeholder="Enter amount">
+        </div>
+        <div class="field">
+          <label>Transaction ID</label>
+          <input class="input" name="transaction_id" placeholder="bKash/Nagad transaction ID">
+        </div>
+        <div class="field">
+          <label>Sender Number</label>
+          <input class="input" name="sender_number" placeholder="Number used to send payment">
+        </div>
+        <div class="form-actions form-full">
+          <button class="btn green" type="submit">Submit Add Money Request</button>
+        </div>
+      </form>
+    `;
+  }
+
+  bindAddMoneyForm();
+  renderAddMoneyHistory();
+}
+
+function bindAddMoneyForm(){
+  const form = el('addMoneyForm');
+  if (!form || form.dataset.bound === '1') return;
+  form.dataset.bound = '1';
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const formData = new FormData(form);
+
+    try {
+      await proxyFormPost('add_money_submit', formData, 'Submitting add money request...');
+      showToast('Add money request submitted. Please wait for approval.', 'ok');
+      form.reset();
+      state.addMoneyLoaded = false;
+      state.historyLoaded = false;
+      await loadAddMoneyPage({ force: true, busy:false });
+    } catch (err) {
+      showToast(err.message || 'Failed to submit add money request', 'error');
+    }
+  });
+}
+
+async function loadAddMoneyPage(options = {}){
+  if (state.addMoneyLoaded && !options.force) {
+    renderAddMoneyPage();
+    return;
+  }
+
+  const data = await proxyGet(
+    'add_money_settings',
+    {},
+    options.busyText || 'Loading add money...',
+    { busy: options.busy !== false }
+  );
+
+  state.addMoneyProfile = data.profile || null;
+  state.addMoneyHistory = Array.isArray(data.history) ? data.history : [];
+  state.addMoneyLoaded = true;
+  renderAddMoneyPage();
 }
 
 /* =========================
@@ -3076,6 +3346,48 @@ function clearLoginOtpTimer(){
   }
 }
 
+async function proxyFormPost(action, formData, busyText = 'Processing...', options = {}){
+  const useBusy = options.busy !== false;
+
+  if (useBusy) {
+    setBusy(true, busyText);
+  }
+
+  try{
+    const headers = {
+      'Accept': 'application/json',
+      'Cache-Control': 'no-cache'
+    };
+
+    if (state.csrf) {
+      headers['X-CSRF-TOKEN'] = state.csrf;
+    }
+
+    const res = await fetch(USER_PROXY_URL + '?action=' + encodeURIComponent(action), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers,
+      body: formData
+    });
+
+    const json = await readJsonSafe(res);
+
+    if (!res.ok || !json.ok) {
+      const err = new Error(json.message || 'Request failed');
+      err.code = json.code || 'ERROR';
+      err.data = json.data || {};
+      err.status = res.status;
+      throw err;
+    }
+
+    return json.data || {};
+  } finally {
+    if (useBusy) {
+      setBusy(false);
+    }
+  }
+}
+
 function loginOtpIsExpired(){
   return state.loginOtp.expiresAt > 0 && Date.now() >= state.loginOtp.expiresAt;
 }
@@ -3350,6 +3662,9 @@ async function doLogout(){
   state.walletSummary = null;
   state.requestLogs = [];
   state.walletHistory = [];
+  state.addMoneyProfile = null;
+  state.addMoneyHistory = [];
+  state.addMoneyLoaded = false;
   state.historyLoaded = false;
   state.historyLoading = false;
   state.bundleOffers = [];
@@ -3529,6 +3844,30 @@ function bindEvents(){
 
         showToast(err.message || 'Failed to refresh history', 'error');
       });
+    });
+  }
+
+  const addMoneyReloadBtn = el('addMoneyReloadBtn');
+  if (addMoneyReloadBtn && addMoneyReloadBtn.dataset.bound !== '1') {
+    addMoneyReloadBtn.dataset.bound = '1';
+    addMoneyReloadBtn.addEventListener('click', () => {
+      loadAddMoneyPage({ force: true, busyText: 'Reloading add money...' }).catch(err => {
+        if (isSessionError(err)) {
+          showLogin();
+          setLoginError('Session expired. Please login again.');
+          return;
+        }
+        showToast(err.message || 'Failed to reload add money', 'error');
+      });
+    });
+  }
+
+  if (document.body && document.body.dataset.addMoneyCopyBound !== '1') {
+    document.body.dataset.addMoneyCopyBound = '1';
+    document.addEventListener('click', (event) => {
+      const btn = event.target?.closest?.('[data-copy-add-money]');
+      if (!btn) return;
+      copyText(btn.dataset.copyAddMoney || '', 'Copied');
     });
   }
 

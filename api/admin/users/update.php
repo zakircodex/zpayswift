@@ -140,10 +140,14 @@ $oldName = trim((string)($user['name'] ?? ''));
 $oldEmail = strtolower(trim((string)($user['email'] ?? '')));
 $oldRole = strtoupper(trim((string)($user['role'] ?? 'USER')));
 $oldStatus = strtoupper(trim((string)($user['status'] ?? 'ACTIVE')));
+$oldWalletRow = fb_get('USER_WALLETS/' . $uid);
+$oldWalletRow = is_array($oldWalletRow) ? $oldWalletRow : [];
 $oldPricingCountry = auth_pricing_country_from_user(
     $user,
-    (array)(fb_get('USER_WALLETS/' . $uid) ?: [])
+    $oldWalletRow
 );
+$oldCurrency = strtoupper(trim((string)($oldWalletRow['currency'] ?? $oldWalletRow['wallet_currency'] ?? $user['currency'] ?? $user['wallet_currency'] ?? '')));
+$countryChangeNote = trim((string)($body['country_change_note'] ?? $body['note'] ?? ''));
 
 $role = normalize_admin_role($body['role'] ?? $oldRole);
 $status = normalize_admin_status($body['status'] ?? $oldStatus);
@@ -211,28 +215,6 @@ if ($countryProvided) {
         api_response(false, 'VALIDATION_ERROR', 'Country must be BD or MY', ['field' => 'country'], 422);
     }
 
-    if ($country !== $oldPricingCountry) {
-        $walletRow = fb_get('USER_WALLETS/' . $uid);
-        $walletRow = is_array($walletRow) ? $walletRow : [];
-        $availableBalance = (float)($walletRow['available_balance'] ?? 0);
-        $holdBalance = (float)($walletRow['hold_balance'] ?? 0);
-
-        if (abs($availableBalance) > 0.000001 || abs($holdBalance) > 0.000001) {
-            api_response(
-                false,
-                'COUNTRY_MIGRATION_REQUIRES_ZERO_BALANCE',
-                'Pricing country can only be changed after available and hold balances are zero',
-                [
-                    'available_balance' => $availableBalance,
-                    'hold_balance' => $holdBalance,
-                    'current_pricing_country' => $oldPricingCountry,
-                    'requested_pricing_country' => $country,
-                ],
-                422
-            );
-        }
-    }
-
     $updates['country_code'] = $country;
     $updates['country'] = $country;
     $updates['pricing_country'] = $country;
@@ -289,6 +271,26 @@ if ($countryProvided) {
             'updated_at' => now_ts(),
         ]);
         api_response(false, 'SERVER_ERROR', 'User updated but wallet currency migration failed', [], 500);
+    }
+
+    if ($country !== $oldPricingCountry || $walletCurrency !== $oldCurrency) {
+        $logId = function_exists('make_uid') ? make_uid() : ('CCL' . date('YmdHis') . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8)));
+        $logRow = [
+            'log_id' => $logId,
+            'uid' => $uid,
+            'old_pricing_country' => $oldPricingCountry,
+            'new_pricing_country' => $country,
+            'old_currency' => $oldCurrency !== '' ? $oldCurrency : ($oldPricingCountry === 'MY' ? 'MYR' : 'BDT'),
+            'new_currency' => $walletCurrency,
+            'changed_by' => (string)($adminUser['uid'] ?? ''),
+            'changed_by_role' => 'ADMIN',
+            'changed_at' => now_ts(),
+            'note' => $countryChangeNote,
+            'balance_converted' => false,
+        ];
+        if (!fb_put('COUNTRY_CHANGE_LOG/' . $uid . '/' . $logId, $logRow)) {
+            system_log('COUNTRY_CHANGE_LOG_WARNING', $uid, 'Failed to write country change log', $logRow);
+        }
     }
 }
 

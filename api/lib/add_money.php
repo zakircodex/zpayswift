@@ -1,0 +1,764 @@
+<?php
+declare(strict_types=1);
+
+if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
+    http_response_code(404);
+    exit('Not Found');
+}
+
+require_once __DIR__ . '/wallet.php';
+
+function add_money_now(): int
+{
+    return function_exists('now_ts') ? (int)now_ts() : time();
+}
+
+function add_money_request_id(): string
+{
+    return 'AM' . date('YmdHis') . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
+}
+
+function add_money_token(int $bytes = 24): string
+{
+    return bin2hex(random_bytes($bytes));
+}
+
+function add_money_h($value): string
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function add_money_round($value): float
+{
+    if (is_string($value)) {
+        $value = str_replace(',', '', trim($value));
+    }
+
+    return round((float)$value, 2);
+}
+
+function add_money_country_for_user(array $user, array $wallet = []): string
+{
+    if (function_exists('auth_pricing_country_from_user')) {
+        return auth_pricing_country_from_user($user, $wallet);
+    }
+
+    foreach (['pricing_country', 'market_country', 'service_country', 'country_code', 'country'] as $key) {
+        $country = strtoupper(trim((string)($user[$key] ?? $wallet[$key] ?? '')));
+        if (in_array($country, ['BD', 'MY'], true)) {
+            return $country;
+        }
+    }
+
+    $currency = strtoupper(trim((string)($wallet['wallet_currency'] ?? $wallet['currency'] ?? $user['currency'] ?? '')));
+    return in_array($currency, ['MYR', 'RM'], true) ? 'MY' : 'BD';
+}
+
+function add_money_currency_for_country(string $country): string
+{
+    $country = strtoupper(trim($country));
+    return $country === 'MY' ? 'MYR' : 'BDT';
+}
+
+function add_money_currency_label(string $currency): string
+{
+    $currency = strtoupper(trim($currency));
+    return in_array($currency, ['MYR', 'RM'], true) ? 'RM' : 'BDT';
+}
+
+function add_money_default_settings(): array
+{
+    return [
+        'BD' => [
+            'enabled' => false,
+            'bkash_number' => '',
+            'bkash_account_type' => 'Personal',
+            'nagad_number' => '',
+            'nagad_account_type' => 'Personal',
+            'instruction' => 'Send money first, then submit transaction ID and sender number.',
+        ],
+        'MY' => [
+            'enabled' => false,
+            'bank_name' => '',
+            'account_holder' => '',
+            'account_number' => '',
+            'instruction' => 'Transfer to the bank account, then upload your receipt.',
+        ],
+    ];
+}
+
+function add_money_settings(): array
+{
+    $defaults = add_money_default_settings();
+    $row = fb_get('CONFIG/ADD_MONEY');
+    $row = is_array($row) ? $row : [];
+
+    foreach (['BD', 'MY'] as $country) {
+        $cfg = is_array($row[$country] ?? null) ? $row[$country] : [];
+        $defaults[$country] = array_merge($defaults[$country], $cfg);
+        $defaults[$country]['enabled'] = !empty($defaults[$country]['enabled']);
+    }
+
+    return $defaults;
+}
+
+function add_money_save_settings(array $body, string $adminUid): array
+{
+    $now = add_money_now();
+    $settings = add_money_settings();
+
+    $bd = is_array($body['BD'] ?? null) ? $body['BD'] : (is_array($body['bd'] ?? null) ? $body['bd'] : []);
+    $my = is_array($body['MY'] ?? null) ? $body['MY'] : (is_array($body['my'] ?? null) ? $body['my'] : []);
+
+    $next = [
+        'BD' => [
+            'enabled' => !empty($bd['enabled']),
+            'bkash_number' => trim((string)($bd['bkash_number'] ?? $settings['BD']['bkash_number'] ?? '')),
+            'bkash_account_type' => trim((string)($bd['bkash_account_type'] ?? $settings['BD']['bkash_account_type'] ?? 'Personal')),
+            'nagad_number' => trim((string)($bd['nagad_number'] ?? $settings['BD']['nagad_number'] ?? '')),
+            'nagad_account_type' => trim((string)($bd['nagad_account_type'] ?? $settings['BD']['nagad_account_type'] ?? 'Personal')),
+            'instruction' => trim((string)($bd['instruction'] ?? $settings['BD']['instruction'] ?? '')),
+        ],
+        'MY' => [
+            'enabled' => !empty($my['enabled']),
+            'bank_name' => trim((string)($my['bank_name'] ?? $settings['MY']['bank_name'] ?? '')),
+            'account_holder' => trim((string)($my['account_holder'] ?? $settings['MY']['account_holder'] ?? '')),
+            'account_number' => trim((string)($my['account_number'] ?? $settings['MY']['account_number'] ?? '')),
+            'instruction' => trim((string)($my['instruction'] ?? $settings['MY']['instruction'] ?? '')),
+        ],
+        'updated_at' => $now,
+        'updated_by' => $adminUid,
+    ];
+
+    if (!fb_put('CONFIG/ADD_MONEY', $next)) {
+        return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save add money settings'];
+    }
+
+    return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money settings saved', 'data' => $next];
+}
+
+function add_money_user_payload(array $user, array $wallet = []): array
+{
+    $country = add_money_country_for_user($user, $wallet);
+    $currency = add_money_currency_for_country($country);
+    $settings = add_money_settings();
+
+    return [
+        'pricing_country' => $country,
+        'currency' => $currency,
+        'currency_label' => add_money_currency_label($currency),
+        'settings' => $settings[$country] ?? [],
+    ];
+}
+
+function add_money_safe_key(string $value): string
+{
+    return hash('sha256', strtoupper(trim($value)));
+}
+
+function add_money_receipt_dir(): string
+{
+    return dirname(__DIR__) . '/storage/add_money/' . date('Y-m');
+}
+
+function add_money_detect_upload_mime(string $tmpPath): string
+{
+    $finfo = new finfo(FILEINFO_MIME_TYPE);
+    return (string)$finfo->file($tmpPath);
+}
+
+function add_money_store_receipt(array $file, string $requestId, string $uid): array
+{
+    if (empty($file) || (int)($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        return ['ok' => false, 'code' => 'RECEIPT_REQUIRED', 'message' => 'Receipt upload is required'];
+    }
+
+    $tmp = (string)($file['tmp_name'] ?? '');
+    if ($tmp === '' || !is_uploaded_file($tmp)) {
+        return ['ok' => false, 'code' => 'INVALID_RECEIPT', 'message' => 'Invalid receipt upload'];
+    }
+
+    $size = (int)($file['size'] ?? 0);
+    if ($size <= 0 || $size > 5 * 1024 * 1024) {
+        return ['ok' => false, 'code' => 'INVALID_RECEIPT_SIZE', 'message' => 'Receipt file must be 5 MB or smaller'];
+    }
+
+    $mime = add_money_detect_upload_mime($tmp);
+    $allowed = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+        'application/pdf' => 'pdf',
+    ];
+
+    if (!isset($allowed[$mime])) {
+        return ['ok' => false, 'code' => 'INVALID_RECEIPT_TYPE', 'message' => 'Only JPG, PNG, WEBP or PDF receipt files are allowed'];
+    }
+
+    $hash = hash_file('sha256', $tmp);
+    if ($hash === '' || fb_get('ADD_MONEY_RECEIPT_HASHES/' . $hash) !== null) {
+        return ['ok' => false, 'code' => 'DUPLICATE_RECEIPT', 'message' => 'This receipt has already been submitted.'];
+    }
+
+    $dir = add_money_receipt_dir();
+    if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
+        return ['ok' => false, 'code' => 'UPLOAD_DIR_FAILED', 'message' => 'Receipt storage is unavailable'];
+    }
+
+    $ext = $allowed[$mime];
+    $relative = 'storage/add_money/' . date('Y-m') . '/' . $requestId . '.' . $ext;
+    $target = dirname(__DIR__) . '/' . $relative;
+
+    if (!move_uploaded_file($tmp, $target)) {
+        return ['ok' => false, 'code' => 'UPLOAD_FAILED', 'message' => 'Failed to store receipt'];
+    }
+
+    $token = add_money_token(18);
+    $url = function_exists('app_api_url') ? app_api_url('add_money/receipt.php?t=' . rawurlencode($token)) : '';
+
+    return [
+        'ok' => true,
+        'hash' => $hash,
+        'mime' => $mime,
+        'path' => $relative,
+        'token' => $token,
+        'url' => $url,
+        'size' => $size,
+    ];
+}
+
+function add_money_find_request(string $requestId): array
+{
+    $requestId = trim($requestId);
+    if ($requestId === '') {
+        return [];
+    }
+
+    $row = fb_get('ADD_MONEY_REQUESTS/' . $requestId);
+    return is_array($row) ? $row : [];
+}
+
+function add_money_patch_request(string $requestId, array $patch): bool
+{
+    $requestId = trim($requestId);
+    if ($requestId === '') {
+        return false;
+    }
+
+    $patch['updated_at'] = add_money_now();
+    $ok1 = fb_patch('ADD_MONEY_REQUESTS/' . $requestId, $patch);
+
+    $row = add_money_find_request($requestId);
+    $uid = trim((string)($row['uid'] ?? $patch['uid'] ?? ''));
+    $ok2 = true;
+    if ($uid !== '') {
+        $ok2 = fb_patch('ADD_MONEY_BY_USER/' . $uid . '/' . $requestId, $patch);
+    }
+
+    return $ok1 && $ok2;
+}
+
+function add_money_telegram_bot_token(): string
+{
+    return defined('TELEGRAM_BOT_TOKEN') ? trim((string)TELEGRAM_BOT_TOKEN) : '';
+}
+
+function add_money_telegram_chat_id(): string
+{
+    return defined('TELEGRAM_CHAT_ID') ? trim((string)TELEGRAM_CHAT_ID) : '';
+}
+
+function add_money_action_key(): string
+{
+    if (defined('TELEGRAM_ADD_MONEY_ACTION_KEY') && trim((string)TELEGRAM_ADD_MONEY_ACTION_KEY) !== '') {
+        return trim((string)TELEGRAM_ADD_MONEY_ACTION_KEY);
+    }
+
+    return defined('APP_KEY') ? trim((string)APP_KEY) : '';
+}
+
+function add_money_telegram_enabled(): bool
+{
+    return add_money_telegram_bot_token() !== ''
+        && add_money_telegram_chat_id() !== ''
+        && add_money_action_key() !== '';
+}
+
+function add_money_action_details(string $action): array
+{
+    $code = strtolower(trim($action));
+    $map = [
+        'a' => 'APPROVE',
+        'r' => 'REJECT',
+        'v' => 'VIEW',
+    ];
+
+    return isset($map[$code])
+        ? ['ok' => true, 'code' => $code, 'action' => $map[$code]]
+        : ['ok' => false, 'code' => '', 'action' => ''];
+}
+
+function add_money_signature(string $requestId, string $action): string
+{
+    $details = add_money_action_details($action);
+    $code = (string)($details['code'] ?? '');
+    if ($requestId === '' || $code === '' || add_money_action_key() === '') {
+        return '';
+    }
+
+    return substr(hash_hmac('sha256', $code . '|' . $requestId, add_money_action_key()), 0, 16);
+}
+
+function add_money_callback_data(string $action, string $requestId): string
+{
+    $requestId = trim($requestId);
+    $details = add_money_action_details($action);
+    if (empty($details['ok']) || $requestId === '') {
+        return '';
+    }
+
+    $code = (string)$details['code'];
+    $data = 'am|' . $code . '|' . $requestId . '|' . add_money_signature($requestId, $code);
+    return strlen($data) <= 64 ? $data : '';
+}
+
+function add_money_parse_callback_data(string $callbackData): array
+{
+    $parts = explode('|', trim($callbackData));
+    if (count($parts) !== 4 || strtolower((string)$parts[0]) !== 'am') {
+        return ['ok' => false, 'code' => 'INVALID_CALLBACK', 'message' => 'Invalid add money callback'];
+    }
+
+    $details = add_money_action_details((string)$parts[1]);
+    $requestId = trim((string)$parts[2]);
+    $signature = trim((string)$parts[3]);
+
+    if (empty($details['ok']) || $requestId === '') {
+        return ['ok' => false, 'code' => 'INVALID_CALLBACK', 'message' => 'Invalid add money action'];
+    }
+
+    $expected = add_money_signature($requestId, (string)$details['code']);
+    if ($signature === '' || $expected === '' || !hash_equals($expected, $signature)) {
+        return ['ok' => false, 'code' => 'INVALID_SIGNATURE', 'message' => 'Invalid add money callback signature'];
+    }
+
+    return [
+        'ok' => true,
+        'code' => 'SUCCESS',
+        'action' => (string)$details['action'],
+        'request_id' => $requestId,
+    ];
+}
+
+function add_money_keyboard(string $requestId, bool $showReceipt = false, string $receiptUrl = ''): array
+{
+    $rows = [
+        [
+            ['text' => '✅ Approve', 'callback_data' => add_money_callback_data('a', $requestId)],
+            ['text' => '❌ Reject', 'callback_data' => add_money_callback_data('r', $requestId)],
+        ],
+        [
+            $showReceipt && trim($receiptUrl) !== ''
+                ? ['text' => '👁 View Receipt', 'url' => trim($receiptUrl)]
+                : ['text' => '👁 View', 'callback_data' => add_money_callback_data('v', $requestId)],
+        ],
+    ];
+
+    return ['inline_keyboard' => $rows];
+}
+
+function add_money_message(array $row): string
+{
+    $country = strtoupper(trim((string)($row['pricing_country'] ?? 'BD')));
+    $currency = add_money_currency_label((string)($row['currency'] ?? add_money_currency_for_country($country)));
+    $title = $country === 'MY' ? 'New MY Add Money Request' : 'New BD Add Money Request';
+    $method = strtoupper(trim((string)($row['method'] ?? '')));
+    $receiptUrl = trim((string)($row['receipt_url'] ?? ''));
+
+    $text = "<b>" . add_money_h($title) . "</b>\n\n"
+        . "Request ID: <code>" . add_money_h($row['request_id'] ?? '') . "</code>\n"
+        . "Name: <b>" . add_money_h($row['name'] ?? '-') . "</b>\n"
+        . "Phone: <code>" . add_money_h($row['phone'] ?? '-') . "</code>\n"
+        . "Role: <b>" . add_money_h($row['role'] ?? '-') . "</b>\n"
+        . "Method: <b>" . add_money_h($method) . "</b>\n"
+        . "Amount: <b>" . add_money_h($currency) . " " . number_format((float)($row['amount'] ?? 0), 2) . "</b>\n"
+        . "Status: <b>" . add_money_h($row['status'] ?? 'PENDING') . "</b>\n";
+
+    if ($country === 'BD') {
+        $text .= "Transaction ID: <code>" . add_money_h($row['transaction_id'] ?? '-') . "</code>\n"
+            . "Sender Number: <code>" . add_money_h($row['sender_number'] ?? '-') . "</code>\n";
+    } else {
+        $text .= "Receipt: " . ($receiptUrl !== '' ? '<a href="' . add_money_h($receiptUrl) . '">Open receipt</a>' : '-') . "\n";
+    }
+
+    $text .= "Created: " . date('Y-m-d H:i:s', (int)($row['created_at'] ?? add_money_now()));
+
+    return $text;
+}
+
+function add_money_telegram_api(string $method, array $payload): array
+{
+    if (!add_money_telegram_enabled()) {
+        return ['ok' => false, 'code' => 'TELEGRAM_DISABLED', 'message' => 'Telegram add money config missing'];
+    }
+
+    $ch = curl_init('https://api.telegram.org/bot' . add_money_telegram_bot_token() . '/' . ltrim($method, '/'));
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query($payload),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => 20,
+    ]);
+
+    $raw = curl_exec($ch);
+    $err = curl_error($ch);
+    $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($raw === false) {
+        return ['ok' => false, 'code' => 'TELEGRAM_ERROR', 'message' => $err ?: 'Telegram request failed'];
+    }
+
+    $json = json_decode((string)$raw, true);
+    if (!is_array($json) || empty($json['ok'])) {
+        return [
+            'ok' => false,
+            'code' => 'TELEGRAM_ERROR',
+            'message' => (string)($json['description'] ?? 'Telegram request failed'),
+            'http_status' => $status,
+        ];
+    }
+
+    return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Telegram sent', 'data' => (array)($json['result'] ?? [])];
+}
+
+function add_money_notify_telegram(array $row): array
+{
+    $requestId = trim((string)($row['request_id'] ?? ''));
+    if ($requestId === '') {
+        return ['ok' => false, 'code' => 'INVALID_REQUEST', 'message' => 'Request ID missing'];
+    }
+
+    if (!add_money_telegram_enabled()) {
+        add_money_patch_request($requestId, [
+            'telegram_sent' => false,
+            'telegram_error' => 'Telegram add money config missing',
+        ]);
+        return ['ok' => false, 'code' => 'TELEGRAM_DISABLED', 'message' => 'Telegram add money config missing'];
+    }
+
+    $res = add_money_telegram_api('sendMessage', [
+        'chat_id' => add_money_telegram_chat_id(),
+        'text' => add_money_message($row),
+        'parse_mode' => 'HTML',
+        'disable_web_page_preview' => false,
+        'reply_markup' => json_encode(add_money_keyboard($requestId, trim((string)($row['receipt_url'] ?? '')) !== '', (string)($row['receipt_url'] ?? '')), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    ]);
+
+    if (empty($res['ok'])) {
+        add_money_patch_request($requestId, [
+            'telegram_sent' => false,
+            'telegram_error' => substr((string)($res['message'] ?? 'Telegram send failed'), 0, 400),
+        ]);
+        return $res;
+    }
+
+    $data = (array)($res['data'] ?? []);
+    add_money_patch_request($requestId, [
+        'telegram_sent' => true,
+        'telegram_error' => '',
+        'telegram_message_id' => (int)($data['message_id'] ?? 0),
+        'telegram_chat_id' => (string)($data['chat']['id'] ?? add_money_telegram_chat_id()),
+        'telegram_sent_at' => add_money_now(),
+    ]);
+
+    return $res;
+}
+
+function add_money_create_request(string $uid, array $user, array $wallet, array $body, array $files = []): array
+{
+    $uid = trim($uid);
+    $country = add_money_country_for_user($user, $wallet);
+    $currency = add_money_currency_for_country($country);
+    $settings = add_money_settings();
+    $countrySettings = $settings[$country] ?? [];
+
+    if (empty($countrySettings['enabled'])) {
+        return ['ok' => false, 'code' => 'ADD_MONEY_DISABLED', 'message' => 'Add money is not available for your account right now'];
+    }
+
+    $requestId = add_money_request_id();
+    $now = add_money_now();
+    $method = strtoupper(trim((string)($body['method'] ?? '')));
+    $amount = add_money_round($body['amount'] ?? $body['amount_bdt'] ?? $body['amount_rm'] ?? 0);
+    $transactionId = trim((string)($body['transaction_id'] ?? ''));
+    $senderNumber = trim((string)($body['sender_number'] ?? ''));
+    $note = trim((string)($body['note'] ?? $body['reference'] ?? ''));
+    $receipt = [];
+
+    if ($amount <= 0) {
+        return ['ok' => false, 'code' => 'INVALID_AMOUNT', 'message' => 'Amount must be greater than zero'];
+    }
+
+    if ($country === 'BD') {
+        if (!in_array($method, ['BKASH', 'NAGAD'], true)) {
+            return ['ok' => false, 'code' => 'INVALID_METHOD', 'message' => 'Please select bKash or Nagad'];
+        }
+        if ($transactionId === '') {
+            return ['ok' => false, 'code' => 'TXN_REQUIRED', 'message' => 'Transaction ID is required'];
+        }
+        if ($senderNumber === '') {
+            return ['ok' => false, 'code' => 'SENDER_REQUIRED', 'message' => 'Sender number is required'];
+        }
+
+        $txnKey = add_money_safe_key($method . '|' . $transactionId);
+        if (fb_get('ADD_MONEY_TXN_IDS/' . $method . '/' . $txnKey) !== null) {
+            return ['ok' => false, 'code' => 'DUPLICATE_TXN_ID', 'message' => 'This transaction ID has already been submitted.'];
+        }
+    } else {
+        $method = 'BANK';
+        $receiptFile = is_array($files['receipt_upload'] ?? null) ? $files['receipt_upload'] : [];
+        $receipt = add_money_store_receipt($receiptFile, $requestId, $uid);
+        if (empty($receipt['ok'])) {
+            return $receipt;
+        }
+    }
+
+    $row = [
+        'request_id' => $requestId,
+        'uid' => $uid,
+        'name' => (string)($user['name'] ?? ''),
+        'phone' => (string)($user['phone'] ?? ''),
+        'role' => strtoupper(trim((string)($user['role'] ?? 'USER'))),
+        'pricing_country' => $country,
+        'currency' => $currency,
+        'method' => $method,
+        'amount' => $amount,
+        'transaction_id' => $transactionId,
+        'sender_number' => $senderNumber,
+        'receipt_url' => (string)($receipt['url'] ?? ''),
+        'receipt_token' => (string)($receipt['token'] ?? ''),
+        'receipt_path' => (string)($receipt['path'] ?? ''),
+        'receipt_mime' => (string)($receipt['mime'] ?? ''),
+        'receipt_hash' => (string)($receipt['hash'] ?? ''),
+        'note' => $note,
+        'status' => 'PENDING',
+        'created_at' => $now,
+        'updated_at' => $now,
+        'approved_by' => '',
+        'approved_at' => 0,
+        'rejected_by' => '',
+        'rejected_at' => 0,
+        'reject_reason' => '',
+        'balance_before' => 0,
+        'balance_after' => 0,
+    ];
+
+    if (!fb_put('ADD_MONEY_REQUESTS/' . $requestId, $row)) {
+        return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save add money request'];
+    }
+
+    if (!fb_put('ADD_MONEY_BY_USER/' . $uid . '/' . $requestId, $row)) {
+        fb_delete('ADD_MONEY_REQUESTS/' . $requestId);
+        return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save add money history'];
+    }
+
+    if ($country === 'BD') {
+        $txnKey = add_money_safe_key($method . '|' . $transactionId);
+        if (!fb_put('ADD_MONEY_TXN_IDS/' . $method . '/' . $txnKey, [
+            'request_id' => $requestId,
+            'uid' => $uid,
+            'transaction_id' => $transactionId,
+            'method' => $method,
+            'created_at' => $now,
+        ])) {
+            fb_delete('ADD_MONEY_REQUESTS/' . $requestId);
+            fb_delete('ADD_MONEY_BY_USER/' . $uid . '/' . $requestId);
+            return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save transaction duplicate index'];
+        }
+    } elseif (!empty($receipt['hash'])) {
+        $hashSaved = fb_put('ADD_MONEY_RECEIPT_HASHES/' . $receipt['hash'], [
+            'request_id' => $requestId,
+            'uid' => $uid,
+            'created_at' => $now,
+        ]);
+        $tokenSaved = fb_put('ADD_MONEY_RECEIPT_TOKENS/' . $receipt['token'], [
+            'request_id' => $requestId,
+            'uid' => $uid,
+            'path' => $receipt['path'],
+            'mime' => $receipt['mime'],
+            'hash' => $receipt['hash'],
+            'created_at' => $now,
+        ]);
+
+        if (!$hashSaved || !$tokenSaved) {
+            fb_delete('ADD_MONEY_REQUESTS/' . $requestId);
+            fb_delete('ADD_MONEY_BY_USER/' . $uid . '/' . $requestId);
+            fb_delete('ADD_MONEY_RECEIPT_HASHES/' . $receipt['hash']);
+            fb_delete('ADD_MONEY_RECEIPT_TOKENS/' . $receipt['token']);
+            $storedPath = dirname(__DIR__) . '/' . ltrim((string)($receipt['path'] ?? ''), '/');
+            if (is_file($storedPath)) {
+                @unlink($storedPath);
+            }
+            return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save receipt duplicate index'];
+        }
+    }
+
+    $telegram = add_money_notify_telegram($row);
+
+    return [
+        'ok' => true,
+        'code' => 'SUCCESS',
+        'message' => 'Add money request submitted. Please wait for approval.',
+        'data' => [
+            'request' => $row,
+            'telegram_sent' => !empty($telegram['ok']),
+        ],
+    ];
+}
+
+function add_money_list_user_history(string $uid, int $limit = 100): array
+{
+    $rows = fb_get('ADD_MONEY_BY_USER/' . trim($uid));
+    $rows = is_array($rows) ? $rows : [];
+    $items = [];
+    foreach ($rows as $id => $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $row['request_id'] = (string)($row['request_id'] ?? $id);
+        $items[] = $row;
+    }
+
+    usort($items, static fn(array $a, array $b): int => (int)($b['created_at'] ?? 0) <=> (int)($a['created_at'] ?? 0));
+    return array_slice($items, 0, max(1, min(300, $limit)));
+}
+
+function add_money_list_admin(array $filters = [], int $limit = 200): array
+{
+    $rows = fb_get('ADD_MONEY_REQUESTS');
+    $rows = is_array($rows) ? $rows : [];
+    $items = [];
+
+    $status = strtoupper(trim((string)($filters['status'] ?? '')));
+    $country = strtoupper(trim((string)($filters['country'] ?? '')));
+    $method = strtoupper(trim((string)($filters['method'] ?? '')));
+
+    foreach ($rows as $id => $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $row['request_id'] = (string)($row['request_id'] ?? $id);
+        $rowStatus = strtoupper(trim((string)($row['status'] ?? 'PENDING')));
+        $rowCountry = strtoupper(trim((string)($row['pricing_country'] ?? '')));
+        $rowMethod = strtoupper(trim((string)($row['method'] ?? '')));
+
+        if ($status !== '' && $status !== 'ALL' && $rowStatus !== $status) {
+            continue;
+        }
+        if ($country !== '' && $country !== 'ALL' && $rowCountry !== $country) {
+            continue;
+        }
+        if ($method !== '' && $method !== 'ALL' && $rowMethod !== $method) {
+            continue;
+        }
+
+        $items[] = $row;
+    }
+
+    usort($items, static fn(array $a, array $b): int => (int)($b['created_at'] ?? 0) <=> (int)($a['created_at'] ?? 0));
+    return array_slice($items, 0, max(1, min(500, $limit)));
+}
+
+function add_money_process_request(string $requestId, string $action, string $actorUid, string $actorRole = 'ADMIN', string $reason = ''): array
+{
+    $requestId = trim($requestId);
+    $action = strtoupper(trim($action));
+    $actorUid = trim($actorUid);
+    $now = add_money_now();
+
+    if ($requestId === '' || !in_array($action, ['APPROVE', 'REJECT'], true)) {
+        return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Invalid add money action'];
+    }
+
+    $res = fb_get_with_etag('ADD_MONEY_REQUESTS/' . $requestId);
+    if (!$res['ok'] || !is_array($res['value']) || empty($res['etag'])) {
+        return ['ok' => false, 'code' => 'NOT_FOUND', 'message' => 'Add money request not found'];
+    }
+
+    $row = $res['value'];
+    $status = strtoupper(trim((string)($row['status'] ?? 'PENDING')));
+    if ($status !== 'PENDING') {
+        return ['ok' => false, 'code' => 'ALREADY_PROCESSED', 'message' => 'Request already processed.', 'data' => $row];
+    }
+
+    $lockStatus = $action === 'APPROVE' ? 'APPROVING' : 'REJECTING';
+    $locked = $row;
+    $locked['status'] = $lockStatus;
+    $locked['processing_by'] = $actorUid;
+    $locked['processing_role'] = $actorRole;
+    $locked['processing_at'] = $now;
+    $locked['updated_at'] = $now;
+
+    $save = fb_put_if_match('ADD_MONEY_REQUESTS/' . $requestId, $locked, (string)$res['etag']);
+    if (!($save['ok'] ?? false)) {
+        return ['ok' => false, 'code' => 'REQUEST_BUSY', 'message' => 'Request is already being processed'];
+    }
+    add_money_patch_request($requestId, ['status' => $lockStatus, 'uid' => (string)($row['uid'] ?? '')]);
+
+    if ($action === 'REJECT') {
+        $patch = [
+            'status' => 'REJECTED',
+            'rejected_by' => $actorUid,
+            'rejected_by_role' => $actorRole,
+            'rejected_at' => $now,
+            'reject_reason' => $reason,
+        ];
+        add_money_patch_request($requestId, $patch);
+        $final = array_merge($row, $patch, ['updated_at' => $now]);
+        return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request rejected', 'data' => $final];
+    }
+
+    $uid = trim((string)($row['uid'] ?? ''));
+    $amount = add_money_round($row['amount'] ?? 0);
+    $currency = add_money_currency_for_country((string)($row['pricing_country'] ?? 'BD'));
+
+    $credit = wallet_credit_available($uid, $amount, $requestId, 'ADD_MONEY', 'Manual add money approved', [
+        'source' => 'ADD_MONEY_REQUEST',
+        'method' => (string)($row['method'] ?? ''),
+        'request_id' => $requestId,
+        'currency' => $currency,
+        'wallet_currency' => $currency,
+        'approved_by' => $actorUid,
+        'approved_by_role' => $actorRole,
+        'approved_at' => $now,
+        'reference' => (string)($row['transaction_id'] ?? $row['receipt_hash'] ?? ''),
+        'note' => (string)($row['note'] ?? ''),
+        'status' => 'SUCCESS',
+    ]);
+
+    if (empty($credit['ok'])) {
+        add_money_patch_request($requestId, [
+            'status' => 'PENDING',
+            'processing_error' => (string)($credit['message'] ?? 'Wallet credit failed'),
+            'uid' => $uid,
+        ]);
+        return $credit;
+    }
+
+    $patch = [
+        'status' => 'APPROVED',
+        'approved_by' => $actorUid,
+        'approved_by_role' => $actorRole,
+        'approved_at' => $now,
+        'ledger_id' => (string)($credit['ledger_id'] ?? ''),
+        'balance_before' => (float)($credit['before_available'] ?? 0),
+        'balance_after' => (float)($credit['after_available'] ?? 0),
+    ];
+    add_money_patch_request($requestId, $patch);
+
+    $final = array_merge($row, $patch, ['updated_at' => $now]);
+    return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request approved', 'data' => $final];
+}

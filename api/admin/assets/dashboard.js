@@ -7,6 +7,7 @@ const state = {
   topups: [],
   bundles: [],
   bundleOffers: [],
+  addMoney: [],
   doneTopups: [],
   doneBundles: [],
   users: [],
@@ -40,6 +41,7 @@ const state = {
     topups: false,
     bundles: false,
     bundleOffers: false,
+    addMoney: false,
     doneTopups: false,
     doneBundles: false,
     users: false,
@@ -1133,6 +1135,13 @@ async function loadSectionData(sectionId, force = false){
   if (sectionId === 'bundleOffersSection') {
     if (force || !state.loaded.bundleOffers) {
       await loadBundleOffers({ busyText:'Loading bundle offers...' });
+    }
+    return;
+  }
+
+  if (sectionId === 'addMoneySection') {
+    if (force || !state.loaded.addMoney) {
+      await loadAddMoneyRequests({ busyText:'Loading add money requests...' });
     }
     return;
   }
@@ -2424,7 +2433,7 @@ async function openEditUserModal(uid){
               <option value="BD" ${(String(data.pricing_country || data.market_country || data.country_code || data.country || '').toUpperCase() === 'BD') ? 'selected' : ''}>Bangladesh (BDT)</option>
               <option value="MY" ${(String(data.pricing_country || data.market_country || data.country_code || data.country || '').toUpperCase() === 'MY') ? 'selected' : ''}>Malaysia (MYR)</option>
             </select>
-            <small class="muted">Admin-only. Controls wallet currency, fee and service pricing. Phone Country remains unchanged. Migration requires zero available and hold balance.</small>
+            <small class="muted">Admin-only. Controls wallet currency, fee and service pricing. Phone Country remains unchanged. Changing pricing country will not convert existing balance automatically.</small>
           </div>
 
           <div>
@@ -2531,6 +2540,7 @@ async function submitEditUser(){
       payload.service_country = country;
       payload.country = country;
       payload.country_code = country;
+      payload.country_change_note = 'Admin pricing country update from dashboard. Existing balance was not converted.';
     }
 
     const data = await proxyPost('user_update', payload, true, { busyText: 'Updating user account...' });
@@ -4018,6 +4028,181 @@ function setActionBtnLoading(buttonId, isLoading, loadingText = 'Processing...')
 }
 
 /* =========================
+   ADD MONEY
+========================= */
+
+function addMoneyFilters(){
+  return {
+    status: document.getElementById('addMoneyStatusFilter')?.value || '',
+    country: document.getElementById('addMoneyCountryFilter')?.value || '',
+    method: document.getElementById('addMoneyMethodFilter')?.value || '',
+    limit: 150
+  };
+}
+
+async function loadAddMoneyRequests(options = {}){
+  const data = await proxyGet('add_money_requests', addMoneyFilters(), options);
+  state.addMoney = Array.isArray(data.items) ? data.items : [];
+  state.loaded.addMoney = true;
+  renderAddMoneyRequests();
+}
+
+function addMoneyAmount(row){
+  return `${walletPrefix(row.currency || row.wallet_currency)} ${money(row.amount || 0)}`;
+}
+
+function renderAddMoneyRequests(){
+  const tbody = document.getElementById('addMoneyTableBody');
+  if (!tbody) return;
+
+  if (!state.addMoney.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">No add money request found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = state.addMoney.map(row => {
+    const id = String(row.request_id || '');
+    const status = String(row.status || 'PENDING').toUpperCase();
+    const pending = status === 'PENDING';
+    const receiptUrl = String(row.receipt_url || '');
+    const txn = String(row.transaction_id || '');
+    const sender = String(row.sender_number || '');
+    const proof = receiptUrl
+      ? `<a class="mini-btn blue" href="${esc(receiptUrl)}" target="_blank" rel="noopener">View Receipt</a>`
+      : `<div class="muted">Txn: ${esc(txn || '-')}</div><div class="muted">Sender: ${esc(sender || '-')}</div>`;
+
+    return `
+      <tr>
+        <td><div class="mono">${esc(id)}</div><div class="muted">${fmtTs(row.created_at || 0)}</div></td>
+        <td><strong>${esc(row.name || '-')}</strong><div class="muted">${esc(row.phone || '-')} - ${esc(row.role || '-')}</div></td>
+        <td>${esc(row.pricing_country || '-')}<div class="muted">${esc(row.currency || '-')}</div></td>
+        <td>${esc(row.method || '-')}</td>
+        <td><strong>${addMoneyAmount(row)}</strong></td>
+        <td>${proof}</td>
+        <td>${statusPill(status)}</td>
+        <td>
+          <div class="row-actions">
+            ${pending ? `<button class="mini-btn green" onclick="openAddMoneyAction('${esc(id)}','APPROVE')">Approve</button>` : ''}
+            ${pending ? `<button class="mini-btn red" onclick="openAddMoneyAction('${esc(id)}','REJECT')">Reject</button>` : ''}
+            <button class="mini-btn ghost" onclick="copyAddMoneyValue('${esc(id)}')">Copy ID</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+async function copyAddMoneyValue(value){
+  try {
+    await navigator.clipboard.writeText(String(value || ''));
+    showToast('Copied', 'ok');
+  } catch (_) {
+    showToast('Copy failed', 'error');
+  }
+}
+
+function openAddMoneyAction(requestId, action){
+  const row = state.addMoney.find(item => String(item.request_id || '') === String(requestId));
+  if (!row) {
+    showToast('Request not found', 'error');
+    return;
+  }
+
+  const isApprove = action === 'APPROVE';
+  const body = `
+    <div class="detail-grid">
+      <div class="detail-item"><label>Request ID</label><strong>${esc(requestId)}</strong></div>
+      <div class="detail-item"><label>User</label><strong>${esc(row.name || '-')}</strong></div>
+      <div class="detail-item"><label>Amount</label><strong>${addMoneyAmount(row)}</strong></div>
+      <div class="detail-item"><label>Method</label><strong>${esc(row.method || '-')}</strong></div>
+    </div>
+    ${isApprove ? '<p class="muted">Wallet balance will be credited only after this approval.</p>' : '<label>Reject Reason</label><textarea id="addMoneyRejectReason" class="input" rows="3" placeholder="Reason shown in user history"></textarea>'}
+  `;
+  const foot = `
+    <button class="btn ${isApprove ? 'brand' : 'red'}" onclick="submitAddMoneyAction('${esc(requestId)}','${isApprove ? 'APPROVE' : 'REJECT'}')">${isApprove ? 'Approve Request' : 'Reject Request'}</button>
+    <button class="btn ghost" onclick="closeModal()">Cancel</button>
+  `;
+  openModal(isApprove ? 'Approve Add Money' : 'Reject Add Money', body, foot);
+}
+
+async function submitAddMoneyAction(requestId, action){
+  const isApprove = action === 'APPROVE';
+  const reason = document.getElementById('addMoneyRejectReason')?.value || '';
+  try {
+    await proxyPost(isApprove ? 'add_money_approve' : 'add_money_reject', {
+      request_id: requestId,
+      reason
+    }, true, { busyText: isApprove ? 'Approving request...' : 'Rejecting request...' });
+    closeModal();
+    showToast(isApprove ? 'Add money approved' : 'Add money rejected', 'ok');
+    state.loaded.addMoney = false;
+    state.loaded.users = false;
+    await loadAddMoneyRequests({ busy:false, silentLog:true });
+  } catch (err) {
+    showToast(err.message || 'Action failed', 'error');
+  }
+}
+
+async function openAddMoneySettings(){
+  const data = await proxyGet('add_money_settings', {}, { busyText:'Loading payment settings...' });
+  const settings = data.settings || {};
+  const bd = settings.BD || {};
+  const my = settings.MY || {};
+  const body = `
+    <div class="grid two">
+      <div class="detail-item">
+        <label><input id="amBdEnabled" type="checkbox" ${bd.enabled ? 'checked' : ''}> Enable BD Add Money</label>
+        <input id="amBdBkash" class="input" placeholder="bKash number" value="${esc(bd.bkash_number || '')}">
+        <input id="amBdBkashType" class="input" placeholder="bKash account type" value="${esc(bd.bkash_account_type || '')}">
+        <input id="amBdNagad" class="input" placeholder="Nagad number" value="${esc(bd.nagad_number || '')}">
+        <input id="amBdNagadType" class="input" placeholder="Nagad account type" value="${esc(bd.nagad_account_type || '')}">
+        <textarea id="amBdInstruction" class="input" rows="3" placeholder="BD instruction">${esc(bd.instruction || '')}</textarea>
+      </div>
+      <div class="detail-item">
+        <label><input id="amMyEnabled" type="checkbox" ${my.enabled ? 'checked' : ''}> Enable MY Add Money</label>
+        <input id="amMyBank" class="input" placeholder="Bank name" value="${esc(my.bank_name || '')}">
+        <input id="amMyHolder" class="input" placeholder="Account holder" value="${esc(my.account_holder || '')}">
+        <input id="amMyAccount" class="input" placeholder="Account number" value="${esc(my.account_number || '')}">
+        <textarea id="amMyInstruction" class="input" rows="3" placeholder="MY instruction">${esc(my.instruction || '')}</textarea>
+      </div>
+    </div>
+  `;
+  const foot = `
+    <button class="btn brand" onclick="saveAddMoneySettings()">Save Settings</button>
+    <button class="btn ghost" onclick="closeModal()">Cancel</button>
+  `;
+  openModal('Add Money Payment Settings', body, foot);
+}
+
+async function saveAddMoneySettings(){
+  const payload = {
+    BD: {
+      enabled: !!document.getElementById('amBdEnabled')?.checked,
+      bkash_number: document.getElementById('amBdBkash')?.value || '',
+      bkash_account_type: document.getElementById('amBdBkashType')?.value || '',
+      nagad_number: document.getElementById('amBdNagad')?.value || '',
+      nagad_account_type: document.getElementById('amBdNagadType')?.value || '',
+      instruction: document.getElementById('amBdInstruction')?.value || ''
+    },
+    MY: {
+      enabled: !!document.getElementById('amMyEnabled')?.checked,
+      bank_name: document.getElementById('amMyBank')?.value || '',
+      account_holder: document.getElementById('amMyHolder')?.value || '',
+      account_number: document.getElementById('amMyAccount')?.value || '',
+      instruction: document.getElementById('amMyInstruction')?.value || ''
+    }
+  };
+
+  try {
+    await proxyPost('add_money_settings_save', payload, true, { busyText:'Saving payment settings...' });
+    closeModal();
+    showToast('Payment settings saved', 'ok');
+  } catch (err) {
+    showToast(err.message || 'Failed to save settings', 'error');
+  }
+}
+
+/* =========================
    EVENT BINDINGS
 ========================= */
 
@@ -4056,6 +4241,11 @@ document.getElementById('usersSearch')?.addEventListener('input', () => {
 document.getElementById('refreshBtn')?.addEventListener('click', () => refreshCurrentView(false));
 document.getElementById('reloadTopupBtn')?.addEventListener('click', () => loadTopups({ busyText:'Reloading topup...' }));
 document.getElementById('reloadBundleBtn')?.addEventListener('click', () => loadBundles({ busyText:'Reloading bundles...' }));
+document.getElementById('reloadAddMoneyBtn')?.addEventListener('click', () => loadAddMoneyRequests({ busyText:'Reloading add money requests...' }));
+document.getElementById('addMoneySettingsBtn')?.addEventListener('click', openAddMoneySettings);
+document.getElementById('addMoneyStatusFilter')?.addEventListener('change', () => loadAddMoneyRequests({ busyText:'Filtering add money requests...' }));
+document.getElementById('addMoneyCountryFilter')?.addEventListener('change', () => loadAddMoneyRequests({ busyText:'Filtering add money requests...' }));
+document.getElementById('addMoneyMethodFilter')?.addEventListener('change', () => loadAddMoneyRequests({ busyText:'Filtering add money requests...' }));
 
 document.getElementById('createBundleOfferBtn')?.addEventListener('click', () => openBundleOfferModal(''));
 document.getElementById('reloadBundleOffersBtn')?.addEventListener('click', () => loadBundleOffers({ busyText:'Reloading bundle offers...' }));
@@ -4139,6 +4329,10 @@ window.openWalletAction = openWalletAction;
 window.submitWalletAction = submitWalletAction;
 window.openLedger = openLedger;
 window.loadWalletTransferHistory = loadWalletTransferHistory;
+window.openAddMoneyAction = openAddMoneyAction;
+window.submitAddMoneyAction = submitAddMoneyAction;
+window.copyAddMoneyValue = copyAddMoneyValue;
+window.saveAddMoneySettings = saveAddMoneySettings;
 
 window.editOperator = editOperator;
 window.saveOperator = saveOperator;

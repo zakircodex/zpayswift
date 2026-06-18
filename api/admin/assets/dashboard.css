@@ -430,6 +430,11 @@ html,body{margin:0;padding:0;background:linear-gradient(180deg,var(--bg),var(--b
   justify-content:center;
   gap:8px;
 }
+.mini-btn.red{
+  background:linear-gradient(135deg,#ef4444,#dc2626);
+  border-color:rgba(239,68,68,.35);
+  color:#fff;
+}
     .split{display:grid;grid-template-columns:1.25fr .9fr;gap:16px}
     .detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
     .detail-item{

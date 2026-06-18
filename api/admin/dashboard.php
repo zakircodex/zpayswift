@@ -13,7 +13,7 @@ header('Pragma: no-cache');
   <title>Z-Pay Swift Admin Dashboard</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
-  <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=22">
+  <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=23">
   <link rel="stylesheet" href="/api/admin/assets/admin-ux.css?v=2">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
@@ -64,6 +64,7 @@ header('Pragma: no-cache');
 
       <div class="nav">
         <div class="nav-title">Main</div>
+        <button class="nav-btn" data-section="addMoneySection">Add Money <span>&rsaquo;</span></button>
         <button class="nav-btn active" data-section="dashboardSection">Dashboard <span>›</span></button>
         <button class="nav-btn" data-section="topupSection">Topup Requests <span>›</span></button>
         <button class="nav-btn" data-section="bundleSection">Bundles <span>›</span></button>
@@ -491,6 +492,61 @@ header('Pragma: no-cache');
       
       
 
+      <section class="section" id="addMoneySection">
+        <div class="card">
+          <div class="panel-head">
+            <div>
+              <h3>Add Money Requests</h3>
+              <p>Manual bKash, Nagad and bank transfer approvals.</p>
+            </div>
+            <div class="row-actions">
+              <button class="btn blue" id="addMoneySettingsBtn">Payment Settings</button>
+              <button class="btn ghost" id="reloadAddMoneyBtn">Reload</button>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <select id="addMoneyStatusFilter" class="input sm">
+              <option value="">All Status</option>
+              <option value="PENDING">Pending</option>
+              <option value="APPROVED">Approved</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
+            <select id="addMoneyCountryFilter" class="input sm">
+              <option value="">All Countries</option>
+              <option value="BD">BD</option>
+              <option value="MY">MY</option>
+            </select>
+            <select id="addMoneyMethodFilter" class="input sm">
+              <option value="">All Methods</option>
+              <option value="BKASH">bKash</option>
+              <option value="NAGAD">Nagad</option>
+              <option value="BANK">Bank</option>
+            </select>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Request</th>
+                  <th>User</th>
+                  <th>Country</th>
+                  <th>Method</th>
+                  <th>Amount</th>
+                  <th>Proof</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="addMoneyTableBody">
+                <tr><td colspan="8" class="empty">No add money request loaded yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <section class="section" id="usersSection">
         <div class="card">
           <div class="panel-head">
@@ -610,7 +666,7 @@ header('Pragma: no-cache');
 <script>
 window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
-<script src="/api/admin/assets/dashboard.js?v=38"></script>
+<script src="/api/admin/assets/dashboard.js?v=39"></script>
 <script src="/api/admin/assets/admin-dashboard-ux.js?v=2"></script>
 
 </body>

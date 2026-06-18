@@ -33,7 +33,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
   <title>Z-Pay Swift Subadmin Panel</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
-  <link rel="stylesheet" href="/api/subadmin/assets/subadmin.css?v=18">
+  <link rel="stylesheet" href="/api/subadmin/assets/subadmin.css?v=19">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
@@ -84,6 +84,11 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
           <button class="side-btn" data-page-section="apiKeysSection">
             <span>API Keys</span>
             <span>›</span>
+          </button>
+
+          <button class="side-btn" data-page-section="addMoneySection">
+            <span>Add Money</span>
+            <span>&rsaquo;</span>
           </button>
 
           <button class="side-btn" data-page-section="requestLogsSection">
@@ -527,6 +532,29 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <div id="addMoneySection" class="page-section">
+          <div class="card">
+            <div class="topbar mb-14">
+              <div>
+                <h3>Add Money</h3>
+                <p>Submit payment proof and wait for admin approval.</p>
+              </div>
+              <div class="actions">
+                <button class="btn ghost" id="reloadAddMoneyBtn">Reload</button>
+              </div>
+            </div>
+
+            <div id="addMoneyContent" class="detail-grid">
+              <div class="box">
+                <label>Status</label>
+                <strong>Loading add money settings...</strong>
+              </div>
+            </div>
+
+            <div id="addMoneyHistoryList" class="history-logs-mobile-list"></div>
           </div>
         </div>
 
@@ -1265,7 +1293,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 window.SUBADMIN_PROXY_URL = '/api/subadmin/proxy.php';
 window.SUBADMIN_API_BASE = '/api';
 </script>
-<script src="/api/subadmin/assets/subadmin.js?v=18"></script>
+<script src="/api/subadmin/assets/subadmin.js?v=19"></script>
 <script src="/api/subadmin/assets/subadmin-otp.js?v=3"></script>
 </body>
 </html>
