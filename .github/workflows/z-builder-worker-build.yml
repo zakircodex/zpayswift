@@ -50,11 +50,11 @@ jobs:
             exit 1
           fi
 
-      - name: Build release APK
+      - name: Build signed debug APK
         working-directory: z-builder-worker
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleRelease \
+          ./gradlew assembleDebug \
             -PzbuilderAppName="${{ github.event.inputs.app_name }}" \
             -PzbuilderPackageName="${{ github.event.inputs.package_name }}" \
             -PzbuilderApiBase="${{ github.event.inputs.api_base }}" \
@@ -67,9 +67,9 @@ jobs:
           mkdir -p build-output
           echo "Generated APK files:"
           find z-builder-worker/app/build/outputs/apk -type f -name "*.apk" -print
-          APK_FILE=$(find z-builder-worker/app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
+          APK_FILE=$(find z-builder-worker/app/build/outputs/apk/debug -type f -name "*.apk" | head -n 1)
           if [ -z "$APK_FILE" ]; then
-            echo "No release APK found"
+            echo "No signed debug APK found"
             exit 1
           fi
           cp "$APK_FILE" "build-output/${{ github.event.inputs.app_id }}.apk"
