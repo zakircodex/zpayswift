@@ -52,6 +52,34 @@ function zb_current_origin(): string
     return $scheme . '://' . $host;
 }
 
+function zb_secure_cookie(): bool
+{
+    return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+}
+
+function zb_set_owner_session_cookie(string $token, ?int $expiresTs = null): void
+{
+    if ($token === '') { return; }
+    setcookie('z_builder_owner_session', $token, [
+        'expires' => $expiresTs ?? (time() + 30 * 86400),
+        'path' => '/',
+        'secure' => zb_secure_cookie(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+
+function zb_clear_owner_session_cookie(): void
+{
+    setcookie('z_builder_owner_session', '', [
+        'expires' => time() - 3600,
+        'path' => '/',
+        'secure' => zb_secure_cookie(),
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+}
+
 function zb_verify_link(string $token): string
 {
     return zb_current_origin() . '/z-builder/auth/verify.html?token=' . rawurlencode($token);
@@ -97,6 +125,7 @@ function zb_create_session(string $ownerId): array
         'ip' => client_ip(),
     ];
     fb_put('Z_BUILDER_OWNER_SESSIONS/' . zb_token_hash($token), $session);
+    zb_set_owner_session_cookie($token, $now + (30 * 86400));
     return ['session_token' => $token, 'expires_at' => $session['expires_at']];
 }
 
@@ -108,6 +137,9 @@ function zb_session_token_from_request(): string
         if (stripos($auth, 'Bearer ') === 0) {
             $header = trim(substr($auth, 7));
         }
+    }
+    if (!$header) {
+        $header = trim((string)($_COOKIE['z_builder_owner_session'] ?? ''));
     }
     return trim((string)$header);
 }
@@ -128,6 +160,7 @@ function zb_require_owner_session(): array
     $expiresTs = strtotime((string)($session['expires_at'] ?? ''));
     if ($expiresTs !== false && $expiresTs < time()) {
         fb_patch($sessionPath, ['status' => 'EXPIRED', 'updated_at' => zb_now_iso()]);
+        zb_clear_owner_session_cookie();
         api_response(false, 'SESSION_EXPIRED', 'Owner session expired', [], 401);
     }
 
