@@ -90,21 +90,32 @@ jobs:
             echo "Upload callback not configured; skipping direct server upload."
             exit 0
           fi
-          UPLOAD_URL="${CALLBACK_URL/worker_app_build_callback.php/worker_app_upload.php}"
-          echo "Uploading APK to Z Builder server..."
-          HTTP_CODE=$(curl -sS -w "%{http_code}" -o upload-response.json -X POST "$UPLOAD_URL" \
-            -H "X-ADMIN-KEY: $CALLBACK_KEY" \
-            -F "app_id=$APP_ID" \
-            -F "artifact_name=${ARTIFACT_NAME}" \
-            -F "run_id=$RUN_ID" \
-            -F "run_url=$RUN_URL" \
-            -F "apk=@${APK_PATH};type=application/vnd.android.package-archive" || true)
-          echo "Upload HTTP code: $HTTP_CODE"
-          cat upload-response.json || true
-          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
-            echo "Direct server upload failed; keeping GitHub artifact fallback."
-            exit 0
-          fi
+          UPLOAD_URL="${CALLBACK_URL/worker_app_build_callback.php/worker_app_upload_chunk.php}"
+          echo "Uploading APK to Z Builder server in chunks..."
+          rm -rf build-output/chunks
+          mkdir -p build-output/chunks
+          split -b 512k "$APK_PATH" build-output/chunks/apk-chunk-
+          TOTAL_CHUNKS=$(find build-output/chunks -type f -name 'apk-chunk-*' | wc -l | tr -d ' ')
+          INDEX=0
+          for CHUNK in $(find build-output/chunks -type f -name 'apk-chunk-*' | sort); do
+            echo "Uploading chunk $((INDEX + 1))/$TOTAL_CHUNKS"
+            HTTP_CODE=$(curl -sS -w "%{http_code}" -o upload-response.json -X POST "$UPLOAD_URL" \
+              -H "X-ADMIN-KEY: $CALLBACK_KEY" \
+              -F "app_id=$APP_ID" \
+              -F "artifact_name=${ARTIFACT_NAME}" \
+              -F "run_id=$RUN_ID" \
+              -F "run_url=$RUN_URL" \
+              -F "chunk_index=$INDEX" \
+              -F "total_chunks=$TOTAL_CHUNKS" \
+              -F "chunk=@${CHUNK};type=application/octet-stream" || true)
+            echo "Chunk HTTP code: $HTTP_CODE"
+            cat upload-response.json || true
+            if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+              echo "Direct server chunk upload failed; keeping GitHub artifact fallback."
+              exit 0
+            fi
+            INDEX=$((INDEX + 1))
+          done
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
