@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Spinner
@@ -29,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tvAccessibility: TextView
     private lateinit var tvLog: TextView
 
+    private var loadingConfig = true
     private val operatorItems = listOf("", "GP", "ROBI", "BL", "AIRTEL", "TT")
 
     private val permissionLauncher =
@@ -55,13 +57,12 @@ class MainActivity : AppCompatActivity() {
         clearAllFocusAndHideKeyboard()
 
         findViewById<Button>(R.id.btnSave).setOnClickListener {
-            saveConfig()
-            refreshUi()
+            saveConfig("SIM setup saved")
             clearAllFocusAndHideKeyboard()
         }
 
         findViewById<Button>(R.id.btnTestConnection).setOnClickListener {
-            saveConfig()
+            saveConfig("SIM setup saved")
             testConnection()
             clearAllFocusAndHideKeyboard()
         }
@@ -72,13 +73,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         findViewById<Button>(R.id.btnStart).setOnClickListener {
-            saveConfig()
+            saveConfig("SIM setup saved")
             requestNeededPermissions()
             val intent = Intent(this, WorkerForegroundService::class.java).apply {
                 action = WorkerConstants.ACTION_START_WORKER
             }
             ContextCompat.startForegroundService(this, intent)
-            prefs.lastLog = "Worker started"
+            prefs.lastLog = "Worker started. ${simSummary()}"
+            tvStatusCard.text = "Status: WORKER STARTED\n${simSummary()}"
             refreshUi()
         }
 
@@ -87,7 +89,8 @@ class MainActivity : AppCompatActivity() {
                 action = WorkerConstants.ACTION_STOP_WORKER
             }
             startService(intent)
-            prefs.lastLog = "Worker stopped"
+            prefs.lastLog = "Worker stopped. ${simSummary()}"
+            tvStatusCard.text = "Status: WORKER STOPPED\n${simSummary()}"
             refreshUi()
         }
 
@@ -109,23 +112,13 @@ class MainActivity : AppCompatActivity() {
         ) {
             override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val view = super.getView(position, convertView, parent)
-                (view as? TextView)?.apply {
-                    text = displayOperator(getItem(position).orEmpty())
-                    setTextColor(Color.BLACK)
-                    textSize = 18f
-                    setPadding(18, 12, 18, 12)
-                }
+                styleSpinnerText(view, position, false)
                 return view
             }
 
             override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
                 val view = super.getDropDownView(position, convertView, parent)
-                (view as? TextView)?.apply {
-                    text = displayOperator(getItem(position).orEmpty())
-                    setTextColor(Color.BLACK)
-                    textSize = 18f
-                    setPadding(18, 16, 18, 16)
-                }
+                styleSpinnerText(view, position, true)
                 return view
             }
         }
@@ -133,6 +126,28 @@ class MainActivity : AppCompatActivity() {
 
         spSim1Operator.adapter = adapter
         spSim2Operator.adapter = adapter
+
+        val listener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (!loadingConfig) {
+                    saveConfig("SIM setup auto-saved")
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+        spSim1Operator.onItemSelectedListener = listener
+        spSim2Operator.onItemSelectedListener = listener
+    }
+
+    private fun styleSpinnerText(view: View, position: Int, dropdown: Boolean) {
+        view.setBackgroundColor(Color.WHITE)
+        (view as? TextView)?.apply {
+            text = displayOperator(operatorItems.getOrElse(position) { "" })
+            setTextColor(Color.BLACK)
+            textSize = 18f
+            setPadding(18, if (dropdown) 18 else 12, 18, if (dropdown) 18 else 12)
+        }
     }
 
     private fun displayOperator(value: String): String {
@@ -148,20 +163,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadConfig() {
+        loadingConfig = true
         tvAppTitle.text = BuildConfig.ZB_APP_NAME.ifBlank { getString(R.string.app_name) }
         tvConnectionInfo.text = "API: ${prefs.baseUrl}\nApp ID: ${prefs.workerAppId.ifBlank { "embedded" }}"
         tvDeviceId.text = "Device ID: ${prefs.deviceId}"
 
         spSim1Operator.setSelection(operatorItems.indexOf(prefs.sim1Operator).coerceAtLeast(0))
         spSim2Operator.setSelection(operatorItems.indexOf(prefs.sim2Operator).coerceAtLeast(0))
+        loadingConfig = false
 
         tvLog.text = prefs.lastLog
     }
 
-    private fun saveConfig() {
+    private fun saveConfig(message: String) {
         prefs.sim1Operator = spSim1Operator.selectedItem?.toString().orEmpty()
         prefs.sim2Operator = spSim2Operator.selectedItem?.toString().orEmpty()
-        prefs.lastLog = "SIM setup saved: ${simSummary()}"
+        prefs.lastLog = "$message: ${simSummary()}"
         tvDeviceId.text = "Device ID: ${prefs.deviceId}"
         tvStatusCard.text = "Status: SIM setup saved\n${simSummary()}"
         tvLog.text = prefs.lastLog
