@@ -71,25 +71,31 @@ function admin_users_list_country_code(
         $parentUid = trim((string)($user['created_by_uid'] ?? ''));
     }
 
-    if ($parentUid !== '' && is_array($users[$parentUid] ?? null)) {
-        $parent = $users[$parentUid];
-        $parentWallet = is_array($wallets[$parentUid] ?? null) ? $wallets[$parentUid] : [];
+    if ($parentUid !== '') {
+        $parent = is_array($users[$parentUid] ?? null)
+            ? $users[$parentUid]
+            : (array)(fb_get('USERS/' . $parentUid) ?: []);
+        $parentWallet = is_array($wallets[$parentUid] ?? null)
+            ? $wallets[$parentUid]
+            : (array)(fb_get('USER_WALLETS/' . $parentUid) ?: []);
 
-        foreach ([
-            $parent['pricing_country'] ?? '',
-            $parent['market_country'] ?? '',
-            $parent['service_country'] ?? '',
-            $parent['country_code'] ?? '',
-            $parent['country'] ?? '',
-        ] as $candidate) {
-            $country = auth_normalize_country_code((string)$candidate);
-            if ($country !== '') {
-                return $country;
+        if ($parent !== []) {
+            foreach ([
+                $parent['pricing_country'] ?? '',
+                $parent['market_country'] ?? '',
+                $parent['service_country'] ?? '',
+                $parent['country_code'] ?? '',
+                $parent['country'] ?? '',
+            ] as $candidate) {
+                $country = auth_normalize_country_code((string)$candidate);
+                if ($country !== '') {
+                    return $country;
+                }
             }
-        }
 
-        if (admin_users_list_currency($parent, $parentWallet, '') === 'MYR') {
-            return 'MY';
+            if (admin_users_list_currency($parent, $parentWallet, '') === 'MYR') {
+                return 'MY';
+            }
         }
     }
 
@@ -107,66 +113,163 @@ function admin_users_list_country_code(
     return 'BD';
 }
 
-api_require_method('GET');
-auth_require_admin_session();
-
-$page = max(1, (int)($_GET['page'] ?? 1));
-$limit = max(1, min(100, (int)($_GET['limit'] ?? 50)));
-$search = strtolower(trim((string)($_GET['search'] ?? '')));
-$roleFilter = strtoupper(trim((string)($_GET['role'] ?? '')));
-$statusFilter = strtoupper(trim((string)($_GET['status'] ?? '')));
-
-$users = fb_get('USERS');
-$wallets = fb_get('USER_WALLETS');
-
-$users = is_array($users) ? $users : [];
-$wallets = is_array($wallets) ? $wallets : [];
-$items = [];
-$totalAvailableBalance = 0.0;
-
-foreach ($users as $uid => $user) {
-    if (!is_array($user)) {
-        continue;
+function admin_users_list_email_index_keys(string $email): array
+{
+    $email = strtolower(trim($email));
+    if ($email === '') {
+        return [];
     }
 
-    $uid = (string)$uid;
-    $wallet = is_array($wallets[$uid] ?? null) ? $wallets[$uid] : [];
-    $role = strtoupper(trim((string)($user['role'] ?? 'USER')));
-    $status = strtoupper(trim((string)($user['status'] ?? 'ACTIVE')));
-    $accountStatus = strtoupper(trim((string)($user['account_status'] ?? $status)));
+    $legacyKey = str_replace(
+        ['.', '#', '$', '[', ']', '/'],
+        [',', '_', '_', '(', ')', '_'],
+        $email
+    );
 
-    if ($roleFilter !== '' && $role !== $roleFilter) {
-        continue;
+    return array_values(array_unique([
+        md5($email),
+        $legacyKey,
+    ]));
+}
+
+function admin_users_list_uid_from_index(mixed $row): string
+{
+    if (is_string($row)) {
+        return trim($row);
     }
 
-    if ($statusFilter !== '' && $status !== $statusFilter) {
-        continue;
+    if (is_array($row)) {
+        return trim((string)($row['uid'] ?? $row['value'] ?? ''));
     }
 
-    $name = trim((string)($user['name'] ?? ''));
-    $phone = trim((string)($user['phone'] ?? ''));
-    $email = trim((string)($user['email'] ?? ''));
+    return '';
+}
 
-    if ($search !== '') {
-        $haystack = strtolower(implode(' ', [$uid, $name, $phone, $email, $role, $status]));
-        if (!str_contains($haystack, $search)) {
-            continue;
+function admin_users_list_lookup_search_uids(string $search): array
+{
+    $search = trim($search);
+    if ($search === '') {
+        return [];
+    }
+
+    $uids = [];
+
+    $directUser = fb_get('USERS/' . $search);
+    if (is_array($directUser)) {
+        $uids[] = $search;
+    }
+
+    if (filter_var($search, FILTER_VALIDATE_EMAIL)) {
+        foreach (admin_users_list_email_index_keys($search) as $emailKey) {
+            $uid = admin_users_list_uid_from_index(fb_get('USER_INDEX/EMAIL/' . $emailKey));
+            if ($uid !== '') {
+                $uids[] = $uid;
+            }
         }
     }
 
-    $country = admin_users_list_country_code($user, $wallet, $users, $wallets);
+    foreach (['BD', 'MY'] as $country) {
+        $phone = normalize_phone_by_country($search, $country);
+        if ($phone === '') {
+            continue;
+        }
+
+        $uid = auth_find_uid_by_phone_country($phone, $country);
+        if ($uid !== '') {
+            $uids[] = $uid;
+        }
+    }
+
+    return array_values(array_unique(array_filter($uids)));
+}
+
+function admin_users_list_shallow_keys(): array
+{
+    $rows = fb_get('USERS', ['shallow' => 'true']);
+    if (!is_array($rows)) {
+        return [];
+    }
+
+    $keys = array_keys($rows);
+    $keys = array_values(array_filter(array_map('strval', $keys), static fn(string $key): bool => $key !== ''));
+    rsort($keys, SORT_STRING);
+
+    return $keys;
+}
+
+function admin_users_list_multi_get(array $paths): array
+{
+    $paths = array_values(array_unique(array_filter(array_map(
+        static fn($path): string => trim((string)$path, '/'),
+        $paths
+    ))));
+
+    if ($paths === []) {
+        return [];
+    }
+
+    $multi = curl_multi_init();
+    $handles = [];
+    $results = [];
+
+    foreach ($paths as $path) {
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => fb_build_url($path),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => 'GET',
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+        ]);
+
+        curl_multi_add_handle($multi, $ch);
+        $handles[spl_object_id($ch)] = [$path, $ch];
+    }
+
+    do {
+        $status = curl_multi_exec($multi, $running);
+        if ($running) {
+            curl_multi_select($multi, 1.0);
+        }
+    } while ($running && $status === CURLM_OK);
+
+    foreach ($handles as [$path, $ch]) {
+        $raw = curl_multi_getcontent($ch);
+        $statusCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+        if ($statusCode >= 200 && $statusCode < 300 && is_string($raw) && $raw !== '' && $raw !== 'null') {
+            $decoded = json_decode($raw, true);
+            $results[$path] = $decoded;
+        } else {
+            $results[$path] = null;
+        }
+
+        curl_multi_remove_handle($multi, $ch);
+        curl_close($ch);
+    }
+
+    curl_multi_close($multi);
+
+    return $results;
+}
+
+function admin_users_list_make_item(string $uid, array $user, array $wallet): array
+{
+    $role = strtoupper(trim((string)($user['role'] ?? 'USER')));
+    $status = strtoupper(trim((string)($user['status'] ?? 'ACTIVE')));
+    $accountStatus = strtoupper(trim((string)($user['account_status'] ?? $status)));
+    $country = admin_users_list_country_code($user, $wallet, [], []);
     $currency = admin_users_list_currency($user, $wallet, $country);
     $availableBalance = (float)($wallet['available_balance'] ?? 0);
     $holdBalance = (float)($wallet['hold_balance'] ?? 0);
     $phoneCountry = auth_phone_country_from_user($user);
 
-    $totalAvailableBalance += $availableBalance;
-
-    $items[] = [
+    return [
         'uid' => $uid,
-        'name' => $name,
-        'phone' => $phone,
-        'email' => $email,
+        'name' => trim((string)($user['name'] ?? '')),
+        'phone' => trim((string)($user['phone'] ?? '')),
+        'email' => trim((string)($user['email'] ?? '')),
         'role' => $role,
         'status' => $status,
         'account_status' => $accountStatus,
@@ -200,18 +303,117 @@ foreach ($users as $uid => $user) {
     ];
 }
 
-usort($items, static function (array $a, array $b): int {
-    return (int)$b['created_at'] <=> (int)$a['created_at'];
-});
+api_require_method('GET');
+auth_require_admin_session();
 
-$total = count($items);
+$page = max(1, (int)($_GET['page'] ?? 1));
+$limit = max(1, min(100, (int)($_GET['limit'] ?? 50)));
+$searchRaw = trim((string)($_GET['search'] ?? ''));
+$search = strtolower($searchRaw);
+$roleFilter = strtoupper(trim((string)($_GET['role'] ?? '')));
+$statusFilter = strtoupper(trim((string)($_GET['status'] ?? '')));
+
+$items = [];
+$totalAvailableBalance = 0.0;
+$searchLimited = false;
+$searchMode = $search !== '' ? 'index' : 'page';
+
+$allKeys = admin_users_list_shallow_keys();
+$candidateKeys = $allKeys;
+
+if ($search !== '') {
+    $candidateKeys = admin_users_list_lookup_search_uids($searchRaw);
+
+    if ($candidateKeys === []) {
+        $searchLimited = true;
+        $searchMode = 'bounded_name_scan';
+        $scanLimit = min(300, count($allKeys));
+        $candidateKeys = array_slice($allKeys, 0, $scanLimit);
+    }
+}
+
+$total = count($search !== '' && !$searchLimited ? $candidateKeys : $allKeys);
 $totalPages = max(1, (int)ceil($total / $limit));
+
 if ($page > $totalPages) {
     $page = $totalPages;
 }
 
 $offset = ($page - 1) * $limit;
-$pageItems = array_values(array_slice($items, $offset, $limit));
+$pageKeys = $search === ''
+    ? array_slice($candidateKeys, $offset, $limit)
+    : $candidateKeys;
+
+$pageUsers = admin_users_list_multi_get(array_map(
+    static fn(string $uid): string => 'USERS/' . $uid,
+    $pageKeys
+));
+$pageWallets = admin_users_list_multi_get(array_map(
+    static fn(string $uid): string => 'USER_WALLETS/' . $uid,
+    $pageKeys
+));
+
+foreach ($pageKeys as $uid) {
+    $uid = (string)$uid;
+    $userPath = 'USERS/' . $uid;
+    $walletPath = 'USER_WALLETS/' . $uid;
+    $user = is_array($pageUsers[$userPath] ?? null) ? $pageUsers[$userPath] : [];
+
+    if (!is_array($user)) {
+        continue;
+    }
+
+    if ($user === []) {
+        continue;
+    }
+
+    $wallet = is_array($pageWallets[$walletPath] ?? null) ? $pageWallets[$walletPath] : [];
+    $role = strtoupper(trim((string)($user['role'] ?? 'USER')));
+    $status = strtoupper(trim((string)($user['status'] ?? 'ACTIVE')));
+
+    if ($roleFilter !== '' && $role !== $roleFilter) {
+        continue;
+    }
+
+    if ($statusFilter !== '' && $status !== $statusFilter) {
+        continue;
+    }
+
+    if ($search !== '' && $searchLimited) {
+        $haystack = strtolower(implode(' ', [
+            $uid,
+            (string)($user['name'] ?? ''),
+            (string)($user['phone'] ?? ''),
+            (string)($user['email'] ?? ''),
+            $role,
+            $status,
+        ]));
+        if (!str_contains($haystack, $search)) {
+            continue;
+        }
+    }
+
+    $item = admin_users_list_make_item($uid, $user, $wallet);
+
+    $totalAvailableBalance += (float)$item['available_balance'];
+    $items[] = $item;
+
+    if ($search !== '' && count($items) >= $limit) {
+        break;
+    }
+}
+
+usort($items, static function (array $a, array $b): int {
+    return (int)$b['created_at'] <=> (int)$a['created_at'];
+});
+
+$pageItems = array_values($items);
+
+if ($search !== '') {
+    $total = count($pageItems);
+    $totalPages = 1;
+    $page = 1;
+}
 
 api_response(true, 'SUCCESS', 'User list loaded', [
     'items' => $pageItems,
@@ -225,5 +427,7 @@ api_response(true, 'SUCCESS', 'User list loaded', [
     'summary' => [
         'total_users' => $total,
         'total_available_balance' => round($totalAvailableBalance, 2),
+        'search_mode' => $searchMode,
+        'search_limited' => $searchLimited,
     ],
 ]);

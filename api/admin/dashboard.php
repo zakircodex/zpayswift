@@ -175,7 +175,7 @@ header('Pragma: no-cache');
                 <div class="detail-item"><label>Total Users</label><strong id="dashUsersCount">0</strong></div>
                 <div class="detail-item"><label>Pending Bundles</label><strong id="dashBundleCount">0</strong></div>
                 <div class="detail-item"><label>Active Operators</label><strong id="dashOperatorsCount">0</strong></div>
-                <div class="detail-item"><label>Total Available Balance</label><strong id="dashBalanceTotal">0.00</strong></div>
+                <div class="detail-item"><label>Listed Page Balance</label><strong id="dashBalanceTotal">0.00</strong></div>
               </div>
 
               <div class="summary-strip">
@@ -507,7 +507,7 @@ header('Pragma: no-cache');
 
           <div class="toolbar">
             <div class="toolbar-left">
-              <input class="input md" id="usersSearch" placeholder="Search uid / name / phone / email">
+              <input class="input md" id="usersSearch" placeholder="Search UID / phone / email / recent name">
             </div>
           </div>
 
