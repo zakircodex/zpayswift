@@ -14,5 +14,6 @@ if ($token !== '') {
         'updated_at' => zb_now_iso(),
     ]);
 }
+zb_clear_owner_session_cookie();
 
 api_response(true, 'SUCCESS', 'Logged out', []);
