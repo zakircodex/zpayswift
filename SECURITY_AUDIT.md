@@ -95,7 +95,7 @@ No real secrets are documented or committed. The following values must remain pr
 
 - Worker claim responses still use the protected worker channel and must remain compatible with the tested worker app flow.
 - Rotate any production secret that was ever exposed outside the private config or trusted deployment environment.
-- Keep private config at `/home/zedpayhe/private/zpayswift/config.php`; legacy fallback to `/home/zedpayhe/private/zawtopup/config.php` remains only for compatibility.
+- Keep private configuration outside `public_html`; the legacy private-config fallback remains only for compatibility.
 
 ## Test Checklist
 
