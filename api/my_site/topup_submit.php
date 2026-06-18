@@ -11,6 +11,7 @@ $owner = $ctx['owner'];
 $ownerId = (string)($owner['owner_id'] ?? '');
 
 $body = api_read_json_body();
+if (!$body && !empty($_POST)) { $body = $_POST; }
 $number = normalize_bd_topup_number((string)($body['topup_number'] ?? $body['number'] ?? ''));
 $operator = normalize_operator((string)($body['operator'] ?? ''));
 $amount = (float)($body['amount'] ?? 0);
@@ -82,4 +83,7 @@ fb_put('REQUEST_STATUS/' . $requestId, [
 api_response(true, 'TOPUP_QUEUED', 'Topup request queued for worker', [
     'request_id' => $requestId,
     'status' => 'PENDING',
+    'topup_number' => $number,
+    'operator' => $operator,
+    'amount' => $amount,
 ]);
