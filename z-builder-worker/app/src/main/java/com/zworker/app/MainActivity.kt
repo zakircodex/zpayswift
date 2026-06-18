@@ -2,10 +2,12 @@ package com.zworker.app
 
 import android.Manifest
 import android.content.Intent
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.Spinner
@@ -100,15 +102,49 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupSpinners() {
-        val adapter = ArrayAdapter(
+        val adapter = object : ArrayAdapter<String>(
             this,
             android.R.layout.simple_spinner_item,
             operatorItems
-        )
+        ) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val view = super.getView(position, convertView, parent)
+                (view as? TextView)?.apply {
+                    text = displayOperator(getItem(position).orEmpty())
+                    setTextColor(Color.BLACK)
+                    textSize = 18f
+                    setPadding(18, 12, 18, 12)
+                }
+                return view
+            }
+
+            override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val view = super.getDropDownView(position, convertView, parent)
+                (view as? TextView)?.apply {
+                    text = displayOperator(getItem(position).orEmpty())
+                    setTextColor(Color.BLACK)
+                    textSize = 18f
+                    setPadding(18, 16, 18, 16)
+                }
+                return view
+            }
+        }
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
 
         spSim1Operator.adapter = adapter
         spSim2Operator.adapter = adapter
+    }
+
+    private fun displayOperator(value: String): String {
+        return when (value.uppercase()) {
+            "" -> "Select operator"
+            "GP" -> "GP"
+            "ROBI" -> "Robi"
+            "BL" -> "Banglalink"
+            "AIRTEL" -> "Airtel"
+            "TT" -> "Teletalk"
+            else -> value
+        }
     }
 
     private fun loadConfig() {
@@ -125,13 +161,14 @@ class MainActivity : AppCompatActivity() {
     private fun saveConfig() {
         prefs.sim1Operator = spSim1Operator.selectedItem?.toString().orEmpty()
         prefs.sim2Operator = spSim2Operator.selectedItem?.toString().orEmpty()
-        prefs.lastLog = "SIM setup saved"
+        prefs.lastLog = "SIM setup saved: ${simSummary()}"
         tvDeviceId.text = "Device ID: ${prefs.deviceId}"
+        tvStatusCard.text = "Status: SIM setup saved\n${simSummary()}"
         tvLog.text = prefs.lastLog
     }
 
     private fun testConnection() {
-        tvStatusCard.text = "Status: Testing server connection..."
+        tvStatusCard.text = "Status: Testing server connection...\n${simSummary()}"
         tvLog.text = "Sending heartbeat..."
         Thread {
             val ok = try {
@@ -141,27 +178,30 @@ class MainActivity : AppCompatActivity() {
             }
             runOnUiThread {
                 if (ok) {
-                    prefs.lastLog = "Server connected. Heartbeat saved."
-                    tvStatusCard.text = "Status: CONNECTED ✅"
+                    prefs.lastLog = "Server connected. Heartbeat saved. ${simSummary()}"
+                    tvStatusCard.text = "Status: CONNECTED ✅\n${simSummary()}"
                 } else {
                     prefs.lastLog = "Connection failed. Check internet, app token, or server API."
-                    tvStatusCard.text = "Status: CONNECTION FAILED ❌"
+                    tvStatusCard.text = "Status: CONNECTION FAILED ❌\n${simSummary()}"
                 }
                 refreshUi()
             }
         }.start()
     }
 
+    private fun simSummary(): String {
+        return "SIM1: ${displayOperator(prefs.sim1Operator).replace("Select operator", "Not set")} | SIM2: ${displayOperator(prefs.sim2Operator).replace("Select operator", "Not set")}"
+    }
+
     private fun refreshUi() {
         val enabled = isAccessibilityEnabled()
-        val simText = "SIM1: ${prefs.sim1Operator.ifBlank { "Not set" }} | SIM2: ${prefs.sim2Operator.ifBlank { "Not set" }}"
         tvAccessibility.text = if (enabled) {
             "Accessibility: ENABLED"
         } else {
             "Accessibility: DISABLED"
         }
         if (tvStatusCard.text.isNullOrBlank() || tvStatusCard.text.toString().contains("Checking")) {
-            tvStatusCard.text = "Status: Ready\n$simText"
+            tvStatusCard.text = "Status: Ready\n${simSummary()}"
         }
         tvLog.text = prefs.lastLog
     }
