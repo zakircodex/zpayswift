@@ -80,12 +80,15 @@ if (!$res['ok']) {
     ], 500);
 }
 
+$now = zb_now_iso();
 $patch = [
     'status' => 'BUILD_QUEUED',
     'build_status' => 'BUILD_QUEUED',
-    'updated_at' => zb_now_iso(),
+    'build_progress' => 15,
+    'build_started_at' => $now,
+    'updated_at' => $now,
 ];
 fb_patch($appPath, $patch);
 fb_patch('Z_BUILDER_OWNER_WORKER_APPS/' . $ownerId . '/' . $appId, $patch);
 
-api_response(true, 'BUILD_QUEUED', 'Worker APK build started', ['app_id' => $appId]);
+api_response(true, 'BUILD_QUEUED', 'Worker APK build started', ['app_id' => $appId, 'build_progress' => 15]);
