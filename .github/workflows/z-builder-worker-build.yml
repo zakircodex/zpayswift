@@ -76,6 +76,29 @@ jobs:
           echo "APK_PATH=build-output/${{ github.event.inputs.app_id }}.apk" >> "$GITHUB_ENV"
           echo "ARTIFACT_NAME=${{ github.event.inputs.app_id }}-apk" >> "$GITHUB_ENV"
 
+      - name: Upload APK to Z Builder server
+        if: ${{ success() }}
+        env:
+          CALLBACK_URL: ${{ secrets.ZBUILDER_BUILD_CALLBACK_URL }}
+          CALLBACK_KEY: ${{ secrets.ZBUILDER_BUILD_CALLBACK_KEY }}
+          APP_ID: ${{ github.event.inputs.app_id }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          if [ -z "$CALLBACK_URL" ] || [ -z "$CALLBACK_KEY" ]; then
+            echo "Upload callback not configured; skipping direct server upload."
+            exit 0
+          fi
+          UPLOAD_URL="${CALLBACK_URL/worker_app_build_callback.php/worker_app_upload.php}"
+          curl --fail -sS -X POST "$UPLOAD_URL" \
+            -H "X-ADMIN-KEY: $CALLBACK_KEY" \
+            -F "app_id=$APP_ID" \
+            -F "artifact_name=${ARTIFACT_NAME}" \
+            -F "run_id=$RUN_ID" \
+            -F "run_url=$RUN_URL" \
+            -F "apk=@${APK_PATH};type=application/vnd.android.package-archive"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
