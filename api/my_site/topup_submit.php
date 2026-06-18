@@ -28,6 +28,25 @@ if ($amount < 500) {
 $now = now_ts();
 $requestId = make_topup_request_id();
 $uid = 'ZBU_TEST_' . substr(hash('sha256', $ownerId), 0, 16);
+$walletPath = 'USER_WALLETS/' . $uid;
+$wallet = fb_get($walletPath);
+if (!is_array($wallet)) {
+    fb_put($walletPath, [
+        'uid' => $uid,
+        'owner_id' => $ownerId,
+        'type' => 'Z_BUILDER_TEST_WALLET',
+        'currency' => 'BDT',
+        'wallet_currency' => 'BDT',
+        'available_balance' => 0,
+        'hold_balance' => $amount,
+        'updated_at' => $now,
+    ]);
+} else {
+    fb_patch($walletPath, [
+        'hold_balance' => (float)($wallet['hold_balance'] ?? 0) + $amount,
+        'updated_at' => $now,
+    ]);
+}
 $row = [
     'request_id' => $requestId,
     'uid' => $uid,
@@ -41,9 +60,10 @@ $row = [
     'operator' => $operator,
     'amount' => $amount,
     'amount_bdt' => $amount,
-    'wallet_debit_amount' => 0,
-    'wallet_debit_bdt' => 0,
+    'wallet_debit_amount' => $amount,
+    'wallet_debit_bdt' => $amount,
     'wallet_debit_currency' => 'BDT',
+    'wallet_currency' => 'BDT',
     'created_at' => $now,
     'updated_at' => $now,
 ];
