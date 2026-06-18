@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
 }
 
+fun esc(v: String): String = v.replace("\\", "\\\\").replace("\"", "\\\"")
+
 val generatedAppName = providers.gradleProperty("zbuilderAppName").orElse("Z Builder Worker")
 val generatedPackageName = providers.gradleProperty("zbuilderPackageName").orElse("com.zbuilder.worker")
 val generatedApiBase = providers.gradleProperty("zbuilderApiBase").orElse("https://zpayswift.com")
@@ -10,7 +12,7 @@ val generatedAppId = providers.gradleProperty("zbuilderAppId").orElse("")
 val generatedAppToken = providers.gradleProperty("zbuilderAppToken").orElse("")
 
 android {
-    namespace = generatedPackageName.get()
+    namespace = "com.zworker.app"
     compileSdk {
         version = release(36)
     }
@@ -22,11 +24,12 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        manifestPlaceholders["appLabel"] = generatedAppName.get()
-        buildConfigField("String", "ZB_APP_NAME", "\"${generatedAppName.get()}\"")
-        buildConfigField("String", "ZB_API_BASE", "\"${generatedApiBase.get().trimEnd('/')}\"")
-        buildConfigField("String", "ZB_WORKER_APP_ID", "\"${generatedAppId.get()}\"")
-        buildConfigField("String", "ZB_WORKER_APP_TOKEN", "\"${generatedAppToken.get()}\"")
+        resValue("string", "app_name", esc(generatedAppName.get()))
+        resValue("string", "accessibility_label", esc(generatedAppName.get()) + " Accessibility")
+        buildConfigField("String", "ZB_APP_NAME", "\"${esc(generatedAppName.get())}\"")
+        buildConfigField("String", "ZB_API_BASE", "\"${esc(generatedApiBase.get().trimEnd('/'))}\"")
+        buildConfigField("String", "ZB_WORKER_APP_ID", "\"${esc(generatedAppId.get())}\"")
+        buildConfigField("String", "ZB_WORKER_APP_TOKEN", "\"${esc(generatedAppToken.get())}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
