@@ -2,6 +2,7 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="#07152E"
     android:fillViewport="true">
 
     <LinearLayout
@@ -9,7 +10,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="16dp"
+        android:padding="18dp"
         android:focusable="true"
         android:focusableInTouchMode="true"
         android:descendantFocusability="beforeDescendants">
@@ -19,7 +20,8 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Z Builder Worker"
-            android:textSize="24sp"
+            android:textColor="#FFFFFF"
+            android:textSize="26sp"
             android:textStyle="bold" />
 
         <TextView
@@ -27,7 +29,21 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Pre-configured app. Set SIM operators, allow permissions, then start worker." />
+            android:text="Connected to Z Builder API"
+            android:textColor="#AFC7FF"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/tvStatusCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:background="#10244B"
+            android:padding="14dp"
+            android:text="Status: Checking"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvDeviceId"
@@ -35,36 +51,48 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="Device ID: loading"
+            android:textColor="#DCE7FF"
             android:textStyle="bold" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="SIM1 Operator" />
+            android:layout_marginTop="16dp"
+            android:text="SIM1 Operator"
+            android:textColor="#FFFFFF" />
 
         <Spinner
             android:id="@+id/spSim1Operator"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:background="#FFFFFF" />
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:text="SIM2 Operator" />
+            android:layout_marginTop="10dp"
+            android:text="SIM2 Operator"
+            android:textColor="#FFFFFF" />
 
         <Spinner
             android:id="@+id/spSim2Operator"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content" />
+            android:layout_height="wrap_content"
+            android:background="#FFFFFF" />
 
         <Button
             android:id="@+id/btnSave"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="14dp"
             android:text="Save SIM Setup" />
+
+        <Button
+            android:id="@+id/btnTestConnection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Test Connection" />
 
         <Button
             android:id="@+id/btnOpenAccessibility"
@@ -93,6 +121,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:text="Accessibility: unknown"
+            android:textColor="#FFFFFF"
             android:textStyle="bold" />
 
         <TextView
@@ -101,6 +130,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="Log"
+            android:textColor="#AFC7FF"
             android:textIsSelectable="true" />
 
     </LinearLayout>
