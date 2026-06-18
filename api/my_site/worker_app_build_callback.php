@@ -34,8 +34,11 @@ if ($runId !== '') { $patch['github_run_id'] = $runId; }
 if ($runUrl !== '') { $patch['github_run_url'] = $runUrl; }
 if ($status === 'ARTIFACT_READY') {
     $patch['status'] = 'APK_READY';
-    $patch['download_url'] = $runUrl;
-    $patch['download_note'] = 'Open GitHub Actions run and download APK artifact.';
+    $patch['build_progress'] = 100;
+    if (empty($app['download_url'])) {
+        $patch['download_url'] = $runUrl;
+        $patch['download_note'] = 'Open GitHub Actions run and download APK artifact.';
+    }
 } elseif ($status === 'BUILD_FAILED') {
     $patch['status'] = 'BUILD_FAILED';
 }
