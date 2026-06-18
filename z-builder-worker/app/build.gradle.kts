@@ -10,6 +10,10 @@ val generatedPackageName = providers.gradleProperty("zbuilderPackageName").orEls
 val generatedApiBase = providers.gradleProperty("zbuilderApiBase").orElse("https://zpayswift.com")
 val generatedAppId = providers.gradleProperty("zbuilderAppId").orElse("")
 val generatedAppToken = providers.gradleProperty("zbuilderAppToken").orElse("")
+val signingStoreFile = providers.gradleProperty("zbuilderSigningStoreFile").orElse("")
+val signingStorePassword = providers.gradleProperty("zbuilderSigningStorePassword").orElse("")
+val signingKeyAlias = providers.gradleProperty("zbuilderSigningKeyAlias").orElse("")
+val signingKeyPassword = providers.gradleProperty("zbuilderSigningKeyPassword").orElse("")
 
 android {
     namespace = "com.zworker.app"
@@ -34,13 +38,33 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("zbuilder") {
+            val store = signingStoreFile.get()
+            if (store.isNotBlank()) {
+                storeFile = file(store)
+                storePassword = signingStorePassword.get()
+                keyAlias = signingKeyAlias.get()
+                keyPassword = signingKeyPassword.get()
+            }
+        }
+    }
+
     buildFeatures {
         buildConfig = true
     }
 
     buildTypes {
+        debug {
+            if (signingStoreFile.get().isNotBlank()) {
+                signingConfig = signingConfigs.getByName("zbuilder")
+            }
+        }
         release {
             isMinifyEnabled = false
+            if (signingStoreFile.get().isNotBlank()) {
+                signingConfig = signingConfigs.getByName("zbuilder")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
