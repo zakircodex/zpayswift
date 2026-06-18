@@ -4,24 +4,37 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Z Builder User Panel</title>
-  <link rel="stylesheet" href="../assets/css/style.css">
+  <link rel="stylesheet" href="../assets/css/style.css?v=20260618-topup-test">
 </head>
 <body>
   <main class="shell">
     <nav class="nav">
       <div class="brand-lockup"><img class="logo-img" data-site-logo hidden alt="Tenant logo"><span class="logo-mark">ZB</span><span data-site-name>Z Builder Demo Site</span></div>
-      <div class="nav-links"><span class="badge">Plan: <strong data-plan-label>Loading</strong></span><a class="btn small secondary" href="../onboarding/index.html">Edit Demo</a><a class="btn small secondary" href="../control/index.html">Owner Control</a></div>
+      <div class="nav-links"><span class="badge">Plan: <strong data-plan-label>Loading</strong></span><a class="btn small secondary" href="../dashboard/index.html">Dashboard</a><a class="btn small secondary" href="../control/index.html">Owner Control</a></div>
     </nav>
+
     <section class="hero">
-      <div class="card hero-card"><span class="badge">BD white-label user panel demo</span><h1>Service support from <span data-site-name>Z Builder Demo Site</span></h1><p data-expiry-text>Loading tenant status...</p><div class="notice danger expired-only">This tenant site is expired.</div><div class="actions hide-when-expired"><button class="btn" data-demo-action="Login">Login</button><button class="btn secondary" data-demo-action="Register">Register</button><button class="btn secondary" data-demo-action="Track">Track</button></div></div>
-      <div class="card hero-card"><h2>Dashboard preview</h2><div class="grid two"><div class="stat-card">Currency<strong>BDT</strong></div><div class="stat-card">Days left<strong data-expiry-days>-</strong></div></div><div class="kv"><span>Tenant URL</span><strong data-tenant-url>-</strong></div><div class="kv"><span>SMS</span><strong>BD only later</strong></div></div>
+      <div class="card hero-card"><span class="badge">Z Builder test user panel</span><h1>Topup test from <span data-site-name>Z Builder Demo Site</span></h1><p data-expiry-text>Loading tenant status...</p><div class="notice danger expired-only">This tenant site is expired.</div><p>এই panel এখন owner-session দিয়ে worker queue test করার জন্য real topup request submit করবে।</p></div>
+      <div class="card hero-card"><h2>Worker test status</h2><div class="grid two"><div class="stat-card">Currency<strong>BDT</strong></div><div class="stat-card">Days left<strong data-expiry-days>-</strong></div></div><div class="kv"><span>Tenant URL</span><strong data-tenant-url>-</strong></div><div class="kv"><span>Queue</span><strong>TOPUP_REQUESTS/PENDING</strong></div></div>
     </section>
-    <section class="grid hide-when-expired"><article class="service-card"><h3>Mobile Topup</h3><p>Demo service card.</p><button class="btn secondary" data-demo-action="Topup">Open</button></article><article class="service-card"><h3>Bundle</h3><p>Demo service card.</p><button class="btn secondary" data-demo-action="Bundle">Open</button></article><article class="service-card"><h3>Payment Support</h3><p>Demo service card.</p><button class="btn secondary" data-demo-action="Payment">Open</button></article></section>
-    <section class="card hero-card section"><h2>Demo guard tools</h2><div class="actions"><button class="btn secondary" data-expire-demo>Set Expired</button><button class="btn secondary" data-renew-demo>Renew Demo</button></div></section>
-    <footer class="footer">Z Builder tenant UI skeleton only.</footer>
+
+    <section class="card hero-card section hide-when-expired">
+      <span class="badge">Mobile Topup</span>
+      <h2>Submit topup request</h2>
+      <form class="form-grid" data-topup-form>
+        <label class="form-field"><span>Topup Number</span><input name="topup_number" inputmode="numeric" placeholder="017xxxxxxxx" required></label>
+        <label class="form-field"><span>Operator</span><select name="operator" required><option value="">Select operator</option><option value="GP">GP</option><option value="ROBI">Robi</option><option value="BL">Banglalink</option><option value="AIRTEL">Airtel</option><option value="TT">Teletalk</option></select></label>
+        <label class="form-field"><span>Amount BDT</span><input name="amount" inputmode="decimal" placeholder="500" required></label>
+        <div class="form-field full"><button class="btn" type="submit">Queue Topup</button></div>
+      </form>
+      <div class="notice section" data-topup-result hidden></div>
+    </section>
+
+    <section class="grid hide-when-expired"><article class="service-card"><h3>Bundle</h3><p>Coming next.</p><button class="btn secondary" data-demo-action="Bundle">Open</button></article><article class="service-card"><h3>Payment Support</h3><p>Coming next.</p><button class="btn secondary" data-demo-action="Payment">Open</button></article><article class="service-card"><h3>Tracking</h3><p>Request status view coming next.</p><button class="btn secondary" data-demo-action="Track">Track</button></article></section>
+    <footer class="footer">Z Builder tenant UI test mode.</footer>
   </main>
   <script src="../assets/js/demo-store.js"></script>
   <script src="../assets/js/tenant-config.js"></script>
-  <script src="../assets/js/user-panel.js"></script>
+  <script src="../assets/js/user-panel.js?v=20260618-topup-test"></script>
 </body>
 </html>
