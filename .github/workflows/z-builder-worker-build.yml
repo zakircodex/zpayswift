@@ -61,11 +61,18 @@ jobs:
             -PzbuilderAppId="${{ github.event.inputs.app_id }}" \
             -PzbuilderAppToken="${{ github.event.inputs.app_token }}"
 
-      - name: Rename APK
+      - name: Prepare APK artifact
         shell: bash
         run: |
           mkdir -p build-output
-          cp z-builder-worker/app/build/outputs/apk/release/app-release.apk "build-output/${{ github.event.inputs.app_id }}.apk"
+          echo "Generated APK files:"
+          find z-builder-worker/app/build/outputs/apk -type f -name "*.apk" -print
+          APK_FILE=$(find z-builder-worker/app/build/outputs/apk/release -type f -name "*.apk" | head -n 1)
+          if [ -z "$APK_FILE" ]; then
+            echo "No release APK found"
+            exit 1
+          fi
+          cp "$APK_FILE" "build-output/${{ github.event.inputs.app_id }}.apk"
           echo "APK_PATH=build-output/${{ github.event.inputs.app_id }}.apk" >> "$GITHUB_ENV"
           echo "ARTIFACT_NAME=${{ github.event.inputs.app_id }}-apk" >> "$GITHUB_ENV"
 
