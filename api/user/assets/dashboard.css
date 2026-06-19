@@ -580,6 +580,17 @@ body[data-active-section="historySection"] .hero-card{
   white-space:pre-wrap;
 }
 
+.add-money-copy-card{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  align-items:flex-start;
+}
+
+.add-money-copy-card .btn{
+  margin-top:4px;
+}
+
 /* =========================
    Forms / Buttons
 ========================= */

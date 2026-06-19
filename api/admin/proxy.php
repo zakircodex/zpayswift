@@ -4,6 +4,8 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/mfs.php';
 require_once dirname(__DIR__) . '/lib/add_money.php';
+require_once dirname(__DIR__) . '/lib/rates.php';
+require_once dirname(__DIR__) . '/lib/currency_conversion.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -1347,13 +1349,15 @@ switch ($action) {
         $body = proxy_read_json_body();
 
         $rate = proxy_mfs_float($body['rate_myr_bdt'] ?? $body['myr_to_bdt_rate'] ?? 31.00, 31.00);
-        if ($rate <= 0) {
-            proxy_response(false, 'VALIDATION_ERROR', 'MYR to BDT rate must be greater than zero', ['field' => 'rate_myr_bdt'], 422);
+        $rateValidation = zpay_validate_myr_to_bdt_rate($rate);
+        if (empty($rateValidation['ok'])) {
+            proxy_response(false, (string)$rateValidation['code'], (string)$rateValidation['message'], ['field' => 'rate_myr_bdt'], 422);
         }
 
         $feesBody = is_array($body['fees'] ?? null) ? (array)$body['fees'] : $body;
         $settings = [
             'rate_myr_bdt' => $rate,
+            'myr_to_bdt_rate' => $rate,
             'fees' => [
                 'MY' => [
                     'BKASH' => proxy_mfs_fee_row($feesBody, 'MY', 'BKASH'),
@@ -1368,6 +1372,11 @@ switch ($action) {
             'updated_by_uid' => (string)($adminUser['uid'] ?? ''),
             'updated_by_role' => 'ADMIN',
         ];
+
+        $rateSave = zpay_save_myr_to_bdt_rate($rate, (string)($adminUser['uid'] ?? ''), 'ADMIN_PANEL');
+        if (empty($rateSave['ok'])) {
+            proxy_response(false, (string)($rateSave['code'] ?? 'RATE_SAVE_FAILED'), (string)($rateSave['message'] ?? 'Failed to save Ringgit rate'), [], 500);
+        }
 
         if (!fb_patch('MFS_SETTINGS', $settings)) {
             proxy_response(false, 'SERVER_ERROR', 'Failed to save MFS settings', [], 500);
@@ -1503,6 +1512,36 @@ switch ($action) {
     case 'user_update':
         proxy_require_method('POST');
         proxy_forward_admin_post('users/update.php', proxy_read_json_body());
+        break;
+
+    case 'user_currency_preview':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+        proxy_require_admin_login(true);
+
+        $body = proxy_read_json_body();
+        $uid = trim((string)($body['uid'] ?? ''));
+        $country = strtoupper(trim((string)(
+            $body['pricing_country']
+            ?? $body['market_country']
+            ?? $body['service_country']
+            ?? $body['country']
+            ?? $body['country_code']
+            ?? ''
+        )));
+
+        if ($uid === '' || !in_array($country, ['BD', 'MY'], true)) {
+            proxy_response(false, 'VALIDATION_ERROR', 'uid and pricing_country are required', [], 422);
+        }
+
+        $preview = account_currency_preview_for_uid($uid, $country);
+        if (empty($preview['ok'])) {
+            proxy_response(false, (string)($preview['code'] ?? 'PREVIEW_FAILED'), (string)($preview['message'] ?? 'Failed to preview currency conversion'), [], 422);
+        }
+
+        proxy_response(true, 'SUCCESS', 'Currency conversion preview ready', [
+            'preview' => $preview,
+        ]);
         break;
 
     case 'user_approve':

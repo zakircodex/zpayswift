@@ -10,6 +10,7 @@
  * - topup|... callbacks go to topup_webhook.php
  * - acct|... callbacks go to account_review_webhook.php
  * - am|... callbacks go to add_money_webhook.php
+ * - /rate 31.20 messages go to rate_webhook.php
  * - known MFS callback formats go to mfs_webhook.php
  * - non-bundle callbacks fall back to the MFS parser
  * - normal Telegram messages go to mfs_webhook.php for sender details replies
@@ -36,6 +37,7 @@ if (strtoupper($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
             'topup' => 'callback_data starts with topup|',
             'account_review' => 'callback_data starts with acct|',
             'add_money' => 'callback_data starts with am|',
+            'rate' => 'message starts with /rate',
             'mfs' => 'known MFS formats and non-bundle callback fallback, plus normal messages',
         ],
         'time' => date('Y-m-d H:i:s'),
@@ -87,6 +89,13 @@ if (is_array($callback)) {
 }
 
 if (isset($update['message']) && is_array($update['message'])) {
+    $text = trim((string)($update['message']['text'] ?? ''));
+    if (preg_match('/^\/rate(?:@\w+)?(?:\s|$)/i', $text) === 1) {
+        $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
+        require __DIR__ . '/rate_webhook.php';
+        exit;
+    }
+
     $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
     require __DIR__ . '/mfs_webhook.php';
     exit;

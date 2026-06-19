@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
+require_once dirname(__DIR__, 2) . '/lib/currency_conversion.php';
 
 function email_to_index_key(string $email): string
 {
@@ -151,6 +152,20 @@ $countryChangeNote = trim((string)($body['country_change_note'] ?? $body['note']
 
 $role = normalize_admin_role($body['role'] ?? $oldRole);
 $status = normalize_admin_status($body['status'] ?? $oldStatus);
+$currencyConversionPreview = null;
+
+if ($countryProvided && $country !== '') {
+    $currencyConversionPreview = account_currency_preview_for_rows($user, $oldWalletRow, $country);
+    if (empty($currencyConversionPreview['ok'])) {
+        api_response(
+            false,
+            (string)($currencyConversionPreview['code'] ?? 'EXCHANGE_RATE_MISSING'),
+            (string)($currencyConversionPreview['message'] ?? 'Exchange rate is missing. Please update Ringgit rate first.'),
+            [],
+            422
+        );
+    }
+}
 
 $updates = [
     'updated_at' => now_ts(),
@@ -251,45 +266,60 @@ if (!fb_patch('USERS/' . $uid, $updates)) {
 
 if ($countryProvided) {
     $walletCurrency = $country === 'MY' ? 'MYR' : 'BDT';
-    if (!fb_patch('USER_WALLETS/' . $uid, [
-        'currency' => $walletCurrency,
-        'wallet_currency' => $walletCurrency,
-        'pricing_country' => $country,
-        'market_country' => $country,
-        'service_country' => $country,
-        'updated_at' => now_ts(),
-    ])) {
-        fb_patch('USERS/' . $uid, [
-            'country_code' => (string)($user['country_code'] ?? ''),
-            'country' => (string)($user['country'] ?? ''),
-            'pricing_country' => (string)($user['pricing_country'] ?? ''),
-            'market_country' => (string)($user['market_country'] ?? ''),
-            'service_country' => (string)($user['service_country'] ?? ''),
-            'currency' => (string)($user['currency'] ?? ''),
-            'wallet_currency' => (string)($user['wallet_currency'] ?? ''),
-            'country_mismatch' => (bool)($user['country_mismatch'] ?? false),
-            'updated_at' => now_ts(),
-        ]);
-        api_response(false, 'SERVER_ERROR', 'User updated but wallet currency migration failed', [], 500);
-    }
+    $conversionRequired = is_array($currencyConversionPreview)
+        && !empty($currencyConversionPreview['conversion_required']);
 
-    if ($country !== $oldPricingCountry || $walletCurrency !== $oldCurrency) {
-        $logId = function_exists('make_uid') ? make_uid() : ('CCL' . date('YmdHis') . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8)));
-        $logRow = [
-            'log_id' => $logId,
-            'uid' => $uid,
-            'old_pricing_country' => $oldPricingCountry,
-            'new_pricing_country' => $country,
-            'old_currency' => $oldCurrency !== '' ? $oldCurrency : ($oldPricingCountry === 'MY' ? 'MYR' : 'BDT'),
-            'new_currency' => $walletCurrency,
-            'changed_by' => (string)($adminUser['uid'] ?? ''),
-            'changed_by_role' => 'ADMIN',
-            'changed_at' => now_ts(),
-            'note' => $countryChangeNote,
-            'balance_converted' => false,
-        ];
-        if (!fb_put('COUNTRY_CHANGE_LOG/' . $uid . '/' . $logId, $logRow)) {
-            system_log('COUNTRY_CHANGE_LOG_WARNING', $uid, 'Failed to write country change log', $logRow);
+    if ($conversionRequired) {
+        $conversion = account_currency_apply_to_wallet(
+            $uid,
+            $user,
+            $oldWalletRow,
+            $country,
+            (string)($adminUser['uid'] ?? ''),
+            $countryChangeNote !== '' ? $countryChangeNote : 'Admin pricing country update with wallet currency conversion.'
+        );
+
+        if (empty($conversion['ok'])) {
+            fb_patch('USERS/' . $uid, [
+                'country_code' => (string)($user['country_code'] ?? ''),
+                'country' => (string)($user['country'] ?? ''),
+                'pricing_country' => (string)($user['pricing_country'] ?? ''),
+                'market_country' => (string)($user['market_country'] ?? ''),
+                'service_country' => (string)($user['service_country'] ?? ''),
+                'currency' => (string)($user['currency'] ?? ''),
+                'wallet_currency' => (string)($user['wallet_currency'] ?? ''),
+                'country_mismatch' => (bool)($user['country_mismatch'] ?? false),
+                'updated_at' => now_ts(),
+            ]);
+            api_response(
+                false,
+                (string)($conversion['code'] ?? 'WALLET_CONVERSION_FAILED'),
+                (string)($conversion['message'] ?? 'User updated but wallet currency conversion failed'),
+                [],
+                500
+            );
+        }
+    } else {
+        if (!fb_patch('USER_WALLETS/' . $uid, [
+            'currency' => $walletCurrency,
+            'wallet_currency' => $walletCurrency,
+            'pricing_country' => $country,
+            'market_country' => $country,
+            'service_country' => $country,
+            'updated_at' => now_ts(),
+        ])) {
+            fb_patch('USERS/' . $uid, [
+                'country_code' => (string)($user['country_code'] ?? ''),
+                'country' => (string)($user['country'] ?? ''),
+                'pricing_country' => (string)($user['pricing_country'] ?? ''),
+                'market_country' => (string)($user['market_country'] ?? ''),
+                'service_country' => (string)($user['service_country'] ?? ''),
+                'currency' => (string)($user['currency'] ?? ''),
+                'wallet_currency' => (string)($user['wallet_currency'] ?? ''),
+                'country_mismatch' => (bool)($user['country_mismatch'] ?? false),
+                'updated_at' => now_ts(),
+            ]);
+            api_response(false, 'SERVER_ERROR', 'User updated but wallet currency migration failed', [], 500);
         }
     }
 }

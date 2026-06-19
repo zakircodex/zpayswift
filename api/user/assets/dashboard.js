@@ -1778,20 +1778,18 @@ function renderAddMoneyPage(){
     wrap.innerHTML = `
       <form id="addMoneyForm" class="form-grid" enctype="multipart/form-data">
         <input type="hidden" name="method" value="BANK">
-        <div class="detail-box">
+        <div class="detail-box add-money-copy-card">
           <label>Bank</label>
           <strong>${esc(settings.bank_name || '-')}</strong>
-          <button class="btn ghost sm" type="button" data-copy-add-money="${esc(settings.bank_name || '')}">Copy</button>
         </div>
-        <div class="detail-box">
+        <div class="detail-box add-money-copy-card">
           <label>Account Holder</label>
           <strong>${esc(settings.account_holder || '-')}</strong>
-          <button class="btn ghost sm" type="button" data-copy-add-money="${esc(settings.account_holder || '')}">Copy</button>
         </div>
-        <div class="detail-box">
+        <div class="detail-box add-money-copy-card">
           <label>Account Number</label>
           <strong>${esc(settings.account_number || '-')}</strong>
-          <button class="btn ghost sm" type="button" data-copy-add-money="${esc(settings.account_number || '')}">Copy</button>
+          <button class="btn ghost sm" type="button" data-copy-account-number="${esc(settings.account_number || '')}">Copy Number</button>
         </div>
         <div class="field form-full">
           <label>Instruction</label>
@@ -1817,17 +1815,17 @@ function renderAddMoneyPage(){
   } else {
     wrap.innerHTML = `
       <form id="addMoneyForm" class="form-grid">
-        <div class="detail-box">
+        <div class="detail-box add-money-copy-card">
           <label>bKash Number</label>
           <strong>${esc(settings.bkash_number || '-')}</strong>
           <small>${esc(settings.bkash_account_type || '')}</small>
-          <button class="btn ghost sm" type="button" data-copy-add-money="${esc(settings.bkash_number || '')}">Copy</button>
+          <button class="btn ghost sm" type="button" data-copy-account-number="${esc(settings.bkash_number || '')}">Copy Number</button>
         </div>
-        <div class="detail-box">
+        <div class="detail-box add-money-copy-card">
           <label>Nagad Number</label>
           <strong>${esc(settings.nagad_number || '-')}</strong>
           <small>${esc(settings.nagad_account_type || '')}</small>
-          <button class="btn ghost sm" type="button" data-copy-add-money="${esc(settings.nagad_number || '')}">Copy</button>
+          <button class="btn ghost sm" type="button" data-copy-account-number="${esc(settings.nagad_number || '')}">Copy Number</button>
         </div>
         <div class="field form-full">
           <label>Instruction</label>
@@ -3865,9 +3863,9 @@ function bindEvents(){
   if (document.body && document.body.dataset.addMoneyCopyBound !== '1') {
     document.body.dataset.addMoneyCopyBound = '1';
     document.addEventListener('click', (event) => {
-      const btn = event.target?.closest?.('[data-copy-add-money]');
+      const btn = event.target?.closest?.('[data-copy-account-number]');
       if (!btn) return;
-      copyText(btn.dataset.copyAddMoney || '', 'Copied');
+      copyText(btn.dataset.copyAccountNumber || '', 'Account number copied.');
     });
   }
 

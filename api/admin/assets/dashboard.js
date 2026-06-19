@@ -60,7 +60,9 @@ const state = {
     trustDevice: true,
     timer: null,
     expiresAt: 0
-  }
+  },
+
+  pendingEditUserUpdate: null
 };
 
 const submitLocks = {};
@@ -2428,12 +2430,12 @@ async function openEditUserModal(uid){
 
           <div>
             <label>Pricing Country</label>
-            <select id="editUserCountry">
+            <select id="editUserCountry" data-original-country="${esc(String(data.pricing_country || data.market_country || data.country_code || data.country || '').toUpperCase())}">
               <option value="">Not Set / Auto fallback</option>
               <option value="BD" ${(String(data.pricing_country || data.market_country || data.country_code || data.country || '').toUpperCase() === 'BD') ? 'selected' : ''}>Bangladesh (BDT)</option>
               <option value="MY" ${(String(data.pricing_country || data.market_country || data.country_code || data.country || '').toUpperCase() === 'MY') ? 'selected' : ''}>Malaysia (MYR)</option>
             </select>
-            <small class="muted">Admin-only. Controls wallet currency, fee and service pricing. Phone Country remains unchanged. Changing pricing country will not convert existing balance automatically.</small>
+            <small class="muted">Admin-only. Controls wallet currency, fee and service pricing. Phone Country remains unchanged. If pricing country changes, wallet balance is converted with the active Ringgit rate.</small>
           </div>
 
           <div>
@@ -2504,57 +2506,99 @@ async function openEditUserModal(uid){
   }
 }
 
-async function submitEditUser(){
-  const uid = document.getElementById('editUserUid')?.value.trim() || '';
-  const name = document.getElementById('editUserName')?.value.trim() || '';
-  const email = document.getElementById('editUserEmail')?.value.trim() || '';
-  const role = (document.getElementById('editUserRole')?.value || 'USER').toUpperCase();
-  const status = (document.getElementById('editUserStatus')?.value || 'ACTIVE').toUpperCase();
-  const country = (document.getElementById('editUserCountry')?.value || '').toUpperCase();
-
-  const commission_per_1000 = numberFromValue(document.getElementById('editUserCommissionPer1000')?.value, 0);
-  const api_enabled = boolFromValue(document.getElementById('editUserApiEnabled')?.value, false);
-  const topup_enabled = boolFromValue(document.getElementById('editUserTopupEnabled')?.value, true);
-  const bundle_enabled = boolFromValue(document.getElementById('editUserBundleEnabled')?.value, true);
-  const min_amount = numberFromValue(document.getElementById('editUserMinAmount')?.value, 0);
-  const max_amount = numberFromValue(document.getElementById('editUserMaxAmount')?.value, 0);
-
+async function submitEditUser(confirmCurrencyConversion = false){
   try{
-    const payload = {
-      uid,
-      name,
-      email,
-      role,
-      status,
-      commission_per_1000,
-      api_enabled,
-      topup_enabled,
-      bundle_enabled,
-      min_amount,
-      max_amount
-    };
+    let payload = null;
+    let originalCountry = '';
 
-    if (country) {
-      payload.pricing_country = country;
-      payload.market_country = country;
-      payload.service_country = country;
-      payload.country = country;
-      payload.country_code = country;
-      payload.country_change_note = 'Admin pricing country update from dashboard. Existing balance was not converted.';
+    if (confirmCurrencyConversion && state.pendingEditUserUpdate) {
+      payload = state.pendingEditUserUpdate.payload;
+      originalCountry = state.pendingEditUserUpdate.originalCountry || '';
+    } else {
+      const countryEl = document.getElementById('editUserCountry');
+      const uid = document.getElementById('editUserUid')?.value.trim() || '';
+      const name = document.getElementById('editUserName')?.value.trim() || '';
+      const email = document.getElementById('editUserEmail')?.value.trim() || '';
+      const role = (document.getElementById('editUserRole')?.value || 'USER').toUpperCase();
+      const status = (document.getElementById('editUserStatus')?.value || 'ACTIVE').toUpperCase();
+      const country = (countryEl?.value || '').toUpperCase();
+
+      const commission_per_1000 = numberFromValue(document.getElementById('editUserCommissionPer1000')?.value, 0);
+      const api_enabled = boolFromValue(document.getElementById('editUserApiEnabled')?.value, false);
+      const topup_enabled = boolFromValue(document.getElementById('editUserTopupEnabled')?.value, true);
+      const bundle_enabled = boolFromValue(document.getElementById('editUserBundleEnabled')?.value, true);
+      const min_amount = numberFromValue(document.getElementById('editUserMinAmount')?.value, 0);
+      const max_amount = numberFromValue(document.getElementById('editUserMaxAmount')?.value, 0);
+
+      originalCountry = (countryEl?.dataset.originalCountry || '').toUpperCase();
+      payload = {
+        uid,
+        name,
+        email,
+        role,
+        status,
+        commission_per_1000,
+        api_enabled,
+        topup_enabled,
+        bundle_enabled,
+        min_amount,
+        max_amount
+      };
+
+      if (country) {
+        payload.pricing_country = country;
+        payload.market_country = country;
+        payload.service_country = country;
+        payload.country = country;
+        payload.country_code = country;
+        payload.country_change_note = 'Admin pricing country update with wallet currency conversion.';
+      }
+
+      if (country && originalCountry && country !== originalCountry) {
+        const previewData = await proxyPost('user_currency_preview', {
+          uid,
+          pricing_country: country
+        }, true, { busyText: 'Preparing currency conversion preview...' });
+
+        const preview = previewData.preview || {};
+        state.pendingEditUserUpdate = { payload, originalCountry, preview };
+        const oldPrefix = walletPrefix(preview.old_currency || (originalCountry === 'MY' ? 'MYR' : 'BDT'));
+        const newPrefix = walletPrefix(preview.new_currency || (country === 'MY' ? 'MYR' : 'BDT'));
+        const body = `
+          <div class="status-box-clean warning">
+            <strong>Confirm Currency Conversion</strong>
+            <p class="muted">This will convert the wallet balance using the active Ringgit rate. It will not simply rename the currency label.</p>
+          </div>
+          <div class="summary-grid" style="margin-top:12px;">
+            <div class="summary-box"><label>Old Pricing</label><strong>${esc(preview.old_pricing_country || originalCountry)} / ${esc(preview.old_currency || '')}</strong></div>
+            <div class="summary-box"><label>Old Balance</label><strong>${oldPrefix} ${money(preview.old_balance || 0)}</strong></div>
+            <div class="summary-box"><label>Rate Used</label><strong>RM 1 = BDT ${money(preview.rate_used || 0)}</strong></div>
+            <div class="summary-box"><label>New Pricing</label><strong>${esc(preview.new_pricing_country || country)} / ${esc(preview.new_currency || '')}</strong></div>
+            <div class="summary-box"><label>New Balance</label><strong>${newPrefix} ${money(preview.new_balance || 0)}</strong></div>
+            <div class="summary-box"><label>Hold Balance</label><strong>${oldPrefix} ${money(preview.old_hold_balance || 0)} to ${newPrefix} ${money(preview.new_hold_balance || 0)}</strong></div>
+          </div>
+        `;
+        openModal('Currency Conversion Preview', body, `
+          <button class="btn ghost" onclick="cancelEditUserConversion()">Cancel</button>
+          <button class="btn brand" onclick="submitEditUser(true)">Convert & Save</button>
+        `);
+        return;
+      }
     }
 
     const data = await proxyPost('user_update', payload, true, { busyText: 'Updating user account...' });
 
+    state.pendingEditUserUpdate = null;
     closeModal();
 
-    log(`User updated: ${data.uid || uid}`);
-    showToast(`User updated: ${data.name || data.uid || uid}`, 'ok');
+    log(`User updated: ${data.uid || payload.uid}`);
+    showToast(`User updated: ${data.name || data.uid || payload.uid}`, 'ok');
 
     await loadUsers({ busy:false, silentLog:true });
 
     const drawer = document.getElementById('drawer');
     if (drawer && drawer.classList.contains('open')) {
-      await viewUser(uid);
+      await viewUser(payload.uid);
     }
   }catch(err){
     if (err.code === 'EMAIL_EXISTS') {
@@ -2564,6 +2608,11 @@ async function submitEditUser(){
 
     alert(err.message || 'Failed to update user');
   }
+}
+
+function cancelEditUserConversion(){
+  state.pendingEditUserUpdate = null;
+  closeModal();
 }
 
 async function approveUserAccount(uid){
