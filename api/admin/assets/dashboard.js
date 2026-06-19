@@ -477,7 +477,7 @@ function statusPill(v){
   let cls = 'info';
 
   if (['SUCCESS','DONE','ACTIVE','COMPLETED','APPROVED'].includes(t)) cls = 'success';
-  else if (['FAILED','ERROR','INACTIVE','DISABLED','REVOKED','DELETED','REMOVED'].includes(t)) cls = 'danger';
+  else if (['FAILED','ERROR','INACTIVE','DISABLED','REVOKED','DELETED','REMOVED','REJECTED'].includes(t)) cls = 'danger';
   else if (['PENDING','CLAIMED','PROCESSING','WAITING','WAITING_ADMIN','EXPIRED'].includes(t)) cls = 'warning';
 
   return `<span class="pill ${cls}">${esc(v || '-')}</span>`;
@@ -4129,8 +4129,8 @@ function renderAddMoneyRequests(){
         <td>${esc(row.method || '-')}</td>
         <td><strong>${addMoneyAmount(row)}</strong></td>
         <td>${proof}</td>
-        <td>${statusPill(status)}</td>
-        <td>
+        <td class="status-cell add-money-status-cell">${statusPill(status)}</td>
+        <td class="actions-cell">
           <div class="row-actions">
             ${pending ? `<button class="mini-btn green" onclick="openAddMoneyAction('${esc(id)}','APPROVE')">Approve</button>` : ''}
             ${pending ? `<button class="mini-btn red" onclick="openAddMoneyAction('${esc(id)}','REJECT')">Reject</button>` : ''}
@@ -4204,12 +4204,12 @@ function addMoneyPaymentMethodLabel(method){
 function renderAddMoneyPaymentAccountRows(accounts){
   const rows = Array.isArray(accounts) ? accounts : [];
   if (!rows.length) {
-    return '<div class="muted">No payment accounts configured yet. Old BD/MY settings will be used as fallback.</div>';
+    return '<div class="empty">No payment account configured yet. Use Add New Account to create one. Old BD/MY settings still work as fallback until new accounts are added.</div>';
   }
 
   return `
-    <div class="table-wrap" style="margin-top:10px;">
-      <table>
+    <div class="table-wrap add-money-settings-table">
+      <table class="add-money-accounts-table">
         <thead>
           <tr>
             <th>Name</th>
@@ -4224,7 +4224,12 @@ function renderAddMoneyPaymentAccountRows(accounts){
         <tbody>
           ${rows.map((account) => `
             <tr>
-              <td><strong>${esc(account.display_name || '-')}</strong><br><span class="muted">${esc(account.account_holder || '-')}</span></td>
+              <td>
+                <div class="payment-account-name-cell">
+                  ${account.logo_url ? `<img class="payment-account-logo-sm" src="${esc(account.logo_url)}" alt="">` : `<span class="payment-account-fallback-sm">${esc(addMoneyPaymentMethodLabel(account.method).slice(0, 2))}</span>`}
+                  <div><strong>${esc(account.display_name || '-')}</strong><br><span class="muted">${esc(account.account_holder || '-')}</span></div>
+                </div>
+              </td>
               <td>${esc(account.country || '-')} / ${esc(account.currency || '-')}</td>
               <td>${esc(addMoneyPaymentMethodLabel(account.method))}</td>
               <td>${esc(account.account_number || '-')}</td>
@@ -4239,46 +4244,87 @@ function renderAddMoneyPaymentAccountRows(accounts){
   `;
 }
 
-function resetAddMoneyPaymentAccountForm(){
-  const set = (id, value) => {
-    const node = document.getElementById(id);
-    if (node) node.value = value;
-  };
-  set('amAccountId', '');
-  set('amAccountCountry', 'BD');
-  set('amAccountMethod', 'BKASH');
-  set('amAccountName', '');
-  set('amAccountHolder', '');
-  set('amAccountNumber', '');
-  set('amAccountInstruction', '');
-  set('amAccountLogo', '');
-  set('amAccountSort', '100');
-  const active = document.getElementById('amAccountActive');
-  if (active) active.checked = true;
+function editAddMoneyPaymentAccount(accountId){
+  openAddMoneyPaymentAccountModal(accountId);
 }
 
-function editAddMoneyPaymentAccount(accountId){
+function resetAddMoneyPaymentAccountForm(){
+  openAddMoneyPaymentAccountModal('');
+}
+
+function openAddMoneyPaymentAccountModal(accountId = ''){
   const account = (state.addMoneyPaymentAccounts || []).find(item => String(item.account_id || '') === String(accountId || ''));
-  if (!account) {
+  if (accountId && !account) {
     showToast('Payment account not found', 'error');
     return;
   }
 
-  const set = (id, value) => {
-    const node = document.getElementById(id);
-    if (node) node.value = value;
+  const row = account || {
+    account_id: '',
+    country: 'BD',
+    method: 'BKASH',
+    display_name: '',
+    account_holder: '',
+    account_number: '',
+    instruction: '',
+    logo_url: '',
+    sort_order: 100,
+    active: true
   };
-  set('amAccountId', account.account_id || '');
-  set('amAccountCountry', account.country || 'BD');
-  set('amAccountMethod', account.method || 'BKASH');
-  set('amAccountName', account.display_name || '');
-  set('amAccountHolder', account.account_holder || '');
-  set('amAccountNumber', account.account_number || '');
-  set('amAccountInstruction', account.instruction || '');
-  set('amAccountLogo', account.logo_url || '');
-  set('amAccountSort', String(account.sort_order ?? 100));
-  const active = document.getElementById('amAccountActive');
-  if (active) active.checked = !!account.active;
+  const selected = (value, current) => String(value).toUpperCase() === String(current || '').toUpperCase() ? 'selected' : '';
+  const body = `
+    <div class="form-grid">
+      <input id="amAccountId" type="hidden" value="${esc(row.account_id || '')}">
+      <div class="field">
+        <label>Country</label>
+        <select id="amAccountCountry" class="input">
+          <option value="BD" ${selected('BD', row.country)}>Bangladesh / BDT</option>
+          <option value="MY" ${selected('MY', row.country)}>Malaysia / MYR</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Method</label>
+        <select id="amAccountMethod" class="input">
+          <option value="BKASH" ${selected('BKASH', row.method)}>bKash</option>
+          <option value="NAGAD" ${selected('NAGAD', row.method)}>Nagad</option>
+          <option value="BANK" ${selected('BANK', row.method)}>Bank</option>
+          <option value="EWALLET" ${selected('EWALLET', row.method)}>eWallet</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Payment Name</label>
+        <input id="amAccountName" class="input" placeholder="RHB Bank or bKash Personal" value="${esc(row.display_name || '')}">
+      </div>
+      <div class="field">
+        <label>A/C Name</label>
+        <input id="amAccountHolder" class="input" placeholder="Account holder name" value="${esc(row.account_holder || '')}">
+      </div>
+      <div class="field">
+        <label>A/C No</label>
+        <input id="amAccountNumber" class="input" placeholder="Account number" value="${esc(row.account_number || '')}">
+      </div>
+      <div class="field">
+        <label>Sort Order</label>
+        <input id="amAccountSort" class="input" type="number" step="1" placeholder="100" value="${esc(row.sort_order ?? 100)}">
+      </div>
+      <div class="field">
+        <label>Logo URL optional</label>
+        <input id="amAccountLogo" class="input" placeholder="https://..." value="${esc(row.logo_url || '')}">
+      </div>
+      <label class="field" style="display:flex;align-items:center;gap:8px;margin-top:28px;">
+        <input id="amAccountActive" type="checkbox" ${row.active ? 'checked' : ''}> Active
+      </label>
+      <div class="field form-full">
+        <label>Instruction optional</label>
+        <textarea id="amAccountInstruction" class="input" rows="3" placeholder="Payment instruction">${esc(row.instruction || '')}</textarea>
+      </div>
+    </div>
+  `;
+  const foot = `
+    <button class="btn brand" type="button" onclick="saveAddMoneyPaymentAccount()">Save Account</button>
+    <button class="btn ghost" type="button" onclick="openAddMoneySettings()">Back</button>
+  `;
+  openModal(accountId ? 'Edit Payment Account' : 'Add New Payment Account', body, foot);
 }
 
 async function saveAddMoneyPaymentAccount(){
@@ -4306,95 +4352,24 @@ async function saveAddMoneyPaymentAccount(){
 
 async function openAddMoneySettings(){
   const data = await proxyGet('add_money_settings', {}, { busyText:'Loading payment settings...' });
-  const settings = data.settings || {};
-  const bd = settings.BD || {};
-  const my = settings.MY || {};
   const accounts = Array.isArray(data.accounts) ? data.accounts : [];
   state.addMoneyPaymentAccounts = accounts;
   const body = `
-    <div class="grid two">
-      <div class="detail-item">
-        <label><input id="amBdEnabled" type="checkbox" ${bd.enabled ? 'checked' : ''}> Enable BD Add Money</label>
-        <input id="amBdBkash" class="input" placeholder="bKash number" value="${esc(bd.bkash_number || '')}">
-        <input id="amBdBkashType" class="input" placeholder="bKash account type" value="${esc(bd.bkash_account_type || '')}">
-        <input id="amBdNagad" class="input" placeholder="Nagad number" value="${esc(bd.nagad_number || '')}">
-        <input id="amBdNagadType" class="input" placeholder="Nagad account type" value="${esc(bd.nagad_account_type || '')}">
-        <textarea id="amBdInstruction" class="input" rows="3" placeholder="BD instruction">${esc(bd.instruction || '')}</textarea>
+    <div class="detail-item">
+      <div class="payment-settings-head">
+        <div>
+          <label>Add Money Payment Accounts</label>
+          <p class="muted">Manage active deposit accounts for BD and MY users. Existing old settings remain fallback only if no new account exists for a country.</p>
+        </div>
+        <button class="btn brand" type="button" onclick="openAddMoneyPaymentAccountModal('')">Add New Account</button>
       </div>
-      <div class="detail-item">
-        <label><input id="amMyEnabled" type="checkbox" ${my.enabled ? 'checked' : ''}> Enable MY Add Money</label>
-        <input id="amMyBank" class="input" placeholder="Bank name" value="${esc(my.bank_name || '')}">
-        <input id="amMyHolder" class="input" placeholder="Account holder" value="${esc(my.account_holder || '')}">
-        <input id="amMyAccount" class="input" placeholder="Account number" value="${esc(my.account_number || '')}">
-        <textarea id="amMyInstruction" class="input" rows="3" placeholder="MY instruction">${esc(my.instruction || '')}</textarea>
-      </div>
-    </div>
-    <div class="detail-item" style="margin-top:16px;">
-      <label>Add Money Payment Accounts</label>
-      <p class="muted">New active accounts are shown to user/subadmin Add Money pages. If no account is configured for a country, old BD/MY settings above remain as fallback.</p>
       ${renderAddMoneyPaymentAccountRows(accounts)}
-    </div>
-    <div class="detail-item" style="margin-top:16px;">
-      <label>Add / Edit Payment Account</label>
-      <input id="amAccountId" type="hidden" value="">
-      <div class="grid two">
-        <select id="amAccountCountry" class="input">
-          <option value="BD">Bangladesh / BDT</option>
-          <option value="MY">Malaysia / MYR</option>
-        </select>
-        <select id="amAccountMethod" class="input">
-          <option value="BKASH">bKash</option>
-          <option value="NAGAD">Nagad</option>
-          <option value="BANK">Bank</option>
-          <option value="EWALLET">eWallet</option>
-        </select>
-        <input id="amAccountName" class="input" placeholder="Payment name, e.g. RHB Bank or bKash Personal">
-        <input id="amAccountHolder" class="input" placeholder="A/C Name">
-        <input id="amAccountNumber" class="input" placeholder="A/C No">
-        <input id="amAccountSort" class="input" type="number" step="1" placeholder="Sort order" value="100">
-        <input id="amAccountLogo" class="input" placeholder="Logo URL (optional)">
-        <label style="display:flex;align-items:center;gap:8px;"><input id="amAccountActive" type="checkbox" checked> Active</label>
-        <textarea id="amAccountInstruction" class="input" rows="3" placeholder="Instruction (optional)" style="grid-column:1/-1;"></textarea>
-      </div>
-      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;">
-        <button class="btn ghost" type="button" onclick="resetAddMoneyPaymentAccountForm()">New Account</button>
-        <button class="btn brand" type="button" onclick="saveAddMoneyPaymentAccount()">Save Payment Account</button>
-      </div>
     </div>
   `;
   const foot = `
-    <button class="btn brand" onclick="saveAddMoneySettings()">Save Settings</button>
-    <button class="btn ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn ghost" onclick="closeModal()">Close</button>
   `;
   openModal('Add Money Payment Settings', body, foot);
-}
-
-async function saveAddMoneySettings(){
-  const payload = {
-    BD: {
-      enabled: !!document.getElementById('amBdEnabled')?.checked,
-      bkash_number: document.getElementById('amBdBkash')?.value || '',
-      bkash_account_type: document.getElementById('amBdBkashType')?.value || '',
-      nagad_number: document.getElementById('amBdNagad')?.value || '',
-      nagad_account_type: document.getElementById('amBdNagadType')?.value || '',
-      instruction: document.getElementById('amBdInstruction')?.value || ''
-    },
-    MY: {
-      enabled: !!document.getElementById('amMyEnabled')?.checked,
-      bank_name: document.getElementById('amMyBank')?.value || '',
-      account_holder: document.getElementById('amMyHolder')?.value || '',
-      account_number: document.getElementById('amMyAccount')?.value || '',
-      instruction: document.getElementById('amMyInstruction')?.value || ''
-    }
-  };
-
-  try {
-    await proxyPost('add_money_settings_save', payload, true, { busyText:'Saving payment settings...' });
-    closeModal();
-    showToast('Payment settings saved', 'ok');
-  } catch (err) {
-    showToast(err.message || 'Failed to save settings', 'error');
-  }
 }
 
 /* =========================
@@ -4527,7 +4502,7 @@ window.loadWalletTransferHistory = loadWalletTransferHistory;
 window.openAddMoneyAction = openAddMoneyAction;
 window.submitAddMoneyAction = submitAddMoneyAction;
 window.copyAddMoneyValue = copyAddMoneyValue;
-window.saveAddMoneySettings = saveAddMoneySettings;
+window.openAddMoneyPaymentAccountModal = openAddMoneyPaymentAccountModal;
 window.editAddMoneyPaymentAccount = editAddMoneyPaymentAccount;
 window.resetAddMoneyPaymentAccountForm = resetAddMoneyPaymentAccountForm;
 window.saveAddMoneyPaymentAccount = saveAddMoneyPaymentAccount;

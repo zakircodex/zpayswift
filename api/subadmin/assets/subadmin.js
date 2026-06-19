@@ -536,12 +536,15 @@ function renderAddMoneyAccountCards(accounts, country){
         const instruction = String(account.instruction || '').trim();
         const holder = account.account_holder || '-';
         const number = account.account_number || '-';
+        const methodLabel = addMoneyMethodLabel(account.method);
+        const logo = String(account.logo_url || '').trim();
         return `
           <div class="box add-money-account-card">
             <div class="add-money-account-main">
+              ${logo ? `<img class="add-money-account-logo" src="${esc(logo)}" alt="${esc(account.display_name || methodLabel)}">` : `<div class="add-money-account-logo fallback">${esc(methodLabel.slice(0, 2))}</div>`}
               <div>
-                <div class="add-money-account-name">${esc(account.display_name || addMoneyMethodLabel(account.method))}</div>
-                <div class="add-money-account-method">${esc(addMoneyMethodLabel(account.method))}${country === 'MY' ? ' Deposit' : ' Payment'}</div>
+                <div class="add-money-account-name">${esc(account.display_name || methodLabel)}</div>
+                <div class="add-money-account-method">${esc(methodLabel)}${country === 'MY' ? ' Deposit' : ' Payment'}</div>
               </div>
             </div>
             <div class="add-money-account-lines">

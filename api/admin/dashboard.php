@@ -505,7 +505,7 @@ header('Pragma: no-cache');
             </div>
           </div>
 
-          <div class="toolbar">
+          <div class="toolbar add-money-filter-row">
             <select id="addMoneyStatusFilter" class="input sm">
               <option value="">All Status</option>
               <option value="PENDING">Pending</option>
@@ -522,6 +522,7 @@ header('Pragma: no-cache');
               <option value="BKASH">bKash</option>
               <option value="NAGAD">Nagad</option>
               <option value="BANK">Bank</option>
+              <option value="EWALLET">eWallet</option>
             </select>
           </div>
 

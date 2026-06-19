@@ -974,10 +974,14 @@ function add_money_process_request(string $requestId, string $action, string $ac
 
     $uid = trim((string)($row['uid'] ?? ''));
     $amount = add_money_round($row['amount'] ?? 0);
-    $currency = add_money_currency_for_country((string)($row['pricing_country'] ?? 'BD'));
+    $currency = wallet_normalize_currency_code((string)($row['currency'] ?? $row['wallet_currency'] ?? ''));
+    if ($currency === '') {
+        $currency = add_money_currency_for_country((string)($row['pricing_country'] ?? 'BD'));
+    }
 
     $credit = wallet_credit_available($uid, $amount, $requestId, 'ADD_MONEY', 'Manual add money approved', [
         'source' => 'ADD_MONEY_REQUEST',
+        'amount' => $amount,
         'method' => (string)($row['method'] ?? ''),
         'request_id' => $requestId,
         'currency' => $currency,
