@@ -455,7 +455,7 @@ header('Pragma: no-cache');
             <button id="addMoneyReloadBtn" class="btn ghost" type="button">Reload</button>
           </div>
 
-          <div id="addMoneyContent" class="detail-grid">
+          <div id="addMoneyContent" class="add-money-content">
             <div class="detail-box">
               <label>Status</label>
               <strong>Loading add money settings...</strong>

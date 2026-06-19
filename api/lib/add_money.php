@@ -636,6 +636,27 @@ function add_money_message(array $row): string
         . "Amount: <b>" . add_money_h($currency) . " " . number_format((float)($row['amount'] ?? 0), 2) . "</b>\n"
         . "Status: <b>" . add_money_h($row['status'] ?? 'PENDING') . "</b>\n";
 
+    $status = strtoupper(trim((string)($row['status'] ?? 'PENDING')));
+    if (in_array($status, ['APPROVED', 'REJECTED'], true)) {
+        $processedBy = $status === 'APPROVED'
+            ? trim((string)($row['approved_by'] ?? ''))
+            : trim((string)($row['rejected_by'] ?? ''));
+        $processedRole = $status === 'APPROVED'
+            ? trim((string)($row['approved_by_role'] ?? ''))
+            : trim((string)($row['rejected_by_role'] ?? ''));
+        $processedAt = $status === 'APPROVED'
+            ? (int)($row['approved_at'] ?? 0)
+            : (int)($row['rejected_at'] ?? 0);
+
+        $processedLabel = trim($processedRole . ($processedBy !== '' ? ' / ' . $processedBy : ''));
+        if ($processedLabel !== '') {
+            $text .= "Processed By: <b>" . add_money_h($processedLabel) . "</b>\n";
+        }
+        if ($processedAt > 0) {
+            $text .= "Processed Time: " . date('Y-m-d H:i:s', $processedAt) . "\n";
+        }
+    }
+
     if ($country === 'BD') {
         $text .= "Transaction ID: <code>" . add_money_h($row['transaction_id'] ?? '-') . "</code>\n"
             . "Sender Number: <code>" . add_money_h($row['sender_number'] ?? '-') . "</code>\n";
@@ -726,6 +747,29 @@ function add_money_notify_telegram(array $row): array
     ]);
 
     return $res;
+}
+
+function add_money_sync_processed_telegram_message(array $row): void
+{
+    $status = strtoupper(trim((string)($row['status'] ?? '')));
+    if (!in_array($status, ['APPROVED', 'REJECTED'], true)) {
+        return;
+    }
+
+    $chatId = trim((string)($row['telegram_chat_id'] ?? ''));
+    $messageId = (int)($row['telegram_message_id'] ?? 0);
+    if ($chatId === '' || $messageId <= 0) {
+        return;
+    }
+
+    add_money_telegram_api('editMessageText', [
+        'chat_id' => $chatId,
+        'message_id' => $messageId,
+        'text' => add_money_message($row),
+        'parse_mode' => 'HTML',
+        'disable_web_page_preview' => false,
+        'reply_markup' => json_encode(['inline_keyboard' => []], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    ]);
 }
 
 function add_money_create_request(string $uid, array $user, array $wallet, array $body, array $files = []): array
@@ -969,6 +1013,7 @@ function add_money_process_request(string $requestId, string $action, string $ac
         ];
         add_money_patch_request($requestId, $patch);
         $final = array_merge($row, $patch, ['updated_at' => $now]);
+        add_money_sync_processed_telegram_message($final);
         return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request rejected', 'data' => $final];
     }
 
@@ -1015,5 +1060,6 @@ function add_money_process_request(string $requestId, string $action, string $ac
     add_money_patch_request($requestId, $patch);
 
     $final = array_merge($row, $patch, ['updated_at' => $now]);
+    add_money_sync_processed_telegram_message($final);
     return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request approved', 'data' => $final];
 }

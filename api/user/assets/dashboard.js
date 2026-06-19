@@ -1832,62 +1832,76 @@ function renderAddMoneyPage(){
 
   if (country === 'MY') {
     wrap.innerHTML = `
-      <form id="addMoneyForm" class="form-grid" enctype="multipart/form-data">
-        <input type="hidden" name="method" value="BANK">
-        <div class="add-money-section-title form-full">Deposit With Bank & eWallet</div>
-        ${renderAddMoneyAccountCards(accounts, 'MY')}
-        <div class="field form-full">
-          <label>Instruction</label>
-          <p class="muted">${esc(settings.instruction || 'Transfer and upload your receipt.')}</p>
+      <div class="add-money-layout">
+        <div class="add-money-left">
+          <div class="add-money-section-title">Deposit With Bank & eWallet</div>
+          ${renderAddMoneyAccountCards(accounts, 'MY')}
+          <div class="detail-box add-money-instruction-card">
+            <label>Instruction</label>
+            <p class="muted">${esc(settings.instruction || 'Transfer and upload your receipt.')}</p>
+          </div>
         </div>
-        <div class="field">
-          <label>Amount (${prefix})</label>
-          <input class="input" name="amount_rm" type="number" min="1" step="0.01" placeholder="Enter amount">
-        </div>
-        <div class="field">
-          <label>Receipt Upload</label>
-          <input class="input" name="receipt_upload" type="file" accept="image/jpeg,image/png,image/webp,application/pdf">
-        </div>
-        <div class="field form-full">
-          <label>Note / Reference (optional)</label>
-          <input class="input" name="note" placeholder="Optional note">
-        </div>
-        <div class="form-actions form-full">
-          <button class="btn green" type="submit">Submit Add Money Request</button>
-        </div>
-      </form>
+        <form id="addMoneyForm" class="add-money-form-card" enctype="multipart/form-data">
+          <input type="hidden" name="method" value="BANK">
+          <div class="add-money-form-title">Submit Add Money Request</div>
+          <div class="field">
+            <label>Amount (${prefix})</label>
+            <input class="input" name="amount_rm" type="number" min="1" step="0.01" placeholder="Enter amount">
+          </div>
+          <div class="field">
+            <label>Receipt Upload</label>
+            <input class="input" name="receipt_upload" type="file" accept="image/jpeg,image/png,image/webp,application/pdf">
+          </div>
+          <div class="field">
+            <label>Note / Reference (optional)</label>
+            <input class="input" name="note" placeholder="Optional note">
+          </div>
+          <div class="form-actions">
+            <button class="btn green" type="submit">Submit Add Money Request</button>
+          </div>
+        </form>
+      </div>
     `;
   } else {
     wrap.innerHTML = `
-      <form id="addMoneyForm" class="form-grid">
-        <div class="add-money-section-title form-full">Deposit With bKash & Nagad</div>
-        ${renderAddMoneyAccountCards(accounts, 'BD')}
-        <div class="field form-full">
-          <label>Instruction</label>
-          <p class="muted">${esc(settings.instruction || 'Send money first, then submit your transaction ID.')}</p>
+      <div class="add-money-layout">
+        <div class="add-money-left">
+          <div class="add-money-section-title">Deposit With bKash & Nagad</div>
+          ${renderAddMoneyAccountCards(accounts, 'BD')}
+          <div class="detail-box add-money-instruction-card">
+            <label>Instruction</label>
+            <p class="muted">${esc(settings.instruction || 'Send money first, then submit your transaction ID.')}</p>
+          </div>
         </div>
-        <div class="field">
-          <label>Method</label>
-          <select class="input" name="method">
-            ${bdMethodOptions}
-          </select>
-        </div>
-        <div class="field">
-          <label>Amount (${prefix})</label>
-          <input class="input" name="amount_bdt" type="number" min="1" step="0.01" placeholder="Enter amount">
-        </div>
-        <div class="field">
-          <label>Transaction ID</label>
-          <input class="input" name="transaction_id" placeholder="bKash/Nagad transaction ID">
-        </div>
-        <div class="field">
-          <label>Sender Number</label>
-          <input class="input" name="sender_number" placeholder="Number used to send payment">
-        </div>
-        <div class="form-actions form-full">
-          <button class="btn green" type="submit">Submit Add Money Request</button>
-        </div>
-      </form>
+        <form id="addMoneyForm" class="add-money-form-card">
+          <div class="add-money-form-title">Submit Add Money Request</div>
+          <div class="field">
+            <label>Method</label>
+            <select class="input" name="method">
+              ${bdMethodOptions}
+            </select>
+          </div>
+          <div class="field">
+            <label>Amount (${prefix})</label>
+            <input class="input" name="amount_bdt" type="number" min="1" step="0.01" placeholder="Enter amount">
+          </div>
+          <div class="field">
+            <label>Transaction ID</label>
+            <input class="input" name="transaction_id" placeholder="bKash/Nagad transaction ID">
+          </div>
+          <div class="field">
+            <label>Sender Number</label>
+            <input class="input" name="sender_number" placeholder="Number used to send payment">
+          </div>
+          <div class="field">
+            <label>Note / Reference (optional)</label>
+            <input class="input" name="note" placeholder="Optional note">
+          </div>
+          <div class="form-actions">
+            <button class="btn green" type="submit">Submit Add Money Request</button>
+          </div>
+        </form>
+      </div>
     `;
   }
 

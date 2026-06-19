@@ -139,6 +139,15 @@ if ($action === 'VIEW') {
 $actorUid = trim((string)($callback['from']['id'] ?? 'TELEGRAM_ADMIN'));
 $result = add_money_process_request($requestId, $action, $actorUid, 'TELEGRAM_ADMIN', 'Rejected from Telegram');
 if (empty($result['ok'])) {
+    if (($result['code'] ?? '') === 'ALREADY_PROCESSED') {
+        $latest = add_money_find_request($requestId);
+        if ($latest !== []) {
+            tg_add_money_edit($chatId, $messageId, $latest, false);
+        }
+        tg_add_money_answer($callbackId, 'Request already processed.', true);
+        tg_add_money_json(true, 'ALREADY_PROCESSED', 'Request already processed.', ['request_id' => $requestId]);
+    }
+
     tg_add_money_answer($callbackId, (string)($result['message'] ?? 'Unable to update request'), true);
     tg_add_money_json(true, (string)($result['code'] ?? 'ERROR'), (string)($result['message'] ?? 'Unable to update request'));
 }
