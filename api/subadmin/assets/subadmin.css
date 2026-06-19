@@ -777,19 +777,25 @@ textarea.input:focus{
   letter-spacing:.01em;
 }
 
-.add-money-account-list{
+#addMoneySection .add-money-account-list{
   display:grid;
-  grid-template-columns:repeat(2,minmax(0,1fr));
+  grid-template-columns:repeat(2,minmax(0,1fr)) !important;
   gap:12px;
   width:100%;
+  max-width:100%;
+  min-width:0;
+  align-items:stretch;
 }
 
-.add-money-account-card{
+#addMoneySection .add-money-account-card{
   display:flex;
   flex-direction:column;
   gap:14px;
   width:100%;
+  max-width:100%;
+  height:100%;
   min-width:0;
+  overflow:hidden;
   border-color:rgba(52,211,153,.18);
   background:
     linear-gradient(135deg, rgba(15,23,42,.92), rgba(15,118,110,.14)),
@@ -797,7 +803,7 @@ textarea.input:focus{
   min-height:218px;
 }
 
-.add-money-account-main{
+#addMoneySection .add-money-account-main{
   display:flex;
   align-items:flex-start;
   justify-content:flex-start;
@@ -805,17 +811,27 @@ textarea.input:focus{
   min-width:0;
 }
 
-.add-money-account-logo{
-  flex:0 0 42px;
-  width:42px;
-  height:42px;
-  border-radius:14px;
-  object-fit:cover;
-  border:1px solid rgba(136,171,235,.18);
-  background:rgba(255,255,255,.06);
+#addMoneySection .add-money-account-main > div{
+  min-width:0;
 }
 
-.add-money-account-logo.fallback{
+#addMoneySection .add-money-account-logo{
+  flex:0 0 46px !important;
+  width:46px !important;
+  height:46px !important;
+  max-width:46px !important;
+  max-height:46px !important;
+  border-radius:14px;
+  object-fit:contain !important;
+  object-position:center;
+  padding:4px;
+  border:1px solid rgba(136,171,235,.18);
+  background:rgba(255,255,255,.06);
+  display:block;
+  overflow:hidden;
+}
+
+#addMoneySection .add-money-account-logo.fallback{
   display:grid;
   place-items:center;
   color:#bbf7d0;
@@ -825,15 +841,16 @@ textarea.input:focus{
   background:linear-gradient(135deg, rgba(34,197,94,.18), rgba(59,130,246,.14));
 }
 
-.add-money-account-name{
+#addMoneySection .add-money-account-name{
   color:var(--text);
   font-size:17px;
   line-height:1.3;
   font-weight:900;
   word-break:break-word;
+  overflow-wrap:anywhere;
 }
 
-.add-money-account-method{
+#addMoneySection .add-money-account-method{
   margin-top:3px;
   color:var(--muted);
   font-size:12px;
@@ -841,13 +858,13 @@ textarea.input:focus{
   font-weight:800;
 }
 
-.add-money-account-lines{
+#addMoneySection .add-money-account-lines{
   display:grid;
   gap:10px;
   min-width:0;
 }
 
-.add-money-account-line{
+#addMoneySection .add-money-account-line{
   display:flex;
   align-items:flex-start;
   justify-content:space-between;
@@ -856,12 +873,12 @@ textarea.input:focus{
   border-bottom:1px solid rgba(136,171,235,.14);
 }
 
-.add-money-account-line:last-child{
+#addMoneySection .add-money-account-line:last-child{
   padding-bottom:0;
   border-bottom:0;
 }
 
-.add-money-account-line span{
+#addMoneySection .add-money-account-line span{
   flex:0 0 auto;
   color:var(--muted);
   font-size:12px;
@@ -869,7 +886,7 @@ textarea.input:focus{
   line-height:1.35;
 }
 
-.add-money-account-line strong{
+#addMoneySection .add-money-account-line strong{
   max-width:70%;
   color:var(--text);
   font-size:15px;
@@ -879,9 +896,10 @@ textarea.input:focus{
   white-space:normal;
 }
 
-.add-money-account-note{
+#addMoneySection .add-money-account-note{
   margin:0;
   line-height:1.45;
+  overflow-wrap:anywhere;
 }
 
 .add-money-copy-action{
@@ -916,8 +934,8 @@ textarea.input:focus{
 }
 
 @media (max-width:860px){
-  .add-money-account-list{
-    grid-template-columns:1fr;
+  #addMoneySection .add-money-account-list{
+    grid-template-columns:1fr !important;
   }
 }
 
@@ -958,16 +976,16 @@ textarea.input:focus{
     font-size:15px;
   }
 
-  .add-money-account-card{
+  #addMoneySection .add-money-account-card{
     gap:12px;
   }
 
-  .add-money-account-line{
+  #addMoneySection .add-money-account-line{
     display:grid;
     gap:4px;
   }
 
-  .add-money-account-line strong{
+  #addMoneySection .add-money-account-line strong{
     max-width:100%;
     text-align:left;
   }

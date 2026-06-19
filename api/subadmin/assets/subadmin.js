@@ -521,7 +521,7 @@ function renderAddMoneyAccountCards(accounts, country){
   const list = Array.isArray(accounts) ? accounts : [];
   if (!list.length) {
     return `
-      <div class="add-money-account-list form-full">
+      <div class="add-money-account-list">
         <div class="box add-money-account-card">
           <div class="add-money-account-name">Payment account unavailable</div>
           <p class="muted">Please contact support before submitting an add money request.</p>
@@ -531,7 +531,7 @@ function renderAddMoneyAccountCards(accounts, country){
   }
 
   return `
-    <div class="add-money-account-list form-full">
+    <div class="add-money-account-list">
       ${list.map((account) => {
         const instruction = String(account.instruction || '').trim();
         const holder = account.account_holder || '-';
