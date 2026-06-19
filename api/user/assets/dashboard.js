@@ -1826,91 +1826,117 @@ function renderAddMoneyPage(){
         <p class="muted">Please contact support if you need help adding balance.</p>
       </div>
     `;
-    renderAddMoneyHistory();
     return;
   }
 
   if (country === 'MY') {
     wrap.innerHTML = `
-      <div class="add-money-layout">
-        <div class="add-money-left">
-          <div class="add-money-section-title">Deposit With Bank & eWallet</div>
-          ${renderAddMoneyAccountCards(accounts, 'MY')}
-          <div class="detail-box add-money-instruction-card">
-            <label>Instruction</label>
-            <p class="muted">${esc(settings.instruction || 'Transfer and upload your receipt.')}</p>
-          </div>
-        </div>
-        <form id="addMoneyForm" class="add-money-form-card" enctype="multipart/form-data">
-          <input type="hidden" name="method" value="BANK">
-          <div class="add-money-form-title">Submit Add Money Request</div>
-          <div class="field">
-            <label>Amount (${prefix})</label>
-            <input class="input" name="amount_rm" type="number" min="1" step="0.01" placeholder="Enter amount">
-          </div>
-          <div class="field">
-            <label>Receipt Upload</label>
-            <input class="input" name="receipt_upload" type="file" accept="image/jpeg,image/png,image/webp,application/pdf">
-          </div>
-          <div class="field">
-            <label>Note / Reference (optional)</label>
-            <input class="input" name="note" placeholder="Optional note">
-          </div>
-          <div class="form-actions">
-            <button class="btn green" type="submit">Submit Add Money Request</button>
-          </div>
-        </form>
+      <div class="add-money-section-title">Deposit With Bank & eWallet</div>
+      ${renderAddMoneyAccountCards(accounts, 'MY')}
+      <div class="detail-box add-money-instruction-card">
+        <label>Instruction</label>
+        <p class="muted">${esc(settings.instruction || 'Transfer and upload your receipt.')}</p>
       </div>
     `;
   } else {
     wrap.innerHTML = `
-      <div class="add-money-layout">
-        <div class="add-money-left">
-          <div class="add-money-section-title">Deposit With bKash & Nagad</div>
-          ${renderAddMoneyAccountCards(accounts, 'BD')}
-          <div class="detail-box add-money-instruction-card">
-            <label>Instruction</label>
-            <p class="muted">${esc(settings.instruction || 'Send money first, then submit your transaction ID.')}</p>
-          </div>
-        </div>
-        <form id="addMoneyForm" class="add-money-form-card">
-          <div class="add-money-form-title">Submit Add Money Request</div>
-          <div class="field">
-            <label>Method</label>
-            <select class="input" name="method">
-              ${bdMethodOptions}
-            </select>
-          </div>
-          <div class="field">
-            <label>Amount (${prefix})</label>
-            <input class="input" name="amount_bdt" type="number" min="1" step="0.01" placeholder="Enter amount">
-          </div>
-          <div class="field">
-            <label>Transaction ID</label>
-            <input class="input" name="transaction_id" placeholder="bKash/Nagad transaction ID">
-          </div>
-          <div class="field">
-            <label>Sender Number</label>
-            <input class="input" name="sender_number" placeholder="Number used to send payment">
-          </div>
-          <div class="field">
-            <label>Note / Reference (optional)</label>
-            <input class="input" name="note" placeholder="Optional note">
-          </div>
-          <div class="form-actions">
-            <button class="btn green" type="submit">Submit Add Money Request</button>
-          </div>
-        </form>
+      <div class="add-money-section-title">Deposit With bKash & Nagad</div>
+      ${renderAddMoneyAccountCards(accounts, 'BD')}
+      <div class="detail-box add-money-instruction-card">
+        <label>Instruction</label>
+        <p class="muted">${esc(settings.instruction || 'Send money first, then submit your transaction ID.')}</p>
       </div>
     `;
   }
-
-  bindAddMoneyForm();
-  renderAddMoneyHistory();
 }
 
-function bindAddMoneyForm(){
-  const form = el('addMoneyForm');
+function addMoneySubmitFormHtml(){
+  const profile = state.addMoneyProfile || {};
+  const settings = profile.settings || {};
+  const accounts = Array.isArray(profile.accounts) ? profile.accounts : [];
+  const country = String(profile.pricing_country || '').toUpperCase();
+  const prefix = walletPrefix(profile.currency || (country === 'MY' ? 'MYR' : 'BDT'));
+  const bdMethods = [...new Set(accounts.map(account => String(account.method || '').toUpperCase()).filter(method => ['BKASH', 'NAGAD'].includes(method)))];
+  const bdMethodOptions = (bdMethods.length ? bdMethods : ['BKASH', 'NAGAD']).map(method => `<option value="${esc(method)}">${esc(addMoneyMethodLabel(method))}</option>`).join('');
+
+  if (!settings.enabled) {
+    return '<div class="detail-box"><label>Add Money</label><strong>Temporarily unavailable</strong><p class="muted">Please contact support if you need help adding balance.</p></div>';
+  }
+
+  if (country === 'MY') {
+    return `
+      <form id="addMoneyForm" class="add-money-modal-form" enctype="multipart/form-data">
+        <input type="hidden" name="method" value="BANK">
+        <div class="field">
+          <label>Amount (${prefix})</label>
+          <input class="input" name="amount_rm" type="number" min="1" step="0.01" placeholder="Enter amount">
+        </div>
+        <div class="field">
+          <label>Receipt Upload</label>
+          <input class="input" name="receipt_upload" type="file" accept="image/jpeg,image/png,image/webp,application/pdf">
+        </div>
+        <div class="field">
+          <label>Note / Reference (optional)</label>
+          <input class="input" name="note" placeholder="Optional note">
+        </div>
+        <div class="form-actions">
+          <button class="btn green" type="submit">Submit Add Money Request</button>
+        </div>
+      </form>
+    `;
+  }
+
+  return `
+    <form id="addMoneyForm" class="add-money-modal-form">
+      <div class="field">
+        <label>Method</label>
+        <select class="input" name="method">${bdMethodOptions}</select>
+      </div>
+      <div class="field">
+        <label>Amount (${prefix})</label>
+        <input class="input" name="amount_bdt" type="number" min="1" step="0.01" placeholder="Enter amount">
+      </div>
+      <div class="field">
+        <label>Transaction ID</label>
+        <input class="input" name="transaction_id" placeholder="bKash/Nagad transaction ID">
+      </div>
+      <div class="field">
+        <label>Sender Number</label>
+        <input class="input" name="sender_number" placeholder="Number used to send payment">
+      </div>
+      <div class="field">
+        <label>Note / Reference (optional)</label>
+        <input class="input" name="note" placeholder="Optional note">
+      </div>
+      <div class="form-actions">
+        <button class="btn green" type="submit">Submit Add Money Request</button>
+      </div>
+    </form>
+  `;
+}
+
+function ensureAddMoneySubmitModal(){
+  if (el('addMoneySubmitModal')) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'addMoneySubmitModal';
+  wrap.className = 'modal';
+  wrap.innerHTML = `
+    <div class="modal-card modal-card-sm">
+      <button id="closeAddMoneySubmitModalBtn" class="modal-close" type="button">&times;</button>
+      <h3 class="modal-title">Add Money</h3>
+      <p class="modal-sub">Submit payment proof and wait for admin approval.</p>
+      <div id="addMoneySubmitModalBody"></div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+  el('closeAddMoneySubmitModalBtn')?.addEventListener('click', () => hideModalById('addMoneySubmitModal'));
+  wrap.addEventListener('click', (event) => {
+    if (event.target === wrap) hideModalById('addMoneySubmitModal');
+  });
+}
+
+function bindAddMoneyForm(form){
   if (!form || form.dataset.bound === '1') return;
   form.dataset.bound = '1';
 
@@ -1922,6 +1948,7 @@ function bindAddMoneyForm(){
       await proxyFormPost('add_money_submit', formData, 'Submitting add money request...');
       showToast('Add money request submitted. Please wait for approval.', 'ok');
       form.reset();
+      hideModalById('addMoneySubmitModal');
       state.addMoneyLoaded = false;
       state.historyLoaded = false;
       await loadAddMoneyPage({ force: true, busy:false });
@@ -1929,6 +1956,21 @@ function bindAddMoneyForm(){
       showToast(err.message || 'Failed to submit add money request', 'error');
     }
   });
+}
+
+function openAddMoneySubmitModal(){
+  const profile = state.addMoneyProfile || {};
+  const settings = profile.settings || {};
+  if (!settings.enabled) {
+    showToast('Add money is temporarily unavailable', 'error');
+    return;
+  }
+
+  ensureAddMoneySubmitModal();
+  const body = el('addMoneySubmitModalBody');
+  if (body) body.innerHTML = addMoneySubmitFormHtml();
+  bindAddMoneyForm(el('addMoneyForm'));
+  showModalById('addMoneySubmitModal');
 }
 
 async function loadAddMoneyPage(options = {}){
@@ -3905,6 +3947,21 @@ function bindEvents(){
         }
         showToast(err.message || 'Failed to reload add money', 'error');
       });
+    });
+  }
+
+  const addMoneyOpenBtn = el('addMoneyOpenBtn');
+  if (addMoneyOpenBtn && addMoneyOpenBtn.dataset.bound !== '1') {
+    addMoneyOpenBtn.dataset.bound = '1';
+    addMoneyOpenBtn.addEventListener('click', () => {
+      if (!state.addMoneyLoaded) {
+        loadAddMoneyPage({ force: true, busyText: 'Loading add money...' })
+          .then(openAddMoneySubmitModal)
+          .catch(err => showToast(err.message || 'Failed to load add money', 'error'));
+        return;
+      }
+
+      openAddMoneySubmitModal();
     });
   }
 

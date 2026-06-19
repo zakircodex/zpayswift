@@ -452,19 +452,16 @@ header('Pragma: no-cache');
               <h3 class="section-title">Add Money</h3>
               <p class="section-sub">Submit payment proof and wait for admin approval.</p>
             </div>
-            <button id="addMoneyReloadBtn" class="btn ghost" type="button">Reload</button>
+            <div class="add-money-actions">
+              <button id="addMoneyOpenBtn" class="btn green" type="button">Add Money</button>
+              <button id="addMoneyReloadBtn" class="btn ghost" type="button">Reload</button>
+            </div>
           </div>
 
           <div id="addMoneyContent" class="add-money-content">
             <div class="detail-box">
               <label>Status</label>
               <strong>Loading add money settings...</strong>
-            </div>
-          </div>
-
-          <div class="history-list" id="addMoneyHistoryList">
-            <div class="history-item history-empty">
-              <div class="history-id">No add money request yet.</div>
             </div>
           </div>
         </div>
