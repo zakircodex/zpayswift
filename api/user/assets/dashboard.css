@@ -665,6 +665,19 @@ body[data-active-section="addMoneySection"] .service-shortcuts{
 
 .add-money-content{
   display:block;
+  margin-top:0;
+}
+
+#addMoneySection .section-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:8px;
+}
+
+#addMoneySection .section-sub{
+  margin-bottom:0;
 }
 
 .add-money-actions{
@@ -876,6 +889,13 @@ body[data-active-section="addMoneySection"] .service-shortcuts{
 }
 
 @media (max-width:640px){
+  #addMoneySection .section-head{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+    margin-bottom:8px;
+  }
+
   .add-money-actions{
     display:grid;
     grid-template-columns:1fr 1fr;
