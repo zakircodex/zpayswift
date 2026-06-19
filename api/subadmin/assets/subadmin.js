@@ -509,14 +509,65 @@ function renderAddMoneyHistory(){
   list.innerHTML = state.addMoneyHistory.map(addMoneyHistoryCard).join('');
 }
 
+function addMoneyMethodLabel(method){
+  const key = String(method || '').toUpperCase();
+  if (key === 'BKASH') return 'bKash';
+  if (key === 'NAGAD') return 'Nagad';
+  if (key === 'EWALLET') return 'eWallet';
+  return 'Bank';
+}
+
+function renderAddMoneyAccountCards(accounts, country){
+  const list = Array.isArray(accounts) ? accounts : [];
+  if (!list.length) {
+    return `
+      <div class="add-money-account-list form-full">
+        <div class="box add-money-account-card">
+          <div class="add-money-account-name">Payment account unavailable</div>
+          <p class="muted">Please contact support before submitting an add money request.</p>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="add-money-account-list form-full">
+      ${list.map((account) => {
+        const instruction = String(account.instruction || '').trim();
+        const holder = account.account_holder || '-';
+        const number = account.account_number || '-';
+        return `
+          <div class="box add-money-account-card">
+            <div class="add-money-account-main">
+              <div>
+                <div class="add-money-account-name">${esc(account.display_name || addMoneyMethodLabel(account.method))}</div>
+                <div class="add-money-account-method">${esc(addMoneyMethodLabel(account.method))}${country === 'MY' ? ' Deposit' : ' Payment'}</div>
+              </div>
+            </div>
+            <div class="add-money-account-lines">
+              <div class="add-money-account-line"><span>A/C Name</span><strong>${esc(holder)}</strong></div>
+              <div class="add-money-account-line"><span>A/C No</span><strong>${esc(number)}</strong></div>
+            </div>
+            ${instruction ? `<p class="muted add-money-account-note">${esc(instruction)}</p>` : ''}
+            <div class="add-money-copy-action"><button class="btn ghost" type="button" data-copy-account-number="${esc(account.account_number || '')}">Copy Number</button></div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
 function renderAddMoneyPage(){
   const wrap = el('addMoneyContent');
   if (!wrap) return;
 
   const profile = state.addMoneyProfile || {};
   const settings = profile.settings || {};
+  const accounts = Array.isArray(profile.accounts) ? profile.accounts : [];
   const country = String(profile.pricing_country || '').toUpperCase();
   const prefix = walletPrefix(profile.currency || (country === 'MY' ? 'MYR' : 'BDT'));
+  const bdMethods = [...new Set(accounts.map(account => String(account.method || '').toUpperCase()).filter(method => ['BKASH', 'NAGAD'].includes(method)))];
+  const bdMethodOptions = (bdMethods.length ? bdMethods : ['BKASH', 'NAGAD']).map(method => `<option value="${esc(method)}">${esc(addMoneyMethodLabel(method))}</option>`).join('');
 
   if (!settings.enabled) {
     wrap.innerHTML = `
@@ -534,15 +585,8 @@ function renderAddMoneyPage(){
     wrap.innerHTML = `
       <form id="addMoneyForm" class="form-grid" enctype="multipart/form-data">
         <input type="hidden" name="method" value="BANK">
-        <div class="box add-money-payment-card form-full">
-          <label>Bank Transfer Details</label>
-          <div class="add-money-detail-list">
-            <div class="add-money-detail-row"><span>Bank Name</span><strong>${esc(settings.bank_name || '-')}</strong></div>
-            <div class="add-money-detail-row"><span>Account Holder Name</span><strong>${esc(settings.account_holder || '-')}</strong></div>
-            <div class="add-money-detail-row"><span>Account Number</span><strong>${esc(settings.account_number || '-')}</strong></div>
-          </div>
-          <div class="add-money-copy-action"><button class="btn ghost" type="button" data-copy-account-number="${esc(settings.account_number || '')}">Copy Number</button></div>
-        </div>
+        <div class="add-money-section-title form-full">Deposit With Bank & eWallet</div>
+        ${renderAddMoneyAccountCards(accounts, 'MY')}
         <div class="field form-full"><label>Instruction</label><p class="muted">${esc(settings.instruction || 'Transfer and upload your receipt.')}</p></div>
         <div class="field"><label>Amount (${prefix})</label><input class="input" name="amount_rm" type="number" min="1" step="0.01" placeholder="Enter amount"></div>
         <div class="field"><label>Receipt Upload</label><input class="input" name="receipt_upload" type="file" accept="image/jpeg,image/png,image/webp,application/pdf"></div>
@@ -553,24 +597,10 @@ function renderAddMoneyPage(){
   } else {
     wrap.innerHTML = `
       <form id="addMoneyForm" class="form-grid">
-        <div class="box add-money-payment-card">
-          <label>bKash Payment</label>
-          <div class="add-money-detail-list">
-            <div class="add-money-detail-row"><span>Number</span><strong>${esc(settings.bkash_number || '-')}</strong></div>
-            <div class="add-money-detail-row"><span>Account Type</span><strong>${esc(settings.bkash_account_type || '-')}</strong></div>
-          </div>
-          <div class="add-money-copy-action"><button class="btn ghost" type="button" data-copy-account-number="${esc(settings.bkash_number || '')}">Copy Number</button></div>
-        </div>
-        <div class="box add-money-payment-card">
-          <label>Nagad Payment</label>
-          <div class="add-money-detail-list">
-            <div class="add-money-detail-row"><span>Number</span><strong>${esc(settings.nagad_number || '-')}</strong></div>
-            <div class="add-money-detail-row"><span>Account Type</span><strong>${esc(settings.nagad_account_type || '-')}</strong></div>
-          </div>
-          <div class="add-money-copy-action"><button class="btn ghost" type="button" data-copy-account-number="${esc(settings.nagad_number || '')}">Copy Number</button></div>
-        </div>
+        <div class="add-money-section-title form-full">Deposit With bKash & Nagad</div>
+        ${renderAddMoneyAccountCards(accounts, 'BD')}
         <div class="field form-full"><label>Instruction</label><p class="muted">${esc(settings.instruction || 'Send money first, then submit transaction ID.')}</p></div>
-        <div class="field"><label>Method</label><select class="input" name="method"><option value="BKASH">bKash</option><option value="NAGAD">Nagad</option></select></div>
+        <div class="field"><label>Method</label><select class="input" name="method">${bdMethodOptions}</select></div>
         <div class="field"><label>Amount (${prefix})</label><input class="input" name="amount_bdt" type="number" min="1" step="0.01" placeholder="Enter amount"></div>
         <div class="field"><label>Transaction ID</label><input class="input" name="transaction_id" placeholder="bKash/Nagad transaction ID"></div>
         <div class="field"><label>Sender Number</label><input class="input" name="sender_number" placeholder="Number used to send payment"></div>

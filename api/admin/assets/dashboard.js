@@ -8,6 +8,7 @@ const state = {
   bundles: [],
   bundleOffers: [],
   addMoney: [],
+  addMoneyPaymentAccounts: [],
   doneTopups: [],
   doneBundles: [],
   users: [],
@@ -4192,11 +4193,124 @@ async function submitAddMoneyAction(requestId, action){
   }
 }
 
+function addMoneyPaymentMethodLabel(method){
+  const key = String(method || '').toUpperCase();
+  if (key === 'BKASH') return 'bKash';
+  if (key === 'NAGAD') return 'Nagad';
+  if (key === 'EWALLET') return 'eWallet';
+  return 'Bank';
+}
+
+function renderAddMoneyPaymentAccountRows(accounts){
+  const rows = Array.isArray(accounts) ? accounts : [];
+  if (!rows.length) {
+    return '<div class="muted">No payment accounts configured yet. Old BD/MY settings will be used as fallback.</div>';
+  }
+
+  return `
+    <div class="table-wrap" style="margin-top:10px;">
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Country</th>
+            <th>Method</th>
+            <th>A/C No</th>
+            <th>Status</th>
+            <th>Sort</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((account) => `
+            <tr>
+              <td><strong>${esc(account.display_name || '-')}</strong><br><span class="muted">${esc(account.account_holder || '-')}</span></td>
+              <td>${esc(account.country || '-')} / ${esc(account.currency || '-')}</td>
+              <td>${esc(addMoneyPaymentMethodLabel(account.method))}</td>
+              <td>${esc(account.account_number || '-')}</td>
+              <td>${account.active ? statusPill('Active') : statusPill('Inactive')}</td>
+              <td>${Number(account.sort_order || 0)}</td>
+              <td><button class="btn ghost sm" type="button" onclick="editAddMoneyPaymentAccount('${esc(account.account_id || '')}')">Edit</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function resetAddMoneyPaymentAccountForm(){
+  const set = (id, value) => {
+    const node = document.getElementById(id);
+    if (node) node.value = value;
+  };
+  set('amAccountId', '');
+  set('amAccountCountry', 'BD');
+  set('amAccountMethod', 'BKASH');
+  set('amAccountName', '');
+  set('amAccountHolder', '');
+  set('amAccountNumber', '');
+  set('amAccountInstruction', '');
+  set('amAccountLogo', '');
+  set('amAccountSort', '100');
+  const active = document.getElementById('amAccountActive');
+  if (active) active.checked = true;
+}
+
+function editAddMoneyPaymentAccount(accountId){
+  const account = (state.addMoneyPaymentAccounts || []).find(item => String(item.account_id || '') === String(accountId || ''));
+  if (!account) {
+    showToast('Payment account not found', 'error');
+    return;
+  }
+
+  const set = (id, value) => {
+    const node = document.getElementById(id);
+    if (node) node.value = value;
+  };
+  set('amAccountId', account.account_id || '');
+  set('amAccountCountry', account.country || 'BD');
+  set('amAccountMethod', account.method || 'BKASH');
+  set('amAccountName', account.display_name || '');
+  set('amAccountHolder', account.account_holder || '');
+  set('amAccountNumber', account.account_number || '');
+  set('amAccountInstruction', account.instruction || '');
+  set('amAccountLogo', account.logo_url || '');
+  set('amAccountSort', String(account.sort_order ?? 100));
+  const active = document.getElementById('amAccountActive');
+  if (active) active.checked = !!account.active;
+}
+
+async function saveAddMoneyPaymentAccount(){
+  const payload = {
+    account_id: document.getElementById('amAccountId')?.value || '',
+    country: document.getElementById('amAccountCountry')?.value || 'BD',
+    method: document.getElementById('amAccountMethod')?.value || 'BKASH',
+    display_name: document.getElementById('amAccountName')?.value || '',
+    account_holder: document.getElementById('amAccountHolder')?.value || '',
+    account_number: document.getElementById('amAccountNumber')?.value || '',
+    instruction: document.getElementById('amAccountInstruction')?.value || '',
+    logo_url: document.getElementById('amAccountLogo')?.value || '',
+    sort_order: Number(document.getElementById('amAccountSort')?.value || 100),
+    active: !!document.getElementById('amAccountActive')?.checked
+  };
+
+  try {
+    await proxyPost('add_money_account_save', payload, true, { busyText:'Saving payment account...' });
+    showToast('Payment account saved', 'ok');
+    await openAddMoneySettings();
+  } catch (err) {
+    showToast(err.message || 'Failed to save payment account', 'error');
+  }
+}
+
 async function openAddMoneySettings(){
   const data = await proxyGet('add_money_settings', {}, { busyText:'Loading payment settings...' });
   const settings = data.settings || {};
   const bd = settings.BD || {};
   const my = settings.MY || {};
+  const accounts = Array.isArray(data.accounts) ? data.accounts : [];
+  state.addMoneyPaymentAccounts = accounts;
   const body = `
     <div class="grid two">
       <div class="detail-item">
@@ -4213,6 +4327,38 @@ async function openAddMoneySettings(){
         <input id="amMyHolder" class="input" placeholder="Account holder" value="${esc(my.account_holder || '')}">
         <input id="amMyAccount" class="input" placeholder="Account number" value="${esc(my.account_number || '')}">
         <textarea id="amMyInstruction" class="input" rows="3" placeholder="MY instruction">${esc(my.instruction || '')}</textarea>
+      </div>
+    </div>
+    <div class="detail-item" style="margin-top:16px;">
+      <label>Add Money Payment Accounts</label>
+      <p class="muted">New active accounts are shown to user/subadmin Add Money pages. If no account is configured for a country, old BD/MY settings above remain as fallback.</p>
+      ${renderAddMoneyPaymentAccountRows(accounts)}
+    </div>
+    <div class="detail-item" style="margin-top:16px;">
+      <label>Add / Edit Payment Account</label>
+      <input id="amAccountId" type="hidden" value="">
+      <div class="grid two">
+        <select id="amAccountCountry" class="input">
+          <option value="BD">Bangladesh / BDT</option>
+          <option value="MY">Malaysia / MYR</option>
+        </select>
+        <select id="amAccountMethod" class="input">
+          <option value="BKASH">bKash</option>
+          <option value="NAGAD">Nagad</option>
+          <option value="BANK">Bank</option>
+          <option value="EWALLET">eWallet</option>
+        </select>
+        <input id="amAccountName" class="input" placeholder="Payment name, e.g. RHB Bank or bKash Personal">
+        <input id="amAccountHolder" class="input" placeholder="A/C Name">
+        <input id="amAccountNumber" class="input" placeholder="A/C No">
+        <input id="amAccountSort" class="input" type="number" step="1" placeholder="Sort order" value="100">
+        <input id="amAccountLogo" class="input" placeholder="Logo URL (optional)">
+        <label style="display:flex;align-items:center;gap:8px;"><input id="amAccountActive" type="checkbox" checked> Active</label>
+        <textarea id="amAccountInstruction" class="input" rows="3" placeholder="Instruction (optional)" style="grid-column:1/-1;"></textarea>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px;">
+        <button class="btn ghost" type="button" onclick="resetAddMoneyPaymentAccountForm()">New Account</button>
+        <button class="btn brand" type="button" onclick="saveAddMoneyPaymentAccount()">Save Payment Account</button>
       </div>
     </div>
   `;
@@ -4382,6 +4528,9 @@ window.openAddMoneyAction = openAddMoneyAction;
 window.submitAddMoneyAction = submitAddMoneyAction;
 window.copyAddMoneyValue = copyAddMoneyValue;
 window.saveAddMoneySettings = saveAddMoneySettings;
+window.editAddMoneyPaymentAccount = editAddMoneyPaymentAccount;
+window.resetAddMoneyPaymentAccountForm = resetAddMoneyPaymentAccountForm;
+window.saveAddMoneyPaymentAccount = saveAddMoneyPaymentAccount;
 
 window.editOperator = editOperator;
 window.saveOperator = saveOperator;

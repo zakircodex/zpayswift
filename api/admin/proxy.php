@@ -1601,6 +1601,7 @@ switch ($action) {
 
         proxy_response(true, 'SUCCESS', 'Add money settings loaded', [
             'settings' => add_money_settings(),
+            'accounts' => add_money_list_payment_accounts(null, true),
         ]);
         break;
 
@@ -1618,6 +1619,25 @@ switch ($action) {
 
         proxy_response(true, 'SUCCESS', 'Add money settings saved', [
             'settings' => (array)($res['data'] ?? add_money_settings()),
+            'accounts' => add_money_list_payment_accounts(null, true),
+        ]);
+        break;
+
+    case 'add_money_account_save':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+
+        $adminUser = proxy_require_admin_login(true);
+        $body = proxy_read_json_body();
+        $res = add_money_save_payment_account($body, trim((string)($adminUser['uid'] ?? '')));
+
+        if (empty($res['ok'])) {
+            proxy_response(false, (string)($res['code'] ?? 'SAVE_FAILED'), (string)($res['message'] ?? 'Failed to save payment account'), [], 422);
+        }
+
+        proxy_response(true, 'SUCCESS', 'Payment account saved', [
+            'account' => (array)($res['data'] ?? []),
+            'accounts' => add_money_list_payment_accounts(null, true),
         ]);
         break;
 

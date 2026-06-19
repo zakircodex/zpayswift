@@ -137,17 +137,269 @@ function add_money_save_settings(array $body, string $adminUid): array
     return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money settings saved', 'data' => $next];
 }
 
+function add_money_bool($value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    if (is_numeric($value)) {
+        return (int)$value === 1;
+    }
+
+    return in_array(strtolower(trim((string)$value)), ['1', 'true', 'yes', 'on', 'active'], true);
+}
+
+function add_money_payment_account_id(): string
+{
+    return 'AMA' . date('YmdHis') . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
+}
+
+function add_money_normalize_method(string $method, string $country = ''): string
+{
+    $method = strtoupper(trim($method));
+    $country = strtoupper(trim($country));
+    $allowed = ['BKASH', 'NAGAD', 'BANK', 'EWALLET'];
+
+    if (!in_array($method, $allowed, true)) {
+        return $country === 'BD' ? 'BKASH' : 'BANK';
+    }
+
+    return $method;
+}
+
+function add_money_normalize_payment_account(array $row, string $id = ''): array
+{
+    $country = strtoupper(trim((string)($row['country'] ?? '')));
+    $country = $country === 'MY' ? 'MY' : 'BD';
+    $currency = strtoupper(trim((string)($row['currency'] ?? add_money_currency_for_country($country))));
+    $currency = in_array($currency, ['MYR', 'RM'], true) ? 'MYR' : 'BDT';
+    $accountId = trim((string)($row['account_id'] ?? $id));
+
+    return [
+        'account_id' => $accountId,
+        'country' => $country,
+        'currency' => $currency,
+        'method' => add_money_normalize_method((string)($row['method'] ?? ''), $country),
+        'display_name' => trim((string)($row['display_name'] ?? '')),
+        'account_holder' => trim((string)($row['account_holder'] ?? '')),
+        'account_number' => trim((string)($row['account_number'] ?? '')),
+        'instruction' => trim((string)($row['instruction'] ?? '')),
+        'logo_url' => trim((string)($row['logo_url'] ?? '')),
+        'active' => add_money_bool($row['active'] ?? false),
+        'sort_order' => (int)($row['sort_order'] ?? 100),
+        'created_at' => (int)($row['created_at'] ?? 0),
+        'updated_at' => (int)($row['updated_at'] ?? 0),
+    ];
+}
+
+function add_money_list_payment_accounts(?string $country = null, bool $includeInactive = false): array
+{
+    $country = strtoupper(trim((string)$country));
+    $rows = fb_get('CONFIG/ADD_MONEY_ACCOUNTS');
+    $rows = is_array($rows) ? $rows : [];
+    $items = [];
+
+    foreach ($rows as $id => $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $item = add_money_normalize_payment_account($row, (string)$id);
+        if ($country !== '' && $item['country'] !== $country) {
+            continue;
+        }
+        if (!$includeInactive && empty($item['active'])) {
+            continue;
+        }
+
+        $items[] = $item;
+    }
+
+    usort($items, static function (array $a, array $b): int {
+        $sort = (int)($a['sort_order'] ?? 100) <=> (int)($b['sort_order'] ?? 100);
+        if ($sort !== 0) {
+            return $sort;
+        }
+
+        return strcasecmp((string)($a['display_name'] ?? ''), (string)($b['display_name'] ?? ''));
+    });
+
+    return $items;
+}
+
+function add_money_has_configured_payment_accounts(string $country): bool
+{
+    return count(add_money_list_payment_accounts($country, true)) > 0;
+}
+
+function add_money_legacy_payment_accounts(string $country, array $settings = []): array
+{
+    $country = strtoupper(trim($country));
+    $settings = $settings ?: add_money_settings();
+    $cfg = is_array($settings[$country] ?? null) ? $settings[$country] : [];
+    if (empty($cfg['enabled'])) {
+        return [];
+    }
+
+    $now = (int)($settings['updated_at'] ?? 0);
+    $instruction = trim((string)($cfg['instruction'] ?? ''));
+    $items = [];
+
+    if ($country === 'MY') {
+        $accountNumber = trim((string)($cfg['account_number'] ?? ''));
+        if ($accountNumber !== '') {
+            $items[] = add_money_normalize_payment_account([
+                'account_id' => 'legacy_my_bank',
+                'country' => 'MY',
+                'currency' => 'MYR',
+                'method' => 'BANK',
+                'display_name' => trim((string)($cfg['bank_name'] ?? '')) ?: 'Bank Transfer',
+                'account_holder' => trim((string)($cfg['account_holder'] ?? '')),
+                'account_number' => $accountNumber,
+                'instruction' => $instruction,
+                'active' => true,
+                'sort_order' => 10,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        return $items;
+    }
+
+    $bkashNumber = trim((string)($cfg['bkash_number'] ?? ''));
+    if ($bkashNumber !== '') {
+        $items[] = add_money_normalize_payment_account([
+            'account_id' => 'legacy_bd_bkash',
+            'country' => 'BD',
+            'currency' => 'BDT',
+            'method' => 'BKASH',
+            'display_name' => 'bKash ' . (trim((string)($cfg['bkash_account_type'] ?? '')) ?: 'Payment'),
+            'account_holder' => trim((string)($cfg['bkash_account_type'] ?? '')),
+            'account_number' => $bkashNumber,
+            'instruction' => $instruction,
+            'active' => true,
+            'sort_order' => 10,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    $nagadNumber = trim((string)($cfg['nagad_number'] ?? ''));
+    if ($nagadNumber !== '') {
+        $items[] = add_money_normalize_payment_account([
+            'account_id' => 'legacy_bd_nagad',
+            'country' => 'BD',
+            'currency' => 'BDT',
+            'method' => 'NAGAD',
+            'display_name' => 'Nagad ' . (trim((string)($cfg['nagad_account_type'] ?? '')) ?: 'Payment'),
+            'account_holder' => trim((string)($cfg['nagad_account_type'] ?? '')),
+            'account_number' => $nagadNumber,
+            'instruction' => $instruction,
+            'active' => true,
+            'sort_order' => 20,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+    }
+
+    return $items;
+}
+
+function add_money_payment_accounts_for_country(string $country, array $settings = []): array
+{
+    $country = strtoupper(trim($country)) === 'MY' ? 'MY' : 'BD';
+    if (add_money_has_configured_payment_accounts($country)) {
+        return add_money_list_payment_accounts($country, false);
+    }
+
+    return add_money_legacy_payment_accounts($country, $settings);
+}
+
+function add_money_country_enabled(string $country, array $settings = []): bool
+{
+    $country = strtoupper(trim($country)) === 'MY' ? 'MY' : 'BD';
+    if (add_money_has_configured_payment_accounts($country)) {
+        return count(add_money_list_payment_accounts($country, false)) > 0;
+    }
+
+    $settings = $settings ?: add_money_settings();
+    if (!empty($settings[$country]['enabled'])) {
+        return true;
+    }
+
+    return count(add_money_payment_accounts_for_country($country, $settings)) > 0;
+}
+
+function add_money_save_payment_account(array $body, string $adminUid): array
+{
+    $now = add_money_now();
+    $accountId = trim((string)($body['account_id'] ?? ''));
+    $existing = [];
+    if ($accountId !== '') {
+        if (!preg_match('/^[A-Za-z0-9_-]{1,64}$/', $accountId)) {
+            return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Invalid payment account ID'];
+        }
+        $row = fb_get('CONFIG/ADD_MONEY_ACCOUNTS/' . $accountId);
+        $existing = is_array($row) ? $row : [];
+    } else {
+        $accountId = add_money_payment_account_id();
+    }
+
+    $country = strtoupper(trim((string)($body['country'] ?? $existing['country'] ?? '')));
+    if (!in_array($country, ['BD', 'MY'], true)) {
+        return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Country must be BD or MY'];
+    }
+
+    $method = add_money_normalize_method((string)($body['method'] ?? $existing['method'] ?? ''), $country);
+    $displayName = trim((string)($body['display_name'] ?? $existing['display_name'] ?? ''));
+    $accountHolder = trim((string)($body['account_holder'] ?? $existing['account_holder'] ?? ''));
+    $accountNumber = trim((string)($body['account_number'] ?? $existing['account_number'] ?? ''));
+
+    if ($displayName === '' || $accountHolder === '' || $accountNumber === '') {
+        return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Payment name, account holder and account number are required'];
+    }
+
+    $row = add_money_normalize_payment_account([
+        'account_id' => $accountId,
+        'country' => $country,
+        'currency' => add_money_currency_for_country($country),
+        'method' => $method,
+        'display_name' => $displayName,
+        'account_holder' => $accountHolder,
+        'account_number' => $accountNumber,
+        'instruction' => trim((string)($body['instruction'] ?? $existing['instruction'] ?? '')),
+        'logo_url' => trim((string)($body['logo_url'] ?? $existing['logo_url'] ?? '')),
+        'active' => add_money_bool($body['active'] ?? $existing['active'] ?? true),
+        'sort_order' => (int)($body['sort_order'] ?? $existing['sort_order'] ?? 100),
+        'created_at' => (int)($existing['created_at'] ?? 0) ?: $now,
+        'updated_at' => $now,
+    ]);
+    $row['updated_by'] = $adminUid;
+
+    if (!fb_put('CONFIG/ADD_MONEY_ACCOUNTS/' . $accountId, $row)) {
+        return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save payment account'];
+    }
+
+    return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Payment account saved', 'data' => $row];
+}
+
 function add_money_user_payload(array $user, array $wallet = []): array
 {
     $country = add_money_country_for_user($user, $wallet);
     $currency = add_money_currency_for_country($country);
     $settings = add_money_settings();
+    $accounts = add_money_payment_accounts_for_country($country, $settings);
+    $countrySettings = is_array($settings[$country] ?? null) ? $settings[$country] : [];
+    $countrySettings['enabled'] = add_money_country_enabled($country, $settings);
 
     return [
         'pricing_country' => $country,
         'currency' => $currency,
         'currency_label' => add_money_currency_label($currency),
-        'settings' => $settings[$country] ?? [],
+        'settings' => $countrySettings,
+        'accounts' => $accounts,
     ];
 }
 
@@ -482,9 +734,8 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
     $country = add_money_country_for_user($user, $wallet);
     $currency = add_money_currency_for_country($country);
     $settings = add_money_settings();
-    $countrySettings = $settings[$country] ?? [];
 
-    if (empty($countrySettings['enabled'])) {
+    if (!add_money_country_enabled($country, $settings)) {
         return ['ok' => false, 'code' => 'ADD_MONEY_DISABLED', 'message' => 'Add money is not available for your account right now'];
     }
 
