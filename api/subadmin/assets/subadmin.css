@@ -745,6 +745,29 @@ textarea.input:focus{
   font-size:12px;
 }
 
+#addMoneySection .add-money-section-head{
+  align-items:flex-start;
+  margin-bottom:8px;
+}
+
+#addMoneySection .add-money-section-head p{
+  margin-bottom:0;
+}
+
+.add-money-content{
+  display:block;
+  margin-top:0;
+}
+
+.add-money-actions{
+  align-items:center;
+  justify-content:flex-end;
+}
+
+.add-money-actions .btn{
+  min-width:118px;
+}
+
 .add-money-section-title{
   margin:2px 0 0;
   color:var(--text);
@@ -756,7 +779,7 @@ textarea.input:focus{
 
 .add-money-account-list{
   display:grid;
-  grid-template-columns:1fr;
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:12px;
   width:100%;
 }
@@ -771,6 +794,7 @@ textarea.input:focus{
   background:
     linear-gradient(135deg, rgba(15,23,42,.92), rgba(15,118,110,.14)),
     rgba(255,255,255,.03);
+  min-height:218px;
 }
 
 .add-money-account-main{
@@ -860,7 +884,62 @@ textarea.input:focus{
   line-height:1.45;
 }
 
+.add-money-copy-action{
+  margin-top:auto;
+}
+
+.add-money-instruction-card p{
+  margin:0;
+}
+
+.add-money-modal-form{
+  display:grid;
+  gap:12px;
+  padding:14px;
+  border-radius:18px;
+  border:1px solid rgba(52,211,153,.16);
+  background:
+    linear-gradient(145deg, rgba(15,23,42,.90), rgba(13,26,51,.86)),
+    rgba(255,255,255,.03);
+}
+
+.add-money-modal-form .field{
+  margin-bottom:0;
+}
+
+.add-money-modal-form .actions{
+  margin-top:2px;
+}
+
+.add-money-modal-form .btn{
+  width:100%;
+}
+
+@media (max-width:860px){
+  .add-money-account-list{
+    grid-template-columns:1fr;
+  }
+}
+
 @media (max-width:640px){
+  #addMoneySection .add-money-section-head{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+    margin-bottom:8px;
+  }
+
+  .add-money-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    width:100%;
+  }
+
+  .add-money-actions .btn{
+    width:100%;
+    min-width:0;
+  }
+
   .add-money-detail-row{
     display:grid;
     gap:4px;

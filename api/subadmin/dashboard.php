@@ -536,25 +536,24 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
         </div>
 
         <div id="addMoneySection" class="page-section">
-          <div class="card">
-            <div class="topbar mb-14">
+          <div class="card add-money-page-card">
+            <div class="topbar add-money-section-head">
               <div>
                 <h3>Add Money</h3>
                 <p>Submit payment proof and wait for admin approval.</p>
               </div>
-              <div class="actions">
+              <div class="actions add-money-actions">
+                <button class="btn green" id="openAddMoneyBtn" type="button">Add Money</button>
                 <button class="btn ghost" id="reloadAddMoneyBtn">Reload</button>
               </div>
             </div>
 
-            <div id="addMoneyContent" class="detail-grid">
+            <div id="addMoneyContent" class="add-money-content">
               <div class="box">
                 <label>Status</label>
                 <strong>Loading add money settings...</strong>
               </div>
             </div>
-
-            <div id="addMoneyHistoryList" class="history-logs-mobile-list"></div>
           </div>
         </div>
 
