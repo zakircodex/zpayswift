@@ -1829,11 +1829,11 @@ textarea:focus{
 
 .bottom-btn{
   min-width:0;
-  min-height:44px;
+  min-height:42px;
   border:none;
   border-radius:15px;
   background:transparent;
-  color:#dce8ff;
+  color:rgba(236,244,255,.78);
   font-size:11px;
   font-weight:900;
   cursor:pointer;
@@ -1850,25 +1850,42 @@ textarea:focus{
   background:
     linear-gradient(135deg,rgba(31,215,96,.24),rgba(60,157,255,.12)),
     rgba(111,206,103,.14);
-  color:#b8ffca;
+  color:#dfffea;
   box-shadow:0 10px 26px rgba(31,215,96,.16), inset 0 0 0 1px rgba(52,211,153,.18);
   flex-direction:column;
   gap:1px;
 }
 
 .bottom-icon{
-  flex:0 0 20px;
-  width:20px;
-  height:20px;
+  flex:0 0 18px;
+  width:18px;
+  height:18px;
   display:grid;
   place-items:center;
+  color:currentColor;
 }
 
 .bottom-icon svg{
+  width:18px;
+  height:18px;
+  max-width:18px;
+  max-height:18px;
+  fill:currentColor !important;
+  stroke:currentColor;
+  display:block;
+}
+
+.bottom-btn.active .bottom-icon{
+  flex-basis:20px;
   width:20px;
   height:20px;
-  fill:currentColor;
-  display:block;
+}
+
+.bottom-btn.active .bottom-icon svg{
+  width:20px;
+  height:20px;
+  max-width:20px;
+  max-height:20px;
 }
 
 .bottom-label{
@@ -2185,7 +2202,7 @@ body:not(.user-authenticated) .bottom-nav{
   }
 
   .bottom-btn{
-    min-height:42px;
+    min-height:40px;
     font-size:10px;
     border-radius:14px;
   }
@@ -2216,14 +2233,29 @@ body:not(.user-authenticated) .bottom-nav{
   }
 
   .bottom-icon{
-    flex-basis:18px;
-    width:18px;
-    height:18px;
+    flex-basis:17px;
+    width:17px;
+    height:17px;
   }
 
   .bottom-icon svg{
-    width:18px;
-    height:18px;
+    width:17px;
+    height:17px;
+    max-width:17px;
+    max-height:17px;
+  }
+
+  .bottom-btn.active .bottom-icon{
+    flex-basis:19px;
+    width:19px;
+    height:19px;
+  }
+
+  .bottom-btn.active .bottom-icon svg{
+    width:19px;
+    height:19px;
+    max-width:19px;
+    max-height:19px;
   }
 
   .bottom-label{
