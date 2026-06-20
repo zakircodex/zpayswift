@@ -42,6 +42,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 
 <div id="appView">
   <div class="wrap">
+    <div id="subSidebarOverlay" class="sidebar-overlay"></div>
     <div class="app-shell">
 
       <aside class="sidebar">
@@ -56,66 +57,71 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
         <div class="sidebar-title">Main</div>
 
         <div class="side-nav">
-          <button class="side-btn active" data-page-section="overviewSection">
+          <button class="side-btn active" data-page-section="overviewSection" data-icon="D">
             <span>Dashboard</span>
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="bundleOffersSection">
+          <button class="side-btn" data-page-section="bundleOffersSection" data-icon="B">
             <span>Bundle Offers</span>
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="panelTopupSection">
+          <button class="side-btn" data-page-section="panelTopupSection" data-icon="T">
             <span>Panel Topup</span>
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="mfsCreateSection">
+          <button class="side-btn" data-page-section="mfsCreateSection" data-icon="M">
             <span>bKash / Nagad Create</span>
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="mfsRequestsSection">
+          <button class="side-btn" data-page-section="mfsRequestsSection" data-icon="R">
             <span>My MFS Requests</span>
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="apiKeysSection">
+          <button class="side-btn" data-page-section="apiKeysSection" data-icon="K">
             <span>API Keys</span>
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="addMoneySection">
+          <button class="side-btn" data-page-section="addMoneySection" data-icon="+">
             <span>Add Money</span>
             <span>&rsaquo;</span>
           </button>
 
-          <button class="side-btn" data-page-section="requestLogsSection">
+          <button class="side-btn" data-page-section="requestLogsSection" data-icon="H">
             <span>History Logs</span>
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="usersSection">
+          <button class="side-btn" data-page-section="usersSection" data-icon="U">
             <span>Users</span>
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="createUserSection">
+          <button class="side-btn" data-page-section="createUserSection" data-icon="C">
             <span>Create User</span>
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="integrationGuideSection">
+          <button class="side-btn" data-page-section="integrationGuideSection" data-icon="i">
             <span>Integration Guide</span>
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="apiTestSection">
+          <button class="side-btn" data-page-section="apiTestSection" data-icon="API">
             <span>API Test</span>
             <span>›</span>
           </button>
         </div>
+
+        <button id="mobileSidebarLogoutBtn" class="side-btn mobile-only" type="button" data-icon="X">
+          <span>Logout</span>
+          <span>&rsaquo;</span>
+        </button>
 
         <div class="side-card">
           <label>Logged in as</label>
@@ -134,6 +140,11 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
       </aside>
 
       <main class="main-panel">
+        <div class="sub-mobile-header">
+          <button id="openSubSidebarBtn" class="mobile-icon-btn" type="button" aria-label="Open menu">☰</button>
+          <div class="sub-mobile-title">Z-Pay Swift / Subadmin</div>
+          <button id="mobileRefreshBtn" class="mobile-icon-btn" type="button" aria-label="Refresh">↻</button>
+        </div>
 
         <div class="topbar">
           <div>

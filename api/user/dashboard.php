@@ -618,14 +618,26 @@ header('Pragma: no-cache');
 
 <div class="bottom-nav">
   <div class="bottom-nav-inner">
-    <button class="bottom-btn active" data-page-section="overviewSection" type="button">Dashboard</button>
-    <button class="bottom-btn" data-page-section="topupSection" type="button">Topup</button>
-    <button class="bottom-btn" data-page-section="bundleSection" type="button">Bundle</button>
-    
-    <button class="bottom-btn" data-page-section="mfsSection" type="button">Money</button>
-    
-    <button class="bottom-btn" data-page-section="addMoneySection" type="button">Add</button>
-    <button class="bottom-btn" data-page-section="historySection" type="button">History</button>
+    <button class="bottom-btn active" data-page-section="overviewSection" type="button" aria-label="Dashboard">
+      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5v9A1.5 1.5 0 0 1 19.5 21h-4.25v-6h-6.5v6H4.5A1.5 1.5 0 0 1 3 19.5v-9Z"/></svg></span>
+      <span class="bottom-label">Dashboard</span>
+    </button>
+    <button class="bottom-btn" data-page-section="topupSection" type="button" aria-label="Topup">
+      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 4v12h8V6H8Zm3 13.25v1.25h2v-1.25h-2Z"/><path d="M20 7h2v3h3v2h-3v3h-2v-3h-3v-2h3V7Z" transform="scale(.75) translate(9 -1)"/></svg></span>
+      <span class="bottom-label">Topup</span>
+    </button>
+    <button class="bottom-btn" data-page-section="bundleSection" type="button" aria-label="Bundle">
+      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6.5 12 2l8 4.5v11L12 22l-8-4.5v-11Zm8 2.2 5.2-2.9L12 3 6.8 5.8 12 8.7Zm-6 7.6 5 2.8v-8.6L6 7.7v8.6Zm7 2.8 5-2.8V7.7l-5 2.8v8.6Z"/></svg></span>
+      <span class="bottom-label">Bundle</span>
+    </button>
+    <button class="bottom-btn" data-page-section="mfsSection" type="button" aria-label="Send Money">
+      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h13A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Zm2 2V10h14V8.5H5Zm0 4v5h14v-5H5Zm8.5 1.2 3.8 1.8-3.8 1.8v-1.2H8v-1.2h5.5v-1.2Z"/></svg></span>
+      <span class="bottom-label">Send Money</span>
+    </button>
+    <button class="bottom-btn" data-page-section="historySection" type="button" aria-label="History">
+      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 1-8.5 12h2.2A7 7 0 1 0 5 12H2l4-4 4 4H7a5 5 0 1 1 1.5 3.6l1.4-1.4A3 3 0 1 0 9 12h3V7h2v7H9V9.4l-1.8 1.8A7 7 0 0 0 12 19a7 7 0 0 0 0-14Z"/></svg></span>
+      <span class="bottom-label">History</span>
+    </button>
   </div>
 </div>
 

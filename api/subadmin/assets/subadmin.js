@@ -4090,6 +4090,15 @@ function setApiTestTab(targetId = 'liveApiTestPanel'){
   });
 }
 
+function openSubSidebar(){
+  document.querySelector('.sidebar')?.classList.add('open');
+  el('subSidebarOverlay')?.classList.add('show');
+}
+
+function closeSubSidebar(){
+  document.querySelector('.sidebar')?.classList.remove('open');
+  el('subSidebarOverlay')?.classList.remove('show');
+}
 
 function openPageSection(sectionId){
   sectionId = sectionId || 'overviewSection';
@@ -4099,6 +4108,7 @@ function openPageSection(sectionId){
 
   el(sectionId)?.classList.add('active');
   document.querySelector(`.side-btn[data-page-section="${sectionId}"]`)?.classList.add('active');
+  closeSubSidebar();
 
   if (sectionId === 'requestLogsSection') {
     startLogsAutoRefresh();
@@ -4686,6 +4696,10 @@ window.setApiTestTab = setApiTestTab;
 
 el('logoutBtn')?.addEventListener('click', doLogout);
 el('refreshBtn')?.addEventListener('click', () => refreshAll(true));
+el('mobileRefreshBtn')?.addEventListener('click', () => refreshAll(true));
+el('openSubSidebarBtn')?.addEventListener('click', openSubSidebar);
+el('subSidebarOverlay')?.addEventListener('click', closeSubSidebar);
+el('mobileSidebarLogoutBtn')?.addEventListener('click', doLogout);
 el('createKeyBtn')?.addEventListener('click', createKey);
 
 el('reloadKeysBtn')?.addEventListener('click', async () => {
@@ -4730,7 +4744,10 @@ el('copyPlainKeyBtn')?.addEventListener('click', copyLastPlainKey);
 el('usePlainKeyBtn')?.addEventListener('click', useLastPlainKeyInLiveTest);
 
 document.querySelectorAll('.side-btn').forEach(btn => {
-  btn.addEventListener('click', () => openPageSection(btn.dataset.pageSection));
+  btn.addEventListener('click', () => {
+    if (!btn.dataset.pageSection) return;
+    openPageSection(btn.dataset.pageSection);
+  });
 });
 
 
