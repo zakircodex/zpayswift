@@ -4093,21 +4093,32 @@ function setApiTestTab(targetId = 'liveApiTestPanel'){
 function openSubSidebar(){
   document.querySelector('.sidebar')?.classList.add('open');
   el('subSidebarOverlay')?.classList.add('show');
+  document.documentElement.classList.add('sub-sidebar-open');
+  document.body.classList.add('sub-sidebar-open');
 }
 
 function closeSubSidebar(){
   document.querySelector('.sidebar')?.classList.remove('open');
   el('subSidebarOverlay')?.classList.remove('show');
+  document.documentElement.classList.remove('sub-sidebar-open');
+  document.body.classList.remove('sub-sidebar-open');
+}
+
+function subBottomSectionKey(sectionId){
+  return sectionId === 'mfsRequestsSection' ? 'mfsCreateSection' : sectionId;
 }
 
 function openPageSection(sectionId){
   sectionId = sectionId || 'overviewSection';
+  const bottomSectionId = subBottomSectionKey(sectionId);
 
   document.querySelectorAll('.page-section').forEach(node => node.classList.remove('active'));
   document.querySelectorAll('.side-btn').forEach(node => node.classList.remove('active'));
+  document.querySelectorAll('.sub-bottom-btn').forEach(node => node.classList.remove('active'));
 
   el(sectionId)?.classList.add('active');
   document.querySelector(`.side-btn[data-page-section="${sectionId}"]`)?.classList.add('active');
+  document.querySelector(`.sub-bottom-btn[data-page-section="${bottomSectionId}"]`)?.classList.add('active');
   closeSubSidebar();
 
   if (sectionId === 'requestLogsSection') {
@@ -4698,8 +4709,12 @@ el('logoutBtn')?.addEventListener('click', doLogout);
 el('refreshBtn')?.addEventListener('click', () => refreshAll(true));
 el('mobileRefreshBtn')?.addEventListener('click', () => refreshAll(true));
 el('openSubSidebarBtn')?.addEventListener('click', openSubSidebar);
+el('closeSubSidebarBtn')?.addEventListener('click', closeSubSidebar);
 el('subSidebarOverlay')?.addEventListener('click', closeSubSidebar);
 el('mobileSidebarLogoutBtn')?.addEventListener('click', doLogout);
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 768) closeSubSidebar();
+});
 el('createKeyBtn')?.addEventListener('click', createKey);
 
 el('reloadKeysBtn')?.addEventListener('click', async () => {
@@ -4744,6 +4759,13 @@ el('copyPlainKeyBtn')?.addEventListener('click', copyLastPlainKey);
 el('usePlainKeyBtn')?.addEventListener('click', useLastPlainKeyInLiveTest);
 
 document.querySelectorAll('.side-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!btn.dataset.pageSection) return;
+    openPageSection(btn.dataset.pageSection);
+  });
+});
+
+document.querySelectorAll('.sub-bottom-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     if (!btn.dataset.pageSection) return;
     openPageSection(btn.dataset.pageSection);

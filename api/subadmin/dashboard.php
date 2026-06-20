@@ -33,7 +33,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
   <title>Z-Pay Swift Subadmin Panel</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
-  <link rel="stylesheet" href="/api/subadmin/assets/subadmin.css?v=19">
+  <link rel="stylesheet" href="/api/subadmin/assets/subadmin.css?v=20">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
@@ -46,6 +46,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
     <div class="app-shell">
 
       <aside class="sidebar">
+        <button id="closeSubSidebarBtn" class="mobile-drawer-close mobile-only" type="button">Close</button>
         <div class="sidebar-brand">
           <img class="logo brand-icon" src="/assets/brand/zpay-icon.png" alt="">
           <div>
@@ -1299,11 +1300,36 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 
 <div id="toastWrap" class="toast-wrap"></div>
 
+<div class="sub-bottom-nav">
+  <div class="sub-bottom-nav-inner">
+    <button class="sub-bottom-btn active" data-page-section="overviewSection" type="button" aria-label="Dashboard">
+      <span class="sub-bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5v9A1.5 1.5 0 0 1 19.5 21h-4.25v-6h-6.5v6H4.5A1.5 1.5 0 0 1 3 19.5v-9Z"/></svg></span>
+      <span class="sub-bottom-label">Dashboard</span>
+    </button>
+    <button class="sub-bottom-btn" data-page-section="panelTopupSection" type="button" aria-label="Topup">
+      <span class="sub-bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 4v12h8V6H8Zm3 13.25v1.25h2v-1.25h-2Z"/></svg></span>
+      <span class="sub-bottom-label">Topup</span>
+    </button>
+    <button class="sub-bottom-btn" data-page-section="bundleOffersSection" type="button" aria-label="Bundle">
+      <span class="sub-bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6.5 12 2l8 4.5v11L12 22l-8-4.5v-11Zm8 2.2 5.2-2.9L12 3 6.8 5.8 12 8.7Zm-6 7.6 5 2.8v-8.6L6 7.7v8.6Zm7 2.8 5-2.8V7.7l-5 2.8v8.6Z"/></svg></span>
+      <span class="sub-bottom-label">Bundle</span>
+    </button>
+    <button class="sub-bottom-btn" data-page-section="mfsCreateSection" type="button" aria-label="Money">
+      <span class="sub-bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h13A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Zm2 2V10h14V8.5H5Zm0 4v5h14v-5H5Zm8.5 1.2 3.8 1.8-3.8 1.8v-1.2H8v-1.2h5.5v-1.2Z"/></svg></span>
+      <span class="sub-bottom-label">Money</span>
+    </button>
+    <button class="sub-bottom-btn" data-page-section="requestLogsSection" type="button" aria-label="History">
+      <span class="sub-bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 1-8.5 12h2.2A7 7 0 1 0 5 12H2l4-4 4 4H7a5 5 0 1 1 1.5 3.6l1.4-1.4A3 3 0 1 0 9 12h3V7h2v7H9V9.4l-1.8 1.8A7 7 0 0 0 12 19a7 7 0 0 0 0-14Z"/></svg></span>
+      <span class="sub-bottom-label">History</span>
+    </button>
+  </div>
+</div>
+
 <script>
 window.SUBADMIN_PROXY_URL = '/api/subadmin/proxy.php';
 window.SUBADMIN_API_BASE = '/api';
 </script>
-<script src="/api/subadmin/assets/subadmin.js?v=19"></script>
+<script src="/api/subadmin/assets/subadmin.js?v=20"></script>
 <script src="/api/subadmin/assets/subadmin-otp.js?v=3"></script>
 </body>
 </html>
