@@ -4094,14 +4094,18 @@ function openSubSidebar(){
   document.querySelector('.sidebar')?.classList.add('open');
   el('subSidebarOverlay')?.classList.add('show');
   document.documentElement.classList.add('sub-sidebar-open');
+  document.documentElement.classList.add('subadmin-drawer-open');
   document.body.classList.add('sub-sidebar-open');
+  document.body.classList.add('subadmin-drawer-open');
 }
 
 function closeSubSidebar(){
   document.querySelector('.sidebar')?.classList.remove('open');
   el('subSidebarOverlay')?.classList.remove('show');
   document.documentElement.classList.remove('sub-sidebar-open');
+  document.documentElement.classList.remove('subadmin-drawer-open');
   document.body.classList.remove('sub-sidebar-open');
+  document.body.classList.remove('subadmin-drawer-open');
 }
 
 function subBottomSectionKey(sectionId){

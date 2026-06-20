@@ -33,7 +33,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
   <title>Z-Pay Swift Subadmin Panel</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
-  <link rel="stylesheet" href="/api/subadmin/assets/subadmin.css?v=20">
+  <link rel="stylesheet" href="/api/subadmin/assets/subadmin.css?v=21">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body>
@@ -55,6 +55,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
           </div>
         </div>
 
+        <div class="sidebar-scroll">
         <div class="sidebar-title">Main</div>
 
         <div class="side-nav">
@@ -137,6 +138,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
         <div class="side-card">
           <label>Status</label>
           <strong id="sideMeStatus">-</strong>
+        </div>
         </div>
       </aside>
 
@@ -1329,7 +1331,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 window.SUBADMIN_PROXY_URL = '/api/subadmin/proxy.php';
 window.SUBADMIN_API_BASE = '/api';
 </script>
-<script src="/api/subadmin/assets/subadmin.js?v=20"></script>
+<script src="/api/subadmin/assets/subadmin.js?v=21"></script>
 <script src="/api/subadmin/assets/subadmin-otp.js?v=3"></script>
 </body>
 </html>

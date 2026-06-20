@@ -288,6 +288,10 @@ textarea{
   gap:10px;
 }
 
+.sidebar-scroll{
+  min-width:0;
+}
+
 .side-btn{
   width:100%;
   min-height:50px;
@@ -2443,7 +2447,9 @@ textarea.input{
   }
 
   html.sub-sidebar-open,
-  body.sub-sidebar-open{
+  html.subadmin-drawer-open,
+  body.sub-sidebar-open,
+  body.subadmin-drawer-open{
     overflow:hidden !important;
     overscroll-behavior:none;
   }
@@ -2495,15 +2501,34 @@ textarea.input{
     height:100dvh !important;
     max-height:100dvh !important;
     min-height:100dvh !important;
-    overflow-y:auto !important;
+    display:flex;
+    flex-direction:column;
+    overflow:hidden !important;
     overflow-x:hidden !important;
     overscroll-behavior:contain;
-    -webkit-overflow-scrolling:touch;
     z-index:150;
     transform:translateX(-108%);
     transition:transform .22s ease;
     border-radius:0 24px 24px 0;
-    padding:18px 16px 120px;
+    padding:18px 16px 0;
+    touch-action:pan-y;
+  }
+
+  .sidebar-brand,
+  .mobile-drawer-close{
+    flex:0 0 auto;
+  }
+
+  .sidebar-scroll{
+    flex:1 1 auto;
+    min-height:0;
+    overflow-y:auto !important;
+    overflow-x:hidden !important;
+    overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;
+    touch-action:pan-y;
+    padding:0 2px calc(90px + env(safe-area-inset-bottom));
+    margin:0 -2px;
   }
 
   .sidebar.open{
