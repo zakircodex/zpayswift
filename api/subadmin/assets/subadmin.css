@@ -2416,13 +2416,19 @@ textarea.input{
 
 .mobile-drawer-close{
   margin:0 0 12px auto;
-  min-height:36px;
-  padding:0 12px;
+  flex:0 0 38px;
+  width:38px;
+  height:38px;
+  min-height:38px;
+  padding:0;
   border:none;
-  border-radius:12px;
+  border-radius:14px;
   background:rgba(255,255,255,.07);
   color:var(--text);
-  font-size:13px;
+  display:grid;
+  place-items:center;
+  font-size:24px;
+  line-height:1;
   font-weight:900;
   cursor:pointer;
   border:1px solid rgba(136,171,235,.18);
@@ -2455,7 +2461,7 @@ textarea.input{
   }
 
   .wrap{
-    padding:72px 10px 96px;
+    padding:72px 10px 128px;
     overflow-x:hidden;
   }
 
@@ -2551,6 +2557,11 @@ textarea.input{
     display:flex !important;
   }
 
+  .mobile-drawer-close.mobile-only{
+    display:grid !important;
+    place-items:center;
+  }
+
   .side-nav{
     gap:8px;
   }
@@ -2602,6 +2613,323 @@ textarea.input{
   .table-wrap{
     max-width:100%;
     overflow-x:auto !important;
+  }
+
+  #mfsRequestsSection .sub-mfs-table-wrap,
+  #requestLogsSection .history-logs-table-wrap{
+    display:none !important;
+  }
+
+  #mfsRequestsSection .sub-mfs-mobile-list,
+  #requestLogsSection .history-logs-mobile-list{
+    display:grid;
+    gap:12px;
+  }
+
+  .page-section.active{
+    padding-bottom:128px;
+  }
+
+  .card,
+  .panel > .card,
+  .box{
+    padding:15px;
+    border-radius:20px;
+  }
+
+  .topbar{
+    gap:12px;
+  }
+
+  .topbar h3,
+  .card h3{
+    font-size:21px;
+    line-height:1.22;
+  }
+
+  .topbar p,
+  .card p{
+    font-size:13px;
+    line-height:1.45;
+  }
+
+  .pill{
+    min-height:26px;
+    padding:0 10px;
+    font-size:11px;
+    white-space:nowrap;
+  }
+
+  #mfsRequestsSection .sub-mfs-toolbar{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:9px;
+  }
+
+  #mfsRequestsSection .sub-mfs-toolbar > .btn{
+    width:100%;
+    min-height:42px;
+  }
+
+  #mfsRequestsSection .sub-mfs-tabs,
+  #requestLogsSection .topbar .actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:8px;
+    width:100%;
+    margin-left:0;
+  }
+
+  #mfsRequestsSection .sub-mfs-tab,
+  #requestLogsSection .log-filter-btn{
+    width:100%;
+    min-height:40px;
+    padding:0 9px;
+    font-size:12px;
+    white-space:nowrap;
+  }
+
+  #mfsRequestsSection .sub-mfs-filter-row{
+    grid-template-columns:1fr !important;
+    gap:10px;
+  }
+
+  #mfsRequestsSection .sub-mfs-card,
+  #requestLogsSection .history-log-card{
+    padding:13px;
+    border-radius:18px;
+  }
+
+  #mfsRequestsSection .sub-mfs-card-top,
+  #requestLogsSection .history-log-card-top{
+    align-items:flex-start;
+    gap:8px;
+  }
+
+  #mfsRequestsSection .sub-mfs-card-top .pill,
+  #requestLogsSection .history-log-card-top .pill{
+    flex:0 0 auto;
+  }
+
+  #mfsRequestsSection .sub-mfs-card-grid,
+  #requestLogsSection .history-log-card-grid{
+    grid-template-columns:86px minmax(0,1fr);
+    gap:7px 10px;
+  }
+
+  #mfsRequestsSection .sub-mfs-card-grid b,
+  #requestLogsSection .history-log-card-grid b{
+    font-size:12px;
+  }
+
+  #apiKeysSection > .card > .actions,
+  #usersSection > .card > .actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:9px;
+    align-items:stretch;
+  }
+
+  #apiKeysSection > .card > .actions .btn,
+  #usersSection > .card > .actions .btn,
+  #usersSection > .card > .actions .input{
+    width:100%;
+    min-width:0;
+    min-height:42px;
+  }
+
+  #apiKeysSection .box .actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:9px;
+  }
+
+  #apiKeysSection .box .actions .btn{
+    width:100%;
+    min-width:0;
+  }
+
+  #apiKeysSection table,
+  #usersSection table,
+  #panelTopupSection table{
+    min-width:0 !important;
+    display:block;
+  }
+
+  #apiKeysSection thead,
+  #usersSection thead,
+  #panelTopupSection thead{
+    display:none;
+  }
+
+  #apiKeysSection tbody,
+  #usersSection tbody,
+  #panelTopupSection tbody{
+    display:grid;
+    gap:10px;
+  }
+
+  #apiKeysSection tr,
+  #usersSection tr,
+  #panelTopupSection tr{
+    display:block;
+    padding:12px;
+    border-radius:18px;
+    border:1px solid rgba(136,171,235,.14);
+    background:rgba(255,255,255,.035);
+  }
+
+  #apiKeysSection td,
+  #usersSection td,
+  #panelTopupSection td{
+    display:grid;
+    grid-template-columns:94px minmax(0,1fr);
+    gap:8px;
+    align-items:start;
+    padding:9px 0;
+    border-bottom:1px solid rgba(255,255,255,.06);
+    font-size:13px;
+    overflow-wrap:anywhere;
+    word-break:break-word;
+  }
+
+  #apiKeysSection td:last-child,
+  #usersSection td:last-child,
+  #panelTopupSection td:last-child{
+    border-bottom:0;
+  }
+
+  #apiKeysSection td::before,
+  #usersSection td::before,
+  #panelTopupSection td::before{
+    color:var(--muted);
+    font-size:11px;
+    font-weight:900;
+    text-transform:uppercase;
+    letter-spacing:.45px;
+  }
+
+  #apiKeysSection td[colspan],
+  #usersSection td[colspan],
+  #panelTopupSection td[colspan]{
+    display:block;
+    text-align:center;
+    border-bottom:0;
+  }
+
+  #apiKeysSection td[colspan]::before,
+  #usersSection td[colspan]::before,
+  #panelTopupSection td[colspan]::before{
+    content:none;
+  }
+
+  #apiKeysSection td:nth-child(1)::before{ content:"Key ID"; }
+  #apiKeysSection td:nth-child(2)::before{ content:"Masked Key"; }
+  #apiKeysSection td:nth-child(3)::before{ content:"Status"; }
+  #apiKeysSection td:nth-child(4)::before{ content:"Last Used"; }
+  #apiKeysSection td:nth-child(5)::before{ content:"Created"; }
+  #apiKeysSection td:nth-child(6)::before{ content:"Action"; }
+
+  #panelTopupSection td:nth-child(1)::before{ content:"Request ID"; }
+  #panelTopupSection td:nth-child(2)::before{ content:"Status"; }
+  #panelTopupSection td:nth-child(3)::before{ content:"Operator"; }
+  #panelTopupSection td:nth-child(4)::before{ content:"Number"; }
+  #panelTopupSection td:nth-child(5)::before{ content:"Amount"; }
+  #panelTopupSection td:nth-child(6)::before{ content:"Created"; }
+  #panelTopupSection td:nth-child(7)::before{ content:"Action"; }
+
+  #usersSection td:nth-child(1)::before{ content:"Name"; }
+  #usersSection td:nth-child(2)::before{ content:"Phone"; }
+  #usersSection td:nth-child(3)::before{ content:"Email"; }
+  #usersSection td:nth-child(4)::before{ content:"Role"; }
+  #usersSection td:nth-child(5)::before{ content:"Status"; }
+  #usersSection td:nth-child(6)::before{ content:"Country"; }
+  #usersSection td:nth-child(7)::before{ content:"Balance"; }
+  #usersSection td:nth-child(8)::before{ content:"Limits"; }
+  #usersSection td:nth-child(9)::before{ content:"Actions"; }
+
+  #usersSection .users-table-action{
+    min-width:0;
+  }
+
+  #usersSection .users-action-stack,
+  #panelTopupSection .row-actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:7px;
+  }
+
+  #usersSection .users-action-stack .mini-btn,
+  #panelTopupSection .row-actions .mini-btn{
+    width:100%;
+    min-width:0;
+  }
+
+  #panelTopupSection .test-grid{
+    grid-template-columns:1fr !important;
+    gap:10px;
+  }
+
+  #panelTopupSection .actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:9px;
+  }
+
+  #panelTopupSection .actions .btn{
+    width:100%;
+    min-width:0;
+  }
+
+  #bundleOffersSection .topbar .actions{
+    width:100%;
+  }
+
+  #bundleOffersSection .topbar .actions .btn{
+    width:100%;
+  }
+
+  #bundleOffersSection .bundle-offer-grid{
+    grid-template-columns:1fr !important;
+    gap:12px !important;
+    margin-top:10px !important;
+  }
+
+  #bundleOffersSection .bundle-offer-card{
+    padding:13px !important;
+    border-radius:18px !important;
+  }
+
+  #bundleOffersSection .bundle-offer-name{
+    font-size:16px !important;
+  }
+
+  #bundleOffersSection .bundle-price-row,
+  #bundleOffersSection .bundle-mini-grid{
+    grid-template-columns:1fr !important;
+    gap:8px !important;
+    margin:10px 0 !important;
+  }
+
+  #bundleOffersSection .bundle-price-main,
+  #bundleOffersSection .bundle-mini-grid > div{
+    padding:10px !important;
+  }
+
+  #bundleOffersSection .bundle-offer-actions{
+    grid-template-columns:1fr !important;
+  }
+
+  #addMoneySection .add-money-account-card{
+    min-height:0;
+  }
+
+  #addMoneySection .add-money-account-logo{
+    flex-basis:42px !important;
+    width:42px !important;
+    height:42px !important;
+    max-width:42px !important;
+    max-height:42px !important;
   }
 
   .sub-bottom-nav{
