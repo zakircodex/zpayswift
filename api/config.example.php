@@ -24,6 +24,10 @@ define('ADMIN_PANEL_SESSION_TTL_SECONDS', 60 * 60 * 2);
 define('ADMIN_SESSION_TTL_SECONDS', 60 * 60 * 2);
 define('MIN_PASSWORD_LENGTH', 6);
 define('USER_PIN_LENGTH', 4);
+define('OTP_MAX_ATTEMPTS', 5);
+define('OTP_RESEND_LIMIT', 5);
+define('OTP_RESEND_COOLDOWN_SECONDS', 60);
+define('OTP_SEND_LIMIT_PER_HOUR', 12);
 
 /* BulkSMSBD OTP SMS */
 define('BULKSMSBD_SMS_API_URL', 'https://bulksmsbd.net/api/smsapi');
@@ -72,6 +76,9 @@ define('SECURITY_BLOCK_ANONYMOUS', true);
 define('SECURITY_BLOCK_HIGH_RISK_SCORE', true);
 define('SECURITY_HIGH_RISK_SCORE_BLOCK_AT', 85);
 define('SECURITY_IP_RISK_SKIP_PATHS', []);
+
+/* Partner public API hardening */
+define('SUBADMIN_API_ALLOW_QUERY_KEY', false);
 
 /* Default user country / wallet currency */
 define('DEFAULT_USER_COUNTRY', 'BD');

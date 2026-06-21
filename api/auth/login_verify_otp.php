@@ -147,7 +147,7 @@ if ((bool)($otpRow['used'] ?? false)) {
 }
 
 $otpStatus = strtoupper(trim((string)($otpRow['status'] ?? '')));
-if (!in_array($otpStatus, ['SENT', 'RESENT'], true)) {
+if (!in_array($otpStatus, ['SENT', 'RESENT', 'LOCKED'], true)) {
     api_response(false, 'OTP_INVALID_STATUS', 'OTP is not active', [], 400);
 }
 
@@ -161,13 +161,26 @@ if ((int)($otpRow['expires_at'] ?? 0) < now_ts()) {
 }
 
 $codeHash = (string)($otpRow['code_hash'] ?? '');
-if ($codeHash === '' || !password_verify($otp, $codeHash)) {
-    fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
-        'failed_attempt_at' => now_ts(),
-        'updated_at' => now_ts(),
-    ]);
 
-    api_response(false, 'OTP_INVALID', 'Invalid OTP', [], 400);
+$lockState = auth_otp_lock_state($otpRow);
+if (!empty($lockState['locked'])) {
+    api_response(false, 'OTP_LOCKED', 'Maximum OTP attempts exceeded. Please request a new OTP.', [
+        'attempts_left' => 0,
+    ], 423);
+}
+
+if ($codeHash === '' || !password_verify($otp, $codeHash)) {
+    $failedState = auth_otp_record_failed_attempt($otpRequestId, $otpRow, now_ts());
+
+    if (!empty($failedState['locked'])) {
+        api_response(false, 'OTP_LOCKED', 'Maximum OTP attempts exceeded. Please request a new OTP.', [
+            'attempts_left' => 0,
+        ], 423);
+    }
+
+    api_response(false, 'OTP_INVALID', 'Invalid OTP', [
+        'attempts_left' => (int)($failedState['attempts_left'] ?? 0),
+    ], 400);
 }
 
 $uid = trim((string)($preAuthRow['uid'] ?? ''));

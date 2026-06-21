@@ -110,13 +110,24 @@ $expiresAt = $now + 300;
 $newOtpCode = (string)random_int(100000, 999999);
 $newOtpRequestId = 'UROTP' . strtoupper(bin2hex(random_bytes(6)));
 
+$oldOtpRow = fb_get('AUTH_OTP_REQUESTS/' . $oldOtpRequestId);
+if (!is_array($oldOtpRow)) {
+    user_reg_res_response(false, 'OTP_NOT_FOUND', 'Previous OTP request not found', [], 404);
+}
+
+$resendState = auth_otp_resend_state($oldOtpRow, $now);
+if (empty($resendState['ok'])) {
+    user_reg_res_response(false, (string)$resendState['code'], (string)$resendState['message'], [
+        'retry_after_seconds' => (int)($resendState['retry_after_seconds'] ?? 0),
+        'resend_count' => (int)($resendState['resend_count'] ?? 0),
+        'resend_limit' => (int)($resendState['resend_limit'] ?? auth_otp_resend_limit()),
+    ], (int)($resendState['http_status'] ?? 429));
+}
+
 @fb_patch('AUTH_OTP_REQUESTS/' . $oldOtpRequestId, [
     'status' => 'CANCELLED',
     'updated_at' => $now,
 ]);
-
-$oldOtpRow = fb_get('AUTH_OTP_REQUESTS/' . $oldOtpRequestId);
-$oldResendCount = is_array($oldOtpRow) ? (int)($oldOtpRow['resend_count'] ?? 0) : 0;
 
 $otpRow = [
     'otp_request_id' => $newOtpRequestId,
@@ -151,11 +162,11 @@ $otpRow = [
     'masked_phone' => user_reg_res_mask_phone($phone),
     'status' => 'RESENT',
     'used' => false,
-    'resend_count' => $oldResendCount + 1,
+    'resend_count' => (int)($resendState['resend_count'] ?? 0) + 1,
     'created_at' => $now,
     'updated_at' => $now,
     'expires_at' => $expiresAt,
-];
+] + auth_otp_reset_attempts_patch();
 
 $okOtp = fb_put('AUTH_OTP_REQUESTS/' . $newOtpRequestId, $otpRow);
 

@@ -108,10 +108,13 @@ if ($userRole !== 'ADMIN') {
     api_response(false, 'FORBIDDEN', 'Admin access required', [], 403);
 }
 
-$resendCount = (int)($otpRow['resend_count'] ?? 0);
-
-if ($resendCount >= 5) {
-    api_response(false, 'RESEND_LIMIT_REACHED', 'OTP resend limit reached. Please login again.', [], 429);
+$resendState = auth_otp_resend_state($otpRow, $now);
+if (empty($resendState['ok'])) {
+    api_response(false, (string)$resendState['code'], (string)$resendState['message'], [
+        'retry_after_seconds' => (int)($resendState['retry_after_seconds'] ?? 0),
+        'resend_count' => (int)($resendState['resend_count'] ?? 0),
+        'resend_limit' => (int)($resendState['resend_limit'] ?? auth_otp_resend_limit()),
+    ], (int)($resendState['http_status'] ?? 429));
 }
 
 $phoneCountry = auth_normalize_country_code((string)($preAuthRow['phone_country'] ?? $otpRow['phone_country'] ?? ''));
@@ -137,11 +140,11 @@ $okOtp = fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
     'code_hash' => password_hash($newOtpCode, PASSWORD_DEFAULT),
     'status' => 'RESENT',
     'used' => false,
-    'resend_count' => $resendCount + 1,
+    'resend_count' => (int)($resendState['resend_count'] ?? 0) + 1,
     'resent_at' => $now,
     'expires_at' => $expiresAt,
     'updated_at' => $now,
-]);
+] + auth_otp_reset_attempts_patch());
 
 $okPre = $okOtp ? fb_patch('AUTH_ADMIN_LOGIN_PREAUTH/' . $preAuthToken, [
     'status' => 'OTP_PENDING',
@@ -192,7 +195,7 @@ if (function_exists('system_log')) {
         'uid' => $uid,
         'phone' => $phone,
         'phone_country' => $phoneCountry,
-        'resend_count' => $resendCount + 1,
+        'resend_count' => (int)($resendState['resend_count'] ?? 0) + 1,
         'ip' => client_ip(),
     ]);
 }

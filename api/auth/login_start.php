@@ -205,6 +205,14 @@ $smsTemplateKey = $role === 'ADMIN' ? 'ADMIN_LOGIN' : 'SUBADMIN_LOGIN';
 $loginPurpose = $role === 'ADMIN' ? 'ADMIN_LOGIN' : 'SUBADMIN_LOGIN';
 
 $message = 'Z-Pay Swift login OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
+$sendRateState = auth_otp_send_rate_state($loginPurpose, $otpPhone, $now);
+if (empty($sendRateState['ok'])) {
+    api_response(false, (string)$sendRateState['code'], (string)$sendRateState['message'], [
+        'retry_after_seconds' => (int)($sendRateState['retry_after_seconds'] ?? 0),
+        'send_count' => (int)($sendRateState['send_count'] ?? 0),
+        'send_limit' => (int)($sendRateState['send_limit'] ?? auth_otp_send_limit_per_hour()),
+    ], (int)($sendRateState['http_status'] ?? 429));
+}
 
 $otpRow = [
     'otp_request_id' => $otpRequestId,
@@ -226,10 +234,11 @@ $otpRow = [
     'masked_phone' => sub_login_mask_phone($otpPhone),
     'status' => 'SENT',
     'used' => false,
+    'resend_count' => 0,
     'created_at' => $now,
     'expires_at' => $expiresAt,
     'updated_at' => $now,
-];
+] + auth_otp_reset_attempts_patch();
 
 $preAuthRow = [
     'pre_auth_token' => $preAuthToken,
@@ -262,6 +271,7 @@ if (!($okOtp && $okPre)) {
     api_response(false, 'SERVER_ERROR', 'Failed to prepare OTP verification', [], 500);
 }
 
+auth_otp_record_send_rate($loginPurpose, $otpPhone, $sendRateState, $now);
 $smsResult = auth_send_otp_sms_by_country(
     $storedPhoneCountry,
     $otpPhone,

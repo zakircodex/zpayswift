@@ -228,6 +228,14 @@ $otpRequestId = 'UROTP' . strtoupper(bin2hex(random_bytes(6)));
 $preAuthToken = 'URPA' . user_reg_token(16);
 
 $message = 'Z-Pay Swift register OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
+$sendRateState = auth_otp_send_rate_state('USER_REGISTER', $phone, $now);
+if (empty($sendRateState['ok'])) {
+    user_reg_response(false, (string)$sendRateState['code'], (string)$sendRateState['message'], [
+        'retry_after_seconds' => (int)($sendRateState['retry_after_seconds'] ?? 0),
+        'send_count' => (int)($sendRateState['send_count'] ?? 0),
+        'send_limit' => (int)($sendRateState['send_limit'] ?? auth_otp_send_limit_per_hour()),
+    ], (int)($sendRateState['http_status'] ?? 429));
+}
 
 $otpRow = [
     'otp_request_id' => $otpRequestId,
@@ -266,7 +274,7 @@ $otpRow = [
     'created_at' => $now,
     'updated_at' => $now,
     'expires_at' => $expiresAt,
-];
+] + auth_otp_reset_attempts_patch();
 
 $preAuthRow = [
     'pre_auth_token' => $preAuthToken,
@@ -325,6 +333,7 @@ if (!($okOtp && $okPre)) {
     user_reg_response(false, 'SERVER_ERROR', 'Failed to prepare register OTP', [], 500);
 }
 
+auth_otp_record_send_rate('USER_REGISTER', $phone, $sendRateState, $now);
 $smsResult = user_reg_send_sms($phoneCountry, $phone, $message, $otpRequestId, $otpCode);
 $smsPatch = function_exists('auth_sms_result_log_fields')
     ? auth_sms_result_log_fields($smsResult)

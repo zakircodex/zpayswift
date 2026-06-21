@@ -92,6 +92,15 @@ if (in_array($currentOtpStatus, ['VERIFIED', 'EXPIRED', 'CANCELLED'], true)) {
 }
 
 $now = now_ts();
+$resendState = auth_otp_resend_state($otpRow, $now);
+if (empty($resendState['ok'])) {
+    api_response(false, (string)$resendState['code'], (string)$resendState['message'], [
+        'retry_after_seconds' => (int)($resendState['retry_after_seconds'] ?? 0),
+        'resend_count' => (int)($resendState['resend_count'] ?? 0),
+        'resend_limit' => (int)($resendState['resend_limit'] ?? auth_otp_resend_limit()),
+    ], (int)($resendState['http_status'] ?? 429));
+}
+
 $newExpiresAt = $now + 300;
 $newOtpCode = (string)random_int(100000, 999999);
 
@@ -99,10 +108,10 @@ $patchOtp = [
     'code_hash' => password_hash($newOtpCode, PASSWORD_DEFAULT),
     'status' => 'RESENT',
     'resent_at' => $now,
-    'resend_count' => (int)($otpRow['resend_count'] ?? 0) + 1,
+    'resend_count' => (int)($resendState['resend_count'] ?? 0) + 1,
     'expires_at' => $newExpiresAt,
     'updated_at' => $now,
-];
+] + auth_otp_reset_attempts_patch();
 
 $patchPreAuth = [
     'expires_at' => $newExpiresAt,

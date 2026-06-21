@@ -295,7 +295,7 @@ if ((bool)($otpRow['used'] ?? false)) {
 }
 
 $otpStatus = strtoupper(trim((string)($otpRow['status'] ?? '')));
-if (!in_array($otpStatus, ['SENT', 'RESENT'], true)) {
+if (!in_array($otpStatus, ['SENT', 'RESENT', 'LOCKED'], true)) {
     ucc_response(false, 'OTP_INVALID_STATUS', 'OTP is not active', [], 400);
 }
 
@@ -312,12 +312,26 @@ if ((int)($otpRow['expires_at'] ?? 0) < $now) {
 }
 
 $codeHash = (string)($otpRow['code_hash'] ?? '');
+
+$lockState = auth_otp_lock_state($otpRow);
+if (!empty($lockState['locked'])) {
+    ucc_response(false, 'OTP_LOCKED', 'Maximum OTP attempts exceeded. Please request a new OTP.', [
+        'attempts_left' => 0,
+    ], 423);
+}
+
 if ($codeHash === '' || !password_verify($otp, $codeHash)) {
-    @fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
-        'failed_attempt_at' => $now,
-        'updated_at' => $now,
-    ]);
-    ucc_response(false, 'OTP_INVALID', 'Invalid OTP', [], 400);
+    $failedState = auth_otp_record_failed_attempt($otpRequestId, $otpRow, $now);
+
+    if (!empty($failedState['locked'])) {
+        ucc_response(false, 'OTP_LOCKED', 'Maximum OTP attempts exceeded. Please request a new OTP.', [
+            'attempts_left' => 0,
+        ], 423);
+    }
+
+    ucc_response(false, 'OTP_INVALID', 'Invalid OTP', [
+        'attempts_left' => (int)($failedState['attempts_left'] ?? 0),
+    ], 400);
 }
 
 $payload = ucc_decrypt_payload((string)($preAuthRow['payload_secret'] ?? ''));

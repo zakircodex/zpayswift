@@ -202,6 +202,15 @@ if (!empty($otpRow['used'])) {
     auth_response(false, 'OTP_ALREADY_USED', 'OTP already used. Please start again.', [], 400);
 }
 
+$resendState = auth_otp_resend_state($otpRow, $now);
+if (empty($resendState['ok'])) {
+    auth_response(false, (string)$resendState['code'], (string)$resendState['message'], [
+        'retry_after_seconds' => (int)($resendState['retry_after_seconds'] ?? 0),
+        'resend_count' => (int)($resendState['resend_count'] ?? 0),
+        'resend_limit' => (int)($resendState['resend_limit'] ?? auth_otp_resend_limit()),
+    ], (int)($resendState['http_status'] ?? 429));
+}
+
 $newOtp = (string) random_int(100000, 999999);
 $newExpiresAt = $now + 300;
 
@@ -219,10 +228,10 @@ $updatedOtpRow = [
     'reset_type' => $storedResetType,
     'purpose' => $forgotPurpose,
     'masked_phone' => auth_mask_phone($phone),
-    'resend_count' => ((int)($otpRow['resend_count'] ?? 0)) + 1,
+    'resend_count' => (int)($resendState['resend_count'] ?? 0) + 1,
     'account_role' => $accountRole,
     'purpose' => $forgotPurpose,
-];
+] + auth_otp_reset_attempts_patch();
 
 $updatedPreAuthRow = [
     'status' => 'OTP_PENDING',

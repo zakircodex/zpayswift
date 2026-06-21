@@ -25,7 +25,7 @@ function tg_add_money_verify_secret(): void
 {
     $expected = tg_add_money_secret();
     if ($expected === '') {
-        return;
+        tg_add_money_json(false, 'CONFIG_ERROR', 'TELEGRAM_WEBHOOK_SECRET missing', [], 500);
     }
 
     $query = trim((string)($_GET['key'] ?? ''));

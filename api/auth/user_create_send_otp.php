@@ -216,6 +216,14 @@ $otpCode = (string) random_int(100000, 999999);
 $otpRequestId = 'UCOTP' . strtoupper(bin2hex(random_bytes(5)));
 $preAuthToken = 'UCPA' . strtoupper(bin2hex(random_bytes(12)));
 $expiresAt = $now + 300;
+$sendRateState = auth_otp_send_rate_state('SUBADMIN_USER_CREATE', $phone, $now);
+if (empty($sendRateState['ok'])) {
+    ucotp_response(false, (string)$sendRateState['code'], (string)$sendRateState['message'], [
+        'retry_after_seconds' => (int)($sendRateState['retry_after_seconds'] ?? 0),
+        'send_count' => (int)($sendRateState['send_count'] ?? 0),
+        'send_limit' => (int)($sendRateState['send_limit'] ?? auth_otp_send_limit_per_hour()),
+    ], (int)($sendRateState['http_status'] ?? 429));
+}
 
 $payloadSecret = ucotp_encrypt_payload([
     'name' => $name,
@@ -261,7 +269,7 @@ $otpRow = [
     'created_at' => $now,
     'resent_at' => $now,
     'expires_at' => $expiresAt,
-];
+] + auth_otp_reset_attempts_patch();
 
 $preAuthRow = [
     'pre_auth_token' => $preAuthToken,
@@ -303,6 +311,7 @@ if (!($okOtp && $okPre)) {
 $message = 'Z-Pay Swift registration OTP is ' . $otpCode .
     '. Valid for 5 minutes. Do not share this code.';
 
+auth_otp_record_send_rate('SUBADMIN_USER_CREATE', $phone, $sendRateState, $now);
 $smsResult = auth_send_otp_sms_by_country(
     $phoneCountry,
     $phone,

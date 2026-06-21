@@ -268,6 +268,14 @@ $otpCode = (string) random_int(100000, 999999);
 $otpRequestId = 'FOTP' . strtoupper(bin2hex(random_bytes(6)));
 $preAuthToken = 'FPA' . auth_make_token(16);
 $expiresAt = $now + 300;
+$sendRateState = auth_otp_send_rate_state($purpose, $otpPhone, $now);
+if (empty($sendRateState['ok'])) {
+    auth_response(false, (string)$sendRateState['code'], (string)$sendRateState['message'], [
+        'retry_after_seconds' => (int)($sendRateState['retry_after_seconds'] ?? 0),
+        'send_count' => (int)($sendRateState['send_count'] ?? 0),
+        'send_limit' => (int)($sendRateState['send_limit'] ?? auth_otp_send_limit_per_hour()),
+    ], (int)($sendRateState['http_status'] ?? 429));
+}
 
 if ($resetType === 'PIN') {
     $message = 'Z-Pay Swift PIN reset OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
@@ -300,7 +308,7 @@ $otpRow = [
     'created_at' => $now,
     'resent_at' => $now,
     'expires_at' => $expiresAt,
-];
+] + auth_otp_reset_attempts_patch();
 
 $preAuthRow = [
     'pre_auth_token' => $preAuthToken,
@@ -332,6 +340,7 @@ if (!($okOtp && $okPre)) {
     auth_response(false, 'SERVER_ERROR', 'Failed to prepare OTP verification', [], 500);
 }
 
+auth_otp_record_send_rate($purpose, $otpPhone, $sendRateState, $now);
 $smsResult = auth_send_otp_sms_by_country(
     $storedPhoneCountry,
     $otpPhone,

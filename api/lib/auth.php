@@ -31,6 +31,218 @@ function auth_status_value($value): string
     return strtoupper(auth_clean_string($value));
 }
 
+function auth_otp_max_attempts(): int
+{
+    $max = defined('OTP_MAX_ATTEMPTS') ? (int)OTP_MAX_ATTEMPTS : 5;
+    return max(1, min(20, $max));
+}
+
+function auth_otp_resend_limit(): int
+{
+    $limit = defined('OTP_RESEND_LIMIT') ? (int)OTP_RESEND_LIMIT : 5;
+    return max(1, min(20, $limit));
+}
+
+function auth_otp_resend_cooldown_seconds(): int
+{
+    $seconds = defined('OTP_RESEND_COOLDOWN_SECONDS') ? (int)OTP_RESEND_COOLDOWN_SECONDS : 60;
+    return max(0, min(3600, $seconds));
+}
+
+function auth_otp_send_limit_per_hour(): int
+{
+    $limit = defined('OTP_SEND_LIMIT_PER_HOUR') ? (int)OTP_SEND_LIMIT_PER_HOUR : 12;
+    return max(1, min(120, $limit));
+}
+
+function auth_otp_lock_state(array $otpRow): array
+{
+    $max = (int)($otpRow['max_attempts'] ?? auth_otp_max_attempts());
+    $max = max(1, min(20, $max));
+    $attempts = max(0, (int)($otpRow['attempts'] ?? 0));
+    $status = auth_status_value($otpRow['status'] ?? '');
+    $locked = $status === 'LOCKED' || $attempts >= $max;
+
+    return [
+        'locked' => $locked,
+        'attempts' => $attempts,
+        'max_attempts' => $max,
+        'attempts_left' => max(0, $max - $attempts),
+    ];
+}
+
+function auth_otp_record_failed_attempt(string $otpRequestId, array $otpRow, ?int $now = null): array
+{
+    $now = $now ?? now_ts();
+    $state = auth_otp_lock_state($otpRow);
+    $attempts = (int)$state['attempts'] + 1;
+    $max = (int)$state['max_attempts'];
+    $locked = $attempts >= $max;
+
+    $patch = [
+        'attempts' => $attempts,
+        'max_attempts' => $max,
+        'failed_attempt_at' => $now,
+        'updated_at' => $now,
+    ];
+
+    if ($locked) {
+        $patch['status'] = 'LOCKED';
+        $patch['locked_at'] = $now;
+    }
+
+    if ($otpRequestId !== '') {
+        @fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, $patch);
+    }
+
+    return [
+        'locked' => $locked,
+        'attempts' => $attempts,
+        'max_attempts' => $max,
+        'attempts_left' => max(0, $max - $attempts),
+    ];
+}
+
+function auth_otp_resend_state(array $otpRow, ?int $now = null): array
+{
+    $now = $now ?? now_ts();
+    $limit = auth_otp_resend_limit();
+    $count = max(0, (int)($otpRow['resend_count'] ?? 0));
+
+    if ($count >= $limit) {
+        return [
+            'ok' => false,
+            'code' => 'RESEND_LIMIT_REACHED',
+            'message' => 'OTP resend limit reached. Please start again.',
+            'http_status' => 429,
+            'resend_count' => $count,
+            'resend_limit' => $limit,
+        ];
+    }
+
+    $cooldown = auth_otp_resend_cooldown_seconds();
+    $lastSentAt = (int)($otpRow['resent_at'] ?? $otpRow['created_at'] ?? 0);
+    $wait = $cooldown > 0 && $lastSentAt > 0 ? ($lastSentAt + $cooldown - $now) : 0;
+
+    if ($wait > 0) {
+        return [
+            'ok' => false,
+            'code' => 'OTP_RESEND_COOLDOWN',
+            'message' => 'Please wait before requesting another OTP.',
+            'http_status' => 429,
+            'retry_after_seconds' => $wait,
+            'resend_count' => $count,
+            'resend_limit' => $limit,
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'resend_count' => $count,
+        'resend_limit' => $limit,
+    ];
+}
+
+function auth_otp_send_rate_key(string $purpose, string $phone): string
+{
+    $purpose = strtoupper(trim($purpose));
+    $phone = preg_replace('/\D+/', '', trim($phone)) ?? '';
+    return hash('sha256', $purpose . '|' . $phone);
+}
+
+function auth_otp_send_rate_path(string $purpose, string $phone): string
+{
+    $purpose = strtoupper(trim($purpose));
+    if ($purpose === '') {
+        $purpose = 'GENERAL';
+    }
+
+    return 'AUTH_OTP_RATE_LIMIT/' . $purpose . '/' . auth_otp_send_rate_key($purpose, $phone);
+}
+
+function auth_otp_send_rate_state(string $purpose, string $phone, ?int $now = null): array
+{
+    $now = $now ?? now_ts();
+    $path = auth_otp_send_rate_path($purpose, $phone);
+    $row = fb_get($path);
+    $row = is_array($row) ? $row : [];
+
+    $cooldown = auth_otp_resend_cooldown_seconds();
+    $lastSentAt = (int)($row['last_sent_at'] ?? 0);
+    $wait = $cooldown > 0 && $lastSentAt > 0 ? ($lastSentAt + $cooldown - $now) : 0;
+
+    if ($wait > 0) {
+        return [
+            'ok' => false,
+            'code' => 'OTP_SEND_COOLDOWN',
+            'message' => 'Please wait before requesting another OTP.',
+            'http_status' => 429,
+            'retry_after_seconds' => $wait,
+        ];
+    }
+
+    $windowSeconds = 3600;
+    $limit = auth_otp_send_limit_per_hour();
+    $windowStartedAt = (int)($row['window_started_at'] ?? 0);
+    $count = (int)($row['send_count'] ?? 0);
+
+    if ($windowStartedAt <= 0 || ($now - $windowStartedAt) >= $windowSeconds) {
+        $windowStartedAt = $now;
+        $count = 0;
+    }
+
+    if ($count >= $limit) {
+        return [
+            'ok' => false,
+            'code' => 'OTP_SEND_LIMIT_REACHED',
+            'message' => 'OTP request limit reached. Please try again later.',
+            'http_status' => 429,
+            'retry_after_seconds' => max(1, $windowSeconds - ($now - $windowStartedAt)),
+            'send_count' => $count,
+            'send_limit' => $limit,
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'path' => $path,
+        'window_started_at' => $windowStartedAt,
+        'send_count' => $count,
+        'send_limit' => $limit,
+    ];
+}
+
+function auth_otp_record_send_rate(string $purpose, string $phone, array $state = [], ?int $now = null): void
+{
+    $now = $now ?? now_ts();
+    $path = (string)($state['path'] ?? auth_otp_send_rate_path($purpose, $phone));
+    if ($path === '') {
+        return;
+    }
+
+    $windowStartedAt = (int)($state['window_started_at'] ?? $now);
+    $count = max(0, (int)($state['send_count'] ?? 0)) + 1;
+
+    @fb_put($path, [
+        'purpose' => strtoupper(trim($purpose)),
+        'phone_hash' => auth_otp_send_rate_key($purpose, $phone),
+        'window_started_at' => $windowStartedAt,
+        'send_count' => $count,
+        'send_limit' => auth_otp_send_limit_per_hour(),
+        'last_sent_at' => $now,
+        'updated_at' => $now,
+    ]);
+}
+
+function auth_otp_reset_attempts_patch(): array
+{
+    return [
+        'attempts' => 0,
+        'max_attempts' => auth_otp_max_attempts(),
+        'locked_at' => 0,
+    ];
+}
+
 function session_hash(string $token): string
 {
     return hash('sha256', trim($token));

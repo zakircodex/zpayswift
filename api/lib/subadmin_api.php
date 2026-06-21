@@ -455,7 +455,7 @@ function subapi_authenticate_request(): array
         $plainKey = trim((string)($_SERVER['HTTP_X_API_KEY'] ?? ''));
     }
 
-    if ($plainKey === '') {
+    if ($plainKey === '' && defined('SUBADMIN_API_ALLOW_QUERY_KEY') && (bool)SUBADMIN_API_ALLOW_QUERY_KEY) {
         $plainKey = trim((string)($_GET['api_key'] ?? $_POST['api_key'] ?? ''));
     }
 
