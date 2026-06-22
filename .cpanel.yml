@@ -1,7 +1,15 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/zedpayhe/public_html/
+    - export DEPLOYPATH=/home/zedpayhe/public_html
     - /bin/mkdir -p "$DEPLOYPATH"
-    - /bin/bash -lc 'if [ -d public_html ]; then rsync -av --exclude-from=.cpanel-deploy-exclude public_html/ "$DEPLOYPATH"; else rsync -av --exclude-from=.cpanel-deploy-exclude .htaccess index.html download.php track.html privacy.html terms.html apply-subadmin.html assets/ "$DEPLOYPATH"; fi'
-    - /bin/bash -lc 'mkdir -p "$DEPLOYPATH/api"; rsync -av --exclude-from=.cpanel-deploy-exclude api/ "$DEPLOYPATH/api/"'
+    - /bin/mkdir -p "$DEPLOYPATH/api"
+
+    # Root public files/folders
+    - /bin/bash -lc 'for p in .htaccess index.html download.php track.html privacy.html terms.html apply-subadmin.html assets docs images logo; do [ -e "$p" ] && /bin/cp -a "$p" "$DEPLOYPATH"/; done'
+
+    # API folders only, no private/config/log files
+    - /bin/bash -lc 'for d in add_money admin auth bundle lib mfs my_site public_api storage; do [ -d "api/$d" ] && /bin/mkdir -p "$DEPLOYPATH/api/$d" && /bin/cp -a "api/$d/." "$DEPLOYPATH/api/$d/"; done'
+
+    # Deploy version marker
+    - /bin/bash -lc 'git rev-parse HEAD > "$DEPLOYPATH/deploy_version.txt"; date >> "$DEPLOYPATH/deploy_version.txt"'
