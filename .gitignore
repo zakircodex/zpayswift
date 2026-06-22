@@ -1,4 +1,27 @@
 # Keep cPanel/PHP runtime logs out of the public admin tree.
+error_log
+**/error_log
+*.log
+*.tmp
+*.sql
+*.bak
+*.old
+*.zip
+*.tar
+*.gz
+.env
+config.php
+*/config.php
+private/
+logs/
+node_modules/
+vendor/
+downloads/
+api/storage/uploads/
+api/storage/receipts/
+api/storage/add_money_receipts/
+api/storage/tmp/
+
 api/admin/error_log
 api/admin/**/error_log
 api/auth/error_log
