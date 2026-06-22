@@ -51,10 +51,13 @@ api_response(true, 'SUCCESS', 'User loaded', [
     'pricing_country' => admin_user_get_country_code($user, $wallet),
     'market_country' => admin_user_get_country_code($user, $wallet),
     'service_country' => admin_user_get_country_code($user, $wallet),
-    'ip_country' => function_exists('market_iso_country_code')
-        ? market_iso_country_code($user['ip_country'] ?? '')
-        : strtoupper(trim((string)($user['ip_country'] ?? ''))),
+    'ip_country' => (function ($value): string {
+        $raw = strtoupper(trim((string)$value));
+        $country = function_exists('market_iso_country_code') ? market_iso_country_code($raw) : $raw;
+        return $country !== '' ? $country : ($raw === 'UNKNOWN' ? 'UNKNOWN' : '');
+    })($user['ip_country'] ?? ''),
     'gps_country' => strtoupper(trim((string)($user['gps_country'] ?? ''))),
+    'ip_source' => (string)($user['ip_source'] ?? ''),
     'gps_lat' => (float)($user['gps_lat'] ?? 0),
     'gps_lng' => (float)($user['gps_lng'] ?? 0),
     'gps_accuracy' => (float)($user['gps_accuracy'] ?? 0),

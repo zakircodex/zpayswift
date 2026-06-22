@@ -280,9 +280,12 @@ function admin_users_list_make_item(string $uid, array $user, array $wallet): ar
         'service_country' => $country,
         'country_code' => $country,
         'country' => $country,
-        'ip_country' => function_exists('market_iso_country_code')
-            ? market_iso_country_code($user['ip_country'] ?? '')
-            : strtoupper(trim((string)($user['ip_country'] ?? ''))),
+        'ip_country' => (function ($value): string {
+            $raw = strtoupper(trim((string)$value));
+            $country = function_exists('market_iso_country_code') ? market_iso_country_code($raw) : $raw;
+            return $country !== '' ? $country : ($raw === 'UNKNOWN' ? 'UNKNOWN' : '');
+        })($user['ip_country'] ?? ''),
+        'ip_source' => (string)($user['ip_source'] ?? ''),
         'gps_country' => strtoupper(trim((string)($user['gps_country'] ?? ''))),
         'country_mismatch' => array_key_exists('country_mismatch', $user)
             ? (bool)$user['country_mismatch']

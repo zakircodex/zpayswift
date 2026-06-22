@@ -151,6 +151,9 @@ $pricingCountry = auth_normalize_country_code((string)(
 $ipCountry = function_exists('market_iso_country_code')
     ? market_iso_country_code($preAuthRow['ip_country'] ?? '')
     : strtoupper(trim((string)($preAuthRow['ip_country'] ?? '')));
+if ($ipCountry === '' && strtoupper(trim((string)($preAuthRow['ip_country'] ?? ''))) === 'UNKNOWN') {
+    $ipCountry = 'UNKNOWN';
+}
 $currency = auth_country_currency($pricingCountry !== '' ? $pricingCountry : 'BD');
 $accountStatus = strtoupper(trim((string)($preAuthRow['account_status'] ?? 'ACTIVE')));
 $termsAcceptedAt = (int)($preAuthRow['terms_accepted_at'] ?? 0);
@@ -252,6 +255,7 @@ $userRow = [
     'currency' => $currency,
     'wallet_currency' => $currency,
     'ip_country' => $ipCountry,
+    'ip_source' => (string)($preAuthRow['ip_source'] ?? ''),
     'country_mismatch' => (bool)($preAuthRow['country_mismatch'] ?? ($pricingCountry !== $phoneCountry)),
     'gps_lat' => (float)($preAuthRow['gps_lat'] ?? 0),
     'gps_lng' => (float)($preAuthRow['gps_lng'] ?? 0),
@@ -355,6 +359,7 @@ if (function_exists('system_log')) {
         'pricing_country' => $pricingCountry,
         'gps_country' => (string)($preAuthRow['gps_country'] ?? ''),
         'ip_country' => $ipCountry,
+        'ip_source' => (string)($preAuthRow['ip_source'] ?? ''),
         'account_status' => $accountStatus,
         'email' => $email,
     ]);
@@ -419,6 +424,7 @@ user_reg_confirm_response(
         'currency' => $currency,
         'gps_country' => (string)($preAuthRow['gps_country'] ?? ''),
         'ip_country' => $ipCountry,
+        'ip_source' => (string)($preAuthRow['ip_source'] ?? ''),
         'account_status' => $accountStatus,
         'review_required' => $requiresReview,
         'requires_admin_review' => $requiresReview,

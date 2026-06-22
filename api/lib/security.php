@@ -525,6 +525,10 @@ function security_truthy($value): bool
 
 function security_external_lookup_enabled(): bool
 {
+    if (security_bool_constant('SECURITY_CLOUDFLARE_IP_COUNTRY_ENABLED', false)) {
+        return false;
+    }
+
     return security_bool_constant('SECURITY_EXTERNAL_IP_LOOKUP_ENABLED', false);
 }
 

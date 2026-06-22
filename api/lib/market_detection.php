@@ -17,6 +17,33 @@ function market_iso_country_code($value): string
     return $country;
 }
 
+function market_bool_constant(string $name, bool $default): bool
+{
+    if (!defined($name)) {
+        return $default;
+    }
+
+    $value = constant($name);
+
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    $value = strtoupper(trim((string)$value));
+
+    return in_array($value, ['1', 'TRUE', 'YES', 'Y', 'ON'], true);
+}
+
+function market_cloudflare_country_enabled(): bool
+{
+    return market_bool_constant('SECURITY_CLOUDFLARE_IP_COUNTRY_ENABLED', true);
+}
+
+function market_require_cloudflare_country(): bool
+{
+    return market_bool_constant('SECURITY_REQUIRE_CLOUDFLARE_FOR_COUNTRY', false);
+}
+
 function market_forwarding_key(): string
 {
     return function_exists('auth_country_forwarding_key')
@@ -67,6 +94,11 @@ function market_trusted_forwarded_ip_country(): string
 
 function market_request_ip(): string
 {
+    $cfIp = trim((string)($_SERVER['HTTP_CF_CONNECTING_IP'] ?? ''));
+    if (market_cloudflare_country_enabled() && $cfIp !== '' && filter_var($cfIp, FILTER_VALIDATE_IP) !== false) {
+        return $cfIp;
+    }
+
     $forwarded = market_trusted_forwarded_ip();
     if ($forwarded !== '') {
         return $forwarded;
@@ -81,22 +113,53 @@ function market_request_ip(): string
 
 function market_request_ip_country(array $body = []): string
 {
+    $details = market_request_ip_country_details($body);
+
+    return (string)$details['country'];
+}
+
+function market_request_ip_country_details(array $body = []): array
+{
+    if (market_cloudflare_country_enabled()) {
+        $cfCountry = market_iso_country_code($_SERVER['HTTP_CF_IPCOUNTRY'] ?? '');
+
+        if ($cfCountry !== '' && $cfCountry !== 'XX') {
+            return [
+                'country' => $cfCountry,
+                'source' => 'CLOUDFLARE',
+            ];
+        }
+
+        return [
+            'country' => 'UNKNOWN',
+            'source' => 'UNKNOWN',
+        ];
+    }
+
     $forwarded = market_trusted_forwarded_ip_country();
     if ($forwarded !== '') {
-        return $forwarded;
+        return [
+            'country' => $forwarded,
+            'source' => 'SIGNED_FORWARD',
+        ];
     }
 
     foreach ([
-        $_SERVER['HTTP_CF_IPCOUNTRY'] ?? '',
         $_SERVER['GEOIP_COUNTRY_CODE'] ?? '',
     ] as $candidate) {
         $country = market_iso_country_code($candidate);
         if ($country !== '') {
-            return $country;
+            return [
+                'country' => $country,
+                'source' => 'SERVER_GEOIP',
+            ];
         }
     }
 
-    return '';
+    return [
+        'country' => market_require_cloudflare_country() ? 'UNKNOWN' : '',
+        'source' => 'UNKNOWN',
+    ];
 }
 
 function market_float_value($value): ?float
@@ -211,12 +274,14 @@ function market_registration_decision(array $body, string $phoneCountry): array
         return [
             'ok' => false,
             'code' => 'LOCATION_REQUIRED',
-            'message' => 'Location permission is required to create an account.',
+            'message' => 'Please allow location permission to continue.',
         ];
     }
 
     $gpsCountry = market_country_from_coordinates($lat, $lng);
-    $ipCountry = market_request_ip_country($body);
+    $ipCountryDetails = market_request_ip_country_details($body);
+    $ipCountry = (string)$ipCountryDetails['country'];
+    $ipSource = (string)$ipCountryDetails['source'];
     $createdIp = market_request_ip();
     $pricingCountry = in_array($gpsCountry, ['BD', 'MY'], true) ? $gpsCountry : 'MY';
     $accountStatus = 'ACTIVE';
@@ -230,7 +295,7 @@ function market_registration_decision(array $body, string $phoneCountry): array
         $detectionSource = 'BROWSER_GPS_UNSUPPORTED';
     }
 
-    if ($ipCountry === '') {
+    if ($ipCountry === '' || $ipCountry === 'UNKNOWN') {
         $accountStatus = 'REVIEW';
         $reviewReasons[] = 'IP_COUNTRY_UNKNOWN';
         $detectionSource = 'BROWSER_GPS_IP_UNKNOWN';
@@ -239,6 +304,7 @@ function market_registration_decision(array $body, string $phoneCountry): array
     if (
         in_array($gpsCountry, ['BD', 'MY'], true)
         && $ipCountry !== ''
+        && $ipCountry !== 'UNKNOWN'
         && $gpsCountry !== $ipCountry
     ) {
         $accountStatus = 'REVIEW';
@@ -266,11 +332,13 @@ function market_registration_decision(array $body, string $phoneCountry): array
         'blocked' => false,
         'risk_type' => 'UNKNOWN',
         'risk_score' => 0,
-        'source' => 'UNAVAILABLE',
+        'source' => $ipSource !== '' ? $ipSource : 'UNAVAILABLE',
         'reason' => '',
     ];
 
     if (
+        !market_cloudflare_country_enabled()
+        &&
         $createdIp !== ''
         && filter_var($createdIp, FILTER_VALIDATE_IP) !== false
         && function_exists('security_detect_ip_risk')
@@ -315,6 +383,7 @@ function market_registration_decision(array $body, string $phoneCountry): array
         'gps_accuracy' => round($accuracy, 2),
         'gps_country' => $gpsCountry,
         'ip_country' => $ipCountry,
+        'ip_source' => $ipSource,
         'created_ip' => $createdIp,
         'country_mismatch' => $countryMismatch,
         'vpn_suspected' => $vpnSuspected,

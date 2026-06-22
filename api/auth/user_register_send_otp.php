@@ -163,6 +163,7 @@ if (empty($marketDecision['ok'])) {
 
 $pricingCountry = (string)$marketDecision['pricing_country'];
 $ipCountry = (string)$marketDecision['ip_country'];
+$ipSource = (string)($marketDecision['ip_source'] ?? '');
 
 $phone = user_reg_normalize_phone((string)($body['phone'] ?? ''), $phoneCountry);
 $email = strtolower(trim((string)($body['email'] ?? '')));
@@ -250,6 +251,7 @@ $otpRow = [
     'currency' => $currency,
     'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
     'ip_country' => $ipCountry,
+    'ip_source' => $ipSource,
     'country_mismatch' => $countryMismatch,
     'gps_lat' => (float)$marketDecision['gps_lat'],
     'gps_lng' => (float)$marketDecision['gps_lng'],
@@ -289,6 +291,7 @@ $preAuthRow = [
     'service_country' => $pricingCountry,
     'currency' => $currency,
     'ip_country' => $ipCountry,
+    'ip_source' => $ipSource,
     'country_mismatch' => $countryMismatch,
     'gps_lat' => (float)$marketDecision['gps_lat'],
     'gps_lng' => (float)$marketDecision['gps_lng'],
@@ -364,6 +367,7 @@ if (function_exists('system_log')) {
         'phone_country' => $phoneCountry,
         'pricing_country' => $pricingCountry,
         'ip_country' => $ipCountry,
+        'ip_source' => $ipSource,
         'gps_country' => (string)$marketDecision['gps_country'],
         'account_status' => (string)$marketDecision['account_status'],
         'vpn_suspected' => (bool)$marketDecision['vpn_suspected'],
@@ -386,6 +390,7 @@ user_reg_response(true, 'OTP_REQUIRED', 'OTP verification required', [
     'currency' => $currency,
     'gps_country' => (string)$marketDecision['gps_country'],
     'ip_country' => $ipCountry,
+    'ip_source' => $ipSource,
     'account_status' => (string)$marketDecision['account_status'],
     'review_required' => (bool)$marketDecision['review_required'],
     'requires_admin_review' => (bool)$marketDecision['requires_admin_review'],

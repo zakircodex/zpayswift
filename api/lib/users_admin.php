@@ -92,6 +92,7 @@ function admin_users_normalize_country(?string $country): string
         'MY' => 'MY',
         'MYS' => 'MY',
         'MALAYSIA' => 'MY',
+        'UNKNOWN' => 'UNKNOWN',
     ];
 
     return $map[$country] ?? '';
@@ -141,6 +142,7 @@ function admin_users_find_user_by_uid(string $uid): array
         'service_country' => admin_users_country_code($user, $wallet),
         'currency' => (string)($user['currency'] ?? $user['wallet_currency'] ?? ''),
         'ip_country' => admin_users_normalize_country((string)($user['ip_country'] ?? '')),
+        'ip_source' => (string)($user['ip_source'] ?? ''),
         'country_mismatch' => array_key_exists('country_mismatch', $user)
             ? (bool)$user['country_mismatch']
             : (
@@ -394,6 +396,7 @@ function admin_users_list_users(
             'market_country' => admin_users_country_code($row, $wallet),
             'service_country' => admin_users_country_code($row, $wallet),
             'ip_country' => admin_users_normalize_country((string)($row['ip_country'] ?? '')),
+            'ip_source' => (string)($row['ip_source'] ?? ''),
             'country_mismatch' => array_key_exists('country_mismatch', $row)
                 ? (bool)$row['country_mismatch']
                 : (
