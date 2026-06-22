@@ -9,7 +9,6 @@ node_modules/
 vendor/
 z-builder/
 z-builder-worker/
-my-site/
 docs/
 downloads/
 SECURITY_AUDIT.md
