@@ -3,4 +3,5 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/zedpayhe/public_html/
     - /bin/mkdir -p "$DEPLOYPATH"
-    - /bin/rsync -av --exclude-from=.cpanel-deploy-exclude ./ "$DEPLOYPATH"
+    - /bin/bash -lc 'if [ -d public_html ]; then rsync -av --exclude-from=.cpanel-deploy-exclude public_html/ "$DEPLOYPATH"; else rsync -av --exclude-from=.cpanel-deploy-exclude .htaccess index.html download.php track.html privacy.html terms.html apply-subadmin.html assets/ "$DEPLOYPATH"; fi'
+    - /bin/bash -lc 'mkdir -p "$DEPLOYPATH/api"; rsync -av --exclude-from=.cpanel-deploy-exclude api/ "$DEPLOYPATH/api/"'

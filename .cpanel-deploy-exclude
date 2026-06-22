@@ -9,11 +9,13 @@ node_modules/
 vendor/
 z-builder/
 z-builder-worker/
+my-site/
 docs/
 downloads/
 SECURITY_AUDIT.md
 config.php
 */config.php
+config.example.php
 api/config.example.php
 error_log
 */error_log
