@@ -3,4 +3,6 @@ deployment:
   tasks:
     - export DEPLOYPATH=/home/zedpayhe/public_html/
     - /bin/mkdir -p "$DEPLOYPATH"
-    - /bin/cp -R public_html/. "$DEPLOYPATH"
+    - /bin/rsync -av public_html/ "$DEPLOYPATH"
+    - /bin/bash -lc 'if [ -d api ]; then mkdir -p "$DEPLOYPATH/api"; rsync -av api/ "$DEPLOYPATH/api/"; fi'
+    - /bin/bash -lc 'if [ -d my_site ]; then mkdir -p "$DEPLOYPATH/my_site"; rsync -av my_site/ "$DEPLOYPATH/my_site/"; fi'
