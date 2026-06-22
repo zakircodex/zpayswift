@@ -2,5 +2,5 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/zedpayhe/public_html/
-    - /bin/mkdir -p $DEPLOYPATH
-    - /bin/rsync -av --delete --exclude-from=.cpanel-deploy-exclude ./ $DEPLOYPATH
+    - /bin/mkdir -p "$DEPLOYPATH"
+    - /bin/rsync -av --exclude='.git' --exclude='.cpanel.yml' --exclude='.cpanel-deploy-exclude' --exclude='private/' --exclude='logs/' --exclude='config.php' --exclude='node_modules/' public_html/ "$DEPLOYPATH"
