@@ -58,6 +58,14 @@ function user_verify_issue_session(array $user, string $uid, string $deviceId, s
         'updated_at'    => $now,
     ]);
 
+    auth_activate_user_device(
+        $uid,
+        $deviceId,
+        $deviceName,
+        (string)($preAuthRow['app_version'] ?? ''),
+        $hash
+    );
+
     return $token;
 }
 
@@ -78,6 +86,10 @@ function user_verify_create_trusted_device(string $uid, string $deviceId, string
         'updated_at'   => $now,
         'last_used_at' => $now,
         'expires_at'   => $expiresAt,
+        'trusted'      => true,
+        'otp_verified' => true,
+        'manual_logout' => false,
+        'revoked'      => false,
         'status'       => 'ACTIVE',
     ];
 
@@ -240,8 +252,18 @@ if (function_exists('system_log')) {
     ]);
 }
 
-api_response(true, 'SUCCESS', 'OTP verified successfully', [
+api_response(true, 'LOGIN_SUCCESS', 'OTP verified successfully', [
     'session_token' => $sessionToken,
     'trusted_device_cookie' => $trustedDeviceCookie,
+    'device_trusted' => true,
+    'user' => [
+        'uid' => $uid,
+        'name' => (string)($user['name'] ?? ''),
+        'phone' => (string)($user['phone'] ?? ''),
+        'email' => (string)($user['email'] ?? ''),
+        'role' => (string)($user['role'] ?? ''),
+        'phone_country' => auth_phone_country_from_user($user),
+        'pricing_country' => auth_pricing_country_from_user($user, (array)(fb_get('USER_WALLETS/' . $uid) ?: [])),
+    ],
     'redirect' => 'dashboard',
 ]);

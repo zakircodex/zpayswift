@@ -350,6 +350,8 @@ function auth_require_user(bool $touchSession = true): array
     $user['account_status'] = $accountStatus;
     $user['role'] = auth_status_value($user['role'] ?? '');
 
+    auth_enforce_active_device_for_user($user, $session);
+
     if ($touchSession) {
         fb_patch('USER_SESSIONS/' . $session['_session_hash'], [
             'last_seen_at' => now_ts(),
@@ -386,4 +388,203 @@ function auth_require_role(string $requiredRole, bool $touchSession = true): arr
 function auth_require_admin_session(bool $touchSession = true): array
 {
     return auth_require_role('ADMIN', $touchSession);
+}
+
+function auth_role_requires_active_device(string $role): bool
+{
+    return in_array(auth_status_value($role), ['USER', 'RETAILER'], true);
+}
+
+function auth_device_trust_row(string $uid, string $deviceId): array
+{
+    $uid = auth_clean_string($uid);
+    $deviceId = auth_clean_string($deviceId);
+    if ($uid === '' || $deviceId === '') {
+        return [];
+    }
+
+    $row = fb_get('AUTH_DEVICE_TRUST/' . $uid . '/' . rawurlencode($deviceId));
+    return is_array($row) ? $row : [];
+}
+
+function auth_device_is_trusted(string $uid, string $deviceId): bool
+{
+    $row = auth_device_trust_row($uid, $deviceId);
+    if (!$row) {
+        return false;
+    }
+
+    $status = auth_status_value($row['status'] ?? '');
+    return !empty($row['trusted'])
+        && !empty($row['otp_verified'])
+        && empty($row['manual_logout'])
+        && empty($row['revoked'])
+        && in_array($status, ['', 'ACTIVE', 'TRUSTED'], true);
+}
+
+function auth_mark_device_trusted(string $uid, string $deviceId, string $deviceName = '', string $appVersion = ''): bool
+{
+    $uid = auth_clean_string($uid);
+    $deviceId = auth_clean_string($deviceId);
+    if ($uid === '' || $deviceId === '') {
+        return false;
+    }
+
+    $now = now_ts();
+    return fb_patch('AUTH_DEVICE_TRUST/' . $uid . '/' . rawurlencode($deviceId), [
+        'uid' => $uid,
+        'device_id' => $deviceId,
+        'device_name' => $deviceName,
+        'app_version' => $appVersion,
+        'trusted' => true,
+        'otp_verified' => true,
+        'manual_logout' => false,
+        'revoked' => false,
+        'status' => 'ACTIVE',
+        'trusted_at' => $now,
+        'last_login_at' => $now,
+        'updated_at' => $now,
+    ]);
+}
+
+function auth_mark_other_devices_replaced(string $uid, string $activeDeviceId): void
+{
+    $uid = auth_clean_string($uid);
+    $activeDeviceId = auth_clean_string($activeDeviceId);
+    if ($uid === '' || $activeDeviceId === '') {
+        return;
+    }
+
+    $devices = fb_get('AUTH_DEVICE_TRUST/' . $uid);
+    if (is_array($devices)) {
+        foreach ($devices as $deviceKey => $row) {
+            $rowDeviceId = (string)($row['device_id'] ?? rawurldecode((string)$deviceKey));
+            if ($rowDeviceId === '' || $rowDeviceId === $activeDeviceId) {
+                continue;
+            }
+
+            @fb_patch('AUTH_DEVICE_TRUST/' . $uid . '/' . rawurlencode($rowDeviceId), [
+                'revoked' => true,
+                'status' => 'DEVICE_REPLACED',
+                'replaced_by_device_id' => $activeDeviceId,
+                'updated_at' => now_ts(),
+            ]);
+        }
+    }
+}
+
+function auth_revoke_other_user_sessions(string $uid, string $activeDeviceId, string $exceptSessionHash = ''): void
+{
+    $uid = auth_clean_string($uid);
+    $activeDeviceId = auth_clean_string($activeDeviceId);
+    if ($uid === '') {
+        return;
+    }
+
+    $sessions = fb_get('USER_SESSIONS');
+    if (!is_array($sessions)) {
+        return;
+    }
+
+    foreach ($sessions as $hash => $session) {
+        if (!is_array($session)) {
+            continue;
+        }
+        if ((string)($session['uid'] ?? '') !== $uid) {
+            continue;
+        }
+        if ($exceptSessionHash !== '' && (string)$hash === $exceptSessionHash) {
+            continue;
+        }
+        if ($activeDeviceId !== '' && (string)($session['device_id'] ?? '') === $activeDeviceId) {
+            continue;
+        }
+
+        @fb_patch('USER_SESSIONS/' . $hash, [
+            'status' => 'DEVICE_REPLACED',
+            'replaced_by_device_id' => $activeDeviceId,
+            'updated_at' => now_ts(),
+        ]);
+    }
+}
+
+function auth_activate_user_device(string $uid, string $deviceId, string $deviceName = '', string $appVersion = '', string $sessionHash = ''): void
+{
+    $uid = auth_clean_string($uid);
+    $deviceId = auth_clean_string($deviceId);
+    if ($uid === '' || $deviceId === '') {
+        return;
+    }
+
+    auth_mark_device_trusted($uid, $deviceId, $deviceName, $appVersion);
+    auth_mark_other_devices_replaced($uid, $deviceId);
+    auth_revoke_other_user_sessions($uid, $deviceId, $sessionHash);
+
+    @fb_patch('USERS/' . $uid, [
+        'active_device_id' => $deviceId,
+        'ACTIVE_DEVICE_ID' => $deviceId,
+        'active_device_name' => $deviceName,
+        'active_device_app_version' => $appVersion,
+        'active_device_updated_at' => now_ts(),
+        'updated_at' => now_ts(),
+    ]);
+}
+
+function auth_enforce_active_device_for_user(array $user, array $session): void
+{
+    $role = auth_status_value($user['role'] ?? '');
+    if (!auth_role_requires_active_device($role)) {
+        return;
+    }
+
+    $activeDeviceId = auth_clean_string($user['active_device_id'] ?? $user['ACTIVE_DEVICE_ID'] ?? '');
+    $sessionDeviceId = auth_clean_string($session['device_id'] ?? '');
+
+    if ($activeDeviceId === '' || $sessionDeviceId === '' || $activeDeviceId === $sessionDeviceId) {
+        return;
+    }
+
+    if (!empty($session['_session_hash'])) {
+        @fb_patch('USER_SESSIONS/' . $session['_session_hash'], [
+            'status' => 'DEVICE_REPLACED',
+            'updated_at' => now_ts(),
+        ]);
+    }
+
+    api_response(false, 'DEVICE_REPLACED', 'This account has been logged in on another device.', [], 401);
+}
+
+function auth_mark_manual_logout(string $uid, string $deviceId): void
+{
+    $uid = auth_clean_string($uid);
+    $deviceId = auth_clean_string($deviceId);
+    if ($uid === '' || $deviceId === '') {
+        return;
+    }
+
+    @fb_patch('AUTH_DEVICE_TRUST/' . $uid . '/' . rawurlencode($deviceId), [
+        'manual_logout' => true,
+        'trusted' => false,
+        'revoked' => true,
+        'status' => 'MANUAL_LOGOUT',
+        'logged_out_at' => now_ts(),
+        'updated_at' => now_ts(),
+    ]);
+
+    $trustedDevices = fb_get('AUTH_TRUSTED_DEVICES/' . $uid);
+    if (is_array($trustedDevices)) {
+        foreach ($trustedDevices as $selector => $row) {
+            if (!is_array($row) || (string)($row['device_id'] ?? '') !== $deviceId) {
+                continue;
+            }
+
+            @fb_patch('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector, [
+                'manual_logout' => true,
+                'status' => 'REVOKED',
+                'revoked' => true,
+                'logged_out_at' => now_ts(),
+                'updated_at' => now_ts(),
+            ]);
+        }
+    }
 }

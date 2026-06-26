@@ -30,6 +30,7 @@ function api_response(bool $ok, string $code, string $message, array $data = [],
 
     echo json_encode([
         'ok' => $ok,
+        'success' => $ok,
         'code' => $code,
         'message' => $message,
         'data' => $data,

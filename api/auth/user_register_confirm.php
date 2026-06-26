@@ -141,6 +141,9 @@ $phone = preg_replace('/\D+/', '', trim((string)($preAuthRow['phone'] ?? ''))) ?
 $email = strtolower(trim((string)($preAuthRow['email'] ?? '')));
 $passwordHash = trim((string)($preAuthRow['password_hash'] ?? ''));
 $pinHash = trim((string)($preAuthRow['pin_hash'] ?? ''));
+$identityType = strtoupper(trim((string)($preAuthRow['identity_type'] ?? $preAuthRow['KYC']['type'] ?? '')));
+$identityHash = trim((string)($preAuthRow['identity_number_hash'] ?? $preAuthRow['KYC']['identity_number_hash'] ?? ''));
+$identityLast4 = trim((string)($preAuthRow['identity_number_last4'] ?? $preAuthRow['KYC']['identity_number_last4'] ?? ''));
 $phoneCountry = auth_normalize_country_code((string)($preAuthRow['phone_country'] ?? ''));
 $pricingCountry = auth_normalize_country_code((string)(
     $preAuthRow['pricing_country']
@@ -173,6 +176,14 @@ if ($pricingCountry === '') {
 
 if ($uid === '' || $name === '' || $phone === '' || $email === '' || $passwordHash === '' || $pinHash === '') {
     user_reg_confirm_response(false, 'REGISTER_SESSION_INVALID', 'Register session is invalid. Please start again.', [], 400);
+}
+
+if ($identityHash === '') {
+    user_reg_confirm_response(false, 'IDENTITY_REQUIRED', 'NID or Passport number is required. Please start again.', [], 422);
+}
+
+if (!in_array($identityType, ['NID', 'PASSPORT'], true)) {
+    $identityType = 'NID';
 }
 
 if ($termsAcceptedAt <= 0) {
@@ -280,6 +291,18 @@ $userRow = [
     'status' => $accountStatus,
     'password_hash' => $passwordHash,
     'pin_hash' => $pinHash,
+    'identity_type' => $identityType,
+    'identity_number_hash' => $identityHash,
+    'identity_number_last4' => $identityLast4,
+    'kyc_status' => 'PENDING_REVIEW',
+    'KYC' => [
+        'type' => $identityType,
+        'identity_number_hash' => $identityHash,
+        'identity_number_last4' => $identityLast4,
+        'status' => 'PENDING_REVIEW',
+        'created_at' => $now,
+        'updated_at' => $now,
+    ],
     'created_at' => $now,
     'updated_at' => $now,
     'last_login_at' => 0,

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once __DIR__ . '/../lib/auth_android.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -22,6 +23,7 @@ $preAuthToken = trim((string)($body['pre_auth_token'] ?? $body['reset_token'] ??
 $otpRequestId = trim((string)($body['otp_request_id'] ?? $body['request_id'] ?? ''));
 $otp = trim((string)($body['otp'] ?? ''));
 $resetType = strtoupper(trim((string)($body['reset_type'] ?? 'PASSWORD')));
+$identityNumber = auth_app_identity_number($body);
 
 if (!in_array($resetType, ['PASSWORD', 'PIN'], true)) {
     user_forgot_verify_response(false, 'VALIDATION_ERROR', 'Invalid reset type', [], 422);
@@ -29,6 +31,12 @@ if (!in_array($resetType, ['PASSWORD', 'PIN'], true)) {
 
 if ($preAuthToken === '' || $otpRequestId === '' || $otp === '') {
     user_forgot_verify_response(false, 'VALIDATION_ERROR', 'pre_auth_token, otp_request_id and otp are required', [], 422);
+}
+
+if ($identityNumber === '') {
+    user_forgot_verify_response(false, 'IDENTITY_REQUIRED', 'NID or Passport number is required', [
+        'field' => 'nid_or_passport_number',
+    ], 422);
 }
 
 $now = user_forgot_verify_now();
@@ -144,6 +152,15 @@ if ($status !== 'ACTIVE') {
     user_forgot_verify_response(false, 'FORBIDDEN', 'Account is inactive', [], 403);
 }
 
+$identityState = auth_app_identity_match_state($userRow, $identityNumber);
+if (empty($identityState['configured'])) {
+    user_forgot_verify_response(false, 'IDENTITY_NOT_CONFIGURED', 'Identity information is not configured for this account. Please contact support.', [], 409);
+}
+
+if (empty($identityState['match'])) {
+    user_forgot_verify_response(false, 'IDENTITY_MISMATCH', 'NID or Passport number does not match this account.', [], 403);
+}
+
 $update = [
     'updated_at' => $now,
 ];
@@ -206,10 +223,13 @@ if (!$okUser) {
     'updated_at' => $now,
 ]);
 
+auth_app_revoke_user_sessions_and_trust($uid);
+
 if (function_exists('system_log')) {
     system_log('USER_FORGOT_RESET_COMPLETED', $otpRequestId, 'User forgot reset completed', [
         'uid' => $uid,
         'reset_type' => $resetType,
+        'sessions_revoked' => true,
     ]);
 }
 

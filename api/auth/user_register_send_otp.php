@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once __DIR__ . '/../lib/auth_sms.php';
+require_once __DIR__ . '/../lib/auth_android.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -171,6 +172,10 @@ $password = (string)($body['password'] ?? '');
 $confirmPassword = (string)($body['confirm_password'] ?? '');
 $pin = trim((string)($body['pin'] ?? ''));
 $confirmPin = trim((string)($body['confirm_pin'] ?? ''));
+$identityType = auth_app_identity_type($body);
+$identityNumber = auth_app_identity_number($body);
+$identityHash = auth_app_identity_hash($identityNumber);
+$identityLast4 = auth_app_identity_last4($identityNumber);
 $deviceId = trim((string)($body['device_id'] ?? 'USER_WEB'));
 $deviceName = trim((string)($body['device_name'] ?? 'User Register'));
 $userAgent = auth_request_user_agent($body);
@@ -183,6 +188,12 @@ $termsAccepted = user_reg_bool($body['terms_accepted'] ?? false);
 if ($name === '' || $phone === '' || $email === '' || $password === '' || $confirmPassword === '' || $pin === '' || $confirmPin === '') {
     $message = $phone === '' ? auth_phone_validation_message($phoneCountry) : 'All fields are required';
     user_reg_response(false, 'VALIDATION_ERROR', $message, [], 422);
+}
+
+if ($identityHash === '') {
+    user_reg_response(false, 'IDENTITY_REQUIRED', 'NID or Passport number is required', [
+        'field' => 'nid_or_passport_number',
+    ], 422);
 }
 
 if (!$termsAccepted) {
@@ -313,6 +324,18 @@ $preAuthRow = [
     'email' => $email,
     'password_hash' => password_hash($password, PASSWORD_DEFAULT),
     'pin_hash' => password_hash($pin, PASSWORD_DEFAULT),
+    'identity_type' => $identityType,
+    'identity_number_hash' => $identityHash,
+    'identity_number_last4' => $identityLast4,
+    'kyc_status' => 'PENDING_REVIEW',
+    'KYC' => [
+        'type' => $identityType,
+        'identity_number_hash' => $identityHash,
+        'identity_number_last4' => $identityLast4,
+        'status' => 'PENDING_REVIEW',
+        'created_at' => $now,
+        'updated_at' => $now,
+    ],
     'role' => 'USER',
     'status' => 'OTP_PENDING',
     'device_id' => $deviceId,
