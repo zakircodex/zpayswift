@@ -18,6 +18,7 @@ class Settings:
     debug_keep_files: bool
     temp_dir: str
     paddle_use_gpu: bool
+    ocr_timeout_seconds: int
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -43,6 +44,7 @@ def get_settings() -> Settings:
         debug_keep_files=_bool_env("DEBUG_KEEP_FILES", False),
         temp_dir=temp_dir,
         paddle_use_gpu=_bool_env("PADDLE_USE_GPU", False),
+        ocr_timeout_seconds=max(5, int(os.getenv("OCR_TIMEOUT_SECONDS", "45"))),
     )
 
 
