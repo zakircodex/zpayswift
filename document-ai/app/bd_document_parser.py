@@ -17,6 +17,22 @@ IGNORED_HEADER_PARTS = (
     "বাংলাদেশ সরকার",
 )
 
+NON_CRITICAL_WARNINGS = {
+    "DOCUMENT_BOUNDARY_NOT_FOUND",
+    "LOW_RESOLUTION_IMAGE",
+}
+
+NID_LABELS = (
+    "ID NO",
+    "IDNO",
+    "ID NUMBER",
+    "NID",
+    "NID NO",
+    "NIDNO",
+    "IDENTITY NO",
+    "NATIONAL ID NO",
+)
+
 
 def _clean_line(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
@@ -38,18 +54,48 @@ def clean_lines(items: list[dict[str, Any]]) -> list[str]:
         if not line:
             continue
         upper = line.upper()
-        if any(part in upper for part in IGNORED_HEADER_PARTS):
+        has_field_hint = re.search(
+            r"\b(NAME|DATE\s+OF\s+BIRTH|DOB|ID\s*NO|IDNO|NID\s*NO|NIDNO|NATIONAL\s+ID\s+NO|PASSPORT\s+(NO|NUMBER))\b",
+            upper,
+        )
+        if any(part in upper for part in IGNORED_HEADER_PARTS) and not has_field_hint:
             continue
         cleaned.append(line)
     return cleaned
 
 
-def _after_label(line: str, labels: tuple[str, ...]) -> str:
+def _label_key(value: str) -> str:
+    key = _clean_line(value).upper()
+    key = key.replace("1D", "ID").replace("I D", "ID")
+    key = key.replace("N0", "NO").replace("N O", "NO")
+    key = re.sub(r"[^A-Z0-9]+", " ", key)
+    return _clean_line(key)
+
+
+def _raw_label_pattern(label: str) -> str:
+    token_patterns: list[str] = []
+    for token in _label_key(label).split():
+        chars: list[str] = []
+        for char in token:
+            if char == "I":
+                chars.append("[I1]")
+            elif char == "O":
+                chars.append("[O0]")
+            else:
+                chars.append(re.escape(char))
+        token_patterns.append(r"\s*".join(chars))
+    return r"\b" + r"\s*".join(token_patterns) + r"\b"
+
+
+def _has_label(line: str, labels: tuple[str, ...]) -> bool:
+    return any(re.search(_raw_label_pattern(label), line, flags=re.IGNORECASE) for label in labels)
+
+
+def _value_after_label(line: str, labels: tuple[str, ...]) -> str:
     for label in labels:
-        pattern = re.compile(rf"^.*\b{re.escape(label)}\b\s*[:\-#]?\s*", re.IGNORECASE)
-        value = pattern.sub("", line).strip()
-        if value != line:
-            return value
+        match = re.search(rf"{_raw_label_pattern(label)}\s*[:;,\-#]?\s*", line, flags=re.IGNORECASE)
+        if match:
+            return _clean_line(line[match.end() :])
     return ""
 
 
@@ -81,23 +127,33 @@ def _valid_name(value: str) -> bool:
 
 
 def parse_name(lines: list[str], items: list[dict[str, Any]]) -> tuple[str, float, list[str]]:
+    labels = ("NAME",)
     for index, line in enumerate(lines):
-        if not re.search(r"\bNAME\b", line, flags=re.IGNORECASE):
+        if not _has_label(line, labels):
             continue
 
-        candidate = _after_label(line, ("NAME",))
-        source_line = line
-        if not candidate and index + 1 < len(lines):
-            candidate = lines[index + 1]
-            source_line = lines[index + 1]
-        if _valid_name(candidate):
-            return _clean_line(candidate).upper(), max(0.75, _line_confidence(source_line, items)), []
+        candidates: list[tuple[str, str]] = []
+        same_line = _value_after_label(line, labels)
+        if same_line:
+            candidates.append((same_line, line))
+        for offset in (1, 2):
+            if index + offset < len(lines):
+                next_line = lines[index + offset]
+                if not _has_label(next_line, ("DATE OF BIRTH", "DOB", *NID_LABELS)):
+                    candidates.append((next_line, next_line))
+
+        for candidate, source_line in candidates:
+            candidate = re.sub(r"^[^A-Za-z]+", "", candidate)
+            if _valid_name(candidate):
+                return _clean_line(candidate).upper(), max(0.78, _line_confidence(source_line, items)), []
 
     return "", 0.0, ["NAME_NOT_FOUND"]
 
 
 def _normalize_date(value: str) -> str:
     value = _clean_line(value)
+    value = value.replace(",", " ")
+    value = re.sub(r"\s+", " ", value)
     formats = (
         "%d/%m/%Y",
         "%d-%m-%Y",
@@ -116,41 +172,59 @@ def _normalize_date(value: str) -> str:
 
 
 def parse_date_of_birth(lines: list[str], items: list[dict[str, Any]]) -> tuple[str, float, list[str]]:
+    labels = ("DATE OF BIRTH", "DOB", "BIRTH DATE")
     date_pattern = re.compile(
-        r"\b(\d{2}[\/\-.]\d{2}[\/\-.]\d{4}|\d{4}[\/\-]\d{2}[\/\-]\d{2}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\b"
+        r"\b(\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{4}|\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}|\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\b"
     )
     for index, line in enumerate(lines):
-        upper = line.upper()
-        if "DATE OF BIRTH" not in upper and "DOB" not in upper:
+        if not _has_label(line, labels):
             continue
-        candidate = _after_label(line, ("DATE OF BIRTH", "DOB"))
-        source_line = line
-        if not candidate and index + 1 < len(lines):
-            candidate = lines[index + 1]
-            source_line = lines[index + 1]
-        match = date_pattern.search(candidate)
-        if match:
+
+        candidates: list[tuple[str, str]] = []
+        same_line = _value_after_label(line, labels)
+        if same_line:
+            candidates.append((same_line, line))
+        if index + 1 < len(lines):
+            candidates.append((lines[index + 1], lines[index + 1]))
+
+        for candidate, source_line in candidates:
+            match = date_pattern.search(candidate)
+            if not match:
+                continue
             normalized = _normalize_date(match.group(1))
             if normalized:
-                return normalized, max(0.75, _line_confidence(source_line, items)), []
+                return normalized, max(0.78, _line_confidence(source_line, items)), []
 
     return "", 0.0, ["DATE_OF_BIRTH_NOT_FOUND"]
 
 
-def parse_nid_number(lines: list[str], items: list[dict[str, Any]]) -> tuple[str, float, list[str]]:
-    labels = ("ID NO", "NID", "NID NO", "IDENTITY NO", "NATIONAL ID NO")
-    for index, line in enumerate(lines):
-        upper = line.upper()
-        if not any(label in upper for label in labels):
-            continue
-        candidate = _after_label(line, labels)
-        source_line = line
-        if not candidate and index + 1 < len(lines):
-            candidate = lines[index + 1]
-            source_line = lines[index + 1]
-        digits = re.sub(r"\D+", "", candidate)
+def _digit_candidates(value: str) -> list[str]:
+    candidates: list[str] = []
+    for match in re.finditer(r"(?:\d[\s.\-]*){10,17}", value):
+        digits = re.sub(r"\D+", "", match.group(0))
         if len(digits) in {10, 13, 17}:
-            return digits, max(0.72, _line_confidence(source_line, items)), []
+            candidates.append(digits)
+    return candidates
+
+
+def parse_nid_number(lines: list[str], items: list[dict[str, Any]]) -> tuple[str, float, list[str]]:
+    for index, line in enumerate(lines):
+        if not _has_label(line, NID_LABELS):
+            continue
+
+        candidates: list[tuple[str, str]] = []
+        same_line = _value_after_label(line, NID_LABELS)
+        if same_line:
+            candidates.append((same_line, line))
+        else:
+            candidates.append((line, line))
+        for offset in (1, 2):
+            if index + offset < len(lines):
+                candidates.append((lines[index + offset], lines[index + offset]))
+
+        for candidate, source_line in candidates:
+            for digits in _digit_candidates(candidate):
+                return digits, max(0.78, _line_confidence(source_line, items)), []
 
     return "", 0.0, ["DOCUMENT_NUMBER_NOT_FOUND"]
 
@@ -187,7 +261,7 @@ def parse_passport_number(lines: list[str], items: list[dict[str, Any]]) -> tupl
         upper = line.upper()
         if not ("PASSPORT NO" in upper or "PASSPORT NUMBER" in upper):
             continue
-        candidate = _after_label(line, labels)
+        candidate = _value_after_label(line, labels)
         source_line = line
         if not candidate and index + 1 < len(lines):
             candidate = lines[index + 1]
@@ -204,12 +278,21 @@ def parse_passport_number(lines: list[str], items: list[dict[str, Any]]) -> tupl
     return "", 0.0, ["DOCUMENT_NUMBER_NOT_FOUND"]
 
 
+def _field_overall_confidence(field_scores: list[float], engine_conf: float) -> float:
+    present_scores = [score for score in field_scores if score > 0.0]
+    if not present_scores:
+        return 0.0
+    # Strong labelled fields should dominate harmless OCR/crop noise.
+    return max(mean(present_scores), mean(present_scores + [engine_conf]))
+
+
 def parse_document(
     document_type: str,
     ocr_items: list[dict[str, Any]],
     crop_used: bool,
     quality_warnings: list[str] | None = None,
 ) -> dict[str, Any]:
+    normalized_type = (document_type or "").upper()
     lines = clean_lines(ocr_items)
     warnings: list[str] = list(quality_warnings or [])
 
@@ -218,7 +301,7 @@ def parse_document(
     warnings.extend(name_warnings)
     warnings.extend(dob_warnings)
 
-    if document_type == "PASSPORT":
+    if normalized_type == "PASSPORT":
         number, number_conf, number_warnings = parse_passport_number(lines, ocr_items)
         mrz = _parse_mrz(lines)
         if not name and _valid_name(mrz.get("name", "")):
@@ -236,7 +319,7 @@ def parse_document(
     ocr_confidences = [float(item.get("confidence", 0.0)) for item in ocr_items if item.get("confidence") is not None]
     engine_conf = mean(ocr_confidences) if ocr_confidences else 0.0
     field_scores = [name_conf, dob_conf, number_conf]
-    overall = round(max(0.0, min(1.0, mean(field_scores + [engine_conf]))), 2)
+    overall = round(max(0.0, min(1.0, _field_overall_confidence(field_scores, engine_conf))), 2)
 
     if not ocr_items:
         warnings.append("OCR_TEXT_NOT_FOUND")
@@ -244,9 +327,11 @@ def parse_document(
         warnings.append("LOW_CONFIDENCE")
 
     warnings = sorted(set(warnings))
-    needs_manual = bool(warnings) or not name or not dob or not number
+    required_missing = not name or not dob or not number
+    critical_warnings = [warning for warning in warnings if warning not in NON_CRITICAL_WARNINGS]
+    needs_manual = required_missing or "LOW_CONFIDENCE" in critical_warnings or "LOW_QUALITY_IMAGE" in critical_warnings
     return {
-        "document_type": document_type,
+        "document_type": normalized_type,
         "name": name,
         "date_of_birth": dob,
         "document_number": number,
