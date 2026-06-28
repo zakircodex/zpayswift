@@ -6,6 +6,45 @@ require_once dirname(__DIR__) . '/bootstrap.php';
 api_require_method('POST');
 api_require_app_key();
 
+function document_ai_ini_bytes(string|false $value): int
+{
+    if (!is_string($value) || trim($value) === '') {
+        return 0;
+    }
+
+    $value = trim($value);
+    $unit = strtolower(substr($value, -1));
+    $number = (float)$value;
+
+    return match ($unit) {
+        'g' => (int)($number * 1024 * 1024 * 1024),
+        'm' => (int)($number * 1024 * 1024),
+        'k' => (int)($number * 1024),
+        default => (int)$number,
+    };
+}
+
+function document_ai_upload_error_response(int $error): void
+{
+    $uploadMax = document_ai_ini_bytes(ini_get('upload_max_filesize'));
+    $postMax = document_ai_ini_bytes(ini_get('post_max_size'));
+    $data = [
+        'upload_error' => $error,
+        'upload_max_bytes' => $uploadMax,
+        'post_max_bytes' => $postMax,
+    ];
+
+    if (in_array($error, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+        api_response(false, 'UPLOAD_SIZE_INVALID', 'Document image is too large. Please retake or crop a clearer smaller image.', $data, 413);
+    }
+
+    if ($error === UPLOAD_ERR_PARTIAL) {
+        api_response(false, 'UPLOAD_PARTIAL', 'Document image upload was interrupted. Please try again.', $data, 400);
+    }
+
+    api_response(false, 'UPLOAD_FAILED', 'Document image upload failed.', $data, 400);
+}
+
 function document_ai_config_value(string $constant, string $envName, string $default = ''): string
 {
     if (defined($constant)) {
@@ -40,6 +79,15 @@ function document_ai_cleanup(?string $path): void
     }
 }
 
+$contentLength = (int)($_SERVER['CONTENT_LENGTH'] ?? 0);
+$postMax = document_ai_ini_bytes(ini_get('post_max_size'));
+if ($contentLength > 0 && $postMax > 0 && $contentLength > $postMax && empty($_POST) && empty($_FILES)) {
+    api_response(false, 'UPLOAD_SIZE_INVALID', 'Document image is too large. Please retake or crop a clearer smaller image.', [
+        'content_length_bytes' => $contentLength,
+        'post_max_bytes' => $postMax,
+    ], 413);
+}
+
 $documentType = strtoupper(trim((string)($_POST['document_type'] ?? '')));
 if (!in_array($documentType, ['NID', 'PASSPORT'], true)) {
     api_response(false, 'VALIDATION_ERROR', 'document_type must be NID or PASSPORT.', [], 422);
@@ -52,7 +100,7 @@ if (empty($_FILES['image']) || !is_array($_FILES['image'])) {
 $file = $_FILES['image'];
 $error = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
 if ($error !== UPLOAD_ERR_OK) {
-    api_response(false, 'UPLOAD_FAILED', 'Document image upload failed.', [], 400);
+    document_ai_upload_error_response($error);
 }
 
 $tmpName = (string)($file['tmp_name'] ?? '');
