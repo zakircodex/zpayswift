@@ -110,20 +110,34 @@ $deviceId = reg_app_device_id($body + $preAuth);
 $deviceName = reg_app_device_name($body + $preAuth);
 $appVersion = trim((string)($body['app_version'] ?? $preAuth['app_version'] ?? ''));
 
-$documentPath = trim((string)(
-    $body['document_path_private']
-    ?? $body['document_photo_path']
-    ?? $preAuth['document_path_private']
-    ?? $preAuth['KYC']['document_path_private']
-    ?? ''
-));
-$selfiePath = trim((string)(
-    $body['selfie_path_private']
-    ?? $body['selfie_photo_path']
-    ?? $preAuth['selfie_path_private']
-    ?? $preAuth['KYC']['selfie_path_private']
-    ?? ''
-));
+$firstNonEmpty = static function (...$values): string {
+    foreach ($values as $value) {
+        $clean = trim((string)$value);
+        $upper = strtoupper($clean);
+        if ($clean !== '' && !in_array($upper, ['DOCUMENT', 'SELFIE'], true)) {
+            return $clean;
+        }
+    }
+
+    return '';
+};
+
+$documentPath = $firstNonEmpty(
+    $body['document_path_private'] ?? '',
+    $body['document_photo_path'] ?? '',
+    $preAuth['document_path_private'] ?? '',
+    $preAuth['KYC']['document_path_private'] ?? '',
+    $preAuth['kyc']['document_path'] ?? '',
+    $preAuth['kyc']['document_path_private'] ?? ''
+);
+$selfiePath = $firstNonEmpty(
+    $body['selfie_path_private'] ?? '',
+    $body['selfie_photo_path'] ?? '',
+    $preAuth['selfie_path_private'] ?? '',
+    $preAuth['KYC']['selfie_path_private'] ?? '',
+    $preAuth['kyc']['selfie_path'] ?? '',
+    $preAuth['kyc']['selfie_path_private'] ?? ''
+);
 $documentUploadRef = trim((string)($body['document_upload_ref'] ?? $preAuth['document_upload_ref'] ?? ''));
 $selfieUploadRef = trim((string)($body['selfie_upload_ref'] ?? $preAuth['selfie_upload_ref'] ?? ''));
 
@@ -131,6 +145,13 @@ foreach ([$documentPath, $selfiePath] as $pathValue) {
     if ($pathValue !== '' && (str_contains($pathValue, '..') || preg_match('/^https?:\/\//i', $pathValue) === 1)) {
         api_response(false, 'VALIDATION_ERROR', 'KYC file reference must be a private storage path.', [], 422);
     }
+}
+
+if ($documentPath === '' || $selfiePath === '') {
+    api_response(false, 'KYC_REQUIRED', 'Document photo and selfie are required.', [
+        'document_required' => $documentPath === '',
+        'selfie_required' => $selfiePath === '',
+    ], 422);
 }
 
 $kyc = [
