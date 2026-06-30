@@ -225,6 +225,65 @@ if ($phone === '') {
 }
 
 $purpose = 'USER_FORGOT_PASSWORD_PIN';
+$oldOtpRequestId = trim((string)($preAuthRow['otp_request_id'] ?? ''));
+if ($oldOtpRequestId !== '') {
+    if (!empty($preAuthRow['otp_verified'])) {
+        api_response(true, 'OTP_ALREADY_VERIFIED', 'OTP already verified.', [
+            'require_otp' => false,
+            'otp_verified' => true,
+            'forgot_token' => $preAuthToken,
+            'reset_token' => $preAuthToken,
+            'pre_auth_token' => $preAuthToken,
+            'otp_request_id' => $oldOtpRequestId,
+            'request_id' => $oldOtpRequestId,
+            'masked_phone' => forgot_otp_mask_phone($phone),
+            'reset_type' => 'PASSWORD_PIN',
+            'phone_country' => $phoneCountry,
+        ]);
+    }
+
+    $oldOtpRow = fb_get('AUTH_OTP_REQUESTS/' . $oldOtpRequestId);
+    if (is_array($oldOtpRow)) {
+        $oldStatus = strtoupper(trim((string)($oldOtpRow['status'] ?? '')));
+        $oldExpiresAt = (int)($oldOtpRow['expires_at'] ?? 0);
+        $oldSameUser = trim((string)($oldOtpRow['uid'] ?? '')) === $uid;
+        if ($oldSameUser && empty($oldOtpRow['used']) && in_array($oldStatus, ['SENT', 'RESENT'], true) && $oldExpiresAt > $now) {
+            @fb_patch('AUTH_USER_FORGOT_PREAUTH/' . $preAuthToken, [
+                'biometric_verified' => true,
+                'biometric_verified_at' => $now,
+                'status' => 'OTP_PENDING',
+                'updated_at' => $now,
+                'expires_at' => max((int)($preAuthRow['expires_at'] ?? 0), $oldExpiresAt),
+            ]);
+            api_response(true, 'OTP_STILL_VALID', 'OTP already sent and still valid.', [
+                'require_otp' => true,
+                'forgot_token' => $preAuthToken,
+                'reset_token' => $preAuthToken,
+                'pre_auth_token' => $preAuthToken,
+                'otp_request_id' => $oldOtpRequestId,
+                'request_id' => $oldOtpRequestId,
+                'masked_phone' => forgot_otp_mask_phone($phone),
+                'expires_in_seconds' => max(1, $oldExpiresAt - $now),
+                'remaining_seconds' => max(1, $oldExpiresAt - $now),
+                'reset_type' => 'PASSWORD_PIN',
+                'phone_country' => $phoneCountry,
+            ]);
+        }
+
+        if ($oldSameUser && empty($oldOtpRow['used']) && $oldExpiresAt <= $now) {
+            @fb_patch('AUTH_OTP_REQUESTS/' . $oldOtpRequestId, [
+                'status' => 'EXPIRED',
+                'updated_at' => $now,
+            ]);
+        } elseif ($oldSameUser && empty($oldOtpRow['used'])) {
+            @fb_patch('AUTH_OTP_REQUESTS/' . $oldOtpRequestId, [
+                'status' => 'CANCELLED',
+                'updated_at' => $now,
+            ]);
+        }
+    }
+}
+
 $sendRateState = auth_otp_send_rate_state($purpose, $phone, $now);
 if (empty($sendRateState['ok'])) {
     api_response(false, (string)$sendRateState['code'], (string)$sendRateState['message'], [
@@ -232,14 +291,6 @@ if (empty($sendRateState['ok'])) {
         'send_count' => (int)($sendRateState['send_count'] ?? 0),
         'send_limit' => (int)($sendRateState['send_limit'] ?? auth_otp_send_limit_per_hour()),
     ], (int)($sendRateState['http_status'] ?? 429));
-}
-
-$oldOtpRequestId = trim((string)($preAuthRow['otp_request_id'] ?? ''));
-if ($oldOtpRequestId !== '') {
-    @fb_patch('AUTH_OTP_REQUESTS/' . $oldOtpRequestId, [
-        'status' => 'CANCELLED',
-        'updated_at' => $now,
-    ]);
 }
 
 $otpCode = (string)random_int(100000, 999999);

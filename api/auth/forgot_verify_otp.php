@@ -192,6 +192,16 @@ if ($storedOtpRequestId === '' || $storedOtpRequestId !== $otpRequestId) {
 }
 
 $uid = trim((string)($preAuthRow['uid'] ?? ''));
+if (!empty($preAuthRow['otp_verified'])) {
+    api_response(true, 'OTP_VERIFIED', 'OTP already verified.', [
+        'forgot_token' => $preAuthToken,
+        'reset_token' => $preAuthToken,
+        'pre_auth_token' => $preAuthToken,
+        'otp_request_id' => $otpRequestId,
+        'otp_verified' => true,
+    ]);
+}
+
 $otpRow = fb_get('AUTH_OTP_REQUESTS/' . $otpRequestId);
 if (!is_array($otpRow)) {
     api_response(false, 'OTP_NOT_FOUND', 'OTP request not found.', [], 404);
