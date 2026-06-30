@@ -140,6 +140,7 @@ $patch = [
 $kyc = is_array($preAuth['KYC'] ?? null) ? (array)$preAuth['KYC'] : [];
 if ($documentType !== '') {
     $kyc['type'] = $documentType;
+    $kyc['document_type'] = $documentType;
     $patch['document_type'] = $documentType;
     $patch['identity_type'] = $documentType;
 }
