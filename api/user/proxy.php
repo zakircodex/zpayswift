@@ -3576,6 +3576,7 @@ switch ($action) {
                 'INVALID_RECEIPT',
                 'INVALID_RECEIPT_SIZE',
                 'INVALID_RECEIPT_TYPE',
+                'PAYMENT_ACCOUNT_UNAVAILABLE',
                 'ADD_MONEY_DISABLED',
             ], true) ? 422 : 500;
             user_proxy_response(false, $code, (string)($res['message'] ?? 'Failed to submit add money request'), (array)($res['data'] ?? []), $httpStatus);

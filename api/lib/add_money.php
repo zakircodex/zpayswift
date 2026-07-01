@@ -787,6 +787,7 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
     $now = add_money_now();
     $method = strtoupper(trim((string)($body['method'] ?? '')));
     $amount = add_money_round($body['amount'] ?? $body['amount_bdt'] ?? $body['amount_rm'] ?? 0);
+    $paymentAccountId = trim((string)($body['payment_account_id'] ?? $body['account_id'] ?? ''));
     $transactionId = trim((string)($body['transaction_id'] ?? ''));
     $senderNumber = trim((string)($body['sender_number'] ?? ''));
     $note = trim((string)($body['note'] ?? $body['reference'] ?? ''));
@@ -796,10 +797,29 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         return ['ok' => false, 'code' => 'INVALID_AMOUNT', 'message' => 'Amount must be greater than zero'];
     }
 
+    $activeAccounts = add_money_payment_accounts_for_country($country, $settings);
+    $matchedAccount = [];
+
     if ($country === 'BD') {
         if (!in_array($method, ['BKASH', 'NAGAD'], true)) {
             return ['ok' => false, 'code' => 'INVALID_METHOD', 'message' => 'Please select bKash or Nagad'];
         }
+
+        foreach ($activeAccounts as $account) {
+            $accountId = trim((string)($account['account_id'] ?? ''));
+            $accountMethod = strtoupper(trim((string)($account['method'] ?? '')));
+            if (
+                ($paymentAccountId !== '' && $accountId === $paymentAccountId)
+                || ($paymentAccountId === '' && $accountMethod === $method)
+            ) {
+                $matchedAccount = $account;
+                break;
+            }
+        }
+        if ($matchedAccount === [] || strtoupper(trim((string)($matchedAccount['method'] ?? ''))) !== $method) {
+            return ['ok' => false, 'code' => 'PAYMENT_ACCOUNT_UNAVAILABLE', 'message' => 'Selected payment method is not available'];
+        }
+
         if ($transactionId === '') {
             return ['ok' => false, 'code' => 'TXN_REQUIRED', 'message' => 'Transaction ID is required'];
         }
@@ -813,6 +833,21 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         }
     } else {
         $method = 'BANK';
+        foreach ($activeAccounts as $account) {
+            $accountId = trim((string)($account['account_id'] ?? ''));
+            $accountMethod = strtoupper(trim((string)($account['method'] ?? '')));
+            if (
+                ($paymentAccountId !== '' && $accountId === $paymentAccountId)
+                || ($paymentAccountId === '' && $accountMethod === 'BANK')
+            ) {
+                $matchedAccount = $account;
+                break;
+            }
+        }
+        if ($matchedAccount === [] || strtoupper(trim((string)($matchedAccount['method'] ?? ''))) !== 'BANK') {
+            return ['ok' => false, 'code' => 'PAYMENT_ACCOUNT_UNAVAILABLE', 'message' => 'Selected payment account is not available'];
+        }
+
         $receiptFile = is_array($files['receipt_upload'] ?? null) ? $files['receipt_upload'] : [];
         $receipt = add_money_store_receipt($receiptFile, $requestId, $uid);
         if (empty($receipt['ok'])) {
@@ -829,6 +864,8 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         'pricing_country' => $country,
         'currency' => $currency,
         'method' => $method,
+        'payment_account_id' => (string)($matchedAccount['account_id'] ?? $paymentAccountId),
+        'payment_account_name' => (string)($matchedAccount['display_name'] ?? ''),
         'amount' => $amount,
         'transaction_id' => $transactionId,
         'sender_number' => $senderNumber,
@@ -928,6 +965,32 @@ function add_money_list_user_history(string $uid, int $limit = 100): array
 
     usort($items, static fn(array $a, array $b): int => (int)($b['created_at'] ?? 0) <=> (int)($a['created_at'] ?? 0));
     return array_slice($items, 0, max(1, min(300, $limit)));
+}
+
+function add_money_public_request_row(array $row): array
+{
+    foreach ([
+        'receipt_path',
+        'receipt_token',
+        'receipt_hash',
+        'telegram_chat_id',
+        'telegram_message_id',
+        'telegram_error',
+        'processing_by',
+        'processing_error',
+    ] as $key) {
+        unset($row[$key]);
+    }
+
+    return $row;
+}
+
+function add_money_public_request_rows(array $rows): array
+{
+    return array_map(
+        static fn($row): array => is_array($row) ? add_money_public_request_row($row) : [],
+        $rows
+    );
 }
 
 function add_money_list_admin(array $filters = [], int $limit = 200): array
