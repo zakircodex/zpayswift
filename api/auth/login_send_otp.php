@@ -28,9 +28,35 @@ if ($otpPhone === '') {
 }
 
 $now = now_ts();
+$existingOtpRequestId = trim((string)($preAuthRow['otp_request_id'] ?? ''));
+
+if ($existingOtpRequestId !== '') {
+    $existingOtpRow = fb_get('AUTH_OTP_REQUESTS/' . $existingOtpRequestId);
+    $existingStatus = strtoupper(trim((string)($existingOtpRow['status'] ?? '')));
+    $existingExpiresAt = (int)($existingOtpRow['expires_at'] ?? 0);
+
+    if (is_array($existingOtpRow)
+        && (string)($existingOtpRow['uid'] ?? '') === $uid
+        && (string)($existingOtpRow['purpose'] ?? '') === 'USER_LOGIN'
+        && empty($existingOtpRow['used'])
+        && in_array($existingStatus, ['SENT', 'RESENT'], true)
+        && $existingExpiresAt > $now
+    ) {
+        api_response(true, 'OTP_ALREADY_SENT', 'OTP already sent and still valid.', [
+            'pre_auth_token' => $preAuthToken,
+            'otp_request_id' => $existingOtpRequestId,
+            'masked_phone' => auth_app_mask_phone($otpPhone),
+            'expires_in_seconds' => max(1, $existingExpiresAt - $now),
+            'expires_at' => $existingExpiresAt,
+            'phone_country' => $phoneCountry,
+        ]);
+    }
+}
+
 $otpCode = (string)random_int(100000, 999999);
 $otpRequestId = 'OTP' . strtoupper(bin2hex(random_bytes(6)));
 $expiresAt = $now + 300;
+$preAuthExpiresAt = $now + 600;
 $sendRateState = auth_otp_send_rate_state('USER_LOGIN', $otpPhone, $now);
 
 if (empty($sendRateState['ok'])) {
@@ -98,7 +124,8 @@ if (empty($smsResult['ok'])) {
 @fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, [
     'otp_request_id' => $otpRequestId,
     'status' => 'OTP_PENDING',
-    'expires_at' => $expiresAt,
+    'expires_at' => $preAuthExpiresAt,
+    'otp_expires_at' => $expiresAt,
     'updated_at' => now_ts(),
 ]);
 
