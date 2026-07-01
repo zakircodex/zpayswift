@@ -1,6 +1,19 @@
 <?php
 declare(strict_types=1);
 
+$zpayMobileAppKey = trim((string)($_SERVER['HTTP_X_APP_KEY'] ?? ''));
+if ($zpayMobileAppKey !== '') {
+    require_once dirname(__DIR__) . '/bootstrap.php';
+    require_once dirname(__DIR__) . '/lib/wallet.php';
+    require_once dirname(__DIR__) . '/lib/mobile_dashboard.php';
+
+    api_require_method('GET');
+    api_require_app_key();
+
+    $auth = zpay_dash_require_mobile_user(true);
+    api_response(true, 'DASHBOARD_OK', 'Dashboard loaded', zpay_dash_dashboard_payload($auth));
+}
+
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
 ?>
