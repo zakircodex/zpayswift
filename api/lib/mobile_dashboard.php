@@ -37,6 +37,68 @@ function zpay_dash_clean_string($value, int $max = 200): string
     return $text;
 }
 
+function zpay_dash_default_theme(): array
+{
+    return [
+        'theme_name' => 'Z-Pay Swift',
+        'mode' => 'dark',
+        'primary_color' => '#082A5E',
+        'secondary_color' => '#0E3A78',
+        'accent_color' => '#2FE88B',
+        'gradient_start' => '#082A5E',
+        'gradient_end' => '#01A884',
+        'card_color' => '#123866',
+        'surface_color' => '#0B244A',
+        'text_color' => '#FFFFFF',
+        'muted_text_color' => '#C7D3E8',
+        'button_color' => '#2FE88B',
+    ];
+}
+
+function zpay_dash_valid_hex_color($value): string
+{
+    $color = strtoupper(trim((string)$value));
+    return preg_match('/^#[0-9A-F]{6}$/', $color) === 1 ? $color : '';
+}
+
+function zpay_dash_theme(array $row = []): array
+{
+    $defaults = zpay_dash_default_theme();
+    $themeRow = is_array($row['theme'] ?? null) ? $row['theme'] : [];
+    $theme = $defaults;
+
+    $themeName = zpay_dash_clean_string($themeRow['theme_name'] ?? $row['theme_name'] ?? $defaults['theme_name'], 80);
+    $theme['theme_name'] = $themeName !== '' ? $themeName : $defaults['theme_name'];
+
+    $mode = strtolower(zpay_dash_clean_string($themeRow['mode'] ?? $row['mode'] ?? $defaults['mode'], 20));
+    $theme['mode'] = in_array($mode, ['dark', 'light'], true) ? $mode : $defaults['mode'];
+
+    foreach ([
+        'primary_color',
+        'secondary_color',
+        'accent_color',
+        'gradient_start',
+        'gradient_end',
+        'card_color',
+        'surface_color',
+        'text_color',
+        'muted_text_color',
+        'button_color',
+    ] as $key) {
+        $color = zpay_dash_valid_hex_color($themeRow[$key] ?? $row[$key] ?? '');
+        $theme[$key] = $color !== '' ? $color : $defaults[$key];
+    }
+
+    return $theme;
+}
+
+function zpay_dash_theme_from_input(array $body, array $existing = []): array
+{
+    $base = zpay_dash_theme($existing);
+    $input = is_array($body['theme'] ?? null) ? array_merge($body, $body['theme']) : $body;
+    return zpay_dash_theme(array_merge($base, $input));
+}
+
 function zpay_dash_allowed_mobile_role(string $role): bool
 {
     $role = function_exists('auth_status_value') ? auth_status_value($role) : strtoupper(trim($role));
@@ -115,6 +177,7 @@ function zpay_dash_config(): array
             300
         ),
         'dashboard_active' => zpay_dash_bool($row['dashboard_active'] ?? true, true),
+        'theme' => zpay_dash_theme($row),
         'updated_at' => (int)($row['updated_at'] ?? 0),
         'updated_by' => zpay_dash_clean_string($row['updated_by'] ?? '', 80),
     ];
@@ -436,6 +499,7 @@ function zpay_dash_dashboard_payload(array $auth): array
         'services' => zpay_dash_services_for_role($role),
         'banners' => zpay_dash_all_banners(true),
         'notification_count' => 0,
+        'theme' => $config['theme'],
         'server_time' => date('c', now_ts()),
     ];
 }

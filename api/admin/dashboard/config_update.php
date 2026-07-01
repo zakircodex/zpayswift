@@ -9,11 +9,14 @@ api_require_app_key();
 $auth = zpay_dash_require_admin_or_subadmin(true);
 $actor = is_array($auth['user'] ?? null) ? $auth['user'] : [];
 $body = api_read_json_body();
+$existingConfig = fb_get('DASHBOARD_CONFIG');
+$existingConfig = is_array($existingConfig) ? $existingConfig : [];
 
 $payload = [
-    'notice_active' => zpay_dash_bool($body['notice_active'] ?? true, true),
-    'notice_text' => zpay_dash_clean_string($body['notice_text'] ?? '', 300),
-    'dashboard_active' => zpay_dash_bool($body['dashboard_active'] ?? true, true),
+    'notice_active' => zpay_dash_bool($body['notice_active'] ?? ($existingConfig['notice_active'] ?? true), true),
+    'notice_text' => zpay_dash_clean_string($body['notice_text'] ?? ($existingConfig['notice_text'] ?? ''), 300),
+    'dashboard_active' => zpay_dash_bool($body['dashboard_active'] ?? ($existingConfig['dashboard_active'] ?? true), true),
+    'theme' => zpay_dash_theme_from_input($body, $existingConfig),
     'updated_at' => now_ts(),
     'updated_by' => (string)($actor['uid'] ?? ''),
     'updated_by_role' => (string)($actor['role'] ?? ''),
@@ -29,6 +32,7 @@ if (function_exists('admin_action_log')) {
         'updated_by_role' => (string)($actor['role'] ?? ''),
         'notice_active' => $payload['notice_active'],
         'dashboard_active' => $payload['dashboard_active'],
+        'theme_name' => $payload['theme']['theme_name'],
     ]);
 }
 
