@@ -3573,12 +3573,14 @@ switch ($action) {
                 'DUPLICATE_TRANSACTION_ID',
                 'DUPLICATE_RECEIPT',
                 'RECEIPT_REQUIRED',
+                'RECEIPT_UPLOAD_FAILED',
                 'INVALID_RECEIPT',
                 'INVALID_RECEIPT_SIZE',
                 'INVALID_RECEIPT_TYPE',
                 'PAYMENT_ACCOUNT_REQUIRED',
                 'PAYMENT_ACCOUNT_INVALID',
                 'PAYMENT_ACCOUNT_UNAVAILABLE',
+                'REQUEST_IN_PROGRESS',
                 'ADD_MONEY_DISABLED',
             ], true) ? 422 : 500;
             user_proxy_response(false, $code, (string)($res['message'] ?? 'Failed to submit add money request'), (array)($res['data'] ?? []), $httpStatus);

@@ -82,6 +82,49 @@ function add_money_mask_account_number($value): string
     return str_repeat('*', max(4, $length - $visible)) . substr($clean, -$visible);
 }
 
+function add_money_idempotency_key(string $raw): string
+{
+    $key = trim($raw);
+    if ($key === '') {
+        return '';
+    }
+
+    $key = preg_replace('/[^A-Za-z0-9._:-]/', '', $key);
+    return substr((string)$key, 0, 128);
+}
+
+function add_money_idempotency_path(string $uid, string $key): string
+{
+    return 'ADD_MONEY_IDEMPOTENCY/' . rawurlencode(trim($uid)) . '/' . hash('sha256', $key);
+}
+
+function add_money_delete_receipt_file(array $receipt): void
+{
+    $relative = ltrim((string)($receipt['path'] ?? ''), '/\\');
+    if ($relative === '') {
+        return;
+    }
+
+    $base = realpath(dirname(__DIR__) . '/storage/add_money');
+    $target = realpath(dirname(__DIR__) . '/' . $relative);
+    if ($base === false || $target === false) {
+        return;
+    }
+
+    $basePrefix = rtrim($base, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+    if (strpos($target, $basePrefix) === 0 && is_file($target)) {
+        @unlink($target);
+    }
+}
+
+function add_money_cleanup_idempotency(string $path): void
+{
+    $path = trim($path);
+    if ($path !== '') {
+        fb_delete($path);
+    }
+}
+
 function add_money_default_settings(): array
 {
     return [
@@ -485,13 +528,24 @@ function add_money_store_receipt(array $file, string $requestId, string $uid): a
     }
 
     $hash = hash_file('sha256', $tmp);
-    if ($hash === '' || fb_get('ADD_MONEY_RECEIPT_HASHES/' . $hash) !== null) {
-        return ['ok' => false, 'code' => 'DUPLICATE_RECEIPT', 'message' => 'This receipt has already been submitted.'];
+    if ($hash === '') {
+        return ['ok' => false, 'code' => 'RECEIPT_UPLOAD_FAILED', 'message' => 'Receipt upload failed. Please try again.'];
+    }
+
+    $existingHash = fb_get('ADD_MONEY_RECEIPT_HASHES/' . $hash);
+    if ($existingHash !== null) {
+        $existingRequestId = is_array($existingHash)
+            ? trim((string)($existingHash['request_id'] ?? ''))
+            : trim((string)$existingHash);
+        if ($existingRequestId !== '' && add_money_find_request($existingRequestId) !== []) {
+            return ['ok' => false, 'code' => 'DUPLICATE_RECEIPT', 'message' => 'This receipt has already been submitted.'];
+        }
+        fb_delete('ADD_MONEY_RECEIPT_HASHES/' . $hash);
     }
 
     $dir = add_money_receipt_dir();
     if (!is_dir($dir) && !mkdir($dir, 0755, true) && !is_dir($dir)) {
-        return ['ok' => false, 'code' => 'UPLOAD_DIR_FAILED', 'message' => 'Receipt storage is unavailable'];
+        return ['ok' => false, 'code' => 'RECEIPT_UPLOAD_FAILED', 'message' => 'Receipt upload failed. Please try again.'];
     }
 
     $ext = $allowed[$mime];
@@ -499,7 +553,16 @@ function add_money_store_receipt(array $file, string $requestId, string $uid): a
     $target = dirname(__DIR__) . '/' . $relative;
 
     if (!move_uploaded_file($tmp, $target)) {
-        return ['ok' => false, 'code' => 'UPLOAD_FAILED', 'message' => 'Failed to store receipt'];
+        return ['ok' => false, 'code' => 'RECEIPT_UPLOAD_FAILED', 'message' => 'Receipt upload failed. Please try again.'];
+    }
+
+    $base = realpath(dirname(__DIR__) . '/storage/add_money');
+    $realTarget = realpath($target);
+    if ($base === false || $realTarget === false || strpos($realTarget, rtrim($base, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR) !== 0 || !is_file($realTarget) || filesize($realTarget) <= 0) {
+        if (is_file($target)) {
+            @unlink($target);
+        }
+        return ['ok' => false, 'code' => 'RECEIPT_UPLOAD_FAILED', 'message' => 'Receipt upload failed. Please try again.'];
     }
 
     $token = add_money_token(18);
@@ -833,6 +896,36 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
     $method = strtoupper(trim((string)($body['method'] ?? '')));
     $amount = add_money_round($body['amount'] ?? $body['amount_bdt'] ?? $body['amount_rm'] ?? 0);
     $paymentAccountId = trim((string)($body['payment_account_id'] ?? $body['account_id'] ?? ''));
+    $idempotencyKey = add_money_idempotency_key((string)($body['idempotency_key'] ?? ''));
+    $idempotencyPath = $idempotencyKey !== '' ? add_money_idempotency_path($uid, $idempotencyKey) : '';
+    if ($idempotencyPath !== '') {
+        $existingIdempotency = fb_get($idempotencyPath);
+        if (is_array($existingIdempotency)) {
+            $existingStatus = strtoupper(trim((string)($existingIdempotency['status'] ?? '')));
+            $existingRequestId = trim((string)($existingIdempotency['request_id'] ?? ''));
+            if ($existingStatus === 'SUCCESS' && $existingRequestId !== '') {
+                $existingRequest = add_money_find_request($existingRequestId);
+                if ($existingRequest !== []) {
+                    return [
+                        'ok' => true,
+                        'code' => 'SUCCESS',
+                        'message' => 'Add money request submitted. Please wait for approval.',
+                        'data' => [
+                            'request' => $existingRequest,
+                            'telegram_sent' => !empty($existingRequest['telegram_sent']),
+                            'idempotent_replay' => true,
+                        ],
+                    ];
+                }
+            }
+
+            $updatedAt = (int)($existingIdempotency['updated_at'] ?? $existingIdempotency['created_at'] ?? 0);
+            if ($existingStatus === 'PROCESSING' && $updatedAt > add_money_now() - 600) {
+                return ['ok' => false, 'code' => 'REQUEST_IN_PROGRESS', 'message' => 'This add money request is still processing. Please wait.'];
+            }
+        }
+    }
+
     $transactionId = trim((string)($body['transaction_id'] ?? ''));
     $senderNumber = trim((string)($body['sender_number'] ?? ''));
     $note = trim((string)($body['note'] ?? $body['reference'] ?? ''));
@@ -869,6 +962,7 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
     $method = add_money_normalize_method((string)($matchedAccount['method'] ?? $method), $country);
     $matchedAccount['method'] = $method;
     $matchedAccount['currency'] = add_money_currency_for_country($country);
+    $idempotencyStarted = false;
 
     if ($country === 'BD') {
         if (!in_array($method, ['BKASH', 'NAGAD'], true)) {
@@ -890,10 +984,28 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         if (!in_array($method, ['BANK', 'EWALLET'], true)) {
             return ['ok' => false, 'code' => 'PAYMENT_ACCOUNT_INVALID', 'message' => 'Selected payment account is not available.'];
         }
+    }
 
+    if ($idempotencyPath !== '') {
+        $idempotencyStarted = fb_put($idempotencyPath, [
+            'uid' => $uid,
+            'status' => 'PROCESSING',
+            'request_id' => '',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+        if (!$idempotencyStarted) {
+            return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to start add money request'];
+        }
+    }
+
+    if ($country !== 'BD') {
         $receiptFile = is_array($files['receipt_upload'] ?? null) ? $files['receipt_upload'] : [];
         $receipt = add_money_store_receipt($receiptFile, $requestId, $uid);
         if (empty($receipt['ok'])) {
+            if ($idempotencyStarted) {
+                add_money_cleanup_idempotency($idempotencyPath);
+            }
             return $receipt;
         }
     }
@@ -937,11 +1049,19 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
     ];
 
     if (!fb_put('ADD_MONEY_REQUESTS/' . $requestId, $row)) {
+        add_money_delete_receipt_file($receipt);
+        if ($idempotencyStarted) {
+            add_money_cleanup_idempotency($idempotencyPath);
+        }
         return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save add money request'];
     }
 
     if (!fb_put('ADD_MONEY_BY_USER/' . $uid . '/' . $requestId, $row)) {
         fb_delete('ADD_MONEY_REQUESTS/' . $requestId);
+        add_money_delete_receipt_file($receipt);
+        if ($idempotencyStarted) {
+            add_money_cleanup_idempotency($idempotencyPath);
+        }
         return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save add money history'];
     }
 
@@ -956,6 +1076,9 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         ])) {
             fb_delete('ADD_MONEY_REQUESTS/' . $requestId);
             fb_delete('ADD_MONEY_BY_USER/' . $uid . '/' . $requestId);
+            if ($idempotencyStarted) {
+                add_money_cleanup_idempotency($idempotencyPath);
+            }
             return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save transaction duplicate index'];
         }
     } elseif (!empty($receipt['hash'])) {
@@ -978,12 +1101,22 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
             fb_delete('ADD_MONEY_BY_USER/' . $uid . '/' . $requestId);
             fb_delete('ADD_MONEY_RECEIPT_HASHES/' . $receipt['hash']);
             fb_delete('ADD_MONEY_RECEIPT_TOKENS/' . $receipt['token']);
-            $storedPath = dirname(__DIR__) . '/' . ltrim((string)($receipt['path'] ?? ''), '/');
-            if (is_file($storedPath)) {
-                @unlink($storedPath);
+            add_money_delete_receipt_file($receipt);
+            if ($idempotencyStarted) {
+                add_money_cleanup_idempotency($idempotencyPath);
             }
             return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save receipt duplicate index'];
         }
+    }
+
+    if ($idempotencyStarted) {
+        fb_put($idempotencyPath, [
+            'uid' => $uid,
+            'status' => 'SUCCESS',
+            'request_id' => $requestId,
+            'created_at' => $now,
+            'updated_at' => add_money_now(),
+        ]);
     }
 
     $telegram = add_money_notify_telegram($row);
