@@ -45,6 +45,8 @@ if (empty($res['ok'])) {
         'INVALID_RECEIPT',
         'INVALID_RECEIPT_SIZE',
         'INVALID_RECEIPT_TYPE',
+        'PAYMENT_ACCOUNT_REQUIRED',
+        'PAYMENT_ACCOUNT_INVALID',
         'PAYMENT_ACCOUNT_UNAVAILABLE',
         'ADD_MONEY_DISABLED',
     ];

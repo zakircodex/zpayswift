@@ -66,6 +66,22 @@ function add_money_currency_label(string $currency): string
     return in_array($currency, ['MYR', 'RM'], true) ? 'RM' : 'BDT';
 }
 
+function add_money_mask_account_number($value): string
+{
+    $clean = preg_replace('/\s+/', '', trim((string)$value));
+    if ($clean === '') {
+        return '';
+    }
+
+    $length = strlen($clean);
+    if ($length <= 4) {
+        return str_repeat('*', $length);
+    }
+
+    $visible = min(5, $length - 1);
+    return str_repeat('*', max(4, $length - $visible)) . substr($clean, -$visible);
+}
+
 function add_money_default_settings(): array
 {
     return [
@@ -161,6 +177,19 @@ function add_money_normalize_method(string $method, string $country = ''): strin
     $country = strtoupper(trim($country));
     $allowed = ['BKASH', 'NAGAD', 'BANK', 'EWALLET'];
 
+    if (str_contains($method, 'TOUCH') || str_contains($method, 'TNG') || str_contains($method, 'EWALLET') || str_contains($method, 'E-WALLET')) {
+        return 'EWALLET';
+    }
+    if (str_contains($method, 'BKASH')) {
+        return 'BKASH';
+    }
+    if (str_contains($method, 'NAGAD')) {
+        return 'NAGAD';
+    }
+    if (str_contains($method, 'BANK') || str_contains($method, 'RHB')) {
+        return 'BANK';
+    }
+
     if (!in_array($method, $allowed, true)) {
         return $country === 'BD' ? 'BKASH' : 'BANK';
     }
@@ -176,16 +205,24 @@ function add_money_normalize_payment_account(array $row, string $id = ''): array
     $currency = in_array($currency, ['MYR', 'RM'], true) ? 'MYR' : 'BDT';
     $accountId = trim((string)($row['account_id'] ?? $id));
 
+    $displayName = trim((string)($row['display_name'] ?? $row['name'] ?? ''));
+    $accountHolder = trim((string)($row['account_holder'] ?? $row['holder_name'] ?? ''));
+    $logoUrl = trim((string)($row['logo_url'] ?? $row['logo'] ?? $row['image_url'] ?? $row['icon_url'] ?? ''));
+
     return [
+        'id' => $accountId,
         'account_id' => $accountId,
         'country' => $country,
         'currency' => $currency,
         'method' => add_money_normalize_method((string)($row['method'] ?? ''), $country),
-        'display_name' => trim((string)($row['display_name'] ?? '')),
-        'account_holder' => trim((string)($row['account_holder'] ?? '')),
+        'name' => $displayName,
+        'display_name' => $displayName,
+        'holder_name' => $accountHolder,
+        'account_holder' => $accountHolder,
         'account_number' => trim((string)($row['account_number'] ?? '')),
         'instruction' => trim((string)($row['instruction'] ?? '')),
-        'logo_url' => trim((string)($row['logo_url'] ?? '')),
+        'logo' => $logoUrl,
+        'logo_url' => $logoUrl,
         'active' => add_money_bool($row['active'] ?? false),
         'sort_order' => (int)($row['sort_order'] ?? 100),
         'created_at' => (int)($row['created_at'] ?? 0),
@@ -626,15 +663,23 @@ function add_money_message(array $row): string
     $title = $country === 'MY' ? 'New MY Add Money Request' : 'New BD Add Money Request';
     $method = strtoupper(trim((string)($row['method'] ?? '')));
     $receiptUrl = trim((string)($row['receipt_url'] ?? ''));
+    $sentTo = trim((string)($row['selected_payment_account_name'] ?? $row['payment_account_name'] ?? ''));
+    $sentTo = $sentTo !== '' ? $sentTo : 'Not selected';
+    $accountMasked = trim((string)($row['selected_payment_account_masked'] ?? ''));
 
     $text = "<b>" . add_money_h($title) . "</b>\n\n"
         . "Request ID: <code>" . add_money_h($row['request_id'] ?? '') . "</code>\n"
         . "Name: <b>" . add_money_h($row['name'] ?? '-') . "</b>\n"
         . "Phone: <code>" . add_money_h($row['phone'] ?? '-') . "</code>\n"
         . "Role: <b>" . add_money_h($row['role'] ?? '-') . "</b>\n"
+        . "Sent To: <b>" . add_money_h($sentTo) . "</b>\n"
         . "Method: <b>" . add_money_h($method) . "</b>\n"
         . "Amount: <b>" . add_money_h($currency) . " " . number_format((float)($row['amount'] ?? 0), 2) . "</b>\n"
         . "Status: <b>" . add_money_h($row['status'] ?? 'PENDING') . "</b>\n";
+
+    if ($accountMasked !== '') {
+        $text .= "Account: <code>" . add_money_h($accountMasked) . "</code>\n";
+    }
 
     $status = strtoupper(trim((string)($row['status'] ?? 'PENDING')));
     if (in_array($status, ['APPROVED', 'REJECTED'], true)) {
@@ -800,24 +845,34 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
     $activeAccounts = add_money_payment_accounts_for_country($country, $settings);
     $matchedAccount = [];
 
+    if ($paymentAccountId === '') {
+        return ['ok' => false, 'code' => 'PAYMENT_ACCOUNT_REQUIRED', 'message' => 'Please select the account you sent money to.'];
+    }
+
+    foreach ($activeAccounts as $account) {
+        $accountId = trim((string)($account['account_id'] ?? $account['id'] ?? ''));
+        if ($accountId !== '' && hash_equals($accountId, $paymentAccountId)) {
+            $matchedAccount = $account;
+            break;
+        }
+    }
+
+    if ($matchedAccount === [] || empty($matchedAccount['active'])) {
+        return ['ok' => false, 'code' => 'PAYMENT_ACCOUNT_INVALID', 'message' => 'Selected payment account is not available.'];
+    }
+
+    $matchedCountry = strtoupper(trim((string)($matchedAccount['country'] ?? '')));
+    if ($matchedCountry !== $country) {
+        return ['ok' => false, 'code' => 'PAYMENT_ACCOUNT_INVALID', 'message' => 'Selected payment account is not available.'];
+    }
+
+    $method = add_money_normalize_method((string)($matchedAccount['method'] ?? $method), $country);
+    $matchedAccount['method'] = $method;
+    $matchedAccount['currency'] = add_money_currency_for_country($country);
+
     if ($country === 'BD') {
         if (!in_array($method, ['BKASH', 'NAGAD'], true)) {
-            return ['ok' => false, 'code' => 'INVALID_METHOD', 'message' => 'Please select bKash or Nagad'];
-        }
-
-        foreach ($activeAccounts as $account) {
-            $accountId = trim((string)($account['account_id'] ?? ''));
-            $accountMethod = strtoupper(trim((string)($account['method'] ?? '')));
-            if (
-                ($paymentAccountId !== '' && $accountId === $paymentAccountId)
-                || ($paymentAccountId === '' && $accountMethod === $method)
-            ) {
-                $matchedAccount = $account;
-                break;
-            }
-        }
-        if ($matchedAccount === [] || strtoupper(trim((string)($matchedAccount['method'] ?? ''))) !== $method) {
-            return ['ok' => false, 'code' => 'PAYMENT_ACCOUNT_UNAVAILABLE', 'message' => 'Selected payment method is not available'];
+            return ['ok' => false, 'code' => 'PAYMENT_ACCOUNT_INVALID', 'message' => 'Selected payment account is not available.'];
         }
 
         if ($transactionId === '') {
@@ -832,20 +887,8 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
             return ['ok' => false, 'code' => 'DUPLICATE_TXN_ID', 'message' => 'This transaction ID has already been submitted.'];
         }
     } else {
-        $method = 'BANK';
-        foreach ($activeAccounts as $account) {
-            $accountId = trim((string)($account['account_id'] ?? ''));
-            $accountMethod = strtoupper(trim((string)($account['method'] ?? '')));
-            if (
-                ($paymentAccountId !== '' && $accountId === $paymentAccountId)
-                || ($paymentAccountId === '' && $accountMethod === 'BANK')
-            ) {
-                $matchedAccount = $account;
-                break;
-            }
-        }
-        if ($matchedAccount === [] || strtoupper(trim((string)($matchedAccount['method'] ?? ''))) !== 'BANK') {
-            return ['ok' => false, 'code' => 'PAYMENT_ACCOUNT_UNAVAILABLE', 'message' => 'Selected payment account is not available'];
+        if (!in_array($method, ['BANK', 'EWALLET'], true)) {
+            return ['ok' => false, 'code' => 'PAYMENT_ACCOUNT_INVALID', 'message' => 'Selected payment account is not available.'];
         }
 
         $receiptFile = is_array($files['receipt_upload'] ?? null) ? $files['receipt_upload'] : [];
@@ -866,6 +909,12 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         'method' => $method,
         'payment_account_id' => (string)($matchedAccount['account_id'] ?? $paymentAccountId),
         'payment_account_name' => (string)($matchedAccount['display_name'] ?? ''),
+        'selected_payment_account_id' => (string)($matchedAccount['account_id'] ?? $paymentAccountId),
+        'selected_payment_account_name' => (string)($matchedAccount['display_name'] ?? ''),
+        'selected_payment_method' => $method,
+        'selected_payment_country' => $country,
+        'selected_payment_currency' => $currency,
+        'selected_payment_account_masked' => add_money_mask_account_number($matchedAccount['account_number'] ?? ''),
         'amount' => $amount,
         'transaction_id' => $transactionId,
         'sender_number' => $senderNumber,
