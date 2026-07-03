@@ -8,8 +8,28 @@ api_require_method('POST');
 api_require_app_key();
 
 $body = api_read_json_body();
-$preAuthToken = trim((string)($body['pre_auth_token'] ?? ''));
+$purpose = strtoupper(trim((string)($body['purpose'] ?? '')));
 $pin = trim((string)($body['pin'] ?? ''));
+
+if ($purpose === 'TOPUP') {
+    if ($pin === '') {
+        api_response(false, 'VALIDATION_ERROR', 'PIN is required.', [], 422);
+    }
+
+    $auth = auth_require_user(true);
+    $user = is_array($auth['user'] ?? null) ? $auth['user'] : [];
+    $pinHash = (string)($user['pin_hash'] ?? '');
+
+    if ($pinHash === '' || !password_verify($pin, $pinHash)) {
+        api_response(false, 'WRONG_PIN', 'Incorrect PIN. Please try again.', [], 401);
+    }
+
+    api_response(true, 'PIN_VERIFIED', 'PIN verified.', [
+        'purpose' => 'TOPUP',
+    ]);
+}
+
+$preAuthToken = trim((string)($body['pre_auth_token'] ?? ''));
 $deviceId = auth_app_device_id($body, (string)($body['device_id'] ?? 'ANDROID_APP'));
 $deviceName = auth_app_device_name($body);
 

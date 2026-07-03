@@ -485,7 +485,8 @@ function create_topup_pending_request(
     string $topupNumber,
     string $operator,
     float $amount,
-    array $financials = []
+    array $financials = [],
+    array $extra = []
 ): bool {
     $financials = array_replace([
         'amount_bdt' => $amount,
@@ -528,6 +529,12 @@ function create_topup_pending_request(
         'created_at' => now_ts(),
         'updated_at' => now_ts(),
     ];
+
+    foreach ($extra as $key => $value) {
+        if (is_string($key) && preg_match('/^[A-Za-z0-9_]+$/', $key) === 1) {
+            $row[$key] = $value;
+        }
+    }
 
     return fb_put('TOPUP_REQUESTS/PENDING/' . $requestId, $row);
 }

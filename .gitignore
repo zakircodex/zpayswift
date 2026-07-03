@@ -12,6 +12,7 @@ error_log
 .env
 config.php
 */config.php
+!api/topup/config.php
 private/
 logs/
 node_modules/

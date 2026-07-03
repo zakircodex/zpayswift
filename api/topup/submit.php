@@ -5,6 +5,7 @@ require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/operators.php';
 require_once dirname(__DIR__) . '/lib/wallet.php';
 require_once dirname(__DIR__) . '/lib/topup.php';
+require_once dirname(__DIR__) . '/lib/topup_config.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -16,33 +17,45 @@ $userPhone = (string)$user['phone'];
 
 $body = api_read_json_body();
 
-$topupNumber = normalize_bd_topup_number($body['topup_number'] ?? '');
-$operator = normalize_operator($body['operator'] ?? '');
-$amount = (float)($body['amount'] ?? 0);
-$pin = trim((string)($body['pin'] ?? ''));
-
-if (!is_valid_bd_topup_number($topupNumber)) {
-    api_response(false, 'VALIDATION_ERROR', 'Invalid topup number', [
-        'field' => 'topup_number',
-    ], 422);
+$previewToken = trim((string)($body['preview_token'] ?? ''));
+if ($previewToken === '') {
+    api_response(false, 'TOPUP_PREVIEW_REQUIRED', 'Top-up preview token is required.', [], 422);
 }
 
-if (!is_valid_operator($operator)) {
-    api_response(false, 'INVALID_OPERATOR', 'Invalid operator', [
-        'field' => 'operator',
-    ], 422);
+$preview = topup_load_preview_token($previewToken);
+if (!is_array($preview)) {
+    api_response(false, 'TOPUP_PREVIEW_INVALID', 'Top-up preview is invalid. Please preview again.', [], 422);
 }
 
-if ($amount <= 0) {
-    api_response(false, 'VALIDATION_ERROR', 'Amount must be greater than zero', [
-        'field' => 'amount',
-    ], 422);
+if (!empty($preview['used'])) {
+    api_response(false, 'TOPUP_PREVIEW_USED', 'Top-up preview was already used. Please preview again.', [], 422);
 }
 
-if (!is_valid_user_pin($pin)) {
-    api_response(false, 'VALIDATION_ERROR', 'PIN must be exactly 4 digits', [
-        'field' => 'pin',
-    ], 422);
+if ((int)($preview['expires_at'] ?? 0) < now_ts()) {
+    api_response(false, 'TOPUP_PREVIEW_EXPIRED', 'Top-up preview expired. Please preview again.', [], 422);
+}
+
+if ((string)($preview['uid'] ?? '') !== $uid) {
+    api_response(false, 'TOPUP_PREVIEW_INVALID', 'Top-up preview does not belong to this account.', [], 403);
+}
+
+$topupNumber = normalize_bd_topup_number($preview['topup_number'] ?? $preview['number'] ?? '');
+$operator = normalize_operator($preview['operator'] ?? '');
+$amount = topup_money($preview['amount'] ?? 0);
+$countryCode = topup_country_code($preview['country_code'] ?? 'BD');
+
+if ($countryCode !== 'BD' || !is_valid_bd_topup_number($topupNumber) || !is_valid_operator($operator) || $amount <= 0) {
+    api_response(false, 'TOPUP_PREVIEW_INVALID', 'Top-up preview data is invalid. Please preview again.', [], 422);
+}
+
+$bodyNumber = normalize_bd_topup_number($body['topup_number'] ?? $body['number'] ?? '');
+$bodyOperator = normalize_operator($body['operator'] ?? '');
+$bodyAmount = isset($body['amount']) && is_numeric($body['amount']) ? topup_money($body['amount']) : 0;
+if (($bodyNumber !== '' && $bodyNumber !== $topupNumber)
+    || ($bodyOperator !== '' && $bodyOperator !== $operator)
+    || ($bodyAmount > 0 && abs($bodyAmount - $amount) > 0.001)
+) {
+    api_response(false, 'TOPUP_PREVIEW_MISMATCH', 'Top-up preview does not match this request. Please preview again.', [], 422);
 }
 
 /*
@@ -60,22 +73,20 @@ if (is_array($appConfig)) {
         api_response(false, 'TOPUP_DISABLED', 'System is under maintenance', [], 422);
     }
 
-    $min = (float)($appConfig['min_topup_amount'] ?? 0);
-    $max = (float)($appConfig['max_topup_amount'] ?? 0);
+}
 
-    if ($min > 0 && $amount < $min) {
-        api_response(false, 'VALIDATION_ERROR', 'Amount is below minimum limit', [
-            'field' => 'amount',
-            'min_topup_amount' => $min,
-        ], 422);
-    }
-
-    if ($max > 0 && $amount > $max) {
-        api_response(false, 'VALIDATION_ERROR', 'Amount exceeds maximum limit', [
-            'field' => 'amount',
-            'max_topup_amount' => $max,
-        ], 422);
-    }
+$amountValidation = topup_amount_validation($countryCode, $operator, $amount);
+if (empty($amountValidation['ok'])) {
+    api_response(
+        false,
+        (string)($amountValidation['code'] ?? 'TOPUP_AMOUNT_INVALID'),
+        (string)($amountValidation['message'] ?? 'Invalid top-up amount.'),
+        [
+            'min_amount' => (float)($amountValidation['min_amount'] ?? 20),
+            'max_amount' => (float)($amountValidation['max_amount'] ?? 1000),
+        ],
+        (int)($amountValidation['http_status'] ?? 422)
+    );
 }
 
 /*
@@ -83,17 +94,7 @@ if (is_array($appConfig)) {
 | Operator runtime check
 |--------------------------------------------------------------------------
 */
-$runtime = require_active_operator($operator);
-
-/*
-|--------------------------------------------------------------------------
-| Verify user transaction PIN
-|--------------------------------------------------------------------------
-*/
-$userPinHash = (string)($user['pin_hash'] ?? '');
-if ($userPinHash === '' || !password_verify($pin, $userPinHash)) {
-    api_response(false, 'INVALID_PIN', 'Transaction PIN is incorrect', [], 401);
-}
+$runtime = (array)($amountValidation['operator'] ?? []);
 
 /*
 |--------------------------------------------------------------------------
@@ -130,7 +131,13 @@ $pendingSaved = create_topup_pending_request(
     $topupNumber,
     $operator,
     $amount,
-    $financials
+    $financials,
+    [
+        'preview_token_hash' => (string)($preview['_token_hash'] ?? ''),
+        'preview_created_at' => (int)($preview['created_at'] ?? 0),
+        'preview_expires_at' => (int)($preview['expires_at'] ?? 0),
+        'verified_by' => topup_clean_text($preview['verified_by'] ?? $body['verified_by'] ?? '', 30),
+    ]
 );
 
 if (!$pendingSaved) {
@@ -157,6 +164,8 @@ if (!$statusSaved) {
     api_response(false, 'SERVER_ERROR', 'Failed to create request status', [], 500);
 }
 
+topup_mark_preview_used((string)($preview['_token_hash'] ?? ''), $requestId);
+
 system_log('TOPUP_SUBMIT', $requestId, 'Topup request created successfully', [
     'uid' => $uid,
     'operator' => $operator,
@@ -167,7 +176,7 @@ system_log('TOPUP_SUBMIT', $requestId, 'Topup request created successfully', [
     'wallet_debit_amount' => $walletDebit,
     'wallet_debit_currency' => $financials['wallet_debit_currency'],
     'rate_used' => $financials['rate_used'],
-    'topup_number' => $topupNumber,
+    'topup_number_masked' => topup_mask_number($topupNumber),
     'operator_active' => (bool)($runtime['active'] ?? false),
 ]);
 
