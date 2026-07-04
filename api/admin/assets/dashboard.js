@@ -3270,6 +3270,7 @@ async function loadOperators(options = {}){
   const data = await proxyGet('operators', {}, options);
 
   state.operators = data.items || [];
+  state.topupCountries = data.countries || [];
   state.loaded.operators = true;
 
   renderOperators();
@@ -3282,21 +3283,48 @@ async function loadOperators(options = {}){
   if (!options.silentLog) log('Loaded operators list.');
 }
 
+function topupListText(value){
+  return Array.isArray(value) ? value.join(', ') : String(value || '');
+}
+
 function renderOperators(){
+  const countryBody = document.getElementById('topupCountriesTableBody');
   const tbody = document.getElementById('operatorsTableBody');
+
+  if (countryBody) {
+    const countries = state.topupCountries || [];
+    if (!countries.length) {
+      countryBody.innerHTML = '<tr><td colspan="7" class="empty">No country data yet.</td></tr>';
+    } else {
+      countryBody.innerHTML = countries.map(item => `
+        <tr>
+          <td><strong>${esc(item.code || '-')}</strong></td>
+          <td>${esc(item.name || '-')}</td>
+          <td>${esc(item.currency || '-')}</td>
+          <td>${esc(item.dial_code || '-')}</td>
+          <td>${statusPill(item.active ? 'ACTIVE' : 'INACTIVE')}</td>
+          <td>${Number(item.sort_order || 0)}</td>
+          <td><button class="mini-btn" onclick="editTopupCountry('${esc(item.code || '')}')">Edit</button></td>
+        </tr>
+      `).join('');
+    }
+  }
 
   if (!tbody) return;
 
   if (!state.operators.length){
-    tbody.innerHTML = '<tr><td colspan="6" class="empty">No operator found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">No operator found.</td></tr>';
     return;
   }
 
   tbody.innerHTML = state.operators.map(item => `
     <tr>
       <td><strong>${esc(item.operator || '-')}</strong></td>
+      <td>${esc(item.country_code || '-')}<br><small>${esc(item.service_type || '-')}</small></td>
       <td>${esc(item.name || '-')}</td>
       <td>${statusPill(item.active ? 'ACTIVE' : 'INACTIVE')}</td>
+      <td>${Number(item.min_amount || 0).toFixed(2)} - ${Number(item.max_amount || 0).toFixed(2)}<br><small>Sort ${Number(item.sort_order || 0)}</small></td>
+      <td><small>Quick: ${esc(topupListText(item.quick_amounts) || '-')}</small><br><small>Prefixes: ${esc(topupListText(item.prefixes) || '-')}</small></td>
       <td><code>${esc(item.masked_template || item.dial_template || '-')}</code></td>
       <td>${item.requires_secret_pin ? 'Yes' : 'No'}</td>
       <td>
@@ -3308,9 +3336,78 @@ function renderOperators(){
   `).join('');
 }
 
+async function editTopupCountry(code){
+  const item = (state.topupCountries || []).find(row => String(row.code || '') === String(code || ''));
+  if (!item) {
+    alert('Country not found');
+    return;
+  }
+
+  openModal(
+    `Edit Top-Up Country - ${esc(item.code || '')}`,
+    `
+      <div class="form-grid">
+        <div>
+          <label>Code</label>
+          <input class="input" id="topupCountryCode" value="${esc(item.code || '')}" readonly>
+        </div>
+        <div>
+          <label>Name</label>
+          <input class="input" id="topupCountryName" value="${esc(item.name || '')}">
+        </div>
+        <div>
+          <label>Currency</label>
+          <input class="input" id="topupCountryCurrency" value="${esc(item.currency || '')}">
+        </div>
+        <div>
+          <label>Dial Code</label>
+          <input class="input" id="topupCountryDial" value="${esc(item.dial_code || '')}">
+        </div>
+        <div>
+          <label>Active</label>
+          <select id="topupCountryActive">
+            <option value="true" ${item.active ? 'selected' : ''}>Active</option>
+            <option value="false" ${!item.active ? 'selected' : ''}>Inactive</option>
+          </select>
+        </div>
+        <div>
+          <label>Sort Order</label>
+          <input class="input" id="topupCountrySort" type="number" step="1" value="${esc(String(item.sort_order ?? 999))}">
+        </div>
+      </div>
+    `,
+    `
+      <button class="btn ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn brand" onclick="saveTopupCountry()">Save Country</button>
+    `
+  );
+}
+
+async function saveTopupCountry(){
+  const body = {
+    code: document.getElementById('topupCountryCode')?.value.trim() || '',
+    name: document.getElementById('topupCountryName')?.value.trim() || '',
+    currency: document.getElementById('topupCountryCurrency')?.value.trim() || '',
+    dial_code: document.getElementById('topupCountryDial')?.value.trim() || '',
+    active: document.getElementById('topupCountryActive')?.value === 'true',
+    sort_order: Number(document.getElementById('topupCountrySort')?.value || 999),
+  };
+
+  try{
+    await proxyPost('topup_country_save', body, true, { busyText: 'Saving country...' });
+    closeModal();
+    showToast(`Country ${body.code} saved`, 'ok');
+    await loadOperators({ busy:false, silentLog:true });
+  }catch(err){
+    alert(err.message || 'Failed to save country');
+  }
+}
+
 async function editOperator(operator){
   try{
     const data = await proxyGet('operator_get', { operator }, { busyText: 'Loading operator...' });
+    const quickAmounts = topupListText(data.quick_amounts);
+    const prefixes = topupListText(data.prefixes);
 
     openModal(
       `Edit Operator • ${operator}`,
@@ -3327,6 +3424,18 @@ async function editOperator(operator){
           </div>
 
           <div>
+            <label>Country</label>
+            <input class="input" id="opCountryCode" value="${esc(data.country_code || '')}" readonly>
+          </div>
+
+          <div>
+            <label>Service Type</label>
+            <select id="opServiceType">
+              <option value="PREPAID" selected>PREPAID</option>
+            </select>
+          </div>
+
+          <div>
             <label>Active</label>
             <select id="opActive">
               <option value="true" ${data.active ? 'selected' : ''}>Active</option>
@@ -3340,6 +3449,36 @@ async function editOperator(operator){
               <option value="true" ${data.requires_secret_pin ? 'selected' : ''}>Yes</option>
               <option value="false" ${!data.requires_secret_pin ? 'selected' : ''}>No</option>
             </select>
+          </div>
+
+          <div>
+            <label>Min Amount</label>
+            <input class="input" id="opMinAmount" type="number" step="0.01" min="0" value="${esc(String(data.min_amount ?? 20))}">
+          </div>
+
+          <div>
+            <label>Max Amount</label>
+            <input class="input" id="opMaxAmount" type="number" step="0.01" min="0" value="${esc(String(data.max_amount ?? 1000))}">
+          </div>
+
+          <div>
+            <label>Quick Amounts</label>
+            <input class="input" id="opQuickAmounts" placeholder="20,50,100" value="${esc(quickAmounts)}">
+          </div>
+
+          <div>
+            <label>Prefixes</label>
+            <input class="input" id="opPrefixes" placeholder="017,013" value="${esc(prefixes)}">
+          </div>
+
+          <div>
+            <label>Sort Order</label>
+            <input class="input" id="opSortOrder" type="number" step="1" value="${esc(String(data.sort_order ?? 999))}">
+          </div>
+
+          <div>
+            <label>Execution</label>
+            <input class="input" value="${data.execution_ready ? 'Live queue ready' : 'Catalog only / not ready'}" readonly>
           </div>
 
           <div class="form-full">
@@ -3373,7 +3512,14 @@ async function saveOperator(){
   const body = {
     operator: document.getElementById('opOperator')?.value.trim() || '',
     name: document.getElementById('opName')?.value.trim() || '',
+    country_code: document.getElementById('opCountryCode')?.value.trim() || '',
+    service_type: document.getElementById('opServiceType')?.value || 'PREPAID',
     active: document.getElementById('opActive')?.value === 'true',
+    min_amount: Number(document.getElementById('opMinAmount')?.value || 0),
+    max_amount: Number(document.getElementById('opMaxAmount')?.value || 0),
+    quick_amounts: document.getElementById('opQuickAmounts')?.value.trim() || '',
+    prefixes: document.getElementById('opPrefixes')?.value.trim() || '',
+    sort_order: Number(document.getElementById('opSortOrder')?.value || 999),
     requires_secret_pin: document.getElementById('opRequiresPin')?.value === 'true',
     dial_template: document.getElementById('opDialTemplate')?.value.trim() || '',
     masked_template: document.getElementById('opMaskedTemplate')?.value.trim() || '',

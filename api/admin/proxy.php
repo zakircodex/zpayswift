@@ -1711,6 +1711,11 @@ switch ($action) {
         proxy_forward_admin_post('operators/save.php', proxy_read_json_body());
         break;
 
+    case 'topup_country_save':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('operators/country_save.php', proxy_read_json_body());
+        break;
+
     case 'app_config_get':
         proxy_require_method('GET');
         proxy_forward_admin_get('config/get.php');

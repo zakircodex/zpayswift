@@ -22,71 +22,42 @@ if ($previewToken === '') {
     api_response(false, 'TOPUP_PREVIEW_REQUIRED', 'Top-up preview token is required.', [], 422);
 }
 
-$preview = topup_load_preview_token($previewToken);
-if (!is_array($preview)) {
-    api_response(false, 'TOPUP_PREVIEW_INVALID', 'Top-up preview is invalid. Please preview again.', [], 422);
+$tokenHash = topup_preview_token_hash($previewToken);
+$claim = topup_claim_preview_token($tokenHash, $uid);
+if (empty($claim['ok'])) {
+    topup_api_error($claim);
 }
 
-if (!empty($preview['used'])) {
-    api_response(false, 'TOPUP_PREVIEW_USED', 'Top-up preview was already used. Please preview again.', [], 422);
-}
+$preview = (array)($claim['preview'] ?? []);
+$failPreview = static function (string $code, string $message) use ($tokenHash): void {
+    topup_mark_preview_failed($tokenHash, $code, $message);
+};
 
-if ((int)($preview['expires_at'] ?? 0) < now_ts()) {
-    api_response(false, 'TOPUP_PREVIEW_EXPIRED', 'Top-up preview expired. Please preview again.', [], 422);
-}
-
-if ((string)($preview['uid'] ?? '') !== $uid) {
-    api_response(false, 'TOPUP_PREVIEW_INVALID', 'Top-up preview does not belong to this account.', [], 403);
-}
-
-$topupNumber = normalize_bd_topup_number($preview['topup_number'] ?? $preview['number'] ?? '');
 $operator = normalize_operator($preview['operator'] ?? '');
 $amount = topup_money($preview['amount'] ?? 0);
 $countryCode = topup_country_code($preview['country_code'] ?? 'BD');
+$topupNumber = topup_normalize_number_for_country($countryCode, $preview['topup_number'] ?? $preview['number'] ?? '');
 
-if ($countryCode !== 'BD' || !is_valid_bd_topup_number($topupNumber) || !is_valid_operator($operator) || $amount <= 0) {
+if (!topup_is_valid_number_for_country($countryCode, $topupNumber) || $operator === '' || $amount <= 0) {
+    $failPreview('TOPUP_PREVIEW_INVALID', 'Top-up preview data is invalid.');
     api_response(false, 'TOPUP_PREVIEW_INVALID', 'Top-up preview data is invalid. Please preview again.', [], 422);
 }
 
-$bodyNumber = normalize_bd_topup_number($body['topup_number'] ?? $body['number'] ?? '');
+$bodyNumber = topup_normalize_number_for_country($countryCode, $body['topup_number'] ?? $body['number'] ?? '');
 $bodyOperator = normalize_operator($body['operator'] ?? '');
 $bodyAmount = isset($body['amount']) && is_numeric($body['amount']) ? topup_money($body['amount']) : 0;
 if (($bodyNumber !== '' && $bodyNumber !== $topupNumber)
     || ($bodyOperator !== '' && $bodyOperator !== $operator)
     || ($bodyAmount > 0 && abs($bodyAmount - $amount) > 0.001)
 ) {
+    $failPreview('TOPUP_PREVIEW_MISMATCH', 'Top-up preview does not match this request.');
     api_response(false, 'TOPUP_PREVIEW_MISMATCH', 'Top-up preview does not match this request. Please preview again.', [], 422);
 }
 
-/*
-|--------------------------------------------------------------------------
-| Global app config check
-|--------------------------------------------------------------------------
-*/
-$appConfig = fb_get('APP_CONFIG');
-if (is_array($appConfig)) {
-    if (!(bool)($appConfig['topup_enabled'] ?? true)) {
-        api_response(false, 'TOPUP_DISABLED', 'Topup service is currently disabled', [], 422);
-    }
-
-    if ((bool)($appConfig['maintenance_mode'] ?? false)) {
-        api_response(false, 'TOPUP_DISABLED', 'System is under maintenance', [], 422);
-    }
-
-}
-
-$amountValidation = topup_amount_validation($countryCode, $operator, $amount);
+$amountValidation = topup_validate_request($countryCode, $operator, $amount, true, true);
 if (empty($amountValidation['ok'])) {
-    api_response(
-        false,
-        (string)($amountValidation['code'] ?? 'TOPUP_AMOUNT_INVALID'),
-        (string)($amountValidation['message'] ?? 'Invalid top-up amount.'),
-        [
-            'min_amount' => (float)($amountValidation['min_amount'] ?? 20),
-            'max_amount' => (float)($amountValidation['max_amount'] ?? 1000),
-        ],
-        (int)($amountValidation['http_status'] ?? 422)
-    );
+    $failPreview((string)($amountValidation['code'] ?? 'TOPUP_AMOUNT_INVALID'), (string)($amountValidation['message'] ?? 'Invalid top-up amount.'));
+    topup_api_error($amountValidation);
 }
 
 /*
@@ -110,12 +81,14 @@ if (!($hold['ok'] ?? false)) {
     $code = (string)($hold['code'] ?? 'SERVER_ERROR');
 
     if ($code === 'INSUFFICIENT_BALANCE') {
+        $failPreview('INSUFFICIENT_BALANCE', 'Not enough balance');
         api_response(false, 'INSUFFICIENT_BALANCE', 'Not enough balance', [
             'available_balance' => (float)($hold['available_balance'] ?? 0),
             'required_amount' => (float)($hold['required_amount'] ?? $walletDebit),
         ], 422);
     }
 
+    $failPreview($code, (string)($hold['message'] ?? 'Wallet hold failed'));
     api_response(false, $code, (string)($hold['message'] ?? 'Wallet hold failed'), [], 500);
 }
 
@@ -142,6 +115,7 @@ $pendingSaved = create_topup_pending_request(
 
 if (!$pendingSaved) {
     wallet_refund_hold($uid, $walletDebit, $requestId, 'TOPUP_REFUND');
+    $failPreview('SERVER_ERROR', 'Failed to create topup request');
     api_response(false, 'SERVER_ERROR', 'Failed to create topup request', [], 500);
 }
 
@@ -161,10 +135,11 @@ $statusSaved = create_request_status(
 if (!$statusSaved) {
     fb_delete('TOPUP_REQUESTS/PENDING/' . $requestId);
     wallet_refund_hold($uid, $walletDebit, $requestId, 'TOPUP_REFUND');
+    $failPreview('SERVER_ERROR', 'Failed to create request status');
     api_response(false, 'SERVER_ERROR', 'Failed to create request status', [], 500);
 }
 
-topup_mark_preview_used((string)($preview['_token_hash'] ?? ''), $requestId);
+topup_mark_preview_used($tokenHash, $requestId);
 
 system_log('TOPUP_SUBMIT', $requestId, 'Topup request created successfully', [
     'uid' => $uid,

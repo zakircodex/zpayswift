@@ -602,9 +602,28 @@ header('Pragma: no-cache');
           <div class="panel-head">
             <div>
               <h3>Operators</h3>
-              <p>Edit active status, templates and retailer secret pin.</p>
+              <p>Edit country availability, operator limits, prefixes, templates and retailer secret pin.</p>
             </div>
             <button class="btn ghost" id="reloadOperatorsBtn">Reload Operators</button>
+          </div>
+
+          <div class="table-wrap" style="margin-bottom:18px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th>Name</th>
+                  <th>Currency</th>
+                  <th>Dial</th>
+                  <th>Active</th>
+                  <th>Sort</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="topupCountriesTableBody">
+                <tr><td colspan="7" class="empty">No country data yet.</td></tr>
+              </tbody>
+            </table>
           </div>
 
           <div class="table-wrap">
@@ -612,15 +631,18 @@ header('Pragma: no-cache');
               <thead>
                 <tr>
                   <th>Operator</th>
+                  <th>Country</th>
                   <th>Name</th>
                   <th>Active</th>
+                  <th>Limits</th>
+                  <th>Quick / Prefixes</th>
                   <th>Masked Template</th>
-                  <th>Requires PIN</th>
+                  <th>PIN</th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody id="operatorsTableBody">
-                <tr><td colspan="6" class="empty">No data yet.</td></tr>
+                <tr><td colspan="9" class="empty">No data yet.</td></tr>
               </tbody>
             </table>
           </div>

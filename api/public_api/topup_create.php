@@ -4,6 +4,8 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/subadmin_api.php';
 require_once dirname(__DIR__) . '/lib/topup.php';
+require_once dirname(__DIR__) . '/lib/operators.php';
+require_once dirname(__DIR__) . '/lib/topup_config.php';
 
 api_require_method('POST');
 
@@ -26,27 +28,28 @@ if (!$topupEnabled) {
 
 $body = api_read_json_body();
 
-$topupNumber = trim((string)($body['topup_number'] ?? ''));
-$operator = strtoupper(trim((string)($body['operator'] ?? '')));
+$countryCode = topup_country_code($body['country_code'] ?? $body['country'] ?? 'BD');
+$topupNumber = topup_normalize_number_for_country($countryCode, $body['topup_number'] ?? $body['number'] ?? '');
+$operator = normalize_operator($body['operator'] ?? $body['operator_code'] ?? '');
 $amount = (float)($body['amount'] ?? 0);
 $note = trim((string)($body['note'] ?? 'API topup request'));
 
-if ($topupNumber === '') {
-    api_response(false, 'VALIDATION_ERROR', 'topup_number is required', ['field' => 'topup_number'], 422);
+if (!topup_is_valid_number_for_country($countryCode, $topupNumber)) {
+    api_response(false, 'VALIDATION_ERROR', 'Invalid topup number', ['field' => 'topup_number'], 422);
 }
 
 if ($operator === '') {
     api_response(false, 'VALIDATION_ERROR', 'operator is required', ['field' => 'operator'], 422);
 }
 
-$allowedOperators = ['GP', 'ROBI', 'AIRTEL', 'BL', 'TT'];
-if (!in_array($operator, $allowedOperators, true)) {
-    api_response(false, 'VALIDATION_ERROR', 'Invalid operator', ['field' => 'operator'], 422);
-}
-
 [$amountOk, $amountMsg] = subapi_validate_amount_limits($amount, $roleSettings);
 if (!$amountOk) {
     api_response(false, 'VALIDATION_ERROR', $amountMsg, ['field' => 'amount'], 422);
+}
+
+$topupValidation = topup_validate_request($countryCode, $operator, topup_money($amount), true, true);
+if (empty($topupValidation['ok'])) {
+    topup_api_error($topupValidation);
 }
 
 $currentAvailable = (float)($wallet['available_balance'] ?? 0);
@@ -210,7 +213,7 @@ if (function_exists('system_log')) {
         'uid' => $uid,
         'key_id' => $keyId,
         'operator' => $operator,
-        'topup_number' => $topupNumber,
+        'topup_number_masked' => topup_mask_number($topupNumber),
         'amount' => $amount,
         'commission_per_1000' => $financials['commission_per_1000'],
         'commission_bdt' => $financials['commission_bdt'],

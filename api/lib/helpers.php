@@ -55,6 +55,7 @@ function is_valid_bd_topup_number(?string $number): bool
 function normalize_operator(?string $operator): string
 {
     $op = strtoupper(trim((string) $operator));
+    $op = preg_replace('/[\s\-]+/', '_', $op) ?? $op;
 
     $map = [
         'GRAMEENPHONE' => 'GP',
@@ -65,6 +66,21 @@ function normalize_operator(?string $operator): string
         'AIRTEL' => 'AIRTEL',
         'TELETALK' => 'TT',
         'TT' => 'TT',
+        'SKITTO' => 'SKITTO',
+        'CELCOM_XPAX' => 'CELCOM_XPAX',
+        'CELCOMXPAX' => 'CELCOM_XPAX',
+        'XPAX' => 'CELCOM_XPAX',
+        'DIGI' => 'DIGI',
+        'MAXIS_HOTLINK' => 'HOTLINK',
+        'MAXIS' => 'HOTLINK',
+        'HOTLINK' => 'HOTLINK',
+        'U_MOBILE' => 'UMOBILE',
+        'UMOBILE' => 'UMOBILE',
+        'XOX' => 'XOX',
+        'TUNE_TALK' => 'TUNETALK',
+        'TUNETALK' => 'TUNETALK',
+        'YES' => 'YES',
+        'YES_PREPAID' => 'YES',
     ];
 
     return $map[$op] ?? $op;
@@ -72,7 +88,21 @@ function normalize_operator(?string $operator): string
 
 function is_valid_operator(?string $operator): bool
 {
-    return in_array(normalize_operator($operator), ['GP', 'ROBI', 'BL', 'AIRTEL', 'TT'], true);
+    return in_array(normalize_operator($operator), [
+        'GP',
+        'ROBI',
+        'AIRTEL',
+        'BL',
+        'TT',
+        'SKITTO',
+        'CELCOM_XPAX',
+        'DIGI',
+        'HOTLINK',
+        'UMOBILE',
+        'XOX',
+        'TUNETALK',
+        'YES',
+    ], true);
 }
 
 function is_valid_email_or_empty(?string $email): bool

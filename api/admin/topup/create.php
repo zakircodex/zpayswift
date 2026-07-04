@@ -5,6 +5,7 @@ require_once dirname(__DIR__, 2) . '/bootstrap.php';
 require_once dirname(__DIR__, 2) . '/lib/operators.php';
 require_once dirname(__DIR__, 2) . '/lib/wallet.php';
 require_once dirname(__DIR__, 2) . '/lib/topup.php';
+require_once dirname(__DIR__, 2) . '/lib/topup_config.php';
 
 api_require_method('POST');
 $auth = auth_require_admin_session(true);
@@ -35,35 +36,10 @@ if ($amount <= 0) {
     ], 422);
 }
 
-$appConfig = fb_get('APP_CONFIG');
-if (is_array($appConfig)) {
-    if (!(bool)($appConfig['topup_enabled'] ?? true)) {
-        api_response(false, 'TOPUP_DISABLED', 'Topup service is currently disabled', [], 422);
-    }
-
-    if ((bool)($appConfig['maintenance_mode'] ?? false)) {
-        api_response(false, 'TOPUP_DISABLED', 'System is under maintenance', [], 422);
-    }
-
-    $min = (float)($appConfig['min_topup_amount'] ?? 0);
-    $max = (float)($appConfig['max_topup_amount'] ?? 0);
-
-    if ($min > 0 && $amount < $min) {
-        api_response(false, 'VALIDATION_ERROR', 'Amount is below minimum limit', [
-            'field' => 'amount',
-            'min_topup_amount' => $min,
-        ], 422);
-    }
-
-    if ($max > 0 && $amount > $max) {
-        api_response(false, 'VALIDATION_ERROR', 'Amount exceeds maximum limit', [
-            'field' => 'amount',
-            'max_topup_amount' => $max,
-        ], 422);
-    }
+$validation = topup_validate_request('BD', $operator, topup_money($amount), true, true);
+if (empty($validation['ok'])) {
+    topup_api_error($validation);
 }
-
-$runtime = require_active_operator($operator);
 
 $adminUid = (string)($adminUser['uid'] ?? '');
 $adminPhone = (string)($adminUser['phone'] ?? '');

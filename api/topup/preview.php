@@ -16,40 +16,22 @@ $uid = (string)($user['uid'] ?? '');
 $body = api_read_json_body();
 
 $countryCode = topup_country_code($body['country_code'] ?? $body['country'] ?? 'BD');
-$topupNumber = normalize_bd_topup_number($body['topup_number'] ?? $body['number'] ?? '');
+$topupNumber = topup_normalize_number_for_country($countryCode, $body['topup_number'] ?? $body['number'] ?? '');
 $operator = normalize_operator($body['operator'] ?? $body['operator_code'] ?? '');
 $amount = topup_money($body['amount'] ?? 0);
 
-if ($countryCode !== 'BD') {
-    api_response(false, 'TOPUP_COUNTRY_UNAVAILABLE', 'Top-up is available for Bangladesh numbers only right now.', [], 422);
-}
-
-if (!is_valid_bd_topup_number($topupNumber)) {
+if (!topup_is_valid_number_for_country($countryCode, $topupNumber)) {
     api_response(false, 'VALIDATION_ERROR', 'Invalid top-up number.', [
         'field' => 'topup_number',
     ], 422);
 }
 
-if (!is_valid_operator($operator)) {
-    api_response(false, 'TOPUP_OPERATOR_INVALID', 'Selected operator is not available.', [
-        'field' => 'operator',
-    ], 422);
-}
-
-$amountValidation = topup_amount_validation($countryCode, $operator, $amount);
+$amountValidation = topup_validate_request($countryCode, $operator, $amount, true, true);
 if (empty($amountValidation['ok'])) {
-    api_response(
-        false,
-        (string)($amountValidation['code'] ?? 'TOPUP_AMOUNT_INVALID'),
-        (string)($amountValidation['message'] ?? 'Invalid top-up amount.'),
-        [
-            'min_amount' => (float)($amountValidation['min_amount'] ?? 20),
-            'max_amount' => (float)($amountValidation['max_amount'] ?? 1000),
-        ],
-        (int)($amountValidation['http_status'] ?? 422)
-    );
+    topup_api_error($amountValidation);
 }
 
+$countryConfig = (array)($amountValidation['country'] ?? []);
 $operatorConfig = (array)($amountValidation['operator'] ?? []);
 $financials = topup_commission_breakdown($uid, $amount, $user);
 $walletDebit = topup_money($financials['wallet_debit_amount'] ?? $amount);
@@ -75,13 +57,13 @@ if ($available < $walletDebit) {
 $now = now_ts();
 $previewPayload = [
     'uid' => $uid,
-    'country_code' => 'BD',
-    'country' => 'Bangladesh',
+    'country_code' => $countryCode,
+    'country' => (string)($countryConfig['name'] ?? $countryCode),
     'topup_number' => $topupNumber,
     'operator' => $operator,
     'operator_name' => (string)($operatorConfig['name'] ?? $operator),
     'amount' => $amount,
-    'currency' => 'BDT',
+    'currency' => (string)($countryConfig['currency'] ?? 'BDT'),
     'financials' => $financials,
     'wallet_currency' => $walletCurrency,
     'wallet_debit_amount' => $walletDebit,
@@ -107,14 +89,14 @@ $balanceAfterText = $walletCurrency === 'MYR'
     : topup_amount_text($balanceAfter, $walletCurrency);
 
 api_response(true, 'TOPUP_PREVIEW_READY', 'Top-up preview ready.', [
-    'country' => 'Bangladesh',
-    'country_code' => 'BD',
+    'country' => (string)($countryConfig['name'] ?? $countryCode),
+    'country_code' => $countryCode,
     'number' => $topupNumber,
     'topup_number' => $topupNumber,
     'operator' => (string)($operatorConfig['name'] ?? $operator),
     'operator_code' => $operator,
     'amount' => $amount,
-    'currency' => 'BDT',
+    'currency' => (string)($countryConfig['currency'] ?? 'BDT'),
     'rate' => $rate,
     'rate_text' => 'RM 1 = ' . number_format($rate, 2, '.', '') . ' BDT',
     'total_myr' => $walletCurrency === 'MYR' ? $walletDebit : 0,

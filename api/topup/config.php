@@ -16,7 +16,7 @@ $auth = auth_require_user(true);
 $user = is_array($auth['user'] ?? null) ? $auth['user'] : [];
 
 if ($method === 'GET') {
-    api_response(true, 'TOPUP_CONFIG_READY', 'Top-up config loaded.', topup_config());
+    api_response(true, 'TOPUP_CONFIG_READY', 'Top-up configuration loaded.', topup_config());
 }
 
 $role = auth_status_value($user['role'] ?? '');
@@ -35,7 +35,7 @@ $candidate = [
     'updated_by_role' => $role,
 ];
 
-$normalized = topup_config_payload($candidate);
+$normalized = topup_config_payload($candidate, false);
 $normalized['updated_at'] = now_ts();
 $normalized['updated_by'] = (string)($user['uid'] ?? '');
 $normalized['updated_by_role'] = $role;
