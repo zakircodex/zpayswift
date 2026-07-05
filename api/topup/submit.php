@@ -7,10 +7,79 @@ require_once dirname(__DIR__) . '/lib/wallet.php';
 require_once dirname(__DIR__) . '/lib/topup.php';
 require_once dirname(__DIR__) . '/lib/topup_config.php';
 
+function topup_submit_response_data(array $row, array $fallback = []): array
+{
+    $requestId = (string)($row['request_id'] ?? $fallback['request_id'] ?? '');
+    $status = (string)($row['status'] ?? $fallback['status'] ?? 'PENDING');
+    $amount = (float)($row['amount'] ?? $fallback['amount'] ?? 0);
+    $walletDebit = (float)($row['wallet_debit_amount'] ?? $fallback['wallet_debit_amount'] ?? $amount);
+
+    return [
+        'request_id' => $requestId,
+        'status' => $status !== '' ? $status : 'PENDING',
+        'topup_number' => (string)($row['topup_number'] ?? $fallback['topup_number'] ?? ''),
+        'operator' => normalize_operator($row['operator'] ?? $fallback['operator'] ?? ''),
+        'amount' => $amount,
+        'amount_bdt' => (float)($row['amount_bdt'] ?? $fallback['amount_bdt'] ?? $amount),
+        'commission_per_1000' => (float)($row['commission_per_1000'] ?? $fallback['commission_per_1000'] ?? 0),
+        'commission_bdt' => (float)($row['commission_bdt'] ?? $fallback['commission_bdt'] ?? 0),
+        'wallet_debit_bdt' => (float)($row['wallet_debit_bdt'] ?? $fallback['wallet_debit_bdt'] ?? $amount),
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => (string)($row['wallet_debit_currency'] ?? $fallback['wallet_debit_currency'] ?? 'BDT'),
+        'rate_used' => (float)($row['rate_used'] ?? $fallback['rate_used'] ?? 0),
+        'total_debit' => $walletDebit,
+    ];
+}
+
+function topup_submit_finish_response(array $payload, ?array $telegramRow = null, array $logPayload = []): void
+{
+    http_response_code(200);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    $canContinue = false;
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+        $canContinue = true;
+    } elseif (function_exists('litespeed_finish_request')) {
+        litespeed_finish_request();
+        $canContinue = true;
+    } else {
+        while (ob_get_level() > 0) {
+            @ob_end_flush();
+        }
+        @flush();
+    }
+
+    if ($canContinue && is_array($telegramRow) && $telegramRow !== []) {
+        ignore_user_abort(true);
+        if ($logPayload !== [] && function_exists('system_log')) {
+            system_log(
+                (string)($logPayload['type'] ?? 'TOPUP_SUBMIT'),
+                (string)($logPayload['ref_id'] ?? ''),
+                (string)($logPayload['message'] ?? 'Topup request created successfully'),
+                (array)($logPayload['context'] ?? [])
+            );
+        }
+        topup_notify_telegram_request($telegramRow);
+    } elseif (is_array($telegramRow) && $telegramRow !== []) {
+        $requestId = (string)($telegramRow['request_id'] ?? '');
+        $bucket = (string)($telegramRow['_bucket'] ?? 'PENDING');
+        if ($requestId !== '' && $bucket !== '') {
+            @fb_patch('TOPUP_REQUESTS/' . $bucket . '/' . $requestId, [
+                'telegram_sent' => false,
+                'telegram_error' => 'Telegram notification deferred after fast app response',
+                'updated_at' => now_ts(),
+            ]);
+        }
+    }
+
+    exit;
+}
+
 api_require_method('POST');
 api_require_app_key();
 
-$auth = auth_require_user(true);
+$auth = auth_require_user(false);
 $user = $auth['user'];
 $uid = (string)$user['uid'];
 $userPhone = (string)$user['phone'];
@@ -29,6 +98,28 @@ if (empty($claim['ok'])) {
 }
 
 $preview = (array)($claim['preview'] ?? []);
+$duplicateRequestId = trim((string)($claim['request_id'] ?? $preview['request_id'] ?? ''));
+if (!empty($claim['duplicate']) && $duplicateRequestId !== '') {
+    $existingRow = topup_find_request($duplicateRequestId);
+    $fallbackData = topup_submit_response_data([], [
+        'request_id' => $duplicateRequestId,
+        'status' => 'PENDING',
+        'topup_number' => (string)($preview['topup_number'] ?? $preview['number'] ?? ''),
+        'operator' => (string)($preview['operator'] ?? ''),
+        'amount' => (float)($preview['amount'] ?? 0),
+        'amount_bdt' => (float)($preview['amount'] ?? 0),
+        'wallet_debit_amount' => (float)($preview['wallet_debit_amount'] ?? $preview['amount'] ?? 0),
+        'wallet_debit_bdt' => (float)($preview['wallet_debit_bdt'] ?? $preview['amount'] ?? 0),
+        'wallet_debit_currency' => (string)($preview['wallet_currency'] ?? $preview['wallet_debit_currency'] ?? 'BDT'),
+        'rate_used' => (float)($preview['rate'] ?? 0),
+    ]);
+    $data = is_array($existingRow)
+        ? topup_submit_response_data($existingRow, $fallbackData)
+        : $fallbackData;
+    $data['idempotent_replay'] = true;
+    api_response(true, 'TOPUP_REQUEST_CREATED', 'Topup request submitted', $data);
+}
+
 $failPreview = static function (string $code, string $message) use ($tokenHash): void {
     topup_mark_preview_failed($tokenHash, $code, $message);
 };
@@ -97,7 +188,13 @@ if (!($hold['ok'] ?? false)) {
 | Save topup request
 |--------------------------------------------------------------------------
 */
-$pendingSaved = create_topup_pending_request(
+$pendingExtra = [
+    'preview_token_hash' => (string)($preview['_token_hash'] ?? ''),
+    'preview_created_at' => (int)($preview['created_at'] ?? 0),
+    'preview_expires_at' => (int)($preview['expires_at'] ?? 0),
+    'verified_by' => topup_clean_text($preview['verified_by'] ?? $body['verified_by'] ?? '', 30),
+];
+$pendingRow = topup_pending_request_row(
     $requestId,
     $uid,
     $userPhone,
@@ -105,13 +202,9 @@ $pendingSaved = create_topup_pending_request(
     $operator,
     $amount,
     $financials,
-    [
-        'preview_token_hash' => (string)($preview['_token_hash'] ?? ''),
-        'preview_created_at' => (int)($preview['created_at'] ?? 0),
-        'preview_expires_at' => (int)($preview['expires_at'] ?? 0),
-        'verified_by' => topup_clean_text($preview['verified_by'] ?? $body['verified_by'] ?? '', 30),
-    ]
+    $pendingExtra
 );
+$pendingSaved = fb_put('TOPUP_REQUESTS/PENDING/' . $requestId, $pendingRow);
 
 if (!$pendingSaved) {
     wallet_refund_hold($uid, $walletDebit, $requestId, 'TOPUP_REFUND');
@@ -141,7 +234,11 @@ if (!$statusSaved) {
 
 topup_mark_preview_used($tokenHash, $requestId);
 
-system_log('TOPUP_SUBMIT', $requestId, 'Topup request created successfully', [
+$deferredLog = [
+    'type' => 'TOPUP_SUBMIT',
+    'ref_id' => $requestId,
+    'message' => 'Topup request created successfully',
+    'context' => [
     'uid' => $uid,
     'operator' => $operator,
     'amount' => $amount,
@@ -153,14 +250,12 @@ system_log('TOPUP_SUBMIT', $requestId, 'Topup request created successfully', [
     'rate_used' => $financials['rate_used'],
     'topup_number_masked' => topup_mask_number($topupNumber),
     'operator_active' => (bool)($runtime['active'] ?? false),
-]);
+    ],
+];
 
-$topupRow = topup_find_request($requestId);
-if (is_array($topupRow)) {
-    topup_notify_telegram_request($topupRow);
-}
-
-api_response(true, 'TOPUP_REQUEST_CREATED', 'Topup request submitted', [
+$topupRow = $pendingRow;
+$topupRow['_bucket'] = 'PENDING';
+$responseData = topup_submit_response_data($topupRow, [
     'request_id' => $requestId,
     'status' => 'PENDING',
     'topup_number' => $topupNumber,
@@ -175,3 +270,11 @@ api_response(true, 'TOPUP_REQUEST_CREATED', 'Topup request submitted', [
     'rate_used' => $financials['rate_used'],
     'total_debit' => $walletDebit,
 ]);
+
+topup_submit_finish_response([
+    'ok' => true,
+    'success' => true,
+    'code' => 'TOPUP_REQUEST_CREATED',
+    'message' => 'Topup request submitted',
+    'data' => $responseData,
+], $topupRow, $deferredLog);

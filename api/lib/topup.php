@@ -18,7 +18,8 @@ function topup_commission_breakdown(
     string $uid,
     float $amount,
     array $user = [],
-    array $roleSettings = []
+    array $roleSettings = [],
+    array $wallet = []
 ): array {
     $amount = round(max(0, $amount), 2);
     $uid = trim($uid);
@@ -54,10 +55,16 @@ function topup_commission_breakdown(
     $commission = round(($amount * $rate) / 1000, 2);
     $commission = min($amount, max(0, $commission));
     $walletDebitBdt = round(max(0, $amount - $commission), 2);
-    $walletBreakdown = wallet_service_bdt_to_native($uid, $walletDebitBdt, $user);
-    $walletDebitAmount = (float)($walletBreakdown['wallet_amount'] ?? $walletDebitBdt);
-    $walletCurrency = (string)($walletBreakdown['wallet_currency'] ?? 'BDT');
-    $rateUsed = (float)($walletBreakdown['rate_used'] ?? 0);
+    if (!$wallet && $uid !== '') {
+        $loadedWallet = fb_get('USER_WALLETS/' . $uid);
+        $wallet = is_array($loadedWallet) ? $loadedWallet : [];
+    }
+
+    $walletCurrency = wallet_account_currency($user, $wallet);
+    $rateUsed = $walletCurrency === 'MYR' ? topup_fast_myr_to_bdt_rate() : 0.0;
+    $walletDebitAmount = $walletCurrency === 'MYR' && $rateUsed > 0
+        ? round($walletDebitBdt / $rateUsed, 2)
+        : $walletDebitBdt;
 
     return [
         'role' => $role,
@@ -74,6 +81,88 @@ function topup_commission_breakdown(
         'total_debit' => $walletDebitAmount,
         'charged_amount' => $walletDebitAmount,
     ];
+}
+
+function topup_fast_myr_to_bdt_rate(): float
+{
+    static $rate = null;
+    if ($rate !== null) {
+        return $rate;
+    }
+
+    $app = function_exists('topup_app_config_row') ? topup_app_config_row() : [];
+    if (is_array($app)) {
+        $rate = topup_rate_from_row($app, [
+            ['MYR_TO_BDT_RATE'],
+            ['RINGGIT_RATE'],
+            ['myr_to_bdt_rate'],
+            ['ringgit_rate'],
+        ]);
+        if ($rate > 0) {
+            return $rate;
+        }
+    }
+
+    $settings = fb_get('MFS_SETTINGS');
+    if (is_array($settings)) {
+        $rate = topup_rate_from_row($settings, [
+            ['rate_myr_bdt'],
+            ['rates', 'myr_to_bdt'],
+            ['rates', 'MYR_TO_BDT'],
+        ]);
+        if ($rate > 0) {
+            return $rate;
+        }
+    }
+
+    $config = fb_get('MFS_CONFIG');
+    if (is_array($config)) {
+        $rate = topup_rate_from_row($config, [
+            ['RATE', 'MYR_TO_BDT'],
+            ['RATES', 'MYR_TO_BDT'],
+            ['myr_to_bdt_rate'],
+            ['rates', 'myr_to_bdt'],
+        ]);
+        if ($rate > 0) {
+            return $rate;
+        }
+    }
+
+    if (defined('MYR_TO_BDT_RATE') && (float)MYR_TO_BDT_RATE > 0) {
+        $rate = round((float)MYR_TO_BDT_RATE, 2);
+        return $rate;
+    }
+
+    $rate = 31.00;
+    return $rate;
+}
+
+function topup_rate_from_row(array $row, array $paths): float
+{
+    foreach ($paths as $path) {
+        $value = $row;
+        foreach ($path as $key) {
+            if (!is_array($value) || !array_key_exists($key, $value)) {
+                $value = null;
+                break;
+            }
+            $value = $value[$key];
+        }
+
+        if (is_numeric($value) && (float)$value > 0) {
+            return round((float)$value, 2);
+        }
+
+        if (is_array($value)) {
+            foreach (['rate', 'value', 'amount', 'bdt'] as $key) {
+                if (isset($value[$key]) && is_numeric($value[$key]) && (float)$value[$key] > 0) {
+                    return round((float)$value[$key], 2);
+                }
+            }
+        }
+    }
+
+    return 0.0;
 }
 
 function topup_telegram_bot_token(): string
@@ -478,7 +567,7 @@ function update_request_status(
     ]);
 }
 
-function create_topup_pending_request(
+function topup_pending_request_row(
     string $requestId,
     string $uid,
     string $userPhone,
@@ -487,7 +576,7 @@ function create_topup_pending_request(
     float $amount,
     array $financials = [],
     array $extra = []
-): bool {
+): array {
     $financials = array_replace([
         'amount_bdt' => $amount,
         'commission_per_1000' => 0,
@@ -535,6 +624,30 @@ function create_topup_pending_request(
             $row[$key] = $value;
         }
     }
+
+    return $row;
+}
+
+function create_topup_pending_request(
+    string $requestId,
+    string $uid,
+    string $userPhone,
+    string $topupNumber,
+    string $operator,
+    float $amount,
+    array $financials = [],
+    array $extra = []
+): bool {
+    $row = topup_pending_request_row(
+        $requestId,
+        $uid,
+        $userPhone,
+        $topupNumber,
+        $operator,
+        $amount,
+        $financials,
+        $extra
+    );
 
     return fb_put('TOPUP_REQUESTS/PENDING/' . $requestId, $row);
 }

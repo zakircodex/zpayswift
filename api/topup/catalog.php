@@ -12,7 +12,7 @@ if (!in_array($method, ['GET', 'POST'], true)) {
     api_response(false, 'METHOD_NOT_ALLOWED', 'Invalid HTTP method', [], 405);
 }
 
-$auth = auth_require_user(true);
+$auth = auth_require_user(false);
 $user = is_array($auth['user'] ?? null) ? $auth['user'] : [];
 
 if ($method === 'GET') {

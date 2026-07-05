@@ -233,7 +233,8 @@ function topup_find_operator_row(array $rows, string $operator): array
 
 function topup_runtime_public_overrides(string $operator): array
 {
-    $runtime = get_operator_runtime($operator);
+    $operator = normalize_operator($operator);
+    $runtime = topup_runtime_row($operator);
     if (!is_array($runtime)) {
         return [];
     }
@@ -246,6 +247,47 @@ function topup_runtime_public_overrides(string $operator): array
         }
     }
     return $out;
+}
+
+function topup_runtime_rows(): array
+{
+    static $loaded = false;
+    static $rows = [];
+
+    if (!$loaded) {
+        $raw = fb_get('OPERATOR_RUNTIME');
+        $rows = is_array($raw) ? $raw : [];
+        $loaded = true;
+    }
+
+    return $rows;
+}
+
+function topup_runtime_row(string $operator): ?array
+{
+    $operator = normalize_operator($operator);
+    if ($operator === '') {
+        return null;
+    }
+
+    $rows = topup_runtime_rows();
+    $row = $rows[$operator] ?? null;
+
+    if (!is_array($row)) {
+        foreach ($rows as $key => $candidate) {
+            if (normalize_operator($key) === $operator && is_array($candidate)) {
+                $row = $candidate;
+                break;
+            }
+        }
+    }
+
+    if (!is_array($row)) {
+        return null;
+    }
+
+    $row['code'] = $operator;
+    return $row;
 }
 
 function topup_normalize_operator_row(array $row, array $fallback = [], string $countryCode = ''): array
@@ -344,20 +386,38 @@ function topup_config_payload(array $stored = [], bool $mergeRuntime = true): ar
 
 function topup_app_config(): array
 {
-    $row = fb_get('APP_CONFIG');
-    $row = is_array($row) ? $row : [];
+    $row = topup_app_config_row();
     return [
         'topup_enabled' => topup_bool($row['topup_enabled'] ?? true, true),
         'maintenance_mode' => topup_bool($row['maintenance_mode'] ?? false, false),
     ];
 }
 
+function topup_app_config_row(): array
+{
+    static $loaded = false;
+    static $row = [];
+
+    if (!$loaded) {
+        $raw = fb_get('APP_CONFIG');
+        $row = is_array($raw) ? $raw : [];
+        $loaded = true;
+    }
+
+    return $row;
+}
+
 function topup_config(): array
 {
+    static $cache = null;
+    if (is_array($cache)) {
+        return $cache;
+    }
+
     $stored = fb_get('TOPUP_CONFIG');
     $payload = topup_config_payload(is_array($stored) ? $stored : [], true);
     $app = topup_app_config();
-    return [
+    $cache = [
         'topup_enabled' => $app['topup_enabled'],
         'maintenance_mode' => $app['maintenance_mode'],
         'countries' => $payload['countries'],
@@ -365,6 +425,8 @@ function topup_config(): array
         'updated_by' => $payload['updated_by'],
         'updated_by_role' => $payload['updated_by_role'],
     ];
+
+    return $cache;
 }
 
 function topup_country_config(string $countryCode): ?array
@@ -684,6 +746,16 @@ function topup_claim_preview_token(string $tokenHash, string $uid): array
         $status = strtoupper((string)($row['status'] ?? 'READY'));
 
         if (!empty($row['used']) || $status === 'USED') {
+            $requestId = trim((string)($row['request_id'] ?? ''));
+            if ($requestId !== '') {
+                $row['_token_hash'] = $tokenHash;
+                return [
+                    'ok' => true,
+                    'duplicate' => true,
+                    'request_id' => $requestId,
+                    'preview' => $row,
+                ];
+            }
             return topup_validation_error('TOPUP_ALREADY_SUBMITTED', 'This top-up preview was already submitted.');
         }
         if ($status === 'PROCESSING') {

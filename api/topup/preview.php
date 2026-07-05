@@ -10,7 +10,7 @@ require_once dirname(__DIR__) . '/lib/topup_config.php';
 api_require_method('POST');
 api_require_app_key();
 
-$auth = auth_require_user(true);
+$auth = auth_require_user(false);
 $user = is_array($auth['user'] ?? null) ? $auth['user'] : [];
 $uid = (string)($user['uid'] ?? '');
 $body = api_read_json_body();
@@ -33,14 +33,18 @@ if (empty($amountValidation['ok'])) {
 
 $countryConfig = (array)($amountValidation['country'] ?? []);
 $operatorConfig = (array)($amountValidation['operator'] ?? []);
-$financials = topup_commission_breakdown($uid, $amount, $user);
-$walletDebit = topup_money($financials['wallet_debit_amount'] ?? $amount);
-$walletCurrency = (string)($financials['wallet_debit_currency'] ?? $financials['wallet_currency'] ?? 'BDT');
-$rate = wallet_myr_to_bdt_rate();
 $wallet = get_user_wallet($uid);
 
 if (!is_array($wallet)) {
     api_response(false, 'WALLET_NOT_FOUND', 'Wallet not found or unavailable.', [], 422);
+}
+
+$financials = topup_commission_breakdown($uid, $amount, $user, [], $wallet);
+$walletDebit = topup_money($financials['wallet_debit_amount'] ?? $amount);
+$walletCurrency = (string)($financials['wallet_debit_currency'] ?? $financials['wallet_currency'] ?? 'BDT');
+$rate = (float)($financials['rate_used'] ?? 0);
+if ($rate <= 0) {
+    $rate = topup_fast_myr_to_bdt_rate();
 }
 
 $available = topup_money($wallet['available_balance'] ?? 0);
