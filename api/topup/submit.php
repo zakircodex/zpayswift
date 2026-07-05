@@ -21,12 +21,25 @@ function topup_submit_response_data(array $row, array $fallback = []): array
         'operator' => normalize_operator($row['operator'] ?? $fallback['operator'] ?? ''),
         'amount' => $amount,
         'amount_bdt' => (float)($row['amount_bdt'] ?? $fallback['amount_bdt'] ?? $amount),
+        'topup_amount_bdt' => (float)($row['topup_amount_bdt'] ?? $row['amount_bdt'] ?? $fallback['topup_amount_bdt'] ?? $fallback['amount_bdt'] ?? $amount),
+        'account_country' => (string)($row['account_country'] ?? $fallback['account_country'] ?? ''),
+        'wallet_currency' => (string)($row['wallet_currency'] ?? $fallback['wallet_currency'] ?? $row['wallet_debit_currency'] ?? $fallback['wallet_debit_currency'] ?? 'BDT'),
         'commission_per_1000' => (float)($row['commission_per_1000'] ?? $fallback['commission_per_1000'] ?? 0),
         'commission_bdt' => (float)($row['commission_bdt'] ?? $fallback['commission_bdt'] ?? 0),
+        'commission_applicable' => (bool)($row['commission_applicable'] ?? $fallback['commission_applicable'] ?? false),
+        'commission_type' => (string)($row['commission_type'] ?? $fallback['commission_type'] ?? 'NONE'),
+        'commission_amount' => (float)($row['commission_amount'] ?? $fallback['commission_amount'] ?? $row['commission_bdt'] ?? $fallback['commission_bdt'] ?? 0),
+        'commission_credit' => (float)($row['commission_credit'] ?? $fallback['commission_credit'] ?? 0),
         'wallet_debit_bdt' => (float)($row['wallet_debit_bdt'] ?? $fallback['wallet_debit_bdt'] ?? $amount),
         'wallet_debit_amount' => $walletDebit,
         'wallet_debit_currency' => (string)($row['wallet_debit_currency'] ?? $fallback['wallet_debit_currency'] ?? 'BDT'),
-        'rate_used' => (float)($row['rate_used'] ?? $fallback['rate_used'] ?? 0),
+        'rate_applicable' => (bool)($row['rate_applicable'] ?? $fallback['rate_applicable'] ?? false),
+        'rate_snapshot' => $row['rate_snapshot'] ?? $fallback['rate_snapshot'] ?? $row['rate_used'] ?? $fallback['rate_used'] ?? null,
+        'rate_used' => (float)($row['rate_used'] ?? $row['rate_snapshot'] ?? $fallback['rate_used'] ?? $fallback['rate_snapshot'] ?? 0),
+        'fee_amount' => (float)($row['fee_amount'] ?? $fallback['fee_amount'] ?? 0),
+        'balance_before' => (float)($row['balance_before'] ?? $fallback['balance_before'] ?? 0),
+        'balance_after' => (float)($row['balance_after'] ?? $fallback['balance_after'] ?? 0),
+        'calculation_version' => (string)($row['calculation_version'] ?? $fallback['calculation_version'] ?? ''),
         'total_debit' => $walletDebit,
     ];
 }
@@ -163,9 +176,42 @@ $runtime = (array)($amountValidation['operator'] ?? []);
 | Create request + hold balance
 |--------------------------------------------------------------------------
 */
+$currentContext = topup_account_context($uid, $user);
+if (empty($currentContext['ok'])) {
+    $failPreview((string)($currentContext['code'] ?? 'ACCOUNT_CURRENCY_INVALID'), (string)($currentContext['message'] ?? 'Your account currency could not be verified.'));
+    api_response(false, (string)($currentContext['code'] ?? 'ACCOUNT_CURRENCY_INVALID'), (string)($currentContext['message'] ?? 'Your account currency could not be verified.'), [], 422);
+}
+
+$financials = is_array($preview['financials'] ?? null) ? (array)$preview['financials'] : [];
+if (!$financials || empty($financials['wallet_debit_amount'])) {
+    $financials = topup_calculate_payment_context($uid, $amount, $user);
+}
+
+if (empty($financials['ok'])) {
+    $failPreview((string)($financials['code'] ?? 'TOPUP_PREVIEW_INVALID'), (string)($financials['message'] ?? 'Top-up preview data is invalid.'));
+    api_response(false, (string)($financials['code'] ?? 'TOPUP_PREVIEW_INVALID'), (string)($financials['message'] ?? 'Top-up preview data is invalid. Please preview again.'), [], 422);
+}
+
+$previewAccountCountry = strtoupper(trim((string)($preview['account_country'] ?? $financials['account_country'] ?? '')));
+$previewWalletCurrency = strtoupper(trim((string)($preview['wallet_currency'] ?? $financials['wallet_currency'] ?? '')));
+if ($previewAccountCountry !== (string)$currentContext['account_country']
+    || $previewWalletCurrency !== (string)$currentContext['wallet_currency']
+) {
+    $failPreview('ACCOUNT_CURRENCY_INVALID', 'Your account currency could not be verified.');
+    api_response(false, 'ACCOUNT_CURRENCY_INVALID', 'Your account currency could not be verified.', [], 422);
+}
+
 $requestId = make_topup_request_id();
-$financials = topup_commission_breakdown($uid, $amount, $user);
-$walletDebit = (float)$financials['wallet_debit_amount'];
+$walletDebit = topup_money($preview['wallet_debit_amount'] ?? $preview['wallet_debit'] ?? $financials['wallet_debit_amount'] ?? 0);
+if ($walletDebit <= 0) {
+    $failPreview('TOPUP_PREVIEW_INVALID', 'Top-up preview debit amount is invalid.');
+    api_response(false, 'TOPUP_PREVIEW_INVALID', 'Top-up preview data is invalid. Please preview again.', [], 422);
+}
+$financials['wallet_debit_amount'] = $walletDebit;
+$financials['wallet_debit'] = $walletDebit;
+$financials['wallet_debit_currency'] = $previewWalletCurrency;
+$financials['wallet_currency'] = $previewWalletCurrency;
+$financials['account_country'] = $previewAccountCountry;
 
 $hold = wallet_hold_amount($uid, $walletDebit, $requestId, 'TOPUP_HOLD');
 if (!($hold['ok'] ?? false)) {
@@ -173,15 +219,21 @@ if (!($hold['ok'] ?? false)) {
 
     if ($code === 'INSUFFICIENT_BALANCE') {
         $failPreview('INSUFFICIENT_BALANCE', 'Not enough balance');
-        api_response(false, 'INSUFFICIENT_BALANCE', 'Not enough balance', [
+        api_response(false, 'INSUFFICIENT_BALANCE', 'Insufficient ' . $previewWalletCurrency . ' balance.', [
             'available_balance' => (float)($hold['available_balance'] ?? 0),
             'required_amount' => (float)($hold['required_amount'] ?? $walletDebit),
+            'currency' => $previewWalletCurrency,
         ], 422);
     }
 
     $failPreview($code, (string)($hold['message'] ?? 'Wallet hold failed'));
     api_response(false, $code, (string)($hold['message'] ?? 'Wallet hold failed'), [], 500);
 }
+
+$actualBalanceAfter = topup_money($hold['available_balance'] ?? $financials['balance_after'] ?? 0);
+$actualBalanceBefore = topup_money($actualBalanceAfter + $walletDebit);
+$financials['balance_before'] = $actualBalanceBefore;
+$financials['balance_after'] = $actualBalanceAfter;
 
 /*
 |--------------------------------------------------------------------------
@@ -193,6 +245,20 @@ $pendingExtra = [
     'preview_created_at' => (int)($preview['created_at'] ?? 0),
     'preview_expires_at' => (int)($preview['expires_at'] ?? 0),
     'verified_by' => topup_clean_text($preview['verified_by'] ?? $body['verified_by'] ?? '', 30),
+    'account_country' => $previewAccountCountry,
+    'wallet_currency' => $previewWalletCurrency,
+    'topup_amount_bdt' => (float)($preview['topup_amount_bdt'] ?? $preview['amount'] ?? $amount),
+    'rate_applicable' => (bool)($preview['rate_applicable'] ?? $financials['rate_applicable'] ?? false),
+    'rate_snapshot' => $preview['rate_snapshot'] ?? $financials['rate_snapshot'] ?? null,
+    'commission_applicable' => (bool)($preview['commission_applicable'] ?? $financials['commission_applicable'] ?? false),
+    'commission_type' => (string)($preview['commission_type'] ?? $financials['commission_type'] ?? 'NONE'),
+    'commission_value_snapshot' => (float)($preview['commission_value_snapshot'] ?? $financials['commission_value_snapshot'] ?? 0),
+    'commission_credit' => (float)($preview['commission_credit'] ?? $financials['commission_credit'] ?? 0),
+    'fee_amount' => (float)($preview['fee_amount'] ?? $financials['fee_amount'] ?? 0),
+    'balance_before' => $actualBalanceBefore,
+    'balance_after' => $actualBalanceAfter,
+    'display_currency' => (string)($preview['display_currency'] ?? $financials['display_currency'] ?? $previewWalletCurrency),
+    'calculation_version' => (string)($preview['calculation_version'] ?? $financials['calculation_version'] ?? topup_calculation_version()),
 ];
 $pendingRow = topup_pending_request_row(
     $requestId,
@@ -248,6 +314,13 @@ $deferredLog = [
     'wallet_debit_amount' => $walletDebit,
     'wallet_debit_currency' => $financials['wallet_debit_currency'],
     'rate_used' => $financials['rate_used'],
+    'account_country' => $financials['account_country'],
+    'wallet_currency' => $financials['wallet_currency'],
+    'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
+    'rate_snapshot' => $financials['rate_snapshot'] ?? null,
+    'commission_applicable' => (bool)($financials['commission_applicable'] ?? false),
+    'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
+    'commission_amount' => (float)($financials['commission_amount'] ?? 0),
     'topup_number_masked' => topup_mask_number($topupNumber),
     'operator_active' => (bool)($runtime['active'] ?? false),
     ],
@@ -268,6 +341,13 @@ $responseData = topup_submit_response_data($topupRow, [
     'wallet_debit_amount' => $walletDebit,
     'wallet_debit_currency' => $financials['wallet_debit_currency'],
     'rate_used' => $financials['rate_used'],
+    'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
+    'rate_snapshot' => $financials['rate_snapshot'] ?? null,
+    'account_country' => $financials['account_country'],
+    'wallet_currency' => $financials['wallet_currency'],
+    'commission_applicable' => (bool)($financials['commission_applicable'] ?? false),
+    'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
+    'commission_amount' => (float)($financials['commission_amount'] ?? 0),
     'total_debit' => $walletDebit,
 ]);
 

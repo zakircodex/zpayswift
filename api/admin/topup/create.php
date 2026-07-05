@@ -40,6 +40,7 @@ $validation = topup_validate_request('BD', $operator, topup_money($amount), true
 if (empty($validation['ok'])) {
     topup_api_error($validation);
 }
+$runtime = (array)($validation['operator'] ?? []);
 
 $adminUid = (string)($adminUser['uid'] ?? '');
 $adminPhone = (string)($adminUser['phone'] ?? '');
@@ -50,6 +51,9 @@ if ($adminUid === '') {
 
 $requestId = make_topup_request_id();
 $financials = topup_commission_breakdown($adminUid, $amount, $adminUser);
+if (empty($financials['ok'])) {
+    api_response(false, (string)($financials['code'] ?? 'TOPUP_CALCULATION_FAILED'), (string)($financials['message'] ?? 'Top-up calculation failed'), [], 422);
+}
 $walletDebit = (float)$financials['wallet_debit_amount'];
 
 $hold = wallet_hold_amount($adminUid, $walletDebit, $requestId, 'TOPUP_HOLD');
@@ -76,14 +80,26 @@ $row = [
     'operator' => $operator,
     'amount' => $amount,
     'amount_bdt' => $amount,
+    'topup_amount_bdt' => (float)($financials['topup_amount_bdt'] ?? $amount),
+    'account_country' => (string)($financials['account_country'] ?? ''),
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
-    'commission_amount' => $financials['commission_bdt'],
+    'commission_applicable' => (bool)($financials['commission_applicable'] ?? false),
+    'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
+    'commission_amount' => (float)($financials['commission_amount'] ?? $financials['commission_bdt'] ?? 0),
+    'commission_credit' => (float)($financials['commission_credit'] ?? 0),
+    'fee_amount' => (float)($financials['fee_amount'] ?? 0),
     'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
     'wallet_debit_amount' => $walletDebit,
     'wallet_debit_currency' => $financials['wallet_debit_currency'],
     'wallet_currency' => $financials['wallet_currency'],
+    'display_currency' => (string)($financials['display_currency'] ?? $financials['wallet_currency']),
+    'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
+    'rate_snapshot' => $financials['rate_snapshot'] ?? null,
     'rate_used' => $financials['rate_used'],
+    'balance_before' => (float)($financials['balance_before'] ?? 0),
+    'balance_after' => (float)($financials['balance_after'] ?? 0),
+    'calculation_version' => (string)($financials['calculation_version'] ?? ''),
     'total_debit_bdt' => $financials['total_debit_bdt'],
     'total_debit' => $walletDebit,
     'charged_amount' => $walletDebit,

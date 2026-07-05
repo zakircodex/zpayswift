@@ -112,6 +112,12 @@ $bundleEnabled = $bundleEnabledProvided ? admin_bool_or_null($body['bundle_enabl
 $minAmount = $minAmountProvided ? (float)$body['min_amount'] : null;
 $maxAmount = $maxAmountProvided ? (float)$body['max_amount'] : null;
 
+if ($commissionProvided && ($commissionPer1000 < 0 || $commissionPer1000 > 1000)) {
+    api_response(false, 'VALIDATION_ERROR', 'Top-Up Commission must be between 0 and 1000 per 1000 BDT', [
+        'field' => 'commission_per_1000',
+    ], 422);
+}
+
 if ($uid === '') {
     api_response(false, 'VALIDATION_ERROR', 'uid is required', ['field' => 'uid'], 422);
 }

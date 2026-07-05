@@ -39,19 +39,28 @@ if (!is_array($wallet)) {
     api_response(false, 'WALLET_NOT_FOUND', 'Wallet not found or unavailable.', [], 422);
 }
 
-$financials = topup_commission_breakdown($uid, $amount, $user, [], $wallet);
-$walletDebit = topup_money($financials['wallet_debit_amount'] ?? $amount);
-$walletCurrency = (string)($financials['wallet_debit_currency'] ?? $financials['wallet_currency'] ?? 'BDT');
-$rate = (float)($financials['rate_used'] ?? 0);
-if ($rate <= 0) {
-    $rate = topup_fast_myr_to_bdt_rate();
+$financials = topup_calculate_payment_context($uid, $amount, $user, $wallet);
+if (empty($financials['ok'])) {
+    $code = (string)($financials['code'] ?? 'TOPUP_PREVIEW_FAILED');
+    $message = (string)($financials['message'] ?? 'Top-up preview could not be loaded.');
+    $status = in_array($code, ['ACCOUNT_CURRENCY_INVALID', 'RATE_UNAVAILABLE', 'RATE_INVALID', 'COMMISSION_CONFIG_INVALID'], true)
+        ? 422
+        : 500;
+    api_response(false, $code, $message, [
+        'account_country' => (string)($financials['account_country'] ?? ''),
+        'wallet_currency' => (string)($financials['wallet_currency'] ?? ''),
+    ], $status);
 }
 
-$available = topup_money($wallet['available_balance'] ?? 0);
-$balanceAfter = topup_money($available - $walletDebit);
+$walletDebit = topup_money($financials['wallet_debit_amount'] ?? $amount);
+$walletCurrency = (string)($financials['wallet_debit_currency'] ?? $financials['wallet_currency'] ?? 'BDT');
+$rate = (float)($financials['rate_snapshot'] ?? $financials['rate_used'] ?? 0);
+
+$available = topup_money($financials['balance_before'] ?? $wallet['available_balance'] ?? 0);
+$balanceAfter = topup_money($financials['balance_after'] ?? ($available - $walletDebit));
 
 if ($available < $walletDebit) {
-    api_response(false, 'INSUFFICIENT_BALANCE', 'Insufficient balance. Please add money first.', [
+    api_response(false, 'INSUFFICIENT_BALANCE', 'Insufficient ' . $walletCurrency . ' balance.', [
         'available_balance' => $available,
         'required_amount' => $walletDebit,
         'currency' => $walletCurrency,
@@ -69,15 +78,30 @@ $previewPayload = [
     'amount' => $amount,
     'currency' => (string)($countryConfig['currency'] ?? 'BDT'),
     'financials' => $financials,
-    'wallet_currency' => $walletCurrency,
-    'wallet_debit_amount' => $walletDebit,
-    'wallet_debit_bdt' => topup_money($financials['wallet_debit_bdt'] ?? $amount),
-    'rate' => $rate,
-    'balance_before' => $available,
-    'balance_after' => $balanceAfter,
     'expires_at' => $now + 300,
     'verified_by' => topup_clean_text($body['verified_by'] ?? '', 30),
 ];
+$previewPayload = array_merge($previewPayload, [
+    'account_country' => (string)$financials['account_country'],
+    'wallet_currency' => $walletCurrency,
+    'wallet_debit' => $walletDebit,
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_bdt' => topup_money($financials['wallet_debit_bdt'] ?? $amount),
+    'topup_amount_bdt' => $amount,
+    'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
+    'rate_snapshot' => ($financials['rate_snapshot'] ?? null),
+    'rate' => $rate,
+    'commission_applicable' => (bool)($financials['commission_applicable'] ?? false),
+    'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
+    'commission_value_snapshot' => (float)($financials['commission_value_snapshot'] ?? $financials['commission_per_1000'] ?? 0),
+    'commission_amount' => (float)($financials['commission_amount'] ?? 0),
+    'commission_credit' => (float)($financials['commission_credit'] ?? 0),
+    'fee_amount' => (float)($financials['fee_amount'] ?? 0),
+    'balance_before' => $available,
+    'balance_after' => $balanceAfter,
+    'display_currency' => (string)($financials['display_currency'] ?? $walletCurrency),
+    'calculation_version' => (string)($financials['calculation_version'] ?? topup_calculation_version()),
+]);
 
 $previewToken = topup_create_preview_token($previewPayload);
 if ($previewToken === '') {
@@ -91,6 +115,10 @@ $feeText = $walletCurrency === 'MYR' ? 'RM 0.00' : topup_amount_text(0, $walletC
 $balanceAfterText = $walletCurrency === 'MYR'
     ? topup_amount_text($balanceAfter, 'MYR')
     : topup_amount_text($balanceAfter, $walletCurrency);
+$rateApplicable = (bool)($financials['rate_applicable'] ?? false);
+$commissionApplicable = (bool)($financials['commission_applicable'] ?? false);
+$commissionAmount = (float)($financials['commission_amount'] ?? 0);
+$feeAmount = (float)($financials['fee_amount'] ?? 0);
 
 api_response(true, 'TOPUP_PREVIEW_READY', 'Top-up preview ready.', [
     'country' => (string)($countryConfig['name'] ?? $countryCode),
@@ -100,19 +128,35 @@ api_response(true, 'TOPUP_PREVIEW_READY', 'Top-up preview ready.', [
     'operator' => (string)($operatorConfig['name'] ?? $operator),
     'operator_code' => $operator,
     'amount' => $amount,
+    'amount_bdt' => $amount,
+    'topup_amount_bdt' => $amount,
     'currency' => (string)($countryConfig['currency'] ?? 'BDT'),
-    'rate' => $rate,
-    'rate_text' => 'RM 1 = ' . number_format($rate, 2, '.', '') . ' BDT',
+    'account_country' => (string)$financials['account_country'],
+    'wallet_currency' => $walletCurrency,
+    'display_currency' => (string)($financials['display_currency'] ?? $walletCurrency),
+    'rate_applicable' => $rateApplicable,
+    'rate_snapshot' => $rateApplicable ? $rate : null,
+    'rate' => $rateApplicable ? $rate : null,
+    'rate_text' => $rateApplicable ? ('RM 1 = ' . number_format($rate, 2, '.', '') . ' BDT') : '',
+    'commission_applicable' => $commissionApplicable,
+    'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
+    'commission_value' => (float)($financials['commission_value'] ?? 0),
+    'commission_amount' => $commissionAmount,
+    'commission_text' => $commissionApplicable ? topup_amount_text($commissionAmount, 'BDT') : '',
+    'fee_amount' => $feeAmount,
     'total_myr' => $walletCurrency === 'MYR' ? $walletDebit : 0,
+    'wallet_debit' => $walletDebit,
+    'wallet_debit_amount' => $walletDebit,
+    'wallet_debit_bdt' => (float)($financials['wallet_debit_bdt'] ?? $amount),
     'total_pay' => $walletDebit,
     'total_pay_text' => $totalPayText,
     'fee_myr' => 0,
-    'fee' => 0,
+    'fee' => $feeAmount,
     'fee_text' => $feeText,
     'balance_before' => $available,
     'balance_after' => $balanceAfter,
     'balance_after_text' => $balanceAfterText,
-    'wallet_currency' => $walletCurrency,
+    'calculation_version' => (string)($financials['calculation_version'] ?? topup_calculation_version()),
     'preview_token' => $previewToken,
     'expires_in' => 300,
 ]);

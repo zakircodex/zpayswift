@@ -1897,8 +1897,18 @@ function user_proxy_create_topup_request(string $uid, array $body): array
         ];
     }
 
+    $walletRow = user_proxy_load_wallet($uid);
+    $financials = topup_calculate_payment_context($uid, $amount, $userRow, $walletRow, $roleSettings);
+    if (empty($financials['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($financials['code'] ?? 'TOPUP_CALCULATION_FAILED'),
+            'message' => (string)($financials['message'] ?? 'Top-up calculation failed'),
+            'data' => [],
+        ];
+    }
+
     $requestId = user_proxy_make_id('TR');
-    $financials = topup_commission_breakdown($uid, $amount, $userRow, $roleSettings);
     $walletDebit = (float)$financials['wallet_debit_amount'];
 
     $hold = user_proxy_hold_balance(
@@ -1929,14 +1939,26 @@ function user_proxy_create_topup_request(string $uid, array $body): array
         'operator_name' => user_proxy_operator_name($operator),
         'amount' => $amount,
         'amount_bdt' => $amount,
+        'topup_amount_bdt' => (float)($financials['topup_amount_bdt'] ?? $amount),
+        'account_country' => (string)($financials['account_country'] ?? ''),
         'commission_per_1000' => $financials['commission_per_1000'],
         'commission_bdt' => $financials['commission_bdt'],
-        'commission_amount' => $financials['commission_bdt'],
+        'commission_applicable' => (bool)($financials['commission_applicable'] ?? false),
+        'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
+        'commission_amount' => (float)($financials['commission_amount'] ?? $financials['commission_bdt'] ?? 0),
+        'commission_credit' => (float)($financials['commission_credit'] ?? 0),
+        'fee_amount' => (float)($financials['fee_amount'] ?? 0),
         'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
         'wallet_debit_amount' => $walletDebit,
         'wallet_debit_currency' => $financials['wallet_debit_currency'],
         'wallet_currency' => $financials['wallet_currency'],
+        'display_currency' => (string)($financials['display_currency'] ?? $financials['wallet_currency']),
+        'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
+        'rate_snapshot' => $financials['rate_snapshot'] ?? null,
         'rate_used' => $financials['rate_used'],
+        'balance_before' => (float)($financials['balance_before'] ?? 0),
+        'balance_after' => (float)($financials['balance_after'] ?? 0),
+        'calculation_version' => (string)($financials['calculation_version'] ?? ''),
         'total_debit_bdt' => $financials['total_debit_bdt'],
         'total_debit' => $walletDebit,
         'charged_amount' => $walletDebit,

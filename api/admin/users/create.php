@@ -67,6 +67,12 @@ $commissionPer1000 = $commissionProvided
     ? (float)$body['commission_per_1000']
     : role_default_commission_per_1000($role);
 
+if ($commissionPer1000 < 0 || $commissionPer1000 > 1000) {
+    api_response(false, 'VALIDATION_ERROR', 'Top-Up Commission must be between 0 and 1000 per 1000 BDT', [
+        'field' => 'commission_per_1000',
+    ], 422);
+}
+
 if ($name === '') {
     api_response(false, 'VALIDATION_ERROR', 'Name is required', ['field' => 'name'], 422);
 }
