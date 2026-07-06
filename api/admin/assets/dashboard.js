@@ -1821,7 +1821,7 @@ async function openBundleOfferModal(offerId = ''){
           <select id="bundleOfferOperator" class="input">
             <option value="GP" ${String(item.operator || '').toUpperCase() === 'GP' ? 'selected' : ''}>GP</option>
             <option value="ROBI" ${String(item.operator || '').toUpperCase() === 'ROBI' ? 'selected' : ''}>ROBI</option>
-            <option value="BL" ${String(item.operator || '').toUpperCase() === 'BL' ? 'selected' : ''}>BL</option>
+            <option value="BL" ${String(item.operator || '').toUpperCase() === 'BL' ? 'selected' : ''}>Banglalink</option>
             <option value="AIRTEL" ${String(item.operator || '').toUpperCase() === 'AIRTEL' ? 'selected' : ''}>AIRTEL</option>
             <option value="TT" ${String(item.operator || '').toUpperCase() === 'TT' ? 'selected' : ''}>TT</option>
           </select>
@@ -4138,7 +4138,7 @@ function openDirectTopupModal(){
           <select id="directTopupOperator">
             <option value="GP">GP</option>
             <option value="ROBI">ROBI</option>
-            <option value="BL">BL</option>
+            <option value="BL">Banglalink</option>
             <option value="AIRTEL">AIRTEL</option>
             <option value="TT">TT</option>
           </select>

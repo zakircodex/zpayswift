@@ -1842,13 +1842,18 @@ function user_proxy_create_topup_request(string $uid, array $body): array
         ];
     }
 
-    $topupNumber = user_proxy_normalize_phone((string)($body['topup_number'] ?? ''));
+    $countryCode = function_exists('topup_country_code') ? topup_country_code($body['country_code'] ?? $body['country'] ?? 'BD') : 'BD';
+    $topupNumber = function_exists('topup_normalize_number_for_country')
+        ? topup_normalize_number_for_country($countryCode, (string)($body['topup_number'] ?? $body['number'] ?? ''))
+        : user_proxy_normalize_phone((string)($body['topup_number'] ?? ''));
     $operator = user_proxy_operator_code((string)($body['operator'] ?? ''));
     $amount = user_proxy_round_money((float)($body['amount'] ?? 0));
     $pin = trim((string)($body['pin'] ?? ''));
     $note = trim((string)($body['note'] ?? ''));
 
-    if ($topupNumber === '' || strlen($topupNumber) < 10) {
+    if ((function_exists('topup_is_valid_number_for_country') && !topup_is_valid_number_for_country($countryCode, $topupNumber))
+        || (!function_exists('topup_is_valid_number_for_country') && ($topupNumber === '' || strlen($topupNumber) < 10))
+    ) {
         return [
             'ok' => false,
             'code' => 'VALIDATION_ERROR',
@@ -1877,6 +1882,18 @@ function user_proxy_create_topup_request(string $uid, array $body): array
         ];
     }
 
+    if (function_exists('topup_validate_request')) {
+        $topupValidation = topup_validate_request($countryCode, $operator, $amount, true, true);
+        if (empty($topupValidation['ok'])) {
+            return [
+                'ok' => false,
+                'code' => (string)($topupValidation['code'] ?? 'VALIDATION_ERROR'),
+                'message' => (string)($topupValidation['message'] ?? 'Invalid top-up request'),
+                'data' => (array)($topupValidation['data'] ?? []),
+            ];
+        }
+    }
+
     if ($pin === '') {
         return [
             'ok' => false,
@@ -1898,7 +1915,7 @@ function user_proxy_create_topup_request(string $uid, array $body): array
     }
 
     $walletRow = user_proxy_load_wallet($uid);
-    $financials = topup_calculate_payment_context($uid, $amount, $userRow, $walletRow, $roleSettings);
+    $financials = topup_calculate_payment_context($uid, $amount, $userRow, $walletRow, $roleSettings, $countryCode);
     if (empty($financials['ok'])) {
         return [
             'ok' => false,
@@ -1937,9 +1954,18 @@ function user_proxy_create_topup_request(string $uid, array $body): array
         'topup_number' => $topupNumber,
         'operator' => $operator,
         'operator_name' => user_proxy_operator_name($operator),
+        'country_code' => $countryCode,
+        'execution_mode' => function_exists('topup_operator_execution_mode') ? topup_operator_execution_mode($countryCode, $operator) : 'WORKER_USSD',
+        'worker_claimable' => function_exists('topup_operator_worker_claimable') ? topup_operator_worker_claimable($countryCode, $operator) : true,
+        'WORKER_CLAIMABLE' => function_exists('topup_operator_worker_claimable') ? topup_operator_worker_claimable($countryCode, $operator) : true,
+        'manual_telegram_required' => function_exists('topup_operator_worker_claimable') ? !topup_operator_worker_claimable($countryCode, $operator) : false,
         'amount' => $amount,
-        'amount_bdt' => $amount,
-        'topup_amount_bdt' => (float)($financials['topup_amount_bdt'] ?? $amount),
+        'topup_amount' => (float)($financials['topup_amount'] ?? $amount),
+        'topup_currency' => (string)($financials['topup_currency'] ?? ($countryCode === 'MY' ? 'MYR' : 'BDT')),
+        'amount_bdt' => (float)($financials['amount_bdt'] ?? 0),
+        'topup_amount_bdt' => (float)($financials['topup_amount_bdt'] ?? 0),
+        'amount_myr' => (float)($financials['amount_myr'] ?? 0),
+        'topup_amount_myr' => (float)($financials['topup_amount_myr'] ?? 0),
         'account_country' => (string)($financials['account_country'] ?? ''),
         'commission_per_1000' => $financials['commission_per_1000'],
         'commission_bdt' => $financials['commission_bdt'],
@@ -1949,6 +1975,7 @@ function user_proxy_create_topup_request(string $uid, array $body): array
         'commission_credit' => (float)($financials['commission_credit'] ?? 0),
         'fee_amount' => (float)($financials['fee_amount'] ?? 0),
         'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+        'wallet_debit_myr' => (float)($financials['wallet_debit_myr'] ?? 0),
         'wallet_debit_amount' => $walletDebit,
         'wallet_debit_currency' => $financials['wallet_debit_currency'],
         'wallet_currency' => $financials['wallet_currency'],

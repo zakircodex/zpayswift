@@ -17,14 +17,23 @@ function topup_now(): int
 
 function topup_calculation_version(): string
 {
-    return 'TOPUP_ACCOUNT_COUNTRY_V2';
+    return 'TOPUP_DESTINATION_CURRENCY_V3';
 }
 
-function topup_legacy_financials(float $amount, array $user = [], array $wallet = []): array
+function topup_destination_currency(string $countryCode): string
+{
+    return topup_country_code($countryCode) === 'MY' ? 'MYR' : 'BDT';
+}
+
+function topup_legacy_financials(float $amount, array $user = [], array $wallet = [], string $topupCountryCode = 'BD'): array
 {
     $amount = round(max(0, $amount), 2);
     $currency = function_exists('wallet_account_currency') ? wallet_account_currency($user, $wallet) : 'BDT';
     $currency = in_array($currency, ['MYR', 'BDT'], true) ? $currency : 'BDT';
+    $topupCountryCode = topup_country_code($topupCountryCode);
+    $topupCurrency = topup_destination_currency($topupCountryCode);
+    $amountBdt = $topupCurrency === 'BDT' ? $amount : 0.0;
+    $amountMyr = $topupCurrency === 'MYR' ? $amount : 0.0;
 
     return [
         'ok' => false,
@@ -35,8 +44,13 @@ function topup_legacy_financials(float $amount, array $user = [], array $wallet 
         'wallet_currency' => $currency,
         'wallet_debit_currency' => $currency,
         'display_currency' => $currency,
-        'amount_bdt' => $amount,
-        'topup_amount_bdt' => $amount,
+        'topup_country_code' => $topupCountryCode,
+        'topup_currency' => $topupCurrency,
+        'topup_amount' => $amount,
+        'amount_bdt' => $amountBdt,
+        'topup_amount_bdt' => $amountBdt,
+        'amount_myr' => $amountMyr,
+        'topup_amount_myr' => $amountMyr,
         'commission_per_1000' => 0.0,
         'commission_bdt' => 0.0,
         'commission_amount' => 0.0,
@@ -272,10 +286,13 @@ function topup_calculate_payment_context(
     float $amount,
     array $user = [],
     array $wallet = [],
-    array $roleSettings = []
+    array $roleSettings = [],
+    string $topupCountryCode = 'BD'
 ): array {
     $amount = round(max(0, $amount), 2);
-    $base = topup_legacy_financials($amount, $user, $wallet);
+    $topupCountryCode = topup_country_code($topupCountryCode);
+    $topupCurrency = topup_destination_currency($topupCountryCode);
+    $base = topup_legacy_financials($amount, $user, $wallet, $topupCountryCode);
 
     if ($amount <= 0) {
         return array_merge($base, [
@@ -304,9 +321,31 @@ function topup_calculate_payment_context(
     $rateSnapshot = null;
     $convertedAmount = 0.0;
     $walletDebit = $amount;
-    $walletDebitBdt = $amount;
+    $walletDebitBdt = $topupCurrency === 'BDT' ? $amount : 0.0;
+    $walletDebitMyr = $topupCurrency === 'MYR' ? $amount : 0.0;
+    $topupAmountBdt = $topupCurrency === 'BDT' ? $amount : 0.0;
+    $topupAmountMyr = $topupCurrency === 'MYR' ? $amount : 0.0;
 
-    if ($accountCountry === 'MY' && $walletCurrency === 'MYR') {
+    if ($topupCountryCode === 'MY') {
+        if ($accountCountry !== 'MY' || $walletCurrency !== 'MYR') {
+            return array_merge($base, [
+                'ok' => false,
+                'code' => 'ACCOUNT_CURRENCY_INVALID',
+                'message' => 'Your account currency could not be verified.',
+                'account_country' => $accountCountry,
+                'wallet_currency' => $walletCurrency,
+                'topup_country_code' => $topupCountryCode,
+                'topup_currency' => $topupCurrency,
+            ]);
+        }
+
+        $rateApplicable = false;
+        $rateSnapshot = null;
+        $convertedAmount = 0.0;
+        $walletDebit = $amount;
+        $walletDebitBdt = 0.0;
+        $walletDebitMyr = $amount;
+    } elseif ($accountCountry === 'MY' && $walletCurrency === 'MYR') {
         $rate = topup_configured_myr_to_bdt_rate();
         if ($rate <= 0) {
             return array_merge($base, [
@@ -334,6 +373,7 @@ function topup_calculate_payment_context(
         $convertedAmount = round($amount / $rateSnapshot, 2);
         $walletDebit = $convertedAmount;
         $walletDebitBdt = $amount;
+        $walletDebitMyr = $convertedAmount;
     } elseif ($accountCountry === 'BD' && $walletCurrency === 'BDT') {
         $commission = topup_commission_from_settings($amount, $role, (array)$context['role_settings']);
         if (empty($commission['ok'])) {
@@ -349,6 +389,16 @@ function topup_calculate_payment_context(
         $commissionApplicable = $commissionAmount > 0;
         $walletDebitBdt = round(max(0, $amount - $commissionAmount), 2);
         $walletDebit = $walletDebitBdt;
+    } else {
+        return array_merge($base, [
+            'ok' => false,
+            'code' => 'ACCOUNT_CURRENCY_INVALID',
+            'message' => 'Your account currency could not be verified.',
+            'account_country' => $accountCountry,
+            'wallet_currency' => $walletCurrency,
+            'topup_country_code' => $topupCountryCode,
+            'topup_currency' => $topupCurrency,
+        ]);
     }
 
     $balanceAfter = round($balanceBefore - $walletDebit, 2);
@@ -362,8 +412,13 @@ function topup_calculate_payment_context(
         'wallet_currency' => $walletCurrency,
         'wallet_debit_currency' => $walletCurrency,
         'display_currency' => $walletCurrency,
-        'amount_bdt' => $amount,
-        'topup_amount_bdt' => $amount,
+        'topup_country_code' => $topupCountryCode,
+        'topup_currency' => $topupCurrency,
+        'topup_amount' => $amount,
+        'amount_bdt' => $topupAmountBdt,
+        'topup_amount_bdt' => $topupAmountBdt,
+        'amount_myr' => $topupAmountMyr,
+        'topup_amount_myr' => $topupAmountMyr,
         'rate_applicable' => $rateApplicable,
         'rate_snapshot' => $rateSnapshot,
         'rate_used' => $rateSnapshot !== null ? $rateSnapshot : 0.0,
@@ -381,6 +436,7 @@ function topup_calculate_payment_context(
         'wallet_debit' => $walletDebit,
         'wallet_debit_amount' => $walletDebit,
         'wallet_debit_bdt' => $walletDebitBdt,
+        'wallet_debit_myr' => $walletDebitMyr,
         'total_debit_bdt' => $walletDebitBdt,
         'total_debit' => $walletDebit,
         'charged_amount' => $walletDebit,
@@ -467,6 +523,22 @@ function topup_telegram_h($value): string
 function topup_telegram_money($value): string
 {
     return number_format((float)$value, 2, '.', '');
+}
+
+function topup_telegram_amount_line(array $row): string
+{
+    $currency = strtoupper(trim((string)($row['topup_currency'] ?? $row['currency'] ?? '')));
+    if ($currency === '') {
+        $currency = topup_destination_currency((string)($row['country_code'] ?? 'BD'));
+    }
+
+    if ($currency === 'MYR') {
+        $amount = (float)($row['topup_amount_myr'] ?? $row['amount_myr'] ?? $row['topup_amount'] ?? $row['amount'] ?? 0);
+        return 'Amount MYR: RM ' . topup_telegram_money($amount);
+    }
+
+    $amount = (float)($row['topup_amount_bdt'] ?? $row['amount_bdt'] ?? $row['topup_amount'] ?? $row['amount'] ?? 0);
+    return 'Amount BDT: BDT ' . topup_telegram_money($amount);
 }
 
 function topup_telegram_time($ts = null): string
@@ -638,7 +710,7 @@ function topup_telegram_build_request_message(array $row): string
     $role = topup_telegram_effective_role($row);
     $topupNumber = (string)($row['topup_number'] ?? '');
     $operator = (string)($row['operator'] ?? '');
-    $amount = (float)($row['amount'] ?? 0);
+    $amountLine = topup_telegram_amount_line($row);
     $createdAt = (int)($row['created_at'] ?? topup_now());
 
     return "🔔 <b>New Topup Request</b>\n\n"
@@ -648,7 +720,7 @@ function topup_telegram_build_request_message(array $row): string
         . "User Role: <b>" . topup_telegram_h($role) . "</b>\n\n"
         . "Topup Number: <code>" . topup_telegram_h($topupNumber) . "</code>\n"
         . "Operator: <b>" . topup_telegram_h($operator) . "</b>\n"
-        . "Amount BDT: BDT " . topup_telegram_money($amount) . "\n"
+        . topup_telegram_h($amountLine) . "\n"
         . "Status: <b>PENDING</b>\n"
         . "Created: " . topup_telegram_h(topup_telegram_time($createdAt));
 }
@@ -662,7 +734,7 @@ function topup_telegram_build_status_message(array $row, string $status, string 
     $userPhone = (string)($row['user_phone'] ?? '');
     $topupNumber = (string)($row['topup_number'] ?? '');
     $operator = (string)($row['operator'] ?? '');
-    $amount = (float)($row['amount'] ?? 0);
+    $amountLine = topup_telegram_amount_line($row);
 
     return $icon . " <b>Topup " . topup_telegram_h($status) . "</b>\n\n"
         . "Request ID: <code>" . topup_telegram_h($requestId) . "</code>\n"
@@ -670,7 +742,7 @@ function topup_telegram_build_status_message(array $row, string $status, string 
         . "User Phone: <code>" . topup_telegram_h($userPhone) . "</code>\n\n"
         . "Topup Number: <code>" . topup_telegram_h($topupNumber) . "</code>\n"
         . "Operator: <b>" . topup_telegram_h($operator) . "</b>\n"
-        . "Amount BDT: BDT " . topup_telegram_money($amount) . "\n\n"
+        . topup_telegram_h($amountLine) . "\n\n"
         . "Message: " . topup_telegram_h($message !== '' ? $message : $status) . "\n"
         . "Updated: " . topup_telegram_h(topup_telegram_time());
 }
@@ -848,6 +920,10 @@ function topup_pending_request_row(
     $financials = array_replace([
         'amount_bdt' => $amount,
         'topup_amount_bdt' => $amount,
+        'amount_myr' => 0,
+        'topup_amount_myr' => 0,
+        'topup_amount' => $amount,
+        'topup_currency' => 'BDT',
         'account_country' => '',
         'commission_per_1000' => 0,
         'commission_bdt' => 0,
@@ -893,9 +969,15 @@ function topup_pending_request_row(
         'WORKER_CLAIMABLE' => $workerClaimable,
         'manual_telegram_required' => !$workerClaimable,
         'amount' => $amount,
+        'topup_amount' => (float)$financials['topup_amount'],
+        'topup_currency' => (string)$financials['topup_currency'],
+        'TOPUP_CURRENCY' => (string)$financials['topup_currency'],
         'amount_bdt' => (float)$financials['amount_bdt'],
         'topup_amount_bdt' => (float)$financials['topup_amount_bdt'],
         'TOPUP_AMOUNT_BDT' => (float)$financials['topup_amount_bdt'],
+        'amount_myr' => (float)$financials['amount_myr'],
+        'topup_amount_myr' => (float)$financials['topup_amount_myr'],
+        'TOPUP_AMOUNT_MYR' => (float)$financials['topup_amount_myr'],
         'account_country' => (string)$financials['account_country'],
         'ACCOUNT_COUNTRY' => (string)$financials['account_country'],
         'display_currency' => (string)$financials['display_currency'],
@@ -912,6 +994,7 @@ function topup_pending_request_row(
         'fee_amount' => (float)$financials['fee_amount'],
         'FEE_AMOUNT' => (float)$financials['fee_amount'],
         'wallet_debit_bdt' => (float)$financials['wallet_debit_bdt'],
+        'wallet_debit_myr' => (float)($financials['wallet_debit_myr'] ?? 0),
         'wallet_debit_amount' => (float)$financials['wallet_debit_amount'],
         'wallet_debit' => (float)$financials['wallet_debit_amount'],
         'WALLET_DEBIT' => (float)$financials['wallet_debit_amount'],
@@ -1001,8 +1084,12 @@ function topup_write_history(array $done): void
         'topup_number' => (string)($done['topup_number'] ?? ''),
         'operator' => (string)($done['operator'] ?? ''),
         'amount' => (float)($done['amount'] ?? 0),
+        'topup_amount' => (float)($done['topup_amount'] ?? $done['amount'] ?? 0),
+        'topup_currency' => (string)($done['topup_currency'] ?? $done['currency'] ?? 'BDT'),
         'amount_bdt' => (float)($done['amount_bdt'] ?? $done['amount'] ?? 0),
         'topup_amount_bdt' => (float)($done['topup_amount_bdt'] ?? $done['amount_bdt'] ?? $done['amount'] ?? 0),
+        'amount_myr' => (float)($done['amount_myr'] ?? 0),
+        'topup_amount_myr' => (float)($done['topup_amount_myr'] ?? $done['amount_myr'] ?? 0),
         'account_country' => (string)($done['account_country'] ?? ''),
         'display_currency' => (string)($done['display_currency'] ?? $done['wallet_currency'] ?? $done['wallet_debit_currency'] ?? 'BDT'),
         'commission_per_1000' => (float)($done['commission_per_1000'] ?? 0),
@@ -1013,6 +1100,7 @@ function topup_write_history(array $done): void
         'commission_credit' => (float)($done['commission_credit'] ?? 0),
         'fee_amount' => (float)($done['fee_amount'] ?? 0),
         'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $done['wallet_hold_amount'] ?? $done['amount'] ?? 0),
+        'wallet_debit_myr' => (float)($done['wallet_debit_myr'] ?? 0),
         'wallet_debit_amount' => (float)($done['wallet_debit_amount'] ?? $done['wallet_hold_amount'] ?? $done['wallet_debit_bdt'] ?? $done['amount'] ?? 0),
         'wallet_debit' => (float)($done['wallet_debit_amount'] ?? $done['wallet_hold_amount'] ?? $done['wallet_debit_bdt'] ?? $done['amount'] ?? 0),
         'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),

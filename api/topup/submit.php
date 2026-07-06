@@ -20,8 +20,12 @@ function topup_submit_response_data(array $row, array $fallback = []): array
         'topup_number' => (string)($row['topup_number'] ?? $fallback['topup_number'] ?? ''),
         'operator' => normalize_operator($row['operator'] ?? $fallback['operator'] ?? ''),
         'amount' => $amount,
+        'topup_amount' => (float)($row['topup_amount'] ?? $fallback['topup_amount'] ?? $amount),
+        'topup_currency' => (string)($row['topup_currency'] ?? $fallback['topup_currency'] ?? $row['currency'] ?? $fallback['currency'] ?? 'BDT'),
         'amount_bdt' => (float)($row['amount_bdt'] ?? $fallback['amount_bdt'] ?? $amount),
         'topup_amount_bdt' => (float)($row['topup_amount_bdt'] ?? $row['amount_bdt'] ?? $fallback['topup_amount_bdt'] ?? $fallback['amount_bdt'] ?? $amount),
+        'amount_myr' => (float)($row['amount_myr'] ?? $fallback['amount_myr'] ?? 0),
+        'topup_amount_myr' => (float)($row['topup_amount_myr'] ?? $row['amount_myr'] ?? $fallback['topup_amount_myr'] ?? $fallback['amount_myr'] ?? 0),
         'account_country' => (string)($row['account_country'] ?? $fallback['account_country'] ?? ''),
         'wallet_currency' => (string)($row['wallet_currency'] ?? $fallback['wallet_currency'] ?? $row['wallet_debit_currency'] ?? $fallback['wallet_debit_currency'] ?? 'BDT'),
         'commission_per_1000' => (float)($row['commission_per_1000'] ?? $fallback['commission_per_1000'] ?? 0),
@@ -31,6 +35,7 @@ function topup_submit_response_data(array $row, array $fallback = []): array
         'commission_amount' => (float)($row['commission_amount'] ?? $fallback['commission_amount'] ?? $row['commission_bdt'] ?? $fallback['commission_bdt'] ?? 0),
         'commission_credit' => (float)($row['commission_credit'] ?? $fallback['commission_credit'] ?? 0),
         'wallet_debit_bdt' => (float)($row['wallet_debit_bdt'] ?? $fallback['wallet_debit_bdt'] ?? $amount),
+        'wallet_debit_myr' => (float)($row['wallet_debit_myr'] ?? $fallback['wallet_debit_myr'] ?? 0),
         'wallet_debit_amount' => $walletDebit,
         'wallet_debit_currency' => (string)($row['wallet_debit_currency'] ?? $fallback['wallet_debit_currency'] ?? 'BDT'),
         'rate_applicable' => (bool)($row['rate_applicable'] ?? $fallback['rate_applicable'] ?? false),
@@ -120,9 +125,15 @@ if (!empty($claim['duplicate']) && $duplicateRequestId !== '') {
         'topup_number' => (string)($preview['topup_number'] ?? $preview['number'] ?? ''),
         'operator' => (string)($preview['operator'] ?? ''),
         'amount' => (float)($preview['amount'] ?? 0),
-        'amount_bdt' => (float)($preview['amount'] ?? 0),
+        'topup_amount' => (float)($preview['topup_amount'] ?? $preview['amount'] ?? 0),
+        'topup_currency' => (string)($preview['topup_currency'] ?? $preview['currency'] ?? 'BDT'),
+        'amount_bdt' => (float)($preview['amount_bdt'] ?? 0),
+        'topup_amount_bdt' => (float)($preview['topup_amount_bdt'] ?? $preview['amount_bdt'] ?? 0),
+        'amount_myr' => (float)($preview['amount_myr'] ?? 0),
+        'topup_amount_myr' => (float)($preview['topup_amount_myr'] ?? $preview['amount_myr'] ?? 0),
         'wallet_debit_amount' => (float)($preview['wallet_debit_amount'] ?? $preview['amount'] ?? 0),
-        'wallet_debit_bdt' => (float)($preview['wallet_debit_bdt'] ?? $preview['amount'] ?? 0),
+        'wallet_debit_bdt' => (float)($preview['wallet_debit_bdt'] ?? 0),
+        'wallet_debit_myr' => (float)($preview['wallet_debit_myr'] ?? 0),
         'wallet_debit_currency' => (string)($preview['wallet_currency'] ?? $preview['wallet_debit_currency'] ?? 'BDT'),
         'rate_used' => (float)($preview['rate'] ?? 0),
     ]);
@@ -198,7 +209,7 @@ if (empty($currentContext['ok'])) {
 
 $financials = is_array($preview['financials'] ?? null) ? (array)$preview['financials'] : [];
 if (!$financials || empty($financials['wallet_debit_amount'])) {
-    $financials = topup_calculate_payment_context($uid, $amount, $user);
+    $financials = topup_calculate_payment_context($uid, $amount, $user, [], [], $countryCode);
 }
 
 if (empty($financials['ok'])) {
@@ -262,7 +273,11 @@ $pendingExtra = [
     'verified_by' => topup_clean_text($preview['verified_by'] ?? $body['verified_by'] ?? '', 30),
     'account_country' => $previewAccountCountry,
     'wallet_currency' => $previewWalletCurrency,
-    'topup_amount_bdt' => (float)($preview['topup_amount_bdt'] ?? $preview['amount'] ?? $amount),
+    'topup_amount' => (float)($preview['topup_amount'] ?? $preview['amount'] ?? $amount),
+    'topup_currency' => (string)($preview['topup_currency'] ?? $preview['currency'] ?? $financials['topup_currency'] ?? 'BDT'),
+    'topup_amount_bdt' => (float)($preview['topup_amount_bdt'] ?? $financials['topup_amount_bdt'] ?? 0),
+    'amount_myr' => (float)($preview['amount_myr'] ?? $financials['amount_myr'] ?? 0),
+    'topup_amount_myr' => (float)($preview['topup_amount_myr'] ?? $financials['topup_amount_myr'] ?? 0),
     'rate_applicable' => (bool)($preview['rate_applicable'] ?? $financials['rate_applicable'] ?? false),
     'rate_snapshot' => $preview['rate_snapshot'] ?? $financials['rate_snapshot'] ?? null,
     'commission_applicable' => (bool)($preview['commission_applicable'] ?? $financials['commission_applicable'] ?? false),
@@ -349,10 +364,16 @@ $responseData = topup_submit_response_data($topupRow, [
     'topup_number' => $topupNumber,
     'operator' => $operator,
     'amount' => $amount,
-    'amount_bdt' => $amount,
+    'topup_amount' => (float)($financials['topup_amount'] ?? $amount),
+    'topup_currency' => (string)($financials['topup_currency'] ?? $pendingExtra['topup_currency'] ?? 'BDT'),
+    'amount_bdt' => (float)($financials['amount_bdt'] ?? 0),
+    'topup_amount_bdt' => (float)($financials['topup_amount_bdt'] ?? 0),
+    'amount_myr' => (float)($financials['amount_myr'] ?? 0),
+    'topup_amount_myr' => (float)($financials['topup_amount_myr'] ?? 0),
     'commission_per_1000' => $financials['commission_per_1000'],
     'commission_bdt' => $financials['commission_bdt'],
     'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+    'wallet_debit_myr' => $financials['wallet_debit_myr'] ?? 0,
     'wallet_debit_amount' => $walletDebit,
     'wallet_debit_currency' => $financials['wallet_debit_currency'],
     'rate_used' => $financials['rate_used'],

@@ -116,11 +116,12 @@ function topup_default_config(): array
                 'operators' => [
                     topup_default_operator('MY', 'CELCOM_XPAX', 'Celcom Xpax', [], 10, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
                     topup_default_operator('MY', 'DIGI', 'Digi', [], 20, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'HOTLINK', 'Maxis Hotlink', [], 30, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'UMOBILE', 'U Mobile', [], 40, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'XOX', 'XOX', [], 50, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'TUNETALK', 'Tune Talk', [], 60, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'YES', 'YES Prepaid', [], 70, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'HOTLINK', 'Hotlink', [], 30, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'MAXIS', 'Maxis', [], 40, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'UMOBILE', 'U Mobile', [], 50, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'XOX', 'XOX', [], 60, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'TUNETALK', 'Tune Talk', [], 70, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'YES', 'YES Prepaid', [], 80, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
                 ],
             ],
         ],
@@ -297,6 +298,11 @@ function topup_normalize_operator_row(array $row, array $fallback = [], string $
     $code = normalize_operator($row['code'] ?? $row['operator'] ?? $fallback['code'] ?? '');
     $countryCode = topup_country_code($row['country_code'] ?? $row['country'] ?? $countryCode ?: ($fallback['country_code'] ?? 'BD'));
     $name = topup_clean_text($row['name'] ?? $row['label'] ?? $fallback['name'] ?? $code, 80);
+    if ($countryCode === 'MY' && $code === 'HOTLINK' && strtoupper($name) === 'MAXIS HOTLINK') {
+        $name = 'Hotlink';
+    } elseif ($countryCode === 'MY' && $code === 'MAXIS' && ($name === '' || strtoupper($name) === 'MAXIS_HOTLINK')) {
+        $name = 'Maxis';
+    }
     $serviceType = topup_service_type($row['service_type'] ?? $fallback['service_type'] ?? 'PREPAID');
     $min = topup_money($row['min_amount'] ?? $fallback['min_amount'] ?? 20);
     $max = topup_money($row['max_amount'] ?? $fallback['max_amount'] ?? 1000);
@@ -473,7 +479,7 @@ function topup_operator_ready_for_submit(string $countryCode, string $operator):
         return in_array($operator, ['GP', 'ROBI', 'AIRTEL', 'BL', 'TT', 'SKITTO', 'OTHER'], true);
     }
     if ($countryCode === 'MY') {
-        return in_array($operator, ['CELCOM_XPAX', 'DIGI', 'HOTLINK', 'UMOBILE', 'XOX', 'TUNETALK', 'YES'], true);
+        return in_array($operator, ['CELCOM_XPAX', 'DIGI', 'HOTLINK', 'MAXIS', 'UMOBILE', 'XOX', 'TUNETALK', 'YES'], true);
     }
     return false;
 }
