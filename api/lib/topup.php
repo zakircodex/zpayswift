@@ -1115,6 +1115,11 @@ function topup_write_history(array $done): void
         'calculation_version' => (string)($done['calculation_version'] ?? ''),
         'original_wallet_debit' => (float)($done['original_wallet_debit'] ?? 0),
         'original_wallet_debit_currency' => (string)($done['original_wallet_debit_currency'] ?? ''),
+        'settled_hold_amount' => (float)($done['settled_hold_amount'] ?? 0),
+        'settled_hold_currency' => (string)($done['settled_hold_currency'] ?? ''),
+        'refund_amount' => (float)($done['refund_amount'] ?? 0),
+        'refund_currency' => (string)($done['refund_currency'] ?? ''),
+        'refund_conversion_rate' => (float)($done['refund_conversion_rate'] ?? 0),
         'commission_reversed' => (bool)($done['commission_reversed'] ?? false),
         'refund_reason' => (string)($done['refund_reason'] ?? ''),
         'refunded_at' => (int)($done['refunded_at'] ?? 0),
@@ -1270,6 +1275,10 @@ function topup_mark_success(string $requestId, string $message): array
         }
     } else {
         $holdAmount = (float)($row['wallet_hold_amount'] ?? 0);
+        $resolvedHold = function_exists('subapi_topup_current_hold_amount')
+            ? subapi_topup_current_hold_amount($row)
+            : ['amount' => $holdAmount, 'wallet_currency' => (string)($row['wallet_debit_currency'] ?? $row['wallet_currency'] ?? 'BDT')];
+        $holdAmount = (float)($resolvedHold['amount'] ?? $holdAmount);
 
         if ($holdAmount > 0) {
             if (function_exists('wallet_settle_hold_topup')) {
@@ -1298,6 +1307,12 @@ function topup_mark_success(string $requestId, string $message): array
     $done['completed_at'] = now_ts();
     $done['updated_at'] = now_ts();
     $done['request_source'] = (string)($done['request_source'] ?? $done['source'] ?? '');
+    if (!empty($resolvedHold ?? [])) {
+        $done['settled_hold_amount'] = (float)($resolvedHold['amount'] ?? 0);
+        $done['settled_hold_currency'] = (string)($resolvedHold['wallet_currency'] ?? $done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT');
+        $done['settled_original_wallet_debit'] = (float)($resolvedHold['original_wallet_debit'] ?? $done['wallet_debit_amount'] ?? 0);
+        $done['settled_original_wallet_debit_currency'] = (string)($resolvedHold['original_wallet_debit_currency'] ?? $done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT');
+    }
 
     if (!fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done)) {
         return [
@@ -1381,6 +1396,10 @@ function topup_mark_failed(string $requestId, string $message): array
         }
     } else {
         $holdAmount = (float)($row['wallet_hold_amount'] ?? 0);
+        $resolvedHold = function_exists('subapi_topup_current_hold_amount')
+            ? subapi_topup_current_hold_amount($row)
+            : ['amount' => $holdAmount, 'wallet_currency' => (string)($row['wallet_debit_currency'] ?? $row['wallet_currency'] ?? 'BDT')];
+        $holdAmount = (float)($resolvedHold['amount'] ?? $holdAmount);
 
         if ($holdAmount > 0) {
             $refund = wallet_refund_hold($uid, $holdAmount, $requestId, 'TOPUP_REFUND');
@@ -1404,6 +1423,13 @@ function topup_mark_failed(string $requestId, string $message): array
     $done['refund_reason'] = $message;
     $done['refunded_at'] = now_ts();
     $done['commission_reversed'] = false;
+    if (!empty($resolvedHold ?? [])) {
+        $done['refund_amount'] = (float)($resolvedHold['amount'] ?? 0);
+        $done['refund_currency'] = (string)($resolvedHold['wallet_currency'] ?? $done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT');
+        $done['original_wallet_debit'] = (float)($resolvedHold['original_wallet_debit'] ?? $done['original_wallet_debit']);
+        $done['original_wallet_debit_currency'] = (string)($resolvedHold['original_wallet_debit_currency'] ?? $done['original_wallet_debit_currency']);
+        $done['refund_conversion_rate'] = (float)($resolvedHold['rate_used'] ?? 0);
+    }
 
     if (!fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done)) {
         return [

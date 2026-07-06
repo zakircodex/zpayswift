@@ -521,6 +521,101 @@ function subapi_is_already_settled(array $request): bool
     return !empty($request['hold_settled_at']);
 }
 
+function subapi_topup_numeric_first(array $row, array $keys): float
+{
+    foreach ($keys as $key) {
+        if (isset($row[$key]) && is_numeric($row[$key]) && (float)$row[$key] > 0) {
+            return subapi_round_money((float)$row[$key]);
+        }
+    }
+
+    return 0.0;
+}
+
+function subapi_topup_current_hold_amount(array $request, array $wallet = []): array
+{
+    $uid = trim((string)($request['uid'] ?? ''));
+    if (!$wallet && $uid !== '' && function_exists('subapi_load_wallet')) {
+        $wallet = subapi_load_wallet($uid);
+    }
+    $wallet = is_array($wallet) ? $wallet : [];
+
+    $currentCurrency = strtoupper(trim((string)($wallet['wallet_currency'] ?? $wallet['currency'] ?? '')));
+    if ($currentCurrency === '' && function_exists('wallet_currency_for_uid')) {
+        $currentCurrency = wallet_currency_for_uid($uid, $wallet);
+    }
+    if ($currentCurrency === '') {
+        $currentCurrency = strtoupper(trim((string)($request['wallet_currency'] ?? $request['wallet_debit_currency'] ?? 'BDT')));
+    }
+    $currentCurrency = $currentCurrency === 'MYR' ? 'MYR' : 'BDT';
+
+    $hold = subapi_round_money((float)($wallet['hold_balance'] ?? 0));
+    $originalCurrency = strtoupper(trim((string)($request['wallet_debit_currency'] ?? $request['wallet_currency'] ?? $currentCurrency)));
+    $originalCurrency = $originalCurrency === 'MYR' ? 'MYR' : 'BDT';
+    $originalAmount = subapi_topup_numeric_first($request, [
+        'wallet_debit_amount',
+        'wallet_hold_amount',
+        'held_amount',
+        'wallet_debit',
+        'charged_amount',
+        'amount',
+    ]);
+    $bdtAmount = subapi_topup_numeric_first($request, [
+        'wallet_debit_bdt',
+        'total_debit_bdt',
+        'topup_amount_bdt',
+        'amount_bdt',
+    ]);
+    $myrAmount = subapi_topup_numeric_first($request, [
+        'wallet_debit_myr',
+        'topup_amount_myr',
+        'amount_myr',
+    ]);
+
+    if ($originalCurrency === 'MYR' && $myrAmount <= 0 && $originalAmount > 0) {
+        $myrAmount = $originalAmount;
+    }
+    if ($originalCurrency === 'BDT' && $bdtAmount <= 0 && $originalAmount > 0) {
+        $bdtAmount = $originalAmount;
+    }
+
+    $rate = subapi_topup_numeric_first($wallet, ['rate_myr_bdt', 'conversion_rate_myr_bdt', 'last_rate_myr_bdt']);
+    if ($rate <= 0) {
+        $rate = subapi_topup_numeric_first($request, ['conversion_rate_myr_bdt', 'rate_snapshot', 'rate_used', 'RATE_SNAPSHOT']);
+    }
+
+    $amount = $originalAmount;
+    if ($currentCurrency === 'BDT') {
+        if ($bdtAmount > 0) {
+            $amount = $bdtAmount;
+        } elseif ($myrAmount > 0 && $rate > 0) {
+            $amount = subapi_round_money($myrAmount * $rate);
+        }
+    } else {
+        if ($myrAmount > 0) {
+            $amount = $myrAmount;
+        } elseif ($bdtAmount > 0 && $rate > 0) {
+            $amount = subapi_round_money($bdtAmount / $rate);
+        }
+    }
+
+    $amount = subapi_round_money(max(0, $amount));
+    if ($hold > 0 && $amount > $hold) {
+        $amount = $hold;
+    }
+
+    return [
+        'ok' => $amount > 0,
+        'amount' => $amount,
+        'wallet_currency' => $currentCurrency,
+        'wallet' => $wallet,
+        'hold_balance' => $hold,
+        'rate_used' => $rate,
+        'original_wallet_debit' => $originalAmount,
+        'original_wallet_debit_currency' => $originalCurrency,
+    ];
+}
+
 function subapi_settle_topup_success(array &$request, string $message = 'Topup completed successfully'): bool
 {
     if (!subapi_is_topup_hold_request($request)) {
@@ -534,13 +629,15 @@ function subapi_settle_topup_success(array &$request, string $message = 'Topup c
     $uid = trim((string)($request['uid'] ?? ''));
     $requestId = trim((string)($request['request_id'] ?? ''));
     $keyId = trim((string)($request['source_key_id'] ?? ''));
-    $amount = subapi_round_money((float)($request['held_amount'] ?? $request['amount'] ?? 0));
     $now = subapi_now();
 
     $wallet = subapi_load_wallet($uid);
-    $walletCurrency = function_exists('wallet_currency_for_uid')
-        ? wallet_currency_for_uid($uid, $wallet)
-        : (string)($request['wallet_debit_currency'] ?? $request['wallet_currency'] ?? 'BDT');
+    $resolvedHold = subapi_topup_current_hold_amount($request, $wallet);
+    $amount = subapi_round_money((float)($resolvedHold['amount'] ?? 0));
+    if ($amount <= 0) {
+        return false;
+    }
+    $walletCurrency = (string)($resolvedHold['wallet_currency'] ?? 'BDT');
     $currentAvailable = subapi_round_money((float)($wallet['available_balance'] ?? 0));
     $currentHold = subapi_round_money((float)($wallet['hold_balance'] ?? 0));
     $currentTopupSpent = subapi_round_money((float)($wallet['total_topup_spent'] ?? 0));
@@ -590,6 +687,8 @@ function subapi_settle_topup_success(array &$request, string $message = 'Topup c
     $request['hold_settled_at'] = $now;
     $request['hold_settlement_status'] = 'SUCCESS';
     $request['held_amount'] = $amount;
+    $request['settled_hold_amount'] = $amount;
+    $request['settled_hold_currency'] = $walletCurrency;
 
     return true;
 }
@@ -607,13 +706,15 @@ function subapi_settle_topup_failed(array &$request, string $message = 'Topup fa
     $uid = trim((string)($request['uid'] ?? ''));
     $requestId = trim((string)($request['request_id'] ?? ''));
     $keyId = trim((string)($request['source_key_id'] ?? ''));
-    $amount = subapi_round_money((float)($request['held_amount'] ?? $request['amount'] ?? 0));
     $now = subapi_now();
 
     $wallet = subapi_load_wallet($uid);
-    $walletCurrency = function_exists('wallet_currency_for_uid')
-        ? wallet_currency_for_uid($uid, $wallet)
-        : (string)($request['wallet_debit_currency'] ?? $request['wallet_currency'] ?? 'BDT');
+    $resolvedHold = subapi_topup_current_hold_amount($request, $wallet);
+    $amount = subapi_round_money((float)($resolvedHold['amount'] ?? 0));
+    if ($amount <= 0) {
+        return false;
+    }
+    $walletCurrency = (string)($resolvedHold['wallet_currency'] ?? 'BDT');
     $currentAvailable = subapi_round_money((float)($wallet['available_balance'] ?? 0));
     $currentHold = subapi_round_money((float)($wallet['hold_balance'] ?? 0));
     $currentRefund = subapi_round_money((float)($wallet['total_refund'] ?? 0));
@@ -663,6 +764,8 @@ function subapi_settle_topup_failed(array &$request, string $message = 'Topup fa
     $request['hold_settled_at'] = $now;
     $request['hold_settlement_status'] = 'FAILED';
     $request['held_amount'] = $amount;
+    $request['refund_amount'] = $amount;
+    $request['refund_currency'] = $walletCurrency;
 
     return true;
 }

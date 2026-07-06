@@ -311,6 +311,10 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
         ?? $processing['wallet_debit_bdt']
         ?? $amount
     );
+    $resolvedHold = function_exists('subapi_topup_current_hold_amount')
+        ? subapi_topup_current_hold_amount($processing)
+        : ['amount' => $walletDebitAmount, 'wallet_currency' => (string)($processing['wallet_debit_currency'] ?? $processing['wallet_currency'] ?? 'BDT')];
+    $walletDebitAmount = (float)($resolvedHold['amount'] ?? $walletDebitAmount);
 
     if (function_exists('subapi_is_topup_hold_request') && subapi_is_topup_hold_request($processing)) {
         if (!subapi_settle_topup_success($processing, $resultMessage)) {
@@ -334,6 +338,10 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
     $done['completed_at'] = now_ts();
     $done['updated_at'] = now_ts();
     $done['request_source'] = (string)($done['request_source'] ?? $done['source'] ?? '');
+    if (!empty($resolvedHold ?? [])) {
+        $done['settled_hold_amount'] = (float)($resolvedHold['amount'] ?? 0);
+        $done['settled_hold_currency'] = (string)($resolvedHold['wallet_currency'] ?? $done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT');
+    }
 
     fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done);
     fb_delete('TOPUP_REQUESTS/PROCESSING/' . $requestId);
@@ -347,6 +355,8 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
         'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $amount),
         'wallet_debit_amount' => $walletDebitAmount,
         'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),
+        'settled_hold_amount' => (float)($done['settled_hold_amount'] ?? 0),
+        'settled_hold_currency' => (string)($done['settled_hold_currency'] ?? ''),
         'rate_used' => (float)($done['rate_used'] ?? 0),
         'status' => 'SUCCESS',
         'message' => $resultMessage,
@@ -403,6 +413,10 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
         ?? $processing['wallet_debit_bdt']
         ?? $amount
     );
+    $resolvedHold = function_exists('subapi_topup_current_hold_amount')
+        ? subapi_topup_current_hold_amount($processing)
+        : ['amount' => $walletDebitAmount, 'wallet_currency' => (string)($processing['wallet_debit_currency'] ?? $processing['wallet_currency'] ?? 'BDT')];
+    $walletDebitAmount = (float)($resolvedHold['amount'] ?? $walletDebitAmount);
 
     if (function_exists('subapi_is_topup_hold_request') && subapi_is_topup_hold_request($processing)) {
         if (!subapi_settle_topup_failed($processing, $resultMessage)) {
@@ -426,6 +440,10 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
     $done['completed_at'] = now_ts();
     $done['updated_at'] = now_ts();
     $done['request_source'] = (string)($done['request_source'] ?? $done['source'] ?? '');
+    if (!empty($resolvedHold ?? [])) {
+        $done['refund_amount'] = (float)($resolvedHold['amount'] ?? 0);
+        $done['refund_currency'] = (string)($resolvedHold['wallet_currency'] ?? $done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT');
+    }
 
     fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done);
     fb_delete('TOPUP_REQUESTS/PROCESSING/' . $requestId);
@@ -439,6 +457,8 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
         'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $amount),
         'wallet_debit_amount' => $walletDebitAmount,
         'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),
+        'refund_amount' => (float)($done['refund_amount'] ?? 0),
+        'refund_currency' => (string)($done['refund_currency'] ?? ''),
         'rate_used' => (float)($done['rate_used'] ?? 0),
         'status' => 'FAILED',
         'message' => $resultMessage,
