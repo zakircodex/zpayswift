@@ -1601,6 +1601,183 @@ function mfs_preview_payload(string $uid, array $body): array
 }
 
 /* =========================================================
+   Preview Token Helpers
+========================================================= */
+
+function mfs_preview_token_hash(string $token): string
+{
+    return hash('sha256', trim($token));
+}
+
+function mfs_preview_error(string $code, string $message, array $data = [], int $httpStatus = 422): array
+{
+    return [
+        'ok' => false,
+        'code' => $code,
+        'message' => $message,
+        'data' => $data,
+        'http_status' => $httpStatus,
+    ];
+}
+
+function mfs_random_preview_token(): string
+{
+    if (function_exists('random_token')) {
+        return random_token(32);
+    }
+
+    try {
+        return rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
+    } catch (Throwable $e) {
+        return hash('sha256', uniqid('mfs_preview_', true) . '|' . mt_rand());
+    }
+}
+
+function mfs_create_preview_token(array $data): string
+{
+    $token = mfs_random_preview_token();
+    $hash = mfs_preview_token_hash($token);
+    $now = mfs_now();
+
+    $data['preview_token_hash'] = $hash;
+    $data['created_at'] = (int)($data['created_at'] ?? $now);
+    $data['expires_at'] = (int)($data['expires_at'] ?? ($now + 300));
+    $data['used'] = false;
+    $data['used_at'] = 0;
+    $data['status'] = 'READY';
+    $data['updated_at'] = $now;
+
+    if (!mfs_fb_put('MFS_PREVIEWS/' . $hash, $data)) {
+        return '';
+    }
+
+    return $token;
+}
+
+function mfs_claim_preview_token(string $tokenHash, string $uid): array
+{
+    $tokenHash = trim($tokenHash);
+    $uid = trim($uid);
+
+    if ($tokenHash === '' || $uid === '') {
+        return mfs_preview_error('MFS_PREVIEW_INVALID', 'MFS preview is invalid. Please review again.');
+    }
+
+    $path = 'MFS_PREVIEWS/' . $tokenHash;
+
+    for ($i = 0; $i < 5; $i++) {
+        if (!function_exists('fb_get_with_etag') || !function_exists('fb_put_if_match')) {
+            $row = mfs_fb_get($path);
+            if (!is_array($row)) {
+                return mfs_preview_error('MFS_PREVIEW_INVALID', 'MFS preview is invalid. Please review again.');
+            }
+            $etag = '';
+        } else {
+            $res = fb_get_with_etag($path);
+            if (!($res['ok'] ?? false) || !is_array($res['value'] ?? null)) {
+                return mfs_preview_error('MFS_PREVIEW_INVALID', 'MFS preview is invalid. Please review again.');
+            }
+            $row = (array)$res['value'];
+            $etag = (string)($res['etag'] ?? '');
+            if ($etag === '') {
+                return mfs_preview_error('MFS_PREVIEW_CLAIM_FAILED', 'MFS preview could not be locked. Please try again.', [], 409);
+            }
+        }
+
+        $status = strtoupper(trim((string)($row['status'] ?? 'READY')));
+        if (!empty($row['used']) || $status === 'USED') {
+            $requestId = trim((string)($row['request_id'] ?? ''));
+            if ($requestId !== '') {
+                $row['_token_hash'] = $tokenHash;
+                return [
+                    'ok' => true,
+                    'duplicate' => true,
+                    'request_id' => $requestId,
+                    'preview' => $row,
+                ];
+            }
+            return mfs_preview_error('MFS_ALREADY_SUBMITTED', 'This request has already been submitted.');
+        }
+
+        if ($status === 'PROCESSING') {
+            return mfs_preview_error('MFS_ALREADY_SUBMITTED', 'This request is already being submitted.', [], 409);
+        }
+
+        if ((int)($row['expires_at'] ?? 0) < mfs_now()) {
+            @mfs_fb_patch($path, [
+                'status' => 'EXPIRED',
+                'updated_at' => mfs_now(),
+            ]);
+            return mfs_preview_error('MFS_PREVIEW_EXPIRED', 'This preview has expired. Please review again.');
+        }
+
+        if ((string)($row['uid'] ?? '') !== $uid) {
+            return mfs_preview_error('MFS_PREVIEW_INVALID', 'MFS preview does not belong to this account.', [], 403);
+        }
+
+        if (!in_array($status, ['READY', 'ACTIVE', 'FAILED'], true)) {
+            return mfs_preview_error('MFS_ALREADY_SUBMITTED', 'This request is already being submitted.', [], 409);
+        }
+
+        $claimed = $row;
+        $claimed['status'] = 'PROCESSING';
+        $claimed['processing_at'] = mfs_now();
+        $claimed['updated_at'] = mfs_now();
+
+        if ($etag === '') {
+            if (!mfs_fb_put($path, $claimed)) {
+                return mfs_preview_error('MFS_PREVIEW_CLAIM_FAILED', 'MFS preview could not be locked. Please try again.', [], 409);
+            }
+        } else {
+            $save = fb_put_if_match($path, $claimed, $etag);
+            if (($save['status'] ?? 0) === 412) {
+                usleep(150000);
+                continue;
+            }
+            if (!($save['ok'] ?? false)) {
+                return mfs_preview_error('MFS_PREVIEW_CLAIM_FAILED', 'MFS preview could not be locked. Please try again.', [], 409);
+            }
+        }
+
+        $claimed['_token_hash'] = $tokenHash;
+        return ['ok' => true, 'preview' => $claimed];
+    }
+
+    return mfs_preview_error('MFS_ALREADY_SUBMITTED', 'This request is already being submitted.', [], 409);
+}
+
+function mfs_mark_preview_used(string $tokenHash, string $requestId): void
+{
+    $tokenHash = trim($tokenHash);
+    if ($tokenHash === '') {
+        return;
+    }
+
+    @mfs_fb_patch('MFS_PREVIEWS/' . $tokenHash, [
+        'used' => true,
+        'used_at' => mfs_now(),
+        'status' => 'USED',
+        'request_id' => trim($requestId),
+        'updated_at' => mfs_now(),
+    ]);
+}
+
+function mfs_mark_preview_failed(string $tokenHash, string $code, string $message = ''): void
+{
+    $tokenHash = trim($tokenHash);
+    if ($tokenHash === '') {
+        return;
+    }
+
+    @mfs_fb_patch('MFS_PREVIEWS/' . $tokenHash, [
+        'status' => 'FAILED',
+        'failed_code' => substr(trim($code), 0, 80),
+        'failed_message' => substr(trim($message), 0, 180),
+        'updated_at' => mfs_now(),
+    ]);
+}
+
+/* =========================================================
    Policy Validation
 ========================================================= */
 
@@ -2399,7 +2576,34 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         }
     }
 
+    $previewSnapshot = is_array($actor['preview_data'] ?? null) ? (array)$actor['preview_data'] : [];
     $amounts = mfs_calculate_amounts($user, $wallet, $provider, $serviceType, $body);
+
+    if (empty($amounts['ok']) && $previewSnapshot) {
+        $currentWallet = mfs_country_wallet_check($user, $wallet);
+        if (!empty($currentWallet['ok'])) {
+            $snapshotCountry = mfs_normalize_country_code((string)($previewSnapshot['country_code'] ?? ''));
+            $snapshotCurrency = mfs_normalize_currency((string)($previewSnapshot['wallet_currency'] ?? ''));
+            if ($snapshotCountry === (string)$currentWallet['country_code']
+                && $snapshotCurrency === (string)$currentWallet['wallet_currency']
+            ) {
+                $amounts = [
+                    'ok' => true,
+                    'country_code' => $snapshotCountry,
+                    'wallet_currency' => $snapshotCurrency,
+                    'service_mode' => (string)($previewSnapshot['service_mode'] ?? $previewSnapshot['mode'] ?? $currentWallet['service_mode'] ?? ''),
+                    'exchange_rate' => mfs_round_money((float)($previewSnapshot['exchange_rate'] ?? 0)),
+                    'amount_bdt' => mfs_round_money((float)($previewSnapshot['amount_bdt'] ?? 0)),
+                    'amount_rm' => mfs_round_money((float)($previewSnapshot['amount_rm'] ?? $previewSnapshot['amount_myr'] ?? 0)),
+                    'fee_bdt' => mfs_round_money((float)($previewSnapshot['fee_bdt'] ?? 0)),
+                    'fee_rm' => mfs_round_money((float)($previewSnapshot['fee_rm'] ?? 0)),
+                    'total_debit_bdt' => mfs_round_money((float)($previewSnapshot['total_debit_bdt'] ?? $previewSnapshot['total_pay_bdt'] ?? 0)),
+                    'total_debit_rm' => mfs_round_money((float)($previewSnapshot['total_debit_rm'] ?? $previewSnapshot['total_pay_myr'] ?? 0)),
+                    'total_debit' => mfs_round_money((float)($previewSnapshot['total_debit'] ?? $previewSnapshot['wallet_hold_amount'] ?? 0)),
+                ];
+            }
+        }
+    }
 
     if (empty($amounts['ok'])) {
         return [
@@ -2429,6 +2633,53 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
                 'account_type' => $accountType,
             ],
         ];
+    }
+
+    if ($previewSnapshot) {
+        $snapshotProvider = mfs_normalize_provider((string)($previewSnapshot['provider'] ?? ''));
+        $snapshotService = mfs_normalize_service_type((string)($previewSnapshot['service_type'] ?? 'SEND_MONEY'));
+        $snapshotAccount = mfs_normalize_account_type((string)($previewSnapshot['account_type'] ?? 'PERSONAL'), $snapshotService);
+        $snapshotNumber = mfs_clean_mobile_number((string)($previewSnapshot['receiver_number'] ?? $previewSnapshot['number'] ?? ''));
+        $snapshotCountry = mfs_normalize_country_code((string)($previewSnapshot['country_code'] ?? ''));
+        $snapshotCurrency = mfs_normalize_currency((string)($previewSnapshot['wallet_currency'] ?? ''));
+
+        if ($snapshotProvider !== $provider
+            || $snapshotService !== $serviceType
+            || $snapshotAccount !== $accountType
+            || $snapshotNumber !== $receiverNumber
+            || $snapshotCountry !== (string)$amounts['country_code']
+            || $snapshotCurrency !== (string)$amounts['wallet_currency']
+        ) {
+            return [
+                'ok' => false,
+                'code' => 'MFS_PREVIEW_MISMATCH',
+                'message' => 'MFS preview does not match this request. Please review again.',
+                'data' => [],
+            ];
+        }
+
+        $snapshotTotalDebit = mfs_round_money((float)($previewSnapshot['total_debit'] ?? $previewSnapshot['wallet_hold_amount'] ?? 0));
+        $snapshotAmountBdt = mfs_round_money((float)($previewSnapshot['amount_bdt'] ?? 0));
+        $snapshotAmountRm = mfs_round_money((float)($previewSnapshot['amount_rm'] ?? $previewSnapshot['amount_myr'] ?? 0));
+        if ($snapshotTotalDebit <= 0 || $snapshotAmountBdt <= 0) {
+            return [
+                'ok' => false,
+                'code' => 'MFS_PREVIEW_INVALID',
+                'message' => 'MFS preview is invalid. Please review again.',
+                'data' => [],
+            ];
+        }
+
+        $amounts = array_replace($amounts, [
+            'exchange_rate' => mfs_round_money((float)($previewSnapshot['exchange_rate'] ?? $amounts['exchange_rate'] ?? 0)),
+            'amount_bdt' => $snapshotAmountBdt,
+            'amount_rm' => $snapshotAmountRm,
+            'fee_bdt' => mfs_round_money((float)($previewSnapshot['fee_bdt'] ?? 0)),
+            'fee_rm' => mfs_round_money((float)($previewSnapshot['fee_rm'] ?? 0)),
+            'total_debit_bdt' => mfs_round_money((float)($previewSnapshot['total_debit_bdt'] ?? $previewSnapshot['total_pay_bdt'] ?? $amounts['total_debit_bdt'] ?? 0)),
+            'total_debit_rm' => mfs_round_money((float)($previewSnapshot['total_debit_rm'] ?? $previewSnapshot['total_pay_myr'] ?? $amounts['total_debit_rm'] ?? 0)),
+            'total_debit' => $snapshotTotalDebit,
+        ]);
     }
 
     $requestId = mfs_make_request_id();
@@ -2505,6 +2756,10 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         'request_source' => $source,
         'key_id' => $sourceKeyId,
         'source_key_id' => $sourceKeyId,
+        'preview_token_hash' => (string)($actor['preview_token_hash'] ?? ''),
+        'preview_id' => (string)($previewSnapshot['preview_id'] ?? ''),
+        'preview_created_at' => (int)($previewSnapshot['created_at'] ?? 0),
+        'preview_expires_at' => (int)($previewSnapshot['expires_at'] ?? 0),
 
         'held_amount' => $totalDebit,
         'wallet_hold_amount' => $totalDebit,

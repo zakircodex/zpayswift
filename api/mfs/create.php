@@ -300,6 +300,71 @@ if (!empty($body['source'])) {
     }
 }
 
+$previewToken = trim((string)($body['preview_token'] ?? ''));
+if ($source === 'USER_API' && $previewToken === '') {
+    api_response(false, 'MFS_PREVIEW_REQUIRED', 'Please review this request before submitting.', [], 422);
+}
+
+$preview = [];
+$previewHash = '';
+if ($previewToken !== '') {
+    $previewHash = mfs_preview_token_hash($previewToken);
+    $claim = mfs_claim_preview_token($previewHash, $uid);
+
+    if (empty($claim['ok'])) {
+        api_response(
+            false,
+            (string)($claim['code'] ?? 'MFS_PREVIEW_INVALID'),
+            (string)($claim['message'] ?? 'MFS preview is invalid. Please review again.'),
+            (array)($claim['data'] ?? []),
+            (int)($claim['http_status'] ?? 422)
+        );
+    }
+
+    $duplicateRequestId = trim((string)($claim['request_id'] ?? ''));
+    if (!empty($claim['duplicate']) && $duplicateRequestId !== '') {
+        $existing = mfs_find_request($duplicateRequestId);
+        if ($existing) {
+            unset($existing['_bucket']);
+            api_response(true, 'SUCCESS', 'MFS request created successfully', $existing, 200);
+        }
+    }
+
+    $preview = (array)($claim['preview'] ?? []);
+
+    $previewProvider = mfs_normalize_provider((string)($preview['provider'] ?? ''));
+    $previewService = mfs_normalize_service_type((string)($preview['service_type'] ?? 'SEND_MONEY'));
+    $previewAccount = mfs_normalize_account_type((string)($preview['account_type'] ?? 'PERSONAL'), $previewService);
+    $previewNumber = mfs_clean_mobile_number((string)($preview['receiver_number'] ?? $preview['number'] ?? ''));
+
+    if ($previewProvider === '' || $previewNumber === '') {
+        mfs_mark_preview_failed($previewHash, 'MFS_PREVIEW_INVALID', 'Preview data is invalid.');
+        api_response(false, 'MFS_PREVIEW_INVALID', 'MFS preview is invalid. Please review again.', [], 422);
+    }
+
+    $bodyProvider = mfs_normalize_provider((string)($body['provider'] ?? ''));
+    $bodyNumber = mfs_clean_mobile_number((string)($body['receiver_number'] ?? $body['number'] ?? $body['mobile'] ?? ''));
+
+    if (($bodyProvider !== '' && $bodyProvider !== $previewProvider)
+        || ($bodyNumber !== '' && $bodyNumber !== $previewNumber)
+    ) {
+        mfs_mark_preview_failed($previewHash, 'MFS_PREVIEW_MISMATCH', 'Preview does not match this request.');
+        api_response(false, 'MFS_PREVIEW_MISMATCH', 'MFS preview does not match this request. Please review again.', [], 422);
+    }
+
+    $body['provider'] = $previewProvider;
+    $body['service_type'] = $previewService;
+    $body['account_type'] = $previewAccount;
+    $body['receiver_number'] = $previewNumber;
+    $body['currency'] = (string)($preview['input_currency'] ?? ($preview['wallet_currency'] ?? 'BDT'));
+    $body['amount_bdt'] = (float)($preview['amount_bdt'] ?? 0);
+    $body['amount_rm'] = (float)($preview['amount_rm'] ?? $preview['amount_myr'] ?? 0);
+    $body['amount'] = strtoupper((string)$body['currency']) === 'MYR'
+        ? (float)$body['amount_rm']
+        : (float)$body['amount_bdt'];
+    $body['reference'] = (string)($preview['reference'] ?? $body['reference'] ?? $body['ref'] ?? '');
+}
+
 $res = mfs_create_request(
     $uid,
     $body,
@@ -311,10 +376,16 @@ $res = mfs_create_request(
         'ip' => mfs_create_endpoint_client_ip(),
         'session_id' => (string)($session['_session_hash'] ?? ''),
         'allow_biometric_validation' => true,
+        'preview_token_hash' => $previewHash,
+        'preview_data' => $preview,
     ]
 );
 
 if (!($res['ok'] ?? false)) {
+    if ($previewHash !== '') {
+        mfs_mark_preview_failed($previewHash, (string)($res['code'] ?? 'SERVER_ERROR'), (string)($res['message'] ?? 'Failed to create MFS request'));
+    }
+
     $code = (string)($res['code'] ?? 'SERVER_ERROR');
 
     $httpStatus = 500;
@@ -349,6 +420,10 @@ if (!($res['ok'] ?? false)) {
 }
 
 $data = (array)($res['data'] ?? []);
+
+if ($previewHash !== '' && !empty($data['request_id'])) {
+    mfs_mark_preview_used($previewHash, (string)$data['request_id']);
+}
 
 mfs_create_endpoint_notify_telegram($data, array_merge($user, ['uid' => $uid]));
 

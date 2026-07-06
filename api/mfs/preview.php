@@ -819,7 +819,7 @@ $validationMessage = $canSubmit
 $previewId = mfs_preview_make_preview_id();
 $now = mfs_preview_now();
 
-api_response(true, 'SUCCESS', 'MFS preview ready', [
+$responseData = [
     'preview_id' => $previewId,
     'uid' => $uid,
     'role' => $userRole,
@@ -870,4 +870,21 @@ api_response(true, 'SUCCESS', 'MFS preview ready', [
     'validation_message' => $validationMessage,
 
     'created_at' => $now,
-], 200);
+    'expires_in' => $canSubmit ? 300 : 0,
+    'preview_token' => '',
+];
+
+if ($canSubmit) {
+    $previewToken = mfs_create_preview_token(array_merge($responseData, [
+        'expires_at' => $now + 300,
+        'status' => 'READY',
+    ]));
+
+    if ($previewToken === '') {
+        api_response(false, 'MFS_PREVIEW_FAILED', 'MFS preview could not be created. Please try again.', [], 500);
+    }
+
+    $responseData['preview_token'] = $previewToken;
+}
+
+api_response(true, 'SUCCESS', 'MFS preview ready', $responseData, 200);
