@@ -8,6 +8,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 
 require_once __DIR__ . '/subadmin_api.php';
 require_once __DIR__ . '/wallet.php';
+require_once __DIR__ . '/topup_config.php';
 
 function topup_now(): int
 {
@@ -129,6 +130,42 @@ function topup_account_context(
         'wallet_currency' => $walletCurrency,
         'balance_before' => round((float)($wallet['available_balance'] ?? 0), 2),
     ];
+}
+
+function topup_user_topup_access_validation(string $uid, array $user, string $countryCode): array
+{
+    $countryCode = topup_country_code($countryCode);
+    $settings = [];
+    if ($uid !== '') {
+        $loadedSettings = fb_get('USER_ROLE_SETTINGS/' . $uid);
+        $settings = is_array($loadedSettings) ? $loadedSettings : [];
+    }
+
+    if (!topup_bool($settings['topup_enabled'] ?? $user['topup_enabled'] ?? true, true)) {
+        return [
+            'ok' => false,
+            'code' => 'TOPUP_ACCOUNT_DISABLED',
+            'message' => 'Mobile top-up is disabled for this account.',
+        ];
+    }
+
+    $fields = $countryCode === 'MY'
+        ? ['my_topup_enabled', 'topup_my_enabled']
+        : ['bd_topup_enabled', 'topup_bd_enabled'];
+
+    foreach ($fields as $field) {
+        if (array_key_exists($field, $settings) || array_key_exists($field, $user)) {
+            if (!topup_bool($settings[$field] ?? $user[$field] ?? true, true)) {
+                return [
+                    'ok' => false,
+                    'code' => 'TOPUP_ACCOUNT_COUNTRY_DISABLED',
+                    'message' => 'Top-up is disabled for this country on this account.',
+                ];
+            }
+        }
+    }
+
+    return ['ok' => true];
 }
 
 function topup_configured_myr_to_bdt_rate(): float
@@ -836,6 +873,13 @@ function topup_pending_request_row(
         'total_debit' => $amount,
         'charged_amount' => $amount,
     ], $financials);
+    $countryCode = topup_country_code($extra['country_code'] ?? $extra['country'] ?? ($financials['country_code'] ?? 'BD'));
+    $executionMode = function_exists('topup_operator_execution_mode')
+        ? topup_operator_execution_mode($countryCode, $operator)
+        : 'WORKER_USSD';
+    $workerClaimable = function_exists('topup_operator_worker_claimable')
+        ? topup_operator_worker_claimable($countryCode, $operator)
+        : true;
 
     $row = [
         'request_id' => $requestId,
@@ -843,6 +887,11 @@ function topup_pending_request_row(
         'user_phone' => $userPhone,
         'topup_number' => $topupNumber,
         'operator' => $operator,
+        'country_code' => $countryCode,
+        'execution_mode' => $executionMode,
+        'worker_claimable' => $workerClaimable,
+        'WORKER_CLAIMABLE' => $workerClaimable,
+        'manual_telegram_required' => !$workerClaimable,
         'amount' => $amount,
         'amount_bdt' => (float)$financials['amount_bdt'],
         'topup_amount_bdt' => (float)$financials['topup_amount_bdt'],

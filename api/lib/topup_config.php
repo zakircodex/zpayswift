@@ -102,7 +102,8 @@ function topup_default_config(): array
                     topup_default_operator('BD', 'AIRTEL', 'Airtel', ['016'], 30),
                     topup_default_operator('BD', 'BL', 'Banglalink', ['019', '014'], 40),
                     topup_default_operator('BD', 'TT', 'Teletalk', ['015'], 50),
-                    topup_default_operator('BD', 'SKITTO', 'Skitto', ['013'], 60, false),
+                    topup_default_operator('BD', 'SKITTO', 'Skitto', ['013'], 60),
+                    topup_default_operator('BD', 'OTHER', 'Other Operator', [], 70),
                 ],
             ],
             [
@@ -113,13 +114,13 @@ function topup_default_config(): array
                 'active' => true,
                 'sort_order' => 20,
                 'operators' => [
-                    topup_default_operator('MY', 'CELCOM_XPAX', 'Celcom Xpax', [], 10, false, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'DIGI', 'Digi', [], 20, false, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'HOTLINK', 'Maxis Hotlink', [], 30, false, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'UMOBILE', 'U Mobile', [], 40, false, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'XOX', 'XOX', [], 50, false, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'TUNETALK', 'Tune Talk', [], 60, false, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'YES', 'YES Prepaid', [], 70, false, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'CELCOM_XPAX', 'Celcom Xpax', [], 10, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'DIGI', 'Digi', [], 20, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'HOTLINK', 'Maxis Hotlink', [], 30, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'UMOBILE', 'U Mobile', [], 40, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'XOX', 'XOX', [], 50, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'TUNETALK', 'Tune Talk', [], 60, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'YES', 'YES Prepaid', [], 70, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
                 ],
             ],
         ],
@@ -457,11 +458,34 @@ function topup_operator_config(string $countryCode, string $operator): ?array
     return null;
 }
 
-function topup_operator_ready_for_submit(string $countryCode, string $operator): bool
+function topup_operator_worker_dial_ready(string $countryCode, string $operator): bool
 {
     $countryCode = topup_country_code($countryCode);
     $operator = normalize_operator($operator);
     return $countryCode === 'BD' && in_array($operator, ['GP', 'ROBI', 'AIRTEL', 'BL', 'TT'], true);
+}
+
+function topup_operator_ready_for_submit(string $countryCode, string $operator): bool
+{
+    $countryCode = topup_country_code($countryCode);
+    $operator = normalize_operator($operator);
+    if ($countryCode === 'BD') {
+        return in_array($operator, ['GP', 'ROBI', 'AIRTEL', 'BL', 'TT', 'SKITTO', 'OTHER'], true);
+    }
+    if ($countryCode === 'MY') {
+        return in_array($operator, ['CELCOM_XPAX', 'DIGI', 'HOTLINK', 'UMOBILE', 'XOX', 'TUNETALK', 'YES'], true);
+    }
+    return false;
+}
+
+function topup_operator_execution_mode(string $countryCode, string $operator): string
+{
+    return topup_operator_worker_dial_ready($countryCode, $operator) ? 'WORKER_USSD' : 'TELEGRAM_MANUAL';
+}
+
+function topup_operator_worker_claimable(string $countryCode, string $operator): bool
+{
+    return topup_operator_worker_dial_ready($countryCode, $operator);
 }
 
 function topup_validation_error(string $code, string $message, array $data = [], int $httpStatus = 422): array

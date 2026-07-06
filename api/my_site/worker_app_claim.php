@@ -27,6 +27,9 @@ function zb_worker_app_claim_request(string $deviceId, string $ownerId): ?array
 
         $operator = normalize_operator($request['operator'] ?? '');
         if ($operator === '') { continue; }
+        $countryCode = topup_country_code($request['country_code'] ?? 'BD');
+        if (array_key_exists('worker_claimable', $request) && !topup_bool($request['worker_claimable'], true)) { continue; }
+        if (function_exists('topup_operator_worker_claimable') && !topup_operator_worker_claimable($countryCode, $operator)) { continue; }
         $slot = worker_find_matching_slot($device, $operator);
         if ($slot === null) { continue; }
 

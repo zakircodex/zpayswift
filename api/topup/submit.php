@@ -170,6 +170,20 @@ if (empty($amountValidation['ok'])) {
 |--------------------------------------------------------------------------
 */
 $runtime = (array)($amountValidation['operator'] ?? []);
+$accountAccess = topup_user_topup_access_validation($uid, $user, $countryCode);
+if (empty($accountAccess['ok'])) {
+    $failPreview(
+        (string)($accountAccess['code'] ?? 'TOPUP_ACCOUNT_DISABLED'),
+        (string)($accountAccess['message'] ?? 'Mobile top-up is disabled for this account.')
+    );
+    api_response(
+        false,
+        (string)($accountAccess['code'] ?? 'TOPUP_ACCOUNT_DISABLED'),
+        (string)($accountAccess['message'] ?? 'Mobile top-up is disabled for this account.'),
+        [],
+        422
+    );
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -241,6 +255,7 @@ $financials['balance_after'] = $actualBalanceAfter;
 |--------------------------------------------------------------------------
 */
 $pendingExtra = [
+    'country_code' => $countryCode,
     'preview_token_hash' => (string)($preview['_token_hash'] ?? ''),
     'preview_created_at' => (int)($preview['created_at'] ?? 0),
     'preview_expires_at' => (int)($preview['expires_at'] ?? 0),

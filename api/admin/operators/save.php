@@ -73,8 +73,8 @@ if ($catalogCountry !== $countryCode) {
     api_response(false, 'VALIDATION_ERROR', 'country_code cannot be changed for this operator', ['field' => 'country_code'], 422);
 }
 
-$readyForSubmit = topup_operator_ready_for_submit($countryCode, $operator);
-if ($active && $readyForSubmit) {
+$workerDialReady = topup_operator_worker_dial_ready($countryCode, $operator);
+if ($active && $workerDialReady) {
     if ($dialTemplate === '') {
         api_response(false, 'VALIDATION_ERROR', 'dial_template is required for active live operators', ['field' => 'dial_template'], 422);
     }
@@ -88,7 +88,7 @@ if ($active && $readyForSubmit) {
 
 $existingPrivate = fb_get('OPERATOR_PRIVATE/' . $operator);
 $existingPin = is_array($existingPrivate) ? trim((string)($existingPrivate['retailer_secret_pin'] ?? '')) : '';
-if ($active && $readyForSubmit && $requiresSecretPin && $retailerSecretPin === '' && $existingPin === '') {
+if ($active && $workerDialReady && $requiresSecretPin && $retailerSecretPin === '' && $existingPin === '') {
     api_response(false, 'VALIDATION_ERROR', 'retailer_secret_pin is required', ['field' => 'retailer_secret_pin'], 422);
 }
 if ($retailerSecretPin === '') {
