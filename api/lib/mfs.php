@@ -2316,6 +2316,11 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
     $accountType = mfs_normalize_account_type((string)($body['account_type'] ?? ''), $serviceType);
     $receiverNumber = mfs_clean_mobile_number((string)($body['receiver_number'] ?? $body['number'] ?? $body['mobile'] ?? ''));
     $pin = trim((string)($body['pin'] ?? $body['transaction_pin'] ?? ''));
+    $authMethod = strtoupper(trim((string)($body['auth_method'] ?? $body['verification_method'] ?? 'PIN')));
+    $biometricVerified = in_array($authMethod, ['BIOMETRIC', 'FINGERPRINT'], true)
+        && !empty($body['biometric_verified'])
+        && !empty($actor['allow_biometric_validation'])
+        && strtoupper(trim($source)) === 'USER_API';
     $reference = trim((string)($body['reference'] ?? $body['ref'] ?? ''));
     $note = trim((string)($body['note'] ?? ''));
 
@@ -2370,6 +2375,7 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
 
     $skipPinValidation = !empty($actor['skip_pin_validation'])
         && strtoupper(trim((string)($actor['role'] ?? ''))) === 'ADMIN';
+    $skipPinValidation = $skipPinValidation || $biometricVerified;
 
     if (!$skipPinValidation) {
         if ($pin === '') {
@@ -2491,7 +2497,9 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         'message' => $note !== '' ? $note : 'MFS request created',
         'final_message' => '',
 
-        'request_pin_verified' => true,
+        'request_pin_verified' => !$biometricVerified,
+        'request_biometric_verified' => $biometricVerified,
+        'request_auth_method' => $biometricVerified ? 'BIOMETRIC' : 'PIN',
 
         'source' => $source,
         'request_source' => $source,

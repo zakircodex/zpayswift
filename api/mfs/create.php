@@ -310,6 +310,7 @@ $res = mfs_create_request(
         'role' => (string)($user['role'] ?? 'USER'),
         'ip' => mfs_create_endpoint_client_ip(),
         'session_id' => (string)($session['_session_hash'] ?? ''),
+        'allow_biometric_validation' => true,
     ]
 );
 
