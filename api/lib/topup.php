@@ -374,6 +374,7 @@ function topup_calculate_payment_context(
         $walletDebit = $convertedAmount;
         $walletDebitBdt = $amount;
         $walletDebitMyr = $convertedAmount;
+        $topupAmountMyr = $convertedAmount;
     } elseif ($accountCountry === 'BD' && $walletCurrency === 'BDT') {
         $commission = topup_commission_from_settings($amount, $role, (array)$context['role_settings']);
         if (empty($commission['ok'])) {
@@ -1084,6 +1085,93 @@ function topup_history_month_key(array $row): string
     return month_key($ts);
 }
 
+function topup_history_float_first(array $row, array $keys, bool $positiveOnly = false): ?float
+{
+    foreach ($keys as $key) {
+        if (!array_key_exists($key, $row) || $row[$key] === null || $row[$key] === '') {
+            continue;
+        }
+
+        if (!is_numeric($row[$key])) {
+            continue;
+        }
+
+        $value = round((float)$row[$key], 2);
+        if ($positiveOnly && $value <= 0) {
+            continue;
+        }
+
+        return $value;
+    }
+
+    return null;
+}
+
+function topup_normalized_history_fields(array $row): array
+{
+    $walletCurrency = strtoupper(trim((string)($row['wallet_currency'] ?? $row['wallet_debit_currency'] ?? $row['display_currency'] ?? 'BDT')));
+    if ($walletCurrency === 'RM') {
+        $walletCurrency = 'MYR';
+    }
+    if ($walletCurrency === '') {
+        $walletCurrency = 'BDT';
+    }
+
+    $amountBdt = topup_history_float_first($row, ['topup_amount_bdt', 'amount_bdt', 'TOPUP_AMOUNT_BDT', 'amount'], true)
+        ?? topup_history_float_first($row, ['topup_amount_bdt', 'amount_bdt', 'TOPUP_AMOUNT_BDT', 'amount'])
+        ?? 0.0;
+    $feeAmount = topup_history_float_first($row, ['fee_amount', 'FEE_AMOUNT']) ?? 0.0;
+    $walletDebitMyr = topup_history_float_first($row, ['wallet_debit_myr'], true) ?? 0.0;
+    $walletDebit = topup_history_float_first($row, ['total_paid', 'total_pay', 'wallet_debit_amount', 'wallet_debit', 'WALLET_DEBIT', 'total_debit'], true);
+    if ($walletDebit === null) {
+        $walletDebit = $walletCurrency === 'MYR'
+            ? ($walletDebitMyr > 0 ? $walletDebitMyr : 0.0)
+            : (topup_history_float_first($row, ['wallet_debit_bdt', 'total_debit_bdt'], true) ?? $amountBdt);
+    }
+
+    $amountMyr = topup_history_float_first($row, [
+        'amount_myr',
+        'topup_amount_myr',
+        'payable_myr',
+        'converted_myr',
+        'converted_amount',
+        'TOPUP_AMOUNT_MYR',
+    ], true);
+
+    if ($amountMyr === null && $walletCurrency === 'MYR') {
+        if ($walletDebitMyr > 0 && $feeAmount <= 0) {
+            $amountMyr = $walletDebitMyr;
+        } elseif ($feeAmount <= 0 && $walletDebit > 0) {
+            $amountMyr = $walletDebit;
+        }
+    }
+
+    return [
+        'type' => 'MOBILE_TOPUP',
+        'number' => (string)($row['number'] ?? $row['topup_number'] ?? ''),
+        'operator_code' => (string)($row['operator_code'] ?? $row['operator'] ?? ''),
+        'amount_bdt' => $amountBdt,
+        'topup_amount_bdt' => $amountBdt,
+        'amount_myr' => $amountMyr,
+        'topup_amount_myr' => $amountMyr,
+        'wallet_currency' => $walletCurrency,
+        'wallet_debit_currency' => $walletCurrency,
+        'display_currency' => $walletCurrency,
+        'wallet_debit' => $walletDebit,
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_myr' => $walletCurrency === 'MYR' ? $walletDebit : $walletDebitMyr,
+        'fee_amount' => $feeAmount,
+        'fee_currency' => $walletCurrency,
+        'total_paid' => $walletDebit,
+        'total_pay' => $walletDebit,
+    ];
+}
+
+function topup_public_history_row(array $row): array
+{
+    return array_replace($row, topup_normalized_history_fields($row));
+}
+
 function topup_write_history(array $done): void
 {
     $uid = (string)($done['uid'] ?? '');
@@ -1094,38 +1182,45 @@ function topup_write_history(array $done): void
     }
 
     $requestSource = (string)($done['request_source'] ?? $done['source'] ?? '');
+    $normalized = topup_normalized_history_fields($done);
 
     fb_put('TOPUP_HISTORY/' . $uid . '/' . topup_history_month_key($done) . '/' . $requestId, [
+        'type' => 'MOBILE_TOPUP',
         'request_id' => $requestId,
         'topup_number' => (string)($done['topup_number'] ?? ''),
         'operator' => (string)($done['operator'] ?? ''),
+        'operator_code' => (string)($done['operator_code'] ?? $done['operator'] ?? ''),
+        'number' => (string)($done['number'] ?? $done['topup_number'] ?? ''),
         'amount' => (float)($done['amount'] ?? 0),
         'topup_amount' => (float)($done['topup_amount'] ?? $done['amount'] ?? 0),
         'topup_currency' => (string)($done['topup_currency'] ?? $done['currency'] ?? 'BDT'),
-        'amount_bdt' => (float)($done['amount_bdt'] ?? $done['amount'] ?? 0),
-        'topup_amount_bdt' => (float)($done['topup_amount_bdt'] ?? $done['amount_bdt'] ?? $done['amount'] ?? 0),
-        'amount_myr' => (float)($done['amount_myr'] ?? 0),
-        'topup_amount_myr' => (float)($done['topup_amount_myr'] ?? $done['amount_myr'] ?? 0),
+        'amount_bdt' => $normalized['amount_bdt'],
+        'topup_amount_bdt' => $normalized['topup_amount_bdt'],
+        'amount_myr' => $normalized['amount_myr'],
+        'topup_amount_myr' => $normalized['topup_amount_myr'],
         'account_country' => (string)($done['account_country'] ?? ''),
-        'display_currency' => (string)($done['display_currency'] ?? $done['wallet_currency'] ?? $done['wallet_debit_currency'] ?? 'BDT'),
+        'display_currency' => $normalized['display_currency'],
         'commission_per_1000' => (float)($done['commission_per_1000'] ?? 0),
         'commission_bdt' => (float)($done['commission_bdt'] ?? $done['commission_amount'] ?? 0),
         'commission_applicable' => (bool)($done['commission_applicable'] ?? false),
         'commission_type' => (string)($done['commission_type'] ?? 'NONE'),
         'commission_amount' => (float)($done['commission_amount'] ?? $done['commission_bdt'] ?? 0),
         'commission_credit' => (float)($done['commission_credit'] ?? 0),
-        'fee_amount' => (float)($done['fee_amount'] ?? 0),
+        'fee_amount' => $normalized['fee_amount'],
+        'fee_currency' => $normalized['fee_currency'],
         'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $done['wallet_hold_amount'] ?? $done['amount'] ?? 0),
-        'wallet_debit_myr' => (float)($done['wallet_debit_myr'] ?? 0),
-        'wallet_debit_amount' => (float)($done['wallet_debit_amount'] ?? $done['wallet_hold_amount'] ?? $done['wallet_debit_bdt'] ?? $done['amount'] ?? 0),
-        'wallet_debit' => (float)($done['wallet_debit_amount'] ?? $done['wallet_hold_amount'] ?? $done['wallet_debit_bdt'] ?? $done['amount'] ?? 0),
-        'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),
-        'wallet_currency' => (string)($done['wallet_currency'] ?? $done['wallet_debit_currency'] ?? 'BDT'),
+        'wallet_debit_myr' => $normalized['wallet_debit_myr'],
+        'wallet_debit_amount' => $normalized['wallet_debit_amount'],
+        'wallet_debit' => $normalized['wallet_debit'],
+        'wallet_debit_currency' => $normalized['wallet_debit_currency'],
+        'wallet_currency' => $normalized['wallet_currency'],
         'rate_applicable' => (bool)($done['rate_applicable'] ?? false),
         'rate_snapshot' => $done['rate_snapshot'] ?? $done['rate_used'] ?? null,
         'rate_used' => (float)($done['rate_used'] ?? 0),
         'total_debit_bdt' => (float)($done['total_debit_bdt'] ?? $done['wallet_debit_bdt'] ?? $done['amount'] ?? 0),
-        'total_debit' => (float)($done['total_debit'] ?? $done['wallet_hold_amount'] ?? $done['amount'] ?? 0),
+        'total_debit' => $normalized['total_paid'],
+        'total_paid' => $normalized['total_paid'],
+        'total_pay' => $normalized['total_pay'],
         'balance_before' => (float)($done['balance_before'] ?? 0),
         'balance_after' => (float)($done['balance_after'] ?? 0),
         'calculation_version' => (string)($done['calculation_version'] ?? ''),

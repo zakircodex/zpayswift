@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/topup.php';
 
 api_require_method('GET');
 api_require_app_key();
@@ -23,6 +24,10 @@ usort($list, static function (array $a, array $b): int {
     $bTime = (int)(($b['updated_at'] ?? 0) ?: ($b['completed_at'] ?? 0) ?: ($b['created_at'] ?? 0));
     return $bTime <=> $aTime;
 });
+
+$list = array_map(static function (array $row): array {
+    return function_exists('topup_public_history_row') ? topup_public_history_row($row) : $row;
+}, $list);
 
 api_response(true, 'SUCCESS', 'Topup history loaded', [
     'month' => $month,
