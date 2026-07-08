@@ -30,4 +30,10 @@ $reason = $canTransfer ? '' : 'CURRENCY_MISMATCH';
 
 api_response(true, 'RECIPIENT_OK', 'Recipient checked.', [
     'recipient' => zpay_transfer_public_recipient($recipient, $canTransfer, $reason),
+    'sender_wallet_currency' => $senderCurrency,
+    'receiver_wallet_currency' => $receiverCurrency,
+    'wallet_currency' => $senderCurrency,
+    'can_transfer' => $canTransfer,
+    'validation_code' => $canTransfer ? '' : 'TRANSFER_CURRENCY_MISMATCH',
+    'validation_message' => $canTransfer ? '' : 'Transfers between different wallet currencies are not supported.',
 ]);

@@ -14,6 +14,46 @@ $body = api_read_json_body();
 
 $senderUser = is_array($auth['user'] ?? null) ? $auth['user'] : [];
 $senderUid = (string)($senderUser['uid'] ?? '');
+
+$previewToken = trim((string)($body['preview_token'] ?? ''));
+if ($previewToken !== '') {
+    $tokenHash = zpay_transfer_preview_token_hash($previewToken);
+    $claim = zpay_transfer_claim_preview_token($tokenHash, $senderUid);
+    if (empty($claim['ok'])) {
+        api_response(
+            false,
+            (string)($claim['code'] ?? 'TRANSFER_PREVIEW_INVALID'),
+            (string)($claim['message'] ?? 'This transfer preview is invalid. Please review again.'),
+            (array)($claim['data'] ?? []),
+            (int)($claim['status'] ?? 422)
+        );
+    }
+
+    $duplicateTransferId = trim((string)($claim['transfer_id'] ?? ''));
+    if (!empty($claim['duplicate']) && $duplicateTransferId !== '') {
+        $existing = fb_get('TRANSFERS/' . $duplicateTransferId);
+        api_response(true, 'TRANSFER_SUCCESS', 'Transfer completed successfully.', [
+            'transfer' => zpay_transfer_public_row(is_array($existing) ? $existing : []),
+        ]);
+    }
+
+    $reference = zpay_transfer_clean_reference($body['reference'] ?? $body['note'] ?? '');
+    $result = zpay_transfer_execute_preview((array)($claim['preview'] ?? []), $tokenHash, $reference);
+    if (empty($result['ok'])) {
+        api_response(
+            false,
+            (string)($result['code'] ?? 'TRANSFER_FAILED'),
+            (string)($result['message'] ?? 'The transfer could not be completed. No money was lost.'),
+            (array)($result['data'] ?? []),
+            (int)($result['status'] ?? 422)
+        );
+    }
+
+    api_response(true, 'TRANSFER_SUCCESS', 'Transfer completed successfully.', [
+        'transfer' => zpay_transfer_public_row((array)($result['transfer'] ?? [])),
+    ]);
+}
+
 $senderStatus = auth_status_value($senderUser['status'] ?? '');
 $senderAccountStatus = auth_status_value($senderUser['account_status'] ?? $senderStatus);
 if ($senderStatus !== 'ACTIVE' || $senderAccountStatus !== 'ACTIVE') {
@@ -50,7 +90,16 @@ $receiverWallet = is_array($receiverWallet) ? $receiverWallet : [];
 $currency = wallet_account_currency($senderUser, $senderWallet);
 $receiverCurrency = wallet_account_currency($receiverUser, $receiverWallet);
 if ($currency !== $receiverCurrency) {
-    api_response(false, 'CURRENCY_MISMATCH', 'Sender and receiver wallet currency must match.', [], 422);
+    api_response(false, 'TRANSFER_CURRENCY_MISMATCH', 'Transfers between different wallet currencies are not supported.', [], 422);
+}
+if ($amount < 1.0) {
+    api_response(
+        false,
+        'TRANSFER_BELOW_MINIMUM',
+        $currency === 'MYR' ? 'Minimum transfer amount is RM 1.00.' : 'Minimum transfer amount is 1.00 BDT.',
+        ['minimum_amount' => 1.00, 'wallet_currency' => $currency],
+        422
+    );
 }
 
 $transferId = wallet_make_transfer_id();
@@ -70,8 +119,12 @@ $receiverRole = auth_status_value($receiverUser['role'] ?? 'USER');
 $commonExtra = [
     'transfer_id' => $transferId,
     'currency' => $currency,
+    'wallet_currency' => $currency,
     'fee' => 0,
+    'fee_amount' => 0,
     'commission' => 0,
+    'commission_amount' => 0,
+    'reference' => $note,
     'note' => $note,
     'created_at' => $now,
     'updated_at' => $now,
@@ -109,22 +162,34 @@ if (empty($credit['ok'])) {
 
 $transfer = [
     'transfer_id' => $transferId,
+    'request_id' => $transferId,
+    'type' => 'ZPAY_TRANSFER',
     'sender_uid' => $senderUid,
     'sender_account' => $senderPhone,
+    'sender_phone' => $senderPhone,
     'sender_name' => $senderName,
     'sender_role' => $senderRole,
     'receiver_uid' => $receiverUid,
     'receiver_account' => $receiverPhone,
+    'receiver_phone' => $receiverPhone,
     'receiver_name' => $receiverName,
     'receiver_role' => $receiverRole,
     'amount' => $amount,
+    'transfer_amount' => $amount,
     'currency' => $currency,
+    'wallet_currency' => $currency,
     'fee' => 0,
+    'fee_amount' => 0,
     'commission' => 0,
+    'commission_amount' => 0,
+    'total_paid' => $amount,
+    'total_debit' => $amount,
     'status' => 'SUCCESS',
+    'reference' => $note,
     'note' => $note,
     'created_at' => $now,
     'updated_at' => $now,
+    'completed_at' => $now,
     'month' => $month,
     'idempotency_key_hash' => hash('sha256', $idempotencyKey),
     'sender_wallet_debited' => true,
@@ -138,7 +203,19 @@ $transfer = [
     'receiver_after_available' => (float)$credit['after_available'],
     'receiver_before_hold' => (float)($credit['hold_balance'] ?? 0),
     'receiver_after_hold' => (float)($credit['hold_balance'] ?? 0),
+    'calculation_version' => 'zpay_transfer_v1',
 ];
+
+$receipt = zpay_transfer_save_receipt($transfer);
+if (!empty($receipt['receipt_url'])) {
+    $transfer = array_merge($transfer, [
+        'receipt_id' => (string)$receipt['receipt_id'],
+        'receipt_token' => (string)$receipt['receipt_token'],
+        'receipt_url' => (string)$receipt['receipt_url'],
+        'tracking_url' => (string)$receipt['tracking_url'],
+        'receipt_created_at' => (int)$receipt['receipt_created_at'],
+    ]);
+}
 
 $store = wallet_store_transfer_records($transfer, [
     ['uid' => $senderUid, 'row' => array_merge($transfer, [
@@ -157,6 +234,11 @@ if (empty($store['ok'])) {
     wallet_restore_available_balance($receiverUid, (float)$credit['after_available'], (float)$credit['before_available']);
     wallet_delete_ledger_record($senderUid, $now, $senderLedgerId);
     wallet_delete_ledger_record($receiverUid, $now, $receiverLedgerId);
+    foreach (($receipt['written_paths'] ?? []) as $path) {
+        if (is_string($path) && trim($path) !== '') {
+            fb_delete($path);
+        }
+    }
     fb_patch($idempotencyPath, [
         'status' => 'FAILED',
         'error_code' => (string)($store['code'] ?? 'TRANSFER_STORE_FAILED'),
@@ -174,6 +256,11 @@ if (!fb_put('TRANSFERS/' . $transferId, $transfer)
     wallet_delete_ledger_record($senderUid, $now, $senderLedgerId);
     wallet_delete_ledger_record($receiverUid, $now, $receiverLedgerId);
     foreach (($store['written_paths'] ?? []) as $path) {
+        if (is_string($path) && trim($path) !== '') {
+            fb_delete($path);
+        }
+    }
+    foreach (($receipt['written_paths'] ?? []) as $path) {
         if (is_string($path) && trim($path) !== '') {
             fb_delete($path);
         }
