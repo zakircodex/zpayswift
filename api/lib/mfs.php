@@ -2457,8 +2457,6 @@ function mfs_public_receipt(array $receipt): array
         'total_debit_text' => (string)($receipt['total_debit_text'] ?? $receipt['total_pay_text'] ?? ''),
         'wallet_debit_text' => (string)($receipt['wallet_debit_text'] ?? $receipt['total_debit_text'] ?? $receipt['total_pay_text'] ?? ''),
         'wallet_currency' => (string)($receipt['wallet_currency'] ?? ''),
-        'balance_after' => (float)($receipt['balance_after'] ?? 0),
-        'balance_after_text' => (string)($receipt['balance_after_text'] ?? ''),
         'reference' => (string)($receipt['reference'] ?? ''),
         'sender_details' => (string)($receipt['sender_details'] ?? ''),
         'sender_last_digit' => (string)($receipt['sender_last_digit'] ?? ''),
