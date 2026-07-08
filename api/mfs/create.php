@@ -163,7 +163,8 @@ function mfs_create_endpoint_build_telegram_text(array $data, array $user): stri
     $accountType = htmlspecialchars((string)($data['account_type'] ?? '-'), ENT_QUOTES, 'UTF-8');
     $number = htmlspecialchars((string)($data['receiver_number'] ?? $data['number'] ?? '-'), ENT_QUOTES, 'UTF-8');
     $requestId = htmlspecialchars((string)($data['request_id'] ?? '-'), ENT_QUOTES, 'UTF-8');
-    $reference = htmlspecialchars((string)($data['reference'] ?? '-'), ENT_QUOTES, 'UTF-8');
+    $referenceValue = trim((string)($data['reference'] ?? ''));
+    $reference = htmlspecialchars($referenceValue, ENT_QUOTES, 'UTF-8');
 
     $userName = htmlspecialchars((string)($user['name'] ?? '-'), ENT_QUOTES, 'UTF-8');
     $userPhone = htmlspecialchars((string)($user['phone'] ?? '-'), ENT_QUOTES, 'UTF-8');
@@ -218,7 +219,8 @@ function mfs_create_endpoint_build_telegram_text(array $data, array $user): stri
         "Service: <b>{$service}</b>\n" .
         "Account: <b>{$accountType}</b>\n" .
         "Number: <code>{$number}</code>\n" .
-        "Reference: <code>{$reference}</code>\n\n" .
+        ($referenceValue !== '' ? "Reference: <code>{$reference}</code>\n" : '') .
+        "\n" .
         "{$amountLine}\n" .
         "{$feeLine}\n" .
         "{$totalLine}{$rateLine}\n\n" .
@@ -362,7 +364,7 @@ if ($previewToken !== '') {
     $body['amount'] = strtoupper((string)$body['currency']) === 'MYR'
         ? (float)$body['amount_rm']
         : (float)$body['amount_bdt'];
-    $body['reference'] = (string)($preview['reference'] ?? $body['reference'] ?? $body['ref'] ?? '');
+    $body['reference'] = substr(trim((string)($body['reference'] ?? $body['ref'] ?? $preview['reference'] ?? '')), 0, 80);
 }
 
 $res = mfs_create_request(

@@ -228,7 +228,9 @@ if (!$isMy && $totalBdt <= 0) {
                 <?= receipt_row('Fee', 'BDT ' . receipt_money($feeBdt)) ?>
                 <?= receipt_row('Total Paid', 'BDT ' . receipt_money($totalBdt)) ?>
               <?php endif; ?>
-              <?= receipt_row('Reference', $data['reference'] ?? '') ?>
+              <?php if (trim((string)($data['reference'] ?? '')) !== ''): ?>
+                <?= receipt_row('Reference', $data['reference'] ?? '') ?>
+              <?php endif; ?>
               <?= receipt_row('TRXID', $data['trxid'] ?? '') ?>
             </div>
           </section>

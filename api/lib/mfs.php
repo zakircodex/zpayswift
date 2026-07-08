@@ -43,6 +43,13 @@ function mfs_round_money($value): float
     return round((float)$value, 2);
 }
 
+function mfs_money_text($value, string $currency): string
+{
+    $currency = mfs_normalize_currency($currency);
+    $amount = number_format(mfs_round_money((float)$value), 2, '.', '');
+    return $currency === 'MYR' ? 'RM ' . $amount : $amount . ' BDT';
+}
+
 function mfs_make_request_id(): string
 {
     try {
@@ -1540,6 +1547,7 @@ function mfs_preview_payload(string $uid, array $body): array
     $feeAmount = $feeCurrency === 'MYR'
         ? mfs_round_money((float)$amounts['fee_rm'])
         : mfs_round_money((float)$amounts['fee_bdt']);
+    $totalDebitText = mfs_money_text($walletHoldAmount, $walletCurrency);
 
     return [
         'ok' => true,
@@ -1586,6 +1594,10 @@ function mfs_preview_payload(string $uid, array $body): array
             'fee_amount' => $feeAmount,
             'total_pay' => $walletHoldAmount,
             'total_debit' => $walletHoldAmount,
+            'total_pay_text' => $totalDebitText,
+            'total_debit_text' => $totalDebitText,
+            'wallet_debit' => $walletHoldAmount,
+            'wallet_debit_text' => $totalDebitText,
             'total_pay_bdt' => (float)$amounts['total_debit_bdt'],
             'total_debit_bdt' => (float)$amounts['total_debit_bdt'],
             'total_pay_myr' => (float)$amounts['total_debit_rm'],
@@ -2160,8 +2172,15 @@ function mfs_public_log_row(array $row): array
 
         'fee_bdt' => (float)($row['fee_bdt'] ?? 0),
         'fee_rm' => (float)($row['fee_rm'] ?? $row['fee_myr'] ?? 0),
+        'fee_currency' => (string)($row['fee_currency'] ?? (strtoupper((string)($row['wallet_currency'] ?? 'BDT')) === 'MYR' ? 'MYR' : 'BDT')),
+        'fee_amount' => (float)($row['fee_amount'] ?? (strtoupper((string)($row['wallet_currency'] ?? 'BDT')) === 'MYR' ? ($row['fee_rm'] ?? 0) : ($row['fee_bdt'] ?? 0))),
 
         'total_debit' => (float)($row['total_debit'] ?? 0),
+        'total_pay' => (float)($row['total_pay'] ?? $row['total_debit'] ?? 0),
+        'wallet_debit' => (float)($row['wallet_debit'] ?? $row['total_debit'] ?? 0),
+        'total_debit_text' => (string)($row['total_debit_text'] ?? ''),
+        'total_pay_text' => (string)($row['total_pay_text'] ?? $row['total_debit_text'] ?? ''),
+        'wallet_debit_text' => (string)($row['wallet_debit_text'] ?? $row['total_debit_text'] ?? ''),
         'total_debit_bdt' => (float)($row['total_debit_bdt'] ?? $row['total_pay_bdt'] ?? 0),
         'total_debit_rm' => (float)($row['total_debit_rm'] ?? $row['total_pay_myr'] ?? 0),
 
@@ -2315,9 +2334,16 @@ function mfs_save_receipt_for_request(string $requestId, array $row, string $sta
         'exchange_rate' => mfs_receipt_display_money($row['exchange_rate'] ?? $row['rate_myr_to_bdt'] ?? 0),
         'fee_bdt' => mfs_receipt_display_money($row['fee_bdt'] ?? 0),
         'fee_rm' => mfs_receipt_display_money($row['fee_rm'] ?? $row['fee_myr'] ?? 0),
+        'fee_currency' => (string)($row['fee_currency'] ?? (mfs_normalize_currency((string)($row['wallet_currency'] ?? 'BDT')) === 'MYR' ? 'MYR' : 'BDT')),
+        'fee_amount' => mfs_receipt_display_money($row['fee_amount'] ?? (mfs_normalize_currency((string)($row['wallet_currency'] ?? 'BDT')) === 'MYR' ? ($row['fee_rm'] ?? 0) : ($row['fee_bdt'] ?? 0))),
         'total_debit_bdt' => mfs_receipt_display_money($row['total_debit_bdt'] ?? 0),
         'total_debit_rm' => mfs_receipt_display_money($row['total_debit_rm'] ?? 0),
         'total_pay' => mfs_receipt_display_money($row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0),
+        'total_debit' => mfs_receipt_display_money($row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0),
+        'wallet_debit' => mfs_receipt_display_money($row['wallet_debit'] ?? $row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0),
+        'total_pay_text' => (string)($row['total_pay_text'] ?? $row['total_debit_text'] ?? ''),
+        'total_debit_text' => (string)($row['total_debit_text'] ?? $row['total_pay_text'] ?? ''),
+        'wallet_debit_text' => (string)($row['wallet_debit_text'] ?? $row['total_debit_text'] ?? $row['total_pay_text'] ?? ''),
         'wallet_currency' => mfs_normalize_currency((string)($row['wallet_currency'] ?? 'BDT')),
 
         'reference' => (string)($row['reference'] ?? ''),
@@ -2395,6 +2421,11 @@ function mfs_public_receipt(array $receipt): array
         'total_debit_bdt' => (float)($receipt['total_debit_bdt'] ?? 0),
         'total_debit_rm' => (float)($receipt['total_debit_rm'] ?? 0),
         'total_pay' => (float)($receipt['total_pay'] ?? 0),
+        'total_debit' => (float)($receipt['total_pay'] ?? $receipt['total_debit'] ?? 0),
+        'wallet_debit' => (float)($receipt['wallet_debit'] ?? $receipt['total_pay'] ?? $receipt['total_debit'] ?? 0),
+        'total_pay_text' => (string)($receipt['total_pay_text'] ?? $receipt['total_debit_text'] ?? ''),
+        'total_debit_text' => (string)($receipt['total_debit_text'] ?? $receipt['total_pay_text'] ?? ''),
+        'wallet_debit_text' => (string)($receipt['wallet_debit_text'] ?? $receipt['total_debit_text'] ?? $receipt['total_pay_text'] ?? ''),
         'wallet_currency' => (string)($receipt['wallet_currency'] ?? ''),
         'reference' => (string)($receipt['reference'] ?? ''),
         'sender_details' => (string)($receipt['sender_details'] ?? ''),
@@ -2686,6 +2717,11 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
     $now = mfs_now();
     $walletCurrency = (string)$amounts['wallet_currency'];
     $totalDebit = mfs_round_money((float)$amounts['total_debit']);
+    $feeCurrency = $walletCurrency === 'MYR' ? 'MYR' : 'BDT';
+    $feeAmount = $feeCurrency === 'MYR'
+        ? mfs_round_money((float)$amounts['fee_rm'])
+        : mfs_round_money((float)$amounts['fee_bdt']);
+    $totalDebitText = mfs_money_text($totalDebit, $walletCurrency);
     $userRole = mfs_user_role($user);
 
     $hold = mfs_hold_wallet(
@@ -2703,10 +2739,6 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
             'message' => (string)($hold['message'] ?? 'Failed to hold wallet balance'),
             'data' => (array)($hold['data'] ?? []),
         ];
-    }
-
-    if ($reference === '') {
-        $reference = 'ZP-' . $requestId;
     }
 
     $row = [
@@ -2734,9 +2766,16 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         'amount_rm' => (float)$amounts['amount_rm'],
         'fee_bdt' => (float)$amounts['fee_bdt'],
         'fee_rm' => (float)$amounts['fee_rm'],
+        'fee_currency' => $feeCurrency,
+        'fee_amount' => $feeAmount,
         'total_debit_bdt' => (float)$amounts['total_debit_bdt'],
         'total_debit_rm' => (float)$amounts['total_debit_rm'],
         'total_debit' => $totalDebit,
+        'total_pay' => $totalDebit,
+        'wallet_debit' => $totalDebit,
+        'total_debit_text' => $totalDebitText,
+        'total_pay_text' => $totalDebitText,
+        'wallet_debit_text' => $totalDebitText,
         'exchange_rate' => (float)$amounts['exchange_rate'],
 
         'reference' => $reference,
@@ -2876,9 +2915,16 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
             'amount_rm' => (float)$amounts['amount_rm'],
             'fee_bdt' => (float)$amounts['fee_bdt'],
             'fee_rm' => (float)$amounts['fee_rm'],
+            'fee_currency' => $feeCurrency,
+            'fee_amount' => $feeAmount,
             'total_debit_bdt' => (float)$amounts['total_debit_bdt'],
             'total_debit_rm' => (float)$amounts['total_debit_rm'],
             'total_debit' => $totalDebit,
+            'total_pay' => $totalDebit,
+            'wallet_debit' => $totalDebit,
+            'total_debit_text' => $totalDebitText,
+            'total_pay_text' => $totalDebitText,
+            'wallet_debit_text' => $totalDebitText,
             'exchange_rate' => (float)$amounts['exchange_rate'],
 
             'reference' => $reference,
