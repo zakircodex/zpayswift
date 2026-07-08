@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/mfs.php';
 
 api_require_method('GET');
 api_require_app_key();
@@ -36,6 +37,12 @@ usort($list, static function (array $a, array $b): int {
     $bTime = (int)(($b['updated_at'] ?? 0) ?: ($b['completed_at'] ?? 0) ?: ($b['created_at'] ?? 0));
     return $bTime <=> $aTime;
 });
+
+if (function_exists('mfs_public_log_row')) {
+    $list = array_map(static function (array $row): array {
+        return array_replace($row, mfs_public_log_row($row));
+    }, $list);
+}
 
 api_response(true, 'MFS_HISTORY_OK', 'MFS history loaded', [
     'month' => $month,

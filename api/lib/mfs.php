@@ -2140,6 +2140,25 @@ function mfs_public_log_row(array $row): array
 {
     $provider = mfs_normalize_provider((string)($row['provider'] ?? ''));
     $serviceType = mfs_normalize_service_type((string)($row['service_type'] ?? 'SEND_MONEY'));
+    $walletCurrency = mfs_normalize_currency((string)($row['wallet_currency'] ?? $row['wallet_debit_currency'] ?? 'BDT'));
+    $amountBdt = (float)($row['amount_bdt'] ?? 0);
+    $amountRm = (float)($row['amount_rm'] ?? $row['amount_myr'] ?? 0);
+    $exchangeRate = (float)($row['exchange_rate'] ?? $row['rate_snapshot'] ?? $row['rate_myr_to_bdt'] ?? 0);
+    $feeCurrency = mfs_normalize_currency((string)($row['fee_currency'] ?? ($walletCurrency === 'MYR' ? 'MYR' : 'BDT')));
+    $feeAmount = (float)($row['fee_amount'] ?? ($feeCurrency === 'MYR' ? ($row['fee_rm'] ?? 0) : ($row['fee_bdt'] ?? 0)));
+    $totalDebit = (float)($row['total_debit'] ?? $row['total_pay'] ?? $row['wallet_debit'] ?? $row['wallet_hold_amount'] ?? 0);
+    $balanceAfter = (float)($row['balance_after'] ?? $row['display_balance_after'] ?? $row['last_balance'] ?? 0);
+    $balanceAfterText = (string)($row['balance_after_text'] ?? '');
+    if ($balanceAfterText === '' && $balanceAfter > 0 && function_exists('mfs_money_text')) {
+        $balanceAfterText = mfs_money_text($balanceAfter, $walletCurrency);
+    }
+    $totalDebitText = (string)($row['total_debit_text'] ?? $row['total_pay_text'] ?? $row['wallet_debit_text'] ?? '');
+    if ($totalDebitText === '' && $totalDebit > 0 && function_exists('mfs_money_text')) {
+        $totalDebitText = mfs_money_text($totalDebit, $walletCurrency);
+    }
+    $rateApplicable = strtoupper((string)($row['service_mode'] ?? '')) === 'REMITTANCE'
+        || $walletCurrency === 'MYR'
+        || $amountRm > 0;
 
     return [
         'request_id' => (string)($row['request_id'] ?? ''),
@@ -2164,32 +2183,40 @@ function mfs_public_log_row(array $row): array
 
         'country_code' => (string)($row['country_code'] ?? ''),
         'service_mode' => (string)($row['service_mode'] ?? ''),
-        'wallet_currency' => (string)($row['wallet_currency'] ?? ''),
+        'wallet_currency' => $walletCurrency,
+        'wallet_debit_currency' => $walletCurrency,
 
-        'amount' => (float)($row['total_debit'] ?? 0),
-        'amount_bdt' => (float)($row['amount_bdt'] ?? 0),
-        'amount_rm' => (float)($row['amount_rm'] ?? $row['amount_myr'] ?? 0),
+        'amount' => $totalDebit,
+        'amount_bdt' => $amountBdt,
+        'amount_rm' => $amountRm,
+        'amount_myr' => $amountRm,
 
         'fee_bdt' => (float)($row['fee_bdt'] ?? 0),
         'fee_rm' => (float)($row['fee_rm'] ?? $row['fee_myr'] ?? 0),
-        'fee_currency' => (string)($row['fee_currency'] ?? (strtoupper((string)($row['wallet_currency'] ?? 'BDT')) === 'MYR' ? 'MYR' : 'BDT')),
-        'fee_amount' => (float)($row['fee_amount'] ?? (strtoupper((string)($row['wallet_currency'] ?? 'BDT')) === 'MYR' ? ($row['fee_rm'] ?? 0) : ($row['fee_bdt'] ?? 0))),
+        'fee_currency' => $feeCurrency,
+        'fee_amount' => $feeAmount,
 
-        'total_debit' => (float)($row['total_debit'] ?? 0),
-        'total_pay' => (float)($row['total_pay'] ?? $row['total_debit'] ?? 0),
-        'wallet_debit' => (float)($row['wallet_debit'] ?? $row['total_debit'] ?? 0),
-        'total_debit_text' => (string)($row['total_debit_text'] ?? ''),
-        'total_pay_text' => (string)($row['total_pay_text'] ?? $row['total_debit_text'] ?? ''),
-        'wallet_debit_text' => (string)($row['wallet_debit_text'] ?? $row['total_debit_text'] ?? ''),
+        'total_debit' => $totalDebit,
+        'total_pay' => (float)($row['total_pay'] ?? $totalDebit),
+        'total_paid' => (float)($row['total_paid'] ?? $row['total_pay'] ?? $totalDebit),
+        'wallet_debit' => (float)($row['wallet_debit'] ?? $totalDebit),
+        'wallet_debit_amount' => (float)($row['wallet_debit'] ?? $row['wallet_debit_amount'] ?? $totalDebit),
+        'total_debit_text' => $totalDebitText,
+        'total_pay_text' => (string)($row['total_pay_text'] ?? $totalDebitText),
+        'wallet_debit_text' => (string)($row['wallet_debit_text'] ?? $totalDebitText),
         'total_debit_bdt' => (float)($row['total_debit_bdt'] ?? $row['total_pay_bdt'] ?? 0),
         'total_debit_rm' => (float)($row['total_debit_rm'] ?? $row['total_pay_myr'] ?? 0),
 
-        'exchange_rate' => (float)($row['exchange_rate'] ?? 0),
+        'exchange_rate' => $exchangeRate,
+        'rate_snapshot' => $exchangeRate,
+        'rate_applicable' => $rateApplicable,
+        'balance_after' => $balanceAfter,
+        'balance_after_text' => $balanceAfterText,
 
         'reference' => (string)($row['reference'] ?? ''),
         'trxid' => (string)($row['trxid'] ?? ''),
         'sender_details' => (string)($row['sender_details'] ?? $row['sender_last_digit'] ?? $row['last_digit'] ?? ''),
-        'sender_last_digit' => (string)($row['sender_last_digit'] ?? ''),
+        'sender_last_digit' => (string)($row['sender_last_digit'] ?? $row['sender_details'] ?? $row['last_digit'] ?? ''),
         'message' => (string)($row['final_message'] ?? $row['message'] ?? $row['note'] ?? ''),
 
         'created_at' => (int)($row['created_at'] ?? 0),
@@ -2198,6 +2225,7 @@ function mfs_public_log_row(array $row): array
 
         'receipt_id' => (string)($row['receipt_id'] ?? ''),
         'receipt_url' => (string)($row['receipt_url'] ?? ''),
+        'tracking_url' => (string)($row['tracking_url'] ?? $row['receipt_url'] ?? ''),
         'receipt_created_at' => (int)($row['receipt_created_at'] ?? 0),
     ];
 }
@@ -2345,6 +2373,8 @@ function mfs_save_receipt_for_request(string $requestId, array $row, string $sta
         'total_debit_text' => (string)($row['total_debit_text'] ?? $row['total_pay_text'] ?? ''),
         'wallet_debit_text' => (string)($row['wallet_debit_text'] ?? $row['total_debit_text'] ?? $row['total_pay_text'] ?? ''),
         'wallet_currency' => mfs_normalize_currency((string)($row['wallet_currency'] ?? 'BDT')),
+        'balance_after' => mfs_receipt_display_money($row['balance_after'] ?? $row['display_balance_after'] ?? $row['last_balance'] ?? 0),
+        'balance_after_text' => (string)($row['balance_after_text'] ?? ''),
 
         'reference' => (string)($row['reference'] ?? ''),
         'sender_details' => (string)($row['sender_details'] ?? $row['sender_last_digit'] ?? $row['last_digit'] ?? ''),
@@ -2427,6 +2457,8 @@ function mfs_public_receipt(array $receipt): array
         'total_debit_text' => (string)($receipt['total_debit_text'] ?? $receipt['total_pay_text'] ?? ''),
         'wallet_debit_text' => (string)($receipt['wallet_debit_text'] ?? $receipt['total_debit_text'] ?? $receipt['total_pay_text'] ?? ''),
         'wallet_currency' => (string)($receipt['wallet_currency'] ?? ''),
+        'balance_after' => (float)($receipt['balance_after'] ?? 0),
+        'balance_after_text' => (string)($receipt['balance_after_text'] ?? ''),
         'reference' => (string)($receipt['reference'] ?? ''),
         'sender_details' => (string)($receipt['sender_details'] ?? ''),
         'sender_last_digit' => (string)($receipt['sender_last_digit'] ?? ''),
@@ -2741,6 +2773,9 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         ];
     }
 
+    $balanceAfter = mfs_round_money((float)($hold['available_balance'] ?? $hold['after_available'] ?? 0));
+    $balanceAfterText = mfs_money_text($balanceAfter, $walletCurrency);
+
     $row = [
         'request_id' => $requestId,
         'uid' => $uid,
@@ -2777,6 +2812,8 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         'total_pay_text' => $totalDebitText,
         'wallet_debit_text' => $totalDebitText,
         'exchange_rate' => (float)$amounts['exchange_rate'],
+        'balance_after' => $balanceAfter,
+        'balance_after_text' => $balanceAfterText,
 
         'reference' => $reference,
         'trxid' => '',
@@ -2926,6 +2963,8 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
             'total_pay_text' => $totalDebitText,
             'wallet_debit_text' => $totalDebitText,
             'exchange_rate' => (float)$amounts['exchange_rate'],
+            'balance_after' => $balanceAfter,
+            'balance_after_text' => $balanceAfterText,
 
             'reference' => $reference,
             'trxid' => '',
