@@ -138,6 +138,8 @@ if (!$statusSaved) {
     api_response(false, 'SERVER_ERROR', 'Failed to create request status', [], 500);
 }
 
+topup_write_history($row);
+
 admin_action_log('ADMIN_DIRECT_TOPUP_CREATE', $requestId, 'Admin created direct topup request', [
     'request_id' => $requestId,
     'topup_number' => $topupNumber,

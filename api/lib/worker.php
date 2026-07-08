@@ -346,26 +346,30 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
     fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done);
     fb_delete('TOPUP_REQUESTS/PROCESSING/' . $requestId);
 
-    fb_put('TOPUP_HISTORY/' . $uid . '/' . month_key() . '/' . $requestId, [
-        'request_id' => $requestId,
-        'topup_number' => (string)($done['topup_number'] ?? ''),
-        'operator' => (string)($done['operator'] ?? ''),
-        'amount' => $amount,
-        'amount_bdt' => (float)($done['amount_bdt'] ?? $amount),
-        'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $amount),
-        'wallet_debit_amount' => $walletDebitAmount,
-        'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),
-        'settled_hold_amount' => (float)($done['settled_hold_amount'] ?? 0),
-        'settled_hold_currency' => (string)($done['settled_hold_currency'] ?? ''),
-        'rate_used' => (float)($done['rate_used'] ?? 0),
-        'status' => 'SUCCESS',
-        'message' => $resultMessage,
-        'device_id' => $deviceId,
-        'slot' => (string)($done['assigned_slot'] ?? ''),
-        'created_at' => (int)($done['created_at'] ?? now_ts()),
-        'completed_at' => (int)($done['completed_at'] ?? now_ts()),
-        'request_source' => (string)($done['request_source'] ?? ''),
-    ]);
+    if (function_exists('topup_write_history')) {
+        topup_write_history($done);
+    } else {
+        fb_put('TOPUP_HISTORY/' . $uid . '/' . month_key() . '/' . $requestId, [
+            'request_id' => $requestId,
+            'topup_number' => (string)($done['topup_number'] ?? ''),
+            'operator' => (string)($done['operator'] ?? ''),
+            'amount' => $amount,
+            'amount_bdt' => (float)($done['amount_bdt'] ?? $amount),
+            'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $amount),
+            'wallet_debit_amount' => $walletDebitAmount,
+            'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),
+            'settled_hold_amount' => (float)($done['settled_hold_amount'] ?? 0),
+            'settled_hold_currency' => (string)($done['settled_hold_currency'] ?? ''),
+            'rate_used' => (float)($done['rate_used'] ?? 0),
+            'status' => 'SUCCESS',
+            'message' => $resultMessage,
+            'device_id' => $deviceId,
+            'slot' => (string)($done['assigned_slot'] ?? ''),
+            'created_at' => (int)($done['created_at'] ?? now_ts()),
+            'completed_at' => (int)($done['completed_at'] ?? now_ts()),
+            'request_source' => (string)($done['request_source'] ?? ''),
+        ]);
+    }
 
     update_request_status($requestId, 'SUCCESS', $resultMessage);
     worker_sync_api_request_status($uid, $requestId, 'SUCCESS', $resultMessage);
@@ -448,26 +452,30 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
     fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done);
     fb_delete('TOPUP_REQUESTS/PROCESSING/' . $requestId);
 
-    fb_put('TOPUP_HISTORY/' . $uid . '/' . month_key() . '/' . $requestId, [
-        'request_id' => $requestId,
-        'topup_number' => (string)($done['topup_number'] ?? ''),
-        'operator' => (string)($done['operator'] ?? ''),
-        'amount' => $amount,
-        'amount_bdt' => (float)($done['amount_bdt'] ?? $amount),
-        'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $amount),
-        'wallet_debit_amount' => $walletDebitAmount,
-        'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),
-        'refund_amount' => (float)($done['refund_amount'] ?? 0),
-        'refund_currency' => (string)($done['refund_currency'] ?? ''),
-        'rate_used' => (float)($done['rate_used'] ?? 0),
-        'status' => 'FAILED',
-        'message' => $resultMessage,
-        'device_id' => $deviceId,
-        'slot' => (string)($done['assigned_slot'] ?? ''),
-        'created_at' => (int)($done['created_at'] ?? now_ts()),
-        'completed_at' => (int)($done['completed_at'] ?? now_ts()),
-        'request_source' => (string)($done['request_source'] ?? ''),
-    ]);
+    if (function_exists('topup_write_history')) {
+        topup_write_history($done);
+    } else {
+        fb_put('TOPUP_HISTORY/' . $uid . '/' . month_key() . '/' . $requestId, [
+            'request_id' => $requestId,
+            'topup_number' => (string)($done['topup_number'] ?? ''),
+            'operator' => (string)($done['operator'] ?? ''),
+            'amount' => $amount,
+            'amount_bdt' => (float)($done['amount_bdt'] ?? $amount),
+            'wallet_debit_bdt' => (float)($done['wallet_debit_bdt'] ?? $amount),
+            'wallet_debit_amount' => $walletDebitAmount,
+            'wallet_debit_currency' => (string)($done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT'),
+            'refund_amount' => (float)($done['refund_amount'] ?? 0),
+            'refund_currency' => (string)($done['refund_currency'] ?? ''),
+            'rate_used' => (float)($done['rate_used'] ?? 0),
+            'status' => 'FAILED',
+            'message' => $resultMessage,
+            'device_id' => $deviceId,
+            'slot' => (string)($done['assigned_slot'] ?? ''),
+            'created_at' => (int)($done['created_at'] ?? now_ts()),
+            'completed_at' => (int)($done['completed_at'] ?? now_ts()),
+            'request_source' => (string)($done['request_source'] ?? ''),
+        ]);
+    }
 
     update_request_status($requestId, 'FAILED', $resultMessage);
     worker_sync_api_request_status($uid, $requestId, 'FAILED', $resultMessage);

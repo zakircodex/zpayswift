@@ -1004,6 +1004,10 @@ function subapi_create_panel_topup(
         'updated_at' => $now,
     ]);
 
+    if (function_exists('topup_write_history')) {
+        topup_write_history($topupRow);
+    }
+
     $ledgerId = subapi_make_uid('LED');
     $ledgerMonth = date('Y-m', $now);
 

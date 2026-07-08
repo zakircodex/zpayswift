@@ -174,6 +174,8 @@ fb_put('REQUEST_STATUS/' . $requestId, [
     'updated_at' => $now,
 ]);
 
+topup_write_history($requestRow);
+
 /*
 |--------------------------------------------------------------------------
 | Wallet ledger entry

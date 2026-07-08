@@ -1068,6 +1068,22 @@ function topup_find_request(string $requestId): ?array
     return null;
 }
 
+function topup_history_month_key(array $row): string
+{
+    $ts = (int)(
+        ($row['created_at'] ?? 0)
+        ?: ($row['completed_at'] ?? 0)
+        ?: ($row['updated_at'] ?? 0)
+        ?: now_ts()
+    );
+
+    if ($ts <= 0) {
+        return month_key();
+    }
+
+    return month_key($ts);
+}
+
 function topup_write_history(array $done): void
 {
     $uid = (string)($done['uid'] ?? '');
@@ -1079,7 +1095,7 @@ function topup_write_history(array $done): void
 
     $requestSource = (string)($done['request_source'] ?? $done['source'] ?? '');
 
-    fb_put('TOPUP_HISTORY/' . $uid . '/' . month_key() . '/' . $requestId, [
+    fb_put('TOPUP_HISTORY/' . $uid . '/' . topup_history_month_key($done) . '/' . $requestId, [
         'request_id' => $requestId,
         'topup_number' => (string)($done['topup_number'] ?? ''),
         'operator' => (string)($done['operator'] ?? ''),
@@ -1126,7 +1142,8 @@ function topup_write_history(array $done): void
         'status' => (string)($done['status'] ?? ''),
         'message' => (string)($done['final_message'] ?? ''),
         'created_at' => (int)($done['created_at'] ?? now_ts()),
-        'completed_at' => (int)($done['completed_at'] ?? now_ts()),
+        'updated_at' => (int)($done['updated_at'] ?? $done['completed_at'] ?? $done['created_at'] ?? now_ts()),
+        'completed_at' => (int)($done['completed_at'] ?? 0),
         'created_by_admin' => (bool)($done['created_by_admin'] ?? false),
         'request_source' => $requestSource,
     ]);

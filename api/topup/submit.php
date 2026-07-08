@@ -328,6 +328,7 @@ if (!$statusSaved) {
     api_response(false, 'SERVER_ERROR', 'Failed to create request status', [], 500);
 }
 
+topup_write_history($pendingRow);
 topup_mark_preview_used($tokenHash, $requestId);
 
 $deferredLog = [

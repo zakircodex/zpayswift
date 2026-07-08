@@ -16,10 +16,12 @@ if (!is_array($items)) {
     $items = [];
 }
 
-$list = array_values($items);
+$list = array_values(array_filter($items, static fn($row): bool => is_array($row)));
 
 usort($list, static function (array $a, array $b): int {
-    return (int)($b['created_at'] ?? 0) <=> (int)($a['created_at'] ?? 0);
+    $aTime = (int)(($a['updated_at'] ?? 0) ?: ($a['completed_at'] ?? 0) ?: ($a['created_at'] ?? 0));
+    $bTime = (int)(($b['updated_at'] ?? 0) ?: ($b['completed_at'] ?? 0) ?: ($b['created_at'] ?? 0));
+    return $bTime <=> $aTime;
 });
 
 api_response(true, 'SUCCESS', 'Topup history loaded', [
