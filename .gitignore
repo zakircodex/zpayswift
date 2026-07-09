@@ -14,6 +14,7 @@ config.php
 */config.php
 !api/topup/config.php
 !api/support/config.php
+!api/admin/support/config.php
 private/
 logs/
 node_modules/

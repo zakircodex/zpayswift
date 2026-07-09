@@ -65,6 +65,7 @@ header('Pragma: no-cache');
       <div class="nav">
         <div class="nav-title">Main</div>
         <button class="nav-btn" data-section="addMoneySection">Add Money <span>&rsaquo;</span></button>
+        <button class="nav-btn" data-section="supportSection">Support <span>&rsaquo;</span></button>
         <button class="nav-btn active" data-section="dashboardSection">Dashboard <span>›</span></button>
         <button class="nav-btn" data-section="topupSection">Topup Requests <span>›</span></button>
         <button class="nav-btn" data-section="bundleSection">Bundles <span>›</span></button>
@@ -548,6 +549,167 @@ header('Pragma: no-cache');
         </div>
       </section>
 
+      <section class="section" id="supportSection">
+        <div class="card">
+          <div class="panel-head">
+            <div>
+              <h3>Support Tickets</h3>
+              <p>Review customer support requests, replies and secure screenshots.</p>
+            </div>
+            <div class="row-actions">
+              <button class="btn ghost" id="reloadSupportBtn">Reload</button>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <div class="toolbar-left">
+              <select id="supportStatusFilter" class="input sm">
+                <option value="">All Status</option>
+                <option value="OPEN">Open</option>
+                <option value="PENDING">Pending</option>
+                <option value="REPLIED">Replied</option>
+                <option value="RESOLVED">Resolved</option>
+                <option value="CLOSED">Closed</option>
+              </select>
+              <input class="input md" id="supportSearch" placeholder="Search ticket, user, phone, subject or request ID">
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Ticket</th>
+                  <th>User</th>
+                  <th>Category</th>
+                  <th>Subject</th>
+                  <th>Related Request</th>
+                  <th>Status</th>
+                  <th>Attachments</th>
+                  <th>Last Activity</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="supportTicketsTableBody">
+                <tr><td colspan="9" class="empty">No support ticket loaded yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <div class="panel-head">
+            <div>
+              <h3>Contact Us Settings</h3>
+              <p>Public quick-contact options and support ticket policy.</p>
+            </div>
+            <button class="btn brand" id="saveSupportConfigBtn">Save Contact Settings</button>
+          </div>
+
+          <div class="card-body">
+            <div class="form-grid">
+              <label>Contact Us Enabled
+                <select class="input" id="supportContactEnabled">
+                  <option value="1">Enabled</option>
+                  <option value="0">Disabled</option>
+                </select>
+              </label>
+              <label>Ticket System Enabled
+                <select class="input" id="supportTicketEnabled">
+                  <option value="1">Enabled</option>
+                  <option value="0">Disabled</option>
+                </select>
+              </label>
+              <label>WhatsApp Enabled
+                <select class="input" id="supportWhatsappEnabled">
+                  <option value="0">Disabled</option>
+                  <option value="1">Enabled</option>
+                </select>
+              </label>
+              <label>WhatsApp Number
+                <input class="input" id="supportWhatsappNumber" placeholder="+60...">
+              </label>
+              <label>Call Enabled
+                <select class="input" id="supportCallEnabled">
+                  <option value="0">Disabled</option>
+                  <option value="1">Enabled</option>
+                </select>
+              </label>
+              <label>Support Phone Number
+                <input class="input" id="supportPhone" placeholder="+60...">
+              </label>
+              <label>Email Enabled
+                <select class="input" id="supportEmailEnabled">
+                  <option value="0">Disabled</option>
+                  <option value="1">Enabled</option>
+                </select>
+              </label>
+              <label>Support Email Address
+                <input class="input" id="supportEmail" placeholder="support@example.com">
+              </label>
+              <label>Support Hours
+                <input class="input" id="supportHours" placeholder="Every day, 10:00 AM - 10:00 PM">
+              </label>
+              <label>Average Response Text
+                <input class="input" id="supportAverageResponse" placeholder="Average response time: within 24 hours.">
+              </label>
+              <label style="grid-column:1/-1;">Support Notice
+                <textarea class="input" id="supportNotice" rows="3" placeholder="Never share your password, PIN or OTP."></textarea>
+              </label>
+              <label>Attachments Enabled
+                <select class="input" id="supportAttachmentsEnabled">
+                  <option value="1">Enabled</option>
+                  <option value="0">Disabled</option>
+                </select>
+              </label>
+              <label>Maximum Attachments
+                <input class="input" id="supportMaxAttachments" type="number" min="0" max="5" step="1">
+              </label>
+              <label>Maximum File Size (bytes)
+                <input class="input" id="supportMaxFileSize" type="number" min="1024" step="1024">
+              </label>
+              <label>Ticket Rate Limit (seconds)
+                <input class="input" id="supportRateLimit" type="number" min="0" step="1">
+              </label>
+              <label>Reopen Allowed
+                <select class="input" id="supportReopenAllowed">
+                  <option value="1">Enabled</option>
+                  <option value="0">Disabled</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <div class="panel-head">
+            <div>
+              <h3>Support Categories</h3>
+              <p>Manage active categories shown in the Android Contact Us page.</p>
+            </div>
+            <button class="btn brand" id="supportCategoryAddBtn">Add Category</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Name</th>
+                  <th>Active</th>
+                  <th>Sort</th>
+                  <th>Related Request</th>
+                  <th>Attachment</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="supportCategoriesTableBody">
+                <tr><td colspan="7" class="empty">No category loaded yet.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <section class="section" id="usersSection">
         <div class="card">
           <div class="panel-head">
@@ -689,7 +851,7 @@ header('Pragma: no-cache');
 <script>
 window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
-<script src="/api/admin/assets/dashboard.js?v=39"></script>
+<script src="/api/admin/assets/dashboard.js?v=40"></script>
 <script src="/api/admin/assets/admin-dashboard-ux.js?v=2"></script>
 
 </body>

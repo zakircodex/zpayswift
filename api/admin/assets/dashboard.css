@@ -453,6 +453,75 @@ html,body{margin:0;padding:0;background:linear-gradient(180deg,var(--bg),var(--b
   color:#fff;
 }
 
+.support-conversation{
+  display:grid;
+  gap:12px;
+  margin-top:16px;
+}
+
+.support-message{
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.03);
+  border-radius:14px;
+  padding:12px;
+}
+
+.support-message-head{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  color:var(--muted);
+  font-size:12px;
+  margin-bottom:8px;
+}
+
+.support-message-head strong{
+  color:var(--text);
+  font-size:13px;
+}
+
+.support-message-text{
+  white-space:pre-wrap;
+  line-height:1.55;
+}
+
+.support-attachments{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(140px,1fr));
+  gap:10px;
+  margin-top:10px;
+}
+
+.support-attachment-card{
+  color:var(--text);
+  text-decoration:none;
+  border:1px solid var(--line);
+  border-radius:12px;
+  overflow:hidden;
+  background:rgba(15,23,42,.84);
+}
+
+.support-attachment-card img{
+  display:block;
+  width:100%;
+  height:100px;
+  object-fit:cover;
+  background:#0b1220;
+}
+
+.support-attachment-card span,
+.support-attachment-card small{
+  display:block;
+  padding:8px 10px 0;
+  word-break:break-word;
+}
+
+.support-attachment-card small{
+  color:var(--muted);
+  padding-top:4px;
+  padding-bottom:10px;
+}
+
 .status-cell,
 .actions-cell{
   white-space:nowrap;

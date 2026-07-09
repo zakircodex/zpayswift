@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/lib/mfs.php';
 require_once dirname(__DIR__) . '/lib/add_money.php';
 require_once dirname(__DIR__) . '/lib/rates.php';
 require_once dirname(__DIR__) . '/lib/currency_conversion.php';
+require_once dirname(__DIR__) . '/lib/support.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -1693,6 +1694,105 @@ switch ($action) {
 
         proxy_response(true, 'SUCCESS', $approve ? 'Add money request approved' : 'Add money request rejected', (array)($res['data'] ?? []));
         break;
+
+    case 'support_list':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('support/list.php', [
+            'status' => trim((string)($_GET['status'] ?? '')),
+            'query' => trim((string)($_GET['query'] ?? '')),
+            'limit' => (int)($_GET['limit'] ?? 100),
+        ]);
+        break;
+
+    case 'support_details':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('support/details.php', [
+            'ticket_id' => trim((string)($_GET['ticket_id'] ?? '')),
+        ]);
+        break;
+
+    case 'support_reply':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('support/reply.php', proxy_read_json_body());
+        break;
+
+    case 'support_reply_upload':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+
+        $adminUser = proxy_require_admin_login(true);
+        $ticketId = support_clean_text($_POST['ticket_id'] ?? '', 40);
+        $message = (string)($_POST['message'] ?? '');
+        $result = support_reply(['user' => $adminUser], $ticketId, $message, $_FILES, 'ADMIN');
+        if (empty($result['ok'])) {
+            proxy_response(false, (string)$result['code'], (string)$result['message'], [], (int)($result['status'] ?? 400));
+        }
+        proxy_response(true, 'ADMIN_SUPPORT_REPLY_SENT', 'Support reply sent.', [
+            'ticket' => $result['ticket'],
+            'messages' => $result['messages'],
+            'attachments' => $result['attachments'],
+        ]);
+        break;
+
+    case 'support_status':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('support/status.php', proxy_read_json_body());
+        break;
+
+    case 'support_config_get':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('support/config.php');
+        break;
+
+    case 'support_config_save':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('support/config_save.php', proxy_read_json_body());
+        break;
+
+    case 'support_categories':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('support/categories.php');
+        break;
+
+    case 'support_category_save':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('support/category_save.php', proxy_read_json_body());
+        break;
+
+    case 'support_attachment':
+        proxy_require_method('GET');
+        proxy_require_admin_login(true);
+
+        $ticketId = support_clean_text($_GET['ticket_id'] ?? '', 40);
+        $attachmentId = support_clean_text($_GET['attachment_id'] ?? '', 40);
+        $ticket = support_read_ticket($ticketId);
+        if ($ticket === []) {
+            proxy_response(false, 'SUPPORT_TICKET_NOT_FOUND', 'Support ticket was not found.', [], 404);
+        }
+        $row = fb_get('SUPPORT_ATTACHMENTS/' . $ticketId . '/' . $attachmentId);
+        if (!is_array($row) || (string)($row['ticket_id'] ?? '') !== $ticketId) {
+            proxy_response(false, 'SUPPORT_ATTACHMENT_NOT_FOUND', 'Attachment was not found.', [], 404);
+        }
+        $mime = (string)($row['mime'] ?? '');
+        if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            proxy_response(false, 'SUPPORT_ATTACHMENT_TYPE_INVALID', 'Attachment type is not supported.', [], 415);
+        }
+        $path = support_attachment_absolute_path($row);
+        if ($path === '' || !is_file($path)) {
+            proxy_response(false, 'SUPPORT_ATTACHMENT_NOT_FOUND', 'Attachment was not found.', [], 404);
+        }
+        $fileName = support_clean_text($row['original_name'] ?? 'attachment', 120) ?: 'attachment';
+        if (function_exists('header_remove')) {
+            header_remove('Content-Type');
+        }
+        header('Content-Type: ' . $mime);
+        header('Content-Length: ' . (string)filesize($path));
+        header('Content-Disposition: inline; filename="' . addcslashes($fileName, "\"\\") . '"');
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
+        header('Pragma: no-cache');
+        readfile($path);
+        exit;
 
     case 'operators':
         proxy_require_method('GET');

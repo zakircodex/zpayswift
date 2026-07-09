@@ -9,6 +9,10 @@ const state = {
   bundleOffers: [],
   addMoney: [],
   addMoneyPaymentAccounts: [],
+  supportTickets: [],
+  supportCategories: [],
+  supportConfig: {},
+  supportOpenTicketId: '',
   doneTopups: [],
   doneBundles: [],
   users: [],
@@ -43,6 +47,7 @@ const state = {
     bundles: false,
     bundleOffers: false,
     addMoney: false,
+    support: false,
     doneTopups: false,
     doneBundles: false,
     users: false,
@@ -68,6 +73,7 @@ const state = {
 
 const submitLocks = {};
 let usersSearchTimer = null;
+let supportSearchTimer = null;
 
 /* =========================
    BASIC HELPERS
@@ -730,7 +736,16 @@ async function bootstrapSession(){
 
     await loadDashboardFast();
 
-    openSection('dashboardSection');
+    const params = new URLSearchParams(window.location.search || '');
+    if (String(params.get('section') || '').toLowerCase() === 'support') {
+      openSection('supportSection');
+      const ticketId = String(params.get('ticket_id') || '').trim();
+      if (ticketId) {
+        setTimeout(() => openSupportTicket(ticketId), 700);
+      }
+    } else {
+      openSection('dashboardSection');
+    }
 
     startBackgroundDashboardLoad();
 
@@ -1145,6 +1160,13 @@ async function loadSectionData(sectionId, force = false){
   if (sectionId === 'addMoneySection') {
     if (force || !state.loaded.addMoney) {
       await loadAddMoneyRequests({ busyText:'Loading add money requests...' });
+    }
+    return;
+  }
+
+  if (sectionId === 'supportSection') {
+    if (force || !state.loaded.support) {
+      await loadSupportAdmin({ busyText:'Loading support center...' });
     }
     return;
   }
@@ -4224,6 +4246,390 @@ function setActionBtnLoading(buttonId, isLoading, loadingText = 'Processing...')
 }
 
 /* =========================
+   SUPPORT CENTER
+========================= */
+
+function supportFilters(){
+  return {
+    status: document.getElementById('supportStatusFilter')?.value || '',
+    query: document.getElementById('supportSearch')?.value || '',
+    limit: 150
+  };
+}
+
+async function loadSupportAdmin(options = {}){
+  const errors = [];
+  try {
+    await loadSupportTickets(options);
+  } catch (err) {
+    errors.push(err);
+    showToast(err.message || 'Support ticket list failed', 'error');
+  }
+  try {
+    await loadSupportConfig({ busy:false, silentLog:true });
+  } catch (err) {
+    errors.push(err);
+    showToast(err.message || 'Support config failed', 'error');
+  }
+  try {
+    await loadSupportCategories({ busy:false, silentLog:true });
+  } catch (err) {
+    errors.push(err);
+    showToast(err.message || 'Support categories failed', 'error');
+  }
+  state.loaded.support = true;
+  if (errors.length >= 3) {
+    throw errors[0];
+  }
+}
+
+async function loadSupportTickets(options = {}){
+  const data = await proxyGet('support_list', supportFilters(), options);
+  state.supportTickets = Array.isArray(data.tickets) ? data.tickets : [];
+  renderSupportTickets();
+}
+
+async function loadSupportConfig(options = {}){
+  const data = await proxyGet('support_config_get', {}, options);
+  state.supportConfig = data.config || data.public_config || {};
+  renderSupportConfig();
+}
+
+async function loadSupportCategories(options = {}){
+  const data = await proxyGet('support_categories', {}, options);
+  state.supportCategories = Array.isArray(data.categories) ? data.categories : [];
+  renderSupportCategories();
+}
+
+function supportBoolValue(value){
+  return boolFromValue(value, false) ? '1' : '0';
+}
+
+function setSupportInput(id, value){
+  const node = document.getElementById(id);
+  if (node) node.value = String(value ?? '');
+}
+
+function renderSupportConfig(){
+  const c = state.supportConfig || {};
+  setSupportInput('supportContactEnabled', supportBoolValue(c.contact_us_enabled ?? true));
+  setSupportInput('supportTicketEnabled', supportBoolValue(c.ticket_enabled ?? true));
+  setSupportInput('supportWhatsappEnabled', supportBoolValue(c.whatsapp_enabled));
+  setSupportInput('supportWhatsappNumber', c.whatsapp_number || '');
+  setSupportInput('supportCallEnabled', supportBoolValue(c.call_enabled));
+  setSupportInput('supportPhone', c.support_phone || '');
+  setSupportInput('supportEmailEnabled', supportBoolValue(c.email_enabled));
+  setSupportInput('supportEmail', c.support_email || '');
+  setSupportInput('supportHours', c.support_hours || '');
+  setSupportInput('supportAverageResponse', c.average_response_text || '');
+  setSupportInput('supportNotice', c.support_notice || '');
+  setSupportInput('supportAttachmentsEnabled', supportBoolValue(c.attachments_enabled ?? true));
+  setSupportInput('supportMaxAttachments', c.max_attachments ?? 3);
+  setSupportInput('supportMaxFileSize', c.max_file_size ?? 5242880);
+  setSupportInput('supportRateLimit', c.ticket_rate_limit_seconds ?? 20);
+  setSupportInput('supportReopenAllowed', supportBoolValue(c.reopen_allowed ?? true));
+}
+
+function supportTicketStatus(row){
+  return String(row?.status || 'OPEN').toUpperCase();
+}
+
+function renderSupportTickets(){
+  const tbody = document.getElementById('supportTicketsTableBody');
+  if (!tbody) return;
+  if (!state.supportTickets.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty">No support ticket found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = state.supportTickets.map(row => {
+    const id = String(row.ticket_id || '');
+    return `
+      <tr>
+        <td><div class="mono">${esc(id)}</div><div class="muted">${fmtTs(row.created_at || 0)}</div></td>
+        <td><strong>${esc(row.user_name || '-')}</strong><div class="muted">${esc(row.user_phone || '-')}</div><div class="muted">${esc(row.uid || '')}</div></td>
+        <td>${esc(row.category_name || row.category_code || '-')}</td>
+        <td><strong>${esc(row.subject || '-')}</strong><div class="muted">${esc(row.last_message_preview || '')}</div></td>
+        <td>${esc(row.related_request_id || '-')}</td>
+        <td>${statusPill(row.status_label || supportTicketStatus(row))}</td>
+        <td>${Number(row.attachment_count || 0)}</td>
+        <td>${fmtTs(row.last_message_at || row.updated_at || 0)}</td>
+        <td><button class="mini-btn blue" onclick="openSupportTicket('${jsArg(id)}')">View</button></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function supportAttachmentUrl(ticketId, attachmentId){
+  const proxyUrl = window.ADMIN_PROXY_URL || '/api/admin/proxy.php';
+  return `${proxyUrl}?action=support_attachment&ticket_id=${encodeURIComponent(ticketId)}&attachment_id=${encodeURIComponent(attachmentId)}`;
+}
+
+function supportAttachmentCards(ticketId, attachments, ids){
+  const allowedIds = Array.isArray(ids) ? ids.map(String) : [];
+  const rows = (Array.isArray(attachments) ? attachments : []).filter(row => {
+    return !allowedIds.length || allowedIds.includes(String(row.attachment_id || ''));
+  });
+  if (!rows.length) return '';
+  return `
+    <div class="support-attachments">
+      ${rows.map(row => {
+        const url = supportAttachmentUrl(ticketId, String(row.attachment_id || ''));
+        return `
+          <a class="support-attachment-card" href="${esc(url)}" target="_blank" rel="noopener">
+            <img src="${esc(url)}" alt="${esc(row.original_name || 'Attachment')}" loading="lazy">
+            <span>${esc(row.original_name || 'Screenshot')}</span>
+            <small>${money((Number(row.size || 0) / 1024))} KB</small>
+          </a>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function supportMessageHtml(msg, ticketId, attachments){
+  const sender = String(msg.sender_type || '').toUpperCase() === 'ADMIN' ? 'Support' : 'User';
+  return `
+    <div class="support-message">
+      <div class="support-message-head">
+        <strong>${esc(sender)}</strong>
+        <span>${fmtTs(msg.created_at || 0)}</span>
+      </div>
+      <div class="support-message-text">${esc(msg.message || '-')}</div>
+      ${supportAttachmentCards(ticketId, attachments, msg.attachment_ids || [])}
+    </div>
+  `;
+}
+
+async function openSupportTicket(ticketId){
+  const data = await proxyGet('support_details', { ticket_id: ticketId }, { busyText:'Loading support ticket...' });
+  const ticket = data.ticket || {};
+  const messages = Array.isArray(data.messages) ? data.messages : [];
+  const attachments = Array.isArray(data.attachments) ? data.attachments : [];
+  const id = String(ticket.ticket_id || ticketId || '');
+  state.supportOpenTicketId = id;
+  const closed = supportTicketStatus(ticket) === 'CLOSED';
+  const reopenAllowed = boolFromValue(state.supportConfig?.reopen_allowed, true);
+  const body = `
+    <div class="detail-grid">
+      <div class="detail-item"><label>Ticket ID</label><strong>${esc(id)}</strong></div>
+      <div class="detail-item"><label>Status</label><strong>${statusPill(ticket.status_label || ticket.status || '-')}</strong></div>
+      <div class="detail-item"><label>User</label><strong>${esc(ticket.user_name || '-')}</strong></div>
+      <div class="detail-item"><label>UID</label><strong class="mono">${esc(ticket.uid || '-')}</strong></div>
+      <div class="detail-item"><label>Phone</label><strong>${esc(ticket.user_phone || '-')}</strong></div>
+      <div class="detail-item"><label>Email</label><strong>${esc(ticket.user_email || '-')}</strong></div>
+      <div class="detail-item"><label>Category</label><strong>${esc(ticket.category_name || ticket.category_code || '-')}</strong></div>
+      <div class="detail-item"><label>Related Request</label><strong>${esc(ticket.related_request_id || '-')}</strong></div>
+      <div class="detail-item"><label>Created</label><strong>${fmtTs(ticket.created_at || 0)}</strong></div>
+      <div class="detail-item"><label>Last Activity</label><strong>${fmtTs(ticket.last_message_at || ticket.updated_at || 0)}</strong></div>
+    </div>
+    <div style="margin-top:14px;">
+      <label>Subject</label>
+      <div class="input" style="height:auto;min-height:44px;display:flex;align-items:center;">${esc(ticket.subject || '-')}</div>
+    </div>
+    <div class="support-conversation">
+      ${messages.length ? messages.map(msg => supportMessageHtml(msg, id, attachments)).join('') : '<div class="empty">No conversation message found.</div>'}
+    </div>
+    <div style="margin-top:14px;">
+      <label>Admin Reply</label>
+      <textarea id="supportReplyMessage" class="input" rows="4" ${closed ? 'disabled' : ''} placeholder="${closed ? 'Ticket is closed. Reopen before replying.' : 'Write a reply for the user...'}"></textarea>
+      <label style="margin-top:10px;display:block;">Attachment (optional)
+        <input id="supportReplyAttachments" class="input" type="file" accept="image/jpeg,image/png,image/webp" multiple ${closed ? 'disabled' : ''}>
+      </label>
+      <div class="row-actions" style="margin-top:10px;">
+        <button class="btn brand" id="supportReplySendBtn" onclick="submitSupportReply('${jsArg(id)}')" ${closed ? 'disabled' : ''}>Send Reply</button>
+        <button class="btn blue" onclick="setSupportTicketStatus('${jsArg(id)}','PENDING')">Mark Pending</button>
+        <button class="btn blue" onclick="setSupportTicketStatus('${jsArg(id)}','RESOLVED')">Resolve</button>
+        <button class="btn red" onclick="setSupportTicketStatus('${jsArg(id)}','CLOSED')">Close</button>
+        ${reopenAllowed ? `<button class="btn ghost" onclick="setSupportTicketStatus('${jsArg(id)}','OPEN')">Reopen</button>` : ''}
+      </div>
+    </div>
+  `;
+  openDrawer('Support Ticket', id, body, '<button class="btn ghost" id="drawerFootCloseDynamic">Close</button>');
+}
+
+async function submitSupportReply(ticketId){
+  const messageNode = document.getElementById('supportReplyMessage');
+  const message = String(messageNode?.value || '').trim();
+  if (!message) {
+    showToast('Reply message is required.', 'error');
+    return;
+  }
+  if (submitLocks.supportReply) return;
+  submitLocks.supportReply = true;
+  setActionBtnLoading('supportReplySendBtn', true, 'Sending...');
+  try {
+    const files = Array.from(document.getElementById('supportReplyAttachments')?.files || []);
+    if (files.length) {
+      setBusy(true, 'Sending support reply...');
+      const form = new FormData();
+      form.append('ticket_id', ticketId);
+      form.append('message', message);
+      form.append('idempotency_key', `${ticketId}_${Date.now()}`);
+      files.slice(0, 3).forEach(file => form.append('attachments[]', file));
+      const proxyUrl = window.ADMIN_PROXY_URL || '/api/admin/proxy.php';
+      const res = await fetch(`${proxyUrl}?action=support_reply_upload`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: state.csrf ? { 'X-CSRF-TOKEN': state.csrf, 'Accept': 'application/json' } : { 'Accept': 'application/json' },
+        body: form
+      });
+      const text = await res.text();
+      const json = readJsonSafeFromText(text);
+      if (!res.ok || !json.ok) {
+        const err = new Error(json.message || 'Support reply failed');
+        err.code = json.code || 'ERROR';
+        throw err;
+      }
+      setBusy(false);
+    } else {
+      await proxyPost('support_reply', {
+        ticket_id: ticketId,
+        message,
+        idempotency_key: `${ticketId}_${Date.now()}`
+      }, true, { busyText:'Sending support reply...' });
+    }
+    showToast('Support reply sent', 'ok');
+    await openSupportTicket(ticketId);
+    await loadSupportTickets({ busy:false, silentLog:true });
+  } catch (err) {
+    setBusy(false);
+    showToast(err.message || 'Support reply failed', 'error');
+  } finally {
+    submitLocks.supportReply = false;
+    setActionBtnLoading('supportReplySendBtn', false);
+  }
+}
+
+async function setSupportTicketStatus(ticketId, status){
+  try {
+    await proxyPost('support_status', { ticket_id: ticketId, status }, true, { busyText:'Updating support ticket...' });
+    showToast('Support ticket updated', 'ok');
+    await openSupportTicket(ticketId);
+    await loadSupportTickets({ busy:false, silentLog:true });
+  } catch (err) {
+    showToast(err.message || 'Status update failed', 'error');
+  }
+}
+
+async function saveSupportConfig(){
+  const payload = {
+    contact_us_enabled: document.getElementById('supportContactEnabled')?.value === '1',
+    ticket_enabled: document.getElementById('supportTicketEnabled')?.value === '1',
+    whatsapp_enabled: document.getElementById('supportWhatsappEnabled')?.value === '1',
+    whatsapp_number: document.getElementById('supportWhatsappNumber')?.value || '',
+    call_enabled: document.getElementById('supportCallEnabled')?.value === '1',
+    support_phone: document.getElementById('supportPhone')?.value || '',
+    email_enabled: document.getElementById('supportEmailEnabled')?.value === '1',
+    support_email: document.getElementById('supportEmail')?.value || '',
+    support_hours: document.getElementById('supportHours')?.value || '',
+    average_response_text: document.getElementById('supportAverageResponse')?.value || '',
+    support_notice: document.getElementById('supportNotice')?.value || '',
+    attachments_enabled: document.getElementById('supportAttachmentsEnabled')?.value === '1',
+    max_attachments: Number(document.getElementById('supportMaxAttachments')?.value || 0),
+    max_file_size: Number(document.getElementById('supportMaxFileSize')?.value || 0),
+    ticket_rate_limit_seconds: Number(document.getElementById('supportRateLimit')?.value || 0),
+    reopen_allowed: document.getElementById('supportReopenAllowed')?.value === '1'
+  };
+  try {
+    await proxyPost('support_config_save', payload, true, { busyText:'Saving contact settings...' });
+    showToast('Contact settings updated successfully.', 'ok');
+    await loadSupportConfig({ busy:false, silentLog:true });
+  } catch (err) {
+    showToast(err.message || 'Contact settings save failed', 'error');
+  }
+}
+
+function renderSupportCategories(){
+  const tbody = document.getElementById('supportCategoriesTableBody');
+  if (!tbody) return;
+  if (!state.supportCategories.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">No category found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = state.supportCategories.map(row => {
+    const code = String(row.code || '');
+    return `
+      <tr>
+        <td class="mono">${esc(code)}</td>
+        <td><strong>${esc(row.name || '-')}</strong></td>
+        <td>${yesNoPill(boolFromValue(row.active, true))}</td>
+        <td>${esc(row.sort_order ?? '-')}</td>
+        <td>${yesNoPill(boolFromValue(row.related_request_enabled, false))}</td>
+        <td>${yesNoPill(boolFromValue(row.attachment_enabled, true))}</td>
+        <td><button class="mini-btn blue" onclick="openSupportCategoryModal('${jsArg(code)}')">Edit</button></td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openSupportCategoryModal(code = ''){
+  const row = state.supportCategories.find(item => String(item.code || '') === String(code)) || {
+    code: '',
+    name: '',
+    active: true,
+    sort_order: 100,
+    related_request_enabled: false,
+    attachment_enabled: true
+  };
+  const existing = String(row.code || '');
+  const body = `
+    <div class="form-grid">
+      <label>Category Code
+        <input class="input" id="supportCategoryCode" value="${esc(existing)}" ${existing ? 'readonly' : ''} placeholder="OTHER">
+      </label>
+      <label>Category Name
+        <input class="input" id="supportCategoryName" value="${esc(row.name || '')}" placeholder="Other">
+      </label>
+      <label>Active
+        <select class="input" id="supportCategoryActive">
+          <option value="1" ${boolFromValue(row.active, true) ? 'selected' : ''}>Enabled</option>
+          <option value="0" ${!boolFromValue(row.active, true) ? 'selected' : ''}>Disabled</option>
+        </select>
+      </label>
+      <label>Sort Order
+        <input class="input" id="supportCategorySort" type="number" min="1" max="999" value="${esc(row.sort_order ?? 100)}">
+      </label>
+      <label>Related Request Enabled
+        <select class="input" id="supportCategoryRelated">
+          <option value="0" ${!boolFromValue(row.related_request_enabled, false) ? 'selected' : ''}>No</option>
+          <option value="1" ${boolFromValue(row.related_request_enabled, false) ? 'selected' : ''}>Yes</option>
+        </select>
+      </label>
+      <label>Attachment Enabled
+        <select class="input" id="supportCategoryAttachment">
+          <option value="1" ${boolFromValue(row.attachment_enabled, true) ? 'selected' : ''}>Yes</option>
+          <option value="0" ${!boolFromValue(row.attachment_enabled, true) ? 'selected' : ''}>No</option>
+        </select>
+      </label>
+    </div>
+  `;
+  const foot = `
+    <button class="btn brand" onclick="saveSupportCategory()">Save Category</button>
+    <button class="btn ghost" onclick="closeModal()">Cancel</button>
+  `;
+  openModal(existing ? 'Edit Support Category' : 'Add Support Category', body, foot);
+}
+
+async function saveSupportCategory(){
+  const payload = {
+    code: document.getElementById('supportCategoryCode')?.value || '',
+    name: document.getElementById('supportCategoryName')?.value || '',
+    active: document.getElementById('supportCategoryActive')?.value === '1',
+    sort_order: Number(document.getElementById('supportCategorySort')?.value || 100),
+    related_request_enabled: document.getElementById('supportCategoryRelated')?.value === '1',
+    attachment_enabled: document.getElementById('supportCategoryAttachment')?.value === '1'
+  };
+  try {
+    await proxyPost('support_category_save', payload, true, { busyText:'Saving support category...' });
+    closeModal();
+    showToast('Support category saved', 'ok');
+    await loadSupportCategories({ busy:false, silentLog:true });
+  } catch (err) {
+    showToast(err.message || 'Category save failed', 'error');
+  }
+}
+
+/* =========================
    ADD MONEY
 ========================= */
 
@@ -4562,6 +4968,14 @@ document.getElementById('addMoneySettingsBtn')?.addEventListener('click', openAd
 document.getElementById('addMoneyStatusFilter')?.addEventListener('change', () => loadAddMoneyRequests({ busyText:'Filtering add money requests...' }));
 document.getElementById('addMoneyCountryFilter')?.addEventListener('change', () => loadAddMoneyRequests({ busyText:'Filtering add money requests...' }));
 document.getElementById('addMoneyMethodFilter')?.addEventListener('change', () => loadAddMoneyRequests({ busyText:'Filtering add money requests...' }));
+document.getElementById('reloadSupportBtn')?.addEventListener('click', () => loadSupportAdmin({ busyText:'Reloading support center...' }));
+document.getElementById('supportStatusFilter')?.addEventListener('change', () => loadSupportTickets({ busyText:'Filtering support tickets...' }));
+document.getElementById('supportSearch')?.addEventListener('input', () => {
+  clearTimeout(supportSearchTimer);
+  supportSearchTimer = setTimeout(() => loadSupportTickets({ busy:false, silentLog:true }).catch(() => {}), 350);
+});
+document.getElementById('saveSupportConfigBtn')?.addEventListener('click', saveSupportConfig);
+document.getElementById('supportCategoryAddBtn')?.addEventListener('click', () => openSupportCategoryModal(''));
 
 document.getElementById('createBundleOfferBtn')?.addEventListener('click', () => openBundleOfferModal(''));
 document.getElementById('reloadBundleOffersBtn')?.addEventListener('click', () => loadBundleOffers({ busyText:'Reloading bundle offers...' }));

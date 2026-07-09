@@ -87,6 +87,12 @@ function support_telegram_callback_data(string $actionCode, string $ticketId): s
     return 'support|' . $actionCode . '|' . trim($ticketId) . '|' . support_telegram_signature($actionCode, $ticketId);
 }
 
+function support_admin_ticket_url(string $ticketId): string
+{
+    $ticketId = support_clean_code($ticketId);
+    return 'https://zpayswift.com/admin/?section=support&ticket_id=' . rawurlencode($ticketId);
+}
+
 function support_telegram_parse_callback_data(string $data): array
 {
     $parts = explode('|', trim($data));
@@ -108,17 +114,40 @@ function support_telegram_parse_callback_data(string $data): array
 
 function support_telegram_keyboard(string $ticketId): array
 {
-    return [
-        'inline_keyboard' => [
-            [
-                ['text' => 'View', 'callback_data' => support_telegram_callback_data('v', $ticketId)],
-                ['text' => 'Mark Pending', 'callback_data' => support_telegram_callback_data('p', $ticketId)],
-            ],
-            [
-                ['text' => 'Close', 'callback_data' => support_telegram_callback_data('c', $ticketId)],
-            ],
-        ],
+    $ticket = support_read_ticket($ticketId);
+    $status = support_clean_code($ticket['status'] ?? 'OPEN') ?: 'OPEN';
+    $firstRow = [
+        ['text' => 'View', 'url' => support_admin_ticket_url($ticketId)],
     ];
+    if ($status !== 'PENDING' && $status !== 'CLOSED') {
+        $firstRow[] = ['text' => 'Mark Pending', 'callback_data' => support_telegram_callback_data('p', $ticketId)];
+    }
+    $secondRow = [];
+    if ($status !== 'CLOSED') {
+        $secondRow[] = ['text' => 'Close', 'callback_data' => support_telegram_callback_data('c', $ticketId)];
+    }
+
+    $rows = [$firstRow];
+    if ($secondRow !== []) {
+        $rows[] = $secondRow;
+    }
+
+    return [
+        'inline_keyboard' => $rows,
+    ];
+}
+
+function support_telegram_ticket_message(array $ticket): string
+{
+    return "New Support Ticket\n\n"
+        . "Ticket: " . (string)($ticket['ticket_id'] ?? '') . "\n"
+        . "User: " . support_clean_text($ticket['user_name'] ?? '', 80) . "\n"
+        . "UID: " . (string)($ticket['uid'] ?? '') . "\n"
+        . "Phone: " . (string)($ticket['user_phone'] ?? '') . "\n"
+        . "Category: " . (string)($ticket['category_name'] ?? '') . "\n"
+        . "Related Request: " . ((string)($ticket['related_request_id'] ?? '') ?: '-') . "\n"
+        . "Subject: " . (string)($ticket['subject'] ?? '') . "\n"
+        . "Status: " . support_clean_code($ticket['status'] ?? 'OPEN');
 }
 
 function support_default_config(): array
@@ -298,6 +327,7 @@ function support_public_ticket(array $row): array
         'uid' => (string)($row['uid'] ?? ''),
         'user_name' => (string)($row['user_name'] ?? ''),
         'user_phone' => (string)($row['user_phone'] ?? ''),
+        'user_email' => (string)($row['user_email'] ?? ''),
         'category_code' => (string)($row['category_code'] ?? ''),
         'category_name' => (string)($row['category_name'] ?? $row['category_name_snapshot'] ?? ''),
         'related_type' => (string)($row['related_type'] ?? ''),
@@ -678,20 +708,18 @@ function support_notify_telegram_new_ticket(array $ticket): void
     if ($ticketId === '') {
         return;
     }
-    $message = "New Support Ticket\n\n"
-        . "Ticket: " . $ticketId . "\n"
-        . "User: " . support_clean_text($ticket['user_name'] ?? '', 80) . "\n"
-        . "UID: " . (string)($ticket['uid'] ?? '') . "\n"
-        . "Phone: " . (string)($ticket['user_phone'] ?? '') . "\n"
-        . "Category: " . (string)($ticket['category_name'] ?? '') . "\n"
-        . "Related Request: " . ((string)($ticket['related_request_id'] ?? '') ?: '-') . "\n"
-        . "Subject: " . (string)($ticket['subject'] ?? '') . "\n"
-        . "Status: OPEN";
+    $message = support_telegram_ticket_message($ticket);
     $queueId = telegram_queue_create('SUPPORT_TICKET', $ticketId, $message);
     $sent = support_telegram_send_message($message, support_telegram_keyboard($ticketId));
     if (!empty($sent['ok'])) {
         telegram_queue_mark_sent($queueId);
-        fb_patch('SUPPORT_TICKETS/' . $ticketId, ['telegram_sent' => true, 'telegram_sent_at' => support_now()]);
+        $tgResult = is_array($sent['data']['result'] ?? null) ? $sent['data']['result'] : [];
+        fb_patch('SUPPORT_TICKETS/' . $ticketId, [
+            'telegram_sent' => true,
+            'telegram_sent_at' => support_now(),
+            'telegram_chat_id' => (string)($tgResult['chat']['id'] ?? TELEGRAM_CHAT_ID),
+            'telegram_message_id' => (string)($tgResult['message_id'] ?? ''),
+        ]);
     } else {
         telegram_queue_mark_failed($queueId, (string)($sent['message'] ?? 'Telegram send failed'));
         fb_patch('SUPPORT_TICKETS/' . $ticketId, ['telegram_sent' => false, 'telegram_error' => substr((string)($sent['message'] ?? ''), 0, 200)]);
@@ -737,6 +765,35 @@ function support_telegram_send_message(string $message, array $replyMarkup = [])
         return ['ok' => true, 'message' => 'Telegram sent', 'data' => $json];
     }
     return ['ok' => false, 'message' => is_array($json) ? (string)($json['description'] ?? 'Telegram send failed') : 'Telegram send failed'];
+}
+
+function support_telegram_edit_ticket_message(array $ticket): void
+{
+    $ticketId = (string)($ticket['ticket_id'] ?? '');
+    $chatId = (string)($ticket['telegram_chat_id'] ?? TELEGRAM_CHAT_ID);
+    $messageId = (string)($ticket['telegram_message_id'] ?? '');
+    if ($ticketId === '' || TELEGRAM_BOT_TOKEN === '' || $chatId === '' || $messageId === '') {
+        return;
+    }
+
+    $payload = [
+        'chat_id' => $chatId,
+        'message_id' => $messageId,
+        'text' => support_telegram_ticket_message($ticket),
+        'reply_markup' => json_encode(support_telegram_keyboard($ticketId), JSON_UNESCAPED_SLASHES),
+        'disable_web_page_preview' => true,
+    ];
+
+    $ch = curl_init('https://api.telegram.org/bot' . TELEGRAM_BOT_TOKEN . '/editMessageText');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => http_build_query($payload),
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => 20,
+    ]);
+    curl_exec($ch);
+    curl_close($ch);
 }
 
 function support_list_for_uid(string $uid, string $status = '', int $limit = 50): array
@@ -798,7 +855,7 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
         return ['ok' => false, 'code' => 'SUPPORT_TICKET_FORBIDDEN', 'message' => 'This ticket is not available.', 'status' => 403];
     }
     $status = support_clean_code($ticket['status'] ?? 'OPEN');
-    if (!$isAdmin && in_array($status, ['CLOSED'], true)) {
+    if (in_array($status, ['CLOSED'], true)) {
         return ['ok' => false, 'code' => 'SUPPORT_TICKET_CLOSED', 'message' => 'This ticket is closed.', 'status' => 409];
     }
     $message = support_clean_text($message, 2500);
@@ -842,6 +899,9 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
         fb_put('SUPPORT_ATTACHMENTS/' . $ticket['ticket_id'] . '/' . $attachment['attachment_id'], $attachment);
     }
     $ticket = support_read_ticket((string)$ticket['ticket_id']);
+    if ($isAdmin && $ticket !== []) {
+        support_telegram_edit_ticket_message($ticket);
+    }
     return ['ok' => true] + support_details_payload($ticket);
 }
 
@@ -902,5 +962,6 @@ function support_admin_set_status(string $ticketId, string $status, array $actor
     fb_patch('SUPPORT_TICKETS/' . $ticket['ticket_id'], $patch);
     fb_patch('SUPPORT_USER_INDEX/' . $ticket['uid'] . '/' . $ticket['ticket_id'], ['updated_at' => $now, 'status' => $status]);
     $ticket = support_read_ticket((string)$ticket['ticket_id']);
+    support_telegram_edit_ticket_message($ticket);
     return ['ok' => true] + support_details_payload($ticket);
 }

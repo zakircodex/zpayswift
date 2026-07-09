@@ -106,6 +106,33 @@ $result = $ticket === []
         ? (['ok' => true] + support_details_payload($ticket))
         : support_admin_set_status($ticketId, $status, ['uid' => 'TELEGRAM']));
 
+if (!empty($result['ok']) && $action === 'v') {
+    $chatId = (string)($callback['message']['chat']['id'] ?? TELEGRAM_CHAT_ID);
+    if ($chatId !== '') {
+        tg_support_api('sendMessage', [
+            'chat_id' => $chatId,
+            'text' => 'Open support ticket: ' . support_admin_ticket_url($ticketId),
+            'disable_web_page_preview' => true,
+        ]);
+    }
+}
+
+if (!empty($result['ok']) && $status !== '') {
+    $message = is_array($callback['message'] ?? null) ? $callback['message'] : [];
+    $chatId = (string)($message['chat']['id'] ?? '');
+    $messageId = (string)($message['message_id'] ?? '');
+    $updatedTicket = support_read_ticket($ticketId);
+    if ($chatId !== '' && $messageId !== '' && $updatedTicket !== []) {
+        tg_support_api('editMessageText', [
+            'chat_id' => $chatId,
+            'message_id' => $messageId,
+            'text' => support_telegram_ticket_message($updatedTicket),
+            'reply_markup' => json_encode(support_telegram_keyboard($ticketId), JSON_UNESCAPED_SLASHES),
+            'disable_web_page_preview' => true,
+        ]);
+    }
+}
+
 if ($callbackId !== '') {
     tg_support_api('answerCallbackQuery', [
         'callback_query_id' => $callbackId,
