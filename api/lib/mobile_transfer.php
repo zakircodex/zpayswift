@@ -67,6 +67,7 @@ function zpay_transfer_input_phone(array $body): string
     return trim((string)(
         $body['recipient_account']
         ?? $body['recipient_phone']
+        ?? $body['receiver_phone']
         ?? $body['account']
         ?? $body['phone']
         ?? ''
