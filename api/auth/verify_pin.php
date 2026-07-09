@@ -21,7 +21,7 @@ if (in_array($purpose, ['TOPUP', 'ZPAY_TRANSFER'], true)) {
     $pinHash = (string)($user['pin_hash'] ?? '');
 
     if ($pinHash === '' || !password_verify($pin, $pinHash)) {
-        api_response(false, 'WRONG_PIN', 'Incorrect PIN. Please try again.', [], 401);
+        api_response(false, 'WRONG_PIN', 'Incorrect PIN. Please try again.', [], 422);
     }
 
     api_response(true, 'PIN_VERIFIED', 'PIN verified.', [
