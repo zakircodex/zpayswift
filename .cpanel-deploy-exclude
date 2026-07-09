@@ -13,8 +13,9 @@ my-site/
 docs/
 downloads/
 SECURITY_AUDIT.md
-config.php
-*/config.php
+/config.php
+api/config.php
+!api/support/config.php
 config.example.php
 api/config.example.php
 error_log
