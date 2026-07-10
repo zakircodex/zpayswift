@@ -467,6 +467,23 @@ function zpay_dash_wallet_payload(string $uid, array $user): array
     ];
 }
 
+function zpay_dash_notification_count(string $uid): int
+{
+    if ($uid === '') {
+        return 0;
+    }
+    $count = 0;
+    $supportRows = fb_get('SUPPORT_USER_NOTIFICATIONS/' . $uid);
+    if (is_array($supportRows)) {
+        foreach ($supportRows as $row) {
+            if (is_array($row) && empty($row['read'])) {
+                $count++;
+            }
+        }
+    }
+    return min(99, $count);
+}
+
 function zpay_dash_dashboard_payload(array $auth): array
 {
     $user = is_array($auth['user'] ?? null) ? $auth['user'] : [];
@@ -498,7 +515,7 @@ function zpay_dash_dashboard_payload(array $auth): array
         ],
         'services' => zpay_dash_services_for_role($role),
         'banners' => zpay_dash_all_banners(true),
-        'notification_count' => 0,
+        'notification_count' => zpay_dash_notification_count($uid),
         'theme' => $config['theme'],
         'server_time' => date('c', now_ts()),
     ];

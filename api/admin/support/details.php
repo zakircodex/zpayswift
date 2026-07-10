@@ -11,6 +11,10 @@ $ticket = support_read_ticket($ticketId);
 if ($ticket === []) {
     api_response(false, 'SUPPORT_TICKET_NOT_FOUND', 'Support ticket was not found.', [], 404);
 }
+if (!empty($ticket['admin_unread'])) {
+    fb_patch('SUPPORT_TICKETS/' . $ticketId, ['admin_unread' => false]);
+    $ticket = support_read_ticket($ticketId);
+}
 
 $payload = support_details_payload($ticket);
 api_response(true, 'ADMIN_SUPPORT_DETAILS_OK', 'Support ticket loaded.', [
@@ -18,4 +22,3 @@ api_response(true, 'ADMIN_SUPPORT_DETAILS_OK', 'Support ticket loaded.', [
     'messages' => $payload['messages'],
     'attachments' => $payload['attachments'],
 ]);
-

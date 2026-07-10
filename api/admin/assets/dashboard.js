@@ -4348,7 +4348,7 @@ function renderSupportTickets(){
         <td><div class="mono">${esc(id)}</div><div class="muted">${fmtTs(row.created_at || 0)}</div></td>
         <td><strong>${esc(row.user_name || '-')}</strong><div class="muted">${esc(row.user_phone || '-')}</div><div class="muted">${esc(row.uid || '')}</div></td>
         <td>${esc(row.category_name || row.category_code || '-')}</td>
-        <td><strong>${esc(row.subject || '-')}</strong><div class="muted">${esc(row.last_message_preview || '')}</div></td>
+        <td><strong>${esc(row.subject || '-')}</strong>${row.admin_unread ? '<span class="support-unread">New</span>' : ''}<div class="muted">${esc(row.last_message_preview || '')}</div></td>
         <td>${esc(row.related_request_id || '-')}</td>
         <td>${statusPill(row.status_label || supportTicketStatus(row))}</td>
         <td>${Number(row.attachment_count || 0)}</td>
@@ -4386,10 +4386,16 @@ function supportAttachmentCards(ticketId, attachments, ids){
   `;
 }
 
+function supportIsAdminMessage(msg){
+  const sender = String(msg?.sender_type || '').toUpperCase();
+  return sender === 'ADMIN' || sender === 'SUPPORT';
+}
+
 function supportMessageHtml(msg, ticketId, attachments){
-  const sender = String(msg.sender_type || '').toUpperCase() === 'ADMIN' ? 'Support' : 'User';
+  const fromAdmin = supportIsAdminMessage(msg);
+  const sender = fromAdmin ? 'You' : 'User';
   return `
-    <div class="support-message">
+    <div class="support-message ${fromAdmin ? 'admin' : 'user'}">
       <div class="support-message-head">
         <strong>${esc(sender)}</strong>
         <span>${fmtTs(msg.created_at || 0)}</span>
@@ -4400,6 +4406,12 @@ function supportMessageHtml(msg, ticketId, attachments){
   `;
 }
 
+function supportConversationHtml(messages, ticketId, attachments){
+  if (!messages.length) return '<div class="empty">No conversation message found.</div>';
+  const ordered = [...messages].sort((a,b) => Number(a.created_at || 0) - Number(b.created_at || 0));
+  return ordered.map(msg => supportMessageHtml(msg, ticketId, attachments)).join('');
+}
+
 async function openSupportTicket(ticketId){
   const data = await proxyGet('support_details', { ticket_id: ticketId }, { busyText:'Loading support ticket...' });
   const ticket = data.ticket || {};
@@ -4408,43 +4420,44 @@ async function openSupportTicket(ticketId){
   const id = String(ticket.ticket_id || ticketId || '');
   state.supportOpenTicketId = id;
   const closed = supportTicketStatus(ticket) === 'CLOSED';
-  const reopenAllowed = boolFromValue(state.supportConfig?.reopen_allowed, true);
+  const resolved = supportTicketStatus(ticket) === 'RESOLVED';
+  const blocked = closed || resolved;
   const body = `
-    <div class="detail-grid">
-      <div class="detail-item"><label>Ticket ID</label><strong>${esc(id)}</strong></div>
-      <div class="detail-item"><label>Status</label><strong>${statusPill(ticket.status_label || ticket.status || '-')}</strong></div>
-      <div class="detail-item"><label>User</label><strong>${esc(ticket.user_name || '-')}</strong></div>
-      <div class="detail-item"><label>UID</label><strong class="mono">${esc(ticket.uid || '-')}</strong></div>
-      <div class="detail-item"><label>Phone</label><strong>${esc(ticket.user_phone || '-')}</strong></div>
-      <div class="detail-item"><label>Email</label><strong>${esc(ticket.user_email || '-')}</strong></div>
-      <div class="detail-item"><label>Category</label><strong>${esc(ticket.category_name || ticket.category_code || '-')}</strong></div>
-      <div class="detail-item"><label>Related Request</label><strong>${esc(ticket.related_request_id || '-')}</strong></div>
-      <div class="detail-item"><label>Created</label><strong>${fmtTs(ticket.created_at || 0)}</strong></div>
-      <div class="detail-item"><label>Last Activity</label><strong>${fmtTs(ticket.last_message_at || ticket.updated_at || 0)}</strong></div>
-    </div>
-    <div style="margin-top:14px;">
-      <label>Subject</label>
-      <div class="input" style="height:auto;min-height:44px;display:flex;align-items:center;">${esc(ticket.subject || '-')}</div>
-    </div>
-    <div class="support-conversation">
-      ${messages.length ? messages.map(msg => supportMessageHtml(msg, id, attachments)).join('') : '<div class="empty">No conversation message found.</div>'}
-    </div>
-    <div style="margin-top:14px;">
-      <label>Admin Reply</label>
-      <textarea id="supportReplyMessage" class="input" rows="4" ${closed ? 'disabled' : ''} placeholder="${closed ? 'Ticket is closed. Reopen before replying.' : 'Write a reply for the user...'}"></textarea>
-      <label style="margin-top:10px;display:block;">Attachment (optional)
-        <input id="supportReplyAttachments" class="input" type="file" accept="image/jpeg,image/png,image/webp" multiple ${closed ? 'disabled' : ''}>
-      </label>
-      <div class="row-actions" style="margin-top:10px;">
-        <button class="btn brand" id="supportReplySendBtn" onclick="submitSupportReply('${jsArg(id)}')" ${closed ? 'disabled' : ''}>Send Reply</button>
-        <button class="btn blue" onclick="setSupportTicketStatus('${jsArg(id)}','PENDING')">Mark Pending</button>
-        <button class="btn blue" onclick="setSupportTicketStatus('${jsArg(id)}','RESOLVED')">Resolve</button>
-        <button class="btn red" onclick="setSupportTicketStatus('${jsArg(id)}','CLOSED')">Close</button>
-        ${reopenAllowed ? `<button class="btn ghost" onclick="setSupportTicketStatus('${jsArg(id)}','OPEN')">Reopen</button>` : ''}
+    <div class="support-chat-shell">
+      <div class="support-chat-head">
+        <div>
+          <strong>${esc(ticket.user_name || 'Support User')}</strong>
+          <span>${esc(ticket.subject || 'Support request')}</span>
+        </div>
+        ${statusPill(ticket.status_label || ticket.status || '-')}
       </div>
+      <div class="support-chat-meta">
+        <span>${esc(id)}</span>
+        <span>${esc(ticket.category_name || ticket.category_code || '-')}</span>
+        ${ticket.related_request_id ? `<span>${esc(ticket.related_request_id)}</span>` : ''}
+        <span>${fmtTs(ticket.created_at || 0)}</span>
+      </div>
+      <div class="support-conversation">
+        ${supportConversationHtml(messages, id, attachments)}
+      </div>
+      ${blocked ? `<div class="support-closed-note">${closed ? 'This ticket is closed.' : 'This ticket has been resolved.'}</div>` : `
+        <div class="support-composer">
+          <textarea id="supportReplyMessage" class="input" rows="3" placeholder="Write a reply..."></textarea>
+          <input id="supportReplyAttachments" class="input" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+          <div class="row-actions">
+            <button class="btn brand" id="supportReplySendBtn" onclick="submitSupportReply('${jsArg(id)}')">Send</button>
+            <button class="btn blue" onclick="setSupportTicketStatus('${jsArg(id)}','PENDING')">Pending</button>
+            <button class="btn red" onclick="setSupportTicketStatus('${jsArg(id)}','CLOSED')">Close</button>
+          </div>
+        </div>
+      `}
     </div>
   `;
-  openDrawer('Support Ticket', id, body, '<button class="btn ghost" id="drawerFootCloseDynamic">Close</button>');
+  openDrawer('Support Chat', `${ticket.status_label || ticket.status || ''} - ${id}`, body, '<button class="btn ghost" id="drawerFootCloseDynamic">Close</button>');
+  setTimeout(() => {
+    const convo = document.querySelector('.support-conversation');
+    if (convo) convo.scrollTop = convo.scrollHeight;
+  }, 60);
 }
 
 async function submitSupportReply(ticketId){

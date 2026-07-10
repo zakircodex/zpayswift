@@ -14,10 +14,14 @@ $result = support_details_for_user($auth, $ticketId);
 if (empty($result['ok'])) {
     api_response(false, (string)$result['code'], (string)$result['message'], [], (int)($result['status'] ?? 400));
 }
+if (!empty($result['ticket']['user_unread'])) {
+    fb_patch('SUPPORT_TICKETS/' . $ticketId, ['user_unread' => false]);
+    $result = support_details_for_user($auth, $ticketId);
+}
+support_mark_user_ticket_notifications_read(support_uid_from_auth($auth), $ticketId);
 
 api_response(true, 'SUPPORT_DETAILS_OK', 'Support ticket loaded.', [
     'ticket' => $result['ticket'],
     'messages' => $result['messages'],
     'attachments' => $result['attachments'],
 ]);
-

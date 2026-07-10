@@ -27,7 +27,10 @@ if ($idem !== '') {
         }
     }
 }
-$result = support_reply($auth, $ticketId, $message, $_FILES, 'ADMIN');
+$result = support_reply($auth, $ticketId, $message, $_FILES, 'ADMIN', [
+    'idempotency_key' => $idem,
+    'source' => 'ADMIN_PANEL',
+]);
 if (empty($result['ok'])) {
     api_response(false, (string)$result['code'], (string)$result['message'], [], (int)($result['status'] ?? 400));
 }
