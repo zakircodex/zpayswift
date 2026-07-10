@@ -197,7 +197,7 @@ $message = $update['message'] ?? null;
 if (is_array($message)) {
     $chatId = (string)($message['chat']['id'] ?? '');
     $fromId = (string)($message['from']['id'] ?? '');
-    if (!tg_support_message_allowed($message)) {
+    if (!tg_support_message_allowed($message) && !support_telegram_message_has_reply_context($message)) {
         tg_support_response(true, 'IGNORED', 'Unauthorized support message ignored', [], 200);
     }
 

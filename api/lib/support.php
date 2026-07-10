@@ -261,6 +261,20 @@ function support_telegram_reply_context_path(string $chatId, string $fromId): st
     return 'SUPPORT_TELEGRAM_REPLY_CONTEXT/' . support_telegram_context_key($chatId, $fromId);
 }
 
+function support_telegram_reply_context_paths(string $chatId, string $fromId, bool $includePrivateMirror = true): array
+{
+    $paths = [];
+    $chatId = trim($chatId);
+    $fromId = trim($fromId);
+    if ($chatId !== '' && $fromId !== '') {
+        $paths[support_telegram_reply_context_path($chatId, $fromId)] = true;
+    }
+    if ($includePrivateMirror && $fromId !== '') {
+        $paths[support_telegram_reply_context_path($fromId, $fromId)] = true;
+    }
+    return array_keys($paths);
+}
+
 function support_telegram_reply_idempotency_key(array $message, int $updateId = 0): string
 {
     $chatId = (string)($message['chat']['id'] ?? '');
@@ -271,16 +285,19 @@ function support_telegram_reply_idempotency_key(array $message, int $updateId = 
 
 function support_telegram_reply_context(string $chatId, string $fromId): array
 {
-    $path = support_telegram_reply_context_path($chatId, $fromId);
-    $row = fb_get($path);
-    if (!is_array($row) || support_clean_code($row['status'] ?? '') !== 'WAITING_REPLY') {
-        return [];
+    $includePrivateMirror = trim($chatId) !== '' && trim($chatId) === trim($fromId);
+    foreach (support_telegram_reply_context_paths($chatId, $fromId, $includePrivateMirror) as $path) {
+        $row = fb_get($path);
+        if (!is_array($row) || support_clean_code($row['status'] ?? '') !== 'WAITING_REPLY') {
+            continue;
+        }
+        if ((int)($row['expires_at'] ?? 0) < support_now()) {
+            fb_delete($path);
+            continue;
+        }
+        return $row;
     }
-    if ((int)($row['expires_at'] ?? 0) < support_now()) {
-        fb_delete($path);
-        return [];
-    }
-    return $row;
+    return [];
 }
 
 function support_telegram_has_active_reply_context(array $update): bool
@@ -297,6 +314,11 @@ function support_telegram_has_active_reply_context(array $update): bool
 function support_telegram_set_reply_context(string $ticketId, string $chatId, string $fromId): array
 {
     $ticketId = support_clean_code($ticketId);
+    $chatId = trim($chatId);
+    $fromId = trim($fromId);
+    if ($chatId === '' || $fromId === '') {
+        return ['ok' => false, 'code' => 'TELEGRAM_CONTEXT_MISSING', 'message' => 'Reply mode could not identify the Telegram admin.'];
+    }
     $ticket = support_read_ticket($ticketId);
     if ($ticket === []) {
         return ['ok' => false, 'code' => 'SUPPORT_TICKET_NOT_FOUND', 'message' => 'Support ticket was not found.'];
@@ -317,13 +339,32 @@ function support_telegram_set_reply_context(string $ticketId, string $chatId, st
         'created_at' => $now,
         'expires_at' => $now + 600,
     ];
-    fb_put(support_telegram_reply_context_path($chatId, $fromId), $row);
+    foreach (support_telegram_reply_context_paths($chatId, $fromId) as $path) {
+        if (!fb_put($path, $row)) {
+            return ['ok' => false, 'code' => 'TELEGRAM_CONTEXT_SAVE_FAILED', 'message' => 'Reply mode could not be enabled. Please try again.'];
+        }
+    }
     return ['ok' => true, 'context' => $row, 'ticket' => $ticket];
 }
 
 function support_telegram_clear_reply_context(string $chatId, string $fromId): void
 {
-    fb_delete(support_telegram_reply_context_path($chatId, $fromId));
+    $context = support_telegram_reply_context($chatId, $fromId);
+    $paths = support_telegram_reply_context_paths($chatId, $fromId);
+    $originalChatId = (string)($context['admin_chat_id'] ?? '');
+    if ($originalChatId !== '' && $fromId !== '') {
+        $paths = array_merge($paths, support_telegram_reply_context_paths($originalChatId, $fromId));
+    }
+    foreach (array_unique($paths) as $path) {
+        fb_delete($path);
+    }
+}
+
+function support_telegram_message_has_reply_context(array $message): bool
+{
+    $chatId = (string)($message['chat']['id'] ?? '');
+    $fromId = (string)($message['from']['id'] ?? '');
+    return $chatId !== '' && $fromId !== '' && support_telegram_reply_context($chatId, $fromId) !== [];
 }
 
 function support_telegram_save_reply_from_message(array $message, int $updateId = 0): array
@@ -334,9 +375,6 @@ function support_telegram_save_reply_from_message(array $message, int $updateId 
     if ($chatId === '' || $fromId === '') {
         return ['ok' => false, 'code' => 'TELEGRAM_CONTEXT_MISSING', 'message' => 'Reply mode is not active.'];
     }
-    if (!support_telegram_actor_allowed($chatId, $fromId)) {
-        return ['ok' => false, 'code' => 'TELEGRAM_UNAUTHORIZED', 'message' => 'Unauthorized Telegram account.'];
-    }
     $idem = support_telegram_reply_idempotency_key($message, $updateId);
     $idemPath = 'SUPPORT_TELEGRAM_REPLY_IDEMPOTENCY/' . $idem;
     $existing = fb_get($idemPath);
@@ -344,6 +382,9 @@ function support_telegram_save_reply_from_message(array $message, int $updateId 
         return ['ok' => true, 'duplicate' => true, 'ticket_id' => (string)($existing['ticket_id'] ?? ''), 'message' => 'Duplicate Telegram reply ignored.'];
     }
     $context = support_telegram_reply_context($chatId, $fromId);
+    if (!support_telegram_actor_allowed($chatId, $fromId) && $context === []) {
+        return ['ok' => false, 'code' => 'TELEGRAM_UNAUTHORIZED', 'message' => 'Unauthorized Telegram account.'];
+    }
     if ($context === []) {
         return ['ok' => false, 'code' => 'TELEGRAM_CONTEXT_EXPIRED', 'message' => 'Reply mode expired. Tap Reply again.'];
     }
