@@ -40,10 +40,10 @@ function tg_support_verify_secret(): void
     tg_support_response(false, 'FORBIDDEN', 'Invalid Telegram webhook secret', [], 403);
 }
 
-function tg_support_api(string $method, array $payload): void
+function tg_support_api(string $method, array $payload): array
 {
     if (TELEGRAM_BOT_TOKEN === '') {
-        return;
+        return ['ok' => false, 'code' => 'TELEGRAM_TOKEN_MISSING', 'message' => 'Telegram token is not configured.'];
     }
     $ch = curl_init('https://api.telegram.org/bot' . TELEGRAM_BOT_TOKEN . '/' . $method);
     curl_setopt_array($ch, [
@@ -53,26 +53,43 @@ function tg_support_api(string $method, array $payload): void
         CURLOPT_CONNECTTIMEOUT => 10,
         CURLOPT_TIMEOUT => 20,
     ]);
-    curl_exec($ch);
+    $raw = curl_exec($ch);
+    $err = curl_error($ch);
+    $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
+
+    if ($raw === false) {
+        return ['ok' => false, 'code' => 'TELEGRAM_CURL_ERROR', 'message' => $err ?: 'Telegram request failed.'];
+    }
+    $json = json_decode((string)$raw, true);
+    if ($status >= 200 && $status < 300 && is_array($json) && !empty($json['ok'])) {
+        return ['ok' => true, 'code' => 'OK', 'message' => 'Telegram request sent.', 'data' => $json];
+    }
+
+    return [
+        'ok' => false,
+        'code' => 'TELEGRAM_API_ERROR',
+        'message' => is_array($json) ? (string)($json['description'] ?? 'Telegram request failed.') : 'Telegram request failed.',
+        'status' => $status,
+    ];
 }
 
-function tg_support_answer(string $callbackId, string $text, bool $alert = false): void
+function tg_support_answer(string $callbackId, string $text, bool $alert = false): array
 {
     if ($callbackId === '') {
-        return;
+        return ['ok' => false, 'code' => 'CALLBACK_ID_MISSING', 'message' => 'Callback id missing.'];
     }
-    tg_support_api('answerCallbackQuery', [
+    return tg_support_api('answerCallbackQuery', [
         'callback_query_id' => $callbackId,
         'text' => $text,
         'show_alert' => $alert,
     ]);
 }
 
-function tg_support_send(string $chatId, string $text, array $replyMarkup = []): void
+function tg_support_send(string $chatId, string $text, array $replyMarkup = []): array
 {
     if ($chatId === '') {
-        return;
+        return ['ok' => false, 'code' => 'CHAT_ID_MISSING', 'message' => 'Chat id missing.'];
     }
     $payload = [
         'chat_id' => $chatId,
@@ -82,7 +99,7 @@ function tg_support_send(string $chatId, string $text, array $replyMarkup = []):
     if ($replyMarkup !== []) {
         $payload['reply_markup'] = json_encode($replyMarkup, JSON_UNESCAPED_SLASHES);
     }
-    tg_support_api('sendMessage', $payload);
+    return tg_support_api('sendMessage', $payload);
 }
 
 function tg_support_callback_allowed(array $callback): bool
@@ -131,13 +148,15 @@ if (!is_array($update)) {
 $callback = $update['callback_query'] ?? null;
 if (is_array($callback)) {
     $callbackId = (string)($callback['id'] ?? '');
-    if (!tg_support_callback_allowed($callback)) {
-        tg_support_answer($callbackId, 'Unauthorized Telegram account', true);
-        tg_support_response(true, 'IGNORED', 'Unauthorized support callback ignored', [], 200);
-    }
-
-    $parsed = support_telegram_parse_callback_data((string)($callback['data'] ?? ''));
+    $callbackData = (string)($callback['data'] ?? '');
+    $parsed = support_telegram_parse_callback_data($callbackData);
     if ($parsed === []) {
+        if (strncasecmp($callbackData, 'support|r|', 10) === 0) {
+            $parts = explode('|', trim($callbackData));
+            support_telegram_reply_diag('support_reply_signature_fail', support_clean_code($parts[2] ?? ''), [
+                'has_callback_id' => $callbackId !== '',
+            ]);
+        }
         tg_support_answer($callbackId, 'Invalid support action', false);
         tg_support_response(true, 'IGNORED', 'Invalid support callback', [], 200);
     }
@@ -148,8 +167,42 @@ if (is_array($callback)) {
     $fromId = (string)($callback['from']['id'] ?? '');
     $ticket = support_read_ticket($ticketId);
     if ($ticket === []) {
+        if ($action === 'r') {
+            support_telegram_reply_diag('support_reply_ticket_missing', $ticketId, [
+                'signature_valid' => true,
+            ]);
+        }
         tg_support_answer($callbackId, 'Support ticket was not found.', true);
         tg_support_response(true, 'SUPPORT_NOT_FOUND', 'Support ticket was not found.', ['ticket_id' => $ticketId], 200);
+    }
+    $isReplyAction = $action === 'r';
+    if ($isReplyAction) {
+        support_telegram_reply_diag('support_reply_signature_pass', $ticketId, [
+            'signature_valid' => true,
+        ]);
+        support_telegram_reply_diag('support_reply_callback_received', $ticketId, [
+            'has_callback_id' => $callbackId !== '',
+            'private_chat' => $chatId !== '' && $chatId === $fromId,
+            'has_from_id' => $fromId !== '',
+            'ticket_found' => true,
+        ]);
+    }
+
+    if (!support_telegram_ticket_callback_allowed($ticket, $chatId, $fromId)) {
+        $answer = tg_support_answer($callbackId, 'You are not authorized to perform this action.', true);
+        if ($isReplyAction) {
+            support_telegram_reply_diag('support_reply_authorization_fail', $ticketId, [
+                'answer_ok' => !empty($answer['ok']),
+                'answer_code' => (string)($answer['code'] ?? ''),
+                'private_chat' => $chatId !== '' && $chatId === $fromId,
+            ]);
+        }
+        tg_support_response(true, 'IGNORED', 'Unauthorized support callback ignored', [], 200);
+    }
+    if ($isReplyAction) {
+        support_telegram_reply_diag('support_reply_authorization_pass', $ticketId, [
+            'private_chat' => $chatId !== '' && $chatId === $fromId,
+        ]);
     }
 
     if ($action === 'v') {
@@ -159,14 +212,37 @@ if (is_array($callback)) {
     } elseif ($action === 'r') {
         $result = support_telegram_set_reply_context($ticketId, $chatId, $fromId);
         if (empty($result['ok'])) {
-            tg_support_answer($callbackId, (string)($result['message'] ?? 'Reply mode unavailable'), true);
+            $answer = tg_support_answer($callbackId, (string)($result['message'] ?? 'Reply mode unavailable'), true);
+            support_telegram_reply_diag('support_reply_context_write_fail', $ticketId, [
+                'code' => (string)($result['code'] ?? ''),
+                'answer_ok' => !empty($answer['ok']),
+                'answer_code' => (string)($answer['code'] ?? ''),
+            ]);
         } else {
-            tg_support_send(
+            support_telegram_reply_diag('support_reply_context_write_success', $ticketId, [
+                'expires_at' => (int)($result['context']['expires_at'] ?? 0),
+            ]);
+            $sent = tg_support_send(
                 $chatId,
                 'Reply mode enabled for ticket ' . $ticketId . ".\nSend your reply message or tap Cancel.",
                 support_telegram_cancel_keyboard($ticketId)
             );
-            tg_support_answer($callbackId, 'Reply mode enabled');
+            if (empty($sent['ok'])) {
+                $answer = tg_support_answer($callbackId, 'Unable to start reply mode. Please try again.', true);
+                support_telegram_reply_diag('support_reply_confirmation_fail', $ticketId, [
+                    'send_code' => (string)($sent['code'] ?? ''),
+                    'send_status' => (int)($sent['status'] ?? 0),
+                    'answer_ok' => !empty($answer['ok']),
+                    'answer_code' => (string)($answer['code'] ?? ''),
+                ]);
+            } else {
+                $answer = tg_support_answer($callbackId, 'Reply mode enabled');
+                support_telegram_reply_diag('support_reply_confirmation_success', $ticketId, [
+                    'send_ok' => true,
+                    'answer_ok' => !empty($answer['ok']),
+                    'answer_code' => (string)($answer['code'] ?? ''),
+                ]);
+            }
         }
     } elseif ($action === 'x') {
         support_telegram_clear_reply_context($chatId, $fromId);
@@ -214,6 +290,9 @@ if (is_array($message)) {
         if (empty($result['duplicate'])) {
             tg_support_send($chatId, 'Reply sent successfully.');
         }
+        support_telegram_reply_diag('support_reply_canonical_save_success', (string)($result['ticket_id'] ?? ''), [
+            'duplicate' => !empty($result['duplicate']),
+        ]);
         tg_support_response(true, 'SUPPORT_REPLY_SAVED', 'Support reply saved.', [
             'ticket_id' => (string)($result['ticket_id'] ?? ''),
             'duplicate' => !empty($result['duplicate']),
@@ -221,6 +300,9 @@ if (is_array($message)) {
     }
 
     tg_support_send($chatId, (string)($result['message'] ?? 'Reply could not be saved.'));
+    support_telegram_reply_diag('support_reply_canonical_save_fail', '', [
+        'code' => (string)($result['code'] ?? 'SUPPORT_REPLY_FAILED'),
+    ]);
     tg_support_response(true, (string)($result['code'] ?? 'SUPPORT_REPLY_FAILED'), 'Support reply not saved.', [], 200);
 }
 

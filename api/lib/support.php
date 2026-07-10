@@ -105,10 +105,10 @@ function support_telegram_allowed_ids(): array
     foreach ($raw as $id) {
         $id = trim((string)$id);
         if ($id !== '') {
-            $ids[$id] = true;
+            $ids['id:' . $id] = $id;
         }
     }
-    return array_keys($ids);
+    return array_values($ids);
 }
 
 function support_telegram_actor_allowed(string $chatId, string $fromId): bool
@@ -123,6 +123,59 @@ function support_telegram_actor_allowed(string $chatId, string $fromId): bool
         }
     }
     return false;
+}
+
+function support_telegram_ticket_callback_allowed(array $ticket, string $chatId, string $fromId): bool
+{
+    if (support_telegram_actor_allowed($chatId, $fromId)) {
+        return true;
+    }
+
+    $ticketChatId = trim((string)($ticket['telegram_chat_id'] ?? ''));
+    return $ticketChatId !== '' && $chatId !== '' && hash_equals($ticketChatId, $chatId);
+}
+
+function support_telegram_reply_diag_enabled(): bool
+{
+    return defined('SUPPORT_TELEGRAM_REPLY_DIAGNOSTICS')
+        && support_bool((string)SUPPORT_TELEGRAM_REPLY_DIAGNOSTICS, false);
+}
+
+function support_telegram_safe_suffix(string $value): string
+{
+    $value = trim($value);
+    if ($value === '') {
+        return '';
+    }
+    return substr($value, -4);
+}
+
+function support_telegram_reply_diag(string $event, string $ticketId = '', array $context = []): void
+{
+    if (!support_telegram_reply_diag_enabled() || !function_exists('system_log')) {
+        return;
+    }
+
+    $safe = [];
+    foreach ($context as $key => $value) {
+        $key = support_clean_code($key);
+        if ($key === '') {
+            continue;
+        }
+        if (is_bool($value) || is_int($value) || is_float($value)) {
+            $safe[strtolower($key)] = $value;
+        } elseif (is_string($value)) {
+            $safe[strtolower($key)] = support_clean_text($value, 80);
+        }
+    }
+    $safe['ticket_suffix'] = support_telegram_safe_suffix($ticketId);
+
+    system_log(
+        'SUPPORT_TELEGRAM_REPLY',
+        support_telegram_safe_suffix($ticketId),
+        support_clean_text($event, 80),
+        $safe
+    );
 }
 
 function support_admin_ticket_url(string $ticketId): string
@@ -383,12 +436,24 @@ function support_telegram_save_reply_from_message(array $message, int $updateId 
     }
     $context = support_telegram_reply_context($chatId, $fromId);
     if (!support_telegram_actor_allowed($chatId, $fromId) && $context === []) {
+        support_telegram_reply_diag('support_reply_context_read_fail', '', [
+            'code' => 'TELEGRAM_UNAUTHORIZED',
+            'private_chat' => $chatId !== '' && $chatId === $fromId,
+        ]);
         return ['ok' => false, 'code' => 'TELEGRAM_UNAUTHORIZED', 'message' => 'Unauthorized Telegram account.'];
     }
     if ($context === []) {
+        support_telegram_reply_diag('support_reply_context_read_fail', '', [
+            'code' => 'TELEGRAM_CONTEXT_EXPIRED',
+            'private_chat' => $chatId !== '' && $chatId === $fromId,
+        ]);
         return ['ok' => false, 'code' => 'TELEGRAM_CONTEXT_EXPIRED', 'message' => 'Reply mode expired. Tap Reply again.'];
     }
     $ticketId = (string)($context['ticket_id'] ?? '');
+    support_telegram_reply_diag('support_reply_context_read_success', $ticketId, [
+        'private_chat' => $chatId !== '' && $chatId === $fromId,
+        'context_status' => (string)($context['status'] ?? ''),
+    ]);
     if ($text === '' || str_starts_with($text, '/')) {
         return ['ok' => false, 'code' => 'SUPPORT_MESSAGE_REQUIRED', 'message' => 'Please send a text reply.'];
     }
