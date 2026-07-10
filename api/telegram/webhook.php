@@ -14,7 +14,8 @@
  * - support|... callbacks go to support_webhook.php
  * - known MFS callback formats go to mfs_webhook.php
  * - non-bundle callbacks fall back to the MFS parser
- * - normal Telegram messages go to mfs_webhook.php for sender details replies
+ * - support reply-context messages go to support_webhook.php
+ * - other normal Telegram messages go to mfs_webhook.php for sender details replies
  */
 
 declare(strict_types=1);
@@ -104,9 +105,29 @@ if (isset($update['message']) && is_array($update['message'])) {
         exit;
     }
 
+    require_once dirname(__DIR__) . '/bootstrap.php';
+    require_once dirname(__DIR__) . '/lib/support.php';
+    if (tg_router_secret_valid() && support_telegram_has_active_reply_context($update)) {
+        $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
+        require __DIR__ . '/support_webhook.php';
+        exit;
+    }
+
     $GLOBALS['TELEGRAM_UPDATE_RAW'] = $raw;
     require __DIR__ . '/mfs_webhook.php';
     exit;
+}
+
+function tg_router_secret_valid(): bool
+{
+    $expected = defined('TELEGRAM_WEBHOOK_SECRET') ? trim((string)TELEGRAM_WEBHOOK_SECRET) : '';
+    if ($expected === '') {
+        return false;
+    }
+    $querySecret = trim((string)($_GET['key'] ?? ''));
+    $headerSecret = trim((string)($_SERVER['HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN'] ?? ''));
+    return ($querySecret !== '' && hash_equals($expected, $querySecret))
+        || ($headerSecret !== '' && hash_equals($expected, $headerSecret));
 }
 
 tg_router_response(true, 'IGNORED', 'Unsupported Telegram update type', [], 200);
