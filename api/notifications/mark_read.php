@@ -11,6 +11,13 @@ $body = api_read_json_body();
 
 $uid = (string)($auth['user']['uid'] ?? '');
 $notificationId = (string)($body['notification_id'] ?? '');
+if (is_array($body['notification_ids'] ?? null)) {
+    $marked = notification_mark_many_read($uid, (array)$body['notification_ids']);
+    api_response(true, 'NOTIFICATIONS_READ_OK', 'Notifications marked as read.', [
+        'marked_count' => $marked,
+        'unread_count' => notification_unread_count($uid),
+    ]);
+}
 if ($notificationId === '') {
     api_response(false, 'NOTIFICATION_ID_REQUIRED', 'Notification ID is required.', [], 422);
 }

@@ -136,6 +136,339 @@ function tg_support_edit_callback_message(array $callback, array $ticket): void
     ]);
 }
 
+function tg_notice_id(): string
+{
+    return 'NTC' . date('YmdHis') . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
+}
+
+function tg_notice_context_key(string $chatId, string $fromId): string
+{
+    return hash('sha256', trim($chatId) . '|' . trim($fromId));
+}
+
+function tg_notice_context_path(string $chatId, string $fromId): string
+{
+    return 'ADMIN_NOTICE_CONTEXT/' . tg_notice_context_key($chatId, $fromId);
+}
+
+function tg_notice_context(string $chatId, string $fromId): array
+{
+    $row = fb_get(tg_notice_context_path($chatId, $fromId));
+    if (!is_array($row)) {
+        return [];
+    }
+    if ((int)($row['expires_at'] ?? 0) < time()) {
+        fb_delete(tg_notice_context_path($chatId, $fromId));
+        return [];
+    }
+    return $row;
+}
+
+function tg_notice_save_context(string $chatId, string $fromId, array $context): void
+{
+    $context['chat_id'] = $chatId;
+    $context['from_id'] = $fromId;
+    $context['updated_at'] = time();
+    $context['expires_at'] = time() + 1800;
+    fb_put(tg_notice_context_path($chatId, $fromId), $context);
+}
+
+function tg_notice_clear_context(string $chatId, string $fromId): void
+{
+    fb_delete(tg_notice_context_path($chatId, $fromId));
+}
+
+function tg_notice_menu_keyboard(): array
+{
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => 'Send Notice', 'callback_data' => 'notice|start'],
+            ],
+        ],
+    ];
+}
+
+function tg_notice_audience_keyboard(): array
+{
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => 'All Users', 'callback_data' => 'notice|aud|ALL'],
+                ['text' => 'BD Users', 'callback_data' => 'notice|aud|BD'],
+            ],
+            [
+                ['text' => 'MY Users', 'callback_data' => 'notice|aud|MY'],
+                ['text' => 'Specific User', 'callback_data' => 'notice|aud|SPECIFIC'],
+            ],
+            [
+                ['text' => 'Cancel', 'callback_data' => 'notice|cancel'],
+            ],
+        ],
+    ];
+}
+
+function tg_notice_preview_keyboard(): array
+{
+    return [
+        'inline_keyboard' => [
+            [
+                ['text' => 'Send', 'callback_data' => 'notice|send'],
+                ['text' => 'Edit', 'callback_data' => 'notice|edit'],
+            ],
+            [
+                ['text' => 'Cancel', 'callback_data' => 'notice|cancel'],
+            ],
+        ],
+    ];
+}
+
+function tg_notice_start(string $chatId, string $fromId): void
+{
+    tg_notice_clear_context($chatId, $fromId);
+    tg_support_send($chatId, "Send Notice\n\nChoose audience:", tg_notice_audience_keyboard());
+}
+
+function tg_notice_preview_text(array $context): string
+{
+    $audience = (string)($context['audience'] ?? 'ALL');
+    if ($audience === 'SPECIFIC') {
+        $audience .= ' (' . (string)($context['specific_uid'] ?? '') . ')';
+    }
+    $body = trim((string)($context['body'] ?? ''));
+    return "Notice Preview\n\n"
+        . "Audience: " . $audience . "\n"
+        . "Title: " . (string)($context['title'] ?? '') . "\n"
+        . "Message: " . ($body !== '' ? $body : '[image only]') . "\n"
+        . "Image: " . ((string)($context['image_id'] ?? '') !== '' ? 'Yes' : 'No') . "\n\n"
+        . "Send this notice?";
+}
+
+function tg_notice_show_preview(string $chatId, array $context): void
+{
+    tg_support_send($chatId, tg_notice_preview_text($context), tg_notice_preview_keyboard());
+}
+
+function tg_notice_download_photo(string $fileId): array
+{
+    $fileId = trim($fileId);
+    $token = support_telegram_bot_token();
+    if ($fileId === '' || $token === '') {
+        return ['ok' => false, 'code' => 'NOTICE_PHOTO_MISSING'];
+    }
+    $file = tg_support_api('getFile', ['file_id' => $fileId]);
+    $filePath = (string)($file['data']['result']['file_path'] ?? '');
+    if (empty($file['ok']) || $filePath === '') {
+        return ['ok' => false, 'code' => 'NOTICE_PHOTO_FILE_FAILED'];
+    }
+    $url = 'https://api.telegram.org/file/bot' . $token . '/' . ltrim($filePath, '/');
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT => 30,
+    ]);
+    $binary = curl_exec($ch);
+    $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if (!is_string($binary) || $binary === '' || $status < 200 || $status >= 300) {
+        return ['ok' => false, 'code' => 'NOTICE_PHOTO_DOWNLOAD_FAILED'];
+    }
+    return notification_store_binary_image($binary, basename($filePath));
+}
+
+function tg_notice_largest_photo_id(array $message): string
+{
+    $photos = $message['photo'] ?? [];
+    if (!is_array($photos) || $photos === []) {
+        return '';
+    }
+    $best = '';
+    $bestSize = -1;
+    foreach ($photos as $photo) {
+        if (!is_array($photo)) {
+            continue;
+        }
+        $size = (int)($photo['file_size'] ?? 0);
+        if ($size >= $bestSize) {
+            $bestSize = $size;
+            $best = (string)($photo['file_id'] ?? '');
+        }
+    }
+    return $best;
+}
+
+function tg_notice_handle_callback(array $callback, string $callbackData): bool
+{
+    if (strncasecmp($callbackData, 'notice|', 7) !== 0) {
+        return false;
+    }
+    $callbackId = (string)($callback['id'] ?? '');
+    $chatId = (string)($callback['message']['chat']['id'] ?? '');
+    $fromId = (string)($callback['from']['id'] ?? '');
+    if (!support_telegram_actor_allowed($chatId, $fromId)) {
+        tg_support_answer($callbackId, 'You are not authorized to perform this action.', true);
+        tg_support_response(true, 'IGNORED', 'Unauthorized notice callback ignored', [], 200);
+    }
+    $parts = explode('|', trim($callbackData));
+    $action = strtolower((string)($parts[1] ?? ''));
+    if ($action === 'start') {
+        tg_notice_start($chatId, $fromId);
+        tg_support_answer($callbackId, 'Notice started');
+        tg_support_response(true, 'NOTICE_START_OK', 'Notice flow started.', [], 200);
+    }
+    if ($action === 'aud') {
+        $audience = strtoupper((string)($parts[2] ?? 'ALL'));
+        if (!in_array($audience, ['ALL', 'BD', 'MY', 'SPECIFIC'], true)) {
+            $audience = 'ALL';
+        }
+        $context = [
+            'notice_id' => tg_notice_id(),
+            'audience' => $audience,
+            'step' => $audience === 'SPECIFIC' ? 'UID' : 'TITLE',
+            'created_by' => $fromId,
+            'created_at' => time(),
+        ];
+        tg_notice_save_context($chatId, $fromId, $context);
+        tg_support_answer($callbackId, 'Audience selected');
+        tg_support_send($chatId, $audience === 'SPECIFIC' ? 'Send the target user UID.' : 'Send notice title.');
+        tg_support_response(true, 'NOTICE_AUDIENCE_OK', 'Notice audience selected.', [], 200);
+    }
+    if ($action === 'cancel') {
+        tg_notice_clear_context($chatId, $fromId);
+        tg_support_answer($callbackId, 'Notice cancelled');
+        tg_support_send($chatId, 'Notice cancelled.');
+        tg_support_response(true, 'NOTICE_CANCELLED', 'Notice cancelled.', [], 200);
+    }
+    $context = tg_notice_context($chatId, $fromId);
+    if ($context === []) {
+        tg_support_answer($callbackId, 'Notice session expired. Start again.', true);
+        tg_support_response(true, 'NOTICE_CONTEXT_MISSING', 'Notice context missing.', [], 200);
+    }
+    if ($action === 'preview') {
+        tg_notice_show_preview($chatId, $context);
+        tg_support_answer($callbackId, 'Preview ready');
+        tg_support_response(true, 'NOTICE_PREVIEW_OK', 'Notice preview shown.', [], 200);
+    }
+    if ($action === 'edit') {
+        $context['step'] = 'TITLE';
+        tg_notice_save_context($chatId, $fromId, $context);
+        tg_support_answer($callbackId, 'Edit notice');
+        tg_support_send($chatId, 'Send the new notice title.');
+        tg_support_response(true, 'NOTICE_EDIT_OK', 'Notice edit started.', [], 200);
+    }
+    if ($action === 'send') {
+        if (trim((string)($context['title'] ?? '')) === '' || (trim((string)($context['body'] ?? '')) === '' && trim((string)($context['image_id'] ?? '')) === '')) {
+            tg_support_answer($callbackId, 'Title and message or image are required.', true);
+            tg_support_response(true, 'NOTICE_INVALID', 'Notice invalid.', [], 200);
+        }
+        $result = notification_broadcast_admin_notice($context);
+        if (!empty($result['ok'])) {
+            tg_notice_clear_context($chatId, $fromId);
+            tg_support_answer($callbackId, 'Notice sent');
+            tg_support_send($chatId, 'Notice sent successfully. Users: ' . (int)($result['sent'] ?? 0));
+            tg_support_response(true, 'NOTICE_SENT', 'Notice sent.', $result, 200);
+        }
+        tg_support_answer($callbackId, 'Notice could not be sent.', true);
+        tg_support_response(true, 'NOTICE_SEND_FAILED', 'Notice send failed.', [], 200);
+    }
+    tg_support_answer($callbackId, 'Unsupported notice action');
+    tg_support_response(true, 'NOTICE_UNSUPPORTED', 'Unsupported notice action.', [], 200);
+}
+
+function tg_notice_handle_message(array $message): bool
+{
+    $chatId = (string)($message['chat']['id'] ?? '');
+    $fromId = (string)($message['from']['id'] ?? '');
+    $text = trim((string)($message['text'] ?? ''));
+    if (!support_telegram_actor_allowed($chatId, $fromId)) {
+        return false;
+    }
+    if (preg_match('/^\/start(?:@\w+)?(?:\s|$)/i', $text) === 1) {
+        tg_support_send($chatId, 'Z-Pay Swift Support Admin Menu', tg_notice_menu_keyboard());
+        tg_support_response(true, 'NOTICE_MENU_OK', 'Admin menu shown.', [], 200);
+    }
+    if (preg_match('/^\/notice(?:@\w+)?(?:\s|$)/i', $text) === 1 || strcasecmp($text, 'Send Notice') === 0) {
+        tg_notice_start($chatId, $fromId);
+        tg_support_response(true, 'NOTICE_START_OK', 'Notice flow started.', [], 200);
+    }
+    $context = tg_notice_context($chatId, $fromId);
+    if ($context === []) {
+        return false;
+    }
+    if (preg_match('/^\/cancel(?:@\w+)?(?:\s|$)/i', $text) === 1) {
+        tg_notice_clear_context($chatId, $fromId);
+        tg_support_send($chatId, 'Notice cancelled.');
+        tg_support_response(true, 'NOTICE_CANCELLED', 'Notice cancelled.', [], 200);
+    }
+    $step = strtoupper((string)($context['step'] ?? ''));
+    if ($step === 'UID') {
+        $uid = trim($text);
+        if ($uid === '' || !is_array(fb_get('USERS/' . $uid))) {
+            tg_support_send($chatId, 'User was not found. Send a valid UID or /cancel.');
+            tg_support_response(true, 'NOTICE_UID_INVALID', 'Notice UID invalid.', [], 200);
+        }
+        $context['specific_uid'] = $uid;
+        $context['step'] = 'TITLE';
+        tg_notice_save_context($chatId, $fromId, $context);
+        tg_support_send($chatId, 'Send notice title.');
+        tg_support_response(true, 'NOTICE_UID_OK', 'Notice UID saved.', [], 200);
+    }
+    if ($step === 'TITLE') {
+        if ($text === '') {
+            tg_support_send($chatId, 'Title is required. Send notice title or /cancel.');
+            tg_support_response(true, 'NOTICE_TITLE_REQUIRED', 'Notice title required.', [], 200);
+        }
+        $context['title'] = notification_clean_text($text, 100);
+        $context['step'] = 'BODY';
+        tg_notice_save_context($chatId, $fromId, $context);
+        tg_support_send($chatId, 'Send notice message, or send a photo with optional caption.');
+        tg_support_response(true, 'NOTICE_TITLE_OK', 'Notice title saved.', [], 200);
+    }
+    if ($step === 'BODY' || $step === 'IMAGE') {
+        $photoId = tg_notice_largest_photo_id($message);
+        if ($photoId !== '') {
+            $stored = tg_notice_download_photo($photoId);
+            if (empty($stored['ok'])) {
+                tg_support_send($chatId, 'Image could not be saved. Please send another image or /cancel.');
+                tg_support_response(true, 'NOTICE_IMAGE_FAILED', 'Notice image failed.', [], 200);
+            }
+            foreach (['image_id', 'image_path', 'image_mime', 'image_name'] as $key) {
+                $context[$key] = (string)($stored[$key] ?? '');
+            }
+            $caption = trim((string)($message['caption'] ?? ''));
+            if ($caption !== '') {
+                $context['body'] = notification_clean_text($caption, 4000);
+            }
+            $context['step'] = 'PREVIEW';
+            tg_notice_save_context($chatId, $fromId, $context);
+            tg_notice_show_preview($chatId, $context);
+            tg_support_response(true, 'NOTICE_IMAGE_OK', 'Notice image saved.', [], 200);
+        }
+        if ($text !== '' && strcasecmp($text, '/skip') !== 0) {
+            $context['body'] = notification_clean_text($text, 4000);
+            $context['step'] = 'IMAGE';
+            tg_notice_save_context($chatId, $fromId, $context);
+            tg_support_send($chatId, 'Optional: send an image now, or tap Preview.', [
+                'inline_keyboard' => [
+                    [['text' => 'Preview', 'callback_data' => 'notice|preview']],
+                    [['text' => 'Cancel', 'callback_data' => 'notice|cancel']],
+                ],
+            ]);
+            tg_support_response(true, 'NOTICE_BODY_OK', 'Notice body saved.', [], 200);
+        }
+        if (strcasecmp($text, '/skip') === 0 && (string)($context['image_id'] ?? '') !== '') {
+            $context['step'] = 'PREVIEW';
+            tg_notice_save_context($chatId, $fromId, $context);
+            tg_notice_show_preview($chatId, $context);
+            tg_support_response(true, 'NOTICE_PREVIEW_OK', 'Notice preview shown.', [], 200);
+        }
+        tg_support_send($chatId, 'Send message text, image, or /cancel.');
+        tg_support_response(true, 'NOTICE_WAITING_INPUT', 'Notice waiting for input.', [], 200);
+    }
+    return true;
+}
+
 tg_support_verify_secret();
 
 $raw = isset($GLOBALS['TELEGRAM_UPDATE_RAW'])
@@ -150,6 +483,7 @@ $callback = $update['callback_query'] ?? null;
 if (is_array($callback)) {
     $callbackId = (string)($callback['id'] ?? '');
     $callbackData = (string)($callback['data'] ?? '');
+    tg_notice_handle_callback($callback, $callbackData);
     $parsed = support_telegram_parse_callback_data($callbackData);
     if ($parsed === []) {
         if (strncasecmp($callbackData, 'support|r|', 10) === 0) {
@@ -281,9 +615,12 @@ if (is_array($message)) {
     $text = trim((string)($message['text'] ?? ''));
     if (preg_match('/^\/cancel(?:@\w+)?(?:\s|$)/i', $text) === 1) {
         support_telegram_clear_reply_context($chatId, $fromId);
+        tg_notice_clear_context($chatId, $fromId);
         tg_support_send($chatId, 'Reply mode cancelled.');
         tg_support_response(true, 'SUPPORT_REPLY_CANCELLED', 'Support reply mode cancelled.', [], 200);
     }
+
+    tg_notice_handle_message($message);
 
     $updateId = (int)($update['update_id'] ?? 0);
     $result = support_telegram_save_reply_from_message($message, $updateId);
