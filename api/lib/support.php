@@ -1609,6 +1609,12 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
         return ['ok' => false, 'code' => 'SUPPORT_TICKET_FORBIDDEN', 'message' => 'This ticket is not available.', 'status' => 403];
     }
     $status = support_clean_code($ticket['status'] ?? 'OPEN');
+    if (!$isAdmin && $status !== 'OPEN') {
+        if ($status === 'RESOLVED') {
+            return ['ok' => false, 'code' => 'SUPPORT_TICKET_RESOLVED', 'message' => 'This ticket has been resolved.', 'status' => 409];
+        }
+        return ['ok' => false, 'code' => 'SUPPORT_TICKET_CLOSED', 'message' => 'This ticket is closed.', 'status' => 409];
+    }
     if ($status === 'CLOSED') {
         return ['ok' => false, 'code' => 'SUPPORT_TICKET_CLOSED', 'message' => 'This ticket is closed.', 'status' => 409];
     }
