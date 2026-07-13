@@ -22,7 +22,7 @@ function tg_support_response(bool $ok, string $code, string $message, array $dat
 
 function tg_support_secret(): string
 {
-    return defined('TELEGRAM_WEBHOOK_SECRET') ? trim((string)TELEGRAM_WEBHOOK_SECRET) : '';
+    return defined('SUPPORT_TELEGRAM_WEBHOOK_SECRET') ? trim((string)SUPPORT_TELEGRAM_WEBHOOK_SECRET) : '';
 }
 
 function tg_support_verify_secret(): void
@@ -31,7 +31,7 @@ function tg_support_verify_secret(): void
     $querySecret = trim((string)($_GET['key'] ?? ''));
     $headerSecret = trim((string)($_SERVER['HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN'] ?? ''));
     if ($expected === '') {
-        tg_support_response(false, 'CONFIG_ERROR', 'TELEGRAM_WEBHOOK_SECRET missing', [], 500);
+        tg_support_response(false, 'CONFIG_ERROR', 'SUPPORT_TELEGRAM_WEBHOOK_SECRET missing', [], 500);
     }
     if (($querySecret !== '' && hash_equals($expected, $querySecret))
         || ($headerSecret !== '' && hash_equals($expected, $headerSecret))) {
@@ -42,10 +42,11 @@ function tg_support_verify_secret(): void
 
 function tg_support_api(string $method, array $payload): array
 {
-    if (TELEGRAM_BOT_TOKEN === '') {
-        return ['ok' => false, 'code' => 'TELEGRAM_TOKEN_MISSING', 'message' => 'Telegram token is not configured.'];
+    $token = support_telegram_bot_token();
+    if ($token === '') {
+        return ['ok' => false, 'code' => 'SUPPORT_TELEGRAM_TOKEN_MISSING', 'message' => 'Support Telegram token is not configured.'];
     }
-    $ch = curl_init('https://api.telegram.org/bot' . TELEGRAM_BOT_TOKEN . '/' . $method);
+    $ch = curl_init('https://api.telegram.org/bot' . $token . '/' . $method);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
@@ -163,7 +164,7 @@ if (is_array($callback)) {
 
     $action = (string)$parsed['action'];
     $ticketId = (string)$parsed['ticket_id'];
-    $chatId = (string)($callback['message']['chat']['id'] ?? TELEGRAM_CHAT_ID);
+    $chatId = (string)($callback['message']['chat']['id'] ?? support_telegram_chat_id());
     $fromId = (string)($callback['from']['id'] ?? '');
     $ticket = support_read_ticket($ticketId);
     if ($ticket === []) {

@@ -66,10 +66,28 @@ function support_attachment_id(): string
 
 function support_telegram_action_key(): string
 {
+    if (defined('SUPPORT_TELEGRAM_ACTION_KEY') && trim((string)SUPPORT_TELEGRAM_ACTION_KEY) !== '') {
+        return trim((string)SUPPORT_TELEGRAM_ACTION_KEY);
+    }
     if (defined('TELEGRAM_SUPPORT_ACTION_KEY') && trim((string)TELEGRAM_SUPPORT_ACTION_KEY) !== '') {
         return trim((string)TELEGRAM_SUPPORT_ACTION_KEY);
     }
     return defined('APP_KEY') ? trim((string)APP_KEY) : '';
+}
+
+function support_telegram_bot_token(): string
+{
+    return defined('SUPPORT_BOT_TOKEN') ? trim((string)SUPPORT_BOT_TOKEN) : '';
+}
+
+function support_telegram_chat_id(): string
+{
+    foreach (['SUPPORT_TELEGRAM_CHAT_ID', 'TELEGRAM_SUPPORT_CHAT_ID', 'TELEGRAM_CHAT_ID', 'ZAW_TELEGRAM_CHAT_ID'] as $constant) {
+        if (defined($constant) && trim((string)constant($constant)) !== '') {
+            return trim((string)constant($constant));
+        }
+    }
+    return '';
 }
 
 function support_telegram_signature(string $actionCode, string $ticketId): string
@@ -90,13 +108,13 @@ function support_telegram_callback_data(string $actionCode, string $ticketId): s
 function support_telegram_allowed_ids(): array
 {
     $raw = [];
-    foreach (['TELEGRAM_SUPPORT_ADMIN_IDS', 'TELEGRAM_ADMIN_IDS'] as $constant) {
+    foreach (['SUPPORT_TELEGRAM_ADMIN_IDS', 'TELEGRAM_SUPPORT_ADMIN_IDS', 'TELEGRAM_ADMIN_IDS'] as $constant) {
         if (defined($constant)) {
             $value = constant($constant);
             $raw = array_merge($raw, is_array($value) ? $value : preg_split('/[,\s]+/', (string)$value));
         }
     }
-    foreach (['TELEGRAM_CHAT_ID', 'ZAW_TELEGRAM_CHAT_ID'] as $constant) {
+    foreach (['SUPPORT_TELEGRAM_CHAT_ID', 'TELEGRAM_SUPPORT_CHAT_ID', 'TELEGRAM_CHAT_ID', 'ZAW_TELEGRAM_CHAT_ID'] as $constant) {
         if (defined($constant)) {
             $raw[] = constant($constant);
         }
@@ -1166,7 +1184,7 @@ function support_notify_telegram_new_ticket(array $ticket): void
         fb_patch('SUPPORT_TICKETS/' . $ticketId, [
             'telegram_sent' => true,
             'telegram_sent_at' => support_now(),
-            'telegram_chat_id' => (string)($tgResult['chat']['id'] ?? TELEGRAM_CHAT_ID),
+            'telegram_chat_id' => (string)($tgResult['chat']['id'] ?? support_telegram_chat_id()),
             'telegram_message_id' => (string)($tgResult['message_id'] ?? ''),
         ]);
     } else {
@@ -1198,15 +1216,17 @@ function support_notify_telegram_user_reply(array $ticket, array $message, array
 
 function support_telegram_send_message(string $message, array $replyMarkup = []): array
 {
-    if (TELEGRAM_BOT_TOKEN === '' || TELEGRAM_CHAT_ID === '') {
+    $token = support_telegram_bot_token();
+    $chatId = support_telegram_chat_id();
+    if ($token === '' || $chatId === '') {
         return [
             'ok' => false,
-            'message' => 'Telegram token/chat id not configured',
+            'message' => 'Support Telegram token/chat id not configured',
         ];
     }
 
     $payload = [
-        'chat_id' => TELEGRAM_CHAT_ID,
+        'chat_id' => $chatId,
         'text' => $message,
         'disable_web_page_preview' => true,
     ];
@@ -1214,7 +1234,7 @@ function support_telegram_send_message(string $message, array $replyMarkup = [])
         $payload['reply_markup'] = json_encode($replyMarkup, JSON_UNESCAPED_SLASHES);
     }
 
-    $ch = curl_init('https://api.telegram.org/bot' . TELEGRAM_BOT_TOKEN . '/sendMessage');
+    $ch = curl_init('https://api.telegram.org/bot' . $token . '/sendMessage');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
@@ -1239,8 +1259,10 @@ function support_telegram_send_message(string $message, array $replyMarkup = [])
 
 function support_telegram_send_photo(array $attachment, string $caption = ''): array
 {
-    if (TELEGRAM_BOT_TOKEN === '' || TELEGRAM_CHAT_ID === '') {
-        return ['ok' => false, 'message' => 'Telegram token/chat id not configured'];
+    $token = support_telegram_bot_token();
+    $chatId = support_telegram_chat_id();
+    if ($token === '' || $chatId === '') {
+        return ['ok' => false, 'message' => 'Support Telegram token/chat id not configured'];
     }
     $path = support_attachment_absolute_path($attachment);
     $mime = (string)($attachment['mime'] ?? '');
@@ -1250,12 +1272,12 @@ function support_telegram_send_photo(array $attachment, string $caption = ''): a
 
     $fileName = support_clean_text($attachment['original_name'] ?? 'screenshot', 80) ?: 'screenshot';
     $payload = [
-        'chat_id' => TELEGRAM_CHAT_ID,
+        'chat_id' => $chatId,
         'photo' => new CURLFile($path, $mime, $fileName),
         'caption' => support_telegram_message_excerpt($caption, 900),
     ];
 
-    $ch = curl_init('https://api.telegram.org/bot' . TELEGRAM_BOT_TOKEN . '/sendPhoto');
+    $ch = curl_init('https://api.telegram.org/bot' . $token . '/sendPhoto');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
@@ -1290,9 +1312,10 @@ function support_telegram_send_attachment_photos(string $ticketId, array $attach
 function support_telegram_edit_ticket_message(array $ticket): void
 {
     $ticketId = (string)($ticket['ticket_id'] ?? '');
-    $chatId = (string)($ticket['telegram_chat_id'] ?? TELEGRAM_CHAT_ID);
+    $token = support_telegram_bot_token();
+    $chatId = (string)($ticket['telegram_chat_id'] ?? support_telegram_chat_id());
     $messageId = (string)($ticket['telegram_message_id'] ?? '');
-    if ($ticketId === '' || TELEGRAM_BOT_TOKEN === '' || $chatId === '' || $messageId === '') {
+    if ($ticketId === '' || $token === '' || $chatId === '' || $messageId === '') {
         return;
     }
 
@@ -1304,7 +1327,7 @@ function support_telegram_edit_ticket_message(array $ticket): void
         'disable_web_page_preview' => true,
     ];
 
-    $ch = curl_init('https://api.telegram.org/bot' . TELEGRAM_BOT_TOKEN . '/editMessageText');
+    $ch = curl_init('https://api.telegram.org/bot' . $token . '/editMessageText');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST => true,
