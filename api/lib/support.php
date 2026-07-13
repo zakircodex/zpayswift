@@ -281,6 +281,61 @@ function support_telegram_message_excerpt(string $value, int $max = 600): string
     return $value === '' ? '-' : $value;
 }
 
+function support_message_reply_preview(string $ticketId, string $messageId): array
+{
+    $ticketId = support_clean_code($ticketId);
+    $messageId = support_clean_text($messageId, 80);
+    if ($ticketId === '' || $messageId === '') {
+        return [];
+    }
+    $row = fb_get('SUPPORT_MESSAGES/' . $ticketId . '/' . $messageId);
+    if (!is_array($row)) {
+        return [];
+    }
+    return [
+        'message_id' => (string)($row['message_id'] ?? $messageId),
+        'sender_type' => (string)($row['sender_type'] ?? ''),
+        'sender_name' => (string)($row['sender_name'] ?? ''),
+        'message' => support_telegram_message_excerpt((string)($row['message'] ?? ''), 160),
+        'attachment_count' => count((array)($row['attachment_ids'] ?? [])),
+        'created_at' => (int)($row['created_at'] ?? 0),
+    ];
+}
+
+function support_telegram_message_map_key(string $chatId, string $telegramMessageId): string
+{
+    return hash('sha256', trim($chatId) . '|' . trim($telegramMessageId));
+}
+
+function support_telegram_store_message_map(string $chatId, string $telegramMessageId, string $ticketId, string $canonicalMessageId): void
+{
+    $chatId = trim($chatId);
+    $telegramMessageId = trim($telegramMessageId);
+    $ticketId = support_clean_code($ticketId);
+    $canonicalMessageId = support_clean_text($canonicalMessageId, 80);
+    if ($chatId === '' || $telegramMessageId === '' || $ticketId === '' || $canonicalMessageId === '') {
+        return;
+    }
+    fb_put('SUPPORT_TELEGRAM_MESSAGE_MAP/' . support_telegram_message_map_key($chatId, $telegramMessageId), [
+        'telegram_message_id' => $telegramMessageId,
+        'canonical_message_id' => $canonicalMessageId,
+        'ticket_id' => $ticketId,
+        'chat_id' => $chatId,
+        'created_at' => support_now(),
+    ]);
+}
+
+function support_telegram_lookup_message_map(string $chatId, string $telegramMessageId): array
+{
+    $chatId = trim($chatId);
+    $telegramMessageId = trim($telegramMessageId);
+    if ($chatId === '' || $telegramMessageId === '') {
+        return [];
+    }
+    $row = fb_get('SUPPORT_TELEGRAM_MESSAGE_MAP/' . support_telegram_message_map_key($chatId, $telegramMessageId));
+    return is_array($row) ? $row : [];
+}
+
 function support_telegram_ticket_summary(array $ticket, array $messages = [], int $limit = 6): string
 {
     $lines = [
@@ -452,25 +507,38 @@ function support_telegram_save_reply_from_message(array $message, int $updateId 
     if (is_array($existing) && (string)($existing['message_id'] ?? '') !== '') {
         return ['ok' => true, 'duplicate' => true, 'ticket_id' => (string)($existing['ticket_id'] ?? ''), 'message' => 'Duplicate Telegram reply ignored.'];
     }
-    $context = support_telegram_reply_context($chatId, $fromId);
-    if (!support_telegram_actor_allowed($chatId, $fromId) && $context === []) {
+    $actorAllowed = support_telegram_actor_allowed($chatId, $fromId);
+    $replyToTelegramMessageId = (string)($message['reply_to_message']['message_id'] ?? '');
+    $telegramReplyMap = $replyToTelegramMessageId === '' ? [] : support_telegram_lookup_message_map($chatId, $replyToTelegramMessageId);
+    if (!$actorAllowed) {
         support_telegram_reply_diag('support_reply_context_read_fail', '', [
             'code' => 'TELEGRAM_UNAUTHORIZED',
             'private_chat' => $chatId !== '' && $chatId === $fromId,
         ]);
         return ['ok' => false, 'code' => 'TELEGRAM_UNAUTHORIZED', 'message' => 'Unauthorized Telegram account.'];
     }
-    if ($context === []) {
+    if ($replyToTelegramMessageId !== '' && $telegramReplyMap === []) {
+        return ['ok' => false, 'code' => 'TELEGRAM_REPLY_TARGET_UNKNOWN', 'message' => 'The replied message could not be matched to a support ticket.'];
+    }
+    $context = support_telegram_reply_context($chatId, $fromId);
+    if ($context === [] && $telegramReplyMap === []) {
         support_telegram_reply_diag('support_reply_context_read_fail', '', [
             'code' => 'TELEGRAM_CONTEXT_EXPIRED',
             'private_chat' => $chatId !== '' && $chatId === $fromId,
         ]);
         return ['ok' => false, 'code' => 'TELEGRAM_CONTEXT_EXPIRED', 'message' => 'Reply mode expired. Tap Reply again.'];
     }
-    $ticketId = (string)($context['ticket_id'] ?? '');
+    $contextTicketId = (string)($context['ticket_id'] ?? '');
+    $mappedTicketId = (string)($telegramReplyMap['ticket_id'] ?? '');
+    if ($contextTicketId !== '' && $mappedTicketId !== '' && !hash_equals($contextTicketId, $mappedTicketId)) {
+        return ['ok' => false, 'code' => 'TELEGRAM_REPLY_WRONG_TICKET', 'message' => 'This reply belongs to a different support ticket.'];
+    }
+    $ticketId = $mappedTicketId !== '' ? $mappedTicketId : $contextTicketId;
+    $replyToMessageId = (string)($telegramReplyMap['canonical_message_id'] ?? '');
     support_telegram_reply_diag('support_reply_context_read_success', $ticketId, [
         'private_chat' => $chatId !== '' && $chatId === $fromId,
         'context_status' => (string)($context['status'] ?? ''),
+        'native_reply' => $replyToMessageId !== '',
     ]);
     if ($text === '' || str_starts_with($text, '/')) {
         return ['ok' => false, 'code' => 'SUPPORT_MESSAGE_REQUIRED', 'message' => 'Please send a text reply.'];
@@ -502,20 +570,23 @@ function support_telegram_save_reply_from_message(array $message, int $updateId 
         'sender_telegram_id' => $fromId,
         'sender_name' => support_clean_text($message['from']['first_name'] ?? 'Telegram Admin', 80),
         'idempotency_key' => $idem,
+        'reply_to_message_id' => $replyToMessageId,
     ]);
     if (empty($result['ok'])) {
         return $result;
     }
     $messages = (array)($result['messages'] ?? []);
     $last = end($messages);
+    $savedMessageId = is_array($last) ? (string)($last['message_id'] ?? '') : '';
     fb_put($idemPath, [
         'ticket_id' => $ticketId,
-        'message_id' => is_array($last) ? (string)($last['message_id'] ?? '') : '',
+        'message_id' => $savedMessageId,
         'admin_telegram_user_id' => $fromId,
         'admin_chat_id' => $chatId,
         'created_at' => support_now(),
     ]);
-    support_telegram_clear_reply_context($chatId, $fromId);
+    support_telegram_store_message_map($chatId, (string)($message['message_id'] ?? ''), $ticketId, $savedMessageId);
+    support_telegram_set_reply_context($ticketId, $chatId, $fromId);
     return $result + ['ticket_id' => $ticketId];
 }
 
@@ -717,7 +788,7 @@ function support_public_ticket(array $row): array
 
 function support_public_message(array $row): array
 {
-    return [
+    $out = [
         'message_id' => (string)($row['message_id'] ?? ''),
         'ticket_id' => (string)($row['ticket_id'] ?? ''),
         'sender_type' => (string)($row['sender_type'] ?? ''),
@@ -730,6 +801,22 @@ function support_public_message(array $row): array
         'attachment_ids' => array_values(array_filter((array)($row['attachment_ids'] ?? []), 'is_string')),
         'created_at' => (int)($row['created_at'] ?? 0),
     ];
+    $replyTo = (string)($row['reply_to_message_id'] ?? '');
+    if ($replyTo !== '') {
+        $out['reply_to_message_id'] = $replyTo;
+        $preview = $row['reply_preview'] ?? [];
+        if (is_array($preview)) {
+            $out['reply_preview'] = [
+                'message_id' => (string)($preview['message_id'] ?? $replyTo),
+                'sender_type' => (string)($preview['sender_type'] ?? ''),
+                'sender_name' => (string)($preview['sender_name'] ?? ''),
+                'message' => (string)($preview['message'] ?? ''),
+                'attachment_count' => (int)($preview['attachment_count'] ?? 0),
+                'created_at' => (int)($preview['created_at'] ?? 0),
+            ];
+        }
+    }
+    return $out;
 }
 
 function support_public_attachment(array $row): array
@@ -1165,11 +1252,11 @@ function support_create_ticket(array $auth, array $body, array $files = []): arr
         fb_put('SUPPORT_IDEMPOTENCY/' . $uid . '/' . hash('sha256', $idem), ['ticket_id' => $ticketId, 'created_at' => $now]);
     }
     fb_put('SUPPORT_RATE_LIMIT/' . $uid, ['last_created_at' => $now]);
-    support_notify_telegram_new_ticket($ticket);
+    support_notify_telegram_new_ticket($ticket, $msg);
     return ['ok' => true, 'ticket' => $ticket];
 }
 
-function support_notify_telegram_new_ticket(array $ticket): void
+function support_notify_telegram_new_ticket(array $ticket, array $canonicalMessage = []): void
 {
     $ticketId = (string)($ticket['ticket_id'] ?? '');
     if ($ticketId === '') {
@@ -1177,7 +1264,15 @@ function support_notify_telegram_new_ticket(array $ticket): void
     }
     $message = support_telegram_ticket_message($ticket);
     $queueId = telegram_queue_create('SUPPORT_TICKET', $ticketId, $message);
-    $sent = support_telegram_send_message($message, support_telegram_keyboard($ticketId));
+    $attachmentIds = (array)($canonicalMessage['attachment_ids'] ?? []);
+    $attachments = support_attachment_rows_for_ids($ticketId, $attachmentIds);
+    $sent = support_telegram_send_canonical_alert(
+        $ticketId,
+        (string)($canonicalMessage['message_id'] ?? ''),
+        $message,
+        $attachments,
+        support_telegram_keyboard($ticketId)
+    );
     if (!empty($sent['ok'])) {
         telegram_queue_mark_sent($queueId);
         $tgResult = is_array($sent['data']['result'] ?? null) ? $sent['data']['result'] : [];
@@ -1190,9 +1285,6 @@ function support_notify_telegram_new_ticket(array $ticket): void
     } else {
         telegram_queue_mark_failed($queueId, (string)($sent['message'] ?? 'Telegram send failed'));
         fb_patch('SUPPORT_TICKETS/' . $ticketId, ['telegram_sent' => false, 'telegram_error' => substr((string)($sent['message'] ?? ''), 0, 200)]);
-    }
-    if ((int)($ticket['attachment_count'] ?? 0) > 0) {
-        support_telegram_send_attachment_photos($ticketId, [], 'Screenshot for ticket ' . $ticketId);
     }
 }
 
@@ -1207,11 +1299,13 @@ function support_notify_telegram_user_reply(array $ticket, array $message, array
         . "User: " . support_clean_text($ticket['user_name'] ?? '', 80) . "\n"
         . "Subject: " . support_telegram_message_excerpt((string)($ticket['subject'] ?? ''), 180) . "\n\n"
         . "Message:\n" . support_telegram_message_excerpt((string)($message['message'] ?? ''), 700);
-    support_telegram_send_message($text, support_telegram_keyboard($ticketId));
-    $ids = array_values(array_map(static fn($row) => (string)($row['attachment_id'] ?? ''), $attachments));
-    if ($ids !== []) {
-        support_telegram_send_attachment_photos($ticketId, $ids, 'Screenshot for user reply ' . $ticketId);
-    }
+    support_telegram_send_canonical_alert(
+        $ticketId,
+        (string)($message['message_id'] ?? ''),
+        $text,
+        $attachments,
+        support_telegram_keyboard($ticketId)
+    );
 }
 
 function support_telegram_send_message(string $message, array $replyMarkup = []): array
@@ -1297,6 +1391,123 @@ function support_telegram_send_photo(array $attachment, string $caption = ''): a
         return ['ok' => true, 'message' => 'Telegram photo sent', 'data' => $json];
     }
     return ['ok' => false, 'message' => is_array($json) ? (string)($json['description'] ?? 'Telegram photo send failed') : 'Telegram photo send failed'];
+}
+
+function support_telegram_send_media_group(array $attachments, string $caption = ''): array
+{
+    $token = support_telegram_bot_token();
+    $chatId = support_telegram_chat_id();
+    if ($token === '' || $chatId === '') {
+        return ['ok' => false, 'message' => 'Support Telegram token/chat id not configured'];
+    }
+
+    $payload = ['chat_id' => $chatId];
+    $media = [];
+    $index = 0;
+    foreach (array_slice($attachments, 0, 10) as $attachment) {
+        $path = support_attachment_absolute_path($attachment);
+        $mime = (string)($attachment['mime'] ?? '');
+        if ($path === '' || !is_file($path) || !in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            continue;
+        }
+        $field = 'photo' . $index;
+        $fileName = support_clean_text($attachment['original_name'] ?? 'screenshot', 80) ?: 'screenshot';
+        $payload[$field] = new CURLFile($path, $mime, $fileName);
+        $item = [
+            'type' => 'photo',
+            'media' => 'attach://' . $field,
+        ];
+        if ($index === 0) {
+            $item['caption'] = support_telegram_message_excerpt($caption, 900);
+        }
+        $media[] = $item;
+        $index++;
+    }
+
+    if ($media === []) {
+        return ['ok' => false, 'message' => 'Attachment unavailable'];
+    }
+    $payload['media'] = json_encode($media, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+    $ch = curl_init('https://api.telegram.org/bot' . $token . '/sendMediaGroup');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_CONNECTTIMEOUT => 15,
+        CURLOPT_TIMEOUT => 60,
+    ]);
+    $raw = curl_exec($ch);
+    $err = curl_error($ch);
+    $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    if ($raw === false) {
+        return ['ok' => false, 'message' => $err ?: 'Telegram media group send failed'];
+    }
+    $json = json_decode($raw, true);
+    if ($status >= 200 && $status < 300 && is_array($json) && !empty($json['ok'])) {
+        return ['ok' => true, 'message' => 'Telegram media group sent', 'data' => $json];
+    }
+    return ['ok' => false, 'message' => is_array($json) ? (string)($json['description'] ?? 'Telegram media group send failed') : 'Telegram media group send failed'];
+}
+
+function support_telegram_result_rows(array $sent): array
+{
+    $result = $sent['data']['result'] ?? null;
+    if (!is_array($result)) {
+        return [];
+    }
+    if (isset($result['message_id'])) {
+        return [$result];
+    }
+    return array_values(array_filter($result, 'is_array'));
+}
+
+function support_telegram_map_sent_messages(array $sent, string $ticketId, string $canonicalMessageId): void
+{
+    foreach (support_telegram_result_rows($sent) as $row) {
+        $messageId = (string)($row['message_id'] ?? '');
+        $chatId = (string)($row['chat']['id'] ?? support_telegram_chat_id());
+        support_telegram_store_message_map($chatId, $messageId, $ticketId, $canonicalMessageId);
+    }
+}
+
+function support_telegram_send_action_message(string $ticketId, array $replyMarkup): array
+{
+    return support_telegram_send_message('Actions for ticket ' . support_clean_code($ticketId), $replyMarkup);
+}
+
+function support_telegram_send_canonical_alert(string $ticketId, string $canonicalMessageId, string $text, array $attachments, array $replyMarkup): array
+{
+    $ticketId = support_clean_code($ticketId);
+    $canonicalMessageId = support_clean_text($canonicalMessageId, 80);
+    $attachments = array_values($attachments);
+    if ($attachments === []) {
+        $sent = support_telegram_send_message($text, $replyMarkup);
+        if (!empty($sent['ok'])) {
+            support_telegram_map_sent_messages($sent, $ticketId, $canonicalMessageId);
+        }
+        return $sent;
+    }
+
+    $mediaSent = count($attachments) === 1
+        ? support_telegram_send_photo($attachments[0], $text)
+        : support_telegram_send_media_group($attachments, $text);
+    if (!empty($mediaSent['ok'])) {
+        support_telegram_map_sent_messages($mediaSent, $ticketId, $canonicalMessageId);
+        $actionSent = support_telegram_send_action_message($ticketId, $replyMarkup);
+        if (!empty($actionSent['ok'])) {
+            support_telegram_map_sent_messages($actionSent, $ticketId, $canonicalMessageId);
+            return $actionSent + ['media' => $mediaSent];
+        }
+        return $mediaSent;
+    }
+
+    $fallback = support_telegram_send_message($text . "\n\nAttachment unavailable", $replyMarkup);
+    if (!empty($fallback['ok'])) {
+        support_telegram_map_sent_messages($fallback, $ticketId, $canonicalMessageId);
+    }
+    return $fallback;
 }
 
 function support_telegram_send_attachment_photos(string $ticketId, array $attachmentIds, string $caption): void
@@ -1405,9 +1616,6 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
         return ['ok' => false, 'code' => 'SUPPORT_TICKET_RESOLVED', 'message' => 'This ticket has been resolved.', 'status' => 409];
     }
     $message = support_clean_text($message, 2500);
-    if ($message === '') {
-        return ['ok' => false, 'code' => 'SUPPORT_MESSAGE_REQUIRED', 'message' => 'Please describe your issue.', 'status' => 422];
-    }
     $messageId = support_message_id();
     $config = support_config();
     $stored = support_store_attachments($files, (string)$ticket['ticket_id'], $messageId, (string)$ticket['uid'], $config);
@@ -1415,8 +1623,18 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
         return ['ok' => false, 'code' => $stored['code'], 'message' => $stored['message'], 'status' => 422];
     }
     $attachments = (array)($stored['items'] ?? []);
+    if ($message === '' && $attachments === []) {
+        return ['ok' => false, 'code' => 'SUPPORT_MESSAGE_REQUIRED', 'message' => 'Please describe your issue.', 'status' => 422];
+    }
+    $replyToMessageId = support_clean_text($meta['reply_to_message_id'] ?? '', 80);
+    $replyPreview = $replyToMessageId === '' ? [] : support_message_reply_preview((string)$ticket['ticket_id'], $replyToMessageId);
+    if ($replyToMessageId !== '' && $replyPreview === []) {
+        $replyToMessageId = '';
+    }
     $now = support_now();
     $newStatus = $isAdmin ? 'REPLIED' : (in_array($status, ['RESOLVED'], true) ? 'OPEN' : 'PENDING');
+    $attachmentIds = array_values(array_map(static fn($a) => (string)$a['attachment_id'], $attachments));
+    $preview = $message !== '' ? $message : ($attachmentIds !== [] ? 'Photo attached' : '');
     $row = [
         'message_id' => $messageId,
         'ticket_id' => (string)$ticket['ticket_id'],
@@ -1427,17 +1645,21 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
         'source' => support_clean_code($meta['source'] ?? ($isAdmin ? 'ADMIN_PANEL' : 'ANDROID')),
         'idempotency_key' => support_clean_text($meta['idempotency_key'] ?? '', 160),
         'message' => $message,
-        'attachment_ids' => array_values(array_map(static fn($a) => (string)$a['attachment_id'], $attachments)),
+        'attachment_ids' => $attachmentIds,
         'created_at' => $now,
         'read_by_user' => !$isAdmin,
         'read_by_admin' => $isAdmin,
     ];
+    if ($replyToMessageId !== '') {
+        $row['reply_to_message_id'] = $replyToMessageId;
+        $row['reply_preview'] = $replyPreview;
+    }
     $patch = [
         'status' => $newStatus,
         'updated_at' => $now,
         'last_message_at' => $now,
         'last_message_by' => $isAdmin ? 'ADMIN' : 'USER',
-        'last_message_preview' => $message,
+        'last_message_preview' => $preview,
         'attachment_count' => (int)($ticket['attachment_count'] ?? 0) + count($attachments),
         'admin_unread' => !$isAdmin,
         'user_unread' => $isAdmin,

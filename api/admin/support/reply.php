@@ -30,6 +30,7 @@ if ($idem !== '') {
 $result = support_reply($auth, $ticketId, $message, $_FILES, 'ADMIN', [
     'idempotency_key' => $idem,
     'source' => 'ADMIN_PANEL',
+    'reply_to_message_id' => support_clean_text($body['reply_to_message_id'] ?? '', 80),
 ]);
 if (empty($result['ok'])) {
     api_response(false, (string)$result['code'], (string)$result['message'], [], (int)($result['status'] ?? 400));
