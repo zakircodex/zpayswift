@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/wallet.php';
+require_once __DIR__ . '/notifications.php';
 
 function bundle_now(): int
 {
@@ -25,6 +26,37 @@ function bundle_month_key(?int $ts = null): string
 function bundle_round_money(float $amount): float
 {
     return round($amount, 2);
+}
+
+function bundle_notification_amount_text(array $row): string
+{
+    $amount = bundle_round_money((float)($row['you_pay'] ?? $row['payable_amount'] ?? $row['amount'] ?? 0));
+    return number_format($amount, 2, '.', '') . ' BDT';
+}
+
+function bundle_record_user_notification(array $row, string $requestId, string $status): void
+{
+    $uid = trim((string)($row['uid'] ?? ''));
+    $requestId = trim($requestId);
+    if ($uid === '' || $requestId === '') {
+        return;
+    }
+    $success = strtoupper($status) === 'SUCCESS';
+    notification_record_user(
+        $uid,
+        'BUNDLE_STATUS',
+        $success ? 'Bundle Successful' : 'Bundle Failed',
+        $success
+            ? 'Your bundle request of ' . bundle_notification_amount_text($row) . ' was successful.'
+            : 'Your bundle request could not be completed.',
+        'BUNDLE',
+        $requestId,
+        'BUNDLE_STATUS:' . $requestId . ':' . strtoupper($status),
+        [
+            'request_id' => $requestId,
+            'status' => strtoupper($status),
+        ]
+    );
 }
 
 function bundle_wallet_breakdown(
@@ -1942,6 +1974,7 @@ function bundle_mark_success(string $requestId, string $message): array
             'commission_status' => (string)($done['commission_status'] ?? ''),
         ]);
     }
+    bundle_record_user_notification($done, $requestId, 'SUCCESS');
 
     return [
         'ok' => true,
@@ -2029,6 +2062,7 @@ function bundle_mark_failed(string $requestId, string $message): array
             'you_pay' => (float)($done['you_pay'] ?? $refundAmount),
         ]);
     }
+    bundle_record_user_notification($done, $requestId, 'FAILED');
 
     return [
         'ok' => true,

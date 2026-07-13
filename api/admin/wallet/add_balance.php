@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
 require_once dirname(__DIR__, 2) . '/lib/wallet.php';
+require_once dirname(__DIR__, 2) . '/lib/notifications.php';
 
 api_require_method('POST');
 $auth = auth_require_admin_session(true);
@@ -242,6 +243,20 @@ if (function_exists('admin_action_log')) {
 if (function_exists('system_log')) {
     system_log('ADMIN_ADD_BALANCE', $uid, 'Admin added balance', $logData);
 }
+
+notification_record_user(
+    $uid,
+    'WALLET_CREDIT',
+    'Wallet Credited',
+    'Your wallet was credited with ' . $receiverCurrency . ' ' . number_format($totalCredit, 2, '.', '') . '.',
+    'WALLET_LEDGER',
+    $ledgerId !== '' ? $ledgerId : $transferId,
+    'WALLET_CREDIT:' . ($ledgerId !== '' ? $ledgerId : $transferId),
+    [
+        'transfer_id' => $transferId,
+        'request_id' => $refId,
+    ]
+);
 
 api_response(true, 'SUCCESS', 'Balance added successfully', [
     'uid' => $uid,

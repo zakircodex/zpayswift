@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/notifications.php';
+
 /*
 |--------------------------------------------------------------------------
 | Z-Pay Swift - MFS Core Helper
@@ -48,6 +50,30 @@ function mfs_money_text($value, string $currency): string
     $currency = mfs_normalize_currency($currency);
     $amount = number_format(mfs_round_money((float)$value), 2, '.', '');
     return $currency === 'MYR' ? 'RM ' . $amount : $amount . ' BDT';
+}
+
+function mfs_record_user_notification(array $row, string $requestId, string $status): void
+{
+    $uid = trim((string)($row['uid'] ?? ''));
+    $requestId = trim($requestId);
+    if ($uid === '' || $requestId === '') {
+        return;
+    }
+    $success = strtoupper($status) === 'SUCCESSFUL';
+    $provider = trim((string)($row['provider_name'] ?? $row['provider'] ?? 'MFS'));
+    notification_record_user(
+        $uid,
+        'MFS_STATUS',
+        $success ? $provider . ' Successful' : $provider . ' Failed',
+        $success ? 'Your ' . $provider . ' request was successful.' : 'Your ' . $provider . ' request could not be completed.',
+        'MFS',
+        $requestId,
+        'MFS_STATUS:' . $requestId . ':' . strtoupper($status),
+        [
+            'request_id' => $requestId,
+            'status' => strtoupper($status),
+        ]
+    );
 }
 
 function mfs_make_request_id(): string
@@ -3318,6 +3344,7 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
             // ignore
         }
     }
+    mfs_record_user_notification($row, $requestId, 'SUCCESSFUL');
 
     return [
         'ok' => true,
@@ -3453,6 +3480,7 @@ function mfs_mark_failed(string $requestId, string $message = 'Transaction faile
             // ignore
         }
     }
+    mfs_record_user_notification($row, $requestId, 'FAILED');
 
     return [
         'ok' => true,

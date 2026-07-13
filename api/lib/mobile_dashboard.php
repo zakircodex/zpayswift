@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/notifications.php';
+
 function zpay_dash_bool($value, bool $default = false): bool
 {
     if (is_bool($value)) {
@@ -472,16 +474,7 @@ function zpay_dash_notification_count(string $uid): int
     if ($uid === '') {
         return 0;
     }
-    $count = 0;
-    $supportRows = fb_get('SUPPORT_USER_NOTIFICATIONS/' . $uid);
-    if (is_array($supportRows)) {
-        foreach ($supportRows as $row) {
-            if (is_array($row) && empty($row['read'])) {
-                $count++;
-            }
-        }
-    }
-    return min(99, $count);
+    return min(99, notification_unread_count($uid));
 }
 
 function zpay_dash_dashboard_payload(array $auth): array

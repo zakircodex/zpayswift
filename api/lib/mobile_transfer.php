@@ -12,6 +12,7 @@ if (!function_exists('fcm_send_to_user')) {
         require_once $zpayTransferFcm;
     }
 }
+require_once __DIR__ . '/notifications.php';
 
 function zpay_transfer_money($value): float
 {
@@ -651,9 +652,6 @@ function zpay_transfer_public_preview(array $preview, string $previewToken = '')
 
 function zpay_transfer_notify_receiver(array $transfer): void
 {
-    if (!function_exists('fcm_send_to_user')) {
-        return;
-    }
     $receiverUid = trim((string)($transfer['receiver_uid'] ?? ''));
     $transferId = trim((string)($transfer['transfer_id'] ?? ''));
     if ($receiverUid === '' || $transferId === '') {
@@ -665,18 +663,58 @@ function zpay_transfer_notify_receiver(array $transfer): void
     }
     $currency = wallet_normalize_currency_code((string)($transfer['wallet_currency'] ?? $transfer['currency'] ?? 'BDT'), 'BDT');
     $amountText = zpay_transfer_text($transfer['amount'] ?? $transfer['transfer_amount'] ?? 0, $currency);
-    fcm_send_to_user(
+    $body = 'You received ' . $amountText . ' from ' . strtoupper($senderName) . '.';
+    notification_record_user(
         $receiverUid,
+        'ZPAY_TRANSFER_RECEIVED',
         'Money Received',
-        'You received ' . $amountText . ' from ' . strtoupper($senderName) . '.',
+        $body,
+        'ZPAY_TRANSFER',
+        $transferId,
+        'ZPAY_TRANSFER_RECEIVED:' . $transferId,
         [
-            'type' => 'ZPAY_TRANSFER_RECEIVED',
             'transfer_id' => $transferId,
             'request_id' => $transferId,
-            'amount_text' => $amountText,
-            'sender_name' => strtoupper($senderName),
-        ],
-        'ZPAY_TRANSFER_RECEIVED:' . $transferId
+        ]
+    );
+    if (function_exists('fcm_send_to_user')) {
+        fcm_send_to_user(
+            $receiverUid,
+            'Money Received',
+            $body,
+            [
+                'type' => 'ZPAY_TRANSFER_RECEIVED',
+                'transfer_id' => $transferId,
+                'request_id' => $transferId,
+                'amount_text' => $amountText,
+                'sender_name' => strtoupper($senderName),
+            ],
+            'ZPAY_TRANSFER_RECEIVED:' . $transferId
+        );
+    }
+}
+
+function zpay_transfer_notify_sender(array $transfer): void
+{
+    $senderUid = trim((string)($transfer['sender_uid'] ?? ''));
+    $transferId = trim((string)($transfer['transfer_id'] ?? ''));
+    if ($senderUid === '' || $transferId === '') {
+        return;
+    }
+    $currency = wallet_normalize_currency_code((string)($transfer['wallet_currency'] ?? $transfer['currency'] ?? 'BDT'), 'BDT');
+    $amountText = zpay_transfer_text($transfer['amount'] ?? $transfer['transfer_amount'] ?? 0, $currency);
+    notification_record_user(
+        $senderUid,
+        'ZPAY_TRANSFER_SENT',
+        'Transfer Successful',
+        $amountText . ' was sent successfully.',
+        'ZPAY_TRANSFER',
+        $transferId,
+        'ZPAY_TRANSFER_SENT:' . $transferId,
+        [
+            'transfer_id' => $transferId,
+            'request_id' => $transferId,
+        ]
     );
 }
 
@@ -1096,6 +1134,7 @@ function zpay_transfer_execute_preview(array $preview, string $tokenHash, string
         'amount' => $amount,
         'currency' => $currency,
     ]);
+    zpay_transfer_notify_sender($transfer);
     zpay_transfer_notify_receiver($transfer);
 
     return [

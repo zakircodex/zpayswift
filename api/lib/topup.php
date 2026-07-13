@@ -9,6 +9,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 require_once __DIR__ . '/subadmin_api.php';
 require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/topup_config.php';
+require_once __DIR__ . '/notifications.php';
 
 function topup_now(): int
 {
@@ -524,6 +525,39 @@ function topup_telegram_h($value): string
 function topup_telegram_money($value): string
 {
     return number_format((float)$value, 2, '.', '');
+}
+
+function topup_notification_amount_text(array $row): string
+{
+    $currency = strtoupper(trim((string)($row['display_currency'] ?? $row['wallet_debit_currency'] ?? $row['wallet_currency'] ?? $row['currency'] ?? 'BDT')));
+    if ($currency === 'MYR') {
+        $amount = (float)($row['wallet_debit_myr'] ?? $row['amount_myr'] ?? $row['total_paid'] ?? $row['amount'] ?? 0);
+        return 'RM ' . topup_telegram_money($amount);
+    }
+    $amount = (float)($row['topup_amount_bdt'] ?? $row['amount_bdt'] ?? $row['amount'] ?? 0);
+    return 'BDT ' . topup_telegram_money($amount);
+}
+
+function topup_record_user_notification(array $row, string $requestId, string $type, string $title, string $body): void
+{
+    $uid = trim((string)($row['uid'] ?? ''));
+    $requestId = trim($requestId);
+    if ($uid === '' || $requestId === '') {
+        return;
+    }
+    notification_record_user(
+        $uid,
+        $type,
+        $title,
+        $body,
+        'MOBILE_TOPUP',
+        $requestId,
+        $type . ':' . $requestId,
+        [
+            'request_id' => $requestId,
+            'status' => (string)($row['status'] ?? ''),
+        ]
+    );
 }
 
 function topup_telegram_amount_line(array $row): string
@@ -1459,6 +1493,13 @@ function topup_mark_success(string $requestId, string $message): array
         'subapi_held_amount' => (float)($row['held_amount'] ?? 0),
         'request_source' => (string)($row['source'] ?? ''),
     ]);
+    topup_record_user_notification(
+        $done,
+        $requestId,
+        'TOPUP_SUCCESS',
+        'Top-Up Successful',
+        'Your mobile top-up of ' . topup_notification_amount_text($done) . ' was successful.'
+    );
 
     return [
         'ok' => true,
@@ -1576,6 +1617,13 @@ function topup_mark_failed(string $requestId, string $message): array
         'subapi_held_amount' => (float)($row['held_amount'] ?? 0),
         'request_source' => (string)($row['source'] ?? ''),
     ]);
+    topup_record_user_notification(
+        $done,
+        $requestId,
+        'TOPUP_FAILED',
+        'Top-Up Failed',
+        'Your mobile top-up could not be completed.'
+    );
 
     return [
         'ok' => true,

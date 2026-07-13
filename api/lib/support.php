@@ -8,6 +8,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 
 require_once __DIR__ . '/telegram.php';
 require_once __DIR__ . '/fcm.php';
+require_once __DIR__ . '/notifications.php';
 
 function support_now(): int
 {
@@ -1015,23 +1016,39 @@ function support_attachment_rows_for_ids(string $ticketId, array $ids = []): arr
     return $out;
 }
 
-function support_record_user_notification(string $uid, string $ticketId, string $title, string $message): void
+function support_record_user_notification(
+    string $uid,
+    string $ticketId,
+    string $title,
+    string $message,
+    string $type = 'SUPPORT_REPLY',
+    string $messageId = ''
+): void
 {
     $uid = trim($uid);
     $ticketId = support_clean_code($ticketId);
     if ($uid === '' || $ticketId === '') {
         return;
     }
-    $id = 'SN' . date('ymdHis') . strtoupper(substr(bin2hex(random_bytes(4)), 0, 8));
-    fb_put('SUPPORT_USER_NOTIFICATIONS/' . $uid . '/' . $id, [
-        'notification_id' => $id,
-        'type' => 'SUPPORT',
-        'ticket_id' => $ticketId,
-        'title' => support_clean_text($title, 80),
-        'message' => support_clean_text($message, 180),
-        'read' => false,
-        'created_at' => support_now(),
-    ]);
+    $type = support_clean_code($type);
+    if ($type === '') {
+        $type = 'SUPPORT_REPLY';
+    }
+    $messageId = support_clean_code($messageId);
+    $dedupe = $type . ':' . $ticketId . ($messageId !== '' ? ':' . $messageId : '');
+    notification_record_user(
+        $uid,
+        $type,
+        $title,
+        $message,
+        'SUPPORT_TICKET',
+        $ticketId,
+        $dedupe,
+        [
+            'ticket_id' => $ticketId,
+            'message_id' => $messageId,
+        ]
+    );
 }
 
 function support_mark_user_ticket_notifications_read(string $uid, string $ticketId): void
@@ -1041,6 +1058,7 @@ function support_mark_user_ticket_notifications_read(string $uid, string $ticket
     if ($uid === '' || $ticketId === '') {
         return;
     }
+    notification_mark_entity_read($uid, 'SUPPORT_TICKET', $ticketId);
     $rows = fb_get('SUPPORT_USER_NOTIFICATIONS/' . $uid);
     if (!is_array($rows)) {
         return;
@@ -1807,7 +1825,9 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
             (string)($ticket['uid'] ?? ''),
             (string)($ticket['ticket_id'] ?? ''),
             'Support Reply',
-            'Support replied to your ticket.'
+            'Support replied to your ticket.',
+            'SUPPORT_REPLY',
+            $messageId
         );
         support_send_user_push(
             (string)($ticket['uid'] ?? ''),
@@ -1895,7 +1915,9 @@ function support_admin_set_status(string $ticketId, string $status, array $actor
             (string)($ticket['uid'] ?? ''),
             (string)($ticket['ticket_id'] ?? ''),
             'Support Ticket Closed',
-            'Your support conversation has been closed.'
+            'Your support conversation has been closed.',
+            'SUPPORT_CLOSED',
+            (string)($auto['message_id'] ?? '')
         );
         support_send_user_push(
             (string)($ticket['uid'] ?? ''),

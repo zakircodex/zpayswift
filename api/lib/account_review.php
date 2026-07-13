@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/notifications.php';
+
 function account_review_telegram_bot_token(): string
 {
     return defined('TELEGRAM_BOT_TOKEN') ? trim((string)TELEGRAM_BOT_TOKEN) : '';
@@ -409,6 +411,21 @@ function account_review_apply(
             $logContext
         );
     }
+
+    notification_record_user(
+        $uid,
+        $action === 'APPROVE' ? 'ACCOUNT_APPROVED' : 'ACCOUNT_REJECTED',
+        $action === 'APPROVE' ? 'Account Approved' : 'Account Rejected',
+        $action === 'APPROVE'
+            ? 'Your Z-Pay Swift account has been approved.'
+            : 'Your Z-Pay Swift account review was rejected.',
+        'ACCOUNT',
+        $uid,
+        ($action === 'APPROVE' ? 'ACCOUNT_APPROVED:' : 'ACCOUNT_REJECTED:') . $uid . ':' . $now,
+        [
+            'status' => $newStatus,
+        ]
+    );
 
     return [
         'ok' => true,
