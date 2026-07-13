@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/telegram.php';
+require_once __DIR__ . '/fcm.php';
 
 function support_now(): int
 {
@@ -1072,6 +1073,126 @@ function support_record_admin_notification(string $ticketId, string $title, stri
     ]);
 }
 
+function support_auto_message_idempotency_path(string $ticketId, string $key): string
+{
+    return 'SUPPORT_AUTO_MESSAGE_IDEMPOTENCY/' . support_clean_code($ticketId) . '/' . hash('sha256', $key);
+}
+
+function support_save_auto_message(string $ticketId, string $idempotencyKey, string $message, bool $patchTicket = false): array
+{
+    $ticketId = support_clean_code($ticketId);
+    $idempotencyKey = support_clean_text($idempotencyKey, 160);
+    $message = trim(strip_tags((string)$message));
+    if (function_exists('mb_substr')) {
+        $message = mb_substr($message, 0, 1200);
+    } else {
+        $message = substr($message, 0, 1200);
+    }
+    if ($ticketId === '' || $idempotencyKey === '' || $message === '') {
+        return ['ok' => false, 'code' => 'SUPPORT_AUTO_MESSAGE_INVALID'];
+    }
+
+    $path = support_auto_message_idempotency_path($ticketId, $idempotencyKey);
+    $existing = fb_get($path);
+    if (is_array($existing) && (string)($existing['message_id'] ?? '') !== '') {
+        return ['ok' => true, 'duplicate' => true, 'message_id' => (string)$existing['message_id']];
+    }
+
+    $ticket = support_read_ticket($ticketId);
+    if ($ticket === []) {
+        return ['ok' => false, 'code' => 'SUPPORT_TICKET_NOT_FOUND'];
+    }
+
+    $now = support_now();
+    $messageId = support_message_id();
+    $row = [
+        'message_id' => $messageId,
+        'ticket_id' => $ticketId,
+        'sender_uid' => 'SYSTEM',
+        'sender_type' => 'SUPPORT',
+        'sender_name' => 'Z-Pay Swift Support',
+        'source' => 'SYSTEM',
+        'idempotency_key' => $idempotencyKey,
+        'message' => $message,
+        'attachment_ids' => [],
+        'created_at' => $now,
+        'read_by_user' => false,
+        'read_by_admin' => true,
+        'system' => true,
+    ];
+
+    if (!fb_put('SUPPORT_MESSAGES/' . $ticketId . '/' . $messageId, $row)) {
+        return ['ok' => false, 'code' => 'SUPPORT_AUTO_MESSAGE_SAVE_FAILED'];
+    }
+    fb_put($path, [
+        'ticket_id' => $ticketId,
+        'message_id' => $messageId,
+        'idempotency_key' => $idempotencyKey,
+        'created_at' => $now,
+    ]);
+
+    if ($patchTicket) {
+        fb_patch('SUPPORT_TICKETS/' . $ticketId, [
+            'updated_at' => $now,
+            'last_message_at' => $now,
+            'last_message_by' => 'SUPPORT',
+            'last_message_preview' => $message,
+            'user_unread' => true,
+        ]);
+        fb_patch('SUPPORT_USER_INDEX/' . (string)($ticket['uid'] ?? '') . '/' . $ticketId, [
+            'updated_at' => $now,
+            'status' => support_clean_code($ticket['status'] ?? 'OPEN'),
+        ]);
+    }
+
+    return ['ok' => true, 'message_id' => $messageId, 'message' => $row];
+}
+
+function support_save_auto_first_message(string $ticketId): void
+{
+    support_save_auto_message(
+        $ticketId,
+        'AUTO_FIRST_REPLY:' . support_clean_code($ticketId),
+        "আপনার সাপোর্ট অনুরোধটি আমরা পেয়েছি।\nআমাদের সাপোর্ট টিম বিষয়টি যাচাই করে যত দ্রুত সম্ভব উত্তর দেবে।",
+        false
+    );
+}
+
+function support_save_auto_close_message(string $ticketId): array
+{
+    return support_save_auto_message(
+        $ticketId,
+        'AUTO_CLOSE_REPLY:' . support_clean_code($ticketId),
+        "এই সাপোর্ট কথোপকথনটি বন্ধ করা হয়েছে।\nআপনি আগের বার্তাগুলো দেখতে পারবেন, তবে নতুন উত্তর পাঠাতে পারবেন না।",
+        true
+    );
+}
+
+function support_send_user_push(string $uid, string $title, string $body, array $data, string $dedupeKey): void
+{
+    if ($uid === '' || !function_exists('fcm_send_to_user')) {
+        return;
+    }
+    fcm_send_to_user($uid, $title, $body, $data, $dedupeKey);
+}
+
+function support_telegram_clear_ticket_reply_context(string $ticketId): void
+{
+    $ticketId = support_clean_code($ticketId);
+    if ($ticketId === '') {
+        return;
+    }
+    $rows = fb_get('SUPPORT_TELEGRAM_REPLY_CONTEXT');
+    if (!is_array($rows)) {
+        return;
+    }
+    foreach ($rows as $key => $row) {
+        if (is_array($row) && support_clean_code($row['ticket_id'] ?? '') === $ticketId) {
+            fb_delete('SUPPORT_TELEGRAM_REPLY_CONTEXT/' . $key);
+        }
+    }
+}
+
 function support_recent_requests_for_uid(string $uid, int $limit = 30): array
 {
     $items = [];
@@ -1252,6 +1373,7 @@ function support_create_ticket(array $auth, array $body, array $files = []): arr
         fb_put('SUPPORT_IDEMPOTENCY/' . $uid . '/' . hash('sha256', $idem), ['ticket_id' => $ticketId, 'created_at' => $now]);
     }
     fb_put('SUPPORT_RATE_LIMIT/' . $uid, ['last_created_at' => $now]);
+    support_save_auto_first_message($ticketId);
     support_notify_telegram_new_ticket($ticket, $msg);
     return ['ok' => true, 'ticket' => $ticket];
 }
@@ -1687,6 +1809,17 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
             'Support Reply',
             'Support replied to your ticket.'
         );
+        support_send_user_push(
+            (string)($ticket['uid'] ?? ''),
+            'Support Reply',
+            'Support replied to your ticket.',
+            [
+                'type' => 'SUPPORT_REPLY',
+                'ticket_id' => (string)($ticket['ticket_id'] ?? ''),
+                'message_id' => $messageId,
+            ],
+            'SUPPORT_REPLY:' . (string)($ticket['ticket_id'] ?? '') . ':' . $messageId
+        );
     } elseif (!$isAdmin && $ticket !== []) {
         support_record_admin_notification(
             (string)($ticket['ticket_id'] ?? ''),
@@ -1739,6 +1872,7 @@ function support_admin_set_status(string $ticketId, string $status, array $actor
     if ($ticket === []) {
         return ['ok' => false, 'code' => 'SUPPORT_TICKET_NOT_FOUND', 'message' => 'Support ticket was not found.', 'status' => 404];
     }
+    $previousStatus = support_clean_code($ticket['status'] ?? 'OPEN');
     $now = support_now();
     $patch = [
         'status' => $status,
@@ -1754,6 +1888,27 @@ function support_admin_set_status(string $ticketId, string $status, array $actor
     }
     fb_patch('SUPPORT_TICKETS/' . $ticket['ticket_id'], $patch);
     fb_patch('SUPPORT_USER_INDEX/' . $ticket['uid'] . '/' . $ticket['ticket_id'], ['updated_at' => $now, 'status' => $status]);
+    if ($status === 'CLOSED' && $previousStatus !== 'CLOSED') {
+        $auto = support_save_auto_close_message((string)$ticket['ticket_id']);
+        support_telegram_clear_ticket_reply_context((string)$ticket['ticket_id']);
+        support_record_user_notification(
+            (string)($ticket['uid'] ?? ''),
+            (string)($ticket['ticket_id'] ?? ''),
+            'Support Ticket Closed',
+            'Your support conversation has been closed.'
+        );
+        support_send_user_push(
+            (string)($ticket['uid'] ?? ''),
+            'Support Ticket Closed',
+            'Your support conversation has been closed.',
+            [
+                'type' => 'SUPPORT_CLOSED',
+                'ticket_id' => (string)($ticket['ticket_id'] ?? ''),
+                'message_id' => (string)($auto['message_id'] ?? ''),
+            ],
+            'SUPPORT_CLOSED:' . (string)$ticket['ticket_id']
+        );
+    }
     $ticket = support_read_ticket((string)$ticket['ticket_id']);
     support_telegram_edit_ticket_message($ticket);
     return ['ok' => true] + support_details_payload($ticket);

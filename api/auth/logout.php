@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/fcm.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -17,6 +18,7 @@ fb_patch('USER_SESSIONS/' . $sessionHash, [
 ]);
 
 auth_mark_manual_logout($uid, $deviceId);
+fcm_deactivate_user_device_tokens($uid, $deviceId);
 
 system_log('LOGOUT', $uid, 'User logout successful', [
     'uid' => $uid,
