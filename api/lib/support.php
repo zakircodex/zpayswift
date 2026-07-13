@@ -1434,7 +1434,7 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
             (string)($ticket['uid'] ?? ''),
             (string)($ticket['ticket_id'] ?? ''),
             'Support Reply',
-            'Support replied to your ticket ' . (string)($ticket['ticket_id'] ?? '')
+            'Support replied to your ticket.'
         );
     } elseif (!$isAdmin && $ticket !== []) {
         support_record_admin_notification(
