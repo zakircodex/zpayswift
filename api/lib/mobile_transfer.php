@@ -6,6 +6,13 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+if (!function_exists('fcm_send_to_user')) {
+    $zpayTransferFcm = __DIR__ . '/fcm.php';
+    if (is_file($zpayTransferFcm)) {
+        require_once $zpayTransferFcm;
+    }
+}
+
 function zpay_transfer_money($value): float
 {
     if (is_int($value) || is_float($value)) {
@@ -64,6 +71,16 @@ function zpay_transfer_receipt_url(string $token): string
 
 function zpay_transfer_input_phone(array $body): string
 {
+    $qrPayload = trim((string)(
+        $body['qr_payload']
+        ?? $body['qr_token']
+        ?? $body['receiver_qr_token']
+        ?? ''
+    ));
+    if ($qrPayload !== '') {
+        return $qrPayload;
+    }
+
     return trim((string)(
         $body['recipient_account']
         ?? $body['recipient_phone']
@@ -74,11 +91,131 @@ function zpay_transfer_input_phone(array $body): string
     ));
 }
 
+function zpay_transfer_qr_payload_prefix(): string
+{
+    return 'ZPAYSWIFT:QR:v1:';
+}
+
+function zpay_transfer_normalize_qr_payload(string $payload): string
+{
+    $payload = trim($payload);
+    if ($payload === '') {
+        return '';
+    }
+    $prefix = zpay_transfer_qr_payload_prefix();
+    if (stripos($payload, $prefix) === 0) {
+        $payload = substr($payload, strlen($prefix));
+    }
+    $payload = preg_replace('/[^A-Za-z0-9._:-]+/', '', $payload) ?? '';
+    return strlen($payload) > 160 ? substr($payload, 0, 160) : $payload;
+}
+
+function zpay_transfer_qr_hash(string $token): string
+{
+    return hash('sha256', zpay_transfer_normalize_qr_payload($token));
+}
+
+function zpay_transfer_qr_payload(string $token): string
+{
+    return zpay_transfer_qr_payload_prefix() . zpay_transfer_normalize_qr_payload($token);
+}
+
+function zpay_transfer_issue_qr_token(string $uid, bool $refresh = false): array
+{
+    $uid = trim($uid);
+    if ($uid === '') {
+        return [];
+    }
+    $now = now_ts();
+    $indexPath = 'USER_TRANSFER_QR/' . $uid;
+    $existingIndex = $refresh ? [] : fb_get($indexPath);
+    if (is_array($existingIndex)) {
+        $existingHash = preg_replace('/[^a-f0-9]/i', '', (string)($existingIndex['token_hash'] ?? '')) ?? '';
+        if ($existingHash !== '') {
+            $row = fb_get('TRANSFER_QR_TOKENS/' . $existingHash);
+            if (is_array($row)
+                && !empty($row['active'])
+                && (string)($row['uid'] ?? '') === $uid
+                && (int)($row['expires_at'] ?? 0) > $now
+            ) {
+                return $row;
+            }
+        }
+    }
+
+    $token = function_exists('random_token') ? random_token(32) : bin2hex(random_bytes(32));
+    $hash = zpay_transfer_qr_hash($token);
+    $row = [
+        'uid' => $uid,
+        'token_hash' => $hash,
+        'token' => $token,
+        'payload' => zpay_transfer_qr_payload($token),
+        'active' => true,
+        'created_at' => $now,
+        'updated_at' => $now,
+        'expires_at' => $now + (90 * 24 * 60 * 60),
+        'version' => 'v1',
+    ];
+    if (!fb_put('TRANSFER_QR_TOKENS/' . $hash, $row)) {
+        return [];
+    }
+    fb_put($indexPath, [
+        'uid' => $uid,
+        'token_hash' => $hash,
+        'updated_at' => $now,
+        'expires_at' => $row['expires_at'],
+    ]);
+    return $row;
+}
+
+function zpay_transfer_find_user_by_qr_payload(string $payload): array
+{
+    $token = zpay_transfer_normalize_qr_payload($payload);
+    if ($token === '') {
+        return [];
+    }
+    $hash = zpay_transfer_qr_hash($token);
+    $row = fb_get('TRANSFER_QR_TOKENS/' . $hash);
+    if (!is_array($row)
+        || empty($row['active'])
+        || (int)($row['expires_at'] ?? 0) < now_ts()
+    ) {
+        return [];
+    }
+    $uid = trim((string)($row['uid'] ?? ''));
+    if ($uid === '') {
+        return [];
+    }
+    $user = fb_get('USERS/' . $uid);
+    if (!is_array($user)) {
+        return [];
+    }
+    $user['uid'] = $uid;
+    $phone = normalize_phone_by_country((string)($user['phone'] ?? ''), auth_phone_country_from_user($user));
+    return [
+        'uid' => $uid,
+        'phone' => $phone,
+        'phone_country' => auth_phone_country_from_user($user),
+        'user' => $user,
+        'qr_token_hash' => $hash,
+    ];
+}
+
 function zpay_transfer_find_user_by_account(string $account, string $preferredCountry = ''): array
 {
     $account = trim($account);
     if ($account === '') {
         return [];
+    }
+
+    if (stripos($account, zpay_transfer_qr_payload_prefix()) === 0 || strlen(zpay_transfer_normalize_qr_payload($account)) >= 32) {
+        $qr = zpay_transfer_find_user_by_qr_payload($account);
+        if ($qr) {
+            return $qr;
+        }
+        if (stripos($account, zpay_transfer_qr_payload_prefix()) === 0) {
+            return [];
+        }
     }
 
     $countries = [];
@@ -128,11 +265,13 @@ function zpay_transfer_public_recipient(array $account, bool $canTransfer, strin
         'exists' => !empty($account),
         'can_transfer' => $canTransfer,
         'reason' => $reason,
+        'receiver_uid' => (string)($account['uid'] ?? $user['uid'] ?? ''),
         'receiver_name' => trim((string)($user['name'] ?? '')),
         'receiver_phone' => (string)($account['phone'] ?? $user['phone'] ?? ''),
         'receiver_name_masked' => zpay_dash_mask_name((string)($user['name'] ?? '')),
         'receiver_phone_masked' => zpay_dash_mask_phone((string)($account['phone'] ?? $user['phone'] ?? '')),
         'receiver_role' => $role,
+        'status' => (string)($user['status'] ?? ''),
     ];
 }
 
@@ -508,6 +647,37 @@ function zpay_transfer_public_preview(array $preview, string $previewToken = '')
     }
 
     return $data;
+}
+
+function zpay_transfer_notify_receiver(array $transfer): void
+{
+    if (!function_exists('fcm_send_to_user')) {
+        return;
+    }
+    $receiverUid = trim((string)($transfer['receiver_uid'] ?? ''));
+    $transferId = trim((string)($transfer['transfer_id'] ?? ''));
+    if ($receiverUid === '' || $transferId === '') {
+        return;
+    }
+    $senderName = zpay_dash_clean_string($transfer['sender_name'] ?? 'Z-Pay user', 80);
+    if ($senderName === '') {
+        $senderName = 'Z-Pay user';
+    }
+    $currency = wallet_normalize_currency_code((string)($transfer['wallet_currency'] ?? $transfer['currency'] ?? 'BDT'), 'BDT');
+    $amountText = zpay_transfer_text($transfer['amount'] ?? $transfer['transfer_amount'] ?? 0, $currency);
+    fcm_send_to_user(
+        $receiverUid,
+        'Money Received',
+        'You received ' . $amountText . ' from ' . strtoupper($senderName) . '.',
+        [
+            'type' => 'ZPAY_TRANSFER_RECEIVED',
+            'transfer_id' => $transferId,
+            'request_id' => $transferId,
+            'amount_text' => $amountText,
+            'sender_name' => strtoupper($senderName),
+        ],
+        'ZPAY_TRANSFER_RECEIVED:' . $transferId
+    );
 }
 
 function zpay_transfer_idempotency_key(string $raw): string
@@ -926,6 +1096,7 @@ function zpay_transfer_execute_preview(array $preview, string $tokenHash, string
         'amount' => $amount,
         'currency' => $currency,
     ]);
+    zpay_transfer_notify_receiver($transfer);
 
     return [
         'ok' => true,
