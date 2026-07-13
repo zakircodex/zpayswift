@@ -258,9 +258,6 @@ function fcm_send_one(string $projectId, string $accessToken, string $token, str
             $payloadData[$key] = (string)$value;
         }
     }
-    $payloadData['title'] = fcm_clean_text($title, 80);
-    $payloadData['body'] = fcm_clean_text($body, 180);
-
     $payload = [
         'message' => [
             'token' => $token,
