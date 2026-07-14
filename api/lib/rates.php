@@ -146,6 +146,15 @@ function zpay_save_myr_to_bdt_rate(float $rate, string $changedBy = '', string $
         mfs_config(true);
     }
 
+    $notificationResult = [];
+    $notificationLib = __DIR__ . '/notifications.php';
+    if (is_file($notificationLib)) {
+        require_once $notificationLib;
+    }
+    if (function_exists('notification_broadcast_rate_update')) {
+        $notificationResult = notification_broadcast_rate_update($rate, $logId, $changedBy, $source);
+    }
+
     return [
         'ok' => true,
         'code' => 'SUCCESS',
@@ -156,6 +165,7 @@ function zpay_save_myr_to_bdt_rate(float $rate, string $changedBy = '', string $
             'rate' => $rate,
             'rate_path' => 'MFS_SETTINGS/rate_myr_bdt',
             'log_id' => $logId,
+            'notification' => $notificationResult,
         ],
     ];
 }

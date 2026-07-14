@@ -57,6 +57,9 @@ define('TELEGRAM_SUPPORT_ADMIN_IDS', '');
 define('TELEGRAM_BUNDLE_CHAT_ID', '');
 define('ZAW_TELEGRAM_BOT_TOKEN', '');
 define('ZAW_TELEGRAM_CHAT_ID', '');
+define('NOTIFICATION_BOT_TOKEN', '');
+define('NOTIFICATION_TELEGRAM_WEBHOOK_SECRET', '');
+define('NOTIFICATION_TELEGRAM_ADMIN_IDS', '');
 
 /* Security / IP risk layer */
 define('SECURITY_ENABLED', true);

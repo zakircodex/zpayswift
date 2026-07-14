@@ -36,6 +36,9 @@ function notification_category_for_type(string $type): string
     if ($type === 'ADMIN_NOTICE') {
         return 'NOTICE';
     }
+    if ($type === 'RINGGIT_RATE_UPDATED') {
+        return 'NOTICE';
+    }
     if (str_starts_with($type, 'SUPPORT_')) {
         return 'SUPPORT';
     }
@@ -437,6 +440,100 @@ function notification_user_country_bucket(array $user): string
     return '';
 }
 
+function notification_user_status(array $user): string
+{
+    $status = strtoupper(trim((string)($user['status'] ?? 'ACTIVE')));
+    return $status !== '' ? notification_clean_code($status, 40) : 'ACTIVE';
+}
+
+function notification_active_statuses(): array
+{
+    return ['ACTIVE', 'APPROVED'];
+}
+
+function notification_user_is_active(array $user): bool
+{
+    return in_array(notification_user_status($user), notification_active_statuses(), true);
+}
+
+function notification_user_currency(array $user): string
+{
+    $currency = strtoupper(trim((string)($user['currency'] ?? $user['wallet_currency'] ?? '')));
+    if (in_array($currency, ['MYR', 'RM', 'RINGGIT'], true)) {
+        return 'MYR';
+    }
+    if (in_array($currency, ['BDT', 'TK', 'TAKA'], true)) {
+        return 'BDT';
+    }
+    $country = strtoupper(trim((string)($user['pricing_country'] ?? $user['market_country'] ?? $user['service_country'] ?? '')));
+    return $country === 'MY' ? 'MYR' : ($country === 'BD' ? 'BDT' : '');
+}
+
+function notification_mask_phone(string $phone): string
+{
+    $digits = preg_replace('/\D+/', '', $phone) ?? '';
+    if ($digits === '') {
+        return '';
+    }
+    if (strlen($digits) <= 6) {
+        return str_repeat('*', max(0, strlen($digits) - 2)) . substr($digits, -2);
+    }
+    return substr($digits, 0, 3) . str_repeat('*', max(3, strlen($digits) - 6)) . substr($digits, -3);
+}
+
+function notification_user_public_summary(string $uid, array $user): array
+{
+    return [
+        'uid' => notification_clean_text($uid, 80),
+        'name' => notification_clean_text($user['name'] ?? $user['full_name'] ?? $user['display_name'] ?? '', 100),
+        'phone_masked' => notification_mask_phone((string)($user['phone'] ?? $user['mobile'] ?? '')),
+        'email' => notification_clean_text($user['email'] ?? '', 120),
+        'status' => notification_user_status($user),
+        'pricing_country' => notification_clean_code($user['pricing_country'] ?? $user['market_country'] ?? $user['service_country'] ?? '', 10),
+        'currency' => notification_user_currency($user),
+    ];
+}
+
+function notification_audience_label(string $audience): string
+{
+    $audience = notification_clean_code($audience, 20);
+    return match ($audience) {
+        'ACTIVE' => 'Active Users',
+        'INACTIVE' => 'Inactive Users',
+        'BD' => 'BD Users',
+        'MY' => 'MY Users',
+        'SPECIFIC' => 'Specific User',
+        default => 'All Users',
+    };
+}
+
+function notification_audience_statuses(string $audience): array
+{
+    $audience = notification_clean_code($audience, 20);
+    if ($audience === 'ACTIVE' || $audience === 'ALL' || $audience === 'BD' || $audience === 'MY') {
+        return notification_active_statuses();
+    }
+    if ($audience !== 'INACTIVE') {
+        return [];
+    }
+    $rows = fb_get('USERS');
+    $statuses = [];
+    if (is_array($rows)) {
+        foreach ($rows as $user) {
+            if (!is_array($user)) {
+                continue;
+            }
+            $status = notification_user_status($user);
+            if (!in_array($status, notification_active_statuses(), true)) {
+                $statuses[$status] = true;
+            }
+        }
+    }
+    $out = array_keys($statuses);
+    sort($out);
+    return $out;
+}
+
 function notification_target_users(string $audience, string $specificUid = ''): array
 {
     $audience = notification_clean_code($audience, 20);
@@ -454,8 +551,15 @@ function notification_target_users(string $audience, string $specificUid = ''): 
         if (!is_array($user)) {
             continue;
         }
-        $status = strtoupper(trim((string)($user['status'] ?? 'ACTIVE')));
-        if ($status !== '' && !in_array($status, ['ACTIVE', 'APPROVED'], true)) {
+        $isActive = notification_user_is_active($user);
+        if ($audience === 'INACTIVE') {
+            if ($isActive) {
+                continue;
+            }
+            $out[(string)$uid] = $user;
+            continue;
+        }
+        if (!$isActive) {
             continue;
         }
         $bucket = notification_user_country_bucket($user);
@@ -468,6 +572,11 @@ function notification_target_users(string $audience, string $specificUid = ''): 
         $out[(string)$uid] = $user;
     }
     return $out;
+}
+
+function notification_target_count(string $audience, string $specificUid = ''): int
+{
+    return count(notification_target_users($audience, $specificUid));
 }
 
 function notification_broadcast_admin_notice(array $notice): array
@@ -537,12 +646,158 @@ function notification_broadcast_admin_notice(array $notice): array
     }
     fb_put($dedupePath, [
         'notice_id' => $noticeId,
+        'broadcast_id' => $noticeId,
+        'type' => 'ADMIN_NOTICE',
         'audience' => $audience,
+        'audience_label' => notification_audience_label($audience),
+        'included_statuses' => notification_audience_statuses($audience),
+        'title' => $title,
         'specific_uid' => $specificUid,
         'sent' => $sent,
         'push_sent' => $pushSent,
+        'failed' => 0,
+        'status' => 'SENT',
         'created_by' => notification_clean_text($notice['created_by'] ?? '', 80),
         'created_at' => notification_now(),
     ]);
-    return ['ok' => true, 'notice_id' => $noticeId, 'sent' => $sent, 'push_sent' => $pushSent];
+    return [
+        'ok' => true,
+        'notice_id' => $noticeId,
+        'sent' => $sent,
+        'push_sent' => $pushSent,
+        'included_statuses' => notification_audience_statuses($audience),
+        'recipient_count' => count($targets),
+    ];
+}
+
+function notification_rate_target_users(): array
+{
+    $rows = fb_get('USERS');
+    if (!is_array($rows)) {
+        return [];
+    }
+    $out = [];
+    foreach ($rows as $uid => $user) {
+        if (!is_array($user) || !notification_user_is_active($user)) {
+            continue;
+        }
+        $country = notification_clean_code($user['pricing_country'] ?? $user['market_country'] ?? $user['service_country'] ?? '', 10);
+        if ($country !== 'MY') {
+            continue;
+        }
+        $currency = notification_user_currency($user);
+        if ($currency !== 'MYR') {
+            continue;
+        }
+        $out[(string)$uid] = $user;
+    }
+    return $out;
+}
+
+function notification_rate_target_count(): int
+{
+    return count(notification_rate_target_users());
+}
+
+function notification_broadcast_rate_update(float $rate, string $eventId, string $changedBy = '', string $source = ''): array
+{
+    if (!function_exists('fcm_send_to_user')) {
+        $fcm = __DIR__ . '/fcm.php';
+        if (is_file($fcm)) {
+            require_once $fcm;
+        }
+    }
+    $rate = round($rate, 2);
+    $eventId = notification_clean_text($eventId, 80);
+    if ($rate <= 0 || $eventId === '') {
+        return ['ok' => false, 'code' => 'RATE_NOTICE_INVALID', 'sent' => 0, 'push_sent' => 0];
+    }
+    $dedupePath = 'ADMIN_NOTICE_BROADCASTS/' . hash('sha256', 'RATE:' . $eventId);
+    $existing = fb_get($dedupePath);
+    if (is_array($existing)) {
+        return ['ok' => true, 'duplicate' => true, 'sent' => (int)($existing['sent'] ?? 0), 'push_sent' => (int)($existing['push_sent'] ?? 0)];
+    }
+    $title = 'Ringgit Rate Updated';
+    $body = 'Today\'s rate is RM 1 = ' . number_format($rate, 2, '.', '') . ' BDT.';
+    $targets = notification_rate_target_users();
+    $sent = 0;
+    $pushSent = 0;
+    foreach ($targets as $uid => $user) {
+        $record = notification_record_user(
+            (string)$uid,
+            'RINGGIT_RATE_UPDATED',
+            $title,
+            $body,
+            'RINGGIT_RATE',
+            $eventId,
+            'RINGGIT_RATE_UPDATED:' . $eventId,
+            [
+                'notice_id' => $eventId,
+                'status' => 'SENT',
+                'body_full' => $body,
+            ]
+        );
+        if (!empty($record['ok']) && empty($record['duplicate'])) {
+            $sent++;
+        }
+        if (function_exists('fcm_send_to_user')) {
+            $push = fcm_send_to_user(
+                (string)$uid,
+                $title,
+                $body,
+                [
+                    'type' => 'RINGGIT_RATE_UPDATED',
+                    'notification_id' => (string)($record['notification_id'] ?? ''),
+                    'notice_id' => $eventId,
+                ],
+                'RINGGIT_RATE_UPDATED:' . $eventId . ':' . (string)$uid
+            );
+            $pushSent += (int)($push['sent'] ?? 0);
+        }
+    }
+    fb_put($dedupePath, [
+        'broadcast_id' => $eventId,
+        'notice_id' => $eventId,
+        'type' => 'RINGGIT_RATE_UPDATED',
+        'audience' => 'ACTIVE_MY_MYR',
+        'audience_label' => 'Active MYR Users',
+        'included_statuses' => notification_active_statuses(),
+        'title' => $title,
+        'rate' => $rate,
+        'sent' => $sent,
+        'push_sent' => $pushSent,
+        'failed' => 0,
+        'status' => 'SENT',
+        'created_by' => notification_clean_text($changedBy, 80),
+        'source' => notification_clean_code($source, 40),
+        'created_at' => notification_now(),
+    ]);
+    return ['ok' => true, 'sent' => $sent, 'push_sent' => $pushSent, 'recipient_count' => count($targets)];
+}
+
+function notification_recent_broadcasts(int $limit = 10): array
+{
+    $rows = fb_get('ADMIN_NOTICE_BROADCASTS');
+    if (!is_array($rows)) {
+        return [];
+    }
+    $items = [];
+    foreach ($rows as $id => $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $items[] = [
+            'broadcast_id' => notification_clean_text($row['broadcast_id'] ?? $row['notice_id'] ?? (string)$id, 80),
+            'type' => notification_clean_code($row['type'] ?? 'ADMIN_NOTICE', 80),
+            'audience' => notification_clean_text($row['audience_label'] ?? $row['audience'] ?? '', 80),
+            'title' => notification_clean_text($row['title'] ?? '', 100),
+            'sent' => (int)($row['sent'] ?? 0),
+            'push_sent' => (int)($row['push_sent'] ?? 0),
+            'failed' => (int)($row['failed'] ?? 0),
+            'status' => notification_clean_code($row['status'] ?? 'SENT', 40),
+            'created_at' => (int)($row['created_at'] ?? 0),
+        ];
+    }
+    usort($items, static fn(array $a, array $b): int => ((int)$b['created_at'] <=> (int)$a['created_at']));
+    return array_slice($items, 0, max(1, min(20, $limit)));
 }
