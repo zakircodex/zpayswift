@@ -699,6 +699,68 @@ function notification_rate_target_count(): int
     return count(notification_rate_target_users());
 }
 
+function notification_dispatch_rate_update_push(float $rate, string $eventId, array $targets = []): array
+{
+    if (!function_exists('fcm_send_to_user')) {
+        $fcm = __DIR__ . '/fcm.php';
+        if (is_file($fcm)) {
+            require_once $fcm;
+        }
+    }
+
+    $rate = round($rate, 2);
+    $eventId = notification_clean_text($eventId, 80);
+    if ($rate <= 0 || $eventId === '') {
+        return ['ok' => false, 'code' => 'RATE_PUSH_INVALID', 'sent' => 0, 'failed' => 0];
+    }
+    if (!function_exists('fcm_send_to_user')) {
+        return ['ok' => false, 'code' => 'FCM_HELPER_MISSING', 'sent' => 0, 'failed' => 0];
+    }
+
+    if ($targets === []) {
+        $targets = notification_rate_target_users();
+    }
+
+    $title = 'Ringgit Rate Updated';
+    $body = 'Today\'s rate is RM 1 = ' . number_format($rate, 2, '.', '') . ' BDT.';
+    $sent = 0;
+    $failed = 0;
+
+    foreach ($targets as $uid => $user) {
+        $uid = (string)$uid;
+        $notificationId = notification_id_from_key($uid, 'RINGGIT_RATE_UPDATED:' . $eventId);
+        if (!is_array(fb_get('USER_NOTIFICATIONS/' . $uid . '/' . $notificationId))) {
+            continue;
+        }
+
+        $push = fcm_send_to_user(
+            $uid,
+            $title,
+            $body,
+            [
+                'type' => 'RINGGIT_RATE_UPDATED',
+                'notification_id' => $notificationId,
+                'notice_id' => $eventId,
+                'entity_type' => 'RINGGIT_RATE',
+                'entity_id' => $eventId,
+            ],
+            'RINGGIT_RATE_UPDATED:' . $eventId . ':' . $uid
+        );
+        $sent += (int)($push['sent'] ?? 0);
+        if (empty($push['ok'])) {
+            $failed++;
+            if (function_exists('system_log')) {
+                system_log('RATE_PUSH_WARNING', $eventId, 'Ringgit rate push failed', [
+                    'uid_hash' => hash('sha256', $uid),
+                    'code' => notification_clean_code($push['code'] ?? 'FCM_SEND_FAILED', 80),
+                ]);
+            }
+        }
+    }
+
+    return ['ok' => $failed === 0, 'code' => 'RATE_PUSH_DISPATCHED', 'sent' => $sent, 'failed' => $failed];
+}
+
 function notification_broadcast_rate_update(float $rate, string $eventId, string $changedBy = '', string $source = ''): array
 {
     if (!function_exists('fcm_send_to_user')) {
@@ -715,13 +777,26 @@ function notification_broadcast_rate_update(float $rate, string $eventId, string
     $dedupePath = 'ADMIN_NOTICE_BROADCASTS/' . hash('sha256', 'RATE:' . $eventId);
     $existing = fb_get($dedupePath);
     if (is_array($existing)) {
-        return ['ok' => true, 'duplicate' => true, 'sent' => (int)($existing['sent'] ?? 0), 'push_sent' => (int)($existing['push_sent'] ?? 0)];
+        $push = notification_dispatch_rate_update_push($rate, $eventId);
+        $pushSent = (int)($existing['push_sent'] ?? 0) + (int)($push['sent'] ?? 0);
+        $pushFailed = (int)($existing['push_failed'] ?? 0) + (int)($push['failed'] ?? 0);
+        fb_patch($dedupePath, [
+            'push_sent' => $pushSent,
+            'push_failed' => $pushFailed,
+            'push_last_attempt_at' => notification_now(),
+        ]);
+        return [
+            'ok' => true,
+            'duplicate' => true,
+            'sent' => (int)($existing['sent'] ?? 0),
+            'push_sent' => $pushSent,
+            'push_failed' => $pushFailed,
+        ];
     }
     $title = 'Ringgit Rate Updated';
     $body = 'Today\'s rate is RM 1 = ' . number_format($rate, 2, '.', '') . ' BDT.';
     $targets = notification_rate_target_users();
     $sent = 0;
-    $pushSent = 0;
     foreach ($targets as $uid => $user) {
         $record = notification_record_user(
             (string)$uid,
@@ -740,21 +815,10 @@ function notification_broadcast_rate_update(float $rate, string $eventId, string
         if (!empty($record['ok']) && empty($record['duplicate'])) {
             $sent++;
         }
-        if (function_exists('fcm_send_to_user')) {
-            $push = fcm_send_to_user(
-                (string)$uid,
-                $title,
-                $body,
-                [
-                    'type' => 'RINGGIT_RATE_UPDATED',
-                    'notification_id' => (string)($record['notification_id'] ?? ''),
-                    'notice_id' => $eventId,
-                ],
-                'RINGGIT_RATE_UPDATED:' . $eventId . ':' . (string)$uid
-            );
-            $pushSent += (int)($push['sent'] ?? 0);
-        }
     }
+    $push = notification_dispatch_rate_update_push($rate, $eventId, $targets);
+    $pushSent = (int)($push['sent'] ?? 0);
+    $pushFailed = (int)($push['failed'] ?? 0);
     fb_put($dedupePath, [
         'broadcast_id' => $eventId,
         'notice_id' => $eventId,
@@ -766,13 +830,15 @@ function notification_broadcast_rate_update(float $rate, string $eventId, string
         'rate' => $rate,
         'sent' => $sent,
         'push_sent' => $pushSent,
+        'push_failed' => $pushFailed,
         'failed' => 0,
         'status' => 'SENT',
         'created_by' => notification_clean_text($changedBy, 80),
         'source' => notification_clean_code($source, 40),
         'created_at' => notification_now(),
+        'push_last_attempt_at' => notification_now(),
     ]);
-    return ['ok' => true, 'sent' => $sent, 'push_sent' => $pushSent, 'recipient_count' => count($targets)];
+    return ['ok' => true, 'sent' => $sent, 'push_sent' => $pushSent, 'push_failed' => $pushFailed, 'recipient_count' => count($targets)];
 }
 
 function notification_recent_broadcasts(int $limit = 10): array
