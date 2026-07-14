@@ -574,7 +574,8 @@ function nb_handle_callback(array $callback): void
             $notification = (array)($result['data']['notification'] ?? []);
             nb_send($chatId, 'Ringgit rate updated: RM 1 = ' . number_format($newRate, 2, '.', '') . ' BDT'
                 . "\nNotifications: " . (int)($notification['sent'] ?? 0)
-                . "\nPush: " . (int)($notification['push_sent'] ?? 0));
+                . "\nPush: " . (int)($notification['push_sent'] ?? 0)
+                . "\nFailed/skipped: " . ((int)($notification['rows_failed'] ?? 0) + (int)($notification['push_failed'] ?? 0)));
             nb_json(true, 'RATE_UPDATED', 'Ringgit rate updated.', (array)($result['data'] ?? []));
         }
         nb_answer($callbackId, 'Rate update failed.', true);

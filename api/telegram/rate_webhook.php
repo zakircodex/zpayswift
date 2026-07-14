@@ -133,5 +133,9 @@ if (empty($res['ok'])) {
     tg_rate_json(false, (string)($res['code'] ?? 'RATE_SAVE_FAILED'), (string)($res['message'] ?? 'Failed to update rate'), [], 500);
 }
 
-tg_rate_reply($chatId, 'Ringgit rate updated: 1 RM = ' . number_format($rate, 2, '.', '') . ' BDT');
+$notification = (array)($res['data']['notification'] ?? []);
+tg_rate_reply($chatId, 'Ringgit rate updated: 1 RM = ' . number_format($rate, 2, '.', '') . ' BDT'
+    . "\nNotifications: " . (int)($notification['sent'] ?? 0)
+    . "\nPush: " . (int)($notification['push_sent'] ?? 0)
+    . "\nFailed/skipped: " . ((int)($notification['rows_failed'] ?? 0) + (int)($notification['push_failed'] ?? 0)));
 tg_rate_json(true, 'SUCCESS', 'Ringgit rate updated', (array)($res['data'] ?? []));

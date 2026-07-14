@@ -678,14 +678,31 @@ function notification_rate_target_users(): array
     }
     $out = [];
     foreach ($rows as $uid => $user) {
-        if (!is_array($user) || !notification_user_is_active($user)) {
+        if (!is_array($user)) {
             continue;
         }
-        $country = notification_clean_code($user['pricing_country'] ?? $user['market_country'] ?? $user['service_country'] ?? '', 10);
+        $statusValue = trim((string)($user['account_status'] ?? ''));
+        if ($statusValue === '') {
+            $statusValue = trim((string)($user['status'] ?? ''));
+        }
+        $status = notification_clean_code($statusValue, 40);
+        if (!in_array($status, notification_active_statuses(), true)) {
+            continue;
+        }
+        $countryValue = trim((string)($user['pricing_country'] ?? ''));
+        if ($countryValue === '') {
+            $countryValue = trim((string)($user['market_country'] ?? $user['service_country'] ?? ''));
+        }
+        $country = notification_clean_code($countryValue, 10);
         if ($country !== 'MY') {
             continue;
         }
-        $currency = notification_user_currency($user);
+        $currencyValue = trim((string)($user['currency'] ?? ''));
+        if ($currencyValue === '') {
+            $currencyValue = trim((string)($user['wallet_currency'] ?? ''));
+        }
+        $currencyRaw = strtoupper($currencyValue);
+        $currency = in_array($currencyRaw, ['MYR', 'RM', 'RINGGIT'], true) ? 'MYR' : '';
         if ($currency !== 'MYR') {
             continue;
         }
@@ -697,6 +714,59 @@ function notification_rate_target_users(): array
 function notification_rate_target_count(): int
 {
     return count(notification_rate_target_users());
+}
+
+function notification_rate_title_body(float $rate): array
+{
+    $rate = round($rate, 2);
+    return [
+        'title' => 'Ringgit Rate Updated',
+        'body' => 'Today\'s rate is RM 1 = ' . number_format($rate, 2, '.', '') . ' BDT.',
+    ];
+}
+
+function notification_record_rate_update_rows(float $rate, string $eventId, array $targets): array
+{
+    $text = notification_rate_title_body($rate);
+    $eventId = notification_clean_text($eventId, 80);
+    $created = 0;
+    $existing = 0;
+    $failed = 0;
+
+    foreach ($targets as $uid => $user) {
+        $record = notification_record_user(
+            (string)$uid,
+            'RINGGIT_RATE_UPDATED',
+            $text['title'],
+            $text['body'],
+            'RINGGIT_RATE',
+            $eventId,
+            'RINGGIT_RATE_UPDATED:' . $eventId,
+            [
+                'notice_id' => $eventId,
+                'status' => 'SENT',
+                'body_full' => $text['body'],
+            ]
+        );
+
+        if (!empty($record['ok']) && empty($record['duplicate'])) {
+            $created++;
+            continue;
+        }
+        if (!empty($record['ok']) && !empty($record['duplicate'])) {
+            $existing++;
+            continue;
+        }
+        $failed++;
+        if (function_exists('system_log')) {
+            system_log('RATE_NOTIFICATION_ROW_WARNING', $eventId, 'Ringgit rate notification row failed', [
+                'uid_hash' => hash('sha256', (string)$uid),
+                'code' => notification_clean_code($record['code'] ?? 'NOTIFICATION_SAVE_FAILED', 80),
+            ]);
+        }
+    }
+
+    return ['created' => $created, 'existing' => $existing, 'failed' => $failed];
 }
 
 function notification_dispatch_rate_update_push(float $rate, string $eventId, array $targets = []): array
@@ -721,8 +791,7 @@ function notification_dispatch_rate_update_push(float $rate, string $eventId, ar
         $targets = notification_rate_target_users();
     }
 
-    $title = 'Ringgit Rate Updated';
-    $body = 'Today\'s rate is RM 1 = ' . number_format($rate, 2, '.', '') . ' BDT.';
+    $text = notification_rate_title_body($rate);
     $sent = 0;
     $failed = 0;
 
@@ -735,8 +804,8 @@ function notification_dispatch_rate_update_push(float $rate, string $eventId, ar
 
         $push = fcm_send_to_user(
             $uid,
-            $title,
-            $body,
+            $text['title'],
+            $text['body'],
             [
                 'type' => 'RINGGIT_RATE_UPDATED',
                 'notification_id' => $notificationId,
@@ -774,13 +843,21 @@ function notification_broadcast_rate_update(float $rate, string $eventId, string
     if ($rate <= 0 || $eventId === '') {
         return ['ok' => false, 'code' => 'RATE_NOTICE_INVALID', 'sent' => 0, 'push_sent' => 0];
     }
+    $targets = notification_rate_target_users();
     $dedupePath = 'ADMIN_NOTICE_BROADCASTS/' . hash('sha256', 'RATE:' . $eventId);
     $existing = fb_get($dedupePath);
     if (is_array($existing)) {
-        $push = notification_dispatch_rate_update_push($rate, $eventId);
+        $rows = notification_record_rate_update_rows($rate, $eventId, $targets);
+        $push = notification_dispatch_rate_update_push($rate, $eventId, $targets);
+        $sent = (int)($existing['sent'] ?? 0) + (int)$rows['created'];
+        $rowsExisting = (int)($existing['rows_existing'] ?? 0) + (int)$rows['existing'];
+        $rowsFailed = (int)($existing['rows_failed'] ?? 0) + (int)$rows['failed'];
         $pushSent = (int)($existing['push_sent'] ?? 0) + (int)($push['sent'] ?? 0);
         $pushFailed = (int)($existing['push_failed'] ?? 0) + (int)($push['failed'] ?? 0);
         fb_patch($dedupePath, [
+            'sent' => $sent,
+            'rows_existing' => $rowsExisting,
+            'rows_failed' => $rowsFailed,
             'push_sent' => $pushSent,
             'push_failed' => $pushFailed,
             'push_last_attempt_at' => notification_now(),
@@ -788,34 +865,16 @@ function notification_broadcast_rate_update(float $rate, string $eventId, string
         return [
             'ok' => true,
             'duplicate' => true,
-            'sent' => (int)($existing['sent'] ?? 0),
+            'sent' => $sent,
+            'rows_existing' => $rowsExisting,
+            'rows_failed' => $rowsFailed,
             'push_sent' => $pushSent,
             'push_failed' => $pushFailed,
+            'recipient_count' => count($targets),
         ];
     }
-    $title = 'Ringgit Rate Updated';
-    $body = 'Today\'s rate is RM 1 = ' . number_format($rate, 2, '.', '') . ' BDT.';
-    $targets = notification_rate_target_users();
-    $sent = 0;
-    foreach ($targets as $uid => $user) {
-        $record = notification_record_user(
-            (string)$uid,
-            'RINGGIT_RATE_UPDATED',
-            $title,
-            $body,
-            'RINGGIT_RATE',
-            $eventId,
-            'RINGGIT_RATE_UPDATED:' . $eventId,
-            [
-                'notice_id' => $eventId,
-                'status' => 'SENT',
-                'body_full' => $body,
-            ]
-        );
-        if (!empty($record['ok']) && empty($record['duplicate'])) {
-            $sent++;
-        }
-    }
+    $text = notification_rate_title_body($rate);
+    $rows = notification_record_rate_update_rows($rate, $eventId, $targets);
     $push = notification_dispatch_rate_update_push($rate, $eventId, $targets);
     $pushSent = (int)($push['sent'] ?? 0);
     $pushFailed = (int)($push['failed'] ?? 0);
@@ -826,9 +885,11 @@ function notification_broadcast_rate_update(float $rate, string $eventId, string
         'audience' => 'ACTIVE_MY_MYR',
         'audience_label' => 'Active MYR Users',
         'included_statuses' => notification_active_statuses(),
-        'title' => $title,
+        'title' => $text['title'],
         'rate' => $rate,
-        'sent' => $sent,
+        'sent' => (int)$rows['created'],
+        'rows_existing' => (int)$rows['existing'],
+        'rows_failed' => (int)$rows['failed'],
         'push_sent' => $pushSent,
         'push_failed' => $pushFailed,
         'failed' => 0,
@@ -838,7 +899,15 @@ function notification_broadcast_rate_update(float $rate, string $eventId, string
         'created_at' => notification_now(),
         'push_last_attempt_at' => notification_now(),
     ]);
-    return ['ok' => true, 'sent' => $sent, 'push_sent' => $pushSent, 'push_failed' => $pushFailed, 'recipient_count' => count($targets)];
+    return [
+        'ok' => true,
+        'sent' => (int)$rows['created'],
+        'rows_existing' => (int)$rows['existing'],
+        'rows_failed' => (int)$rows['failed'],
+        'push_sent' => $pushSent,
+        'push_failed' => $pushFailed,
+        'recipient_count' => count($targets),
+    ];
 }
 
 function notification_recent_broadcasts(int $limit = 10): array

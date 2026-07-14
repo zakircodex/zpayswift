@@ -1390,6 +1390,7 @@ switch ($action) {
         proxy_response(true, 'SUCCESS', 'MFS settings saved', [
             'settings' => function_exists('mfs_public_settings') ? mfs_public_settings() : $settings,
             'raw' => $settings,
+            'rate_notification' => (array)($rateSave['data']['notification'] ?? []),
         ]);
         break;
 
