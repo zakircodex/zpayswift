@@ -31,31 +31,61 @@ function nb_secret(): string
     return defined('NOTIFICATION_TELEGRAM_WEBHOOK_SECRET') ? trim((string)NOTIFICATION_TELEGRAM_WEBHOOK_SECRET) : '';
 }
 
+function nb_normalize_telegram_id($value): string
+{
+    return trim((string)$value, " \t\n\r\0\x0B'\"");
+}
+
 function nb_admin_ids(): array
 {
-    $raw = defined('NOTIFICATION_TELEGRAM_ADMIN_IDS') ? NOTIFICATION_TELEGRAM_ADMIN_IDS : [];
-    if (is_array($raw)) {
-        $values = $raw;
-    } else {
-        $values = preg_split('/[,\s]+/', (string)$raw) ?: [];
-    }
+    $raw = defined('NOTIFICATION_TELEGRAM_ADMIN_IDS') ? NOTIFICATION_TELEGRAM_ADMIN_IDS : '';
+    $values = is_array($raw) ? $raw : explode(',', (string)$raw);
+
     $ids = [];
     foreach ($values as $value) {
-        $id = trim((string)$value);
+        $id = nb_normalize_telegram_id($value);
         if ($id !== '') {
             $ids[$id] = true;
         }
     }
-    return array_keys($ids);
+
+    return array_values(array_keys($ids));
 }
 
-function nb_authorized(string $chatId, string $fromId): bool
+function nb_message_from_id(array $message): string
 {
+    return nb_normalize_telegram_id($message['from']['id'] ?? '');
+}
+
+function nb_callback_from_id(array $callback): string
+{
+    return nb_normalize_telegram_id($callback['from']['id'] ?? '');
+}
+
+function nb_update_from_id(array $update): string
+{
+    if (isset($update['message']) && is_array($update['message'])) {
+        return nb_message_from_id($update['message']);
+    }
+    if (isset($update['callback_query']) && is_array($update['callback_query'])) {
+        return nb_callback_from_id($update['callback_query']);
+    }
+    if (isset($update['edited_message']) && is_array($update['edited_message'])) {
+        return nb_message_from_id($update['edited_message']);
+    }
+
+    return '';
+}
+
+function nb_authorized(string $telegramUserId): bool
+{
+    $telegramUserId = nb_normalize_telegram_id($telegramUserId);
     $ids = nb_admin_ids();
-    if ($ids === []) {
+    if ($telegramUserId === '' || $ids === []) {
         return false;
     }
-    return in_array($fromId, $ids, true) || in_array($chatId, $ids, true);
+
+    return in_array($telegramUserId, $ids, true);
 }
 
 function nb_verify_secret(): void
@@ -417,8 +447,8 @@ function nb_handle_callback(array $callback): void
     $callbackId = (string)($callback['id'] ?? '');
     $data = trim((string)($callback['data'] ?? ''));
     $chatId = (string)($callback['message']['chat']['id'] ?? '');
-    $fromId = (string)($callback['from']['id'] ?? '');
-    if (!nb_authorized($chatId, $fromId)) {
+    $fromId = nb_callback_from_id($callback);
+    if (!nb_authorized($fromId)) {
         nb_answer($callbackId, 'You are not authorized.', true);
         nb_json(true, 'IGNORED', 'Unauthorized notification bot callback ignored.');
     }
@@ -557,9 +587,9 @@ function nb_handle_callback(array $callback): void
 function nb_handle_message(array $message): void
 {
     $chatId = (string)($message['chat']['id'] ?? '');
-    $fromId = (string)($message['from']['id'] ?? '');
+    $fromId = nb_message_from_id($message);
     $text = trim((string)($message['text'] ?? ''));
-    if (!nb_authorized($chatId, $fromId)) {
+    if (!nb_authorized($fromId)) {
         nb_send($chatId, 'Unauthorized Telegram account.');
         nb_json(true, 'IGNORED', 'Unauthorized notification bot message ignored.');
     }
@@ -707,6 +737,10 @@ if (isset($update['callback_query']) && is_array($update['callback_query'])) {
 
 if (isset($update['message']) && is_array($update['message'])) {
     nb_handle_message($update['message']);
+}
+
+if (isset($update['edited_message']) && is_array($update['edited_message'])) {
+    nb_handle_message($update['edited_message']);
 }
 
 nb_json(true, 'IGNORED', 'Unsupported Telegram update type.');
