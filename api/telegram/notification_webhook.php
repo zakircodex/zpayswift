@@ -45,11 +45,11 @@ function nb_admin_ids(): array
     foreach ($values as $value) {
         $id = nb_normalize_telegram_id($value);
         if ($id !== '') {
-            $ids[$id] = true;
+            $ids['id:' . $id] = $id;
         }
     }
 
-    return array_values(array_keys($ids));
+    return array_values($ids);
 }
 
 function nb_message_from_id(array $message): string
