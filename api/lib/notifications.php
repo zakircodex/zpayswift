@@ -810,8 +810,13 @@ function notification_dispatch_rate_update_push(float $rate, string $eventId, ar
                 'type' => 'RINGGIT_RATE_UPDATED',
                 'notification_id' => $notificationId,
                 'notice_id' => $eventId,
+                'rate_event_id' => $eventId,
+                'destination' => 'NOTIFICATIONS',
+                'title' => $text['title'],
+                'body' => $text['body'],
                 'entity_type' => 'RINGGIT_RATE',
                 'entity_id' => $eventId,
+                'rate' => number_format($rate, 2, '.', ''),
             ],
             'RINGGIT_RATE_UPDATED:' . $eventId . ':' . $uid
         );
