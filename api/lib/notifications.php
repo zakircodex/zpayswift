@@ -102,10 +102,30 @@ function notification_record_user(
         'idempotency_key' => hash('sha256', $idempotencyKey),
     ];
 
-    foreach (['ticket_id', 'message_id', 'transfer_id', 'request_id', 'status', 'notice_id', 'image_id', 'image_mime', 'image_name'] as $key) {
+    foreach ([
+        'ticket_id',
+        'message_id',
+        'transfer_id',
+        'request_id',
+        'request_type',
+        'status',
+        'destination',
+        'provider',
+        'masked_number',
+        'notice_id',
+        'image_id',
+        'image_mime',
+        'image_name',
+    ] as $key) {
         if (array_key_exists($key, $extra)) {
             $row[$key] = notification_clean_text($extra[$key], 120);
         }
+    }
+    if (array_key_exists('amount', $extra)) {
+        $row['amount'] = notification_clean_text($extra['amount'], 40);
+    }
+    if (array_key_exists('currency', $extra)) {
+        $row['currency'] = notification_clean_code($extra['currency'], 20);
     }
     if (array_key_exists('body_full', $extra)) {
         $row['body_full'] = notification_clean_text($extra['body_full'], 4000);
@@ -119,6 +139,335 @@ function notification_record_user(
     }
 
     return ['ok' => true, 'notification_id' => $id, 'row' => $row];
+}
+
+function notification_request_processing_enabled(): bool
+{
+    if (!defined('REQUEST_PROCESSING_NOTIFICATION_ENABLED')) {
+        return true;
+    }
+    $value = REQUEST_PROCESSING_NOTIFICATION_ENABLED;
+    if (is_bool($value)) {
+        return $value;
+    }
+    return in_array(strtolower(trim((string)$value)), ['1', 'true', 'yes', 'on', 'enabled'], true);
+}
+
+function notification_request_status_group(string $status): string
+{
+    $status = notification_clean_code($status, 40);
+    if (in_array($status, ['PROCESSING', 'CLAIMED', 'IN_PROGRESS', 'WORKING', 'DIALING', 'APPROVING', 'REJECTING'], true)) {
+        return 'PROCESSING';
+    }
+    if (in_array($status, ['SUCCESS', 'SUCCESSFUL', 'COMPLETED', 'DONE', 'APPROVED'], true)) {
+        return 'SUCCESS';
+    }
+    if (in_array($status, ['FAILED', 'REJECTED', 'CANCELLED', 'CANCELED', 'UNSUCCESSFUL'], true)) {
+        return 'FAILED';
+    }
+    return '';
+}
+
+function notification_request_type_code(string $requestType): string
+{
+    $type = notification_clean_code($requestType, 40);
+    if (in_array($type, ['BKASH', 'B_KASH', 'B-KASH'], true)) {
+        return 'BKASH';
+    }
+    if ($type === 'NAGAD') {
+        return 'NAGAD';
+    }
+    if (in_array($type, ['ADD_MONEY', 'ADDMONEY'], true)) {
+        return 'ADD_MONEY';
+    }
+    if (in_array($type, ['TOPUP', 'MOBILE_TOPUP'], true)) {
+        return 'TOPUP';
+    }
+    return $type;
+}
+
+function notification_request_entity_type(string $requestType): string
+{
+    $requestType = notification_request_type_code($requestType);
+    if ($requestType === 'TOPUP') {
+        return 'MOBILE_TOPUP';
+    }
+    if ($requestType === 'ADD_MONEY') {
+        return 'ADD_MONEY';
+    }
+    if ($requestType === 'BKASH' || $requestType === 'NAGAD') {
+        return 'MFS';
+    }
+    return $requestType;
+}
+
+function notification_request_float_first(array $row, array $keys): float
+{
+    foreach ($keys as $key) {
+        if (!array_key_exists($key, $row)) {
+            continue;
+        }
+        $value = $row[$key];
+        if (is_string($value)) {
+            $value = str_replace(',', '', trim($value));
+        }
+        if (is_numeric($value)) {
+            return round((float)$value, 2);
+        }
+    }
+    return 0.0;
+}
+
+function notification_request_currency(array $row, string $fallback = 'BDT'): string
+{
+    foreach (['currency', 'wallet_currency', 'wallet_debit_currency', 'display_currency', 'topup_currency'] as $key) {
+        $currency = notification_clean_code($row[$key] ?? '', 20);
+        if ($currency !== '') {
+            if ($currency === 'RM' || $currency === 'RINGGIT') {
+                return 'MYR';
+            }
+            return $currency;
+        }
+    }
+    return notification_clean_code($fallback, 20) ?: 'BDT';
+}
+
+function notification_request_money_text(float $amount, string $currency): string
+{
+    $currency = notification_clean_code($currency, 20);
+    $amountText = number_format($amount, 2, '.', '');
+    if ($currency === 'MYR' || $currency === 'RM') {
+        return 'RM ' . $amountText;
+    }
+    if ($currency === '' || $currency === 'BDT') {
+        return 'BDT ' . $amountText;
+    }
+    return $currency . ' ' . $amountText;
+}
+
+function notification_request_amount_text(string $requestType, array $row): array
+{
+    $requestType = notification_request_type_code($requestType);
+    if ($requestType === 'TOPUP') {
+        $amount = notification_request_float_first($row, ['topup_amount_bdt', 'amount_bdt', 'TOPUP_AMOUNT_BDT', 'amount']);
+        return ['amount' => $amount, 'currency' => 'BDT', 'text' => notification_request_money_text($amount, 'BDT')];
+    }
+    if ($requestType === 'ADD_MONEY') {
+        $currency = notification_request_currency($row, 'BDT');
+        $amount = notification_request_float_first($row, ['amount', 'credit_amount', 'wallet_amount']);
+        return ['amount' => $amount, 'currency' => $currency, 'text' => notification_request_money_text($amount, $currency)];
+    }
+    $amount = notification_request_float_first($row, ['amount_bdt', 'send_amount_bdt', 'service_amount_bdt', 'bdt_amount', 'amount']);
+    return ['amount' => $amount, 'currency' => 'BDT', 'text' => notification_request_money_text($amount, 'BDT')];
+}
+
+function notification_request_mask_number($value): string
+{
+    $text = preg_replace('/\D+/', '', (string)$value) ?? '';
+    if ($text === '') {
+        return '';
+    }
+    $len = strlen($text);
+    if ($len <= 6) {
+        return str_repeat('*', max(0, $len - 2)) . substr($text, -2);
+    }
+    return substr($text, 0, 3) . str_repeat('*', max(3, $len - 6)) . substr($text, -3);
+}
+
+function notification_request_masked_number(string $requestType, array $row): string
+{
+    $requestType = notification_request_type_code($requestType);
+    $keys = $requestType === 'TOPUP'
+        ? ['topup_number', 'number', 'mobile_number', 'phone']
+        : ['account_number', 'receiver_number', 'number', 'phone', 'user_phone'];
+    foreach ($keys as $key) {
+        $masked = notification_request_mask_number($row[$key] ?? '');
+        if ($masked !== '') {
+            return $masked;
+        }
+    }
+    return '';
+}
+
+function notification_request_text(string $requestType, string $statusGroup, array $row): array
+{
+    $requestType = notification_request_type_code($requestType);
+    $money = notification_request_amount_text($requestType, $row);
+    $amountText = $money['text'];
+    $maskedNumber = notification_request_masked_number($requestType, $row);
+
+    if ($requestType === 'BKASH') {
+        if ($statusGroup === 'PROCESSING') {
+            return ['title' => 'bKash Request Processing', 'body' => 'Your bKash request of ' . $amountText . ' is now being processed.'];
+        }
+        if ($statusGroup === 'SUCCESS') {
+            return ['title' => 'bKash Request Successful', 'body' => 'Your bKash request of ' . $amountText . ' has been completed successfully.'];
+        }
+        return ['title' => 'bKash Request Failed', 'body' => 'Your bKash request of ' . $amountText . ' could not be completed.'];
+    }
+
+    if ($requestType === 'NAGAD') {
+        if ($statusGroup === 'PROCESSING') {
+            return ['title' => 'Nagad Request Processing', 'body' => 'Your Nagad request of ' . $amountText . ' is now being processed.'];
+        }
+        if ($statusGroup === 'SUCCESS') {
+            return ['title' => 'Nagad Request Successful', 'body' => 'Your Nagad request of ' . $amountText . ' has been completed successfully.'];
+        }
+        return ['title' => 'Nagad Request Failed', 'body' => 'Your Nagad request of ' . $amountText . ' could not be completed.'];
+    }
+
+    if ($requestType === 'ADD_MONEY') {
+        if ($statusGroup === 'PROCESSING') {
+            return ['title' => 'Add Money Request Processing', 'body' => 'Your Add Money request of ' . $amountText . ' is now being processed.'];
+        }
+        if ($statusGroup === 'SUCCESS') {
+            return ['title' => 'Add Money Successful', 'body' => $amountText . ' has been added to your wallet successfully.'];
+        }
+        return ['title' => 'Add Money Request Failed', 'body' => 'Your Add Money request of ' . $amountText . ' could not be completed.'];
+    }
+
+    $target = $maskedNumber !== '' ? ' to ' . $maskedNumber : '';
+    if ($statusGroup === 'PROCESSING') {
+        return ['title' => 'Mobile Top-Up Processing', 'body' => $amountText . ' top-up' . $target . ' is now being processed.'];
+    }
+    if ($statusGroup === 'SUCCESS') {
+        return ['title' => 'Mobile Top-Up Successful', 'body' => $amountText . ' top-up' . $target . ' was completed successfully.'];
+    }
+    return ['title' => 'Mobile Top-Up Failed', 'body' => $amountText . ' top-up' . $target . ' could not be completed.'];
+}
+
+function notification_load_fcm_helper(): bool
+{
+    if (function_exists('fcm_send_to_user')) {
+        return true;
+    }
+    $fcm = __DIR__ . '/fcm.php';
+    if (is_file($fcm)) {
+        require_once $fcm;
+    }
+    return function_exists('fcm_send_to_user');
+}
+
+function notification_emit_request_status_notification(
+    string $requestType,
+    string $requestId,
+    string $ownerUid,
+    string $previousStatus,
+    string $newStatus,
+    array $requestSnapshot = [],
+    string $source = ''
+): array {
+    $requestType = notification_request_type_code($requestType);
+    $requestId = notification_clean_text($requestId, 80);
+    $ownerUid = trim($ownerUid);
+    $previousGroup = notification_request_status_group($previousStatus);
+    $newGroup = notification_request_status_group($newStatus);
+
+    if (!in_array($requestType, ['BKASH', 'NAGAD', 'ADD_MONEY', 'TOPUP'], true)) {
+        return ['ok' => true, 'skipped' => true, 'code' => 'REQUEST_TYPE_UNSUPPORTED'];
+    }
+    if ($requestId === '' || $ownerUid === '') {
+        return ['ok' => false, 'code' => 'REQUEST_NOTIFICATION_OWNER_MISSING', 'sent' => 0];
+    }
+    if ($newGroup === '') {
+        return ['ok' => true, 'skipped' => true, 'code' => 'STATUS_NOT_NOTIFIABLE'];
+    }
+    if ($previousGroup !== '' && $previousGroup === $newGroup) {
+        return ['ok' => true, 'skipped' => true, 'code' => 'STATUS_GROUP_UNCHANGED'];
+    }
+    if ($newGroup === 'PROCESSING' && !notification_request_processing_enabled()) {
+        return ['ok' => true, 'skipped' => true, 'code' => 'PROCESSING_NOTIFICATION_DISABLED'];
+    }
+
+    $text = notification_request_text($requestType, $newGroup, $requestSnapshot);
+    $money = notification_request_amount_text($requestType, $requestSnapshot);
+    $maskedNumber = notification_request_masked_number($requestType, $requestSnapshot);
+    $notificationType = $requestType . '_' . $newGroup;
+    $idempotencyKey = 'REQUEST_STATUS:' . $requestType . ':' . $requestId . ':' . $newGroup;
+    $entityType = notification_request_entity_type($requestType);
+
+    $record = notification_record_user(
+        $ownerUid,
+        $notificationType,
+        $text['title'],
+        $text['body'],
+        $entityType,
+        $requestId,
+        $idempotencyKey,
+        [
+            'request_id' => $requestId,
+            'request_type' => $requestType,
+            'status' => $newGroup,
+            'destination' => 'HISTORY',
+            'provider' => $requestType,
+            'masked_number' => $maskedNumber,
+            'amount' => number_format((float)$money['amount'], 2, '.', ''),
+            'currency' => $money['currency'],
+            'body_full' => $text['body'],
+        ]
+    );
+
+    if (empty($record['ok'])) {
+        if (function_exists('system_log')) {
+            system_log('REQUEST_STATUS_NOTIFICATION_ROW_WARNING', $requestId, 'Request status notification row failed', [
+                'request_type' => $requestType,
+                'new_status' => $newGroup,
+                'source' => notification_clean_text($source, 60),
+                'code' => notification_clean_code($record['code'] ?? 'NOTIFICATION_SAVE_FAILED', 80),
+            ]);
+        }
+        return ['ok' => false, 'code' => (string)($record['code'] ?? 'NOTIFICATION_SAVE_FAILED'), 'sent' => 0];
+    }
+
+    if (!empty($record['duplicate'])) {
+        return [
+            'ok' => true,
+            'duplicate' => true,
+            'notification_id' => (string)($record['notification_id'] ?? ''),
+            'sent' => 0,
+            'failed' => 0,
+        ];
+    }
+
+    $push = ['ok' => true, 'code' => 'FCM_HELPER_MISSING', 'sent' => 0, 'failed' => 0];
+    if (notification_load_fcm_helper()) {
+        $notificationId = (string)($record['notification_id'] ?? '');
+        $push = fcm_send_to_user(
+            $ownerUid,
+            $text['title'],
+            $text['body'],
+            [
+                'type' => $notificationType,
+                'notification_id' => $notificationId,
+                'request_id' => $requestId,
+                'request_type' => $requestType,
+                'status' => $newGroup,
+                'destination' => 'HISTORY',
+                'title' => $text['title'],
+                'body' => $text['body'],
+            ],
+            $idempotencyKey . ':PUSH'
+        );
+    }
+
+    if (empty($push['ok']) && function_exists('system_log')) {
+        system_log('REQUEST_STATUS_PUSH_WARNING', $requestId, 'Request status push failed', [
+            'request_type' => $requestType,
+            'new_status' => $newGroup,
+            'source' => notification_clean_text($source, 60),
+            'code' => notification_clean_code($push['code'] ?? 'FCM_SEND_FAILED', 80),
+        ]);
+    }
+
+    return [
+        'ok' => true,
+        'notification_id' => (string)($record['notification_id'] ?? ''),
+        'type' => $notificationType,
+        'row_created' => true,
+        'sent' => (int)($push['sent'] ?? 0),
+        'failed' => (int)($push['failed'] ?? 0),
+        'push_code' => (string)($push['code'] ?? ''),
+    ];
 }
 
 function notification_public_row(array $row): array

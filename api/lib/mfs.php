@@ -59,20 +59,18 @@ function mfs_record_user_notification(array $row, string $requestId, string $sta
     if ($uid === '' || $requestId === '') {
         return;
     }
-    $success = strtoupper($status) === 'SUCCESSFUL';
-    $provider = trim((string)($row['provider_name'] ?? $row['provider'] ?? 'MFS'));
-    notification_record_user(
-        $uid,
-        'MFS_STATUS',
-        $success ? $provider . ' Successful' : $provider . ' Failed',
-        $success ? 'Your ' . $provider . ' request was successful.' : 'Your ' . $provider . ' request could not be completed.',
-        'MFS',
+    $provider = mfs_normalize_provider((string)($row['provider'] ?? $row['provider_name'] ?? ''));
+    if (!in_array($provider, ['BKASH', 'NAGAD'], true)) {
+        return;
+    }
+    notification_emit_request_status_notification(
+        $provider,
         $requestId,
-        'MFS_STATUS:' . $requestId . ':' . strtoupper($status),
-        [
-            'request_id' => $requestId,
-            'status' => strtoupper($status),
-        ]
+        $uid,
+        '',
+        $status,
+        $row,
+        'MFS_STATUS'
     );
 }
 
@@ -3173,6 +3171,8 @@ function mfs_mark_processing(string $requestId, string $message = 'Request is pr
         ];
     }
 
+    $currentStatus = strtoupper(trim((string)($row['status'] ?? '')));
+
     if (($row['_bucket'] ?? '') === 'DONE') {
         return [
             'ok' => false,
@@ -3212,6 +3212,15 @@ function mfs_mark_processing(string $requestId, string $message = 'Request is pr
     mfs_update_request_status($requestId, $uid, 'PROCESSING', $message);
     mfs_write_user_request_log($uid, $requestId, $row);
     mfs_write_history($uid, $requestId, $row);
+    notification_emit_request_status_notification(
+        mfs_normalize_provider((string)($row['provider'] ?? $row['provider_name'] ?? '')),
+        $requestId,
+        $uid,
+        $currentStatus,
+        'PROCESSING',
+        $row,
+        'MFS_PROCESSING'
+    );
 
     return [
         'ok' => true,

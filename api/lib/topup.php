@@ -545,18 +545,21 @@ function topup_record_user_notification(array $row, string $requestId, string $t
     if ($uid === '' || $requestId === '') {
         return;
     }
-    notification_record_user(
-        $uid,
-        $type,
-        $title,
-        $body,
-        'MOBILE_TOPUP',
+    $status = 'PROCESSING';
+    $upperType = notification_clean_code($type, 40);
+    if (str_contains($upperType, 'SUCCESS')) {
+        $status = 'SUCCESS';
+    } elseif (str_contains($upperType, 'FAILED')) {
+        $status = 'FAILED';
+    }
+    notification_emit_request_status_notification(
+        'TOPUP',
         $requestId,
-        $type . ':' . $requestId,
-        [
-            'request_id' => $requestId,
-            'status' => (string)($row['status'] ?? ''),
-        ]
+        $uid,
+        '',
+        $status,
+        $row,
+        'TOPUP_STATUS'
     );
 }
 
@@ -1350,6 +1353,15 @@ function topup_mark_processing(string $requestId, string $message): array
     }
 
     update_request_status($requestId, 'PROCESSING', $message);
+    notification_emit_request_status_notification(
+        'TOPUP',
+        $requestId,
+        (string)($processing['uid'] ?? $row['uid'] ?? ''),
+        (string)($row['status'] ?? $bucket),
+        'PROCESSING',
+        $processing,
+        'TOPUP_PROCESSING'
+    );
 
     if (
         strtoupper(trim((string)($row['source'] ?? ''))) === 'SUBADMIN_API'

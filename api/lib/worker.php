@@ -8,6 +8,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 
 require_once __DIR__ . '/subadmin_api.php';
 require_once __DIR__ . '/topup_config.php';
+require_once __DIR__ . '/notifications.php';
 
 function worker_get_device(string $deviceId): ?array
 {
@@ -223,6 +224,15 @@ function worker_claim_request(string $deviceId): ?array
         }
 
         update_request_status($requestId, 'CLAIMED', 'Request claimed by worker');
+        notification_emit_request_status_notification(
+            'TOPUP',
+            (string)$requestId,
+            (string)($claimed['uid'] ?? ''),
+            (string)($current['status'] ?? 'PENDING'),
+            'CLAIMED',
+            $claimed,
+            'WORKER_CLAIM'
+        );
 
         system_log('WORKER_CLAIM', $requestId, 'Request claimed by worker', [
             'device_id' => $deviceId,
@@ -373,6 +383,15 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
 
     update_request_status($requestId, 'SUCCESS', $resultMessage);
     worker_sync_api_request_status($uid, $requestId, 'SUCCESS', $resultMessage);
+    notification_emit_request_status_notification(
+        'TOPUP',
+        $requestId,
+        $uid,
+        (string)($processing['status'] ?? 'PROCESSING'),
+        'SUCCESS',
+        $done,
+        'WORKER_SUCCESS'
+    );
 
     worker_mark_status($deviceId, 'IDLE');
 
@@ -479,6 +498,15 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
 
     update_request_status($requestId, 'FAILED', $resultMessage);
     worker_sync_api_request_status($uid, $requestId, 'FAILED', $resultMessage);
+    notification_emit_request_status_notification(
+        'TOPUP',
+        $requestId,
+        $uid,
+        (string)($processing['status'] ?? 'PROCESSING'),
+        'FAILED',
+        $done,
+        'WORKER_FAILED'
+    );
 
     worker_mark_status($deviceId, 'IDLE');
 

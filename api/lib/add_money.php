@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/wallet.php';
+require_once __DIR__ . '/notifications.php';
 
 function add_money_now(): int
 {
@@ -1247,6 +1248,15 @@ function add_money_process_request(string $requestId, string $action, string $ac
         return ['ok' => false, 'code' => 'REQUEST_BUSY', 'message' => 'Request is already being processed'];
     }
     add_money_patch_request($requestId, ['status' => $lockStatus, 'uid' => (string)($row['uid'] ?? '')]);
+    notification_emit_request_status_notification(
+        'ADD_MONEY',
+        $requestId,
+        (string)($row['uid'] ?? ''),
+        $status,
+        $lockStatus,
+        $locked,
+        'ADD_MONEY_PROCESSING'
+    );
 
     if ($action === 'REJECT') {
         $patch = [
@@ -1259,6 +1269,15 @@ function add_money_process_request(string $requestId, string $action, string $ac
         add_money_patch_request($requestId, $patch);
         $final = array_merge($row, $patch, ['updated_at' => $now]);
         add_money_sync_processed_telegram_message($final);
+        notification_emit_request_status_notification(
+            'ADD_MONEY',
+            $requestId,
+            (string)($final['uid'] ?? ''),
+            $lockStatus,
+            'REJECTED',
+            $final,
+            'ADD_MONEY_REJECTED'
+        );
         return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request rejected', 'data' => $final];
     }
 
@@ -1306,5 +1325,14 @@ function add_money_process_request(string $requestId, string $action, string $ac
 
     $final = array_merge($row, $patch, ['updated_at' => $now]);
     add_money_sync_processed_telegram_message($final);
+    notification_emit_request_status_notification(
+        'ADD_MONEY',
+        $requestId,
+        (string)($final['uid'] ?? ''),
+        $lockStatus,
+        'APPROVED',
+        $final,
+        'ADD_MONEY_APPROVED'
+    );
     return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request approved', 'data' => $final];
 }
