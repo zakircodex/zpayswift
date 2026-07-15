@@ -41,21 +41,14 @@ function bundle_record_user_notification(array $row, string $requestId, string $
     if ($uid === '' || $requestId === '') {
         return;
     }
-    $success = strtoupper($status) === 'SUCCESS';
-    notification_record_user(
-        $uid,
-        'BUNDLE_STATUS',
-        $success ? 'Bundle Successful' : 'Bundle Failed',
-        $success
-            ? 'Your bundle request of ' . bundle_notification_amount_text($row) . ' was successful.'
-            : 'Your bundle request could not be completed.',
+    notification_emit_request_status_notification(
         'BUNDLE',
         $requestId,
-        'BUNDLE_STATUS:' . $requestId . ':' . strtoupper($status),
-        [
-            'request_id' => $requestId,
-            'status' => strtoupper($status),
-        ]
+        $uid,
+        (string)($row['previous_status'] ?? 'WAITING_ADMIN'),
+        strtoupper($status),
+        $row,
+        'bundle_status'
     );
 }
 
@@ -1224,6 +1217,186 @@ function bundle_list_visible_offers_for_user(string $uid): array
     });
 
     return array_values($out);
+}
+
+function bundle_public_offer(array $item): array
+{
+    return [
+        'offer_id' => (string)($item['offer_id'] ?? ''),
+        'operator' => (string)($item['operator'] ?? ''),
+        'operator_name' => (string)($item['operator_name'] ?? $item['operator'] ?? ''),
+        'bundle_name' => (string)($item['bundle_name'] ?? $item['name'] ?? ''),
+        'name' => (string)($item['name'] ?? $item['bundle_name'] ?? ''),
+        'description' => (string)($item['description'] ?? ''),
+        'amount' => (float)($item['amount'] ?? $item['price_amount'] ?? $item['offer_price'] ?? 0),
+        'price_amount' => (float)($item['price_amount'] ?? $item['amount'] ?? $item['offer_price'] ?? 0),
+        'offer_price' => (float)($item['offer_price'] ?? $item['price_amount'] ?? $item['amount'] ?? 0),
+        'user_commission' => (float)($item['user_commission'] ?? 0),
+        'net_cost_after_commission' => (float)($item['net_cost_after_commission'] ?? $item['payable_amount'] ?? 0),
+        'you_pay' => (float)($item['you_pay'] ?? $item['payable_amount'] ?? 0),
+        'payable_amount' => (float)($item['payable_amount'] ?? $item['you_pay'] ?? 0),
+        'wallet_hold_amount' => (float)($item['wallet_hold_amount'] ?? $item['payable_amount'] ?? $item['you_pay'] ?? 0),
+        'duration_value' => (float)($item['duration_value'] ?? 0),
+        'duration_unit' => (string)($item['duration_unit'] ?? ''),
+        'duration_seconds' => (int)($item['duration_seconds'] ?? 0),
+        'expires_at' => (int)($item['expires_at'] ?? 0),
+        'expired' => (bool)($item['expired'] ?? false),
+        'status' => (string)($item['status'] ?? 'ACTIVE'),
+        'active' => (bool)($item['active'] ?? true),
+        'created_at' => (int)($item['created_at'] ?? 0),
+        'updated_at' => (int)($item['updated_at'] ?? 0),
+    ];
+}
+
+function bundle_visible_offer_for_user(string $uid, string $offerId, array $user = []): array
+{
+    $uid = trim($uid);
+    $offerId = trim($offerId);
+
+    if ($uid === '' || $offerId === '') {
+        return [];
+    }
+
+    if (!$user) {
+        $user = bundle_load_user($uid);
+    }
+
+    if (!$user) {
+        return [];
+    }
+
+    $user['uid'] = (string)($user['uid'] ?? $uid);
+    $offer = bundle_load_offer($offerId);
+
+    if (!$offer || !bundle_is_active_offer($offer)) {
+        return [];
+    }
+
+    $offer['offer_id'] = (string)($offer['offer_id'] ?? $offerId);
+    return bundle_build_visible_offer_for_user($offer, $user);
+}
+
+function bundle_preview_for_user(string $uid, string $offerId, string $bundleNumber, array $user = [], array $wallet = []): array
+{
+    $uid = trim($uid);
+    $offerId = trim($offerId);
+    $bundleNumber = function_exists('normalize_bd_topup_number')
+        ? normalize_bd_topup_number($bundleNumber)
+        : preg_replace('/\D+/', '', $bundleNumber);
+
+    if ($uid === '') {
+        return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'uid is required', 'data' => []];
+    }
+    if ($offerId === '') {
+        return ['ok' => false, 'code' => 'BUNDLE_OFFER_NOT_FOUND', 'message' => 'Bundle offer is required', 'data' => []];
+    }
+    if (!function_exists('is_valid_bd_topup_number') || !is_valid_bd_topup_number($bundleNumber)) {
+        return ['ok' => false, 'code' => 'BUNDLE_NUMBER_INVALID', 'message' => 'Invalid bundle number', 'data' => ['field' => 'bundle_number']];
+    }
+
+    if (!$user) {
+        $user = bundle_load_user($uid);
+    }
+    if (!$user) {
+        return ['ok' => false, 'code' => 'USER_NOT_FOUND', 'message' => 'User not found', 'data' => []];
+    }
+    $user['uid'] = (string)($user['uid'] ?? $uid);
+
+    $status = strtoupper(trim((string)($user['status'] ?? 'INACTIVE')));
+    if ($status !== 'ACTIVE') {
+        return ['ok' => false, 'code' => 'ACCOUNT_INACTIVE', 'message' => 'Account is inactive', 'data' => []];
+    }
+
+    $offer = bundle_visible_offer_for_user($uid, $offerId, $user);
+    if (!$offer) {
+        return ['ok' => false, 'code' => 'BUNDLE_OFFER_INACTIVE', 'message' => 'Bundle offer is unavailable', 'data' => ['offer_id' => $offerId]];
+    }
+
+    $operator = strtoupper(trim((string)($offer['operator'] ?? '')));
+    if ($operator === '') {
+        return ['ok' => false, 'code' => 'BUNDLE_OFFER_NOT_FOUND', 'message' => 'Bundle operator is unavailable', 'data' => ['offer_id' => $offerId]];
+    }
+
+    if (function_exists('require_active_operator')) {
+        require_active_operator($operator);
+    }
+
+    $priceAmount = bundle_round_money((float)($offer['price_amount'] ?? $offer['amount'] ?? $offer['offer_price'] ?? 0));
+    $payableAmount = bundle_round_money((float)($offer['payable_amount'] ?? $offer['you_pay'] ?? max(0, $priceAmount - (float)($offer['user_commission'] ?? 0))));
+    if ($priceAmount <= 0 || $payableAmount <= 0) {
+        return ['ok' => false, 'code' => 'BUNDLE_OFFER_NOT_FOUND', 'message' => 'Bundle offer price is invalid', 'data' => ['offer_id' => $offerId]];
+    }
+
+    $appConfig = fb_get('APP_CONFIG');
+    if (is_array($appConfig)) {
+        if (!(bool)($appConfig['bundle_enabled'] ?? true) || (bool)($appConfig['maintenance_mode'] ?? false)) {
+            return ['ok' => false, 'code' => 'BUNDLE_DISABLED', 'message' => 'Bundle service is currently disabled', 'data' => []];
+        }
+
+        $min = bundle_round_money((float)($appConfig['min_bundle_amount'] ?? 0));
+        $max = bundle_round_money((float)($appConfig['max_bundle_amount'] ?? 0));
+        if ($min > 0 && $priceAmount < $min) {
+            return ['ok' => false, 'code' => 'BUNDLE_MINIMUM_NOT_MET', 'message' => 'Amount is below minimum limit', 'data' => ['min_bundle_amount' => $min]];
+        }
+        if ($max > 0 && $priceAmount > $max) {
+            return ['ok' => false, 'code' => 'BUNDLE_MAXIMUM_EXCEEDED', 'message' => 'Amount exceeds maximum limit', 'data' => ['max_bundle_amount' => $max]];
+        }
+    }
+
+    if (!$wallet) {
+        $wallet = bundle_load_wallet($uid);
+    }
+
+    $financials = bundle_wallet_breakdown($uid, $payableAmount, $user, $wallet);
+    $walletDebit = bundle_round_money((float)($financials['wallet_hold_amount'] ?? $payableAmount));
+    $available = bundle_round_money((float)($wallet['available_balance'] ?? 0));
+    $balanceAfter = bundle_round_money($available - $walletDebit);
+
+    if ($available < $walletDebit) {
+        return [
+            'ok' => false,
+            'code' => 'INSUFFICIENT_BALANCE',
+            'message' => 'Not enough balance',
+            'data' => [
+                'available_balance' => $available,
+                'required_amount' => $walletDebit,
+                'wallet_currency' => (string)($financials['wallet_currency'] ?? 'BDT'),
+            ],
+        ];
+    }
+
+    $preview = [
+        'offer' => bundle_public_offer($offer),
+        'offer_id' => $offerId,
+        'operator' => $operator,
+        'operator_name' => (string)($offer['operator_name'] ?? $operator),
+        'bundle_number' => $bundleNumber,
+        'bundle_name' => (string)($offer['bundle_name'] ?? $offer['name'] ?? ''),
+        'service_amount' => $priceAmount,
+        'service_amount_bdt' => $priceAmount,
+        'amount' => $priceAmount,
+        'price_amount' => $priceAmount,
+        'bundle_commission' => (float)($offer['user_commission'] ?? 0),
+        'user_commission' => (float)($offer['user_commission'] ?? 0),
+        'payable_amount' => $payableAmount,
+        'you_pay' => $payableAmount,
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_hold_amount' => $walletDebit,
+        'wallet_debit_currency' => (string)($financials['wallet_currency'] ?? 'BDT'),
+        'wallet_currency' => (string)($financials['wallet_currency'] ?? 'BDT'),
+        'rate_used' => (float)($financials['rate_used'] ?? 0),
+        'available_balance' => $available,
+        'balance_after' => $balanceAfter,
+        'status' => 'WAITING_ADMIN',
+        'display_status' => 'Pending',
+    ];
+
+    return [
+        'ok' => true,
+        'code' => 'SUCCESS',
+        'message' => 'Bundle preview ready',
+        'data' => $preview,
+    ];
 }
 
 function bundle_list_visible_offers_for_subadmin(string $subadminUid): array

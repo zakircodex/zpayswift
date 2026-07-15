@@ -183,6 +183,9 @@ function notification_request_type_code(string $requestType): string
     if (in_array($type, ['TOPUP', 'MOBILE_TOPUP'], true)) {
         return 'TOPUP';
     }
+    if (in_array($type, ['BUNDLE', 'MOBILE_BUNDLE', 'DATA_BUNDLE'], true)) {
+        return 'BUNDLE';
+    }
     return $type;
 }
 
@@ -194,6 +197,9 @@ function notification_request_entity_type(string $requestType): string
     }
     if ($requestType === 'ADD_MONEY') {
         return 'ADD_MONEY';
+    }
+    if ($requestType === 'BUNDLE') {
+        return 'BUNDLE';
     }
     if ($requestType === 'BKASH' || $requestType === 'NAGAD') {
         return 'MFS';
@@ -257,6 +263,10 @@ function notification_request_amount_text(string $requestType, array $row): arra
         $amount = notification_request_float_first($row, ['amount', 'credit_amount', 'wallet_amount']);
         return ['amount' => $amount, 'currency' => $currency, 'text' => notification_request_money_text($amount, $currency)];
     }
+    if ($requestType === 'BUNDLE') {
+        $amount = notification_request_float_first($row, ['price_amount', 'service_amount_bdt', 'payable_amount_bdt', 'amount']);
+        return ['amount' => $amount, 'currency' => 'BDT', 'text' => notification_request_money_text($amount, 'BDT')];
+    }
     $amount = notification_request_float_first($row, ['amount_bdt', 'send_amount_bdt', 'service_amount_bdt', 'bdt_amount', 'amount']);
     return ['amount' => $amount, 'currency' => 'BDT', 'text' => notification_request_money_text($amount, 'BDT')];
 }
@@ -277,9 +287,12 @@ function notification_request_mask_number($value): string
 function notification_request_masked_number(string $requestType, array $row): string
 {
     $requestType = notification_request_type_code($requestType);
-    $keys = $requestType === 'TOPUP'
+    $keys = ($requestType === 'TOPUP' || $requestType === 'BUNDLE')
         ? ['topup_number', 'number', 'mobile_number', 'phone']
         : ['account_number', 'receiver_number', 'number', 'phone', 'user_phone'];
+    if ($requestType === 'BUNDLE') {
+        $keys = ['bundle_number', 'topup_number', 'number', 'mobile_number', 'phone'];
+    }
     foreach ($keys as $key) {
         $masked = notification_request_mask_number($row[$key] ?? '');
         if ($masked !== '') {
@@ -326,6 +339,21 @@ function notification_request_text(string $requestType, string $statusGroup, arr
         return ['title' => 'Add Money Request Failed', 'body' => 'Your Add Money request of ' . $amountText . ' could not be completed.'];
     }
 
+    if ($requestType === 'BUNDLE') {
+        $bundleName = notification_clean_text($row['bundle_name'] ?? $row['name'] ?? 'bundle', 80);
+        if ($bundleName === '') {
+            $bundleName = 'bundle';
+        }
+        $target = $maskedNumber !== '' ? ' for ' . $maskedNumber : '';
+        if ($statusGroup === 'PROCESSING') {
+            return ['title' => 'Bundle Request Processing', 'body' => 'Your ' . $bundleName . ' bundle request' . $target . ' is now being processed.'];
+        }
+        if ($statusGroup === 'SUCCESS') {
+            return ['title' => 'Bundle Request Successful', 'body' => 'Your ' . $bundleName . ' bundle request' . $target . ' was completed successfully.'];
+        }
+        return ['title' => 'Bundle Request Failed', 'body' => 'Your ' . $bundleName . ' bundle request' . $target . ' could not be completed.'];
+    }
+
     $target = $maskedNumber !== '' ? ' to ' . $maskedNumber : '';
     if ($statusGroup === 'PROCESSING') {
         return ['title' => 'Mobile Top-Up Processing', 'body' => $amountText . ' top-up' . $target . ' is now being processed.'];
@@ -363,7 +391,7 @@ function notification_emit_request_status_notification(
     $previousGroup = notification_request_status_group($previousStatus);
     $newGroup = notification_request_status_group($newStatus);
 
-    if (!in_array($requestType, ['BKASH', 'NAGAD', 'ADD_MONEY', 'TOPUP'], true)) {
+    if (!in_array($requestType, ['BKASH', 'NAGAD', 'ADD_MONEY', 'TOPUP', 'BUNDLE'], true)) {
         return ['ok' => true, 'skipped' => true, 'code' => 'REQUEST_TYPE_UNSUPPORTED'];
     }
     if ($requestId === '' || $ownerUid === '') {
