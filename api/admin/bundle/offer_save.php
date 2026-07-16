@@ -231,6 +231,13 @@ $description = trim((string)(
     ?? ($oldOffer['description'] ?? '')
 ));
 
+$packageValidityText = trim((string)(
+    $body['validity_text']
+    ?? $body['package_validity']
+    ?? $body['bundle_validity']
+    ?? ($oldOffer['validity_text'] ?? $oldOffer['package_validity'] ?? $oldOffer['bundle_validity'] ?? '')
+));
+
 $operator = trim((string)(
     $body['operator']
     ?? ($oldOffer['operator'] ?? '')
@@ -406,6 +413,10 @@ $payload = [
 
     'description' => $description,
     'note' => $description,
+
+    'validity_text' => $packageValidityText,
+    'package_validity' => $packageValidityText,
+    'bundle_validity' => $packageValidityText,
 
     /*
      * Actual offer price. Commission subtract করা যাবে না।
