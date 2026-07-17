@@ -11,7 +11,7 @@ $body = api_read_json_body();
 $purpose = strtoupper(trim((string)($body['purpose'] ?? '')));
 $pin = trim((string)($body['pin'] ?? ''));
 
-if (in_array($purpose, ['TOPUP', 'ZPAY_TRANSFER'], true)) {
+if (in_array($purpose, ['TOPUP', 'ZPAY_TRANSFER', 'BUNDLE'], true)) {
     if ($pin === '') {
         api_response(false, 'VALIDATION_ERROR', 'PIN is required.', [], 422);
     }
@@ -26,6 +26,8 @@ if (in_array($purpose, ['TOPUP', 'ZPAY_TRANSFER'], true)) {
 
     api_response(true, 'PIN_VERIFIED', 'PIN verified.', [
         'purpose' => $purpose,
+        'pin_verified' => true,
+        'verification_method' => 'PIN',
     ]);
 }
 
