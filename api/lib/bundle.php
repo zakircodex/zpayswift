@@ -28,6 +28,227 @@ function bundle_round_money(float $amount): float
     return round($amount, 2);
 }
 
+function bundle_normalize_currency_label(string $currency): string
+{
+    $clean = strtoupper(trim($currency));
+    if ($clean === 'RM') {
+        return 'MYR';
+    }
+
+    return $clean === '' ? 'BDT' : $clean;
+}
+
+function bundle_financial_aliases(array $row): array
+{
+    $serviceAmount = bundle_round_money((float)(
+        $row['service_amount_bdt']
+        ?? $row['service_amount']
+        ?? $row['price_amount']
+        ?? $row['offer_price']
+        ?? $row['amount']
+        ?? 0
+    ));
+    $bundleCommission = bundle_round_money((float)(
+        $row['bundle_commission']
+        ?? $row['user_commission']
+        ?? $row['customer_commission']
+        ?? $row['user_discount']
+        ?? 0
+    ));
+    $walletCurrency = bundle_normalize_currency_label((string)(
+        $row['wallet_debit_currency']
+        ?? $row['wallet_currency']
+        ?? 'BDT'
+    ));
+    $walletDebit = bundle_round_money((float)(
+        $row['wallet_debit_amount']
+        ?? $row['wallet_hold_amount']
+        ?? $row['held_amount']
+        ?? $row['payable_amount']
+        ?? $row['you_pay']
+        ?? $serviceAmount
+    ));
+    $rate = bundle_round_money((float)(
+        $row['rate_snapshot']
+        ?? $row['rate_used']
+        ?? $row['rate']
+        ?? 0
+    ));
+    $walletDebitBdt = $walletCurrency === 'MYR'
+        ? bundle_round_money((float)($row['wallet_debit_bdt'] ?? $row['payable_amount_bdt'] ?? 0))
+        : $walletDebit;
+    $walletDebitMyr = $walletCurrency === 'MYR'
+        ? $walletDebit
+        : bundle_round_money((float)($row['wallet_debit_myr'] ?? 0));
+
+    return [
+        'service_amount' => $serviceAmount,
+        'service_amount_bdt' => $serviceAmount,
+        'service_currency' => 'BDT',
+        'bundle_commission' => $bundleCommission,
+        'commission_currency' => 'BDT',
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => $walletCurrency,
+        'wallet_currency' => $walletCurrency,
+        'wallet_debit_bdt' => $walletDebitBdt,
+        'wallet_debit_myr' => $walletDebitMyr,
+        'rate_used' => $rate,
+        'rate_snapshot' => $rate > 0 ? $rate : null,
+        'rate_applicable' => $walletCurrency === 'MYR' && $rate > 0,
+    ];
+}
+
+function bundle_with_financial_aliases(array $row): array
+{
+    return array_merge($row, bundle_financial_aliases($row));
+}
+
+function bundle_public_history_row(array $row): array
+{
+    $row = bundle_with_financial_aliases($row);
+    $internalNote = trim((string)($row['note'] ?? ''));
+    if ($internalNote !== '' && stripos($internalNote, 'created from android') !== false) {
+        $row['internal_note'] = $internalNote;
+        unset($row['note']);
+    }
+
+    return $row;
+}
+
+function bundle_preview_token_hash(string $token): string
+{
+    return hash('sha256', trim($token));
+}
+
+function bundle_create_preview_token(array $data): string
+{
+    $token = function_exists('random_token') ? random_token(32) : bin2hex(random_bytes(32));
+    $hash = bundle_preview_token_hash($token);
+    $now = bundle_now();
+    $data['preview_token_hash'] = $hash;
+    $data['created_at'] = $now;
+    $data['expires_at'] = (int)($data['expires_at'] ?? ($now + 300));
+    $data['used'] = false;
+    $data['used_at'] = 0;
+    $data['status'] = 'READY';
+
+    if (!fb_put('BUNDLE_PREVIEWS/' . $hash, $data)) {
+        return '';
+    }
+
+    return $token;
+}
+
+function bundle_token_error(string $code, string $message, array $data = [], int $httpStatus = 422): array
+{
+    return [
+        'ok' => false,
+        'code' => $code,
+        'message' => $message,
+        'data' => $data,
+        'http_status' => $httpStatus,
+    ];
+}
+
+function bundle_claim_preview_token(string $tokenHash, string $uid): array
+{
+    $tokenHash = trim($tokenHash);
+    if ($tokenHash === '') {
+        return bundle_token_error('BUNDLE_PREVIEW_REQUIRED', 'Bundle preview token is required.');
+    }
+
+    $path = 'BUNDLE_PREVIEWS/' . $tokenHash;
+    for ($i = 0; $i < 5; $i++) {
+        $res = fb_get_with_etag($path);
+        if (!($res['ok'] ?? false) || !is_array($res['value'] ?? null) || empty($res['etag'])) {
+            return bundle_token_error('BUNDLE_PREVIEW_INVALID', 'Bundle preview is invalid. Please validate again.');
+        }
+
+        $row = $res['value'];
+        $status = strtoupper((string)($row['status'] ?? 'READY'));
+        if (!empty($row['used']) || $status === 'USED') {
+            $requestId = trim((string)($row['request_id'] ?? ''));
+            if ($requestId !== '') {
+                $row['_token_hash'] = $tokenHash;
+                return [
+                    'ok' => true,
+                    'duplicate' => true,
+                    'request_id' => $requestId,
+                    'preview' => $row,
+                ];
+            }
+
+            return bundle_token_error('BUNDLE_ALREADY_SUBMITTED', 'This bundle preview was already submitted.');
+        }
+        if ($status === 'PROCESSING') {
+            return bundle_token_error('BUNDLE_ALREADY_SUBMITTED', 'This bundle request is already being submitted.', [], 409);
+        }
+        if ((int)($row['expires_at'] ?? 0) < bundle_now()) {
+            @fb_patch($path, [
+                'status' => 'EXPIRED',
+                'updated_at' => bundle_now(),
+            ]);
+            return bundle_token_error('BUNDLE_PREVIEW_EXPIRED', 'Bundle preview expired. Please validate again.');
+        }
+        if ((string)($row['uid'] ?? '') !== $uid) {
+            return bundle_token_error('BUNDLE_PREVIEW_INVALID', 'Bundle preview does not belong to this account.', [], 403);
+        }
+        if (!in_array($status, ['READY', 'ACTIVE', 'FAILED'], true)) {
+            return bundle_token_error('BUNDLE_ALREADY_SUBMITTED', 'This bundle request is already being submitted.', [], 409);
+        }
+
+        $claimed = $row;
+        $claimed['status'] = 'PROCESSING';
+        $claimed['processing_at'] = bundle_now();
+        $claimed['updated_at'] = bundle_now();
+
+        $save = fb_put_if_match($path, $claimed, (string)$res['etag']);
+        if (($save['status'] ?? 0) === 412) {
+            usleep(150000);
+            continue;
+        }
+        if (!($save['ok'] ?? false)) {
+            return bundle_token_error('BUNDLE_PREVIEW_CLAIM_FAILED', 'Bundle preview could not be locked. Please try again.', [], 409);
+        }
+
+        $claimed['_token_hash'] = $tokenHash;
+        return ['ok' => true, 'preview' => $claimed];
+    }
+
+    return bundle_token_error('BUNDLE_ALREADY_SUBMITTED', 'This bundle request is already being submitted.', [], 409);
+}
+
+function bundle_mark_preview_used(string $tokenHash, string $requestId): void
+{
+    $tokenHash = trim($tokenHash);
+    if ($tokenHash === '') {
+        return;
+    }
+
+    @fb_patch('BUNDLE_PREVIEWS/' . $tokenHash, [
+        'used' => true,
+        'used_at' => bundle_now(),
+        'status' => 'USED',
+        'request_id' => $requestId,
+        'updated_at' => bundle_now(),
+    ]);
+}
+
+function bundle_mark_preview_failed(string $tokenHash, string $code, string $message = ''): void
+{
+    $tokenHash = trim($tokenHash);
+    if ($tokenHash === '') {
+        return;
+    }
+
+    @fb_patch('BUNDLE_PREVIEWS/' . $tokenHash, [
+        'status' => 'FAILED',
+        'failed_code' => bundle_clean_string($code),
+        'failed_message' => bundle_clean_string($message),
+        'updated_at' => bundle_now(),
+    ]);
+}
+
 function bundle_notification_amount_text(array $row): string
 {
     $amount = bundle_round_money((float)($row['you_pay'] ?? $row['payable_amount'] ?? $row['amount'] ?? 0));
@@ -1394,6 +1615,7 @@ function bundle_preview_for_user(string $uid, string $offerId, string $bundleNum
         'status' => 'WAITING_ADMIN',
         'display_status' => 'Pending',
     ];
+    $preview = bundle_with_financial_aliases($preview);
 
     return [
         'ok' => true,
@@ -1579,6 +1801,7 @@ function create_bundle_pending_request(
         'created_at' => $now,
         'updated_at' => $now,
     ];
+    $row = bundle_with_financial_aliases($row);
 
     foreach ($extra as $key => $value) {
         if (array_key_exists($key, $row)) {
@@ -1640,7 +1863,7 @@ function bundle_write_history(array $done): void
     $payableAmount = bundle_round_money((float)($done['payable_amount'] ?? $done['you_pay'] ?? $done['wallet_hold_amount'] ?? $priceAmount));
     $walletHoldAmount = bundle_round_money((float)($done['wallet_hold_amount'] ?? $done['held_amount'] ?? $payableAmount));
 
-    fb_put('BUNDLE_HISTORY/' . $uid . '/' . bundle_month_key() . '/' . $requestId, [
+    $historyRow = [
         'request_id' => $requestId,
         'offer_id' => (string)($done['offer_id'] ?? ''),
         'bundle_number' => (string)($done['bundle_number'] ?? ''),
@@ -1668,7 +1891,9 @@ function bundle_write_history(array $done): void
         'message' => (string)($done['final_message'] ?? ''),
         'created_at' => (int)($done['created_at'] ?? bundle_now()),
         'completed_at' => (int)($done['completed_at'] ?? bundle_now()),
-    ]);
+    ];
+
+    fb_put('BUNDLE_HISTORY/' . $uid . '/' . bundle_month_key() . '/' . $requestId, bundle_with_financial_aliases($historyRow));
 }
 
 function bundle_update_subadmin_request_log(array $row, string $status, string $message): void
@@ -1755,6 +1980,7 @@ function bundle_update_subadmin_request_log(array $row, string $status, string $
         'updated_at' => $now,
         'completed_at' => $now,
     ];
+    $patch = bundle_with_financial_aliases($patch);
 
     /*
      * User dashboard history সাধারণত এখান থেকে আসে।

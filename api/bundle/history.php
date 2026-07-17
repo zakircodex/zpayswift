@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/bundle.php';
 
 api_require_method('GET');
 api_require_app_key();
@@ -22,7 +23,7 @@ foreach ($items as $requestId => $row) {
         continue;
     }
     $row['request_id'] = (string)($row['request_id'] ?? $requestId);
-    $list[$row['request_id']] = $row;
+    $list[$row['request_id']] = bundle_public_history_row($row);
 }
 
 $pending = fb_get('BUNDLE_REQUESTS/PENDING');
@@ -38,7 +39,7 @@ if (is_array($pending)) {
         $row['request_id'] = (string)($row['request_id'] ?? $requestId);
         $row['request_type'] = 'BUNDLE';
         $row['display_status'] = 'Pending';
-        $list[$row['request_id']] = $row;
+        $list[$row['request_id']] = bundle_public_history_row($row);
     }
 }
 
