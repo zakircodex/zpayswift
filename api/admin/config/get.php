@@ -15,6 +15,8 @@ api_response(true, 'SUCCESS', 'App config loaded', [
     'topup_enabled' => (bool)($row['topup_enabled'] ?? true),
     'bundle_enabled' => (bool)($row['bundle_enabled'] ?? true),
     'maintenance_mode' => (bool)($row['maintenance_mode'] ?? false),
+    'privacy_policy_url' => trim((string)($row['privacy_policy_url'] ?? '')),
+    'terms_conditions_url' => trim((string)($row['terms_conditions_url'] ?? '')),
 
     'min_topup_amount' => (float)($row['min_topup_amount'] ?? 0),
     'max_topup_amount' => (float)($row['max_topup_amount'] ?? 0),

@@ -4103,6 +4103,16 @@ async function openAppConfigModal(){
           </div>
 
           <div class="form-full">
+            <label>Privacy Policy URL</label>
+            <input class="input" id="cfgPrivacyPolicyUrl" type="url" inputmode="url" placeholder="https://example.com/privacy-policy" value="${esc(data.privacy_policy_url || '')}">
+          </div>
+
+          <div class="form-full">
+            <label>Terms &amp; Conditions URL</label>
+            <input class="input" id="cfgTermsConditionsUrl" type="url" inputmode="url" placeholder="https://example.com/terms" value="${esc(data.terms_conditions_url || '')}">
+          </div>
+
+          <div class="form-full">
             <label>Last Updated</label>
             <input class="input" value="${esc(fmtTs(data.updated_at || 0))}" readonly>
           </div>
@@ -4129,6 +4139,8 @@ async function saveAppConfig(){
 
     min_bundle_amount: Number(document.getElementById('cfgMinBundleAmount')?.value || 0),
     max_bundle_amount: Number(document.getElementById('cfgMaxBundleAmount')?.value || 0),
+    privacy_policy_url: (document.getElementById('cfgPrivacyPolicyUrl')?.value || '').trim(),
+    terms_conditions_url: (document.getElementById('cfgTermsConditionsUrl')?.value || '').trim(),
   };
 
   try{

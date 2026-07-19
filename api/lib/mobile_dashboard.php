@@ -477,6 +477,32 @@ function zpay_dash_notification_count(string $uid): int
     return min(99, notification_unread_count($uid));
 }
 
+function zpay_dash_public_https_url($value): string
+{
+    $url = trim((string)$value);
+    if ($url === '' || preg_match('/[\x00-\x1F\x7F]/', $url) === 1) {
+        return '';
+    }
+    if (filter_var($url, FILTER_VALIDATE_URL) === false) {
+        return '';
+    }
+    $parts = parse_url($url);
+    if (strtolower((string)($parts['scheme'] ?? '')) !== 'https' || trim((string)($parts['host'] ?? '')) === '') {
+        return '';
+    }
+    return $url;
+}
+
+function zpay_dash_public_app_config(): array
+{
+    $row = fb_get('APP_CONFIG');
+    $row = is_array($row) ? $row : [];
+    return [
+        'privacy_policy_url' => zpay_dash_public_https_url($row['privacy_policy_url'] ?? ''),
+        'terms_conditions_url' => zpay_dash_public_https_url($row['terms_conditions_url'] ?? ''),
+    ];
+}
+
 function zpay_dash_dashboard_payload(array $auth): array
 {
     $user = is_array($auth['user'] ?? null) ? $auth['user'] : [];
@@ -486,6 +512,7 @@ function zpay_dash_dashboard_payload(array $auth): array
     $rate = function_exists('wallet_myr_to_bdt_rate') ? wallet_myr_to_bdt_rate() : 31.00;
     $config = zpay_dash_config();
     $noticeText = $config['notice_active'] ? $config['notice_text'] : '';
+    $appConfig = zpay_dash_public_app_config();
 
     return [
         'user' => [
@@ -508,6 +535,9 @@ function zpay_dash_dashboard_payload(array $auth): array
         ],
         'services' => zpay_dash_services_for_role($role),
         'banners' => zpay_dash_all_banners(true),
+        'app_config' => $appConfig,
+        'privacy_policy_url' => $appConfig['privacy_policy_url'],
+        'terms_conditions_url' => $appConfig['terms_conditions_url'],
         'notification_count' => zpay_dash_notification_count($uid),
         'theme' => $config['theme'],
         'server_time' => date('c', now_ts()),

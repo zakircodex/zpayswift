@@ -9,8 +9,12 @@ api_require_method('GET');
 api_require_app_key();
 zpay_dash_require_mobile_user(true);
 
+$appConfig = zpay_dash_public_app_config();
+
 api_response(true, 'SUPPORT_CONFIG_OK', 'Support config loaded.', [
     'config' => support_public_config(),
     'categories' => support_categories(true),
+    'app_config' => $appConfig,
+    'privacy_policy_url' => $appConfig['privacy_policy_url'],
+    'terms_conditions_url' => $appConfig['terms_conditions_url'],
 ]);
-
