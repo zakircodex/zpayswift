@@ -54,9 +54,7 @@ if (!is_array($user)) {
 auth_app_guard_user_login($user);
 
 $storedType = strtoupper(trim((string)($user['identity_type'] ?? $user['KYC']['type'] ?? $user['KYC']['document_type'] ?? '')));
-if ($storedType !== '' && in_array($storedType, ['NID', 'PASSPORT'], true) && $storedType !== $documentType) {
-    api_response(false, 'IDENTITY_MISMATCH', 'Identity information does not match.', [], 403);
-}
+$verifiedType = in_array($storedType, ['NID', 'PASSPORT'], true) ? $storedType : $documentType;
 
 $identityState = auth_app_identity_match_state($user, $identityNumber);
 if (empty($identityState['configured'])) {
@@ -73,7 +71,7 @@ $identityLast4 = auth_app_identity_last4($identityNumber);
 @fb_patch('AUTH_USER_FORGOT_PREAUTH/' . $preAuthToken, [
     'identity_verified' => true,
     'identity_verified_at' => $now,
-    'identity_type' => $documentType,
+    'identity_type' => $verifiedType,
     'identity_number_hash' => $identityHash,
     'identity_number_last4' => $identityLast4,
     'status' => 'IDENTITY_VERIFIED',
@@ -86,4 +84,5 @@ api_response(true, 'IDENTITY_VERIFIED', 'Identity verified.', [
     'reset_token' => $preAuthToken,
     'pre_auth_token' => $preAuthToken,
     'identity_verified' => true,
+    'identity_type' => $verifiedType,
 ]);

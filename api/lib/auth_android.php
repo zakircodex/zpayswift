@@ -369,6 +369,7 @@ function auth_app_identity_number(array $body): string
     return trim((string)(
         $body['nid_or_passport_number']
         ?? $body['identity_number']
+        ?? $body['document_number']
         ?? $body['nid_or_passport']
         ?? $body['identity']
         ?? $body['nid']
@@ -382,6 +383,7 @@ function auth_app_identity_type(array $body): string
     $type = strtoupper(trim((string)(
         $body['nid_or_passport_type']
         ?? $body['identity_type']
+        ?? $body['document_type']
         ?? ''
     )));
 
@@ -402,17 +404,19 @@ function auth_app_identity_last4(string $number): string
 
 function auth_app_identity_match_state(array $user, string $identityNumber): array
 {
-    $hash = auth_app_identity_hash($identityNumber);
-    if ($hash === '') {
+    $hashes = auth_app_identity_hash_variants($identityNumber);
+    if (empty($hashes)) {
         return ['configured' => false, 'match' => false];
     }
 
     $candidates = [
         (string)($user['identity_number_hash'] ?? ''),
+        (string)($user['document_number_hash'] ?? ''),
         (string)($user['nid_or_passport_hash'] ?? ''),
         (string)($user['nid_hash'] ?? ''),
         (string)($user['passport_hash'] ?? ''),
         (string)($user['KYC']['identity_number_hash'] ?? ''),
+        (string)($user['KYC']['document_number_hash'] ?? ''),
         (string)($user['KYC']['nid_or_passport_hash'] ?? ''),
     ];
 
@@ -423,10 +427,57 @@ function auth_app_identity_match_state(array $user, string $identityNumber): arr
             continue;
         }
         $configured = true;
-        if (hash_equals($candidate, $hash)) {
-            return ['configured' => true, 'match' => true];
+        foreach ($hashes as $hash) {
+            if (hash_equals($candidate, $hash)) {
+                return ['configured' => true, 'match' => true];
+            }
+        }
+    }
+
+    $plainCandidates = [
+        (string)($user['identity_number'] ?? ''),
+        (string)($user['document_number'] ?? ''),
+        (string)($user['nid_or_passport_number'] ?? ''),
+        (string)($user['nid'] ?? ''),
+        (string)($user['passport'] ?? ''),
+        (string)($user['KYC']['identity_number'] ?? ''),
+        (string)($user['KYC']['document_number'] ?? ''),
+        (string)($user['KYC']['nid_or_passport_number'] ?? ''),
+    ];
+
+    foreach ($plainCandidates as $plainCandidate) {
+        $plainHashes = auth_app_identity_hash_variants($plainCandidate);
+        if (empty($plainHashes)) {
+            continue;
+        }
+        $configured = true;
+        foreach ($plainHashes as $plainHash) {
+            foreach ($hashes as $hash) {
+                if (hash_equals($plainHash, $hash)) {
+                    return ['configured' => true, 'match' => true];
+                }
+            }
         }
     }
 
     return ['configured' => $configured, 'match' => false];
+}
+
+function auth_app_identity_hash_variants(string $number): array
+{
+    $trimmed = trim($number);
+    if ($trimmed === '') {
+        return [];
+    }
+
+    $legacy = strtoupper(preg_replace('/\s+/', '', $trimmed) ?? '');
+    $compact = strtoupper(preg_replace('/[^A-Z0-9]+/', '', $trimmed) ?? '');
+    $variants = [];
+    foreach ([$legacy, $compact] as $value) {
+        if ($value !== '') {
+            $variants[] = hash('sha256', $value);
+        }
+    }
+
+    return array_values(array_unique($variants));
 }

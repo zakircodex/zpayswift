@@ -74,6 +74,10 @@ $preAuthToken = forgot_app_token();
 $pricingCountry = auth_pricing_country_from_user($user, (array)(fb_get('USER_WALLETS/' . $uid) ?: []));
 $deviceId = auth_app_device_id($body, 'ANDROID_FORGOT');
 $deviceName = auth_app_device_name($body, 'Android App');
+$identityType = strtoupper(trim((string)($user['identity_type'] ?? $user['KYC']['type'] ?? $user['KYC']['document_type'] ?? '')));
+if (!in_array($identityType, ['NID', 'PASSPORT'], true)) {
+    $identityType = '';
+}
 
 $row = [
     'pre_auth_token' => $preAuthToken,
@@ -84,6 +88,7 @@ $row = [
     'phone_country' => $phoneCountry,
     'pricing_country' => $pricingCountry,
     'masked_phone' => forgot_app_mask_phone($phone),
+    'identity_type' => $identityType,
     'status' => 'IDENTITY_PENDING',
     'identity_verified' => false,
     'biometric_verified' => false,
@@ -109,6 +114,7 @@ api_response(true, 'FORGOT_STARTED', 'Forgot flow started.', [
     'forgot_token' => $preAuthToken,
     'reset_token' => $preAuthToken,
     'masked_phone' => forgot_app_mask_phone($phone),
+    'identity_type' => $identityType,
     'phone_country' => $phoneCountry,
     'country_code' => $phoneCountry === 'BD' ? '+880' : '+60',
     'requires_identity' => true,
