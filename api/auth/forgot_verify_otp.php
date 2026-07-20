@@ -14,6 +14,15 @@ function forgot_verify_now(): int
     return function_exists('now_ts') ? (int)now_ts() : time();
 }
 
+function forgot_verify_require_same_device(array $body, array $preAuthRow): void
+{
+    $storedDeviceId = trim((string)($preAuthRow['device_id'] ?? ''));
+    $requestDeviceId = auth_app_device_id($body, 'ANDROID_FORGOT');
+    if ($storedDeviceId !== '' && $requestDeviceId !== '' && $storedDeviceId !== $requestDeviceId) {
+        api_response(false, 'DEVICE_MISMATCH', 'Device mismatch for this reset session.', [], 400);
+    }
+}
+
 function forgot_legacy_verify_otp(array $body, string $preAuthToken, string $otpRequestId, string $otp): void
 {
     $resetType = strtoupper(trim((string)($body['reset_type'] ?? 'PASSWORD')));
@@ -182,6 +191,8 @@ if (!is_array($preAuthRow) || (int)($preAuthRow['expires_at'] ?? 0) <= $now) {
     api_response(false, 'FORGOT_SESSION_EXPIRED', 'Forgot session expired. Please start again.', [], 410);
 }
 
+forgot_verify_require_same_device($body, $preAuthRow);
+
 if (empty($preAuthRow['identity_verified']) || empty($preAuthRow['biometric_verified'])) {
     api_response(false, 'FORGOT_SESSION_INVALID', 'Forgot verification steps are incomplete.', [], 409);
 }
@@ -192,6 +203,13 @@ if ($storedOtpRequestId === '' || $storedOtpRequestId !== $otpRequestId) {
 }
 
 $uid = trim((string)($preAuthRow['uid'] ?? ''));
+$user = $uid !== '' ? fb_get('USERS/' . $uid) : null;
+if (!is_array($user)) {
+    api_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found.', [], 404);
+}
+
+auth_app_guard_user_login($user);
+
 if (!empty($preAuthRow['otp_verified'])) {
     api_response(true, 'OTP_VERIFIED', 'OTP already verified.', [
         'forgot_token' => $preAuthToken,

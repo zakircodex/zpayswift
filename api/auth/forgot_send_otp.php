@@ -30,6 +30,15 @@ function forgot_legacy_allowed_role(string $role): bool
     return in_array(strtoupper(trim($role)), ['SUBADMIN', 'ADMIN'], true);
 }
 
+function forgot_otp_require_same_device(array $body, array $preAuthRow): void
+{
+    $storedDeviceId = trim((string)($preAuthRow['device_id'] ?? ''));
+    $requestDeviceId = auth_app_device_id($body, 'ANDROID_FORGOT');
+    if ($storedDeviceId !== '' && $requestDeviceId !== '' && $storedDeviceId !== $requestDeviceId) {
+        api_response(false, 'DEVICE_MISMATCH', 'Device mismatch for this reset session.', [], 400);
+    }
+}
+
 function forgot_legacy_send_otp(array $body): void
 {
     $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
@@ -192,6 +201,8 @@ if (!is_array($preAuthRow) || (int)($preAuthRow['expires_at'] ?? 0) <= $now) {
     api_response(false, 'FORGOT_SESSION_EXPIRED', 'Forgot session expired. Please start again.', [], 410);
 }
 
+forgot_otp_require_same_device($body, $preAuthRow);
+
 if (empty($preAuthRow['identity_verified'])) {
     api_response(false, 'IDENTITY_REQUIRED', 'Please verify your NID/Passport first.', [], 409);
 }
@@ -210,10 +221,7 @@ if (!is_array($user)) {
     api_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found.', [], 404);
 }
 
-$status = strtoupper(trim((string)($user['status'] ?? 'INACTIVE')));
-if ($status !== 'ACTIVE') {
-    api_response(false, 'FORBIDDEN', 'Account is not active.', [], 403);
-}
+auth_app_guard_user_login($user);
 
 $phoneCountry = auth_phone_country_from_user($user);
 $phone = normalize_phone_by_country((string)($user['phone'] ?? $preAuthRow['phone'] ?? ''), $phoneCountry);

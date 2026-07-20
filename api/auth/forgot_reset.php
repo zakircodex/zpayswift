@@ -14,6 +14,15 @@ function forgot_reset_now(): int
     return function_exists('now_ts') ? (int)now_ts() : time();
 }
 
+function forgot_reset_require_same_device(array $body, array $preAuthRow): void
+{
+    $storedDeviceId = trim((string)($preAuthRow['device_id'] ?? ''));
+    $requestDeviceId = auth_app_device_id($body, 'ANDROID_FORGOT');
+    if ($storedDeviceId !== '' && $requestDeviceId !== '' && $storedDeviceId !== $requestDeviceId) {
+        api_response(false, 'DEVICE_MISMATCH', 'Device mismatch for this reset session.', [], 400);
+    }
+}
+
 $preAuthToken = trim((string)($body['pre_auth_token'] ?? $body['reset_token'] ?? $body['forgot_token'] ?? ''));
 if ($preAuthToken === '') {
     api_response(false, 'FORGOT_SESSION_EXPIRED', 'Session expired. Please start again.', [], 410);
@@ -29,11 +38,15 @@ if (empty($preAuthRow['identity_verified']) || empty($preAuthRow['biometric_veri
     api_response(false, 'OTP_REQUIRED', 'OTP verification is required before reset.', [], 409);
 }
 
+forgot_reset_require_same_device($body, $preAuthRow);
+
 $uid = trim((string)($preAuthRow['uid'] ?? ''));
 $user = $uid !== '' ? fb_get('USERS/' . $uid) : null;
 if (!is_array($user)) {
     api_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found.', [], 404);
 }
+
+auth_app_guard_user_login($user);
 
 $newPassword = (string)($body['new_password'] ?? $body['password'] ?? '');
 $confirmPassword = (string)($body['confirm_password'] ?? '');
@@ -60,8 +73,8 @@ if ($newPin !== $confirmPin) {
     api_response(false, 'VALIDATION_ERROR', 'PIN confirmation does not match.', [], 422);
 }
 
-if (!preg_match('/^\d{4,8}$/', $newPin)) {
-    api_response(false, 'VALIDATION_ERROR', 'PIN must be 4 to 8 digits.', [], 422);
+if (!preg_match('/^\d{4}$/', $newPin)) {
+    api_response(false, 'VALIDATION_ERROR', 'PIN must be 4 digits.', [], 422);
 }
 
 $update = [

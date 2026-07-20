@@ -53,6 +53,8 @@ if (!is_array($user)) {
     api_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found. Please register first.', [], 404);
 }
 
+auth_app_guard_user_login($user);
+
 if (!forgot_app_allowed_role($user)) {
     api_response(false, 'FORBIDDEN', 'Only user accounts can use this recovery.', [], 403);
 }

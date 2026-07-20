@@ -12,6 +12,15 @@ $preAuthToken = trim((string)($body['pre_auth_token'] ?? $body['reset_token'] ??
 $documentType = auth_app_identity_type($body);
 $identityNumber = auth_app_identity_number($body);
 
+function forgot_identity_require_same_device(array $body, array $preAuthRow): void
+{
+    $storedDeviceId = trim((string)($preAuthRow['device_id'] ?? ''));
+    $requestDeviceId = auth_app_device_id($body, 'ANDROID_FORGOT');
+    if ($storedDeviceId !== '' && $requestDeviceId !== '' && $storedDeviceId !== $requestDeviceId) {
+        api_response(false, 'DEVICE_MISMATCH', 'Device mismatch for this reset session.', [], 400);
+    }
+}
+
 if ($preAuthToken === '') {
     api_response(false, 'FORGOT_SESSION_EXPIRED', 'Session expired. Please start again.', [], 410);
 }
@@ -34,11 +43,15 @@ if (strtoupper(trim((string)($preAuthRow['status'] ?? ''))) === 'COMPLETED') {
     api_response(false, 'FORGOT_SESSION_EXPIRED', 'Forgot session expired. Please start again.', [], 410);
 }
 
+forgot_identity_require_same_device($body, $preAuthRow);
+
 $uid = trim((string)($preAuthRow['uid'] ?? ''));
 $user = $uid !== '' ? fb_get('USERS/' . $uid) : null;
 if (!is_array($user)) {
     api_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found.', [], 404);
 }
+
+auth_app_guard_user_login($user);
 
 $storedType = strtoupper(trim((string)($user['identity_type'] ?? $user['KYC']['type'] ?? $user['KYC']['document_type'] ?? '')));
 if ($storedType !== '' && in_array($storedType, ['NID', 'PASSPORT'], true) && $storedType !== $documentType) {
