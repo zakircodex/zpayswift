@@ -294,5 +294,6 @@ function reg_app_password_valid(string $password): bool
 
 function reg_app_pin_valid(string $pin): bool
 {
-    return preg_match('/^\d{4,8}$/', $pin) === 1;
+    $length = defined('USER_PIN_LENGTH') ? max(1, (int)USER_PIN_LENGTH) : 4;
+    return preg_match('/^\d{' . $length . '}$/', $pin) === 1;
 }

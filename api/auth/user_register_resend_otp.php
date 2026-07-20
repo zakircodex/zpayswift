@@ -100,7 +100,7 @@ if ($pricingCountry === '') {
     $pricingCountry = 'BD';
 }
 
-if ($phone === '' || $uid === '') {
+if ($phone === '') {
     user_reg_res_response(false, 'REGISTER_SESSION_INVALID', 'Register session is invalid. Please start again.', [], 400);
 }
 

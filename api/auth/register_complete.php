@@ -21,6 +21,16 @@ $password = (string)($body['password'] ?? '');
 $confirmPassword = (string)($body['confirm_password'] ?? $password);
 $pin = trim((string)($body['pin'] ?? ''));
 $confirmPin = trim((string)($body['confirm_pin'] ?? $pin));
+$termsAccepted = reg_complete_bool($body['terms_accepted'] ?? false);
+
+function reg_complete_bool($value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    return in_array(strtoupper(trim((string)$value)), ['1', 'TRUE', 'YES', 'ON'], true);
+}
 
 if ($name === '') {
     api_response(false, 'VALIDATION_ERROR', 'Full name is required.', ['field' => 'name'], 422);
@@ -39,11 +49,16 @@ if ($password !== $confirmPassword) {
 }
 
 if (!reg_app_pin_valid($pin)) {
-    api_response(false, 'VALIDATION_ERROR', 'PIN must be 4 to 8 digits.', ['field' => 'pin'], 422);
+    $pinLength = defined('USER_PIN_LENGTH') ? max(1, (int)USER_PIN_LENGTH) : 4;
+    api_response(false, 'VALIDATION_ERROR', 'PIN must be exactly ' . $pinLength . ' digits.', ['field' => 'pin'], 422);
 }
 
 if ($pin !== $confirmPin) {
     api_response(false, 'VALIDATION_ERROR', 'PIN confirmation does not match.', ['field' => 'confirm_pin'], 422);
+}
+
+if (!$termsAccepted) {
+    api_response(false, 'VALIDATION_ERROR', 'Please accept the Terms & Conditions to continue.', ['field' => 'terms_accepted'], 422);
 }
 
 $phoneCountry = auth_normalize_country_code((string)($preAuth['phone_country'] ?? ''));
@@ -250,6 +265,7 @@ $userRow = [
     'created_by_role' => 'SELF',
     'parent_subadmin_uid' => '',
     'register_source' => 'ANDROID_APP',
+    'terms_accepted' => true,
     'terms_accepted_at' => (int)($body['terms_accepted_at'] ?? $preAuth['terms_accepted_at'] ?? $now),
 ];
 
