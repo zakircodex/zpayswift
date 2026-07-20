@@ -248,6 +248,16 @@ function session_hash(string $token): string
     return hash('sha256', trim($token));
 }
 
+function auth_session_epoch_from_user(array $user): string
+{
+    return auth_clean_string($user['auth_session_epoch'] ?? $user['session_epoch'] ?? '');
+}
+
+function auth_new_session_epoch(): string
+{
+    return 'SE' . strtoupper(bin2hex(random_bytes(16)));
+}
+
 function auth_get_session_token_from_request(): string
 {
     $token = '';
@@ -328,6 +338,17 @@ function auth_require_user(bool $touchSession = true): array
 
     if (!is_array($user)) {
         api_response(false, 'UNAUTHORIZED', 'User not found', [], 401);
+    }
+
+    $userSessionEpoch = auth_session_epoch_from_user($user);
+    $sessionEpoch = auth_clean_string($session['auth_session_epoch'] ?? $session['session_epoch'] ?? '');
+    if ($userSessionEpoch !== '' && $sessionEpoch !== $userSessionEpoch) {
+        fb_patch('USER_SESSIONS/' . $session['_session_hash'], [
+            'status' => 'RESET_REVOKED',
+            'updated_at' => now_ts(),
+        ]);
+
+        api_response(false, 'SESSION_EXPIRED', 'Session expired. Please sign in again.', [], 401);
     }
 
     $userStatus = auth_status_value($user['status'] ?? 'INACTIVE');

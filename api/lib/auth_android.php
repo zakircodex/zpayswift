@@ -211,6 +211,7 @@ function auth_app_issue_session(array $user, string $uid, string $deviceId, stri
         'created_at' => $now,
         'expires_at' => $now + SESSION_TTL_SECONDS,
         'last_seen_at' => $now,
+        'auth_session_epoch' => auth_session_epoch_from_user($user),
     ];
 
     if (!fb_put('USER_SESSIONS/' . $hash, $session)) {
@@ -320,17 +321,17 @@ function auth_app_revoke_user_sessions_and_trust(string $uid): void
         return;
     }
 
-    $sessions = fb_get('USER_SESSIONS');
-    if (is_array($sessions)) {
-        foreach ($sessions as $hash => $session) {
-            if (is_array($session) && (string)($session['uid'] ?? '') === $uid) {
-                @fb_patch('USER_SESSIONS/' . $hash, [
-                    'status' => 'REVOKED',
-                    'updated_at' => now_ts(),
-                ]);
-            }
-        }
-    }
+    $now = now_ts();
+    $sessionEpoch = auth_new_session_epoch();
+
+    @fb_patch('USERS/' . $uid, [
+        'active_device_id' => '',
+        'ACTIVE_DEVICE_ID' => '',
+        'auth_session_epoch' => $sessionEpoch,
+        'session_epoch' => $sessionEpoch,
+        'credentials_revoked_at' => $now,
+        'updated_at' => $now,
+    ]);
 
     $devices = fb_get('AUTH_DEVICE_TRUST/' . $uid);
     if (is_array($devices)) {
@@ -340,7 +341,7 @@ function auth_app_revoke_user_sessions_and_trust(string $uid): void
                 'manual_logout' => true,
                 'revoked' => true,
                 'status' => 'RESET_REVOKED',
-                'updated_at' => now_ts(),
+                'updated_at' => $now,
             ]);
         }
     }
@@ -352,16 +353,11 @@ function auth_app_revoke_user_sessions_and_trust(string $uid): void
                 'status' => 'REVOKED',
                 'revoked' => true,
                 'manual_logout' => true,
-                'updated_at' => now_ts(),
+                'updated_at' => $now,
             ]);
         }
     }
 
-    @fb_patch('USERS/' . $uid, [
-        'active_device_id' => '',
-        'ACTIVE_DEVICE_ID' => '',
-        'updated_at' => now_ts(),
-    ]);
 }
 
 function auth_app_identity_number(array $body): string

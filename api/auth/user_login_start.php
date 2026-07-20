@@ -60,6 +60,7 @@ function user_login_issue_session(array $user, string $uid, string $deviceId, st
         'created_at'   => $now,
         'expires_at'   => $now + SESSION_TTL_SECONDS,
         'last_seen_at' => $now,
+        'auth_session_epoch' => auth_session_epoch_from_user($user),
     ];
 
     if (!fb_put('USER_SESSIONS/' . $hash, $session)) {
