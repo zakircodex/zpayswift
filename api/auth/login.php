@@ -15,5 +15,6 @@ api_response(false, 'LOGIN_FLOW_REQUIRED', 'Please use secure staged login flow.
         'login_send_otp' => '/api/auth/login_send_otp.php',
         'login_verify_otp' => '/api/auth/user_login_verify_otp.php',
         'pin_login' => '/api/auth/pin_login.php',
+        'biometric_login' => '/api/auth/biometric_login.php',
     ],
 ], 409);
