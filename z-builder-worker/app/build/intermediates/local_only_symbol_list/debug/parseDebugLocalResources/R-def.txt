@@ -1,0 +1,30 @@
+R_DEF: Internal format may change without notice
+local
+color black
+color white
+drawable ic_launcher_background
+drawable ic_launcher_foreground
+id btnOpenAccessibility
+id btnSave
+id btnStart
+id btnStop
+id btnTestConnection
+id rootMain
+id spSim1Operator
+id spSim2Operator
+id tvAccessibility
+id tvAppTitle
+id tvConnectionInfo
+id tvDeviceId
+id tvLog
+id tvStatusCard
+layout activity_main
+mipmap ic_launcher
+mipmap ic_launcher_round
+string accessibility_label
+string app_name
+style Base.Theme.ZawTopupWorker
+style Theme.ZawTopupWorker
+xml accessibility_service_config
+xml backup_rules
+xml data_extraction_rules
