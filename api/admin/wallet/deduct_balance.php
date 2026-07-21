@@ -9,6 +9,11 @@ auth_require_admin_session();
 
 $body = api_read_json_body();
 
+api_response(false, 'OTP_REQUIRED', 'Balance deduction requires the OTP confirmation flow.', [
+    'send_otp_endpoint' => 'wallet_deduct_send_otp.php',
+    'confirm_endpoint' => 'wallet_deduct_confirm.php',
+], 409);
+
 $uid = trim((string)($body['uid'] ?? ''));
 $amount = (float)($body['amount'] ?? 0);
 $note = trim((string)($body['note'] ?? 'Admin balance deducted'));

@@ -12,6 +12,15 @@ error_log
 .env
 config.php
 */config.php
+local.properties
+**/local.properties
+*.jks
+*.keystore
+*.p12
+.gradle/
+**/.gradle/
+build/
+**/build/
 !api/topup/config.php
 !api/support/config.php
 !api/admin/support/config.php

@@ -267,7 +267,7 @@ class UssdAccessibilityService : AccessibilityService() {
         lastEmitAt = now
         lastEmitStatus = status
 
-        val i = Intent(WorkerConstants.ACTION_USSD_RESULT).apply {
+        val i = Intent(WorkerConstants.ACTION_USSD_RESULT).setPackage(packageName).apply {
             putExtra(WorkerConstants.EXTRA_RESULT_STATUS, status)
             putExtra(WorkerConstants.EXTRA_RESULT_MESSAGE, message)
             putExtra(WorkerConstants.EXTRA_RESULT_RAW, raw)

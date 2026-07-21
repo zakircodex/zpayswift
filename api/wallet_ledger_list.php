@@ -38,6 +38,9 @@ function wallet_ledger_host(): string
 
 function wallet_ledger_api_base_url(): string
 {
+    if (function_exists('app_api_url')) {
+        return rtrim(app_api_url(), '/');
+    }
     $script = $_SERVER['SCRIPT_NAME'] ?? '/api/wallet_ledger_list.php';
     $apiPath = dirname($script);
     return rtrim(wallet_ledger_scheme() . '://' . wallet_ledger_host() . $apiPath, '/');

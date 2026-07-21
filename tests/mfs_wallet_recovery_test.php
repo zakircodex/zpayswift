@@ -121,10 +121,14 @@ function fb_get_with_etag(string $path): array
 
 function fb_put_if_match(string $path, mixed $data, string $etag): array
 {
-    global $versions, $walletWriteCount;
+    global $versions, $walletWriteCount, $failNextLedgerPut;
     $expected = 'v' . (string)($versions[$path] ?? 0);
     if ($etag !== $expected) {
         return ['ok' => false, 'status' => 412];
+    }
+    if ($failNextLedgerPut && str_starts_with($path, 'WALLET_LEDGER/')) {
+        $failNextLedgerPut = false;
+        return ['ok' => false, 'status' => 500];
     }
     if (str_starts_with($path, 'USER_WALLETS/')) {
         $walletWriteCount[$path] = ($walletWriteCount[$path] ?? 0) + 1;

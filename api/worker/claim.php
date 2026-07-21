@@ -43,12 +43,14 @@ $preview = str_replace(
     $dialTemplate
 );
 
-worker_mark_processing(
+if (!worker_mark_processing(
     (string)$claimed['request_id'],
     $deviceId,
     $slot,
     $preview
-);
+)) {
+    api_response(false, 'CLAIM_TRANSITION_FAILED', 'Request was claimed but could not enter processing. Please retry.', [], 409);
+}
 
 api_response(true, 'REQUEST_CLAIMED', 'Request claimed', [
     'request_id' => (string)$claimed['request_id'],

@@ -64,6 +64,10 @@ function reg_app_email_uid(string $email): string
         return '';
     }
 
+    if (function_exists('auth_find_uid_by_email')) {
+        return auth_find_uid_by_email($email);
+    }
+
     $row = fb_get('USER_INDEX/EMAIL/' . reg_app_email_key($email));
     if (is_string($row)) {
         return trim($row);

@@ -56,6 +56,9 @@ function admin_convert_api_host(): string
 
 function admin_convert_api_base_url(): string
 {
+    if (function_exists('app_api_url')) {
+        return rtrim(app_api_url(), '/');
+    }
     $script = $_SERVER['SCRIPT_NAME'] ?? '/api/user_convert_retailer.php';
     $apiPath = dirname($script);
     return rtrim(admin_convert_api_scheme() . '://' . admin_convert_api_host() . $apiPath, '/');

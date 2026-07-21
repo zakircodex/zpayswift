@@ -2980,6 +2980,8 @@ function openWalletAction(type, uid){
   const target = state.users.find(item => String(item.uid || '') === String(uid)) || {};
   const currency = walletNativeCurrency(target);
   const prefix = walletPrefix(currency);
+  const actionId = window.crypto?.randomUUID?.()
+    || `WA_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const currencyFields = `
     <div>
       <label>Receiver Currency</label>
@@ -3001,6 +3003,7 @@ function openWalletAction(type, uid){
         <div class="form-full">
           <label>UID</label>
           <input class="input" id="walletUid" value="${esc(uid)}" readonly>
+          <input id="walletActionId" type="hidden" value="${esc(actionId)}">
         </div>
 
         ${currencyFields}
@@ -3022,13 +3025,15 @@ async function submitWalletAction(type){
   const uid = document.getElementById('walletUid')?.value.trim() || '';
   const amount = Number(document.getElementById('walletAmount')?.value || 0);
   const note = document.getElementById('walletNote')?.value.trim() || '';
+  const actionId = document.getElementById('walletActionId')?.value.trim() || '';
 
   try{
     const action = type === 'add' ? 'wallet_add' : 'wallet_deduct_send_otp';
     const data = await proxyPost(action, {
       uid,
       amount,
-      note
+      note,
+      action_id: actionId
     }, true, { busyText: type === 'add' ? 'Adding balance...' : 'Sending OTP...' });
 
     closeModal();

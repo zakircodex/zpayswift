@@ -161,6 +161,17 @@ $status = normalize_admin_status($body['status'] ?? $oldStatus);
 $currencyConversionPreview = null;
 
 if ($countryProvided && $country !== '') {
+    $requestedCurrency = $country === 'MY' ? 'MYR' : 'BDT';
+    if ($country !== $oldPricingCountry || $requestedCurrency !== $oldCurrency) {
+        api_response(
+            false,
+            'CURRENCY_CONVERSION_REQUIRES_MIGRATION',
+            'Pricing country cannot be changed while wallet currency conversion is unavailable.',
+            [],
+            409
+        );
+    }
+
     $currencyConversionPreview = account_currency_preview_for_rows($user, $oldWalletRow, $country);
     if (empty($currencyConversionPreview['ok'])) {
         api_response(
@@ -185,8 +196,8 @@ if ($nameProvided) {
 }
 
 $emailChanged = false;
-$newEmailKey = '';
-$oldEmailKey = '';
+$newEmailKeys = [];
+$oldEmailKeys = [];
 
 if ($emailProvided) {
     if (!is_valid_email_or_empty($email)) {
@@ -197,16 +208,16 @@ if ($emailProvided) {
     $updates['email'] = $email;
 
     if ($emailChanged && $email !== '') {
-        $newEmailKey = email_to_index_key($email);
-        $existingUidByEmail = fb_get('USER_INDEX/EMAIL/' . $newEmailKey);
+        $newEmailKeys = auth_email_index_keys($email);
+        $existingUidByEmail = auth_find_uid_by_email($email);
 
-        if (is_string($existingUidByEmail) && $existingUidByEmail !== '' && $existingUidByEmail !== $uid) {
+        if ($existingUidByEmail !== '' && $existingUidByEmail !== $uid) {
             api_response(false, 'EMAIL_EXISTS', 'Email already registered', [], 409);
         }
     }
 
     if ($oldEmail !== '') {
-        $oldEmailKey = email_to_index_key($oldEmail);
+        $oldEmailKeys = auth_email_index_keys($oldEmail);
     }
 }
 
@@ -252,8 +263,25 @@ if ($countryProvided) {
 |--------------------------------------------------------------------------
 */
 if ($emailProvided && $emailChanged && $email !== '') {
-    if (!fb_put('USER_INDEX/EMAIL/' . $newEmailKey, $uid)) {
-        api_response(false, 'SERVER_ERROR', 'Failed to save new email index', [], 500);
+    $claimedEmailIndexPaths = [];
+    foreach ($newEmailKeys as $newEmailKey) {
+        $path = 'USER_INDEX/EMAIL/' . $newEmailKey;
+        $claim = auth_index_claim($path, $uid, $uid);
+        if (empty($claim['ok'])) {
+            foreach (array_reverse($claimedEmailIndexPaths) as $claimedPath) {
+                @auth_index_release($claimedPath, $uid);
+            }
+            api_response(
+                false,
+                !empty($claim['conflict']) ? 'EMAIL_EXISTS' : 'SERVER_ERROR',
+                !empty($claim['conflict']) ? 'Email already registered' : 'Failed to save new email index',
+                [],
+                !empty($claim['conflict']) ? 409 : 500
+            );
+        }
+        if (!empty($claim['claimed'])) {
+            $claimedEmailIndexPaths[] = $path;
+        }
     }
 }
 
@@ -264,7 +292,9 @@ if ($emailProvided && $emailChanged && $email !== '') {
 */
 if (!fb_patch('USERS/' . $uid, $updates)) {
     if ($emailProvided && $emailChanged && $email !== '') {
-        fb_delete('USER_INDEX/EMAIL/' . $newEmailKey);
+        foreach (array_reverse($claimedEmailIndexPaths ?? []) as $path) {
+            @auth_index_release($path, $uid);
+        }
     }
 
     api_response(false, 'SERVER_ERROR', 'Failed to update user', [], 500);
@@ -336,8 +366,11 @@ if ($countryProvided) {
 |--------------------------------------------------------------------------
 */
 if ($emailProvided && $emailChanged) {
-    if ($oldEmail !== '' && $oldEmailKey !== '' && $oldEmailKey !== $newEmailKey) {
-        if (!fb_delete('USER_INDEX/EMAIL/' . $oldEmailKey)) {
+    foreach ($oldEmailKeys as $oldEmailKey) {
+        if (in_array($oldEmailKey, $newEmailKeys, true)) {
+            continue;
+        }
+        if (!auth_index_release('USER_INDEX/EMAIL/' . $oldEmailKey, $uid)) {
             system_log('ADMIN_UPDATE_USER_WARNING', $uid, 'Failed to delete old email index', [
                 'uid' => $uid,
                 'old_email' => $oldEmail,

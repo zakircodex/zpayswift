@@ -144,7 +144,15 @@ function ledger_count_for(string $uid): int
 put_wallet('SA', 100.00);
 put_wallet('TA', 10.00);
 
-$transfer = wallet_financial_operation_begin('ADMIN_ADD_RECOVERY', 'SUBADMIN_BALANCE_TRANSFER', 'REQUEST_FINAL', 'TA', 25.00, 'BDT');
+$transfer = wallet_financial_operation_begin(
+    'ADMIN_ADD_RECOVERY',
+    'SUBADMIN_BALANCE_TRANSFER',
+    'REQUEST_FINAL',
+    'TA',
+    25.00,
+    'BDT',
+    ['actor_uid' => 'SA', 'target_uid' => 'TA']
+);
 assert_true(!empty($transfer['ok']), 'two-sided operation should claim');
 
 $source = wallet_apply_available_delta_with_operation(

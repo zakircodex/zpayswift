@@ -23,6 +23,14 @@ function topup_country_code($value): string
     return $text;
 }
 
+function topup_effective_min_amount(string $countryCode, float $configuredMin): float
+{
+    $configuredMin = topup_money($configuredMin);
+    return topup_country_code($countryCode) === 'BD'
+        ? max(500.0, $configuredMin)
+        : $configuredMin;
+}
+
 function topup_clean_text($value, int $max = 80): string
 {
     $text = trim((string)$value);
@@ -310,8 +318,10 @@ function topup_normalize_operator_row(array $row, array $fallback = [], string $
     if ($min <= 0) {
         $min = (float)($fallback['min_amount'] ?? 20);
     }
+    $min = topup_effective_min_amount($countryCode, $min);
     if ($max <= 0 || $max < $min) {
         $max = (float)($fallback['max_amount'] ?? max(1000, $min));
+        $max = max($min, $max);
     }
 
     $result['code'] = $code;
@@ -563,15 +573,16 @@ function topup_operator_validation(string $countryCode, string $operator, bool $
 
 function topup_amount_validation(string $countryCode, string $operator, float $amount): array
 {
+    $countryCode = topup_country_code($countryCode);
     $operatorResult = topup_operator_validation($countryCode, $operator, true, false);
     if (empty($operatorResult['ok'])) {
-        $operatorResult['min_amount'] = 20;
+        $operatorResult['min_amount'] = topup_effective_min_amount($countryCode, 20.0);
         $operatorResult['max_amount'] = 1000;
         return $operatorResult;
     }
 
     $config = (array)$operatorResult['operator'];
-    $min = topup_money($config['min_amount'] ?? 20);
+    $min = topup_effective_min_amount($countryCode, topup_money($config['min_amount'] ?? 20));
     $max = topup_money($config['max_amount'] ?? 1000);
     $currency = (string)(((array)($operatorResult['country'] ?? []))['currency'] ?? 'BDT');
 

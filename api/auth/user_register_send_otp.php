@@ -104,6 +104,10 @@ function user_reg_find_uid_by_email(string $email): string
         return '';
     }
 
+    if (function_exists('auth_find_uid_by_email')) {
+        return auth_find_uid_by_email($email);
+    }
+
     $row = fb_get('USER_INDEX/EMAIL/' . user_reg_email_key($email));
 
     if (is_string($row)) {

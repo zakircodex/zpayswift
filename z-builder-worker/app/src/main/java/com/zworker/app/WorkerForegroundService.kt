@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import java.text.DecimalFormat
 import java.util.concurrent.Executors
 
@@ -204,12 +205,12 @@ class WorkerForegroundService : Service() {
 
     private fun registerResultReceiver() {
         val filter = IntentFilter(WorkerConstants.ACTION_USSD_RESULT)
-        if (Build.VERSION.SDK_INT >= 33) {
-            registerReceiver(resultReceiver, filter, RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(resultReceiver, filter)
-        }
+        ContextCompat.registerReceiver(
+            this,
+            resultReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     private fun startAsForeground() {

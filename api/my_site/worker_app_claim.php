@@ -17,6 +17,11 @@ function zb_worker_app_claim_request(string $deviceId, string $ownerId): ?array
     if (!$device || !worker_is_available($device)) { return null; }
     if ((string)($device['z_builder_owner_id'] ?? '') !== $ownerId) { return null; }
 
+    $stale = worker_reclaim_stale_request($deviceId, $device, 'Z_BUILDER', $ownerId);
+    if (is_array($stale)) {
+        return worker_claim_payload($stale);
+    }
+
     $pending = fb_get('TOPUP_REQUESTS/PENDING');
     if (!is_array($pending) || empty($pending)) { return null; }
 
@@ -33,39 +38,12 @@ function zb_worker_app_claim_request(string $deviceId, string $ownerId): ?array
         $slot = worker_find_matching_slot($device, $operator);
         if ($slot === null) { continue; }
 
-        $current = fb_get('TOPUP_REQUESTS/PENDING/' . $requestId);
-        if (!is_array($current)) { continue; }
-
-        $claimed = $current;
-        $claimed['status'] = 'CLAIMED';
-        $claimed['assigned_device_id'] = $deviceId;
-        $claimed['assigned_slot'] = $slot;
-        $claimed['claimed_at'] = now_ts();
-        $claimed['updated_at'] = now_ts();
-
-        if (!fb_put('TOPUP_REQUESTS/CLAIMED/' . $requestId, $claimed)) { continue; }
-        if (!fb_delete('TOPUP_REQUESTS/PENDING/' . $requestId)) {
-            fb_delete('TOPUP_REQUESTS/CLAIMED/' . $requestId);
-            continue;
-        }
+        $claimed = worker_claim_pending_request((string)$requestId, $deviceId, $slot, 'Z_BUILDER', $ownerId);
+        if (!is_array($claimed)) { continue; }
 
         update_request_status((string)$requestId, 'CLAIMED', 'Request claimed by Z Builder worker');
-        $runtime = get_operator_runtime($operator);
-        $private = get_operator_private_config($operator);
-        if (!is_array($runtime) || !is_array($private)) { return null; }
-
-        return [
-            'request_id' => (string)$requestId,
-            'uid' => (string)($claimed['uid'] ?? ''),
-            'topup_number' => (string)($claimed['topup_number'] ?? ''),
-            'operator' => $operator,
-            'amount' => (float)($claimed['amount'] ?? 0),
-            'assigned_slot' => $slot,
-            'assigned_device_id' => $deviceId,
-            'dial_template' => (string)($runtime['dial_template'] ?? ''),
-            'retailer_secret_pin' => (string)($private['retailer_secret_pin'] ?? ''),
-            'dial_preview_masked' => (string)($runtime['masked_template'] ?? ''),
-        ];
+        $claimed['request_id'] = (string)$requestId;
+        return worker_claim_payload($claimed);
     }
 
     return null;
@@ -87,7 +65,9 @@ $number = (string)$claimed['topup_number'];
 $amount = (float)$claimed['amount'];
 $retailerPin = (string)$claimed['retailer_secret_pin'];
 $preview = str_replace(['{NUMBER}', '{AMOUNT}', '{PIN}'], [$number, (string)$amount, '*****'], $dialTemplate);
-worker_mark_processing((string)$claimed['request_id'], $deviceId, $slot, $preview);
+if (!worker_mark_processing((string)$claimed['request_id'], $deviceId, $slot, $preview)) {
+    api_response(false, 'CLAIM_TRANSITION_FAILED', 'Request was claimed but could not enter processing. Please retry.', [], 409);
+}
 
 api_response(true, 'REQUEST_CLAIMED', 'Request claimed', [
     'request_id' => (string)$claimed['request_id'],

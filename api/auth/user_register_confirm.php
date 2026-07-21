@@ -56,6 +56,10 @@ function user_reg_confirm_find_uid_by_email(string $email): string
         return '';
     }
 
+    if (function_exists('auth_find_uid_by_email')) {
+        return auth_find_uid_by_email($email);
+    }
+
     $row = fb_get('USER_INDEX/EMAIL/' . user_reg_confirm_email_key($email));
 
     if (is_string($row)) {
@@ -332,30 +336,65 @@ $roleSettings = user_reg_confirm_default_role_settings('USER');
 $roleSettings['api_enabled'] = false;
 $roleSettings['updated_at'] = $now;
 
-$emailIndexKey = user_reg_confirm_email_key($email);
+$phoneIndexes = auth_phone_index_candidates($phone, $phoneCountry);
+$identityIndexPaths = [
+    'USER_IDENTITY_INDEX/' . $identityHash,
+    'USER_INDEX/IDENTITY/' . $identityHash,
+    'USER_INDEX/' . $identityType . '/' . $identityHash,
+];
+$identityIndexPaths = array_values(array_unique($identityIndexPaths));
+
+$indexClaims = [];
+$indexPayloads = [];
+foreach ($phoneIndexes as $phoneIndex) {
+    $indexPayloads['USER_INDEX/PHONE/' . $phoneIndex] = $uid;
+}
+foreach (auth_email_index_keys($email) as $emailIndexKey) {
+    $indexPayloads['USER_INDEX/EMAIL/' . $emailIndexKey] = $uid;
+}
+foreach ($identityIndexPaths as $path) {
+    $indexPayloads[$path] = [
+        'uid' => $uid,
+        'document_type' => $identityType,
+        'identity_number_last4' => $identityLast4,
+        'created_at' => $now,
+    ];
+}
+
+foreach ($indexPayloads as $path => $payload) {
+    $claim = auth_index_claim($path, $uid, $payload);
+    if (empty($claim['ok'])) {
+        foreach (array_reverse($indexClaims) as $claimedPath) {
+            @auth_index_release($claimedPath, $uid);
+        }
+
+        $code = str_contains($path, '/EMAIL/')
+            ? 'EMAIL_ALREADY_REGISTERED'
+            : (str_contains($path, '/PHONE/') ? 'PHONE_ALREADY_REGISTERED' : 'IDENTITY_ALREADY_USED');
+        $message = $code === 'EMAIL_ALREADY_REGISTERED'
+            ? 'This email is already registered.'
+            : ($code === 'PHONE_ALREADY_REGISTERED'
+                ? 'This phone number is already registered.'
+                : 'This NID or Passport is already used by another account.');
+        user_reg_confirm_response(false, $code, $message, [], !empty($claim['conflict']) ? 409 : 500);
+    }
+
+    if (!empty($claim['claimed'])) {
+        $indexClaims[] = $path;
+    }
+}
 
 $okUser = fb_put('USERS/' . $uid, $userRow);
 $okWallet = $okUser ? fb_put('USER_WALLETS/' . $uid, $walletRow) : false;
 $okRole = $okWallet ? fb_put('USER_ROLE_SETTINGS/' . $uid, $roleSettings) : false;
-$phoneIndexes = auth_phone_index_candidates($phone, $phoneCountry);
-$okPhone = $okRole;
 
-foreach ($phoneIndexes as $phoneIndex) {
-    if (!$okPhone || !fb_put('USER_INDEX/PHONE/' . $phoneIndex, $uid)) {
-        $okPhone = false;
-        break;
-    }
-}
-$okEmail = $okPhone ? fb_put('USER_INDEX/EMAIL/' . $emailIndexKey, $uid) : false;
-
-if (!($okUser && $okWallet && $okRole && $okPhone && $okEmail)) {
+if (!($okUser && $okWallet && $okRole)) {
     user_reg_confirm_delete_if_exists('USERS/' . $uid);
     user_reg_confirm_delete_if_exists('USER_WALLETS/' . $uid);
     user_reg_confirm_delete_if_exists('USER_ROLE_SETTINGS/' . $uid);
-    foreach ($phoneIndexes as $phoneIndex) {
-        user_reg_confirm_delete_if_exists('USER_INDEX/PHONE/' . $phoneIndex);
+    foreach (array_reverse($indexClaims) as $path) {
+        @auth_index_release($path, $uid);
     }
-    user_reg_confirm_delete_if_exists('USER_INDEX/EMAIL/' . $emailIndexKey);
 
     user_reg_confirm_response(false, 'SERVER_ERROR', 'Failed to create account', [], 500);
 }

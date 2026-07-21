@@ -166,3 +166,8 @@ function fb_put_if_match(string $path, mixed $data, string $etag): array
 {
     return fb_request('PUT', $path, $data, [], ['If-Match: ' . $etag], true);
 }
+
+function fb_delete_if_match(string $path, string $etag): array
+{
+    return fb_request('DELETE', $path, null, [], ['If-Match: ' . $etag], true);
+}

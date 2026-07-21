@@ -13,6 +13,10 @@ define('APP_KEY', '');
 define('WORKER_KEY', '');
 define('ADMIN_KEY', '');
 
+/* Canonical server origin used by authenticated internal HTTP calls. */
+define('APP_PUBLIC_ORIGIN', 'https://zpayswift.com');
+define('WORKER_CLAIM_LEASE_SECONDS', 180);
+
 /* Firebase Realtime Database */
 define('FIREBASE_DB_URL', 'https://example-default-rtdb.firebaseio.com');
 define('FIREBASE_AUTH', '');

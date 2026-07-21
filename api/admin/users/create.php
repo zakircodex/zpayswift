@@ -111,9 +111,9 @@ if ($existingUidByPhone !== '') {
 $emailKey = '';
 if ($email !== '') {
     $emailKey = email_to_index_key($email);
-    $existingUidByEmail = fb_get('USER_INDEX/EMAIL/' . $emailKey);
+    $existingUidByEmail = auth_find_uid_by_email($email);
 
-    if (is_string($existingUidByEmail) && $existingUidByEmail !== '') {
+    if ($existingUidByEmail !== '') {
         api_response(false, 'EMAIL_EXISTS', 'Email already registered', [], 409);
     }
 }
@@ -164,49 +164,48 @@ $wallet = [
     'updated_at' => $now,
 ];
 
+$phoneIndexes = auth_phone_index_candidates($phone, $phoneCountry);
+$indexClaims = [];
+$indexPaths = [];
+foreach ($phoneIndexes as $phoneIndex) {
+    $indexPaths[] = 'USER_INDEX/PHONE/' . $phoneIndex;
+}
+foreach (auth_email_index_keys($email) as $key) {
+    $indexPaths[] = 'USER_INDEX/EMAIL/' . $key;
+}
+
+foreach (array_values(array_unique($indexPaths)) as $path) {
+    $claim = auth_index_claim($path, $uid, $uid);
+    if (empty($claim['ok'])) {
+        foreach (array_reverse($indexClaims) as $claimedPath) {
+            @auth_index_release($claimedPath, $uid);
+        }
+
+        $isEmail = str_contains($path, '/EMAIL/');
+        api_response(
+            false,
+            $isEmail ? 'EMAIL_EXISTS' : 'PHONE_EXISTS',
+            $isEmail ? 'Email already registered' : 'Phone already registered',
+            [],
+            !empty($claim['conflict']) ? 409 : 500
+        );
+    }
+
+    if (!empty($claim['claimed'])) {
+        $indexClaims[] = $path;
+    }
+}
+
 /*
 |--------------------------------------------------------------------------
 | Save user
 |--------------------------------------------------------------------------
 */
 if (!fb_put('USERS/' . $uid, $user)) {
+    foreach (array_reverse($indexClaims) as $path) {
+        @auth_index_release($path, $uid);
+    }
     api_response(false, 'SERVER_ERROR', 'Failed to save user', [], 500);
-}
-
-/*
-|--------------------------------------------------------------------------
-| Save phone index
-|--------------------------------------------------------------------------
-*/
-$phoneIndexes = auth_phone_index_candidates($phone, $phoneCountry);
-$phoneIndexOk = true;
-$savedPhoneIndexes = [];
-foreach ($phoneIndexes as $phoneIndex) {
-    if (!fb_put('USER_INDEX/PHONE/' . $phoneIndex, $uid)) {
-        $phoneIndexOk = false;
-        break;
-    }
-    $savedPhoneIndexes[] = $phoneIndex;
-}
-if (!$phoneIndexOk) {
-    foreach ($savedPhoneIndexes as $savedPhoneIndex) {
-        fb_delete('USER_INDEX/PHONE/' . $savedPhoneIndex);
-    }
-    fb_delete('USERS/' . $uid);
-    api_response(false, 'SERVER_ERROR', 'Failed to save phone index', [], 500);
-}
-
-/*
-|--------------------------------------------------------------------------
-| Save email index
-|--------------------------------------------------------------------------
-*/
-if ($email !== '' && !fb_put('USER_INDEX/EMAIL/' . $emailKey, $uid)) {
-    foreach ($phoneIndexes as $phoneIndex) {
-        fb_delete('USER_INDEX/PHONE/' . $phoneIndex);
-    }
-    fb_delete('USERS/' . $uid);
-    api_response(false, 'SERVER_ERROR', 'Failed to save email index', [], 500);
 }
 
 /*
@@ -215,12 +214,8 @@ if ($email !== '' && !fb_put('USER_INDEX/EMAIL/' . $emailKey, $uid)) {
 |--------------------------------------------------------------------------
 */
 if (!fb_put('USER_WALLETS/' . $uid, $wallet)) {
-    if ($email !== '') {
-        fb_delete('USER_INDEX/EMAIL/' . $emailKey);
-    }
-
-    foreach ($phoneIndexes as $phoneIndex) {
-        fb_delete('USER_INDEX/PHONE/' . $phoneIndex);
+    foreach (array_reverse($indexClaims) as $path) {
+        @auth_index_release($path, $uid);
     }
     fb_delete('USERS/' . $uid);
 
@@ -238,13 +233,9 @@ $roleSettings = normalize_role_settings([
 ], $role);
 
 if (!fb_put('USER_ROLE_SETTINGS/' . $uid, $roleSettings)) {
-    if ($email !== '') {
-        fb_delete('USER_INDEX/EMAIL/' . $emailKey);
-    }
-
     fb_delete('USER_WALLETS/' . $uid);
-    foreach ($phoneIndexes as $phoneIndex) {
-        fb_delete('USER_INDEX/PHONE/' . $phoneIndex);
+    foreach (array_reverse($indexClaims) as $path) {
+        @auth_index_release($path, $uid);
     }
     fb_delete('USERS/' . $uid);
 

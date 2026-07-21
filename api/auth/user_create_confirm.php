@@ -144,6 +144,9 @@ function ucc_host(): string
 
 function ucc_api_base_url(): string
 {
+    if (function_exists('app_api_url')) {
+        return rtrim(app_api_url(), '/');
+    }
     $script = $_SERVER['SCRIPT_NAME'] ?? '/api/auth/user_create_confirm.php';
     $apiPath = dirname(dirname($script));
     return rtrim(ucc_scheme() . '://' . ucc_host() . $apiPath, '/');

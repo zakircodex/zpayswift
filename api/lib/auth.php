@@ -31,6 +31,132 @@ function auth_status_value($value): string
     return strtoupper(auth_clean_string($value));
 }
 
+function auth_index_owner_uid($row): string
+{
+    if (is_string($row)) {
+        return trim($row);
+    }
+
+    if (is_array($row)) {
+        return trim((string)($row['uid'] ?? $row['value'] ?? ''));
+    }
+
+    return '';
+}
+
+function auth_email_index_keys(string $email): array
+{
+    $email = strtolower(trim($email));
+    if ($email === '') {
+        return [];
+    }
+
+    $safe = str_replace(
+        ['.', '#', '$', '[', ']', '/'],
+        [',', '_', '_', '(', ')', '_'],
+        $email
+    );
+
+    return array_values(array_unique([md5($email), $safe]));
+}
+
+function auth_find_uid_by_email(string $email): string
+{
+    foreach (auth_email_index_keys($email) as $key) {
+        $uid = auth_index_owner_uid(fb_get('USER_INDEX/EMAIL/' . $key));
+        if ($uid !== '') {
+            return $uid;
+        }
+    }
+
+    return '';
+}
+
+function auth_index_claim(string $path, string $uid, $payload = null): array
+{
+    $path = trim($path, '/');
+    $uid = auth_clean_string($uid);
+    if ($path === '' || $uid === '') {
+        return ['ok' => false, 'claimed' => false, 'conflict' => false, 'code' => 'INDEX_CLAIM_INVALID'];
+    }
+
+    $value = $payload;
+    if ($value === null) {
+        $value = $uid;
+    } elseif (is_array($value)) {
+        $value['uid'] = $uid;
+    }
+
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+            return ['ok' => false, 'claimed' => false, 'conflict' => false, 'code' => 'INDEX_READ_FAILED'];
+        }
+
+        $current = $snapshot['value'] ?? null;
+        $owner = auth_index_owner_uid($current);
+        if ($owner !== '') {
+            if (hash_equals($owner, $uid)) {
+                return ['ok' => true, 'claimed' => false, 'conflict' => false, 'owner_uid' => $owner];
+            }
+
+            return ['ok' => false, 'claimed' => false, 'conflict' => true, 'code' => 'INDEX_ALREADY_CLAIMED', 'owner_uid' => $owner];
+        }
+
+        if ($current !== null) {
+            return ['ok' => false, 'claimed' => false, 'conflict' => true, 'code' => 'INDEX_INVALID_EXISTING_VALUE'];
+        }
+
+        $write = fb_put_if_match($path, $value, (string)$snapshot['etag']);
+        if (!empty($write['ok'])) {
+            return ['ok' => true, 'claimed' => true, 'conflict' => false, 'owner_uid' => $uid];
+        }
+
+        if ((int)($write['status'] ?? 0) !== 412) {
+            return ['ok' => false, 'claimed' => false, 'conflict' => false, 'code' => 'INDEX_WRITE_FAILED'];
+        }
+    }
+
+    return ['ok' => false, 'claimed' => false, 'conflict' => true, 'code' => 'INDEX_CLAIM_CONFLICT'];
+}
+
+function auth_index_release(string $path, string $uid): bool
+{
+    $path = trim($path, '/');
+    $uid = auth_clean_string($uid);
+    if ($path === '' || $uid === '') {
+        return false;
+    }
+
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+            return false;
+        }
+
+        $current = $snapshot['value'] ?? null;
+        if ($current === null) {
+            return true;
+        }
+
+        $owner = auth_index_owner_uid($current);
+        if ($owner === '' || !hash_equals($owner, $uid)) {
+            return false;
+        }
+
+        $delete = fb_delete_if_match($path, (string)$snapshot['etag']);
+        if (!empty($delete['ok'])) {
+            return true;
+        }
+
+        if ((int)($delete['status'] ?? 0) !== 412) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
 function auth_otp_max_attempts(): int
 {
     $max = defined('OTP_MAX_ATTEMPTS') ? (int)OTP_MAX_ATTEMPTS : 5;

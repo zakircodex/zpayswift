@@ -7,6 +7,10 @@ require_once dirname(__DIR__) . '/lib/mobile_dashboard.php';
 
 function profile_update_email_index_keys(string $email): array
 {
+    if (function_exists('auth_email_index_keys')) {
+        return auth_email_index_keys($email);
+    }
+
     $email = strtolower(trim($email));
     if ($email === '') {
         return [];
@@ -155,9 +159,24 @@ if ($updates === []) {
 }
 
 if ($emailChanged) {
+    $claimedEmailIndexPaths = [];
     foreach ($newEmailKeys as $emailKey) {
-        if (!fb_put('USER_INDEX/EMAIL/' . $emailKey, $uid)) {
-            api_response(false, 'PROFILE_UPDATE_FAILED', 'Unable to update profile. Please try again.', [], 500);
+        $path = 'USER_INDEX/EMAIL/' . $emailKey;
+        $claim = auth_index_claim($path, $uid, $uid);
+        if (empty($claim['ok'])) {
+            foreach (array_reverse($claimedEmailIndexPaths) as $claimedPath) {
+                @auth_index_release($claimedPath, $uid);
+            }
+            api_response(
+                false,
+                !empty($claim['conflict']) ? 'EMAIL_ALREADY_USED' : 'PROFILE_UPDATE_FAILED',
+                !empty($claim['conflict']) ? 'This email is already in use.' : 'Unable to update profile. Please try again.',
+                [],
+                !empty($claim['conflict']) ? 409 : 500
+            );
+        }
+        if (!empty($claim['claimed'])) {
+            $claimedEmailIndexPaths[] = $path;
         }
     }
 }
@@ -166,8 +185,8 @@ $updates['updated_at'] = $now;
 
 if (!fb_patch('USERS/' . $uid, $updates)) {
     if ($emailChanged) {
-        foreach ($newEmailKeys as $emailKey) {
-            fb_delete('USER_INDEX/EMAIL/' . $emailKey);
+        foreach (array_reverse($claimedEmailIndexPaths ?? []) as $path) {
+            @auth_index_release($path, $uid);
         }
     }
     api_response(false, 'PROFILE_UPDATE_FAILED', 'Unable to update profile. Please try again.', [], 500);
@@ -176,7 +195,7 @@ if (!fb_patch('USERS/' . $uid, $updates)) {
 if ($emailChanged) {
     foreach ($oldEmailKeys as $emailKey) {
         if (!in_array($emailKey, $newEmailKeys, true)) {
-            fb_delete('USER_INDEX/EMAIL/' . $emailKey);
+            @auth_index_release('USER_INDEX/EMAIL/' . $emailKey, $uid);
         }
     }
 }

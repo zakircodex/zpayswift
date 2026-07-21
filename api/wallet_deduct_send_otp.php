@@ -55,6 +55,9 @@ function deduct_otp_send_host(): string
 
 function deduct_otp_send_api_base_url(): string
 {
+    if (function_exists('app_api_url')) {
+        return rtrim(app_api_url(), '/');
+    }
     $script = $_SERVER['SCRIPT_NAME'] ?? '/api/wallet_deduct_send_otp.php';
     $apiPath = dirname($script);
     return rtrim(deduct_otp_send_scheme() . '://' . deduct_otp_send_host() . $apiPath, '/');

@@ -97,10 +97,14 @@ function fb_get_with_etag(string $path): array
 
 function fb_put_if_match(string $path, mixed $data, string $etag): array
 {
-    global $versions, $walletWriteCount;
+    global $versions, $walletWriteCount, $failNextLedgerPut;
     $expected = 'v' . (string)($versions[$path] ?? 0);
     if ($etag !== $expected) {
         return ['ok' => false, 'status' => 412];
+    }
+    if ($failNextLedgerPut && str_starts_with($path, 'WALLET_LEDGER/')) {
+        $failNextLedgerPut = false;
+        return ['ok' => false, 'status' => 500];
     }
     if (str_starts_with($path, 'USER_WALLETS/')) {
         $walletWriteCount[$path] = ($walletWriteCount[$path] ?? 0) + 1;
@@ -170,6 +174,12 @@ $reclaimed = wallet_financial_operation_begin('REC_ACTIVE', 'TOPUP_REFUND', 'REQ
 assert_true(!empty($reclaimed['ok']), 'expired CLAIMED should be reclaimed');
 assert_true((int)($reclaimed['claim']['attempt_count'] ?? 0) === 2, 'reclaim should increment attempt count');
 assert_true(!wallet_financial_operation_mark_applied($active['claim'], ['old_owner_test' => true]), 'old owner should not update after takeover');
+$writesBeforeOldOwnerMutation = wallet_write_count($uid);
+$oldOwnerMutation = wallet_refund_hold($uid, 5.00, 'REC_ACTIVE', 'TOPUP_REFUND', [
+    'financial_operation' => $active['claim'],
+]);
+assert_true(empty($oldOwnerMutation['ok']) && ($oldOwnerMutation['code'] ?? '') === 'FINANCIAL_OPERATION_OWNER_MISMATCH', 'old owner must not mutate wallet after takeover');
+assert_true(wallet_write_count($uid) === $writesBeforeOldOwnerMutation, 'old owner rejection must happen before wallet write');
 assert_true(wallet_financial_operation_mark_applied($reclaimed['claim'], ['new_owner_test' => true]), 'new owner should update after takeover');
 wallet_financial_operation_mark_completed($reclaimed['claim'], ['final_status' => 'FAILED']);
 $completedDupe = wallet_financial_operation_begin('REC_ACTIVE', 'TOPUP_REFUND', 'REQUEST_FINAL', $uid, 5.00, 'BDT');
@@ -234,6 +244,29 @@ wallet_financial_operation_mark_applied($finalRetry['claim'], [
 ]);
 wallet_financial_operation_mark_completed($finalRetry['claim'], ['final_status' => 'SUCCESS']);
 assert_true((string)(fb_get(op_path('REC_FINAL'))['status'] ?? '') === 'COMPLETED', 'finalization retry should complete operation');
+
+put_wallet('U_BIND_OTHER', 50.00, 10.00);
+$bindingClaim = wallet_financial_operation_begin('REC_BINDING', 'TOPUP_REFUND', 'REQUEST_FINAL', $uid, 6.00, 'BDT');
+assert_true(!empty($bindingClaim['ok']), 'binding claim should start');
+$wrongUid = wallet_refund_hold('U_BIND_OTHER', 6.00, 'REC_BINDING', 'TOPUP_REFUND', [
+    'financial_operation' => $bindingClaim['claim'],
+]);
+assert_true(empty($wrongUid['ok']) && ($wrongUid['code'] ?? '') === 'FINANCIAL_OPERATION_BINDING_CONFLICT', 'wrong wallet UID must be rejected');
+$wrongAmount = wallet_refund_hold($uid, 6.50, 'REC_BINDING', 'TOPUP_REFUND', [
+    'financial_operation' => $bindingClaim['claim'],
+]);
+assert_true(empty($wrongAmount['ok']) && ($wrongAmount['code'] ?? '') === 'FINANCIAL_OPERATION_BINDING_CONFLICT', 'wrong wallet amount must be rejected');
+$wrongReference = wallet_refund_hold($uid, 6.00, 'REC_BINDING_OTHER', 'TOPUP_REFUND', [
+    'financial_operation' => $bindingClaim['claim'],
+]);
+assert_true(empty($wrongReference['ok']) && ($wrongReference['code'] ?? '') === 'FINANCIAL_OPERATION_BINDING_CONFLICT', 'wrong request reference must be rejected');
+
+$currencyClaim = wallet_financial_operation_begin('REC_BINDING_CURRENCY', 'TOPUP_REFUND', 'REQUEST_FINAL', $uid, 6.00, 'MYR');
+assert_true(!empty($currencyClaim['ok']), 'currency binding claim should start');
+$wrongCurrency = wallet_refund_hold($uid, 6.00, 'REC_BINDING_CURRENCY', 'TOPUP_REFUND', [
+    'financial_operation' => $currencyClaim['claim'],
+]);
+assert_true(empty($wrongCurrency['ok']) && ($wrongCurrency['code'] ?? '') === 'FINANCIAL_OPERATION_BINDING_CONFLICT', 'wrong wallet currency must be rejected');
 
 $legacyClaimPath = op_path('REC_LEGACY_CLAIM');
 fb_put($legacyClaimPath, [

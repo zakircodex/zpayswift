@@ -54,6 +54,9 @@ function wallet_add_host(): string
 
 function wallet_add_api_base_url(): string
 {
+    if (function_exists('app_api_url')) {
+        return rtrim(app_api_url(), '/');
+    }
     $script = $_SERVER['SCRIPT_NAME'] ?? '/api/wallet_add_balance.php';
     $apiPath = dirname($script);
     return rtrim(wallet_add_scheme() . '://' . wallet_add_host() . $apiPath, '/');
@@ -315,6 +318,14 @@ if (empty($operation['ok']) || empty($operation['claim'])) {
     wallet_add_response(false, (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'), (string)($operation['message'] ?? 'Wallet operation is unavailable'), [], 409);
 }
 $financialClaim = $operation['claim'];
+$recoveredTransferId = trim((string)(
+    $financialClaim['transfer']['transfer_id']
+    ?? $financialClaim['wallet_marker']['ledger_row']['transfer_id']
+    ?? ''
+));
+if ($recoveredTransferId !== '') {
+    $transferId = $recoveredTransferId;
+}
 $ledgerId = wallet_financial_operation_side_ledger_id($operationRef, $transferType, 'target_credited');
 $actorLedgerId = $isSubadminTransfer
     ? wallet_financial_operation_side_ledger_id($operationRef, $transferType, 'source_debited')

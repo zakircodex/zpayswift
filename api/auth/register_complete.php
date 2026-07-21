@@ -290,7 +290,50 @@ $roleSettings['updated_at'] = $now;
 
 $phoneIndexes = auth_phone_index_candidates($phone, $phoneCountry);
 $documentIndexPaths = reg_app_document_index_paths($documentHash, $documentType);
-$emailIndexPath = $email !== '' ? 'USER_INDEX/EMAIL/' . reg_app_email_key($email) : '';
+$emailIndexPaths = [];
+foreach (auth_email_index_keys($email) as $emailIndexKey) {
+    $emailIndexPaths[] = 'USER_INDEX/EMAIL/' . $emailIndexKey;
+}
+
+$indexClaims = [];
+$indexPayloads = [];
+foreach ($phoneIndexes as $phoneIndex) {
+    $indexPayloads['USER_INDEX/PHONE/' . $phoneIndex] = $uid;
+}
+foreach ($emailIndexPaths as $emailIndexPath) {
+    $indexPayloads[$emailIndexPath] = $uid;
+}
+foreach ($documentIndexPaths as $path) {
+    $indexPayloads[$path] = [
+        'uid' => $uid,
+        'document_type' => $documentType,
+        'identity_number_last4' => $documentLast4,
+        'created_at' => $now,
+    ];
+}
+
+foreach ($indexPayloads as $path => $payload) {
+    $claim = auth_index_claim($path, $uid, $payload);
+    if (empty($claim['ok'])) {
+        foreach (array_reverse($indexClaims) as $claimedPath) {
+            @auth_index_release($claimedPath, $uid);
+        }
+
+        $code = str_contains($path, '/EMAIL/')
+            ? 'EMAIL_ALREADY_REGISTERED'
+            : (str_contains($path, '/PHONE/') ? 'PHONE_ALREADY_REGISTERED' : 'DOCUMENT_ALREADY_USED');
+        $message = $code === 'EMAIL_ALREADY_REGISTERED'
+            ? 'This email is already registered. Please login.'
+            : ($code === 'PHONE_ALREADY_REGISTERED'
+                ? 'This phone number is already registered. Please login.'
+                : 'This NID/Passport is already used by another account.');
+        api_response(false, $code, $message, [], !empty($claim['conflict']) ? 409 : 500);
+    }
+
+    if (!empty($claim['claimed'])) {
+        $indexClaims[] = $path;
+    }
+}
 
 $written = [];
 $ok = fb_put('USERS/' . $uid, $userRow);
@@ -304,39 +347,14 @@ if ($ok) {
 }
 if ($ok) {
     $written[] = 'USER_ROLE_SETTINGS/' . $uid;
-    foreach ($phoneIndexes as $phoneIndex) {
-        $path = 'USER_INDEX/PHONE/' . $phoneIndex;
-        if (!fb_put($path, $uid)) {
-            $ok = false;
-            break;
-        }
-        $written[] = $path;
-    }
-}
-if ($ok && $emailIndexPath !== '') {
-    $ok = fb_put($emailIndexPath, $uid);
-    if ($ok) {
-        $written[] = $emailIndexPath;
-    }
-}
-if ($ok) {
-    foreach ($documentIndexPaths as $path) {
-        if (!fb_put($path, [
-            'uid' => $uid,
-            'document_type' => $documentType,
-            'identity_number_last4' => $documentLast4,
-            'created_at' => $now,
-        ])) {
-            $ok = false;
-            break;
-        }
-        $written[] = $path;
-    }
 }
 
 if (!$ok) {
     foreach (array_reverse($written) as $path) {
         @fb_delete($path);
+    }
+    foreach (array_reverse($indexClaims) as $path) {
+        @auth_index_release($path, $uid);
     }
 
     api_response(false, 'SERVER_ERROR', 'Failed to create account.', [], 500);

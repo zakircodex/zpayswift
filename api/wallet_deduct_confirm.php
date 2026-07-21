@@ -54,6 +54,9 @@ function deduct_otp_confirm_host(): string
 
 function deduct_otp_confirm_api_base_url(): string
 {
+    if (function_exists('app_api_url')) {
+        return rtrim(app_api_url(), '/');
+    }
     $script = $_SERVER['SCRIPT_NAME'] ?? '/api/wallet_deduct_confirm.php';
     $apiPath = dirname($script);
     return rtrim(deduct_otp_confirm_scheme() . '://' . deduct_otp_confirm_host() . $apiPath, '/');

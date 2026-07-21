@@ -1558,12 +1558,12 @@ switch ($action) {
 
     case 'wallet_add':
         proxy_require_method('POST');
-        proxy_forward_admin_post('wallet/add_balance.php', proxy_read_json_body());
+        proxy_forward_api_post('wallet_add_balance.php', proxy_read_json_body());
         break;
 
     case 'wallet_deduct':
         proxy_require_method('POST');
-        proxy_forward_admin_post('wallet/deduct_balance.php', proxy_read_json_body());
+        proxy_forward_api_post('wallet_deduct_send_otp.php', proxy_read_json_body());
         break;
 
     case 'wallet_deduct_send_otp':

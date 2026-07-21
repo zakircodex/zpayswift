@@ -46,10 +46,9 @@ function zb_public_owner(array $owner): array
 
 function zb_current_origin(): string
 {
-    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
-    $scheme = $https ? 'https' : 'http';
-    $host = preg_replace('/[^a-zA-Z0-9.:-]/', '', (string)($_SERVER['HTTP_HOST'] ?? 'zpayswift.com'));
-    return $scheme . '://' . $host;
+    return function_exists('app_public_origin')
+        ? app_public_origin()
+        : 'https://zpayswift.com';
 }
 
 function zb_secure_cookie(): bool

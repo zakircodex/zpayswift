@@ -274,6 +274,51 @@ function wallet_cleanup_paths(array $paths): void
     }
 }
 
+function wallet_deterministic_record_matches(array $existing, array $expected, array $identityFields): bool
+{
+    foreach ($identityFields as $field) {
+        if ($field === 'amount') {
+            if (abs(wallet_round_money((float)($existing[$field] ?? 0)) - wallet_round_money((float)($expected[$field] ?? 0))) > 0.001) {
+                return false;
+            }
+            continue;
+        }
+
+        if ((string)($existing[$field] ?? '') !== (string)($expected[$field] ?? '')) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+function wallet_put_deterministic_record(string $path, array $row, array $identityFields): array
+{
+    for ($i = 0; $i < 5; $i++) {
+        $current = fb_get_with_etag($path);
+        if (empty($current['ok']) || empty($current['etag'])) {
+            return ['ok' => false, 'code' => 'RECORD_READ_FAILED'];
+        }
+
+        $existing = $current['value'] ?? null;
+        if ($existing !== null) {
+            if (is_array($existing) && wallet_deterministic_record_matches($existing, $row, $identityFields)) {
+                return ['ok' => true, 'idempotent_replay' => true];
+            }
+            return ['ok' => false, 'code' => 'RECORD_CONFLICT'];
+        }
+
+        $save = fb_put_if_match($path, $row, (string)$current['etag']);
+        if (($save['status'] ?? 0) === 412) {
+            usleep(100000);
+            continue;
+        }
+        return ['ok' => !empty($save['ok']), 'code' => !empty($save['ok']) ? 'SUCCESS' : 'RECORD_WRITE_FAILED'];
+    }
+
+    return ['ok' => false, 'code' => 'RECORD_CONFLICT'];
+}
+
 function wallet_store_transfer_records(array $transfer, array $ledgerRows = []): array
 {
     $now = (int)($transfer['created_at'] ?? wallet_now());
@@ -308,7 +353,6 @@ function wallet_store_transfer_records(array $transfer, array $ledgerRows = []):
         $ledgerId = trim((string)($row['ledger_id'] ?? ''));
 
         if ($uid === '' || $ledgerId === '') {
-            wallet_cleanup_paths($writtenPaths);
             return [
                 'ok' => false,
                 'code' => 'INVALID_LEDGER_DATA',
@@ -323,12 +367,12 @@ function wallet_store_transfer_records(array $transfer, array $ledgerRows = []):
         $row['created_at'] = (int)($row['created_at'] ?? $now);
         $row['updated_at'] = (int)($row['updated_at'] ?? $now);
 
-        $path = 'WALLET_LEDGER/' . $uid . '/' . wallet_month_key($row['created_at']) . '/' . $ledgerId;
-        if (!fb_put($path, $row)) {
-            wallet_cleanup_paths($writtenPaths);
+        $ledger = wallet_create_ledger_full_checked($uid, $row);
+        $path = (string)($ledger['ledger_path'] ?? ('WALLET_LEDGER/' . $uid . '/' . wallet_month_key($row['created_at']) . '/' . $ledgerId));
+        if (empty($ledger['ok'])) {
             return [
                 'ok' => false,
-                'code' => 'LEDGER_WRITE_FAILED',
+                'code' => (string)($ledger['code'] ?? 'LEDGER_WRITE_FAILED'),
                 'message' => 'Failed to save wallet ledger',
             ];
         }
@@ -336,11 +380,15 @@ function wallet_store_transfer_records(array $transfer, array $ledgerRows = []):
     }
 
     $auditPath = 'WALLET_TRANSFERS/' . $month . '/' . $transferId;
-    if (!fb_put($auditPath, $transfer)) {
-        wallet_cleanup_paths($writtenPaths);
+    $auditWrite = wallet_put_deterministic_record(
+        $auditPath,
+        $transfer,
+        ['transfer_id', 'type', 'amount', 'currency', 'sender_uid', 'receiver_uid']
+    );
+    if (empty($auditWrite['ok'])) {
         return [
             'ok' => false,
-            'code' => 'TRANSFER_AUDIT_FAILED',
+            'code' => (string)($auditWrite['code'] ?? 'TRANSFER_AUDIT_FAILED'),
             'message' => 'Failed to save transfer audit',
         ];
     }
@@ -350,11 +398,16 @@ function wallet_store_transfer_records(array $transfer, array $ledgerRows = []):
     $receiverLedgerId = trim((string)($transfer['receiver_ledger_id'] ?? $transfer['ledger_id'] ?? ''));
     if ($receiverUid !== '') {
         $receiverPath = 'USER_WALLET_HISTORY/' . $receiverUid . '/' . $month . '/' . $transferId;
-        if (!fb_put($receiverPath, wallet_transfer_history_row($transfer, 'CREDIT', $receiverLedgerId))) {
-            wallet_cleanup_paths($writtenPaths);
+        $receiverHistory = wallet_transfer_history_row($transfer, 'CREDIT', $receiverLedgerId);
+        $receiverWrite = wallet_put_deterministic_record(
+            $receiverPath,
+            $receiverHistory,
+            ['transfer_id', 'direction', 'amount', 'currency', 'sender_uid', 'receiver_uid']
+        );
+        if (empty($receiverWrite['ok'])) {
             return [
                 'ok' => false,
-                'code' => 'RECEIVER_HISTORY_FAILED',
+                'code' => (string)($receiverWrite['code'] ?? 'RECEIVER_HISTORY_FAILED'),
                 'message' => 'Failed to save receiver wallet history',
             ];
         }
@@ -365,11 +418,16 @@ function wallet_store_transfer_records(array $transfer, array $ledgerRows = []):
     $senderLedgerId = trim((string)($transfer['sender_ledger_id'] ?? ''));
     if (!empty($transfer['sender_wallet_debited']) && $senderUid !== '') {
         $senderPath = 'USER_WALLET_HISTORY/' . $senderUid . '/' . $month . '/' . $transferId;
-        if (!fb_put($senderPath, wallet_transfer_history_row($transfer, 'DEBIT', $senderLedgerId))) {
-            wallet_cleanup_paths($writtenPaths);
+        $senderHistory = wallet_transfer_history_row($transfer, 'DEBIT', $senderLedgerId);
+        $senderWrite = wallet_put_deterministic_record(
+            $senderPath,
+            $senderHistory,
+            ['transfer_id', 'direction', 'amount', 'currency', 'sender_uid', 'receiver_uid']
+        );
+        if (empty($senderWrite['ok'])) {
             return [
                 'ok' => false,
-                'code' => 'SENDER_HISTORY_FAILED',
+                'code' => (string)($senderWrite['code'] ?? 'SENDER_HISTORY_FAILED'),
                 'message' => 'Failed to save sender wallet history',
             ];
         }
@@ -511,6 +569,89 @@ function wallet_financial_operation_with_runtime_fields(array $claim, string $pa
     return $claim;
 }
 
+function wallet_financial_operation_binding_issue(
+    array $operation,
+    string $refId,
+    string $operationType,
+    string $scope,
+    string $uid,
+    float $amount,
+    string $currency
+): array {
+    $expected = [
+        'request_id' => trim($refId),
+        'operation_type' => strtoupper(trim($operationType)),
+        'scope' => strtoupper(trim($scope)),
+        'uid' => trim($uid),
+        'operation_key' => wallet_financial_operation_key($refId, $operationType),
+    ];
+
+    foreach ($expected as $field => $value) {
+        $stored = trim((string)($operation[$field] ?? ''));
+        if ($stored === '') {
+            return ['type' => 'missing', 'field' => $field];
+        }
+        if ($stored !== $value) {
+            return ['type' => 'mismatch', 'field' => $field];
+        }
+    }
+
+    if (!array_key_exists('amount', $operation)) {
+        return ['type' => 'missing', 'field' => 'amount'];
+    }
+    if (abs(wallet_round_money((float)$operation['amount']) - wallet_round_money($amount)) > 0.001) {
+        return ['type' => 'mismatch', 'field' => 'amount'];
+    }
+
+    $storedCurrency = wallet_normalize_currency_code((string)($operation['currency'] ?? ''));
+    if ($storedCurrency === '') {
+        return ['type' => 'missing', 'field' => 'currency'];
+    }
+    if ($storedCurrency !== wallet_normalize_currency_code($currency)) {
+        return ['type' => 'mismatch', 'field' => 'currency'];
+    }
+
+    return [];
+}
+
+function wallet_financial_operation_legacy_applied_recoverable(
+    array $operation,
+    string $refId,
+    string $operationType,
+    string $scope,
+    string $uid,
+    float $amount,
+    string $currency
+): bool {
+    if (strtoupper(trim((string)($operation['status'] ?? ''))) !== 'APPLIED' || empty($operation['wallet_applied'])) {
+        return false;
+    }
+    $ledger = is_array($operation['ledger_row'] ?? null) ? (array)$operation['ledger_row'] : [];
+    if ($ledger === []) {
+        return false;
+    }
+
+    $storedBindings = [
+        trim((string)($operation['request_id'] ?? '')) === trim($refId),
+        strtoupper(trim((string)($operation['operation_type'] ?? ''))) === strtoupper(trim($operationType)),
+        strtoupper(trim((string)($operation['scope'] ?? ''))) === strtoupper(trim($scope)),
+        trim((string)($operation['uid'] ?? '')) === trim($uid),
+        abs(wallet_round_money((float)($operation['amount'] ?? -1)) - wallet_round_money($amount)) <= 0.001,
+        wallet_normalize_currency_code((string)($operation['currency'] ?? '')) === wallet_normalize_currency_code($currency),
+    ];
+    if (in_array(false, $storedBindings, true)) {
+        return false;
+    }
+
+    $ledgerRef = trim((string)($ledger['ref_id'] ?? $ledger['request_id'] ?? $ledger['reference'] ?? ''));
+    $ledgerCurrency = wallet_normalize_currency_code((string)($ledger['wallet_currency'] ?? $ledger['currency'] ?? ''));
+    return $ledgerRef === trim($refId)
+        && abs(wallet_round_money((float)($ledger['amount'] ?? -1)) - wallet_round_money($amount)) <= 0.001
+        && $ledgerCurrency === wallet_normalize_currency_code($currency)
+        && trim((string)($operation['ledger_id'] ?? '')) !== ''
+        && trim((string)($operation['ledger_id'] ?? '')) === trim((string)($ledger['ledger_id'] ?? ''));
+}
+
 function wallet_financial_operation_begin(
     string $refId,
     string $operationType,
@@ -556,7 +697,56 @@ function wallet_financial_operation_begin(
         if ($current !== []) {
             $currentOperation = strtoupper(trim((string)($current['operation_type'] ?? '')));
             $currentStatus = strtoupper(trim((string)($current['status'] ?? 'CLAIMED')));
-            $marker = wallet_financial_operation_marker_from_wallet($uid, (string)($current['operation_key'] ?? $operationKey));
+            $bindingOperationType = $currentOperation !== '' ? $currentOperation : $operationType;
+            $bindingIssue = wallet_financial_operation_binding_issue(
+                $current,
+                $refId,
+                $bindingOperationType,
+                $scope,
+                $uid,
+                $amount,
+                $currency
+            );
+
+            if (($bindingIssue['type'] ?? '') === 'mismatch') {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_BINDING_CONFLICT',
+                    'message' => 'Financial operation identity does not match the original request',
+                    'operation' => $current,
+                    'path' => $path,
+                ];
+            }
+
+            if (($bindingIssue['type'] ?? '') === 'missing' && $currentStatus !== 'COMPLETED') {
+                $legacyAppliedRecoverable = wallet_financial_operation_legacy_applied_recoverable(
+                    $current,
+                    $refId,
+                    $bindingOperationType,
+                    $scope,
+                    $uid,
+                    $amount,
+                    $currency
+                );
+                if (!$legacyAppliedRecoverable) {
+                    wallet_financial_operation_mark_reconciliation_record($path, (string)$res['etag'], $current, [
+                        'last_error_code' => 'FINANCIAL_OPERATION_BINDING_MISSING',
+                        'last_error_at' => $now,
+                        'reconciliation_required' => true,
+                        'binding_missing_field' => (string)($bindingIssue['field'] ?? ''),
+                    ]);
+                    return [
+                        'ok' => false,
+                        'code' => 'FINANCIAL_OPERATION_RECONCILIATION_REQUIRED',
+                        'message' => 'Financial operation identity requires reconciliation',
+                        'operation' => $current,
+                        'path' => $path,
+                    ];
+                }
+            }
+
+            $markerUid = trim((string)($current['uid'] ?? $uid));
+            $marker = wallet_financial_operation_marker_from_wallet($markerUid, (string)($current['operation_key'] ?? $operationKey));
             if (!empty($marker)) {
                 $current['wallet_applied'] = true;
                 $current['wallet_marker'] = $marker;
@@ -721,6 +911,86 @@ function wallet_financial_operation_claim_from_options(array $options): array
     return is_array($claim) ? $claim : [];
 }
 
+function wallet_financial_operation_mutation_binding_error(
+    array $claim,
+    string $uid,
+    float $amount,
+    string $refId,
+    bool $allowRelatedUid = false
+): array {
+    if ($claim === []) {
+        return [];
+    }
+
+    $uid = trim($uid);
+    $refId = trim($refId);
+    $claimRef = trim((string)($claim['request_id'] ?? ''));
+    if ($refId === '' || $claimRef === '' || !hash_equals($claimRef, $refId)) {
+        return [
+            'ok' => false,
+            'code' => 'FINANCIAL_OPERATION_BINDING_CONFLICT',
+            'message' => 'Wallet request reference does not match the financial operation',
+        ];
+    }
+
+    if (abs(wallet_round_money((float)($claim['amount'] ?? -1)) - wallet_round_money($amount)) > 0.001) {
+        return [
+            'ok' => false,
+            'code' => 'FINANCIAL_OPERATION_BINDING_CONFLICT',
+            'message' => 'Wallet amount does not match the financial operation',
+        ];
+    }
+
+    $allowedUids = [trim((string)($claim['uid'] ?? ''))];
+    if ($allowRelatedUid) {
+        $meta = is_array($claim['meta'] ?? null) ? (array)$claim['meta'] : [];
+        foreach ([
+            'actor_uid',
+            'target_uid',
+            'source_uid',
+            'sender_uid',
+            'receiver_uid',
+            'subadmin_uid',
+            'partner_uid',
+        ] as $field) {
+            $allowedUids[] = trim((string)($meta[$field] ?? ''));
+        }
+    }
+    $allowedUids = array_values(array_unique(array_filter(
+        $allowedUids,
+        static fn(string $value): bool => $value !== ''
+    )));
+
+    if ($uid === '' || !in_array($uid, $allowedUids, true)) {
+        return [
+            'ok' => false,
+            'code' => 'FINANCIAL_OPERATION_BINDING_CONFLICT',
+            'message' => 'Wallet owner does not match the financial operation',
+        ];
+    }
+
+    return [];
+}
+
+function wallet_financial_operation_currency_binding_error(array $claim, string $currency): array
+{
+    if ($claim === []) {
+        return [];
+    }
+
+    $claimCurrency = wallet_normalize_currency_code((string)($claim['currency'] ?? ''));
+    $currency = wallet_normalize_currency_code($currency);
+    if ($claimCurrency === '' || $currency === '' || $claimCurrency !== $currency) {
+        return [
+            'ok' => false,
+            'code' => 'FINANCIAL_OPERATION_BINDING_CONFLICT',
+            'message' => 'Wallet currency does not match the financial operation',
+        ];
+    }
+
+    return [];
+}
+
 function wallet_financial_operation_mark(string $status, array $claim, array $patch = [], array $expectedStatuses = []): bool
 {
     $path = trim((string)($claim['_path'] ?? ''));
@@ -863,19 +1133,55 @@ function wallet_create_ledger_full_checked(string $uid, array $row): array
     $row['created_at'] = (int)($row['created_at'] ?? $now);
 
     $path = 'WALLET_LEDGER/' . $uid . '/' . wallet_month_key((int)$row['created_at']) . '/' . $ledgerId;
-    if (!fb_put($path, $row)) {
-        return [
-            'ok' => false,
-            'code' => 'LEDGER_WRITE_FAILED',
-            'message' => 'Wallet ledger could not be saved',
-            'ledger_id' => $ledgerId,
-            'ledger_path' => $path,
-            'ledger_row' => $row,
-        ];
+
+    for ($i = 0; $i < 5; $i++) {
+        $current = fb_get_with_etag($path);
+        if (empty($current['ok']) || empty($current['etag'])) {
+            break;
+        }
+
+        $existing = $current['value'] ?? null;
+        if ($existing !== null) {
+            if (is_array($existing) && wallet_financial_operation_ledger_matches($existing, $row)) {
+                return [
+                    'ok' => true,
+                    'idempotent_replay' => true,
+                    'ledger_id' => $ledgerId,
+                    'ledger_path' => $path,
+                    'ledger_row' => $existing,
+                ];
+            }
+
+            return [
+                'ok' => false,
+                'code' => 'LEDGER_CONFLICT',
+                'message' => 'Existing wallet ledger does not match this operation',
+                'ledger_id' => $ledgerId,
+                'ledger_path' => $path,
+                'ledger_row' => $row,
+            ];
+        }
+
+        $save = fb_put_if_match($path, $row, (string)$current['etag']);
+        if (($save['status'] ?? 0) === 412) {
+            usleep(100000);
+            continue;
+        }
+        if (!empty($save['ok'])) {
+            return [
+                'ok' => true,
+                'ledger_id' => $ledgerId,
+                'ledger_path' => $path,
+                'ledger_row' => $row,
+            ];
+        }
+        break;
     }
 
     return [
-        'ok' => true,
+        'ok' => false,
+        'code' => 'LEDGER_WRITE_FAILED',
+        'message' => 'Wallet ledger could not be saved',
         'ledger_id' => $ledgerId,
         'ledger_path' => $path,
         'ledger_row' => $row,
@@ -1034,6 +1340,11 @@ function wallet_apply_available_delta_with_operation(
         ];
     }
 
+    $bindingError = wallet_financial_operation_mutation_binding_error($claim, $uid, $amount, $refId, true);
+    if ($bindingError !== []) {
+        return $bindingError;
+    }
+
     if (wallet_financial_operation_side_done($claim, $step)) {
         return [
             'ok' => true,
@@ -1065,67 +1376,7 @@ function wallet_apply_available_delta_with_operation(
 
     $marker = wallet_financial_operation_marker_from_wallet($uid, $operationKey);
     if ($marker !== []) {
-        $ledgerRow = is_array($marker['ledger_row'] ?? null) ? $marker['ledger_row'] : [];
-        if ($ledgerRow === []) {
-            wallet_financial_operation_mark_reconciliation_required($claim, 'WALLET_MARKER_LEDGER_MISSING', 'Wallet side marker is missing ledger data', [
-                $step => true,
-                $step . '_ledger_id' => $ledgerId,
-            ]);
-            return [
-                'ok' => false,
-                'code' => 'FINANCIAL_OPERATION_RECONCILIATION_REQUIRED',
-                'message' => 'Wallet operation requires reconciliation',
-            ];
-        }
-
-        $ledgerRow['ledger_id'] = (string)($ledgerRow['ledger_id'] ?? $ledgerId);
-        $createdAt = (int)($ledgerRow['created_at'] ?? wallet_now());
-        $ledgerPath = 'WALLET_LEDGER/' . $uid . '/' . wallet_month_key($createdAt) . '/' . $ledgerRow['ledger_id'];
-        $existing = fb_get($ledgerPath);
-        if (is_array($existing)) {
-            if (!wallet_financial_operation_ledger_matches($existing, $ledgerRow)) {
-                wallet_financial_operation_mark_reconciliation_required($claim, 'LEDGER_CONFLICT', 'Existing ledger row does not match wallet side operation', [
-                    $step => true,
-                    $step . '_ledger_id' => $ledgerRow['ledger_id'],
-                ]);
-                return [
-                    'ok' => false,
-                    'code' => 'FINANCIAL_OPERATION_RECONCILIATION_REQUIRED',
-                    'message' => 'Wallet operation ledger conflict requires reconciliation',
-                ];
-            }
-        } else {
-            $repair = wallet_create_ledger_full_checked($uid, $ledgerRow);
-            if (empty($repair['ok'])) {
-                wallet_financial_operation_mark_failed($claim, 'LEDGER_WRITE_FAILED', 'Wallet side applied but ledger could not be repaired', [
-                    $step => true,
-                    $step . '_ledger_id' => $ledgerRow['ledger_id'],
-                    $step . '_ledger_row' => $ledgerRow,
-                    'wallet_applied' => true,
-                ]);
-                return [
-                    'ok' => false,
-                    'code' => 'LEDGER_WRITE_FAILED',
-                    'message' => 'Wallet side ledger could not be repaired',
-                ];
-            }
-        }
-
-        wallet_financial_operation_mark_applied($claim, [
-            $step => true,
-            $step . '_ledger_written' => true,
-            $step . '_ledger_id' => (string)$ledgerRow['ledger_id'],
-            $step . '_ledger_row' => $ledgerRow,
-            'wallet_applied' => true,
-        ]);
-
-        return [
-            'ok' => true,
-            'code' => 'SUCCESS',
-            'message' => 'Wallet operation side repaired',
-            'ledger_id' => (string)$ledgerRow['ledger_id'],
-            'idempotent_replay' => true,
-        ];
+        return wallet_financial_operation_recover_wallet_marker($uid, $claim, $marker, $step);
     }
 
     for ($i = 0; $i < 5; $i++) {
@@ -1147,8 +1398,20 @@ function wallet_apply_available_delta_with_operation(
         }
 
         $wallet = $res['value'];
+        $resolvedWalletCurrency = wallet_currency_for_uid($uid, $wallet);
+        $currencyError = wallet_financial_operation_currency_binding_error($claim, $resolvedWalletCurrency);
+        if ($currencyError !== []) {
+            return $currencyError;
+        }
+        $snapshotMarker = wallet_financial_operation_marker_from_snapshot($wallet, $operationKey);
+        if ($snapshotMarker !== []) {
+            return wallet_financial_operation_recover_wallet_marker($uid, $claim, $snapshotMarker, $step);
+        }
         $now = wallet_now();
-        $walletCurrency = wallet_normalize_currency_code($extraLedger['currency'] ?? $extraLedger['wallet_currency'] ?? '', wallet_currency_for_uid($uid, $wallet));
+        $walletCurrency = wallet_normalize_currency_code(
+            $extraLedger['currency'] ?? $extraLedger['wallet_currency'] ?? '',
+            $resolvedWalletCurrency
+        );
         $beforeAvailable = wallet_round_money((float)($wallet['available_balance'] ?? 0));
         $beforeHold = wallet_round_money((float)($wallet['hold_balance'] ?? 0));
 
@@ -1225,7 +1488,7 @@ function wallet_apply_available_delta_with_operation(
             ];
         }
 
-        wallet_financial_operation_mark_applied($claim, [
+        if (!wallet_financial_operation_mark_applied($claim, [
             $step => true,
             $step . '_ledger_id' => $ledgerId,
             $step . '_ledger_row' => $ledgerRow,
@@ -1234,7 +1497,13 @@ function wallet_apply_available_delta_with_operation(
             $step . '_before_hold' => $beforeHold,
             $step . '_after_hold' => $beforeHold,
             'wallet_applied' => true,
-        ]);
+        ])) {
+            return [
+                'ok' => false,
+                'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                'message' => 'Financial operation ownership changed after wallet mutation',
+            ];
+        }
 
         $ledger = wallet_create_ledger_full_checked($uid, $ledgerRow);
         if (empty($ledger['ok'])) {
@@ -1252,13 +1521,19 @@ function wallet_apply_available_delta_with_operation(
             ];
         }
 
-        wallet_financial_operation_mark_applied($claim, [
+        if (!wallet_financial_operation_mark_applied($claim, [
             $step => true,
             $step . '_ledger_written' => true,
             $step . '_ledger_id' => (string)($ledger['ledger_id'] ?? $ledgerId),
             $step . '_ledger_row' => $ledgerRow,
             'wallet_applied' => true,
-        ]);
+        ])) {
+            return [
+                'ok' => false,
+                'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                'message' => 'Financial operation ownership changed after ledger write',
+            ];
+        }
 
         return [
             'ok' => true,
@@ -1321,6 +1596,156 @@ function wallet_financial_operation_ledger_matches(array $existing, array $expec
     $expectedCurrency = wallet_normalize_currency_code((string)($expected['currency'] ?? $expected['wallet_currency'] ?? 'BDT'));
 
     return $existingCurrency === $expectedCurrency;
+}
+
+function wallet_financial_operation_marker_from_snapshot(array $wallet, string $operationKey): array
+{
+    $markers = $wallet['financial_operations'] ?? [];
+    if (!is_array($markers)) {
+        return [];
+    }
+
+    $marker = $markers[$operationKey] ?? [];
+    return is_array($marker) ? $marker : [];
+}
+
+function wallet_financial_operation_marker_matches_claim(string $uid, array $claim, array $marker): bool
+{
+    $expectedStrings = [
+        'operation_key' => (string)($claim['operation_key'] ?? ''),
+        'request_id' => (string)($claim['request_id'] ?? ''),
+        'operation_type' => (string)($claim['operation_type'] ?? ''),
+    ];
+
+    foreach ($expectedStrings as $field => $expected) {
+        if ($expected === '' || (string)($marker[$field] ?? '') !== $expected) {
+            return false;
+        }
+    }
+
+    $markerUid = trim((string)($marker['uid'] ?? ''));
+    if ($markerUid !== '' && $markerUid !== trim($uid)) {
+        return false;
+    }
+
+    if (abs(wallet_round_money((float)($marker['amount'] ?? 0)) - wallet_round_money((float)($claim['amount'] ?? 0))) > 0.001) {
+        return false;
+    }
+
+    $markerCurrency = wallet_normalize_currency_code((string)($marker['currency'] ?? ''));
+    $claimCurrency = wallet_normalize_currency_code((string)($claim['currency'] ?? ''));
+    return $markerCurrency !== '' && $claimCurrency !== '' && $markerCurrency === $claimCurrency;
+}
+
+function wallet_financial_operation_recover_wallet_marker(
+    string $uid,
+    array $claim,
+    array $marker,
+    string $step = ''
+): array {
+    $step = preg_replace('/[^a-z0-9_]+/', '_', strtolower(trim($step))) ?? '';
+
+    if (!wallet_financial_operation_marker_matches_claim($uid, $claim, $marker)) {
+        wallet_financial_operation_mark_reconciliation_required(
+            $claim,
+            'WALLET_MARKER_CONFLICT',
+            'Wallet mutation marker does not match the claimed operation',
+            ['wallet_applied' => true]
+        );
+        return [
+            'ok' => false,
+            'code' => 'FINANCIAL_OPERATION_RECONCILIATION_REQUIRED',
+            'message' => 'Wallet operation marker conflict requires reconciliation',
+        ];
+    }
+
+    $ledgerRow = is_array($marker['ledger_row'] ?? null) ? $marker['ledger_row'] : [];
+    if ($ledgerRow === []) {
+        wallet_financial_operation_mark_reconciliation_required(
+            $claim,
+            'WALLET_MARKER_LEDGER_MISSING',
+            'Wallet mutation marker is missing deterministic ledger data',
+            ['wallet_applied' => true]
+        );
+        return [
+            'ok' => false,
+            'code' => 'FINANCIAL_OPERATION_RECONCILIATION_REQUIRED',
+            'message' => 'Wallet operation requires reconciliation',
+        ];
+    }
+
+    $ledger = wallet_create_ledger_full_checked($uid, $ledgerRow);
+    if (empty($ledger['ok'])) {
+        $code = (string)($ledger['code'] ?? 'LEDGER_WRITE_FAILED');
+        if ($code === 'LEDGER_CONFLICT') {
+            wallet_financial_operation_mark_reconciliation_required(
+                $claim,
+                'LEDGER_CONFLICT',
+                'Existing deterministic ledger conflicts with wallet marker',
+                ['wallet_applied' => true, 'ledger_row' => $ledgerRow]
+            );
+            return [
+                'ok' => false,
+                'code' => 'FINANCIAL_OPERATION_RECONCILIATION_REQUIRED',
+                'message' => 'Wallet operation ledger conflict requires reconciliation',
+            ];
+        }
+
+        wallet_financial_operation_mark_failed($claim, 'LEDGER_WRITE_FAILED', 'Wallet marker ledger could not be repaired', [
+            'wallet_applied' => true,
+            'ledger_row' => $ledgerRow,
+        ]);
+        return [
+            'ok' => false,
+            'code' => 'LEDGER_WRITE_FAILED',
+            'message' => 'Wallet operation ledger could not be repaired',
+        ];
+    }
+
+    $patch = [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'ledger_id' => (string)($ledger['ledger_id'] ?? $marker['ledger_id'] ?? ''),
+        'ledger_path' => (string)($ledger['ledger_path'] ?? ''),
+        'ledger_row' => $ledgerRow,
+        'before_available' => wallet_round_money((float)($marker['before_available'] ?? 0)),
+        'after_available' => wallet_round_money((float)($marker['after_available'] ?? 0)),
+        'before_hold' => wallet_round_money((float)($marker['before_hold'] ?? 0)),
+        'after_hold' => wallet_round_money((float)($marker['after_hold'] ?? 0)),
+    ];
+    if ($step !== '') {
+        $patch[$step] = true;
+        $patch[$step . '_ledger_written'] = true;
+        $patch[$step . '_ledger_id'] = $patch['ledger_id'];
+        $patch[$step . '_ledger_row'] = $ledgerRow;
+        $patch[$step . '_before_available'] = $patch['before_available'];
+        $patch[$step . '_after_available'] = $patch['after_available'];
+        $patch[$step . '_before_hold'] = $patch['before_hold'];
+        $patch[$step . '_after_hold'] = $patch['after_hold'];
+    }
+
+    if (!wallet_financial_operation_mark_applied($claim, $patch)) {
+        return [
+            'ok' => false,
+            'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+            'message' => 'Financial operation ownership changed',
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'code' => 'SUCCESS',
+        'message' => 'Wallet operation recovered from deterministic marker',
+        'idempotent_replay' => true,
+        'ledger_id' => $patch['ledger_id'],
+        'available_balance' => $patch['after_available'],
+        'hold_balance' => $patch['after_hold'],
+        'before_available' => $patch['before_available'],
+        'after_available' => $patch['after_available'],
+        'before_hold' => $patch['before_hold'],
+        'after_hold' => $patch['after_hold'],
+        'currency' => wallet_normalize_currency_code((string)($marker['currency'] ?? $claim['currency'] ?? '')),
+    ];
 }
 
 function wallet_financial_operation_repair_applied_ledger(string $uid, array $claim): array
@@ -1443,6 +1868,10 @@ function wallet_credit_available(
     }
 
     $claim = wallet_financial_operation_claim_from_options($options);
+    $bindingError = wallet_financial_operation_mutation_binding_error($claim, $uid, $amount, $refId);
+    if ($bindingError !== []) {
+        return $bindingError;
+    }
     if ($claim !== [] && wallet_financial_operation_claim_wallet_applied($claim)) {
         return wallet_financial_operation_repair_applied_ledger($uid, $claim);
     }
@@ -1467,8 +1896,19 @@ function wallet_credit_available(
         }
 
         $wallet = $res['value'];
+        if ($claim !== []) {
+            $operationKey = (string)($claim['operation_key'] ?? wallet_financial_operation_key($refId, $type));
+            $snapshotMarker = wallet_financial_operation_marker_from_snapshot($wallet, $operationKey);
+            if ($snapshotMarker !== []) {
+                return wallet_financial_operation_recover_wallet_marker($uid, $claim, $snapshotMarker);
+            }
+        }
         $now = wallet_now();
         $walletCurrency = wallet_currency_for_uid($uid, $wallet);
+        $currencyError = wallet_financial_operation_currency_binding_error($claim, $walletCurrency);
+        if ($currencyError !== []) {
+            return $currencyError;
+        }
 
         $beforeAvailable = (float)($wallet['available_balance'] ?? 0);
         $beforeHold = (float)($wallet['hold_balance'] ?? 0);
@@ -1541,14 +1981,20 @@ function wallet_credit_available(
         }
 
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'before_available' => wallet_round_money($beforeAvailable),
                 'after_available' => $afterAvailable,
                 'before_hold' => wallet_round_money($beforeHold),
                 'after_hold' => wallet_round_money($beforeHold),
                 'ledger_row' => $ledgerRow,
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after wallet mutation',
+                ];
+            }
         }
 
         $ledger = $claim !== []
@@ -1575,12 +2021,18 @@ function wallet_credit_available(
 
         $ledgerId = (string)($ledger['ledger_id'] ?? '');
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'ledger_written' => true,
                 'ledger_id' => $ledgerId,
                 'ledger_row' => $ledgerRow,
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after ledger write',
+                ];
+            }
         }
 
         return [
@@ -1621,6 +2073,10 @@ function wallet_debit_available(
     }
 
     $claim = wallet_financial_operation_claim_from_options($options);
+    $bindingError = wallet_financial_operation_mutation_binding_error($claim, $uid, $amount, $refId);
+    if ($bindingError !== []) {
+        return $bindingError;
+    }
     if ($claim !== [] && wallet_financial_operation_claim_wallet_applied($claim)) {
         return wallet_financial_operation_repair_applied_ledger($uid, $claim);
     }
@@ -1645,8 +2101,19 @@ function wallet_debit_available(
         }
 
         $wallet = $res['value'];
+        if ($claim !== []) {
+            $operationKey = (string)($claim['operation_key'] ?? wallet_financial_operation_key($refId, $type));
+            $snapshotMarker = wallet_financial_operation_marker_from_snapshot($wallet, $operationKey);
+            if ($snapshotMarker !== []) {
+                return wallet_financial_operation_recover_wallet_marker($uid, $claim, $snapshotMarker);
+            }
+        }
         $now = wallet_now();
         $walletCurrency = wallet_currency_for_uid($uid, $wallet);
+        $currencyError = wallet_financial_operation_currency_binding_error($claim, $walletCurrency);
+        if ($currencyError !== []) {
+            return $currencyError;
+        }
         $claimCurrency = wallet_normalize_currency_code((string)($claim['currency'] ?? ''));
         if ($claimCurrency !== '') {
             $walletCurrency = $claimCurrency;
@@ -1725,7 +2192,7 @@ function wallet_debit_available(
         }
 
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'ledger_id' => (string)($ledgerRow['ledger_id'] ?? $ledgerId),
                 'ledger_row' => $ledgerRow,
@@ -1733,7 +2200,13 @@ function wallet_debit_available(
                 'after_available' => $afterAvailable,
                 'before_hold' => wallet_round_money($beforeHold),
                 'after_hold' => wallet_round_money($beforeHold),
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after wallet mutation',
+                ];
+            }
 
             $ledger = wallet_create_ledger_full_checked($uid, $ledgerRow);
             if (empty($ledger['ok'])) {
@@ -1751,7 +2224,7 @@ function wallet_debit_available(
             }
 
             $ledgerId = (string)($ledger['ledger_id'] ?? $ledgerRow['ledger_id'] ?? $ledgerId);
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'ledger_written' => true,
                 'ledger_id' => $ledgerId,
@@ -1761,7 +2234,13 @@ function wallet_debit_available(
                 'after_available' => $afterAvailable,
                 'before_hold' => wallet_round_money($beforeHold),
                 'after_hold' => wallet_round_money($beforeHold),
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after ledger write',
+                ];
+            }
         } else {
             $ledgerId = create_wallet_ledger_full($uid, $ledgerRow);
         }
@@ -1796,6 +2275,10 @@ function wallet_hold_amount(string $uid, float $amount, string $refId, string $t
     }
 
     $claim = wallet_financial_operation_claim_from_options($options);
+    $bindingError = wallet_financial_operation_mutation_binding_error($claim, $uid, $amount, $refId);
+    if ($bindingError !== []) {
+        return $bindingError;
+    }
     if ($claim !== [] && wallet_financial_operation_claim_wallet_applied($claim)) {
         return wallet_financial_operation_repair_applied_ledger($uid, $claim);
     }
@@ -1821,10 +2304,22 @@ function wallet_hold_amount(string $uid, float $amount, string $refId, string $t
         }
 
         $wallet = $res['value'];
+        if ($claim !== []) {
+            $operationKey = (string)($claim['operation_key'] ?? wallet_financial_operation_key($refId, $type));
+            $snapshotMarker = wallet_financial_operation_marker_from_snapshot($wallet, $operationKey);
+            if ($snapshotMarker !== []) {
+                return wallet_financial_operation_recover_wallet_marker($uid, $claim, $snapshotMarker);
+            }
+        }
         $now = wallet_now();
+        $resolvedCurrency = wallet_currency_for_uid($uid, $wallet);
+        $currencyError = wallet_financial_operation_currency_binding_error($claim, $resolvedCurrency);
+        if ($currencyError !== []) {
+            return $currencyError;
+        }
         $currency = wallet_normalize_currency_code((string)($claim['currency'] ?? ''));
         if ($currency === '') {
-            $currency = wallet_currency_for_uid($uid, $wallet);
+            $currency = $resolvedCurrency;
         }
 
         $available = (float)($wallet['available_balance'] ?? 0);
@@ -1899,7 +2394,7 @@ function wallet_hold_amount(string $uid, float $amount, string $refId, string $t
         }
 
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'ledger_id' => (string)($ledgerRow['ledger_id'] ?? $ledgerId),
                 'ledger_row' => $ledgerRow,
@@ -1907,7 +2402,13 @@ function wallet_hold_amount(string $uid, float $amount, string $refId, string $t
                 'after_available' => $updated['available_balance'],
                 'before_hold' => wallet_round_money($hold),
                 'after_hold' => $updated['hold_balance'],
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after wallet mutation',
+                ];
+            }
 
             $ledger = wallet_create_ledger_full_checked($uid, $ledgerRow);
             if (empty($ledger['ok'])) {
@@ -1925,7 +2426,7 @@ function wallet_hold_amount(string $uid, float $amount, string $refId, string $t
             }
 
             $ledgerId = (string)($ledger['ledger_id'] ?? $ledgerRow['ledger_id'] ?? $ledgerId);
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'ledger_written' => true,
                 'ledger_id' => $ledgerId,
@@ -1935,7 +2436,13 @@ function wallet_hold_amount(string $uid, float $amount, string $refId, string $t
                 'after_available' => $updated['available_balance'],
                 'before_hold' => wallet_round_money($hold),
                 'after_hold' => $updated['hold_balance'],
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after ledger write',
+                ];
+            }
         } else {
             $ledgerId = create_wallet_ledger_full($uid, $ledgerRow);
         }
@@ -1973,6 +2480,10 @@ function wallet_refund_hold(string $uid, float $amount, string $refId, string $t
     }
 
     $claim = wallet_financial_operation_claim_from_options($options);
+    $bindingError = wallet_financial_operation_mutation_binding_error($claim, $uid, $amount, $refId);
+    if ($bindingError !== []) {
+        return $bindingError;
+    }
     if ($claim !== [] && wallet_financial_operation_claim_wallet_applied($claim)) {
         return wallet_financial_operation_repair_applied_ledger($uid, $claim);
     }
@@ -1989,10 +2500,29 @@ function wallet_refund_hold(string $uid, float $amount, string $refId, string $t
         }
 
         $wallet = $res['value'];
+        if ($claim !== []) {
+            if (!wallet_financial_operation_owner_is_current($claim)) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed',
+                ];
+            }
+            $operationKey = (string)($claim['operation_key'] ?? wallet_financial_operation_key($refId, $type));
+            $snapshotMarker = wallet_financial_operation_marker_from_snapshot($wallet, $operationKey);
+            if ($snapshotMarker !== []) {
+                return wallet_financial_operation_recover_wallet_marker($uid, $claim, $snapshotMarker);
+            }
+        }
         $now = wallet_now();
+        $resolvedCurrency = wallet_currency_for_uid($uid, $wallet);
+        $currencyError = wallet_financial_operation_currency_binding_error($claim, $resolvedCurrency);
+        if ($currencyError !== []) {
+            return $currencyError;
+        }
         $currency = wallet_normalize_currency_code((string)($claim['currency'] ?? ''));
         if ($currency === '') {
-            $currency = wallet_currency_for_uid($uid, $wallet);
+            $currency = $resolvedCurrency;
         }
 
         $available = (float)($wallet['available_balance'] ?? 0);
@@ -2054,14 +2584,20 @@ function wallet_refund_hold(string $uid, float $amount, string $refId, string $t
         }
 
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'before_available' => wallet_round_money($available),
                 'after_available' => $updated['available_balance'],
                 'before_hold' => wallet_round_money($hold),
                 'after_hold' => $updated['hold_balance'],
                 'ledger_row' => $ledgerRow,
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after wallet mutation',
+                ];
+            }
         }
 
         $ledger = $claim !== []
@@ -2085,12 +2621,18 @@ function wallet_refund_hold(string $uid, float $amount, string $refId, string $t
             ];
         }
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'ledger_written' => true,
                 'ledger_id' => (string)($ledger['ledger_id'] ?? ''),
                 'ledger_row' => $ledgerRow,
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after ledger write',
+                ];
+            }
         }
 
         return [
@@ -2121,6 +2663,10 @@ function wallet_settle_hold(string $uid, float $amount, string $refId, string $t
     }
 
     $claim = wallet_financial_operation_claim_from_options($options);
+    $bindingError = wallet_financial_operation_mutation_binding_error($claim, $uid, $amount, $refId);
+    if ($bindingError !== []) {
+        return $bindingError;
+    }
     if ($claim !== [] && wallet_financial_operation_claim_wallet_applied($claim)) {
         return wallet_financial_operation_repair_applied_ledger($uid, $claim);
     }
@@ -2137,10 +2683,29 @@ function wallet_settle_hold(string $uid, float $amount, string $refId, string $t
         }
 
         $wallet = $res['value'];
+        if ($claim !== []) {
+            if (!wallet_financial_operation_owner_is_current($claim)) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed',
+                ];
+            }
+            $operationKey = (string)($claim['operation_key'] ?? wallet_financial_operation_key($refId, $type));
+            $snapshotMarker = wallet_financial_operation_marker_from_snapshot($wallet, $operationKey);
+            if ($snapshotMarker !== []) {
+                return wallet_financial_operation_recover_wallet_marker($uid, $claim, $snapshotMarker);
+            }
+        }
         $now = wallet_now();
+        $resolvedCurrency = wallet_currency_for_uid($uid, $wallet);
+        $currencyError = wallet_financial_operation_currency_binding_error($claim, $resolvedCurrency);
+        if ($currencyError !== []) {
+            return $currencyError;
+        }
         $currency = wallet_normalize_currency_code((string)($claim['currency'] ?? ''));
         if ($currency === '') {
-            $currency = wallet_currency_for_uid($uid, $wallet);
+            $currency = $resolvedCurrency;
         }
 
         $available = (float)($wallet['available_balance'] ?? 0);
@@ -2201,14 +2766,20 @@ function wallet_settle_hold(string $uid, float $amount, string $refId, string $t
         }
 
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'before_available' => wallet_round_money($available),
                 'after_available' => wallet_round_money($available),
                 'before_hold' => wallet_round_money($hold),
                 'after_hold' => $updated['hold_balance'],
                 'ledger_row' => $ledgerRow,
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after wallet mutation',
+                ];
+            }
         }
 
         $ledger = $claim !== []
@@ -2232,12 +2803,18 @@ function wallet_settle_hold(string $uid, float $amount, string $refId, string $t
             ];
         }
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'ledger_written' => true,
                 'ledger_id' => (string)($ledger['ledger_id'] ?? ''),
                 'ledger_row' => $ledgerRow,
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after ledger write',
+                ];
+            }
         }
 
         return [
@@ -2268,6 +2845,10 @@ function wallet_settle_hold_mfs(string $uid, float $amount, string $refId, strin
     }
 
     $claim = wallet_financial_operation_claim_from_options($options);
+    $bindingError = wallet_financial_operation_mutation_binding_error($claim, $uid, $amount, $refId);
+    if ($bindingError !== []) {
+        return $bindingError;
+    }
     if ($claim !== [] && wallet_financial_operation_claim_wallet_applied($claim)) {
         return wallet_financial_operation_repair_applied_ledger($uid, $claim);
     }
@@ -2292,10 +2873,22 @@ function wallet_settle_hold_mfs(string $uid, float $amount, string $refId, strin
         }
 
         $wallet = $res['value'];
+        if ($claim !== []) {
+            $operationKey = (string)($claim['operation_key'] ?? wallet_financial_operation_key($refId, $type));
+            $snapshotMarker = wallet_financial_operation_marker_from_snapshot($wallet, $operationKey);
+            if ($snapshotMarker !== []) {
+                return wallet_financial_operation_recover_wallet_marker($uid, $claim, $snapshotMarker);
+            }
+        }
         $now = wallet_now();
+        $resolvedCurrency = wallet_currency_for_uid($uid, $wallet);
+        $currencyError = wallet_financial_operation_currency_binding_error($claim, $resolvedCurrency);
+        if ($currencyError !== []) {
+            return $currencyError;
+        }
         $currency = wallet_normalize_currency_code((string)($claim['currency'] ?? ''));
         if ($currency === '') {
-            $currency = wallet_currency_for_uid($uid, $wallet);
+            $currency = $resolvedCurrency;
         }
 
         $available = (float)($wallet['available_balance'] ?? 0);
@@ -2356,14 +2949,20 @@ function wallet_settle_hold_mfs(string $uid, float $amount, string $refId, strin
         }
 
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'before_available' => wallet_round_money($available),
                 'after_available' => wallet_round_money($available),
                 'before_hold' => wallet_round_money($hold),
                 'after_hold' => $updated['hold_balance'],
                 'ledger_row' => $ledgerRow,
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after wallet mutation',
+                ];
+            }
         }
 
         $ledger = $claim !== []
@@ -2387,12 +2986,18 @@ function wallet_settle_hold_mfs(string $uid, float $amount, string $refId, strin
             ];
         }
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'ledger_written' => true,
                 'ledger_id' => (string)($ledger['ledger_id'] ?? ''),
                 'ledger_row' => $ledgerRow,
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after ledger write',
+                ];
+            }
         }
 
         return [
@@ -2423,6 +3028,10 @@ function wallet_settle_hold_bundle(string $uid, float $amount, string $refId, st
     }
 
     $claim = wallet_financial_operation_claim_from_options($options);
+    $bindingError = wallet_financial_operation_mutation_binding_error($claim, $uid, $amount, $refId);
+    if ($bindingError !== []) {
+        return $bindingError;
+    }
     if ($claim !== [] && wallet_financial_operation_claim_wallet_applied($claim)) {
         return wallet_financial_operation_repair_applied_ledger($uid, $claim);
     }
@@ -2439,8 +3048,26 @@ function wallet_settle_hold_bundle(string $uid, float $amount, string $refId, st
         }
 
         $wallet = $res['value'];
+        if ($claim !== []) {
+            if (!wallet_financial_operation_owner_is_current($claim)) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed',
+                ];
+            }
+            $operationKey = (string)($claim['operation_key'] ?? wallet_financial_operation_key($refId, $type));
+            $snapshotMarker = wallet_financial_operation_marker_from_snapshot($wallet, $operationKey);
+            if ($snapshotMarker !== []) {
+                return wallet_financial_operation_recover_wallet_marker($uid, $claim, $snapshotMarker);
+            }
+        }
         $now = wallet_now();
         $currency = wallet_currency_for_uid($uid, $wallet);
+        $currencyError = wallet_financial_operation_currency_binding_error($claim, $currency);
+        if ($currencyError !== []) {
+            return $currencyError;
+        }
 
         $available = (float)($wallet['available_balance'] ?? 0);
         $hold = (float)($wallet['hold_balance'] ?? 0);
@@ -2500,14 +3127,20 @@ function wallet_settle_hold_bundle(string $uid, float $amount, string $refId, st
         }
 
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'before_available' => wallet_round_money($available),
                 'after_available' => wallet_round_money($available),
                 'before_hold' => wallet_round_money($hold),
                 'after_hold' => $updated['hold_balance'],
                 'ledger_row' => $ledgerRow,
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after wallet mutation',
+                ];
+            }
         }
 
         $ledger = $claim !== []
@@ -2531,12 +3164,18 @@ function wallet_settle_hold_bundle(string $uid, float $amount, string $refId, st
             ];
         }
         if ($claim !== []) {
-            wallet_financial_operation_mark_applied($claim, [
+            if (!wallet_financial_operation_mark_applied($claim, [
                 'wallet_applied' => true,
                 'ledger_written' => true,
                 'ledger_id' => (string)($ledger['ledger_id'] ?? ''),
                 'ledger_row' => $ledgerRow,
-            ]);
+            ])) {
+                return [
+                    'ok' => false,
+                    'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+                    'message' => 'Financial operation ownership changed after ledger write',
+                ];
+            }
         }
 
         return [

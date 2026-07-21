@@ -91,10 +91,14 @@ function fb_get_with_etag(string $path): array
 
 function fb_put_if_match(string $path, mixed $data, string $etag): array
 {
-    global $versions;
+    global $versions, $failNextLedgerPut;
     $expected = 'v' . (string)($versions[$path] ?? 0);
     if ($etag !== $expected) {
         return ['ok' => false, 'status' => 412];
+    }
+    if ($failNextLedgerPut && str_starts_with($path, 'WALLET_LEDGER/')) {
+        $failNextLedgerPut = false;
+        return ['ok' => false, 'status' => 500];
     }
     test_store_set($path, $data);
     return ['ok' => true, 'status' => 200];

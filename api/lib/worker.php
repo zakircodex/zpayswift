@@ -166,11 +166,215 @@ function worker_sync_api_request_status(string $uid, string $requestId, string $
     ]);
 }
 
+function worker_claim_lease_seconds(): int
+{
+    $seconds = defined('WORKER_CLAIM_LEASE_SECONDS') ? (int)WORKER_CLAIM_LEASE_SECONDS : 180;
+    return max(60, min(900, $seconds));
+}
+
+function worker_request_is_z_builder(array $request): bool
+{
+    return !empty($request['test_mode'])
+        || trim((string)($request['z_builder_owner_id'] ?? $request['tenant_owner_id'] ?? '')) !== ''
+        || strtoupper(trim((string)($request['request_source'] ?? $request['source'] ?? ''))) === 'Z_BUILDER_TEST';
+}
+
+function worker_claim_pending_request(
+    string $requestId,
+    string $deviceId,
+    string $slot,
+    string $scope = 'MAIN',
+    string $ownerId = ''
+): ?array {
+    $requestId = trim($requestId);
+    $deviceId = trim($deviceId);
+    $scope = strtoupper(trim($scope));
+    $ownerId = trim($ownerId);
+    if ($requestId === '' || $deviceId === '' || $slot === '') {
+        return null;
+    }
+
+    $path = 'TOPUP_REQUESTS/PENDING/' . $requestId;
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null) || !is_array($snapshot['value'] ?? null)) {
+            return null;
+        }
+
+        $current = (array)$snapshot['value'];
+        $isBuilder = worker_request_is_z_builder($current);
+        if (($scope === 'Z_BUILDER') !== $isBuilder) {
+            return null;
+        }
+        if ($scope === 'Z_BUILDER') {
+            $requestOwner = trim((string)($current['z_builder_owner_id'] ?? $current['tenant_owner_id'] ?? ''));
+            if ($ownerId === '' || $requestOwner !== $ownerId) {
+                return null;
+            }
+        }
+
+        if (is_array(fb_get('TOPUP_REQUESTS/PROCESSING/' . $requestId))) {
+            return null;
+        }
+        $existingClaimed = fb_get('TOPUP_REQUESTS/CLAIMED/' . $requestId);
+        if (is_array($existingClaimed)) {
+            return null;
+        }
+
+        $now = now_ts();
+        $status = strtoupper(trim((string)($current['status'] ?? 'PENDING')));
+        $leaseExpiresAt = (int)($current['worker_claim_lease_expires_at'] ?? 0);
+        if (in_array($status, ['CLAIMING', 'CLAIMED'], true) && $leaseExpiresAt > $now) {
+            return null;
+        }
+        if ($status !== 'PENDING' && !in_array($status, ['CLAIMING', 'CLAIMED'], true)) {
+            return null;
+        }
+
+        $ownerTokenHash = hash('sha256', random_bytes(32));
+        $claimed = $current;
+        $claimed['status'] = 'CLAIMED';
+        $claimed['assigned_device_id'] = $deviceId;
+        $claimed['assigned_slot'] = $slot;
+        $claimed['worker_claim_scope'] = $scope;
+        $claimed['worker_claim_owner_hash'] = $ownerTokenHash;
+        $claimed['worker_claim_lease_expires_at'] = $now + worker_claim_lease_seconds();
+        $claimed['worker_claim_attempt_count'] = max(0, (int)($current['worker_claim_attempt_count'] ?? 0)) + 1;
+        $claimed['claimed_at'] = $now;
+        $claimed['updated_at'] = $now;
+
+        $claimWrite = fb_put_if_match($path, $claimed, (string)$snapshot['etag']);
+        if ((int)($claimWrite['status'] ?? 0) === 412) {
+            continue;
+        }
+        if (empty($claimWrite['ok'])) {
+            return null;
+        }
+
+        $claimedPath = 'TOPUP_REQUESTS/CLAIMED/' . $requestId;
+        $claimedSnapshot = fb_get_with_etag($claimedPath);
+        if (empty($claimedSnapshot['ok']) || !is_string($claimedSnapshot['etag'] ?? null)) {
+            return null;
+        }
+        $claimedValue = $claimedSnapshot['value'] ?? null;
+        if ($claimedValue !== null) {
+            return null;
+        }
+        $copy = fb_put_if_match($claimedPath, $claimed, (string)$claimedSnapshot['etag']);
+        if (empty($copy['ok'])) {
+            return null;
+        }
+
+        $pendingSnapshot = fb_get_with_etag($path);
+        $pendingValue = is_array($pendingSnapshot['value'] ?? null) ? (array)$pendingSnapshot['value'] : [];
+        if (!empty($pendingSnapshot['ok'])
+            && is_string($pendingSnapshot['etag'] ?? null)
+            && hash_equals($ownerTokenHash, (string)($pendingValue['worker_claim_owner_hash'] ?? ''))) {
+            @fb_delete_if_match($path, (string)$pendingSnapshot['etag']);
+        }
+
+        return $claimed;
+    }
+
+    return null;
+}
+
+function worker_reclaim_stale_request(string $deviceId, array $device, string $scope = 'MAIN', string $ownerId = ''): ?array
+{
+    $scope = strtoupper(trim($scope));
+    $claimedRows = fb_get('TOPUP_REQUESTS/CLAIMED');
+    if (!is_array($claimedRows)) {
+        return null;
+    }
+
+    foreach ($claimedRows as $requestId => $request) {
+        if (!is_array($request) || is_array(fb_get('TOPUP_REQUESTS/PROCESSING/' . $requestId))) {
+            continue;
+        }
+        $isBuilder = worker_request_is_z_builder($request);
+        if (($scope === 'Z_BUILDER') !== $isBuilder) {
+            continue;
+        }
+        if ($scope === 'Z_BUILDER') {
+            $requestOwner = trim((string)($request['z_builder_owner_id'] ?? $request['tenant_owner_id'] ?? ''));
+            if ($ownerId === '' || $requestOwner !== $ownerId) {
+                continue;
+            }
+        }
+        if ((int)($request['worker_claim_lease_expires_at'] ?? 0) > now_ts()) {
+            continue;
+        }
+
+        $operator = normalize_operator($request['operator'] ?? '');
+        $slot = $operator !== '' ? worker_find_matching_slot($device, $operator) : null;
+        if ($slot === null) {
+            continue;
+        }
+
+        $path = 'TOPUP_REQUESTS/CLAIMED/' . $requestId;
+        $snapshot = fb_get_with_etag($path);
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null) || !is_array($snapshot['value'] ?? null)) {
+            continue;
+        }
+        $current = (array)$snapshot['value'];
+        if ((int)($current['worker_claim_lease_expires_at'] ?? 0) > now_ts()) {
+            continue;
+        }
+
+        $now = now_ts();
+        $current['assigned_device_id'] = $deviceId;
+        $current['assigned_slot'] = $slot;
+        $current['worker_claim_scope'] = $scope;
+        $current['worker_claim_owner_hash'] = hash('sha256', random_bytes(32));
+        $current['worker_claim_lease_expires_at'] = $now + worker_claim_lease_seconds();
+        $current['worker_claim_attempt_count'] = max(0, (int)($current['worker_claim_attempt_count'] ?? 0)) + 1;
+        $current['request_id'] = (string)($current['request_id'] ?? $requestId);
+        $current['claimed_at'] = $now;
+        $current['updated_at'] = $now;
+
+        $takeover = fb_put_if_match($path, $current, (string)$snapshot['etag']);
+        if (!empty($takeover['ok'])) {
+            return $current;
+        }
+    }
+
+    return null;
+}
+
+function worker_claim_payload(array $claimed): ?array
+{
+    $operator = normalize_operator($claimed['operator'] ?? '');
+    $runtime = $operator !== '' ? get_operator_runtime($operator) : null;
+    $private = $operator !== '' ? get_operator_private_config($operator) : null;
+    if (!is_array($runtime) || !is_array($private)) {
+        return null;
+    }
+
+    return [
+        'request_id' => (string)($claimed['request_id'] ?? ''),
+        'uid' => (string)($claimed['uid'] ?? ''),
+        'topup_number' => (string)($claimed['topup_number'] ?? ''),
+        'operator' => $operator,
+        'amount' => (float)($claimed['amount'] ?? 0),
+        'assigned_slot' => (string)($claimed['assigned_slot'] ?? ''),
+        'assigned_device_id' => (string)($claimed['assigned_device_id'] ?? ''),
+        'dial_template' => (string)($runtime['dial_template'] ?? ''),
+        'retailer_secret_pin' => (string)($private['retailer_secret_pin'] ?? ''),
+        'dial_preview_masked' => (string)($runtime['masked_template'] ?? ''),
+    ];
+}
+
 function worker_claim_request(string $deviceId): ?array
 {
     $device = worker_get_device($deviceId);
     if (!$device || !worker_is_available($device)) {
         return null;
+    }
+
+    $stale = worker_reclaim_stale_request($deviceId, $device, 'MAIN');
+    if (is_array($stale)) {
+        $stale['request_id'] = (string)($stale['request_id'] ?? '');
+        return worker_claim_payload($stale);
     }
 
     $pending = fb_get('TOPUP_REQUESTS/PENDING');
@@ -180,6 +384,10 @@ function worker_claim_request(string $deviceId): ?array
 
     foreach ($pending as $requestId => $request) {
         if (!is_array($request)) {
+            continue;
+        }
+
+        if (worker_request_is_z_builder($request)) {
             continue;
         }
 
@@ -200,26 +408,8 @@ function worker_claim_request(string $deviceId): ?array
             continue;
         }
 
-        $current = fb_get('TOPUP_REQUESTS/PENDING/' . $requestId);
-        if (!is_array($current)) {
-            continue;
-        }
-
-        $claimed = $current;
-        $claimed['status'] = 'CLAIMED';
-        $claimed['assigned_device_id'] = $deviceId;
-        $claimed['assigned_slot'] = $slot;
-        $claimed['claimed_at'] = now_ts();
-        $claimed['updated_at'] = now_ts();
-
-        $ok1 = fb_put('TOPUP_REQUESTS/CLAIMED/' . $requestId, $claimed);
-        if (!$ok1) {
-            continue;
-        }
-
-        $ok2 = fb_delete('TOPUP_REQUESTS/PENDING/' . $requestId);
-        if (!$ok2) {
-            fb_delete('TOPUP_REQUESTS/CLAIMED/' . $requestId);
+        $claimed = worker_claim_pending_request((string)$requestId, $deviceId, $slot, 'MAIN');
+        if (!is_array($claimed)) {
             continue;
         }
 
@@ -228,7 +418,7 @@ function worker_claim_request(string $deviceId): ?array
             'TOPUP',
             (string)$requestId,
             (string)($claimed['uid'] ?? ''),
-            (string)($current['status'] ?? 'PENDING'),
+            (string)($request['status'] ?? 'PENDING'),
             'CLAIMED',
             $claimed,
             'WORKER_CLAIM'
@@ -240,25 +430,8 @@ function worker_claim_request(string $deviceId): ?array
             'operator' => $operator,
         ]);
 
-        $runtime = get_operator_runtime($operator);
-        $private = get_operator_private_config($operator);
-
-        if (!is_array($runtime) || !is_array($private)) {
-            return null;
-        }
-
-        return [
-            'request_id' => (string)$requestId,
-            'uid' => (string)($claimed['uid'] ?? ''),
-            'topup_number' => (string)($claimed['topup_number'] ?? ''),
-            'operator' => $operator,
-            'amount' => (float)($claimed['amount'] ?? 0),
-            'assigned_slot' => $slot,
-            'assigned_device_id' => $deviceId,
-            'dial_template' => (string)($runtime['dial_template'] ?? ''),
-            'retailer_secret_pin' => (string)($private['retailer_secret_pin'] ?? ''),
-            'dial_preview_masked' => (string)($runtime['masked_template'] ?? ''),
-        ];
+        $claimed['request_id'] = (string)$requestId;
+        return worker_claim_payload($claimed);
     }
 
     return null;
@@ -266,8 +439,20 @@ function worker_claim_request(string $deviceId): ?array
 
 function worker_mark_processing(string $requestId, string $deviceId, string $slot, string $dialPreview): bool
 {
-    $claimed = fb_get('TOPUP_REQUESTS/CLAIMED/' . $requestId);
-    if (!is_array($claimed)) {
+    $processingPath = 'TOPUP_REQUESTS/PROCESSING/' . $requestId;
+    $existingProcessing = fb_get($processingPath);
+    if (is_array($existingProcessing)) {
+        return hash_equals((string)($existingProcessing['assigned_device_id'] ?? ''), $deviceId);
+    }
+
+    $claimedPath = 'TOPUP_REQUESTS/CLAIMED/' . $requestId;
+    $snapshot = fb_get_with_etag($claimedPath);
+    $claimed = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+    if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null) || $claimed === []) {
+        return false;
+    }
+
+    if (!hash_equals((string)($claimed['assigned_device_id'] ?? ''), $deviceId)) {
         return false;
     }
 
@@ -279,12 +464,29 @@ function worker_mark_processing(string $requestId, string $deviceId, string $slo
     $processing['started_at'] = now_ts();
     $processing['updated_at'] = now_ts();
 
-    if (!fb_put('TOPUP_REQUESTS/PROCESSING/' . $requestId, $processing)) {
+    $processingSnapshot = fb_get_with_etag($processingPath);
+    if (empty($processingSnapshot['ok']) || !is_string($processingSnapshot['etag'] ?? null)) {
+        return false;
+    }
+    if (($processingSnapshot['value'] ?? null) !== null) {
+        $row = is_array($processingSnapshot['value']) ? (array)$processingSnapshot['value'] : [];
+        return hash_equals((string)($row['assigned_device_id'] ?? ''), $deviceId);
+    }
+    $processingWrite = fb_put_if_match($processingPath, $processing, (string)$processingSnapshot['etag']);
+    if (empty($processingWrite['ok'])) {
         return false;
     }
 
-    if (!fb_delete('TOPUP_REQUESTS/CLAIMED/' . $requestId)) {
-        return false;
+    $latestClaim = fb_get_with_etag($claimedPath);
+    $latestValue = is_array($latestClaim['value'] ?? null) ? (array)$latestClaim['value'] : [];
+    if (!empty($latestClaim['ok'])
+        && is_string($latestClaim['etag'] ?? null)
+        && hash_equals((string)($latestValue['assigned_device_id'] ?? ''), $deviceId)
+        && hash_equals(
+            (string)($latestValue['worker_claim_owner_hash'] ?? ''),
+            (string)($claimed['worker_claim_owner_hash'] ?? '')
+        )) {
+        @fb_delete_if_match($claimedPath, (string)$latestClaim['etag']);
     }
 
     update_request_status($requestId, 'DIALING', 'Dialing in progress');

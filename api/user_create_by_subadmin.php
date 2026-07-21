@@ -56,6 +56,9 @@ function subadmin_create_user_host(): string
 
 function subadmin_create_user_api_base_url(): string
 {
+    if (function_exists('app_api_url')) {
+        return rtrim(app_api_url(), '/');
+    }
     $script = $_SERVER['SCRIPT_NAME'] ?? '/api/user_create_by_subadmin.php';
     $apiPath = dirname($script);
     return rtrim(subadmin_create_user_scheme() . '://' . subadmin_create_user_host() . $apiPath, '/');
@@ -224,6 +227,10 @@ function subadmin_create_user_find_uid_by_email(string $email): string
         return '';
     }
 
+    if (function_exists('auth_find_uid_by_email')) {
+        return auth_find_uid_by_email($email);
+    }
+
     $key = subadmin_create_user_email_index_key($email);
     $row = fb_get('USER_INDEX/EMAIL/' . $key);
 
@@ -359,29 +366,49 @@ $walletRow = [
     'updated_at' => $now,
 ];
 
-$emailIndexKey = subadmin_create_user_email_index_key($email);
+$phoneIndexKeys = auth_phone_index_candidates($phone, $phoneCountry);
+$indexClaims = [];
+$indexPaths = [];
+foreach ($phoneIndexKeys as $phoneIndexKey) {
+    $indexPaths[] = 'USER_INDEX/PHONE/' . $phoneIndexKey;
+}
+foreach (auth_email_index_keys($email) as $emailIndexKey) {
+    $indexPaths[] = 'USER_INDEX/EMAIL/' . $emailIndexKey;
+}
+
+foreach (array_values(array_unique($indexPaths)) as $path) {
+    $claim = auth_index_claim($path, $uid, $uid);
+    if (empty($claim['ok'])) {
+        foreach (array_reverse($indexClaims) as $claimedPath) {
+            @auth_index_release($claimedPath, $uid);
+        }
+
+        $emailConflict = str_contains($path, '/EMAIL/');
+        subadmin_create_user_response(
+            false,
+            $emailConflict ? 'DUPLICATE_EMAIL' : 'DUPLICATE_PHONE',
+            $emailConflict ? 'Email already registered' : 'Phone number already registered',
+            [],
+            !empty($claim['conflict']) ? 409 : 500
+        );
+    }
+
+    if (!empty($claim['claimed'])) {
+        $indexClaims[] = $path;
+    }
+}
 
 $okUser = fb_put('USERS/' . $uid, $userRow);
 $okWallet = $okUser ? fb_put('USER_WALLETS/' . $uid, $walletRow) : false;
 $okRole = $okWallet ? fb_put('USER_ROLE_SETTINGS/' . $uid, $roleSettings) : false;
-$phoneIndexKeys = auth_phone_index_candidates($phone, $phoneCountry);
-$okPhone = $okRole;
-foreach ($phoneIndexKeys as $phoneIndexKey) {
-    if (!$okPhone || !fb_put('USER_INDEX/PHONE/' . $phoneIndexKey, $uid)) {
-        $okPhone = false;
-        break;
-    }
-}
-$okEmail = $okPhone ? fb_put('USER_INDEX/EMAIL/' . $emailIndexKey, $uid) : false;
 
-if (!($okUser && $okWallet && $okRole && $okPhone && $okEmail)) {
+if (!($okUser && $okWallet && $okRole)) {
     fb_delete('USERS/' . $uid);
     fb_delete('USER_WALLETS/' . $uid);
     fb_delete('USER_ROLE_SETTINGS/' . $uid);
-    foreach ($phoneIndexKeys as $phoneIndexKey) {
-        fb_delete('USER_INDEX/PHONE/' . $phoneIndexKey);
+    foreach (array_reverse($indexClaims) as $path) {
+        @auth_index_release($path, $uid);
     }
-    fb_delete('USER_INDEX/EMAIL/' . $emailIndexKey);
 
     subadmin_create_user_response(false, 'SERVER_ERROR', 'Failed to create account', [], 500);
 }

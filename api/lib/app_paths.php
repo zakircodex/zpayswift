@@ -75,7 +75,50 @@ function app_scheme(): string
 
 function app_host(): string
 {
-    return trim((string)($_SERVER['HTTP_HOST'] ?? 'localhost')) ?: 'localhost';
+    $origin = app_public_origin();
+    $host = parse_url($origin, PHP_URL_HOST);
+    $port = parse_url($origin, PHP_URL_PORT);
+
+    if (!is_string($host) || $host === '') {
+        return 'zpayswift.com';
+    }
+
+    return $port ? $host . ':' . $port : $host;
+}
+
+function app_public_origin(): string
+{
+    $configured = defined('APP_PUBLIC_ORIGIN')
+        ? trim((string)constant('APP_PUBLIC_ORIGIN'))
+        : trim((string)(getenv('APP_PUBLIC_ORIGIN') ?: ''));
+
+    if ($configured !== '') {
+        $parts = parse_url($configured);
+        $scheme = strtolower((string)($parts['scheme'] ?? ''));
+        $host = (string)($parts['host'] ?? '');
+        $configuredPath = (string)($parts['path'] ?? '');
+        if (
+            in_array($scheme, ['http', 'https'], true)
+            && $host !== ''
+            && empty($parts['user'])
+            && empty($parts['pass'])
+            && empty($parts['query'])
+            && empty($parts['fragment'])
+            && ($configuredPath === '' || $configuredPath === '/')
+        ) {
+            $port = isset($parts['port']) ? ':' . (int)$parts['port'] : '';
+            return $scheme . '://' . $host . $port;
+        }
+    }
+
+    $requestHost = strtolower(trim((string)($_SERVER['HTTP_HOST'] ?? '')));
+    $requestHostName = parse_url('http://' . $requestHost, PHP_URL_HOST);
+    $requestHostName = is_string($requestHostName) ? strtolower($requestHostName) : '';
+    if (in_array($requestHostName, ['localhost', '127.0.0.1', '::1'], true)) {
+        return app_scheme() . '://' . ($requestHost !== '' ? $requestHost : 'localhost');
+    }
+
+    return 'https://zpayswift.com';
 }
 
 function app_url(string $path = ''): string
@@ -83,14 +126,14 @@ function app_url(string $path = ''): string
     $path = trim($path);
 
     if ($path === '') {
-        return rtrim(app_scheme() . '://' . app_host() . app_base_path(), '/');
+        return rtrim(app_public_origin() . app_base_path(), '/');
     }
 
     if (preg_match('#^https?://#i', $path)) {
         return $path;
     }
 
-    return app_scheme() . '://' . app_host() . app_base_path() . '/' . ltrim($path, '/');
+    return app_public_origin() . app_base_path() . '/' . ltrim($path, '/');
 }
 
 function app_api_url(string $path = ''): string
@@ -98,14 +141,14 @@ function app_api_url(string $path = ''): string
     $path = trim($path);
 
     if ($path === '') {
-        return app_scheme() . '://' . app_host() . app_api_base_path();
+        return app_public_origin() . app_api_base_path();
     }
 
     if (preg_match('#^https?://#i', $path)) {
         return $path;
     }
 
-    return app_scheme() . '://' . app_host() . app_api_base_path() . '/' . ltrim($path, '/');
+    return app_public_origin() . app_api_base_path() . '/' . ltrim($path, '/');
 }
 
 function app_cookie_path(string $subPath = ''): string

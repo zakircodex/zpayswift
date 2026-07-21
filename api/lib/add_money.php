@@ -126,6 +126,117 @@ function add_money_cleanup_idempotency(string $path): void
     }
 }
 
+function add_money_unique_index_claim(string $path, string $uid, string $requestId, array $payload, bool $allowStale = false): array
+{
+    $path = trim($path, '/');
+    $uid = trim($uid);
+    $requestId = trim($requestId);
+    if ($path === '' || $uid === '' || $requestId === '') {
+        return ['ok' => false, 'code' => 'INDEX_CLAIM_INVALID'];
+    }
+
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+            return ['ok' => false, 'code' => 'INDEX_READ_FAILED'];
+        }
+
+        $current = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+        if ($current !== []) {
+            $currentUid = trim((string)($current['uid'] ?? ''));
+            $currentRequestId = trim((string)($current['request_id'] ?? ''));
+            if ($currentRequestId !== '' && hash_equals($currentRequestId, $requestId) && hash_equals($currentUid, $uid)) {
+                return ['ok' => true, 'claimed' => false, 'duplicate' => true, 'row' => $current];
+            }
+
+            $updatedAt = (int)($current['updated_at'] ?? $current['created_at'] ?? 0);
+            $requestMissing = false;
+            if ($currentRequestId !== '') {
+                $requestSnapshot = fb_get_with_etag('ADD_MONEY_REQUESTS/' . $currentRequestId);
+                if (empty($requestSnapshot['ok']) || !is_string($requestSnapshot['etag'] ?? null)) {
+                    return ['ok' => false, 'code' => 'INDEX_REQUEST_CHECK_FAILED'];
+                }
+                $requestMissing = ($requestSnapshot['value'] ?? null) === null;
+            }
+            $stale = $allowStale && $requestMissing && $updatedAt > 0 && $updatedAt <= add_money_now() - 600;
+            if (!$stale) {
+                return ['ok' => false, 'code' => 'INDEX_ALREADY_CLAIMED', 'conflict' => true, 'row' => $current];
+            }
+        } elseif (($snapshot['value'] ?? null) !== null) {
+            return ['ok' => false, 'code' => 'INDEX_INVALID_VALUE', 'conflict' => true];
+        }
+
+        $row = array_merge($payload, [
+            'uid' => $uid,
+            'request_id' => $requestId,
+            'updated_at' => add_money_now(),
+        ]);
+        $write = fb_put_if_match($path, $row, (string)$snapshot['etag']);
+        if (!empty($write['ok'])) {
+            return ['ok' => true, 'claimed' => true, 'duplicate' => false, 'row' => $row];
+        }
+        if ((int)($write['status'] ?? 0) !== 412) {
+            return ['ok' => false, 'code' => 'INDEX_WRITE_FAILED'];
+        }
+    }
+
+    return ['ok' => false, 'code' => 'INDEX_CLAIM_CONFLICT', 'conflict' => true];
+}
+
+function add_money_unique_index_release(string $path, string $uid, string $requestId): bool
+{
+    $path = trim($path, '/');
+    $snapshot = fb_get_with_etag($path);
+    $row = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+    if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+        return false;
+    }
+    if ($row === []) {
+        return true;
+    }
+    if (!hash_equals(trim((string)($row['uid'] ?? '')), trim($uid))
+        || !hash_equals(trim((string)($row['request_id'] ?? '')), trim($requestId))) {
+        return false;
+    }
+
+    $delete = fb_delete_if_match($path, (string)$snapshot['etag']);
+    return !empty($delete['ok']);
+}
+
+function add_money_unique_index_finalize(string $path, string $uid, string $requestId, array $patch): bool
+{
+    $path = trim($path, '/');
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        $row = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null) || $row === []) {
+            return false;
+        }
+        if (!hash_equals(trim((string)($row['uid'] ?? '')), trim($uid))
+            || !hash_equals(trim((string)($row['request_id'] ?? '')), trim($requestId))) {
+            return false;
+        }
+
+        $updated = array_merge($row, $patch, ['updated_at' => add_money_now()]);
+        $write = fb_put_if_match($path, $updated, (string)$snapshot['etag']);
+        if (!empty($write['ok'])) {
+            return true;
+        }
+        if ((int)($write['status'] ?? 0) !== 412) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+function add_money_release_unique_claims(array $paths, string $uid, string $requestId): void
+{
+    foreach (array_reverse(array_values(array_unique($paths))) as $path) {
+        @add_money_unique_index_release((string)$path, $uid, $requestId);
+    }
+}
+
 function add_money_default_settings(): array
 {
     return [
@@ -541,7 +652,6 @@ function add_money_store_receipt(array $file, string $requestId, string $uid): a
         if ($existingRequestId !== '' && add_money_find_request($existingRequestId) !== []) {
             return ['ok' => false, 'code' => 'DUPLICATE_RECEIPT', 'message' => 'This receipt has already been submitted.'];
         }
-        fb_delete('ADD_MONEY_RECEIPT_HASHES/' . $hash);
     }
 
     $dir = add_money_receipt_dir();
@@ -609,6 +719,61 @@ function add_money_patch_request(string $requestId, array $patch): bool
     }
 
     return $ok1 && $ok2;
+}
+
+function add_money_sync_user_request(array $row): bool
+{
+    $uid = trim((string)($row['uid'] ?? ''));
+    $requestId = trim((string)($row['request_id'] ?? ''));
+    if ($uid === '' || $requestId === '') {
+        return false;
+    }
+
+    return fb_put('ADD_MONEY_BY_USER/' . $uid . '/' . $requestId, $row);
+}
+
+function add_money_finalize_request(string $requestId, string $expectedStatus, array $patch): array
+{
+    $requestId = trim($requestId);
+    $expectedStatus = strtoupper(trim($expectedStatus));
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $path = 'ADD_MONEY_REQUESTS/' . $requestId;
+        $snapshot = fb_get_with_etag($path);
+        $row = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null) || $row === []) {
+            return ['ok' => false, 'code' => 'REQUEST_NOT_FOUND'];
+        }
+
+        $status = strtoupper(trim((string)($row['status'] ?? '')));
+        $targetStatus = strtoupper(trim((string)($patch['status'] ?? '')));
+        if ($targetStatus !== '' && $status === $targetStatus) {
+            return [
+                'ok' => add_money_sync_user_request($row),
+                'row' => $row,
+                'duplicate' => true,
+                'code' => 'SUCCESS',
+            ];
+        }
+        if ($status !== $expectedStatus) {
+            return ['ok' => false, 'code' => 'REQUEST_STATUS_CONFLICT', 'row' => $row];
+        }
+
+        $final = array_merge($row, $patch, ['updated_at' => add_money_now()]);
+        $write = fb_put_if_match($path, $final, (string)$snapshot['etag']);
+        if ((int)($write['status'] ?? 0) === 412) {
+            continue;
+        }
+        if (empty($write['ok'])) {
+            return ['ok' => false, 'code' => 'REQUEST_FINALIZATION_FAILED', 'row' => $row];
+        }
+        if (!add_money_sync_user_request($final)) {
+            return ['ok' => false, 'code' => 'REQUEST_INDEX_FINALIZATION_FAILED', 'row' => $final];
+        }
+
+        return ['ok' => true, 'code' => 'SUCCESS', 'row' => $final];
+    }
+
+    return ['ok' => false, 'code' => 'REQUEST_FINALIZATION_CONFLICT'];
 }
 
 function add_money_telegram_bot_token(): string
@@ -904,9 +1069,12 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         if (is_array($existingIdempotency)) {
             $existingStatus = strtoupper(trim((string)($existingIdempotency['status'] ?? '')));
             $existingRequestId = trim((string)($existingIdempotency['request_id'] ?? ''));
-            if ($existingStatus === 'SUCCESS' && $existingRequestId !== '') {
+            if ($existingRequestId !== '') {
                 $existingRequest = add_money_find_request($existingRequestId);
                 if ($existingRequest !== []) {
+                    if ($existingStatus !== 'SUCCESS') {
+                        @add_money_unique_index_finalize($idempotencyPath, $uid, $existingRequestId, ['status' => 'SUCCESS']);
+                    }
                     return [
                         'ok' => true,
                         'code' => 'SUCCESS',
@@ -964,6 +1132,8 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
     $matchedAccount['method'] = $method;
     $matchedAccount['currency'] = add_money_currency_for_country($country);
     $idempotencyStarted = false;
+    $claimedUniqueIndexes = [];
+    $txnIndexPath = '';
 
     if ($country === 'BD') {
         if (!in_array($method, ['BKASH', 'NAGAD'], true)) {
@@ -978,7 +1148,16 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         }
 
         $txnKey = add_money_safe_key($method . '|' . $transactionId);
-        if (fb_get('ADD_MONEY_TXN_IDS/' . $method . '/' . $txnKey) !== null) {
+        $txnIndexPath = 'ADD_MONEY_TXN_IDS/' . $method . '/' . $txnKey;
+        $existingTxn = fb_get($txnIndexPath);
+        if (is_array($existingTxn)) {
+            $existingTxnRequestId = trim((string)($existingTxn['request_id'] ?? ''));
+            $existingTxnUpdatedAt = (int)($existingTxn['updated_at'] ?? $existingTxn['created_at'] ?? 0);
+            if (($existingTxnRequestId !== '' && add_money_find_request($existingTxnRequestId) !== [])
+                || $existingTxnUpdatedAt > add_money_now() - 600) {
+                return ['ok' => false, 'code' => 'DUPLICATE_TXN_ID', 'message' => 'This transaction ID has already been submitted.'];
+            }
+        } elseif ($existingTxn !== null) {
             return ['ok' => false, 'code' => 'DUPLICATE_TXN_ID', 'message' => 'This transaction ID has already been submitted.'];
         }
     } else {
@@ -988,15 +1167,38 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
     }
 
     if ($idempotencyPath !== '') {
-        $idempotencyStarted = fb_put($idempotencyPath, [
-            'uid' => $uid,
+        $claim = add_money_unique_index_claim($idempotencyPath, $uid, $requestId, [
             'status' => 'PROCESSING',
-            'request_id' => '',
             'created_at' => $now,
-            'updated_at' => $now,
-        ]);
-        if (!$idempotencyStarted) {
-            return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to start add money request'];
+        ], true);
+        if (empty($claim['ok'])) {
+            return [
+                'ok' => false,
+                'code' => !empty($claim['conflict']) ? 'REQUEST_IN_PROGRESS' : 'SAVE_FAILED',
+                'message' => !empty($claim['conflict'])
+                    ? 'This add money request is still processing. Please wait.'
+                    : 'Failed to start add money request',
+            ];
+        }
+        $idempotencyStarted = !empty($claim['claimed']);
+        if ($idempotencyStarted) {
+            $claimedUniqueIndexes[] = $idempotencyPath;
+        }
+    }
+
+    if ($txnIndexPath !== '') {
+        $txnClaim = add_money_unique_index_claim($txnIndexPath, $uid, $requestId, [
+            'transaction_id' => $transactionId,
+            'method' => $method,
+            'status' => 'RESERVED',
+            'created_at' => $now,
+        ], true);
+        if (empty($txnClaim['ok'])) {
+            add_money_release_unique_claims($claimedUniqueIndexes, $uid, $requestId);
+            return ['ok' => false, 'code' => 'DUPLICATE_TXN_ID', 'message' => 'This transaction ID has already been submitted.'];
+        }
+        if (!empty($txnClaim['claimed'])) {
+            $claimedUniqueIndexes[] = $txnIndexPath;
         }
     }
 
@@ -1004,10 +1206,24 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         $receiptFile = is_array($files['receipt_upload'] ?? null) ? $files['receipt_upload'] : [];
         $receipt = add_money_store_receipt($receiptFile, $requestId, $uid);
         if (empty($receipt['ok'])) {
-            if ($idempotencyStarted) {
-                add_money_cleanup_idempotency($idempotencyPath);
-            }
+            add_money_release_unique_claims($claimedUniqueIndexes, $uid, $requestId);
             return $receipt;
+        }
+
+        if (!empty($receipt['hash'])) {
+            $receiptHashPath = 'ADD_MONEY_RECEIPT_HASHES/' . $receipt['hash'];
+            $receiptClaim = add_money_unique_index_claim($receiptHashPath, $uid, $requestId, [
+                'status' => 'RESERVED',
+                'created_at' => $now,
+            ], true);
+            if (empty($receiptClaim['ok'])) {
+                add_money_delete_receipt_file($receipt);
+                add_money_release_unique_claims($claimedUniqueIndexes, $uid, $requestId);
+                return ['ok' => false, 'code' => 'DUPLICATE_RECEIPT', 'message' => 'This receipt has already been submitted.'];
+            }
+            if (!empty($receiptClaim['claimed'])) {
+                $claimedUniqueIndexes[] = $receiptHashPath;
+            }
         }
     }
 
@@ -1051,43 +1267,27 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
 
     if (!fb_put('ADD_MONEY_REQUESTS/' . $requestId, $row)) {
         add_money_delete_receipt_file($receipt);
-        if ($idempotencyStarted) {
-            add_money_cleanup_idempotency($idempotencyPath);
-        }
+        add_money_release_unique_claims($claimedUniqueIndexes, $uid, $requestId);
         return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save add money request'];
     }
 
     if (!fb_put('ADD_MONEY_BY_USER/' . $uid . '/' . $requestId, $row)) {
         fb_delete('ADD_MONEY_REQUESTS/' . $requestId);
         add_money_delete_receipt_file($receipt);
-        if ($idempotencyStarted) {
-            add_money_cleanup_idempotency($idempotencyPath);
-        }
+        add_money_release_unique_claims($claimedUniqueIndexes, $uid, $requestId);
         return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save add money history'];
     }
 
     if ($country === 'BD') {
-        $txnKey = add_money_safe_key($method . '|' . $transactionId);
-        if (!fb_put('ADD_MONEY_TXN_IDS/' . $method . '/' . $txnKey, [
-            'request_id' => $requestId,
-            'uid' => $uid,
-            'transaction_id' => $transactionId,
-            'method' => $method,
-            'created_at' => $now,
-        ])) {
+        if (!add_money_unique_index_finalize($txnIndexPath, $uid, $requestId, ['status' => 'SUCCESS'])) {
             fb_delete('ADD_MONEY_REQUESTS/' . $requestId);
             fb_delete('ADD_MONEY_BY_USER/' . $uid . '/' . $requestId);
-            if ($idempotencyStarted) {
-                add_money_cleanup_idempotency($idempotencyPath);
-            }
+            add_money_release_unique_claims($claimedUniqueIndexes, $uid, $requestId);
             return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save transaction duplicate index'];
         }
     } elseif (!empty($receipt['hash'])) {
-        $hashSaved = fb_put('ADD_MONEY_RECEIPT_HASHES/' . $receipt['hash'], [
-            'request_id' => $requestId,
-            'uid' => $uid,
-            'created_at' => $now,
-        ]);
+        $receiptHashPath = 'ADD_MONEY_RECEIPT_HASHES/' . $receipt['hash'];
+        $hashSaved = add_money_unique_index_finalize($receiptHashPath, $uid, $requestId, ['status' => 'SUCCESS']);
         $tokenSaved = fb_put('ADD_MONEY_RECEIPT_TOKENS/' . $receipt['token'], [
             'request_id' => $requestId,
             'uid' => $uid,
@@ -1100,24 +1300,16 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         if (!$hashSaved || !$tokenSaved) {
             fb_delete('ADD_MONEY_REQUESTS/' . $requestId);
             fb_delete('ADD_MONEY_BY_USER/' . $uid . '/' . $requestId);
-            fb_delete('ADD_MONEY_RECEIPT_HASHES/' . $receipt['hash']);
+            @add_money_unique_index_release($receiptHashPath, $uid, $requestId);
             fb_delete('ADD_MONEY_RECEIPT_TOKENS/' . $receipt['token']);
             add_money_delete_receipt_file($receipt);
-            if ($idempotencyStarted) {
-                add_money_cleanup_idempotency($idempotencyPath);
-            }
+            add_money_release_unique_claims($claimedUniqueIndexes, $uid, $requestId);
             return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Failed to save receipt duplicate index'];
         }
     }
 
-    if ($idempotencyStarted) {
-        fb_put($idempotencyPath, [
-            'uid' => $uid,
-            'status' => 'SUCCESS',
-            'request_id' => $requestId,
-            'created_at' => $now,
-            'updated_at' => add_money_now(),
-        ]);
+    if ($idempotencyPath !== '' && !add_money_unique_index_finalize($idempotencyPath, $uid, $requestId, ['status' => 'SUCCESS'])) {
+        return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Request saved but idempotency finalization must be retried'];
     }
 
     $telegram = add_money_notify_telegram($row);
@@ -1213,6 +1405,78 @@ function add_money_list_admin(array $filters = [], int $limit = 200): array
     return array_slice($items, 0, max(1, min(500, $limit)));
 }
 
+function add_money_repair_approved_operation(array $row): bool
+{
+    $requestId = trim((string)($row['request_id'] ?? ''));
+    $uid = trim((string)($row['uid'] ?? ''));
+    $amount = add_money_round($row['amount'] ?? 0);
+    $currency = wallet_normalize_currency_code((string)($row['currency'] ?? $row['wallet_currency'] ?? ''));
+    if ($currency === '') {
+        $currency = add_money_currency_for_country((string)($row['pricing_country'] ?? 'BD'));
+    }
+    if ($requestId === '' || $uid === '' || $amount <= 0 || $currency === '') {
+        return false;
+    }
+
+    $operationRef = 'ADD_MONEY_APPROVE:' . hash('sha256', $requestId);
+    $existingOperation = fb_get(wallet_financial_operation_scope_path($operationRef, 'REQUEST_FINAL'));
+    if (!is_array($existingOperation)) {
+        return true;
+    }
+    $operation = wallet_financial_operation_begin(
+        $operationRef,
+        'ADD_MONEY_APPROVAL_CREDIT',
+        'REQUEST_FINAL',
+        $uid,
+        $amount,
+        $currency,
+        ['request_id' => $requestId, 'source' => 'TERMINAL_REPLAY_REPAIR']
+    );
+    if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+        return true;
+    }
+    if (empty($operation['ok']) || empty($operation['claim'])) {
+        return false;
+    }
+
+    $financialClaim = (array)$operation['claim'];
+    if (!wallet_financial_operation_claim_wallet_applied($financialClaim)) {
+        wallet_financial_operation_mark_reconciliation_required(
+            $financialClaim,
+            'APPROVED_REQUEST_WALLET_EVIDENCE_MISSING',
+            'Approved Add Money request has no reliable wallet mutation evidence',
+            ['request_finalized' => true, 'request_id' => $requestId]
+        );
+        return false;
+    }
+
+    $ledgerId = wallet_financial_operation_ledger_id($operationRef, 'ADD_MONEY_APPROVAL_CREDIT');
+    $repair = wallet_credit_available($uid, $amount, $operationRef, 'ADD_MONEY', 'Manual add money approved', [
+        'ledger_id' => $ledgerId,
+        'source' => 'ADD_MONEY_REQUEST',
+        'request_id' => $requestId,
+        'ref_id' => $requestId,
+        'currency' => $currency,
+        'wallet_currency' => $currency,
+        'status' => 'SUCCESS',
+    ], [
+        'financial_operation' => $financialClaim,
+    ]);
+    if (empty($repair['ok'])) {
+        return false;
+    }
+
+    return wallet_financial_operation_mark_completed($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_finalized' => true,
+        'history_written' => true,
+        'request_id' => $requestId,
+        'ledger_id' => (string)($repair['ledger_id'] ?? $row['ledger_id'] ?? $ledgerId),
+        'result_data' => $row,
+    ]);
+}
+
 function add_money_process_request(string $requestId, string $action, string $actorUid, string $actorRole = 'ADMIN', string $reason = ''): array
 {
     $requestId = trim($requestId);
@@ -1232,9 +1496,18 @@ function add_money_process_request(string $requestId, string $action, string $ac
     $row = $res['value'];
     $status = strtoupper(trim((string)($row['status'] ?? 'PENDING')));
     if ($status === 'APPROVED' && $action === 'APPROVE') {
+        if (!add_money_sync_user_request($row)) {
+            return ['ok' => false, 'code' => 'REQUEST_INDEX_FINALIZATION_FAILED', 'message' => 'Approved request history requires repair', 'data' => $row];
+        }
+        if (!add_money_repair_approved_operation($row)) {
+            return ['ok' => false, 'code' => 'FINANCIAL_OPERATION_FINALIZATION_FAILED', 'message' => 'Approved operation finalization requires retry', 'data' => $row];
+        }
         return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request approved', 'data' => $row, 'idempotent_replay' => true];
     }
     if ($status === 'REJECTED' && $action === 'REJECT') {
+        if (!add_money_sync_user_request($row)) {
+            return ['ok' => false, 'code' => 'REQUEST_INDEX_FINALIZATION_FAILED', 'message' => 'Rejected request history requires repair', 'data' => $row];
+        }
         return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request rejected', 'data' => $row, 'idempotent_replay' => true];
     }
 
@@ -1283,8 +1556,16 @@ function add_money_process_request(string $requestId, string $action, string $ac
             'rejected_at' => $now,
             'reject_reason' => $reason,
         ];
-        add_money_patch_request($requestId, $patch);
-        $final = array_merge($row, $patch, ['updated_at' => $now]);
+        $finalize = add_money_finalize_request($requestId, 'REJECTING', $patch);
+        if (empty($finalize['ok'])) {
+            return [
+                'ok' => false,
+                'code' => (string)($finalize['code'] ?? 'REQUEST_FINALIZATION_FAILED'),
+                'message' => 'Add money rejection could not be finalized. Please retry.',
+                'data' => (array)($finalize['row'] ?? $row),
+            ];
+        }
+        $final = (array)($finalize['row'] ?? array_merge($row, $patch, ['updated_at' => $now]));
         add_money_sync_processed_telegram_message($final);
         notification_emit_request_status_notification(
             'ADD_MONEY',
@@ -1376,7 +1657,8 @@ function add_money_process_request(string $requestId, string $action, string $ac
         'balance_before' => (float)($credit['before_available'] ?? 0),
         'balance_after' => (float)($credit['after_available'] ?? 0),
     ];
-    if (!add_money_patch_request($requestId, $patch)) {
+    $finalize = add_money_finalize_request($requestId, 'APPROVING', $patch);
+    if (empty($finalize['ok'])) {
         wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Add money request could not be finalized after wallet credit', [
             'wallet_applied' => true,
             'ledger_written' => true,
@@ -1386,7 +1668,7 @@ function add_money_process_request(string $requestId, string $action, string $ac
         return ['ok' => false, 'code' => 'REQUEST_FINALIZATION_FAILED', 'message' => 'Add money request could not be finalized after wallet credit', 'data' => $row];
     }
 
-    $final = array_merge($row, $patch, ['updated_at' => $now]);
+    $final = (array)($finalize['row'] ?? array_merge($row, $patch, ['updated_at' => $now]));
     add_money_sync_processed_telegram_message($final);
     notification_emit_request_status_notification(
         'ADD_MONEY',
@@ -1398,7 +1680,7 @@ function add_money_process_request(string $requestId, string $action, string $ac
         'ADD_MONEY_APPROVED'
     );
 
-    wallet_financial_operation_mark_completed($financialClaim, [
+    if (!wallet_financial_operation_mark_completed($financialClaim, [
         'wallet_applied' => true,
         'ledger_written' => true,
         'request_finalized' => true,
@@ -1407,7 +1689,9 @@ function add_money_process_request(string $requestId, string $action, string $ac
         'request_id' => $requestId,
         'ledger_id' => (string)($credit['ledger_id'] ?? ''),
         'result_data' => $final,
-    ]);
+    ])) {
+        return ['ok' => false, 'code' => 'FINANCIAL_OPERATION_FINALIZATION_FAILED', 'message' => 'Add money approval finalization must be retried', 'data' => $final];
+    }
 
     return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request approved', 'data' => $final];
 }
