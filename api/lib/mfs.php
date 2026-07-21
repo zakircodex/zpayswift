@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/wallet.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -52,16 +53,16 @@ function mfs_money_text($value, string $currency): string
     return $currency === 'MYR' ? 'RM ' . $amount : $amount . ' BDT';
 }
 
-function mfs_record_user_notification(array $row, string $requestId, string $status): void
+function mfs_record_user_notification(array $row, string $requestId, string $status): bool
 {
     $uid = trim((string)($row['uid'] ?? ''));
     $requestId = trim($requestId);
     if ($uid === '' || $requestId === '') {
-        return;
+        return false;
     }
     $provider = mfs_normalize_provider((string)($row['provider'] ?? $row['provider_name'] ?? ''));
     if (!in_array($provider, ['BKASH', 'NAGAD'], true)) {
-        return;
+        return false;
     }
     notification_emit_request_status_notification(
         $provider,
@@ -72,6 +73,7 @@ function mfs_record_user_notification(array $row, string $requestId, string $sta
         $row,
         'MFS_STATUS'
     );
+    return true;
 }
 
 function mfs_make_request_id(): string
@@ -1883,7 +1885,7 @@ function mfs_wallet_hold_balance(array $wallet): float
     return mfs_round_money((float)($wallet['hold_balance'] ?? 0));
 }
 
-function mfs_hold_wallet(string $uid, float $amount, string $currency, string $requestId, string $note): array
+function mfs_hold_wallet(string $uid, float $amount, string $currency, string $requestId, string $note, array $options = []): array
 {
     $uid = trim($uid);
     $requestId = trim($requestId);
@@ -1899,81 +1901,60 @@ function mfs_hold_wallet(string $uid, float $amount, string $currency, string $r
         ];
     }
 
-    $wallet = mfs_load_wallet($uid);
-    $available = mfs_wallet_available_balance($wallet);
-    $hold = mfs_wallet_hold_balance($wallet);
-
-    if ($available < $amount) {
-        return [
-            'ok' => false,
-            'code' => 'INSUFFICIENT_BALANCE',
-            'message' => 'Insufficient available balance',
-            'data' => [
-                'available_balance' => $available,
-                'required_amount' => $amount,
-                'currency' => $currency,
-            ],
-        ];
-    }
-
-    $now = mfs_now();
-    $newAvailable = mfs_round_money($available - $amount);
-    $newHold = mfs_round_money($hold + $amount);
-
-    $ok = mfs_fb_patch('USER_WALLETS/' . $uid, [
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'currency' => $currency,
-        'wallet_currency' => $currency,
-        'updated_at' => $now,
-    ]);
-
-    if (!$ok) {
+    if (!function_exists('wallet_hold_amount')) {
         return [
             'ok' => false,
             'code' => 'SERVER_ERROR',
-            'message' => 'Failed to hold wallet balance',
+            'message' => 'Wallet safety helper unavailable',
             'data' => [],
         ];
     }
 
-    $ledgerId = mfs_make_ledger_id();
-    $month = mfs_month_key($now);
-
-    mfs_fb_put('WALLET_LEDGER/' . $uid . '/' . $month . '/' . $ledgerId, [
-        'ledger_id' => $ledgerId,
-        'uid' => $uid,
-        'type' => 'MFS_HOLD',
-        'direction' => 'HOLD',
-        'amount' => $amount,
-        'currency' => $currency,
-        'before_available' => $available,
-        'after_available' => $newAvailable,
-        'before_hold' => $hold,
-        'after_hold' => $newHold,
-        'ref_id' => $requestId,
+    $options['ledger_extra'] = array_merge([
         'request_id' => $requestId,
+        'ref_id' => $requestId,
+        'currency' => $currency,
+        'wallet_currency' => $currency,
         'note' => $note,
-        'created_at' => $now,
-        'created_by_uid' => $uid,
-        'created_by_role' => 'USER',
-    ]);
+    ], is_array($options['ledger_extra'] ?? null) ? $options['ledger_extra'] : []);
+
+    $hold = wallet_hold_amount($uid, $amount, $requestId, 'MFS_HOLD', $options);
+
+    if (empty($hold['ok'])) {
+        $code = (string)($hold['code'] ?? 'SERVER_ERROR');
+        $data = [];
+        if ($code === 'INSUFFICIENT_BALANCE') {
+            $data = [
+                'available_balance' => mfs_round_money((float)($hold['available_balance'] ?? 0)),
+                'required_amount' => $amount,
+                'currency' => $currency,
+            ];
+        }
+        return [
+            'ok' => false,
+            'code' => $code,
+            'message' => $code === 'INSUFFICIENT_BALANCE'
+                ? 'Insufficient available balance'
+                : (string)($hold['message'] ?? 'Failed to hold wallet balance'),
+            'data' => $data,
+        ];
+    }
 
     return [
         'ok' => true,
         'code' => 'SUCCESS',
         'message' => 'Wallet balance held',
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'before_available' => $available,
-        'after_available' => $newAvailable,
-        'before_hold' => $hold,
-        'after_hold' => $newHold,
+        'available_balance' => mfs_round_money((float)($hold['available_balance'] ?? 0)),
+        'hold_balance' => mfs_round_money((float)($hold['hold_balance'] ?? 0)),
+        'before_available' => mfs_round_money((float)($hold['before_available'] ?? 0)),
+        'after_available' => mfs_round_money((float)($hold['available_balance'] ?? $hold['after_available'] ?? 0)),
+        'before_hold' => mfs_round_money((float)($hold['before_hold'] ?? 0)),
+        'after_hold' => mfs_round_money((float)($hold['hold_balance'] ?? $hold['after_hold'] ?? 0)),
         'currency' => $currency,
     ];
 }
 
-function mfs_release_hold(string $uid, float $amount, string $currency, string $requestId, string $note, string $ledgerType = 'MFS_FAILED_RELEASE'): array
+function mfs_release_hold(string $uid, float $amount, string $currency, string $requestId, string $note, string $ledgerType = 'MFS_FAILED_RELEASE', array $options = []): array
 {
     $uid = trim($uid);
     $requestId = trim($requestId);
@@ -1989,65 +1970,37 @@ function mfs_release_hold(string $uid, float $amount, string $currency, string $
         ];
     }
 
-    $wallet = mfs_load_wallet($uid);
-    $available = mfs_wallet_available_balance($wallet);
-    $hold = mfs_wallet_hold_balance($wallet);
-
-    $now = mfs_now();
-    $newAvailable = mfs_round_money($available + $amount);
-    $newHold = mfs_round_money(max(0, $hold - $amount));
-
-    $ok = mfs_fb_patch('USER_WALLETS/' . $uid, [
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'currency' => $currency,
-        'wallet_currency' => $currency,
-        'total_refund' => mfs_round_money((float)($wallet['total_refund'] ?? 0) + $amount),
-        'updated_at' => $now,
-    ]);
-
-    if (!$ok) {
+    if (!function_exists('wallet_refund_hold')) {
         return [
             'ok' => false,
             'code' => 'SERVER_ERROR',
-            'message' => 'Failed to release wallet hold',
+            'message' => 'Wallet safety helper unavailable',
             'data' => [],
         ];
     }
 
-    $ledgerId = mfs_make_ledger_id();
-    $month = mfs_month_key($now);
+    $release = wallet_refund_hold($uid, $amount, $requestId, $ledgerType, $options);
 
-    mfs_fb_put('WALLET_LEDGER/' . $uid . '/' . $month . '/' . $ledgerId, [
-        'ledger_id' => $ledgerId,
-        'uid' => $uid,
-        'type' => $ledgerType,
-        'direction' => 'RELEASE_HOLD',
-        'amount' => $amount,
-        'currency' => $currency,
-        'before_available' => $available,
-        'after_available' => $newAvailable,
-        'before_hold' => $hold,
-        'after_hold' => $newHold,
-        'ref_id' => $requestId,
-        'request_id' => $requestId,
-        'note' => $note,
-        'created_at' => $now,
-        'created_by_uid' => 'SYSTEM',
-        'created_by_role' => 'SYSTEM',
-    ]);
+    if (empty($release['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($release['code'] ?? 'SERVER_ERROR'),
+            'message' => (string)($release['message'] ?? 'Failed to release wallet hold'),
+            'data' => (array)($release['data'] ?? []),
+        ];
+    }
 
     return [
         'ok' => true,
         'code' => 'SUCCESS',
         'message' => 'Wallet hold released',
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
+        'available_balance' => mfs_round_money((float)($release['available_balance'] ?? 0)),
+        'hold_balance' => mfs_round_money((float)($release['hold_balance'] ?? 0)),
         'currency' => $currency,
     ];
 }
 
-function mfs_debit_hold_success(string $uid, float $amount, string $currency, string $requestId, string $note): array
+function mfs_debit_hold_success(string $uid, float $amount, string $currency, string $requestId, string $note, array $options = []): array
 {
     $uid = trim($uid);
     $requestId = trim($requestId);
@@ -2063,59 +2016,32 @@ function mfs_debit_hold_success(string $uid, float $amount, string $currency, st
         ];
     }
 
-    $wallet = mfs_load_wallet($uid);
-    $available = mfs_wallet_available_balance($wallet);
-    $hold = mfs_wallet_hold_balance($wallet);
-
-    $now = mfs_now();
-    $newHold = mfs_round_money(max(0, $hold - $amount));
-    $totalMfsSpent = mfs_round_money((float)($wallet['total_mfs_spent'] ?? 0) + $amount);
-
-    $ok = mfs_fb_patch('USER_WALLETS/' . $uid, [
-        'hold_balance' => $newHold,
-        'currency' => $currency,
-        'wallet_currency' => $currency,
-        'total_mfs_spent' => $totalMfsSpent,
-        'updated_at' => $now,
-    ]);
-
-    if (!$ok) {
+    if (!function_exists('wallet_settle_hold_mfs')) {
         return [
             'ok' => false,
             'code' => 'SERVER_ERROR',
-            'message' => 'Failed to settle wallet hold',
+            'message' => 'Wallet safety helper unavailable',
             'data' => [],
         ];
     }
 
-    $ledgerId = mfs_make_ledger_id();
-    $month = mfs_month_key($now);
+    $settle = wallet_settle_hold_mfs($uid, $amount, $requestId, 'MFS_SUCCESS', $options);
 
-    mfs_fb_put('WALLET_LEDGER/' . $uid . '/' . $month . '/' . $ledgerId, [
-        'ledger_id' => $ledgerId,
-        'uid' => $uid,
-        'type' => 'MFS_SUCCESS',
-        'direction' => 'DEBIT_HOLD',
-        'amount' => $amount,
-        'currency' => $currency,
-        'before_available' => $available,
-        'after_available' => $available,
-        'before_hold' => $hold,
-        'after_hold' => $newHold,
-        'ref_id' => $requestId,
-        'request_id' => $requestId,
-        'note' => $note,
-        'created_at' => $now,
-        'created_by_uid' => 'SYSTEM',
-        'created_by_role' => 'SYSTEM',
-    ]);
+    if (empty($settle['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($settle['code'] ?? 'SERVER_ERROR'),
+            'message' => (string)($settle['message'] ?? 'Failed to settle wallet hold'),
+            'data' => (array)($settle['data'] ?? []),
+        ];
+    }
 
     return [
         'ok' => true,
         'code' => 'SUCCESS',
         'message' => 'Wallet hold settled',
-        'available_balance' => $available,
-        'hold_balance' => $newHold,
+        'available_balance' => mfs_round_money((float)($settle['available_balance'] ?? 0)),
+        'hold_balance' => mfs_round_money((float)($settle['hold_balance'] ?? 0)),
         'currency' => $currency,
     ];
 }
@@ -2254,31 +2180,31 @@ function mfs_public_log_row(array $row): array
     ];
 }
 
-function mfs_write_user_request_log(string $uid, string $requestId, array $row): void
+function mfs_write_user_request_log(string $uid, string $requestId, array $row): bool
 {
     $uid = trim($uid);
     $requestId = trim($requestId);
 
     if ($uid === '' || $requestId === '') {
-        return;
+        return false;
     }
 
-    mfs_fb_patch('USER_API_REQUESTS/' . $uid . '/' . $requestId, mfs_public_log_row($row));
+    return mfs_fb_patch('USER_API_REQUESTS/' . $uid . '/' . $requestId, mfs_public_log_row($row));
 }
 
-function mfs_write_history(string $uid, string $requestId, array $row): void
+function mfs_write_history(string $uid, string $requestId, array $row): bool
 {
     $uid = trim($uid);
     $requestId = trim($requestId);
 
     if ($uid === '' || $requestId === '') {
-        return;
+        return false;
     }
 
     $ts = (int)($row['updated_at'] ?? $row['created_at'] ?? mfs_now());
     $month = mfs_month_key($ts);
 
-    mfs_fb_patch('MFS_HISTORY/' . $uid . '/' . $month . '/' . $requestId, mfs_public_log_row($row));
+    return mfs_fb_patch('MFS_HISTORY/' . $uid . '/' . $month . '/' . $requestId, mfs_public_log_row($row));
 }
 
 /* =========================================================
@@ -2778,15 +2704,91 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
     $totalDebitText = mfs_money_text($totalDebit, $walletCurrency);
     $userRole = mfs_user_role($user);
 
+    $idempotencyKey = trim((string)($body['idempotency_key'] ?? $body['client_request_id'] ?? ''));
+    $idempotencyKey = preg_replace('/[^A-Za-z0-9:_-]/', '', $idempotencyKey) ?? '';
+    $operationSeed = $idempotencyKey !== ''
+        ? 'idem:' . $idempotencyKey
+        : implode('|', [
+            $uid,
+            (string)($actor['preview_token_hash'] ?? ''),
+            $provider,
+            $serviceType,
+            $accountType,
+            $receiverNumber,
+            number_format($totalDebit, 2, '.', ''),
+            $walletCurrency,
+            (string)floor($now / 120),
+        ]);
+    $operationRef = 'MFS_CREATE:' . hash('sha256', $operationSeed);
+    $operation = wallet_financial_operation_begin(
+        $operationRef,
+        'MFS_CREATE_HOLD',
+        'REQUEST_CREATE',
+        $uid,
+        $totalDebit,
+        $walletCurrency,
+        [
+            'request_id' => $requestId,
+            'source' => $source,
+            'source_key_id' => $sourceKeyId,
+            'preview_token_hash' => (string)($actor['preview_token_hash'] ?? ''),
+            'provider' => $provider,
+            'service_type' => $serviceType,
+            'account_type' => $accountType,
+            'receiver_hash' => hash('sha256', $receiverNumber),
+        ]
+    );
+    if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+        $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+        return [
+            'ok' => true,
+            'code' => 'SUCCESS',
+            'message' => 'MFS request created successfully',
+            'data' => $resultData,
+        ];
+    }
+    if (empty($operation['ok']) || empty($operation['claim'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'),
+            'message' => (string)($operation['message'] ?? 'Wallet operation is unavailable'),
+            'data' => [],
+        ];
+    }
+    $financialClaim = (array)$operation['claim'];
+    $requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
+
     $hold = mfs_hold_wallet(
         $uid,
         $totalDebit,
         $walletCurrency,
         $requestId,
-        'Balance held for MFS request'
+        'Balance held for MFS request',
+        [
+            'financial_operation' => $financialClaim,
+            'ledger_extra' => [
+                'ledger_id' => wallet_financial_operation_ledger_id($operationRef, 'MFS_CREATE_HOLD'),
+                'request_id' => $requestId,
+                'ref_id' => $requestId,
+                'source' => $source,
+                'source_key_id' => $sourceKeyId,
+                'provider' => $provider,
+                'service_type' => $serviceType,
+                'account_type' => $accountType,
+                'receiver_hash' => hash('sha256', $receiverNumber),
+                'amount_bdt' => (float)$amounts['amount_bdt'],
+                'amount_rm' => (float)$amounts['amount_rm'],
+                'fee_bdt' => (float)$amounts['fee_bdt'],
+                'fee_rm' => (float)$amounts['fee_rm'],
+                'wallet_hold_amount' => $totalDebit,
+                'wallet_currency' => $walletCurrency,
+                'exchange_rate' => (float)$amounts['exchange_rate'],
+            ],
+        ]
     );
 
     if (empty($hold['ok'])) {
+        wallet_financial_operation_mark_failed($financialClaim, (string)($hold['code'] ?? 'SERVER_ERROR'), (string)($hold['message'] ?? 'Failed to hold wallet balance'));
         return [
             'ok' => false,
             'code' => (string)($hold['code'] ?? 'SERVER_ERROR'),
@@ -2878,14 +2880,13 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
     $saved = mfs_fb_put('MFS_REQUESTS/PENDING/' . $requestId, $row);
 
     if (!$saved) {
-        mfs_release_hold(
-            $uid,
-            $totalDebit,
-            $walletCurrency,
-            $requestId,
-            'MFS hold rollback after request save failure',
-            'MFS_HOLD_ROLLBACK'
-        );
+        wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'MFS request could not be saved after wallet hold', [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_id' => $requestId,
+            'request_row' => $row,
+            'request_finalized' => false,
+        ]);
 
         return [
             'ok' => false,
@@ -2946,7 +2947,7 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
     ];
     $responseWallet += mfs_wallet_display_payload($user, $responseWallet);
 
-    return [
+    $response = [
         'ok' => true,
         'code' => 'SUCCESS',
         'message' => 'MFS request created successfully',
@@ -3000,6 +3001,19 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
             'wallet' => $responseWallet,
         ],
     ];
+
+    wallet_financial_operation_mark_completed($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_finalized' => true,
+        'history_written' => true,
+        'notification_written' => false,
+        'request_id' => $requestId,
+        'ledger_id' => (string)($hold['ledger_id'] ?? ''),
+        'result_data' => (array)$response['data'],
+    ]);
+
+    return $response;
 }
 
 /* =========================================================
@@ -3125,24 +3139,30 @@ function mfs_save_sender_details(string $requestId, string $senderDetails): arra
     ];
 }
 
-function mfs_move_request_bucket(string $requestId, string $fromBucket, string $toBucket, array $row): void
+function mfs_move_request_bucket(string $requestId, string $fromBucket, string $toBucket, array $row): bool
 {
     $requestId = trim($requestId);
     $fromBucket = mfs_normalize_bucket($fromBucket);
     $toBucket = mfs_normalize_bucket($toBucket);
 
     if ($requestId === '' || !in_array($toBucket, mfs_allowed_buckets(), true)) {
-        return;
+        return false;
     }
 
     $saveRow = $row;
     unset($saveRow['_bucket']);
 
-    mfs_fb_put('MFS_REQUESTS/' . $toBucket . '/' . $requestId, $saveRow);
+    if (!mfs_fb_put('MFS_REQUESTS/' . $toBucket . '/' . $requestId, $saveRow)) {
+        return false;
+    }
 
     if ($fromBucket !== '' && $fromBucket !== $toBucket && in_array($fromBucket, mfs_allowed_buckets(), true)) {
-        mfs_fb_delete('MFS_REQUESTS/' . $fromBucket . '/' . $requestId);
+        if (!mfs_fb_delete('MFS_REQUESTS/' . $fromBucket . '/' . $requestId)) {
+            return false;
+        }
     }
+
+    return true;
 }
 
 function mfs_mark_processing(string $requestId, string $message = 'Request is processing', array $actor = []): array
@@ -3290,6 +3310,45 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
         ];
     }
 
+    $operation = wallet_financial_operation_begin(
+        $requestId,
+        'MFS_SUCCESS',
+        'REQUEST_FINAL',
+        $uid,
+        $heldAmount,
+        $walletCurrency,
+        [
+            'request_type' => 'MFS',
+            'provider' => (string)($row['provider'] ?? $row['provider_name'] ?? ''),
+            'status_before' => $currentStatus,
+        ]
+    );
+
+    if (!empty($operation['duplicate']) || !empty($operation['conflicting_operation'])) {
+        $existingStatus = strtoupper(trim((string)($row['status'] ?? $currentStatus)));
+        return [
+            'ok' => false,
+            'code' => 'ALREADY_COMPLETED',
+            'message' => 'MFS request already completed',
+            'data' => [
+                'request_id' => $requestId,
+                'status' => $existingStatus,
+            ],
+        ];
+    }
+
+    if (empty($operation['ok']) || empty($operation['claim']) || !is_array($operation['claim'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'),
+            'message' => (string)($operation['message'] ?? 'Financial operation safety check failed'),
+            'data' => [
+                'request_id' => $requestId,
+            ],
+        ];
+    }
+
+    $financialClaim = $operation['claim'];
     $settled = strtoupper(trim((string)($row['hold_settlement_status'] ?? 'PENDING'))) === 'SUCCESS';
 
     if (!$settled) {
@@ -3298,10 +3357,16 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
             $heldAmount,
             $walletCurrency,
             $requestId,
-            'MFS request successful'
+            'MFS request successful',
+            ['financial_operation' => $financialClaim]
         );
 
         if (empty($settle['ok'])) {
+            wallet_financial_operation_mark_failed(
+                $financialClaim,
+                (string)($settle['code'] ?? 'MFS_SETTLEMENT_FAILED'),
+                (string)($settle['message'] ?? 'Failed to settle wallet hold')
+            );
             return [
                 'ok' => false,
                 'code' => (string)($settle['code'] ?? 'SERVER_ERROR'),
@@ -3309,6 +3374,19 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
                 'data' => (array)($settle['data'] ?? []),
             ];
         }
+    } elseif (!wallet_financial_operation_mark_applied($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'legacy_settlement_status' => 'SUCCESS',
+    ])) {
+        return [
+            'ok' => false,
+            'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+            'message' => 'Financial operation ownership changed',
+            'data' => [
+                'request_id' => $requestId,
+            ],
+        ];
     }
 
     $now = mfs_now();
@@ -3337,10 +3415,29 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
         $row['receipt_error'] = (string)$receipt['receipt_error'];
     }
 
-    mfs_move_request_bucket($requestId, (string)($row['_bucket'] ?? 'PENDING'), 'DONE', $row);
+    if (!mfs_move_request_bucket($requestId, (string)($row['_bucket'] ?? 'PENDING'), 'DONE', $row)) {
+        wallet_financial_operation_mark_failed(
+            $financialClaim,
+            'REQUEST_FINALIZATION_FAILED',
+            'MFS request final status could not be saved',
+            [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]
+        );
+        return [
+            'ok' => false,
+            'code' => 'REQUEST_FINALIZATION_FAILED',
+            'message' => 'MFS request final status could not be saved',
+            'data' => [
+                'request_id' => $requestId,
+            ],
+        ];
+    }
     mfs_update_request_status($requestId, $uid, 'SUCCESSFUL', $message, $now);
-    mfs_write_user_request_log($uid, $requestId, $row);
-    mfs_write_history($uid, $requestId, $row);
+    $userLogWritten = mfs_write_user_request_log($uid, $requestId, $row);
+    $historyWritten = mfs_write_history($uid, $requestId, $row);
 
     if (function_exists('system_log')) {
         try {
@@ -3353,7 +3450,16 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
             // ignore
         }
     }
-    mfs_record_user_notification($row, $requestId, 'SUCCESSFUL');
+    $notificationWritten = mfs_record_user_notification($row, $requestId, 'SUCCESSFUL');
+    wallet_financial_operation_mark_completed($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_finalized' => true,
+        'history_written' => $historyWritten,
+        'user_log_written' => $userLogWritten,
+        'notification_written' => $notificationWritten,
+        'final_status' => 'SUCCESSFUL',
+    ]);
 
     return [
         'ok' => true,
@@ -3427,6 +3533,45 @@ function mfs_mark_failed(string $requestId, string $message = 'Transaction faile
         ];
     }
 
+    $operation = wallet_financial_operation_begin(
+        $requestId,
+        'MFS_FAILED_RELEASE',
+        'REQUEST_FINAL',
+        $uid,
+        $heldAmount,
+        $walletCurrency,
+        [
+            'request_type' => 'MFS',
+            'provider' => (string)($row['provider'] ?? $row['provider_name'] ?? ''),
+            'status_before' => $currentStatus,
+        ]
+    );
+
+    if (!empty($operation['duplicate']) || !empty($operation['conflicting_operation'])) {
+        $existingStatus = strtoupper(trim((string)($row['status'] ?? $currentStatus)));
+        return [
+            'ok' => false,
+            'code' => 'ALREADY_COMPLETED',
+            'message' => 'MFS request already completed',
+            'data' => [
+                'request_id' => $requestId,
+                'status' => $existingStatus,
+            ],
+        ];
+    }
+
+    if (empty($operation['ok']) || empty($operation['claim']) || !is_array($operation['claim'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'),
+            'message' => (string)($operation['message'] ?? 'Financial operation safety check failed'),
+            'data' => [
+                'request_id' => $requestId,
+            ],
+        ];
+    }
+
+    $financialClaim = $operation['claim'];
     $settled = strtoupper(trim((string)($row['hold_settlement_status'] ?? 'PENDING'))) === 'FAILED_RELEASED';
 
     if (!$settled) {
@@ -3436,10 +3581,16 @@ function mfs_mark_failed(string $requestId, string $message = 'Transaction faile
             $walletCurrency,
             $requestId,
             'MFS request failed - hold released',
-            'MFS_FAILED_RELEASE'
+            'MFS_FAILED_RELEASE',
+            ['financial_operation' => $financialClaim]
         );
 
         if (empty($release['ok'])) {
+            wallet_financial_operation_mark_failed(
+                $financialClaim,
+                (string)($release['code'] ?? 'MFS_REFUND_FAILED'),
+                (string)($release['message'] ?? 'Failed to release wallet hold')
+            );
             return [
                 'ok' => false,
                 'code' => (string)($release['code'] ?? 'SERVER_ERROR'),
@@ -3447,6 +3598,19 @@ function mfs_mark_failed(string $requestId, string $message = 'Transaction faile
                 'data' => (array)($release['data'] ?? []),
             ];
         }
+    } elseif (!wallet_financial_operation_mark_applied($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'legacy_settlement_status' => 'FAILED_RELEASED',
+    ])) {
+        return [
+            'ok' => false,
+            'code' => 'FINANCIAL_OPERATION_OWNER_MISMATCH',
+            'message' => 'Financial operation ownership changed',
+            'data' => [
+                'request_id' => $requestId,
+            ],
+        ];
     }
 
     $now = mfs_now();
@@ -3474,10 +3638,29 @@ function mfs_mark_failed(string $requestId, string $message = 'Transaction faile
         $row['receipt_error'] = (string)$receipt['receipt_error'];
     }
 
-    mfs_move_request_bucket($requestId, (string)($row['_bucket'] ?? 'PENDING'), 'DONE', $row);
+    if (!mfs_move_request_bucket($requestId, (string)($row['_bucket'] ?? 'PENDING'), 'DONE', $row)) {
+        wallet_financial_operation_mark_failed(
+            $financialClaim,
+            'REQUEST_FINALIZATION_FAILED',
+            'MFS request final status could not be saved',
+            [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]
+        );
+        return [
+            'ok' => false,
+            'code' => 'REQUEST_FINALIZATION_FAILED',
+            'message' => 'MFS request final status could not be saved',
+            'data' => [
+                'request_id' => $requestId,
+            ],
+        ];
+    }
     mfs_update_request_status($requestId, $uid, 'FAILED', $message, $now);
-    mfs_write_user_request_log($uid, $requestId, $row);
-    mfs_write_history($uid, $requestId, $row);
+    $userLogWritten = mfs_write_user_request_log($uid, $requestId, $row);
+    $historyWritten = mfs_write_history($uid, $requestId, $row);
 
     if (function_exists('system_log')) {
         try {
@@ -3489,7 +3672,16 @@ function mfs_mark_failed(string $requestId, string $message = 'Transaction faile
             // ignore
         }
     }
-    mfs_record_user_notification($row, $requestId, 'FAILED');
+    $notificationWritten = mfs_record_user_notification($row, $requestId, 'FAILED');
+    wallet_financial_operation_mark_completed($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_finalized' => true,
+        'history_written' => $historyWritten,
+        'user_log_written' => $userLogWritten,
+        'notification_written' => $notificationWritten,
+        'final_status' => 'FAILED',
+    ]);
 
     return [
         'ok' => true,

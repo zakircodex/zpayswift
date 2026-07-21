@@ -275,8 +275,6 @@ $targetCountry = wallet_account_country_code($targetUser, $targetWallet);
 
 $now = wallet_add_now();
 $transferId = wallet_make_transfer_id();
-$ledgerId = wallet_add_make_id('WL');
-$actorLedgerId = $isSubadminTransfer ? wallet_add_make_id('WL') : '';
 $senderIdentity = wallet_identity($actorUid, $actor, $actorRole !== '' ? $actorRole : 'ADMIN');
 $receiverIdentity = wallet_identity($targetUid, $targetUser, $targetRole);
 
@@ -287,6 +285,40 @@ $commissionPer1000 = 0.0;
 $commissionAmount  = 0.0;
 $totalCredit = round($amount, 2);
 $afterAvailable = round($beforeAvailable + $totalCredit, 2);
+$transferType = $isSubadminTransfer ? 'SUBADMIN_BALANCE_TRANSFER' : 'ADMIN_BALANCE_ADD';
+
+$operationSeed = trim((string)($body['idempotency_key'] ?? $body['client_request_id'] ?? $body['action_id'] ?? $reference));
+if ($operationSeed === '') {
+    $operationSeed = hash('sha256', implode('|', [
+        $transferType,
+        $actorUid,
+        $targetUid,
+        number_format($totalCredit, 2, '.', ''),
+        $targetCurrency,
+        $note,
+        (string)floor($now / 120),
+    ]));
+}
+$operationRef = 'WALLET_ADD:' . hash('sha256', implode('|', [$transferType, $actorUid, $targetUid, $operationSeed]));
+$operation = wallet_financial_operation_begin($operationRef, $transferType, 'REQUEST_FINAL', $targetUid, $totalCredit, $targetCurrency, [
+    'actor_uid' => $actorUid,
+    'actor_role' => $actorRole,
+    'target_uid' => $targetUid,
+    'transfer_id' => $transferId,
+    'source' => $isSubadminTransfer ? 'SUBADMIN_PANEL' : 'ADMIN_PANEL',
+]);
+if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+    $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+    wallet_add_response(true, 'SUCCESS', 'Balance added successfully', $resultData);
+}
+if (empty($operation['ok']) || empty($operation['claim'])) {
+    wallet_add_response(false, (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'), (string)($operation['message'] ?? 'Wallet operation is unavailable'), [], 409);
+}
+$financialClaim = $operation['claim'];
+$ledgerId = wallet_financial_operation_side_ledger_id($operationRef, $transferType, 'target_credited');
+$actorLedgerId = $isSubadminTransfer
+    ? wallet_financial_operation_side_ledger_id($operationRef, $transferType, 'source_debited')
+    : '';
 
 $actorBeforeAvailable = 0.0;
 $actorAfterAvailable = 0.0;
@@ -326,36 +358,63 @@ if ($isSubadminTransfer) {
         ], 422);
     }
 
-    $actorAfterAvailable = round($actorBeforeAvailable - $totalCredit, 2);
+    $actorDebit = wallet_apply_available_delta_with_operation(
+        $financialClaim,
+        $actorUid,
+        $totalCredit,
+        'DEBIT',
+        $operationRef,
+        'SUBADMIN_BALANCE_TRANSFER',
+        'Balance transferred to user/retailer',
+        [
+            'ledger_id' => $actorLedgerId,
+            'currency' => $actorCurrency,
+            'wallet_currency' => $actorCurrency,
+            'transfer_id' => $transferId,
+            'receiver_uid' => $targetUid,
+            'receiver_name' => $receiverIdentity['name'],
+            'receiver_phone' => $receiverIdentity['phone'],
+            'receiver_role' => $receiverIdentity['role'],
+            'created_by_uid' => $actorUid,
+            'created_by_role' => $actorRole,
+        ],
+        'source_debited'
+    );
 
-    $actorDebitOk = fb_patch('USER_WALLETS/' . $actorUid, [
-        'available_balance' => $actorAfterAvailable,
-        'currency' => $actorCurrency,
-        'wallet_currency' => $actorCurrency,
-        'updated_at' => $now,
-    ]);
-
-    if (!$actorDebitOk) {
-        wallet_add_response(false, 'SERVER_ERROR', 'Failed to deduct subadmin balance', [], 500);
+    if (empty($actorDebit['ok'])) {
+        wallet_add_response(false, (string)($actorDebit['code'] ?? 'SERVER_ERROR'), (string)($actorDebit['message'] ?? 'Failed to deduct subadmin balance'), [], 500);
     }
+
+    $actorBeforeAvailable = wallet_add_money($actorDebit['before_available'] ?? $actorBeforeAvailable, $actorBeforeAvailable);
+    $actorAfterAvailable = wallet_add_money($actorDebit['after_available'] ?? $actorAfterAvailable, $actorAfterAvailable);
+    $actorLedgerId = (string)($actorDebit['ledger_id'] ?? $actorLedgerId);
 }
 
-$targetCreditOk = fb_patch('USER_WALLETS/' . $targetUid, [
-    'available_balance' => $afterAvailable,
-    'currency' => $targetCurrency,
-    'wallet_currency' => $targetCurrency,
-    'updated_at' => $now,
-]);
+$targetCredit = wallet_apply_available_delta_with_operation(
+    $financialClaim,
+    $targetUid,
+    $totalCredit,
+    'CREDIT',
+    $operationRef,
+    $transferType,
+    'Balance added',
+    [
+        'ledger_id' => $ledgerId,
+        'currency' => $targetCurrency,
+        'wallet_currency' => $targetCurrency,
+        'transfer_id' => $transferId,
+        'sender_uid' => $senderIdentity['uid'],
+        'sender_name' => $senderIdentity['name'],
+        'sender_phone' => $senderIdentity['phone'],
+        'sender_role' => $senderIdentity['role'],
+        'created_by_uid' => $actorUid,
+        'created_by_role' => $actorRole,
+    ],
+    'target_credited'
+);
 
-if (!$targetCreditOk) {
-    if ($isSubadminTransfer) {
-        fb_patch('USER_WALLETS/' . $actorUid, [
-            'available_balance' => $actorBeforeAvailable,
-            'updated_at' => $now,
-        ]);
-    }
-
-    wallet_add_response(false, 'SERVER_ERROR', 'Failed to update target wallet balance', [], 500);
+if (empty($targetCredit['ok'])) {
+    wallet_add_response(false, (string)($targetCredit['code'] ?? 'SERVER_ERROR'), (string)($targetCredit['message'] ?? 'Failed to update target wallet balance'), [], 500);
 }
 
 $baseNote = $note !== '' ? $note : 'Balance added';
@@ -363,7 +422,9 @@ $finalNote = $baseNote;
 $finalNote .= ' | Base: ' . $targetCurrency . ' ' . number_format($amount, 2, '.', '');
 $finalNote .= ' | Total Credit: ' . $targetCurrency . ' ' . number_format($totalCredit, 2, '.', '');
 
-$transferType = $isSubadminTransfer ? 'SUBADMIN_BALANCE_TRANSFER' : 'ADMIN_BALANCE_ADD';
+$beforeAvailable = wallet_add_money($targetCredit['before_available'] ?? $beforeAvailable, $beforeAvailable);
+$afterAvailable = wallet_add_money($targetCredit['after_available'] ?? $afterAvailable, $afterAvailable);
+$ledgerId = (string)($targetCredit['ledger_id'] ?? $ledgerId);
 $transfer = [
     'transfer_id' => $transferId,
     'ledger_id' => $ledgerId,
@@ -445,56 +506,33 @@ if ($isSubadminTransfer) {
 
 $historyResult = wallet_store_transfer_records($transfer, $ledgerRows);
 if (!($historyResult['ok'] ?? false)) {
-    $receiverRolledBack = wallet_restore_available_balance($targetUid, $afterAvailable, $beforeAvailable);
-    $senderRolledBack = true;
-
-    if ($isSubadminTransfer) {
-        $senderRolledBack = wallet_restore_available_balance(
-            $actorUid,
-            $actorAfterAvailable,
-            $actorBeforeAvailable
-        );
-    }
+    wallet_financial_operation_mark_failed($financialClaim, 'TRANSFER_HISTORY_FAILED', 'Wallet transfer history write failed', [
+        'wallet_applied' => true,
+        'source_debited' => $isSubadminTransfer,
+        'target_credited' => true,
+        'transfer' => $transfer,
+        'ledger_rows' => $ledgerRows,
+    ]);
 
     if (function_exists('system_log')) {
         system_log('WALLET_TRANSFER_HISTORY_FAILED', $transferId, 'Wallet transfer history write failed', [
             'target_uid' => $targetUid,
             'actor_uid' => $actorUid,
             'history_code' => (string)($historyResult['code'] ?? ''),
-            'receiver_rolled_back' => $receiverRolledBack,
-            'sender_rolled_back' => $senderRolledBack,
+            'recovery_state' => 'FAILED_RETRYABLE',
         ]);
     }
 
     wallet_add_response(
         false,
         'TRANSFER_HISTORY_FAILED',
-        $receiverRolledBack && $senderRolledBack
-            ? 'Balance transfer was rolled back because history could not be saved'
-            : 'Balance history failed and wallet rollback requires review',
+        'Balance updated but history finalization must be retried',
         ['transfer_id' => $transferId],
         500
     );
 }
 
-if (function_exists('system_log')) {
-    system_log('WALLET_ADD_BALANCE', $ledgerId, 'Balance added by subadmin/admin', [
-        'transfer_id' => $transferId,
-        'target_uid' => $targetUid,
-        'target_role' => $targetRole,
-        'base_amount' => $amount,
-        'commission_per_1000' => $commissionPer1000,
-        'commission_amount' => $commissionAmount,
-        'total_credit' => $totalCredit,
-        'currency' => $targetCurrency,
-        'created_by_uid' => $actorUid,
-        'created_by_role' => $actorRole,
-        'subadmin_debited' => $isSubadminTransfer,
-        'actor_ledger_id' => $actorLedgerId,
-    ]);
-}
-
-wallet_add_response(true, 'SUCCESS', 'Balance added successfully', [
+$responseData = [
     'ledger_id' => $ledgerId,
     'actor_ledger_id' => $actorLedgerId,
     'transfer_id' => $transferId,
@@ -521,4 +559,32 @@ wallet_add_response(true, 'SUCCESS', 'Balance added successfully', [
     'subadmin_after_available' => $actorAfterAvailable,
 
     'created_at' => $now,
+];
+
+wallet_financial_operation_mark_completed($financialClaim, [
+    'wallet_applied' => true,
+    'source_debited' => $isSubadminTransfer,
+    'target_credited' => true,
+    'request_finalized' => true,
+    'history_written' => true,
+    'result_data' => $responseData,
 ]);
+
+if (function_exists('system_log')) {
+    system_log('WALLET_ADD_BALANCE', $ledgerId, 'Balance added by subadmin/admin', [
+        'transfer_id' => $transferId,
+        'target_uid' => $targetUid,
+        'target_role' => $targetRole,
+        'base_amount' => $amount,
+        'commission_per_1000' => $commissionPer1000,
+        'commission_amount' => $commissionAmount,
+        'total_credit' => $totalCredit,
+        'currency' => $targetCurrency,
+        'created_by_uid' => $actorUid,
+        'created_by_role' => $actorRole,
+        'subadmin_debited' => $isSubadminTransfer,
+        'actor_ledger_id' => $actorLedgerId,
+    ]);
+}
+
+wallet_add_response(true, 'SUCCESS', 'Balance added successfully', $responseData);

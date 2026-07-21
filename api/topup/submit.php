@@ -238,9 +238,75 @@ $financials['wallet_debit_currency'] = $previewWalletCurrency;
 $financials['wallet_currency'] = $previewWalletCurrency;
 $financials['account_country'] = $previewAccountCountry;
 
-$hold = wallet_hold_amount($uid, $walletDebit, $requestId, 'TOPUP_HOLD');
+$operationRef = 'ANDROID_TOPUP_CREATE:' . hash('sha256', implode('|', [
+    $uid,
+    $tokenHash,
+    $operator,
+    $topupNumber,
+    number_format($amount, 2, '.', ''),
+    number_format($walletDebit, 2, '.', ''),
+]));
+$operation = wallet_financial_operation_begin(
+    $operationRef,
+    'ANDROID_TOPUP_CREATE_HOLD',
+    'REQUEST_CREATE',
+    $uid,
+    $walletDebit,
+    $previewWalletCurrency,
+    [
+        'request_id' => $requestId,
+        'preview_token_hash' => $tokenHash,
+        'operator' => $operator,
+        'topup_number_hash' => hash('sha256', $topupNumber),
+    ]
+);
+if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+    $data = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+    $data['idempotent_replay'] = true;
+    api_response(true, 'TOPUP_REQUEST_CREATED', 'Topup request submitted', $data);
+}
+if (empty($operation['ok']) || empty($operation['claim'])) {
+    $failPreview((string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'), (string)($operation['message'] ?? 'Wallet operation is unavailable'));
+    api_response(false, (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'), (string)($operation['message'] ?? 'Wallet operation is unavailable'), [], 409);
+}
+$financialClaim = (array)$operation['claim'];
+$requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
+
+$hold = wallet_hold_amount($uid, $walletDebit, $operationRef, 'ANDROID_TOPUP_HOLD', [
+    'financial_operation' => $financialClaim,
+    'ledger_extra' => [
+        'ledger_id' => wallet_financial_operation_ledger_id($operationRef, 'ANDROID_TOPUP_CREATE_HOLD'),
+        'request_id' => $requestId,
+        'ref_id' => $requestId,
+        'preview_token_hash' => $tokenHash,
+        'operator' => $operator,
+        'topup_number_hash' => hash('sha256', $topupNumber),
+        'topup_amount' => (float)($financials['topup_amount'] ?? $amount),
+        'topup_currency' => (string)($financials['topup_currency'] ?? 'BDT'),
+        'topup_amount_bdt' => (float)($financials['topup_amount_bdt'] ?? 0),
+        'topup_amount_myr' => (float)($financials['topup_amount_myr'] ?? 0),
+        'account_country' => $previewAccountCountry,
+        'commission_per_1000' => (float)($financials['commission_per_1000'] ?? 0),
+        'commission_bdt' => (float)($financials['commission_bdt'] ?? 0),
+        'commission_applicable' => (bool)($financials['commission_applicable'] ?? false),
+        'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
+        'commission_amount' => (float)($financials['commission_amount'] ?? 0),
+        'commission_credit' => (float)($financials['commission_credit'] ?? 0),
+        'fee_amount' => (float)($financials['fee_amount'] ?? 0),
+        'wallet_debit_bdt' => (float)($financials['wallet_debit_bdt'] ?? 0),
+        'wallet_debit_myr' => (float)($financials['wallet_debit_myr'] ?? 0),
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => $previewWalletCurrency,
+        'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
+        'rate_snapshot' => $financials['rate_snapshot'] ?? null,
+        'rate_used' => (float)($financials['rate_used'] ?? 0),
+        'calculation_version' => (string)($financials['calculation_version'] ?? ''),
+        'note' => 'Balance moved to hold for Android topup request',
+    ],
+]);
 if (!($hold['ok'] ?? false)) {
     $code = (string)($hold['code'] ?? 'SERVER_ERROR');
+    wallet_financial_operation_mark_failed($financialClaim, $code, (string)($hold['message'] ?? 'Wallet hold failed'));
 
     if ($code === 'INSUFFICIENT_BALANCE') {
         $failPreview('INSUFFICIENT_BALANCE', 'Not enough balance');
@@ -303,7 +369,13 @@ $pendingRow = topup_pending_request_row(
 $pendingSaved = fb_put('TOPUP_REQUESTS/PENDING/' . $requestId, $pendingRow);
 
 if (!$pendingSaved) {
-    wallet_refund_hold($uid, $walletDebit, $requestId, 'TOPUP_REFUND');
+    wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'Topup request could not be saved after wallet hold', [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_id' => $requestId,
+        'request_row' => $pendingRow,
+        'request_finalized' => false,
+    ]);
     $failPreview('SERVER_ERROR', 'Failed to create topup request');
     api_response(false, 'SERVER_ERROR', 'Failed to create topup request', [], 500);
 }
@@ -322,8 +394,13 @@ $statusSaved = create_request_status(
 );
 
 if (!$statusSaved) {
-    fb_delete('TOPUP_REQUESTS/PENDING/' . $requestId);
-    wallet_refund_hold($uid, $walletDebit, $requestId, 'TOPUP_REFUND');
+    wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_STATUS_CREATE_FAILED', 'Topup request status could not be saved after wallet hold', [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_id' => $requestId,
+        'request_row' => $pendingRow,
+        'request_finalized' => false,
+    ]);
     $failPreview('SERVER_ERROR', 'Failed to create request status');
     api_response(false, 'SERVER_ERROR', 'Failed to create request status', [], 500);
 }
@@ -386,6 +463,17 @@ $responseData = topup_submit_response_data($topupRow, [
     'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
     'commission_amount' => (float)($financials['commission_amount'] ?? 0),
     'total_debit' => $walletDebit,
+]);
+
+wallet_financial_operation_mark_completed($financialClaim, [
+    'wallet_applied' => true,
+    'ledger_written' => true,
+    'request_finalized' => true,
+    'history_written' => true,
+    'notification_written' => false,
+    'request_id' => $requestId,
+    'ledger_id' => (string)($hold['ledger_id'] ?? ''),
+    'result_data' => $responseData,
 ]);
 
 topup_submit_finish_response([

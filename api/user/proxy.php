@@ -1205,7 +1205,7 @@ function user_proxy_bundle_offers_for_user(string $uid): array
    Wallet Hold Helpers
 ========================================================= */
 
-function user_proxy_hold_balance(string $uid, float $amount, string $requestId, string $type, string $note): array
+function user_proxy_hold_balance(string $uid, float $amount, string $requestId, string $type, string $note, array $options = []): array
 {
     $uid = trim($uid);
     $requestId = trim($requestId);
@@ -1221,81 +1221,44 @@ function user_proxy_hold_balance(string $uid, float $amount, string $requestId, 
     }
 
     if (function_exists('wallet_hold_amount')) {
-        $res = wallet_hold_amount($uid, $amount, $requestId, $type);
+        $options['ledger_extra'] = array_merge([
+            'request_id' => $requestId,
+            'ref_id' => $requestId,
+            'note' => $note,
+            'created_by_uid' => $uid,
+            'created_by_role' => 'USER',
+        ], is_array($options['ledger_extra'] ?? null) ? $options['ledger_extra'] : []);
 
-        if (is_array($res)) {
-            return $res;
+        $holdResult = wallet_hold_amount($uid, $amount, $requestId, $type, $options);
+        if (!empty($holdResult['ok'])) {
+            return [
+                'ok' => true,
+                'code' => 'SUCCESS',
+                'message' => 'Balance held successfully',
+                'ledger_id' => (string)($holdResult['ledger_id'] ?? ''),
+                'available_balance' => (float)($holdResult['available_balance'] ?? $holdResult['after_available'] ?? 0),
+                'hold_balance' => (float)($holdResult['hold_balance'] ?? $holdResult['after_hold'] ?? 0),
+                'before_available' => (float)($holdResult['before_available'] ?? 0),
+                'after_available' => (float)($holdResult['after_available'] ?? $holdResult['available_balance'] ?? 0),
+                'before_hold' => (float)($holdResult['before_hold'] ?? 0),
+                'after_hold' => (float)($holdResult['after_hold'] ?? $holdResult['hold_balance'] ?? 0),
+                'currency' => (string)($holdResult['currency'] ?? ''),
+            ];
         }
-    }
 
-    $wallet = user_proxy_load_wallet($uid);
-    $now = user_proxy_now();
-
-    $available = user_proxy_round_money((float)($wallet['available_balance'] ?? 0));
-    $hold = user_proxy_round_money((float)($wallet['hold_balance'] ?? 0));
-
-    if ($available < $amount) {
         return [
             'ok' => false,
-            'code' => 'INSUFFICIENT_BALANCE',
-            'message' => 'Insufficient available balance',
-            'data' => [
-                'available_balance' => $available,
-                'required_amount' => $amount,
-            ],
+            'code' => (string)($holdResult['code'] ?? 'SERVER_ERROR'),
+            'message' => (string)($holdResult['message'] ?? 'Failed to hold balance'),
+            'data' => (array)($holdResult['data'] ?? []),
         ];
     }
-
-    $newAvailable = user_proxy_round_money($available - $amount);
-    $newHold = user_proxy_round_money($hold + $amount);
-
-    $ok = fb_patch('USER_WALLETS/' . $uid, [
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'updated_at' => $now,
-    ]);
-
-    if (!$ok) {
-        return [
-            'ok' => false,
-            'code' => 'SERVER_ERROR',
-            'message' => 'Failed to hold balance',
-            'data' => [],
-        ];
-    }
-
-    $ledgerId = user_proxy_make_id('WL');
-    $month = user_proxy_month_key($now);
-
-    fb_put('WALLET_LEDGER/' . $uid . '/' . $month . '/' . $ledgerId, [
-        'ledger_id' => $ledgerId,
-        'uid' => $uid,
-        'type' => $type,
-        'direction' => 'HOLD',
-        'amount' => $amount,
-        'currency' => 'BDT',
-        'before_available' => $available,
-        'after_available' => $newAvailable,
-        'before_hold' => $hold,
-        'after_hold' => $newHold,
-        'ref_id' => $requestId,
-        'request_id' => $requestId,
-        'note' => $note,
-        'created_at' => $now,
-        'created_by_uid' => $uid,
-        'created_by_role' => 'USER',
-    ]);
 
     return [
-        'ok' => true,
-        'code' => 'SUCCESS',
-        'message' => 'Balance held successfully',
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'before_available' => $available,
-        'after_available' => $newAvailable,
-        'before_hold' => $hold,
-        'after_hold' => $newHold,
+        'ok' => false,
+        'code' => 'SERVER_ERROR',
+        'message' => 'Wallet hold helper is unavailable',
+        'data' => [],
     ];
 }
 
@@ -1304,47 +1267,23 @@ function user_proxy_release_hold_rollback(string $uid, float $amount, string $re
     $uid = trim($uid);
     $requestId = trim($requestId);
     $amount = user_proxy_round_money($amount);
+    $type = trim($type);
 
     if ($uid === '' || $requestId === '' || $amount <= 0) {
         return;
     }
 
-    $wallet = user_proxy_load_wallet($uid);
-    $now = user_proxy_now();
-
-    $available = user_proxy_round_money((float)($wallet['available_balance'] ?? 0));
-    $hold = user_proxy_round_money((float)($wallet['hold_balance'] ?? 0));
-
-    $newAvailable = user_proxy_round_money($available + $amount);
-    $newHold = user_proxy_round_money(max(0, $hold - $amount));
-
-    fb_patch('USER_WALLETS/' . $uid, [
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'updated_at' => $now,
-    ]);
-
-    $ledgerId = user_proxy_make_id('WL');
-    $month = user_proxy_month_key($now);
-
-    fb_put('WALLET_LEDGER/' . $uid . '/' . $month . '/' . $ledgerId, [
-        'ledger_id' => $ledgerId,
-        'uid' => $uid,
-        'type' => $type,
-        'direction' => 'RELEASE_HOLD',
-        'amount' => $amount,
-        'currency' => 'BDT',
-        'before_available' => $available,
-        'after_available' => $newAvailable,
-        'before_hold' => $hold,
-        'after_hold' => $newHold,
-        'ref_id' => $requestId,
-        'request_id' => $requestId,
-        'note' => $note,
-        'created_at' => $now,
-        'created_by_uid' => $uid,
-        'created_by_role' => 'SYSTEM',
-    ]);
+    if (function_exists('wallet_refund_hold')) {
+        wallet_refund_hold($uid, $amount, $requestId, $type !== '' ? $type : 'USER_WEB_HOLD_ROLLBACK', [
+            'ledger_extra' => [
+                'request_id' => $requestId,
+                'ref_id' => $requestId,
+                'note' => $note,
+                'created_by_uid' => $uid,
+                'created_by_role' => 'SYSTEM',
+            ],
+        ]);
+    }
 }
 
 /* =========================================================
@@ -1926,14 +1865,67 @@ function user_proxy_create_topup_request(string $uid, array $body): array
     }
 
     $requestId = user_proxy_make_id('TR');
+    $now = user_proxy_now();
     $walletDebit = (float)$financials['wallet_debit_amount'];
+    $operationSeed = hash('sha256', implode('|', [
+        'USER_WEB_TOPUP_CREATE',
+        $uid,
+        $countryCode,
+        $operator,
+        $topupNumber,
+        number_format($amount, 2, '.', ''),
+        number_format($walletDebit, 2, '.', ''),
+        (string)floor($now / 120),
+    ]));
+    $operationRef = 'USER_WEB_TOPUP_CREATE:' . hash('sha256', $operationSeed);
+    $operation = wallet_financial_operation_begin($operationRef, 'USER_WEB_TOPUP_CREATE_HOLD', 'REQUEST_CREATE', $uid, $walletDebit, (string)$financials['wallet_debit_currency'], [
+        'request_id' => $requestId,
+        'operator' => $operator,
+        'topup_number_hash' => hash('sha256', $topupNumber),
+    ]);
+    if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+        $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+        return [
+            'ok' => true,
+            'code' => 'SUCCESS',
+            'message' => 'Topup request created successfully',
+            'data' => $resultData,
+        ];
+    }
+    if (empty($operation['ok']) || empty($operation['claim'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'),
+            'message' => (string)($operation['message'] ?? 'Wallet operation is unavailable'),
+            'data' => [],
+        ];
+    }
+    $financialClaim = (array)$operation['claim'];
+    $requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
 
     $hold = user_proxy_hold_balance(
         $uid,
         $walletDebit,
         $requestId,
         'USER_WEB_TOPUP_HOLD',
-        'Balance held for web topup request'
+        'Balance held for web topup request',
+        [
+            'financial_operation' => $financialClaim,
+            'ledger_extra' => [
+                'ledger_id' => wallet_financial_operation_ledger_id($operationRef, 'USER_WEB_TOPUP_CREATE_HOLD'),
+                'request_id' => $requestId,
+                'ref_id' => $requestId,
+                'account_country' => (string)($financials['account_country'] ?? ''),
+                'topup_amount_bdt' => $amount,
+                'commission_per_1000' => $financials['commission_per_1000'],
+                'commission_bdt' => $financials['commission_bdt'],
+                'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+                'wallet_debit_amount' => $walletDebit,
+                'wallet_debit_currency' => $financials['wallet_debit_currency'],
+                'wallet_currency' => $financials['wallet_currency'],
+                'rate_used' => $financials['rate_used'],
+            ],
+        ]
     );
 
     if (!($hold['ok'] ?? false)) {
@@ -1944,8 +1936,6 @@ function user_proxy_create_topup_request(string $uid, array $body): array
             'data' => (array)($hold['data'] ?? []),
         ];
     }
-
-    $now = user_proxy_now();
 
     $row = [
         'request_id' => $requestId,
@@ -2005,13 +1995,13 @@ function user_proxy_create_topup_request(string $uid, array $body): array
     $ok = fb_put('TOPUP_REQUESTS/PENDING/' . $requestId, $row);
 
     if (!$ok) {
-        user_proxy_release_hold_rollback(
-            $uid,
-            $walletDebit,
-            $requestId,
-            'USER_WEB_TOPUP_HOLD_ROLLBACK',
-            'Topup hold rollback after request create failure'
-        );
+        wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'User web topup request could not be saved after wallet hold', [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_id' => $requestId,
+            'request_row' => $row,
+            'request_finalized' => false,
+        ]);
 
         return [
             'ok' => false,
@@ -2055,32 +2045,45 @@ function user_proxy_create_topup_request(string $uid, array $body): array
 
     topup_notify_telegram_request($row);
 
+    $responseData = [
+        'request_id' => $requestId,
+        'uid' => $uid,
+        'status' => 'PENDING',
+        'operator' => $operator,
+        'operator_name' => user_proxy_operator_name($operator),
+        'topup_number' => $topupNumber,
+        'amount' => $amount,
+        'amount_bdt' => $amount,
+        'commission_per_1000' => $financials['commission_per_1000'],
+        'commission_bdt' => $financials['commission_bdt'],
+        'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => $financials['wallet_debit_currency'],
+        'rate_used' => $financials['rate_used'],
+        'total_debit' => $walletDebit,
+        'created_at' => $now,
+        'wallet' => [
+            'available_balance' => (float)($hold['after_available'] ?? $hold['available_balance'] ?? 0),
+            'hold_balance' => (float)($hold['after_hold'] ?? $hold['hold_balance'] ?? 0),
+        ],
+    ];
+
+    wallet_financial_operation_mark_completed($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_finalized' => true,
+        'history_written' => true,
+        'notification_written' => true,
+        'request_id' => $requestId,
+        'ledger_id' => (string)($hold['ledger_id'] ?? ''),
+        'result_data' => $responseData,
+    ]);
+
     return [
         'ok' => true,
         'code' => 'SUCCESS',
         'message' => 'Topup request created successfully',
-        'data' => [
-            'request_id' => $requestId,
-            'uid' => $uid,
-            'status' => 'PENDING',
-            'operator' => $operator,
-            'operator_name' => user_proxy_operator_name($operator),
-            'topup_number' => $topupNumber,
-            'amount' => $amount,
-            'amount_bdt' => $amount,
-            'commission_per_1000' => $financials['commission_per_1000'],
-            'commission_bdt' => $financials['commission_bdt'],
-            'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
-            'wallet_debit_amount' => $walletDebit,
-            'wallet_debit_currency' => $financials['wallet_debit_currency'],
-            'rate_used' => $financials['rate_used'],
-            'total_debit' => $walletDebit,
-            'created_at' => $now,
-            'wallet' => [
-                'available_balance' => (float)($hold['after_available'] ?? $hold['available_balance'] ?? 0),
-                'hold_balance' => (float)($hold['after_hold'] ?? $hold['hold_balance'] ?? 0),
-            ],
-        ],
+        'data' => $responseData,
     ];
 }
 
@@ -2196,13 +2199,63 @@ function user_proxy_create_bundle_request(string $uid, string $offerId, string $
     $wallet = user_proxy_load_wallet($uid);
     $bundleFinancials = bundle_wallet_breakdown($uid, $payableAmount, $user, $wallet);
     $walletHoldAmount = (float)$bundleFinancials['wallet_hold_amount'];
+    $operationSeed = hash('sha256', implode('|', [
+        'USER_WEB_BUNDLE_CREATE',
+        $uid,
+        $offerId,
+        $operator,
+        $bundleNumber,
+        number_format($walletHoldAmount, 2, '.', ''),
+        (string)floor(user_proxy_now() / 120),
+    ]));
+    $operationRef = 'USER_WEB_BUNDLE_CREATE:' . hash('sha256', $operationSeed);
+    $operation = wallet_financial_operation_begin($operationRef, 'USER_WEB_BUNDLE_CREATE_HOLD', 'REQUEST_CREATE', $uid, $walletHoldAmount, (string)$bundleFinancials['wallet_currency'], [
+        'request_id' => $requestId,
+        'offer_id' => $offerId,
+        'bundle_number_hash' => hash('sha256', $bundleNumber),
+    ]);
+    if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+        $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+        return [
+            'ok' => true,
+            'code' => 'SUCCESS',
+            'message' => 'Bundle request created successfully',
+            'data' => $resultData,
+        ];
+    }
+    if (empty($operation['ok']) || empty($operation['claim'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'),
+            'message' => (string)($operation['message'] ?? 'Wallet operation is unavailable'),
+            'data' => [],
+        ];
+    }
+    $financialClaim = (array)$operation['claim'];
+    $requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
 
     $hold = user_proxy_hold_balance(
         $uid,
         $walletHoldAmount,
         $requestId,
         'USER_WEB_BUNDLE_HOLD',
-        'Balance held for web bundle request'
+        'Balance held for web bundle request',
+        [
+            'financial_operation' => $financialClaim,
+            'ledger_extra' => [
+                'ledger_id' => wallet_financial_operation_ledger_id($operationRef, 'USER_WEB_BUNDLE_CREATE_HOLD'),
+                'request_id' => $requestId,
+                'ref_id' => $requestId,
+                'offer_id' => $offerId,
+                'price_amount' => $priceAmount,
+                'you_pay' => $payableAmount,
+                'payable_amount' => $payableAmount,
+                'payable_amount_bdt' => $payableAmount,
+                'admin_commission' => $adminCommission,
+                'user_commission' => $userCommission,
+                'subadmin_profit' => $subadminProfit,
+            ],
+        ]
     );
 
     if (!($hold['ok'] ?? false)) {
@@ -2290,13 +2343,13 @@ function user_proxy_create_bundle_request(string $uid, string $offerId, string $
     }
 
     if (!$requestSaved) {
-        user_proxy_release_hold_rollback(
-            $uid,
-            $walletHoldAmount,
-            $requestId,
-            'USER_WEB_BUNDLE_HOLD_ROLLBACK',
-            'Bundle hold rollback after request create failure'
-        );
+        wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'User web bundle request could not be saved after wallet hold', [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_id' => $requestId,
+            'request_extra' => $extra,
+            'request_finalized' => false,
+        ]);
 
         return [
             'ok' => false,
@@ -2350,38 +2403,51 @@ function user_proxy_create_bundle_request(string $uid, string $offerId, string $
         ]);
     }
 
+    $responseData = [
+        'request_id' => $requestId,
+        'uid' => $uid,
+        'status' => 'WAITING_ADMIN',
+        'offer_id' => $offerId,
+        'operator' => $operator,
+        'operator_name' => user_proxy_operator_name($operator),
+        'bundle_number' => $bundleNumber,
+        'bundle_name' => $bundleName,
+
+        'amount' => $payableAmount,
+        'price_amount' => $priceAmount,
+        'offer_price' => $priceAmount,
+        'user_commission' => $userCommission,
+        'net_cost_after_commission' => $payableAmount,
+        'you_pay' => $payableAmount,
+        'payable_amount' => $payableAmount,
+        'wallet_hold_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+        'rate_used' => $bundleFinancials['rate_used'],
+
+        'created_at' => $now,
+        'wallet' => [
+            'available_balance' => (float)($hold['after_available'] ?? $hold['available_balance'] ?? 0),
+            'hold_balance' => (float)($hold['after_hold'] ?? $hold['hold_balance'] ?? 0),
+        ],
+    ];
+
+    wallet_financial_operation_mark_completed($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_finalized' => true,
+        'history_written' => true,
+        'notification_written' => true,
+        'request_id' => $requestId,
+        'ledger_id' => (string)($hold['ledger_id'] ?? ''),
+        'result_data' => $responseData,
+    ]);
+
     return [
         'ok' => true,
         'code' => 'SUCCESS',
         'message' => 'Bundle request created successfully',
-        'data' => [
-            'request_id' => $requestId,
-            'uid' => $uid,
-            'status' => 'WAITING_ADMIN',
-            'offer_id' => $offerId,
-            'operator' => $operator,
-            'operator_name' => user_proxy_operator_name($operator),
-            'bundle_number' => $bundleNumber,
-            'bundle_name' => $bundleName,
-
-            'amount' => $payableAmount,
-            'price_amount' => $priceAmount,
-            'offer_price' => $priceAmount,
-            'user_commission' => $userCommission,
-            'net_cost_after_commission' => $payableAmount,
-            'you_pay' => $payableAmount,
-            'payable_amount' => $payableAmount,
-            'wallet_hold_amount' => $walletHoldAmount,
-            'wallet_debit_amount' => $walletHoldAmount,
-            'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
-            'rate_used' => $bundleFinancials['rate_used'],
-
-            'created_at' => $now,
-            'wallet' => [
-                'available_balance' => (float)($hold['after_available'] ?? $hold['available_balance'] ?? 0),
-                'hold_balance' => (float)($hold['after_hold'] ?? $hold['hold_balance'] ?? 0),
-            ],
-        ],
+        'data' => $responseData,
     ];
 }
 
@@ -2810,7 +2876,7 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
     ];
 }
 
-function user_proxy_hold_balance_currency(string $uid, float $amount, string $requestId, string $type, string $note, string $currency): array
+function user_proxy_hold_balance_currency(string $uid, float $amount, string $requestId, string $type, string $note, string $currency, array $options = []): array
 {
     $uid = trim($uid);
     $requestId = trim($requestId);
@@ -2826,78 +2892,47 @@ function user_proxy_hold_balance_currency(string $uid, float $amount, string $re
         ];
     }
 
-    $wallet = user_proxy_load_wallet($uid);
-    $now = user_proxy_now();
+    if (function_exists('wallet_hold_amount')) {
+        $options['ledger_extra'] = array_merge([
+            'request_id' => $requestId,
+            'ref_id' => $requestId,
+            'currency' => $currency,
+            'wallet_currency' => $currency,
+            'note' => $note,
+            'created_by_uid' => $uid,
+            'created_by_role' => 'USER',
+        ], is_array($options['ledger_extra'] ?? null) ? $options['ledger_extra'] : []);
 
-    $available = user_proxy_round_money((float)($wallet['available_balance'] ?? 0));
-    $hold = user_proxy_round_money((float)($wallet['hold_balance'] ?? 0));
-
-    if ($available < $amount) {
-        return [
-            'ok' => false,
-            'code' => 'INSUFFICIENT_BALANCE',
-            'message' => 'Insufficient available balance',
-            'data' => [
-                'available_balance' => $available,
-                'required_amount' => $amount,
+        $holdResult = wallet_hold_amount($uid, $amount, $requestId, $type, $options);
+        if (!empty($holdResult['ok'])) {
+            return [
+                'ok' => true,
+                'code' => 'SUCCESS',
+                'message' => 'Balance held successfully',
+                'ledger_id' => (string)($holdResult['ledger_id'] ?? ''),
+                'available_balance' => (float)($holdResult['available_balance'] ?? $holdResult['after_available'] ?? 0),
+                'hold_balance' => (float)($holdResult['hold_balance'] ?? $holdResult['after_hold'] ?? 0),
+                'before_available' => (float)($holdResult['before_available'] ?? 0),
+                'after_available' => (float)($holdResult['after_available'] ?? $holdResult['available_balance'] ?? 0),
+                'before_hold' => (float)($holdResult['before_hold'] ?? 0),
+                'after_hold' => (float)($holdResult['after_hold'] ?? $holdResult['hold_balance'] ?? 0),
                 'currency' => $currency,
-            ],
-        ];
-    }
+            ];
+        }
 
-    $newAvailable = user_proxy_round_money($available - $amount);
-    $newHold = user_proxy_round_money($hold + $amount);
-
-    $ok = fb_patch('USER_WALLETS/' . $uid, [
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'currency' => $currency,
-        'wallet_currency' => $currency,
-        'updated_at' => $now,
-    ]);
-
-    if (!$ok) {
         return [
             'ok' => false,
-            'code' => 'SERVER_ERROR',
-            'message' => 'Failed to hold balance',
-            'data' => [],
+            'code' => (string)($holdResult['code'] ?? 'SERVER_ERROR'),
+            'message' => (string)($holdResult['message'] ?? 'Failed to hold balance'),
+            'data' => (array)($holdResult['data'] ?? []),
         ];
     }
-
-    $ledgerId = user_proxy_make_id('WL');
-    $month = user_proxy_month_key($now);
-
-    fb_put('WALLET_LEDGER/' . $uid . '/' . $month . '/' . $ledgerId, [
-        'ledger_id' => $ledgerId,
-        'uid' => $uid,
-        'type' => $type,
-        'direction' => 'HOLD',
-        'amount' => $amount,
-        'currency' => $currency,
-        'before_available' => $available,
-        'after_available' => $newAvailable,
-        'before_hold' => $hold,
-        'after_hold' => $newHold,
-        'ref_id' => $requestId,
-        'request_id' => $requestId,
-        'note' => $note,
-        'created_at' => $now,
-        'created_by_uid' => $uid,
-        'created_by_role' => 'USER',
-    ]);
 
     return [
-        'ok' => true,
-        'code' => 'SUCCESS',
-        'message' => 'Balance held successfully',
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'before_available' => $available,
-        'after_available' => $newAvailable,
-        'before_hold' => $hold,
-        'after_hold' => $newHold,
-        'currency' => $currency,
+        'ok' => false,
+        'code' => 'SERVER_ERROR',
+        'message' => 'Wallet hold helper is unavailable',
+        'data' => [],
     ];
 }
 
@@ -3025,6 +3060,44 @@ function user_proxy_create_mfs_request(string $uid, array $body): array
 
     $requestId = user_proxy_make_id('MFS');
     $now = user_proxy_now();
+    $operationSeed = trim((string)($body['idempotency_key'] ?? $body['client_request_id'] ?? $body['request_reference'] ?? ''));
+    if ($operationSeed === '') {
+        $operationSeed = hash('sha256', implode('|', [
+            'USER_WEB_MFS_CREATE',
+            $uid,
+            (string)$data['mfs_provider'],
+            (string)$data['mfs_type'],
+            (string)$data['receiver_number'],
+            number_format((float)$data['wallet_hold_amount'], 2, '.', ''),
+            (string)$data['wallet_currency'],
+            (string)floor($now / 120),
+        ]));
+    }
+    $operationRef = 'USER_WEB_MFS_CREATE:' . hash('sha256', implode('|', [$uid, $operationSeed]));
+    $operation = wallet_financial_operation_begin($operationRef, 'USER_WEB_MFS_CREATE_HOLD', 'REQUEST_CREATE', $uid, (float)$data['wallet_hold_amount'], (string)$data['wallet_currency'], [
+        'request_id' => $requestId,
+        'provider' => (string)$data['mfs_provider'],
+        'receiver_hash' => hash('sha256', (string)$data['receiver_number']),
+    ]);
+    if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+        $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+        return [
+            'ok' => true,
+            'code' => 'SUCCESS',
+            'message' => 'MFS request created successfully',
+            'data' => $resultData,
+        ];
+    }
+    if (empty($operation['ok']) || empty($operation['claim'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'),
+            'message' => (string)($operation['message'] ?? 'Wallet operation is unavailable'),
+            'data' => [],
+        ];
+    }
+    $financialClaim = (array)$operation['claim'];
+    $requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
 
     $hold = user_proxy_hold_balance_currency(
         $uid,
@@ -3032,7 +3105,13 @@ function user_proxy_create_mfs_request(string $uid, array $body): array
         $requestId,
         'USER_WEB_MFS_HOLD',
         'Balance held for MFS request',
-        (string)$data['wallet_currency']
+        (string)$data['wallet_currency'],
+        [
+            'financial_operation' => $financialClaim,
+            'ledger_extra' => [
+                'ledger_id' => wallet_financial_operation_ledger_id($operationRef, 'USER_WEB_MFS_CREATE_HOLD'),
+            ],
+        ]
     );
 
     if (!($hold['ok'] ?? false)) {
@@ -3115,13 +3194,13 @@ function user_proxy_create_mfs_request(string $uid, array $body): array
     $ok = fb_put('MFS_REQUESTS/PENDING/' . $requestId, $row);
 
     if (!$ok) {
-        user_proxy_release_hold_rollback(
-            $uid,
-            (float)$data['wallet_hold_amount'],
-            $requestId,
-            'USER_WEB_MFS_HOLD_ROLLBACK',
-            'MFS hold rollback after request create failure'
-        );
+        wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'MFS request could not be saved after wallet hold', [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_id' => $requestId,
+            'request_row' => $row,
+            'request_finalized' => false,
+        ]);
 
         return [
             'ok' => false,
@@ -3178,6 +3257,17 @@ function user_proxy_create_mfs_request(string $uid, array $body): array
         $responseWallet += mfs_wallet_display_payload(is_array($user) ? $user : [], $responseWallet);
     }
     $response['wallet'] = $responseWallet;
+
+    wallet_financial_operation_mark_completed($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_finalized' => true,
+        'history_written' => true,
+        'notification_written' => true,
+        'request_id' => $requestId,
+        'ledger_id' => (string)($hold['ledger_id'] ?? ''),
+        'result_data' => $response,
+    ]);
 
     return [
         'ok' => true,

@@ -1231,32 +1231,49 @@ function add_money_process_request(string $requestId, string $action, string $ac
 
     $row = $res['value'];
     $status = strtoupper(trim((string)($row['status'] ?? 'PENDING')));
-    if ($status !== 'PENDING') {
-        return ['ok' => false, 'code' => 'ALREADY_PROCESSED', 'message' => 'Request already processed.', 'data' => $row];
+    if ($status === 'APPROVED' && $action === 'APPROVE') {
+        return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request approved', 'data' => $row, 'idempotent_replay' => true];
+    }
+    if ($status === 'REJECTED' && $action === 'REJECT') {
+        return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request rejected', 'data' => $row, 'idempotent_replay' => true];
     }
 
     $lockStatus = $action === 'APPROVE' ? 'APPROVING' : 'REJECTING';
-    $locked = $row;
-    $locked['status'] = $lockStatus;
-    $locked['processing_by'] = $actorUid;
-    $locked['processing_role'] = $actorRole;
-    $locked['processing_at'] = $now;
-    $locked['updated_at'] = $now;
+    $freshLock = false;
+    if ($status === 'PENDING') {
+        $locked = $row;
+        $locked['status'] = $lockStatus;
+        $locked['processing_by'] = $actorUid;
+        $locked['processing_role'] = $actorRole;
+        $locked['processing_at'] = $now;
+        $locked['updated_at'] = $now;
 
-    $save = fb_put_if_match('ADD_MONEY_REQUESTS/' . $requestId, $locked, (string)$res['etag']);
-    if (!($save['ok'] ?? false)) {
-        return ['ok' => false, 'code' => 'REQUEST_BUSY', 'message' => 'Request is already being processed'];
+        $save = fb_put_if_match('ADD_MONEY_REQUESTS/' . $requestId, $locked, (string)$res['etag']);
+        if (!($save['ok'] ?? false)) {
+            return ['ok' => false, 'code' => 'REQUEST_BUSY', 'message' => 'Request is already being processed'];
+        }
+        $row = $locked;
+        $status = $lockStatus;
+        $freshLock = true;
+    } elseif ($status === $lockStatus) {
+        $row['processing_by'] = (string)($row['processing_by'] ?? $actorUid);
+        $row['processing_role'] = (string)($row['processing_role'] ?? $actorRole);
+    } else {
+        return ['ok' => false, 'code' => 'ALREADY_PROCESSED', 'message' => 'Request already processed.', 'data' => $row];
     }
-    add_money_patch_request($requestId, ['status' => $lockStatus, 'uid' => (string)($row['uid'] ?? '')]);
-    notification_emit_request_status_notification(
-        'ADD_MONEY',
-        $requestId,
-        (string)($row['uid'] ?? ''),
-        $status,
-        $lockStatus,
-        $locked,
-        'ADD_MONEY_PROCESSING'
-    );
+
+    if ($freshLock) {
+        add_money_patch_request($requestId, ['status' => $lockStatus, 'uid' => (string)($row['uid'] ?? '')]);
+        notification_emit_request_status_notification(
+            'ADD_MONEY',
+            $requestId,
+            (string)($row['uid'] ?? ''),
+            'PENDING',
+            $lockStatus,
+            $row,
+            'ADD_MONEY_PROCESSING'
+        );
+    }
 
     if ($action === 'REJECT') {
         $patch = [
@@ -1288,11 +1305,42 @@ function add_money_process_request(string $requestId, string $action, string $ac
         $currency = add_money_currency_for_country((string)($row['pricing_country'] ?? 'BD'));
     }
 
-    $credit = wallet_credit_available($uid, $amount, $requestId, 'ADD_MONEY', 'Manual add money approved', [
+    $operationRef = 'ADD_MONEY_APPROVE:' . hash('sha256', $requestId);
+    $operation = wallet_financial_operation_begin(
+        $operationRef,
+        'ADD_MONEY_APPROVAL_CREDIT',
+        'REQUEST_FINAL',
+        $uid,
+        $amount,
+        $currency,
+        [
+            'request_id' => $requestId,
+            'actor_uid' => $actorUid,
+            'actor_role' => $actorRole,
+            'method' => (string)($row['method'] ?? ''),
+        ]
+    );
+    if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+        $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : $row;
+        return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request approved', 'data' => $resultData, 'idempotent_replay' => true];
+    }
+    if (empty($operation['ok']) || empty($operation['claim'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'),
+            'message' => (string)($operation['message'] ?? 'Wallet operation is unavailable'),
+            'data' => $row,
+        ];
+    }
+    $financialClaim = (array)$operation['claim'];
+
+    $credit = wallet_credit_available($uid, $amount, $operationRef, 'ADD_MONEY', 'Manual add money approved', [
+        'ledger_id' => wallet_financial_operation_ledger_id($operationRef, 'ADD_MONEY_APPROVAL_CREDIT'),
         'source' => 'ADD_MONEY_REQUEST',
         'amount' => $amount,
         'method' => (string)($row['method'] ?? ''),
         'request_id' => $requestId,
+        'ref_id' => $requestId,
         'currency' => $currency,
         'wallet_currency' => $currency,
         'approved_by' => $actorUid,
@@ -1301,11 +1349,18 @@ function add_money_process_request(string $requestId, string $action, string $ac
         'reference' => (string)($row['transaction_id'] ?? $row['receipt_hash'] ?? ''),
         'note' => (string)($row['note'] ?? ''),
         'status' => 'SUCCESS',
+    ], [
+        'financial_operation' => $financialClaim,
     ]);
 
     if (empty($credit['ok'])) {
+        $creditCode = (string)($credit['code'] ?? 'WALLET_CREDIT_FAILED');
+        wallet_financial_operation_mark_failed($financialClaim, $creditCode, (string)($credit['message'] ?? 'Wallet credit failed'));
+        $nextStatus = in_array($creditCode, ['LEDGER_WRITE_FAILED', 'FINANCIAL_OPERATION_RECONCILIATION_REQUIRED'], true)
+            ? 'APPROVING'
+            : 'PENDING';
         add_money_patch_request($requestId, [
-            'status' => 'PENDING',
+            'status' => $nextStatus,
             'processing_error' => (string)($credit['message'] ?? 'Wallet credit failed'),
             'uid' => $uid,
         ]);
@@ -1321,7 +1376,15 @@ function add_money_process_request(string $requestId, string $action, string $ac
         'balance_before' => (float)($credit['before_available'] ?? 0),
         'balance_after' => (float)($credit['after_available'] ?? 0),
     ];
-    add_money_patch_request($requestId, $patch);
+    if (!add_money_patch_request($requestId, $patch)) {
+        wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Add money request could not be finalized after wallet credit', [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_id' => $requestId,
+            'request_finalized' => false,
+        ]);
+        return ['ok' => false, 'code' => 'REQUEST_FINALIZATION_FAILED', 'message' => 'Add money request could not be finalized after wallet credit', 'data' => $row];
+    }
 
     $final = array_merge($row, $patch, ['updated_at' => $now]);
     add_money_sync_processed_telegram_message($final);
@@ -1334,5 +1397,17 @@ function add_money_process_request(string $requestId, string $action, string $ac
         $final,
         'ADD_MONEY_APPROVED'
     );
+
+    wallet_financial_operation_mark_completed($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_finalized' => true,
+        'history_written' => true,
+        'notification_written' => true,
+        'request_id' => $requestId,
+        'ledger_id' => (string)($credit['ledger_id'] ?? ''),
+        'result_data' => $final,
+    ]);
+
     return ['ok' => true, 'code' => 'SUCCESS', 'message' => 'Add money request approved', 'data' => $final];
 }

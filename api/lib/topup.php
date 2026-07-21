@@ -538,12 +538,12 @@ function topup_notification_amount_text(array $row): string
     return 'BDT ' . topup_telegram_money($amount);
 }
 
-function topup_record_user_notification(array $row, string $requestId, string $type, string $title, string $body): void
+function topup_record_user_notification(array $row, string $requestId, string $type, string $title, string $body): bool
 {
     $uid = trim((string)($row['uid'] ?? ''));
     $requestId = trim($requestId);
     if ($uid === '' || $requestId === '') {
-        return;
+        return false;
     }
     $status = 'PROCESSING';
     $upperType = notification_clean_code($type, 40);
@@ -552,7 +552,7 @@ function topup_record_user_notification(array $row, string $requestId, string $t
     } elseif (str_contains($upperType, 'FAILED')) {
         $status = 'FAILED';
     }
-    notification_emit_request_status_notification(
+    $res = notification_emit_request_status_notification(
         'TOPUP',
         $requestId,
         $uid,
@@ -561,6 +561,7 @@ function topup_record_user_notification(array $row, string $requestId, string $t
         $row,
         'TOPUP_STATUS'
     );
+    return !empty($res['ok']) || !empty($res['notification_id']);
 }
 
 function topup_telegram_amount_line(array $row): string
@@ -1209,19 +1210,19 @@ function topup_public_history_row(array $row): array
     return array_replace($row, topup_normalized_history_fields($row));
 }
 
-function topup_write_history(array $done): void
+function topup_write_history(array $done): bool
 {
     $uid = (string)($done['uid'] ?? '');
     $requestId = (string)($done['request_id'] ?? '');
 
     if ($uid === '' || $requestId === '') {
-        return;
+        return false;
     }
 
     $requestSource = (string)($done['request_source'] ?? $done['source'] ?? '');
     $normalized = topup_normalized_history_fields($done);
 
-    fb_put('TOPUP_HISTORY/' . $uid . '/' . topup_history_month_key($done) . '/' . $requestId, [
+    return fb_put('TOPUP_HISTORY/' . $uid . '/' . topup_history_month_key($done) . '/' . $requestId, [
         'type' => 'MOBILE_TOPUP',
         'request_id' => $requestId,
         'topup_number' => (string)($done['topup_number'] ?? ''),
@@ -1416,15 +1417,40 @@ function topup_mark_success(string $requestId, string $message): array
     $uid = (string)($row['uid'] ?? '');
     $amount = (float)($row['amount'] ?? 0);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Settle wallet hold
-    |--------------------------------------------------------------------------
-    | SUBADMIN_API requests use subapi hold/release logic
-    | Normal requests use wallet_hold_amount logic
-    */
+    $holdAmount = (float)($row['wallet_hold_amount'] ?? 0);
+    $resolvedHold = function_exists('subapi_topup_current_hold_amount')
+        ? subapi_topup_current_hold_amount($row)
+        : ['amount' => $holdAmount, 'wallet_currency' => (string)($row['wallet_debit_currency'] ?? $row['wallet_currency'] ?? 'BDT')];
+    $holdAmount = (float)($resolvedHold['amount'] ?? $holdAmount);
+    $walletCurrency = (string)($resolvedHold['wallet_currency'] ?? $row['wallet_debit_currency'] ?? $row['wallet_currency'] ?? 'BDT');
+    $operation = function_exists('wallet_financial_operation_begin')
+        ? wallet_financial_operation_begin($requestId, 'TOPUP_SUCCESS', 'REQUEST_FINAL', $uid, $holdAmount, $walletCurrency, [
+            'request_type' => 'TOPUP',
+            'bucket' => $bucket,
+        ])
+        : ['ok' => true, 'claim' => []];
+
+    if (empty($operation['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_FAILED'),
+            'message' => (string)($operation['message'] ?? 'Topup financial operation is already being processed'),
+        ];
+    }
+    if (!empty($operation['duplicate'])) {
+        return [
+            'ok' => false,
+            'code' => 'ALREADY_DONE',
+            'message' => 'Topup request already completed',
+        ];
+    }
+    $financialClaim = (array)($operation['claim'] ?? []);
+
     if (function_exists('subapi_is_topup_hold_request') && subapi_is_topup_hold_request($row)) {
-        if (!subapi_settle_topup_success($row, $message)) {
+        if (!subapi_settle_topup_success($row, $message, $financialClaim)) {
+            if (function_exists('wallet_financial_operation_mark_failed')) {
+                wallet_financial_operation_mark_failed($financialClaim, 'SERVER_ERROR', 'Failed to settle held balance for API topup');
+            }
             return [
                 'ok' => false,
                 'code' => 'SERVER_ERROR',
@@ -1432,18 +1458,17 @@ function topup_mark_success(string $requestId, string $message): array
             ];
         }
     } else {
-        $holdAmount = (float)($row['wallet_hold_amount'] ?? 0);
-        $resolvedHold = function_exists('subapi_topup_current_hold_amount')
-            ? subapi_topup_current_hold_amount($row)
-            : ['amount' => $holdAmount, 'wallet_currency' => (string)($row['wallet_debit_currency'] ?? $row['wallet_currency'] ?? 'BDT')];
-        $holdAmount = (float)($resolvedHold['amount'] ?? $holdAmount);
-
         if ($holdAmount > 0) {
             if (function_exists('wallet_settle_hold_topup')) {
                 $settle = wallet_settle_hold_topup($uid, $holdAmount, $requestId, 'TOPUP_SETTLE');
             } elseif (function_exists('wallet_settle_hold')) {
-                $settle = wallet_settle_hold($uid, $holdAmount, $requestId, 'TOPUP_SETTLE');
+                $settle = wallet_settle_hold($uid, $holdAmount, $requestId, 'TOPUP_SETTLE', [
+                    'financial_operation' => $financialClaim,
+                ]);
             } else {
+                if (function_exists('wallet_financial_operation_mark_failed')) {
+                    wallet_financial_operation_mark_failed($financialClaim, 'SERVER_ERROR', 'Missing wallet settle function for topup');
+                }
                 return [
                     'ok' => false,
                     'code' => 'SERVER_ERROR',
@@ -1452,6 +1477,9 @@ function topup_mark_success(string $requestId, string $message): array
             }
 
             if (!($settle['ok'] ?? false)) {
+                if (function_exists('wallet_financial_operation_mark_failed')) {
+                    wallet_financial_operation_mark_failed($financialClaim, (string)($settle['code'] ?? 'WALLET_SETTLE_FAILED'), (string)($settle['message'] ?? 'Wallet settle failed'));
+                }
                 return $settle;
             }
         }
@@ -1473,6 +1501,13 @@ function topup_mark_success(string $requestId, string $message): array
     }
 
     if (!fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to move request to done bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
         return [
             'ok' => false,
             'code' => 'SERVER_ERROR',
@@ -1480,11 +1515,32 @@ function topup_mark_success(string $requestId, string $message): array
         ];
     }
 
-    if ($bucket !== '') {
-        fb_delete('TOPUP_REQUESTS/' . $bucket . '/' . $requestId);
+    if ($bucket !== '' && !fb_delete('TOPUP_REQUESTS/' . $bucket . '/' . $requestId)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to remove source request bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to move request to done bucket',
+        ];
     }
 
-    topup_write_history($done);
+    if (function_exists('wallet_financial_operation_mark_applied')) {
+        wallet_financial_operation_mark_applied($financialClaim, [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_finalized' => true,
+            'final_status' => 'SUCCESS',
+            'completed_bucket' => 'DONE',
+        ]);
+    }
+
+    $historyWritten = topup_write_history($done);
     update_request_status($requestId, 'SUCCESS', $message);
 
     if (
@@ -1505,13 +1561,22 @@ function topup_mark_success(string $requestId, string $message): array
         'subapi_held_amount' => (float)($row['held_amount'] ?? 0),
         'request_source' => (string)($row['source'] ?? ''),
     ]);
-    topup_record_user_notification(
+    $notificationWritten = topup_record_user_notification(
         $done,
         $requestId,
         'TOPUP_SUCCESS',
         'Top-Up Successful',
         'Your mobile top-up of ' . topup_notification_amount_text($done) . ' was successful.'
     );
+    if (function_exists('wallet_financial_operation_mark_completed')) {
+        wallet_financial_operation_mark_completed($financialClaim, [
+            'final_status' => 'SUCCESS',
+            'completed_bucket' => 'DONE',
+            'request_finalized' => true,
+            'history_written' => $historyWritten,
+            'notification_written' => $notificationWritten,
+        ]);
+    }
 
     return [
         'ok' => true,
@@ -1544,15 +1609,40 @@ function topup_mark_failed(string $requestId, string $message): array
     $uid = (string)($row['uid'] ?? '');
     $amount = (float)($row['amount'] ?? 0);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Release wallet hold
-    |--------------------------------------------------------------------------
-    | SUBADMIN_API requests use subapi hold/release logic
-    | Normal requests use wallet_hold_amount logic
-    */
+    $holdAmount = (float)($row['wallet_hold_amount'] ?? 0);
+    $resolvedHold = function_exists('subapi_topup_current_hold_amount')
+        ? subapi_topup_current_hold_amount($row)
+        : ['amount' => $holdAmount, 'wallet_currency' => (string)($row['wallet_debit_currency'] ?? $row['wallet_currency'] ?? 'BDT')];
+    $holdAmount = (float)($resolvedHold['amount'] ?? $holdAmount);
+    $walletCurrency = (string)($resolvedHold['wallet_currency'] ?? $row['wallet_debit_currency'] ?? $row['wallet_currency'] ?? 'BDT');
+    $operation = function_exists('wallet_financial_operation_begin')
+        ? wallet_financial_operation_begin($requestId, 'TOPUP_REFUND', 'REQUEST_FINAL', $uid, $holdAmount, $walletCurrency, [
+            'request_type' => 'TOPUP',
+            'bucket' => $bucket,
+        ])
+        : ['ok' => true, 'claim' => []];
+
+    if (empty($operation['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_FAILED'),
+            'message' => (string)($operation['message'] ?? 'Topup financial operation is already being processed'),
+        ];
+    }
+    if (!empty($operation['duplicate'])) {
+        return [
+            'ok' => false,
+            'code' => 'ALREADY_DONE',
+            'message' => 'Topup request already completed',
+        ];
+    }
+    $financialClaim = (array)($operation['claim'] ?? []);
+
     if (function_exists('subapi_is_topup_hold_request') && subapi_is_topup_hold_request($row)) {
-        if (!subapi_settle_topup_failed($row, $message)) {
+        if (!subapi_settle_topup_failed($row, $message, $financialClaim)) {
+            if (function_exists('wallet_financial_operation_mark_failed')) {
+                wallet_financial_operation_mark_failed($financialClaim, 'SERVER_ERROR', 'Failed to release held balance for API topup');
+            }
             return [
                 'ok' => false,
                 'code' => 'SERVER_ERROR',
@@ -1560,15 +1650,14 @@ function topup_mark_failed(string $requestId, string $message): array
             ];
         }
     } else {
-        $holdAmount = (float)($row['wallet_hold_amount'] ?? 0);
-        $resolvedHold = function_exists('subapi_topup_current_hold_amount')
-            ? subapi_topup_current_hold_amount($row)
-            : ['amount' => $holdAmount, 'wallet_currency' => (string)($row['wallet_debit_currency'] ?? $row['wallet_currency'] ?? 'BDT')];
-        $holdAmount = (float)($resolvedHold['amount'] ?? $holdAmount);
-
         if ($holdAmount > 0) {
-            $refund = wallet_refund_hold($uid, $holdAmount, $requestId, 'TOPUP_REFUND');
+            $refund = wallet_refund_hold($uid, $holdAmount, $requestId, 'TOPUP_REFUND', [
+                'financial_operation' => $financialClaim,
+            ]);
             if (!($refund['ok'] ?? false)) {
+                if (function_exists('wallet_financial_operation_mark_failed')) {
+                    wallet_financial_operation_mark_failed($financialClaim, (string)($refund['code'] ?? 'WALLET_REFUND_FAILED'), (string)($refund['message'] ?? 'Wallet refund failed'));
+                }
                 return $refund;
             }
         }
@@ -1597,6 +1686,13 @@ function topup_mark_failed(string $requestId, string $message): array
     }
 
     if (!fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to move request to done bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
         return [
             'ok' => false,
             'code' => 'SERVER_ERROR',
@@ -1604,11 +1700,32 @@ function topup_mark_failed(string $requestId, string $message): array
         ];
     }
 
-    if ($bucket !== '') {
-        fb_delete('TOPUP_REQUESTS/' . $bucket . '/' . $requestId);
+    if ($bucket !== '' && !fb_delete('TOPUP_REQUESTS/' . $bucket . '/' . $requestId)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to remove source request bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to move request to done bucket',
+        ];
     }
 
-    topup_write_history($done);
+    if (function_exists('wallet_financial_operation_mark_applied')) {
+        wallet_financial_operation_mark_applied($financialClaim, [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_finalized' => true,
+            'final_status' => 'FAILED',
+            'completed_bucket' => 'DONE',
+        ]);
+    }
+
+    $historyWritten = topup_write_history($done);
     update_request_status($requestId, 'FAILED', $message);
 
     if (
@@ -1629,13 +1746,22 @@ function topup_mark_failed(string $requestId, string $message): array
         'subapi_held_amount' => (float)($row['held_amount'] ?? 0),
         'request_source' => (string)($row['source'] ?? ''),
     ]);
-    topup_record_user_notification(
+    $notificationWritten = topup_record_user_notification(
         $done,
         $requestId,
         'TOPUP_FAILED',
         'Top-Up Failed',
         'Your mobile top-up could not be completed.'
     );
+    if (function_exists('wallet_financial_operation_mark_completed')) {
+        wallet_financial_operation_mark_completed($financialClaim, [
+            'final_status' => 'FAILED',
+            'completed_bucket' => 'DONE',
+            'request_finalized' => true,
+            'history_written' => $historyWritten,
+            'notification_written' => $notificationWritten,
+        ]);
+    }
 
     return [
         'ok' => true,

@@ -56,9 +56,64 @@ if (empty($financials['ok'])) {
 }
 $walletDebit = (float)$financials['wallet_debit_amount'];
 
-$hold = wallet_hold_amount($adminUid, $walletDebit, $requestId, 'TOPUP_HOLD');
+$operationSeed = implode('|', [
+    $adminUid,
+    $operator,
+    $topupNumber,
+    number_format($amount, 2, '.', ''),
+    number_format($walletDebit, 2, '.', ''),
+    (string)floor(now_ts() / 120),
+]);
+$operationRef = 'ADMIN_TOPUP_CREATE:' . hash('sha256', $operationSeed);
+$operation = wallet_financial_operation_begin(
+    $operationRef,
+    'ADMIN_TOPUP_CREATE_HOLD',
+    'REQUEST_CREATE',
+    $adminUid,
+    $walletDebit,
+    (string)$financials['wallet_debit_currency'],
+    [
+        'request_id' => $requestId,
+        'operator' => $operator,
+        'topup_number_hash' => hash('sha256', $topupNumber),
+        'admin_uid' => $adminUid,
+    ]
+);
+if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+    $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+    api_response(true, 'TOPUP_REQUEST_CREATED', 'Admin direct topup request created', $resultData);
+}
+if (empty($operation['ok']) || empty($operation['claim'])) {
+    api_response(false, (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'), (string)($operation['message'] ?? 'Wallet operation is unavailable'), [], 409);
+}
+$financialClaim = (array)$operation['claim'];
+$requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
+
+$hold = wallet_hold_amount($adminUid, $walletDebit, $operationRef, 'ADMIN_TOPUP_HOLD', [
+    'financial_operation' => $financialClaim,
+    'ledger_extra' => [
+        'ledger_id' => wallet_financial_operation_ledger_id($operationRef, 'ADMIN_TOPUP_CREATE_HOLD'),
+        'request_id' => $requestId,
+        'ref_id' => $requestId,
+        'admin_uid' => $adminUid,
+        'operator' => $operator,
+        'topup_number_hash' => hash('sha256', $topupNumber),
+        'topup_amount_bdt' => (float)($financials['topup_amount_bdt'] ?? $amount),
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => (string)$financials['wallet_debit_currency'],
+        'wallet_currency' => (string)$financials['wallet_currency'],
+        'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
+        'rate_snapshot' => $financials['rate_snapshot'] ?? null,
+        'rate_used' => (float)($financials['rate_used'] ?? 0),
+        'commission_per_1000' => (float)($financials['commission_per_1000'] ?? 0),
+        'commission_bdt' => (float)($financials['commission_bdt'] ?? 0),
+        'source' => 'ADMIN_PANEL',
+        'note' => 'Balance moved to hold for admin direct topup request',
+    ],
+]);
 if (!($hold['ok'] ?? false)) {
     $code = (string)($hold['code'] ?? 'SERVER_ERROR');
+    wallet_financial_operation_mark_failed($financialClaim, $code, (string)($hold['message'] ?? 'Wallet hold failed'));
 
     if ($code === 'INSUFFICIENT_BALANCE') {
         api_response(false, 'INSUFFICIENT_BALANCE', 'Not enough admin balance', [
@@ -120,7 +175,13 @@ $row = [
 ];
 
 if (!fb_put('TOPUP_REQUESTS/PENDING/' . $requestId, $row)) {
-    wallet_refund_hold($adminUid, $walletDebit, $requestId, 'TOPUP_REFUND');
+    wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'Admin direct topup request could not be saved after wallet hold', [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_id' => $requestId,
+        'request_row' => $row,
+        'request_finalized' => false,
+    ]);
     api_response(false, 'SERVER_ERROR', 'Failed to create admin topup request', [], 500);
 }
 
@@ -133,8 +194,13 @@ $statusSaved = create_request_status(
 );
 
 if (!$statusSaved) {
-    fb_delete('TOPUP_REQUESTS/PENDING/' . $requestId);
-    wallet_refund_hold($adminUid, $walletDebit, $requestId, 'TOPUP_REFUND');
+    wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_STATUS_CREATE_FAILED', 'Admin direct topup request status could not be saved after wallet hold', [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_id' => $requestId,
+        'request_row' => $row,
+        'request_finalized' => false,
+    ]);
     api_response(false, 'SERVER_ERROR', 'Failed to create request status', [], 500);
 }
 
@@ -172,7 +238,7 @@ system_log('ADMIN_DIRECT_TOPUP_CREATE', $requestId, 'Admin created direct topup 
 
 topup_notify_telegram_request($row);
 
-api_response(true, 'TOPUP_REQUEST_CREATED', 'Admin direct topup request created', [
+$responseData = [
     'request_id' => $requestId,
     'status' => 'PENDING',
     'topup_number' => $topupNumber,
@@ -187,4 +253,17 @@ api_response(true, 'TOPUP_REQUEST_CREATED', 'Admin direct topup request created'
     'rate_used' => $financials['rate_used'],
     'total_debit' => $walletDebit,
     'created_by_admin' => true,
+];
+
+wallet_financial_operation_mark_completed($financialClaim, [
+    'wallet_applied' => true,
+    'ledger_written' => true,
+    'request_finalized' => true,
+    'history_written' => true,
+    'notification_written' => true,
+    'request_id' => $requestId,
+    'ledger_id' => (string)($hold['ledger_id'] ?? ''),
+    'result_data' => $responseData,
 ]);
+
+api_response(true, 'TOPUP_REQUEST_CREATED', 'Admin direct topup request created', $responseData);

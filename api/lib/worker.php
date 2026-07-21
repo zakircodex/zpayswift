@@ -325,9 +325,35 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
         ? subapi_topup_current_hold_amount($processing)
         : ['amount' => $walletDebitAmount, 'wallet_currency' => (string)($processing['wallet_debit_currency'] ?? $processing['wallet_currency'] ?? 'BDT')];
     $walletDebitAmount = (float)($resolvedHold['amount'] ?? $walletDebitAmount);
+    $walletCurrency = (string)($resolvedHold['wallet_currency'] ?? $processing['wallet_debit_currency'] ?? $processing['wallet_currency'] ?? 'BDT');
+    $operation = function_exists('wallet_financial_operation_begin')
+        ? wallet_financial_operation_begin($requestId, 'TOPUP_SUCCESS', 'REQUEST_FINAL', $uid, $walletDebitAmount, $walletCurrency, [
+            'request_type' => 'TOPUP',
+            'source' => 'WORKER',
+            'device_id' => $deviceId,
+        ])
+        : ['ok' => true, 'claim' => []];
+    if (empty($operation['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_FAILED'),
+            'message' => (string)($operation['message'] ?? 'Topup financial operation is already being processed'),
+        ];
+    }
+    if (!empty($operation['duplicate'])) {
+        return [
+            'ok' => true,
+            'code' => 'SUCCESS',
+            'message' => 'Worker result already saved',
+        ];
+    }
+    $financialClaim = (array)($operation['claim'] ?? []);
 
     if (function_exists('subapi_is_topup_hold_request') && subapi_is_topup_hold_request($processing)) {
-        if (!subapi_settle_topup_success($processing, $resultMessage)) {
+        if (!subapi_settle_topup_success($processing, $resultMessage, $financialClaim)) {
+            if (function_exists('wallet_financial_operation_mark_failed')) {
+                wallet_financial_operation_mark_failed($financialClaim, 'SERVER_ERROR', 'Failed to settle held balance for API topup');
+            }
             return [
                 'ok' => false,
                 'code' => 'SERVER_ERROR',
@@ -335,8 +361,13 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
             ];
         }
     } else {
-        $settle = wallet_settle_hold($uid, $walletDebitAmount, $requestId, 'TOPUP_SETTLE');
+        $settle = wallet_settle_hold($uid, $walletDebitAmount, $requestId, 'TOPUP_SETTLE', [
+            'financial_operation' => $financialClaim,
+        ]);
         if (!($settle['ok'] ?? false)) {
+            if (function_exists('wallet_financial_operation_mark_failed')) {
+                wallet_financial_operation_mark_failed($financialClaim, (string)($settle['code'] ?? 'WALLET_SETTLE_FAILED'), (string)($settle['message'] ?? 'Wallet settle failed'));
+            }
             return $settle;
         }
     }
@@ -353,13 +384,40 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
         $done['settled_hold_currency'] = (string)($resolvedHold['wallet_currency'] ?? $done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT');
     }
 
-    fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done);
-    fb_delete('TOPUP_REQUESTS/PROCESSING/' . $requestId);
+    if (!fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to move worker request to done bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to move request to done bucket',
+        ];
+    }
+    if (!fb_delete('TOPUP_REQUESTS/PROCESSING/' . $requestId)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to remove processing request bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to move request to done bucket',
+        ];
+    }
 
+    $historyWritten = false;
     if (function_exists('topup_write_history')) {
-        topup_write_history($done);
+        $historyWritten = topup_write_history($done);
     } else {
-        fb_put('TOPUP_HISTORY/' . $uid . '/' . month_key() . '/' . $requestId, [
+        $historyWritten = fb_put('TOPUP_HISTORY/' . $uid . '/' . month_key() . '/' . $requestId, [
             'request_id' => $requestId,
             'topup_number' => (string)($done['topup_number'] ?? ''),
             'operator' => (string)($done['operator'] ?? ''),
@@ -381,9 +439,20 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
         ]);
     }
 
+    if (function_exists('wallet_financial_operation_mark_applied')) {
+        wallet_financial_operation_mark_applied($financialClaim, [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_finalized' => true,
+            'final_status' => 'SUCCESS',
+            'completed_bucket' => 'DONE',
+            'source' => 'WORKER',
+        ]);
+    }
+
     update_request_status($requestId, 'SUCCESS', $resultMessage);
     worker_sync_api_request_status($uid, $requestId, 'SUCCESS', $resultMessage);
-    notification_emit_request_status_notification(
+    $notification = notification_emit_request_status_notification(
         'TOPUP',
         $requestId,
         $uid,
@@ -392,6 +461,7 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
         $done,
         'WORKER_SUCCESS'
     );
+    $notificationWritten = !empty($notification['ok']) || !empty($notification['notification_id']);
 
     worker_mark_status($deviceId, 'IDLE');
 
@@ -400,6 +470,16 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
         'message' => $resultMessage,
         'request_source' => (string)($processing['source'] ?? ''),
     ]);
+    if (function_exists('wallet_financial_operation_mark_completed')) {
+        wallet_financial_operation_mark_completed($financialClaim, [
+            'final_status' => 'SUCCESS',
+            'completed_bucket' => 'DONE',
+            'source' => 'WORKER',
+            'request_finalized' => true,
+            'history_written' => $historyWritten,
+            'notification_written' => $notificationWritten,
+        ]);
+    }
 
     return [
         'ok' => true,
@@ -440,9 +520,35 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
         ? subapi_topup_current_hold_amount($processing)
         : ['amount' => $walletDebitAmount, 'wallet_currency' => (string)($processing['wallet_debit_currency'] ?? $processing['wallet_currency'] ?? 'BDT')];
     $walletDebitAmount = (float)($resolvedHold['amount'] ?? $walletDebitAmount);
+    $walletCurrency = (string)($resolvedHold['wallet_currency'] ?? $processing['wallet_debit_currency'] ?? $processing['wallet_currency'] ?? 'BDT');
+    $operation = function_exists('wallet_financial_operation_begin')
+        ? wallet_financial_operation_begin($requestId, 'TOPUP_REFUND', 'REQUEST_FINAL', $uid, $walletDebitAmount, $walletCurrency, [
+            'request_type' => 'TOPUP',
+            'source' => 'WORKER',
+            'device_id' => $deviceId,
+        ])
+        : ['ok' => true, 'claim' => []];
+    if (empty($operation['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_FAILED'),
+            'message' => (string)($operation['message'] ?? 'Topup financial operation is already being processed'),
+        ];
+    }
+    if (!empty($operation['duplicate'])) {
+        return [
+            'ok' => true,
+            'code' => 'SUCCESS',
+            'message' => 'Worker result already saved',
+        ];
+    }
+    $financialClaim = (array)($operation['claim'] ?? []);
 
     if (function_exists('subapi_is_topup_hold_request') && subapi_is_topup_hold_request($processing)) {
-        if (!subapi_settle_topup_failed($processing, $resultMessage)) {
+        if (!subapi_settle_topup_failed($processing, $resultMessage, $financialClaim)) {
+            if (function_exists('wallet_financial_operation_mark_failed')) {
+                wallet_financial_operation_mark_failed($financialClaim, 'SERVER_ERROR', 'Failed to release held balance for API topup');
+            }
             return [
                 'ok' => false,
                 'code' => 'SERVER_ERROR',
@@ -450,8 +556,13 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
             ];
         }
     } else {
-        $refund = wallet_refund_hold($uid, $walletDebitAmount, $requestId, 'TOPUP_REFUND');
+        $refund = wallet_refund_hold($uid, $walletDebitAmount, $requestId, 'TOPUP_REFUND', [
+            'financial_operation' => $financialClaim,
+        ]);
         if (!($refund['ok'] ?? false)) {
+            if (function_exists('wallet_financial_operation_mark_failed')) {
+                wallet_financial_operation_mark_failed($financialClaim, (string)($refund['code'] ?? 'WALLET_REFUND_FAILED'), (string)($refund['message'] ?? 'Wallet refund failed'));
+            }
             return $refund;
         }
     }
@@ -468,13 +579,40 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
         $done['refund_currency'] = (string)($resolvedHold['wallet_currency'] ?? $done['wallet_debit_currency'] ?? $done['wallet_currency'] ?? 'BDT');
     }
 
-    fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done);
-    fb_delete('TOPUP_REQUESTS/PROCESSING/' . $requestId);
+    if (!fb_put('TOPUP_REQUESTS/DONE/' . $requestId, $done)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to move worker request to done bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to move request to done bucket',
+        ];
+    }
+    if (!fb_delete('TOPUP_REQUESTS/PROCESSING/' . $requestId)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to remove processing request bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to move request to done bucket',
+        ];
+    }
 
+    $historyWritten = false;
     if (function_exists('topup_write_history')) {
-        topup_write_history($done);
+        $historyWritten = topup_write_history($done);
     } else {
-        fb_put('TOPUP_HISTORY/' . $uid . '/' . month_key() . '/' . $requestId, [
+        $historyWritten = fb_put('TOPUP_HISTORY/' . $uid . '/' . month_key() . '/' . $requestId, [
             'request_id' => $requestId,
             'topup_number' => (string)($done['topup_number'] ?? ''),
             'operator' => (string)($done['operator'] ?? ''),
@@ -496,9 +634,20 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
         ]);
     }
 
+    if (function_exists('wallet_financial_operation_mark_applied')) {
+        wallet_financial_operation_mark_applied($financialClaim, [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_finalized' => true,
+            'final_status' => 'FAILED',
+            'completed_bucket' => 'DONE',
+            'source' => 'WORKER',
+        ]);
+    }
+
     update_request_status($requestId, 'FAILED', $resultMessage);
     worker_sync_api_request_status($uid, $requestId, 'FAILED', $resultMessage);
-    notification_emit_request_status_notification(
+    $notification = notification_emit_request_status_notification(
         'TOPUP',
         $requestId,
         $uid,
@@ -507,6 +656,7 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
         $done,
         'WORKER_FAILED'
     );
+    $notificationWritten = !empty($notification['ok']) || !empty($notification['notification_id']);
 
     worker_mark_status($deviceId, 'IDLE');
 
@@ -515,6 +665,16 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
         'message' => $resultMessage,
         'request_source' => (string)($processing['source'] ?? ''),
     ]);
+    if (function_exists('wallet_financial_operation_mark_completed')) {
+        wallet_financial_operation_mark_completed($financialClaim, [
+            'final_status' => 'FAILED',
+            'completed_bucket' => 'DONE',
+            'source' => 'WORKER',
+            'request_finalized' => true,
+            'history_written' => $historyWritten,
+            'notification_written' => $notificationWritten,
+        ]);
+    }
 
     return [
         'ok' => true,

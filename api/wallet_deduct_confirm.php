@@ -240,6 +240,27 @@ if (trim((string)($request['requested_by_uid'] ?? '')) !== $actorUid && $actorRo
 }
 
 $status = strtoupper(trim((string)($request['status'] ?? '')));
+if ($status === 'COMPLETED') {
+    deduct_otp_confirm_response(true, 'SUCCESS', 'OTP verified and wallet deducted successfully', [
+        'otp_request_id' => $otpRequestId,
+        'ledger_id' => (string)($request['ledger_id'] ?? ''),
+        'actor_ledger_id' => (string)($request['actor_ledger_id'] ?? ''),
+        'target_uid' => (string)($request['target_uid'] ?? ''),
+        'amount' => deduct_otp_confirm_money($request['base_amount'] ?? $request['amount'] ?? 0, 0.0),
+        'base_amount' => deduct_otp_confirm_money($request['base_amount'] ?? $request['amount'] ?? 0, 0.0),
+        'commission_per_1000' => deduct_otp_confirm_money($request['commission_per_1000'] ?? 0, 0.0),
+        'commission_amount' => deduct_otp_confirm_money($request['commission_amount'] ?? 0, 0.0),
+        'total_debit' => deduct_otp_confirm_money($request['total_debit'] ?? $request['amount'] ?? 0, 0.0),
+        'currency' => (string)($request['currency'] ?? $request['wallet_currency'] ?? ''),
+        'wallet_currency' => (string)($request['wallet_currency'] ?? $request['currency'] ?? ''),
+        'before_available' => deduct_otp_confirm_money($request['before_available'] ?? 0, 0.0),
+        'after_available' => deduct_otp_confirm_money($request['after_available'] ?? 0, 0.0),
+        'subadmin_credited' => !empty($request['subadmin_credited']),
+        'subadmin_before_available' => deduct_otp_confirm_money($request['subadmin_before_available'] ?? 0, 0.0),
+        'subadmin_after_available' => deduct_otp_confirm_money($request['subadmin_after_available'] ?? 0, 0.0),
+        'completed_at' => (int)($request['completed_at'] ?? $request['updated_at'] ?? deduct_otp_confirm_now()),
+    ]);
+}
 if ($status !== 'PENDING') {
     deduct_otp_confirm_response(false, 'INVALID_STATUS', 'OTP request is not pending', [
         'status' => $status,
@@ -338,6 +359,28 @@ if ($isSubadminTransfer) {
 }
 
 $totalDebit = round($baseAmount, 2);
+$operationType = $isSubadminTransfer ? 'SUBADMIN_WALLET_DEDUCT' : 'ADMIN_WALLET_DEDUCT';
+$operationRef = 'WALLET_DEDUCT:' . hash('sha256', implode('|', [
+    $operationType,
+    $otpRequestId,
+    $actorUid,
+    $targetUid,
+]));
+$operation = wallet_financial_operation_begin($operationRef, $operationType, 'REQUEST_FINAL', $targetUid, $totalDebit, $operationCurrency, [
+    'actor_uid' => $actorUid,
+    'actor_role' => $actorRole,
+    'target_uid' => $targetUid,
+    'otp_request_id' => $otpRequestId,
+    'source' => $isSubadminTransfer ? 'SUBADMIN_PANEL' : 'ADMIN_PANEL',
+]);
+if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+    $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+    deduct_otp_confirm_response(true, 'SUCCESS', 'OTP verified and wallet deducted successfully', $resultData);
+}
+if (empty($operation['ok']) || empty($operation['claim'])) {
+    deduct_otp_confirm_response(false, (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'), (string)($operation['message'] ?? 'Wallet operation is unavailable'), [], 409);
+}
+$financialClaim = $operation['claim'];
 
 $beforeAvailable = deduct_otp_confirm_money($wallet['available_balance'] ?? 0, 0.0);
 $beforeHold = deduct_otp_confirm_money($wallet['hold_balance'] ?? 0, 0.0);
@@ -377,33 +420,10 @@ if ($isSubadminTransfer) {
     $actorAfterAvailable = round($actorBeforeAvailable + $totalDebit, 2);
 }
 
-$walletPatchOk = fb_patch('USER_WALLETS/' . $targetUid, [
-    'available_balance' => $afterAvailable,
-    'updated_at' => $now,
-]);
-
-if (!$walletPatchOk) {
-    deduct_otp_confirm_response(false, 'SERVER_ERROR', 'Failed to update wallet balance', [], 500);
-}
-
-if ($isSubadminTransfer) {
-    $actorWalletPatchOk = fb_patch('USER_WALLETS/' . $actorUid, [
-        'available_balance' => $actorAfterAvailable,
-        'updated_at' => $now,
-    ]);
-
-    if (!$actorWalletPatchOk) {
-        fb_patch('USER_WALLETS/' . $targetUid, [
-            'available_balance' => $beforeAvailable,
-            'updated_at' => $now,
-        ]);
-
-        deduct_otp_confirm_response(false, 'SERVER_ERROR', 'Failed to credit subadmin wallet. Target wallet rolled back.', [], 500);
-    }
-}
-
-$month = date('Y-m', $now);
-$ledgerId = deduct_otp_confirm_make_id('WL');
+$ledgerId = wallet_financial_operation_side_ledger_id($operationRef, $operationType, 'target_debited');
+$actorLedgerId = $isSubadminTransfer
+    ? wallet_financial_operation_side_ledger_id($operationRef, $operationType, 'actor_credited')
+    : '';
 
 $baseNote = trim((string)($request['note'] ?? ''));
 $finalNote = $baseNote !== '' ? $baseNote : 'Wallet deducted';
@@ -411,61 +431,74 @@ $finalNote = $baseNote !== '' ? $baseNote : 'Wallet deducted';
 $finalNote .= ' | Base: ' . $currencyLabel . ' ' . number_format($baseAmount, 2, '.', '');
 $finalNote .= ' | Total Debit: ' . $currencyLabel . ' ' . number_format($totalDebit, 2, '.', '');
 
-fb_put('WALLET_LEDGER/' . $targetUid . '/' . $month . '/' . $ledgerId, [
-    'ledger_id' => $ledgerId,
-    'uid' => $targetUid,
-    'type' => $isSubadminTransfer ? 'SUBADMIN_DEDUCT_WITH_COMMISSION' : 'ADMIN_DEDUCT',
-    'direction' => 'DEBIT',
-
-    'amount' => $totalDebit,
-    'base_amount' => $baseAmount,
-    'commission_per_1000' => $commissionPer1000,
-    'commission_amount' => $commissionAmount,
-    'total_debit' => $totalDebit,
-
-    'currency' => $operationCurrency,
-    'before_available' => $beforeAvailable,
-    'after_available' => $afterAvailable,
-    'before_hold' => $beforeHold,
-    'after_hold' => $beforeHold,
-    'ref_id' => $otpRequestId,
-    'note' => $finalNote,
-    'created_at' => $now,
-    'created_by_uid' => $actorUid,
-    'created_by_role' => $actorRole,
-]);
-
-if ($isSubadminTransfer) {
-    $actorLedgerId = deduct_otp_confirm_make_id('WL');
-
-    fb_put('WALLET_LEDGER/' . $actorUid . '/' . $month . '/' . $actorLedgerId, [
-        'ledger_id' => $actorLedgerId,
-        'uid' => $actorUid,
-        'type' => 'SUBADMIN_DEDUCT_RETURN_IN',
-        'direction' => 'CREDIT',
-
-        'amount' => $totalDebit,
+$targetDebit = wallet_apply_available_delta_with_operation(
+    $financialClaim,
+    $targetUid,
+    $totalDebit,
+    'DEBIT',
+    $operationRef,
+    $isSubadminTransfer ? 'SUBADMIN_DEDUCT_WITH_COMMISSION' : 'ADMIN_DEDUCT',
+    $finalNote,
+    [
+        'ledger_id' => $ledgerId,
+        'currency' => $operationCurrency,
+        'wallet_currency' => $operationCurrency,
+        'otp_request_id' => $otpRequestId,
         'base_amount' => $baseAmount,
         'commission_per_1000' => $commissionPer1000,
         'commission_amount' => $commissionAmount,
-        'total_credit' => $totalDebit,
-
-        'currency' => $operationCurrency,
-        'before_available' => $actorBeforeAvailable,
-        'after_available' => $actorAfterAvailable,
-        'ref_id' => $ledgerId,
-        'otp_request_id' => $otpRequestId,
-        'target_uid' => $targetUid,
-        'target_name' => (string)($targetUser['name'] ?? ''),
-        'target_phone' => (string)($targetUser['phone'] ?? ''),
-        'note' => 'Deducted from user/retailer and returned to subadmin | ' . $finalNote,
-        'created_at' => $now,
+        'total_debit' => $totalDebit,
         'created_by_uid' => $actorUid,
         'created_by_role' => $actorRole,
-    ]);
+    ],
+    'target_debited'
+);
+
+if (empty($targetDebit['ok'])) {
+    deduct_otp_confirm_response(false, (string)($targetDebit['code'] ?? 'SERVER_ERROR'), (string)($targetDebit['message'] ?? 'Failed to update wallet balance'), [], 500);
 }
 
-fb_patch('WALLET_DEDUCT_OTP/' . $otpRequestId, [
+$beforeAvailable = deduct_otp_confirm_money($targetDebit['before_available'] ?? $beforeAvailable, $beforeAvailable);
+$afterAvailable = deduct_otp_confirm_money($targetDebit['after_available'] ?? $afterAvailable, $afterAvailable);
+$ledgerId = (string)($targetDebit['ledger_id'] ?? $ledgerId);
+
+if ($isSubadminTransfer) {
+    $actorCredit = wallet_apply_available_delta_with_operation(
+        $financialClaim,
+        $actorUid,
+        $totalDebit,
+        'CREDIT',
+        $operationRef,
+        'SUBADMIN_DEDUCT_RETURN_IN',
+        'Deducted from user/retailer and returned to subadmin | ' . $finalNote,
+        [
+            'ledger_id' => $actorLedgerId,
+            'currency' => $operationCurrency,
+            'wallet_currency' => $operationCurrency,
+            'otp_request_id' => $otpRequestId,
+            'base_amount' => $baseAmount,
+            'commission_per_1000' => $commissionPer1000,
+            'commission_amount' => $commissionAmount,
+            'total_credit' => $totalDebit,
+            'target_uid' => $targetUid,
+            'target_name' => (string)($targetUser['name'] ?? ''),
+            'target_phone' => (string)($targetUser['phone'] ?? ''),
+            'created_by_uid' => $actorUid,
+            'created_by_role' => $actorRole,
+        ],
+        'actor_credited'
+    );
+
+    if (empty($actorCredit['ok'])) {
+        deduct_otp_confirm_response(false, (string)($actorCredit['code'] ?? 'SERVER_ERROR'), (string)($actorCredit['message'] ?? 'Failed to credit subadmin wallet'), [], 500);
+    }
+
+    $actorBeforeAvailable = deduct_otp_confirm_money($actorCredit['before_available'] ?? $actorBeforeAvailable, $actorBeforeAvailable);
+    $actorAfterAvailable = deduct_otp_confirm_money($actorCredit['after_available'] ?? $actorAfterAvailable, $actorAfterAvailable);
+    $actorLedgerId = (string)($actorCredit['ledger_id'] ?? $actorLedgerId);
+}
+
+$finalizeOk = fb_patch('WALLET_DEDUCT_OTP/' . $otpRequestId, [
     'status' => 'COMPLETED',
     'attempt_count' => $attemptCount + 1,
     'verified_at' => $now,
@@ -483,6 +516,22 @@ fb_patch('WALLET_DEDUCT_OTP/' . $otpRequestId, [
     'wallet_currency' => $operationCurrency,
 ]);
 
+if (!$finalizeOk) {
+    wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Wallet deduct OTP finalization failed', [
+        'wallet_applied' => true,
+        'target_debited' => true,
+        'actor_credited' => $isSubadminTransfer,
+        'request_finalized' => false,
+        'ledger_id' => $ledgerId,
+        'actor_ledger_id' => $actorLedgerId,
+    ]);
+    deduct_otp_confirm_response(false, 'REQUEST_FINALIZATION_FAILED', 'Wallet updated but confirmation finalization must be retried', [
+        'otp_request_id' => $otpRequestId,
+        'ledger_id' => $ledgerId,
+        'actor_ledger_id' => $actorLedgerId,
+    ], 500);
+}
+
 fb_put('WALLET_DEDUCT_OTP_LATEST/' . $targetUid . '/' . $actorUid, [
     'otp_request_id' => $otpRequestId,
     'target_uid' => $targetUid,
@@ -492,22 +541,7 @@ fb_put('WALLET_DEDUCT_OTP_LATEST/' . $targetUid . '/' . $actorUid, [
     'updated_at' => $now,
 ]);
 
-if (function_exists('system_log')) {
-    system_log('WALLET_DEDUCT_COMPLETED', $otpRequestId, 'Wallet deduction completed after OTP verification', [
-        'target_uid' => $targetUid,
-        'requested_by_uid' => $actorUid,
-        'base_amount' => $baseAmount,
-        'commission_per_1000' => $commissionPer1000,
-        'commission_amount' => $commissionAmount,
-        'total_debit' => $totalDebit,
-        'currency' => $operationCurrency,
-        'ledger_id' => $ledgerId,
-        'actor_ledger_id' => $actorLedgerId,
-        'subadmin_credited' => $isSubadminTransfer,
-    ]);
-}
-
-deduct_otp_confirm_response(true, 'SUCCESS', 'OTP verified and wallet deducted successfully', [
+$responseData = [
     'otp_request_id' => $otpRequestId,
     'ledger_id' => $ledgerId,
     'actor_ledger_id' => $actorLedgerId,
@@ -529,4 +563,31 @@ deduct_otp_confirm_response(true, 'SUCCESS', 'OTP verified and wallet deducted s
     'subadmin_after_available' => $actorAfterAvailable,
 
     'completed_at' => $now,
+];
+
+wallet_financial_operation_mark_completed($financialClaim, [
+    'wallet_applied' => true,
+    'target_debited' => true,
+    'actor_credited' => $isSubadminTransfer,
+    'request_finalized' => true,
+    'ledger_id' => $ledgerId,
+    'actor_ledger_id' => $actorLedgerId,
+    'result_data' => $responseData,
 ]);
+
+if (function_exists('system_log')) {
+    system_log('WALLET_DEDUCT_COMPLETED', $otpRequestId, 'Wallet deduction completed after OTP verification', [
+        'target_uid' => $targetUid,
+        'requested_by_uid' => $actorUid,
+        'base_amount' => $baseAmount,
+        'commission_per_1000' => $commissionPer1000,
+        'commission_amount' => $commissionAmount,
+        'total_debit' => $totalDebit,
+        'currency' => $operationCurrency,
+        'ledger_id' => $ledgerId,
+        'actor_ledger_id' => $actorLedgerId,
+        'subadmin_credited' => $isSubadminTransfer,
+    ]);
+}
+
+deduct_otp_confirm_response(true, 'SUCCESS', 'OTP verified and wallet deducted successfully', $responseData);

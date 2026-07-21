@@ -616,7 +616,7 @@ function subapi_topup_current_hold_amount(array $request, array $wallet = []): a
     ];
 }
 
-function subapi_settle_topup_success(array &$request, string $message = 'Topup completed successfully'): bool
+function subapi_settle_topup_success(array &$request, string $message = 'Topup completed successfully', array $financialClaim = []): bool
 {
     if (!subapi_is_topup_hold_request($request)) {
         return true;
@@ -638,62 +638,54 @@ function subapi_settle_topup_success(array &$request, string $message = 'Topup c
         return false;
     }
     $walletCurrency = (string)($resolvedHold['wallet_currency'] ?? 'BDT');
-    $currentAvailable = subapi_round_money((float)($wallet['available_balance'] ?? 0));
-    $currentHold = subapi_round_money((float)($wallet['hold_balance'] ?? 0));
-    $currentTopupSpent = subapi_round_money((float)($wallet['total_topup_spent'] ?? 0));
+    if ($financialClaim === [] && function_exists('wallet_financial_operation_begin')) {
+        $operation = wallet_financial_operation_begin($requestId, 'API_TOPUP_SUCCESS', 'REQUEST_FINAL', $uid, $amount, $walletCurrency, [
+            'request_type' => 'TOPUP',
+            'source' => 'SUBADMIN_API',
+        ]);
+        if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+            return true;
+        }
+        if (empty($operation['ok']) || empty($operation['claim'])) {
+            return false;
+        }
+        $financialClaim = (array)$operation['claim'];
+    }
 
-    $newHold = max(0, subapi_round_money($currentHold - $amount));
-    $newAvailable = $currentAvailable;
-    $newTopupSpent = subapi_round_money($currentTopupSpent + $amount);
-
-    $walletOk = fb_patch('USER_WALLETS/' . $uid, [
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'total_topup_spent' => $newTopupSpent,
-        'updated_at' => $now,
+    $settle = wallet_settle_hold($uid, $amount, $requestId, 'API_TOPUP_SUCCESS', [
+        'financial_operation' => $financialClaim,
     ]);
-
-    if (!$walletOk) {
+    if (empty($settle['ok'])) {
         return false;
     }
 
-    $ledgerId = subapi_make_uid('LED');
-    $ledgerMonth = date('Y-m', $now);
-
-    fb_put('WALLET_LEDGER/' . $uid . '/' . $ledgerMonth . '/' . $ledgerId, [
-        'ledger_id' => $ledgerId,
-        'uid' => $uid,
-        'type' => 'API_TOPUP_SUCCESS',
-        'direction' => 'DEBIT_HOLD',
-        'amount' => $amount,
-        'currency' => $walletCurrency,
-        'wallet_currency' => $walletCurrency,
-        'before_available' => $currentAvailable,
-        'after_available' => $newAvailable,
-        'before_hold' => $currentHold,
-        'after_hold' => $newHold,
-        'ref_id' => $requestId,
-        'key_id' => $keyId,
-        'note' => 'Held balance settled on successful API topup',
-        'created_at' => $now,
-    ]);
-
-    fb_patch('USER_API_REQUESTS/' . $uid . '/' . $requestId, [
+    $apiRequestOk = fb_patch('USER_API_REQUESTS/' . $uid . '/' . $requestId, [
         'status' => 'SUCCESS',
         'message' => $message,
         'updated_at' => $now,
     ]);
+    if (!$apiRequestOk) {
+        if ($financialClaim !== [] && function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'API_REQUEST_FINALIZATION_FAILED', 'User API topup request finalization failed', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return false;
+    }
 
     $request['hold_settled_at'] = $now;
     $request['hold_settlement_status'] = 'SUCCESS';
     $request['held_amount'] = $amount;
     $request['settled_hold_amount'] = $amount;
     $request['settled_hold_currency'] = $walletCurrency;
+    $request['settlement_ledger_id'] = (string)($settle['ledger_id'] ?? '');
 
     return true;
 }
 
-function subapi_settle_topup_failed(array &$request, string $message = 'Topup failed and held balance released'): bool
+function subapi_settle_topup_failed(array &$request, string $message = 'Topup failed and held balance released', array $financialClaim = []): bool
 {
     if (!subapi_is_topup_hold_request($request)) {
         return true;
@@ -715,57 +707,49 @@ function subapi_settle_topup_failed(array &$request, string $message = 'Topup fa
         return false;
     }
     $walletCurrency = (string)($resolvedHold['wallet_currency'] ?? 'BDT');
-    $currentAvailable = subapi_round_money((float)($wallet['available_balance'] ?? 0));
-    $currentHold = subapi_round_money((float)($wallet['hold_balance'] ?? 0));
-    $currentRefund = subapi_round_money((float)($wallet['total_refund'] ?? 0));
+    if ($financialClaim === [] && function_exists('wallet_financial_operation_begin')) {
+        $operation = wallet_financial_operation_begin($requestId, 'API_TOPUP_REFUND', 'REQUEST_FINAL', $uid, $amount, $walletCurrency, [
+            'request_type' => 'TOPUP',
+            'source' => 'SUBADMIN_API',
+        ]);
+        if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+            return true;
+        }
+        if (empty($operation['ok']) || empty($operation['claim'])) {
+            return false;
+        }
+        $financialClaim = (array)$operation['claim'];
+    }
 
-    $newAvailable = subapi_round_money($currentAvailable + $amount);
-    $newHold = max(0, subapi_round_money($currentHold - $amount));
-    $newRefund = subapi_round_money($currentRefund + $amount);
-
-    $walletOk = fb_patch('USER_WALLETS/' . $uid, [
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'total_refund' => $newRefund,
-        'updated_at' => $now,
+    $refund = wallet_refund_hold($uid, $amount, $requestId, 'API_TOPUP_FAILED_RELEASE', [
+        'financial_operation' => $financialClaim,
     ]);
-
-    if (!$walletOk) {
+    if (empty($refund['ok'])) {
         return false;
     }
 
-    $ledgerId = subapi_make_uid('LED');
-    $ledgerMonth = date('Y-m', $now);
-
-    fb_put('WALLET_LEDGER/' . $uid . '/' . $ledgerMonth . '/' . $ledgerId, [
-        'ledger_id' => $ledgerId,
-        'uid' => $uid,
-        'type' => 'API_TOPUP_FAILED_RELEASE',
-        'direction' => 'RELEASE_HOLD',
-        'amount' => $amount,
-        'currency' => $walletCurrency,
-        'wallet_currency' => $walletCurrency,
-        'before_available' => $currentAvailable,
-        'after_available' => $newAvailable,
-        'before_hold' => $currentHold,
-        'after_hold' => $newHold,
-        'ref_id' => $requestId,
-        'key_id' => $keyId,
-        'note' => 'Held balance released after failed API topup',
-        'created_at' => $now,
-    ]);
-
-    fb_patch('USER_API_REQUESTS/' . $uid . '/' . $requestId, [
+    $apiRequestOk = fb_patch('USER_API_REQUESTS/' . $uid . '/' . $requestId, [
         'status' => 'FAILED',
         'message' => $message,
         'updated_at' => $now,
     ]);
+    if (!$apiRequestOk) {
+        if ($financialClaim !== [] && function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'API_REQUEST_FINALIZATION_FAILED', 'User API topup request failure finalization failed', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return false;
+    }
 
     $request['hold_settled_at'] = $now;
     $request['hold_settlement_status'] = 'FAILED';
     $request['held_amount'] = $amount;
     $request['refund_amount'] = $amount;
     $request['refund_currency'] = $walletCurrency;
+    $request['refund_ledger_id'] = (string)($refund['ledger_id'] ?? '');
 
     return true;
 }
@@ -900,24 +884,81 @@ function subapi_create_panel_topup(
 
     $requestId = subapi_make_uid('REQ');
     $now = subapi_now();
-
-    $newAvailable = subapi_round_money($availableBalance - $walletDebit);
-    $newHold = subapi_round_money($holdBalance + $walletDebit);
-
-    $walletOk = fb_patch('USER_WALLETS/' . $uid, [
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'updated_at' => $now,
+    $operationSeed = hash('sha256', implode('|', [
+        'SUBADMIN_PANEL_TOPUP_CREATE',
+        $uid,
+        $countryCode,
+        $operator,
+        $topupNumber,
+        number_format($amount, 2, '.', ''),
+        number_format($walletDebit, 2, '.', ''),
+        (string)floor($now / 120),
+    ]));
+    $operationRef = 'SUBADMIN_PANEL_TOPUP_CREATE:' . hash('sha256', $operationSeed);
+    $operation = wallet_financial_operation_begin($operationRef, 'SUBADMIN_PANEL_TOPUP_CREATE_HOLD', 'REQUEST_CREATE', $uid, $walletDebit, (string)$financials['wallet_debit_currency'], [
+        'request_id' => $requestId,
+        'operator' => $operator,
+        'topup_number_hash' => hash('sha256', $topupNumber),
     ]);
-
-    if (!$walletOk) {
+    if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+        $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+        return [
+            'ok' => true,
+            'code' => 'SUCCESS',
+            'message' => 'Topup request created successfully',
+            'data' => $resultData,
+        ];
+    }
+    if (empty($operation['ok']) || empty($operation['claim'])) {
         return [
             'ok' => false,
-            'code' => 'SERVER_ERROR',
-            'message' => 'Failed to move balance into hold',
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'),
+            'message' => (string)($operation['message'] ?? 'Wallet operation is unavailable'),
             'data' => [],
         ];
     }
+    $financialClaim = (array)$operation['claim'];
+    $requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
+
+    $hold = wallet_hold_amount($uid, $walletDebit, $operationRef, 'SUBADMIN_PANEL_TOPUP_HOLD', [
+        'financial_operation' => $financialClaim,
+        'ledger_extra' => [
+            'ledger_id' => wallet_financial_operation_ledger_id($operationRef, 'SUBADMIN_PANEL_TOPUP_CREATE_HOLD'),
+            'request_id' => $requestId,
+            'ref_id' => $requestId,
+            'key_id' => 'PANEL',
+            'account_country' => (string)($financials['account_country'] ?? ''),
+            'topup_amount_bdt' => $amount,
+            'commission_per_1000' => $financials['commission_per_1000'],
+            'commission_bdt' => $financials['commission_bdt'],
+            'commission_applicable' => (bool)($financials['commission_applicable'] ?? false),
+            'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
+            'commission_amount' => (float)($financials['commission_amount'] ?? $financials['commission_bdt'] ?? 0),
+            'commission_credit' => (float)($financials['commission_credit'] ?? 0),
+            'fee_amount' => (float)($financials['fee_amount'] ?? 0),
+            'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+            'wallet_debit_amount' => $walletDebit,
+            'wallet_debit_currency' => $financials['wallet_debit_currency'],
+            'wallet_currency' => $financials['wallet_currency'],
+            'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
+            'rate_snapshot' => $financials['rate_snapshot'] ?? null,
+            'rate_used' => $financials['rate_used'],
+            'calculation_version' => (string)($financials['calculation_version'] ?? ''),
+            'note' => 'Balance moved to hold from subadmin panel topup',
+        ],
+    ]);
+
+    if (empty($hold['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($hold['code'] ?? 'SERVER_ERROR'),
+            'message' => (string)($hold['message'] ?? 'Failed to move balance into hold'),
+            'data' => [],
+        ];
+    }
+
+    $newAvailable = (float)($hold['available_balance'] ?? $hold['after_available'] ?? subapi_round_money($availableBalance - $walletDebit));
+    $newHold = (float)($hold['hold_balance'] ?? $hold['after_hold'] ?? subapi_round_money($holdBalance + $walletDebit));
 
     $topupRow = [
         'request_id' => $requestId,
@@ -981,10 +1022,12 @@ function subapi_create_panel_topup(
     $topupOk = fb_put('TOPUP_REQUESTS/PENDING/' . $requestId, $topupRow);
 
     if (!$topupOk) {
-        fb_patch('USER_WALLETS/' . $uid, [
-            'available_balance' => $availableBalance,
-            'hold_balance' => $holdBalance,
-            'updated_at' => subapi_now(),
+        wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'Panel topup request could not be saved after wallet hold', [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_id' => $requestId,
+            'request_row' => $topupRow,
+            'request_finalized' => false,
         ]);
 
         return [
@@ -1008,41 +1051,7 @@ function subapi_create_panel_topup(
         topup_write_history($topupRow);
     }
 
-    $ledgerId = subapi_make_uid('LED');
-    $ledgerMonth = date('Y-m', $now);
-
-    fb_put('WALLET_LEDGER/' . $uid . '/' . $ledgerMonth . '/' . $ledgerId, [
-        'ledger_id' => $ledgerId,
-        'uid' => $uid,
-        'type' => 'SUBADMIN_PANEL_TOPUP_HOLD',
-        'direction' => 'HOLD',
-        'amount' => $walletDebit,
-        'account_country' => (string)($financials['account_country'] ?? ''),
-        'topup_amount_bdt' => $amount,
-        'commission_per_1000' => $financials['commission_per_1000'],
-        'commission_bdt' => $financials['commission_bdt'],
-        'commission_applicable' => (bool)($financials['commission_applicable'] ?? false),
-        'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
-        'commission_amount' => (float)($financials['commission_amount'] ?? $financials['commission_bdt'] ?? 0),
-        'commission_credit' => (float)($financials['commission_credit'] ?? 0),
-        'fee_amount' => (float)($financials['fee_amount'] ?? 0),
-        'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
-        'wallet_debit_amount' => $walletDebit,
-        'wallet_debit_currency' => $financials['wallet_debit_currency'],
-        'wallet_currency' => $financials['wallet_currency'],
-        'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
-        'rate_snapshot' => $financials['rate_snapshot'] ?? null,
-        'rate_used' => $financials['rate_used'],
-        'calculation_version' => (string)($financials['calculation_version'] ?? ''),
-        'before_available' => $availableBalance,
-        'after_available' => $newAvailable,
-        'before_hold' => $holdBalance,
-        'after_hold' => $newHold,
-        'ref_id' => $requestId,
-        'key_id' => 'PANEL',
-        'note' => 'Balance moved to hold from subadmin panel topup',
-        'created_at' => $now,
-    ]);
+    $ledgerId = (string)($hold['ledger_id'] ?? '');
 
     subapi_log_request($uid, [
         'request_id' => $requestId,
@@ -1088,32 +1097,45 @@ function subapi_create_panel_topup(
         topup_notify_telegram_request($topupRow);
     }
 
+    $responseData = [
+        'request_id' => $requestId,
+        'uid' => $uid,
+        'operator' => $operator,
+        'topup_number' => $topupNumber,
+        'amount' => $amount,
+        'amount_bdt' => $amount,
+        'commission_per_1000' => $financials['commission_per_1000'],
+        'commission_bdt' => $financials['commission_bdt'],
+        'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => $financials['wallet_debit_currency'],
+        'wallet_currency' => (string)($financials['wallet_currency'] ?? ''),
+        'account_country' => (string)($financials['account_country'] ?? ''),
+        'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
+        'rate_snapshot' => $financials['rate_snapshot'] ?? null,
+        'rate_used' => $financials['rate_used'],
+        'total_debit' => $walletDebit,
+        'status' => 'PENDING',
+        'available_balance' => $newAvailable,
+        'hold_balance' => $newHold,
+    ];
+
+    wallet_financial_operation_mark_completed($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_finalized' => true,
+        'history_written' => true,
+        'notification_written' => true,
+        'request_id' => $requestId,
+        'ledger_id' => $ledgerId,
+        'result_data' => $responseData,
+    ]);
+
     return [
         'ok' => true,
         'code' => 'SUCCESS',
         'message' => 'Topup request created successfully',
-        'data' => [
-            'request_id' => $requestId,
-            'uid' => $uid,
-            'operator' => $operator,
-            'topup_number' => $topupNumber,
-            'amount' => $amount,
-            'amount_bdt' => $amount,
-            'commission_per_1000' => $financials['commission_per_1000'],
-            'commission_bdt' => $financials['commission_bdt'],
-            'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
-            'wallet_debit_amount' => $walletDebit,
-            'wallet_debit_currency' => $financials['wallet_debit_currency'],
-            'wallet_currency' => (string)($financials['wallet_currency'] ?? ''),
-            'account_country' => (string)($financials['account_country'] ?? ''),
-            'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
-            'rate_snapshot' => $financials['rate_snapshot'] ?? null,
-            'rate_used' => $financials['rate_used'],
-            'total_debit' => $walletDebit,
-            'status' => 'PENDING',
-            'available_balance' => $newAvailable,
-            'hold_balance' => $newHold,
-        ],
+        'data' => $responseData,
     ];
 }
 
@@ -1825,24 +1847,71 @@ function subapi_create_panel_bundle(
     $requestId = function_exists('bundle_make_request_id') ? bundle_make_request_id() : subapi_make_uid('BR');
     $now = function_exists('bundle_now') ? bundle_now() : subapi_now();
     $userPhone = trim((string)($user['phone'] ?? ''));
-
-    $newAvailable = subapi_round_money($currentAvailable - $walletHoldAmount);
-    $newHold = subapi_round_money($currentHold + $walletHoldAmount);
-
-    $walletHoldOk = fb_patch('USER_WALLETS/' . $uid, [
-        'available_balance' => $newAvailable,
-        'hold_balance' => $newHold,
-        'updated_at' => $now,
+    $operationSeed = hash('sha256', implode('|', [
+        'SUBADMIN_PANEL_BUNDLE_CREATE',
+        $uid,
+        $offerId,
+        $operator,
+        $bundleNumber,
+        number_format($walletHoldAmount, 2, '.', ''),
+        (string)floor($now / 120),
+    ]));
+    $operationRef = 'SUBADMIN_PANEL_BUNDLE_CREATE:' . hash('sha256', $operationSeed);
+    $operation = wallet_financial_operation_begin($operationRef, 'SUBADMIN_PANEL_BUNDLE_CREATE_HOLD', 'REQUEST_CREATE', $uid, $walletHoldAmount, (string)$bundleFinancials['wallet_currency'], [
+        'request_id' => $requestId,
+        'offer_id' => $offerId,
+        'bundle_number_hash' => hash('sha256', $bundleNumber),
     ]);
-
-    if (!$walletHoldOk) {
+    if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+        $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+        return [
+            'ok' => true,
+            'code' => 'SUCCESS',
+            'message' => 'Bundle request created successfully',
+            'data' => $resultData,
+        ];
+    }
+    if (empty($operation['ok']) || empty($operation['claim'])) {
         return [
             'ok' => false,
-            'code' => 'SERVER_ERROR',
-            'message' => 'Failed to hold wallet balance',
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'),
+            'message' => (string)($operation['message'] ?? 'Wallet operation is unavailable'),
             'data' => [],
         ];
     }
+    $financialClaim = (array)$operation['claim'];
+    $requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
+
+    $hold = wallet_hold_amount($uid, $walletHoldAmount, $operationRef, 'SUBADMIN_PANEL_BUNDLE_HOLD', [
+        'financial_operation' => $financialClaim,
+        'ledger_extra' => [
+            'ledger_id' => wallet_financial_operation_ledger_id($operationRef, 'SUBADMIN_PANEL_BUNDLE_CREATE_HOLD'),
+            'request_id' => $requestId,
+            'ref_id' => $requestId,
+            'key_id' => 'PANEL',
+            'offer_id' => $offerId,
+            'price_amount' => $priceAmount,
+            'you_pay' => $payableAmount,
+            'payable_amount' => $payableAmount,
+            'payable_amount_bdt' => $payableAmount,
+            'admin_commission' => $adminCommission,
+            'user_commission' => $userCommission,
+            'subadmin_profit' => $subadminProfit,
+            'note' => 'Payable amount moved to hold for subadmin panel bundle request',
+        ],
+    ]);
+
+    if (empty($hold['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($hold['code'] ?? 'SERVER_ERROR'),
+            'message' => (string)($hold['message'] ?? 'Failed to hold wallet balance'),
+            'data' => [],
+        ];
+    }
+
+    $newAvailable = (float)($hold['available_balance'] ?? $hold['after_available'] ?? subapi_round_money($currentAvailable - $walletHoldAmount));
+    $newHold = (float)($hold['hold_balance'] ?? $hold['after_hold'] ?? subapi_round_money($currentHold + $walletHoldAmount));
 
     $extra = [
         'offer_id' => $offerId,
@@ -1925,10 +1994,12 @@ function subapi_create_panel_bundle(
     }
 
     if (!$requestSaved) {
-        fb_patch('USER_WALLETS/' . $uid, [
-            'available_balance' => $currentAvailable,
-            'hold_balance' => $currentHold,
-            'updated_at' => subapi_now(),
+        wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'Panel bundle request could not be saved after wallet hold', [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_id' => $requestId,
+            'request_extra' => $extra,
+            'request_finalized' => false,
         ]);
 
         return [
@@ -1948,34 +2019,7 @@ function subapi_create_panel_bundle(
         'updated_at' => $now,
     ]);
 
-    $ledgerId = subapi_make_uid('LED');
-    $ledgerMonth = date('Y-m', $now);
-
-    fb_put('WALLET_LEDGER/' . $uid . '/' . $ledgerMonth . '/' . $ledgerId, [
-        'ledger_id' => $ledgerId,
-        'uid' => $uid,
-        'type' => 'SUBADMIN_PANEL_BUNDLE_HOLD',
-        'direction' => 'HOLD',
-        'amount' => $walletHoldAmount,
-        'currency' => $bundleFinancials['wallet_currency'],
-        'wallet_currency' => $bundleFinancials['wallet_currency'],
-        'price_amount' => $priceAmount,
-        'you_pay' => $payableAmount,
-        'payable_amount' => $payableAmount,
-        'payable_amount_bdt' => $payableAmount,
-        'admin_commission' => $adminCommission,
-        'user_commission' => $userCommission,
-        'subadmin_profit' => $subadminProfit,
-        'before_available' => $currentAvailable,
-        'after_available' => $newAvailable,
-        'before_hold' => $currentHold,
-        'after_hold' => $newHold,
-        'ref_id' => $requestId,
-        'key_id' => 'PANEL',
-        'offer_id' => $offerId,
-        'note' => 'Payable amount moved to hold for subadmin panel bundle request',
-        'created_at' => $now,
-    ]);
+    $ledgerId = (string)($hold['ledger_id'] ?? '');
 
     subapi_log_request($uid, [
         'request_id' => $requestId,
@@ -2028,35 +2072,48 @@ function subapi_create_panel_bundle(
         ]);
     }
 
+    $responseData = [
+        'request_id' => $requestId,
+        'uid' => $uid,
+        'status' => 'WAITING_ADMIN',
+        'offer_id' => $offerId,
+        'operator' => $operator,
+        'bundle_number' => $bundleNumber,
+        'bundle_name' => $bundleName,
+        'amount' => $priceAmount,
+        'price_amount' => $priceAmount,
+        'you_pay' => $payableAmount,
+        'payable_amount' => $payableAmount,
+        'wallet_hold_amount' => $walletHoldAmount,
+        'wallet_debit_amount' => $walletHoldAmount,
+        'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
+        'rate_used' => $bundleFinancials['rate_used'],
+        'admin_commission' => $adminCommission,
+        'user_commission' => $userCommission,
+        'subadmin_profit' => $subadminProfit,
+        'subadmin_commission' => $subadminProfit,
+        'created_at' => $now,
+        'wallet' => [
+            'available_balance' => $newAvailable,
+            'hold_balance' => $newHold,
+        ],
+    ];
+
+    wallet_financial_operation_mark_completed($financialClaim, [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_finalized' => true,
+        'history_written' => true,
+        'notification_written' => true,
+        'request_id' => $requestId,
+        'ledger_id' => $ledgerId,
+        'result_data' => $responseData,
+    ]);
+
     return [
         'ok' => true,
         'code' => 'SUCCESS',
         'message' => 'Bundle request created successfully',
-        'data' => [
-            'request_id' => $requestId,
-            'uid' => $uid,
-            'status' => 'WAITING_ADMIN',
-            'offer_id' => $offerId,
-            'operator' => $operator,
-            'bundle_number' => $bundleNumber,
-            'bundle_name' => $bundleName,
-            'amount' => $priceAmount,
-            'price_amount' => $priceAmount,
-            'you_pay' => $payableAmount,
-            'payable_amount' => $payableAmount,
-            'wallet_hold_amount' => $walletHoldAmount,
-            'wallet_debit_amount' => $walletHoldAmount,
-            'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
-            'rate_used' => $bundleFinancials['rate_used'],
-            'admin_commission' => $adminCommission,
-            'user_commission' => $userCommission,
-            'subadmin_profit' => $subadminProfit,
-            'subadmin_commission' => $subadminProfit,
-            'created_at' => $now,
-            'wallet' => [
-                'available_balance' => $newAvailable,
-                'hold_balance' => $newHold,
-            ],
-        ],
+        'data' => $responseData,
     ];
 }

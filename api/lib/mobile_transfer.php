@@ -543,6 +543,16 @@ function zpay_transfer_claim_preview_token(string $tokenHash, string $uid): arra
             return zpay_transfer_validation_error('TRANSFER_ALREADY_SUBMITTED', 'This transfer has already been submitted.');
         }
         if ($status === 'PROCESSING') {
+            $transferId = trim((string)($row['transfer_id'] ?? ''));
+            if ($transferId !== '') {
+                $row['_token_hash'] = $tokenHash;
+                return [
+                    'ok' => true,
+                    'resume' => true,
+                    'transfer_id' => $transferId,
+                    'preview' => $row,
+                ];
+            }
             return zpay_transfer_validation_error('TRANSFER_ALREADY_SUBMITTED', 'This transfer has already been submitted.', [], 409);
         }
         if ((int)($row['expires_at'] ?? 0) < now_ts()) {
@@ -587,6 +597,18 @@ function zpay_transfer_mark_preview_used(string $tokenHash, string $transferId):
         'used' => true,
         'used_at' => now_ts(),
         'status' => 'USED',
+        'transfer_id' => $transferId,
+        'updated_at' => now_ts(),
+    ]);
+}
+
+function zpay_transfer_mark_preview_processing(string $tokenHash, string $transferId): void
+{
+    if (trim($tokenHash) === '' || trim($transferId) === '') {
+        return;
+    }
+    @fb_patch('TRANSFER_PREVIEWS/' . $tokenHash, [
+        'status' => 'PROCESSING',
         'transfer_id' => $transferId,
         'updated_at' => now_ts(),
     ]);
@@ -739,7 +761,7 @@ function zpay_transfer_existing_response(string $transferId): void
     ]);
 }
 
-function zpay_transfer_acquire_idempotency(string $senderUid, string $key, string $transferId): string
+function zpay_transfer_acquire_idempotency(string $senderUid, string $key, string &$transferId): string
 {
     if ($key === '' || strlen($key) < 8) {
         api_response(false, 'IDEMPOTENCY_KEY_REQUIRED', 'idempotency_key is required.', [], 422);
@@ -758,6 +780,10 @@ function zpay_transfer_acquire_idempotency(string $senderUid, string $key, strin
             $status = strtoupper(trim((string)($value['status'] ?? '')));
             if ($existingTransferId !== '' && $status === 'SUCCESS') {
                 zpay_transfer_existing_response($existingTransferId);
+            }
+            if ($existingTransferId !== '') {
+                $transferId = $existingTransferId;
+                return $path;
             }
             api_response(false, 'TRANSFER_PROCESSING', 'This transfer request is already processing.', [
                 'transfer_id' => $existingTransferId,
@@ -912,6 +938,302 @@ function zpay_transfer_public_receipt(array $receipt): array
     ];
 }
 
+function zpay_transfer_completed_operation_result(string $transferId, array $operation = []): array
+{
+    $transferId = trim($transferId);
+    if ($transferId !== '') {
+        $row = fb_get('TRANSFERS/' . $transferId);
+        if (is_array($row) && !empty($row)) {
+            return [
+                'ok' => true,
+                'code' => 'TRANSFER_SUCCESS',
+                'message' => 'Transfer completed successfully.',
+                'transfer' => $row,
+            ];
+        }
+    }
+
+    $data = is_array($operation['result_data'] ?? null) ? $operation['result_data'] : [];
+    $transfer = is_array($data['transfer'] ?? null) ? $data['transfer'] : [];
+    if (!empty($transfer)) {
+        return [
+            'ok' => true,
+            'code' => 'TRANSFER_SUCCESS',
+            'message' => 'Transfer completed successfully.',
+            'transfer' => $transfer,
+        ];
+    }
+
+    return zpay_transfer_validation_error('TRANSFER_PROCESSING', 'This transfer is still being finalized. Please check status.', [], 409);
+}
+
+function zpay_transfer_execute_financial(array $ctx): array
+{
+    $senderUid = trim((string)($ctx['sender_uid'] ?? $ctx['uid'] ?? ''));
+    $receiverUid = trim((string)($ctx['receiver_uid'] ?? ''));
+    $amount = zpay_transfer_money($ctx['amount'] ?? $ctx['transfer_amount'] ?? 0);
+    $currency = wallet_normalize_currency_code((string)($ctx['wallet_currency'] ?? $ctx['currency'] ?? ''), '');
+    $transferId = trim((string)($ctx['transfer_id'] ?? ''));
+    $tokenHash = trim((string)($ctx['preview_token_hash'] ?? ''));
+    $idempotencyPath = trim((string)($ctx['idempotency_path'] ?? ''));
+
+    if ($senderUid === '' || $receiverUid === '' || $amount <= 0 || !in_array($currency, ['MYR', 'BDT'], true)) {
+        return zpay_transfer_validation_error('TRANSFER_PREVIEW_INVALID', 'This transfer data is invalid. Please review again.');
+    }
+    if ($transferId === '') {
+        $transferId = wallet_make_transfer_id();
+    }
+
+    if ($tokenHash !== '') {
+        zpay_transfer_mark_preview_processing($tokenHash, $transferId);
+    }
+    if ($idempotencyPath !== '') {
+        fb_patch($idempotencyPath, [
+            'status' => 'PROCESSING',
+            'transfer_id' => $transferId,
+            'updated_at' => now_ts(),
+        ]);
+    }
+
+    $operation = wallet_financial_operation_begin($transferId, 'ZPAY_TRANSFER', 'REQUEST_FINAL', $senderUid, $amount, $currency, [
+        'sender_uid' => $senderUid,
+        'receiver_uid' => $receiverUid,
+        'transfer_id' => $transferId,
+    ]);
+    if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+        $completed = zpay_transfer_completed_operation_result($transferId, is_array($operation['operation'] ?? null) ? $operation['operation'] : []);
+        if (!empty($completed['ok'])) {
+            if ($tokenHash !== '') {
+                zpay_transfer_mark_preview_used($tokenHash, $transferId);
+            }
+            if ($idempotencyPath !== '') {
+                fb_patch($idempotencyPath, [
+                    'status' => 'SUCCESS',
+                    'transfer_id' => $transferId,
+                    'updated_at' => now_ts(),
+                ]);
+            }
+        }
+        return $completed;
+    }
+    if (empty($operation['ok']) || empty($operation['claim'])) {
+        return zpay_transfer_validation_error(
+            (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'),
+            (string)($operation['message'] ?? 'Transfer safety lock is unavailable. Please retry.'),
+            [],
+            (string)($operation['code'] ?? '') === 'FINANCIAL_OPERATION_IN_PROGRESS' ? 409 : 500
+        );
+    }
+    $claim = $operation['claim'];
+
+    $now = (int)($ctx['created_at'] ?? now_ts());
+    $month = month_key($now);
+    $reference = zpay_transfer_clean_reference($ctx['reference'] ?? $ctx['note'] ?? '');
+    $senderPhone = (string)($ctx['sender_phone'] ?? $ctx['sender_account'] ?? '');
+    $receiverPhone = (string)($ctx['receiver_phone'] ?? $ctx['receiver_account'] ?? '');
+    $senderName = (string)($ctx['sender_name'] ?? '');
+    $receiverName = (string)($ctx['receiver_name'] ?? '');
+    $senderRole = function_exists('auth_status_value') ? auth_status_value($ctx['sender_role'] ?? 'USER') : strtoupper(trim((string)($ctx['sender_role'] ?? 'USER')));
+    $receiverRole = function_exists('auth_status_value') ? auth_status_value($ctx['receiver_role'] ?? 'USER') : strtoupper(trim((string)($ctx['receiver_role'] ?? 'USER')));
+    $senderLedgerId = wallet_financial_operation_side_ledger_id($transferId, 'ZPAY_TRANSFER', 'sender_debited');
+    $receiverLedgerId = wallet_financial_operation_side_ledger_id($transferId, 'ZPAY_TRANSFER', 'receiver_credited');
+
+    $commonExtra = [
+        'transfer_id' => $transferId,
+        'request_id' => $transferId,
+        'currency' => $currency,
+        'wallet_currency' => $currency,
+        'fee' => 0,
+        'fee_amount' => 0,
+        'commission' => 0,
+        'commission_amount' => 0,
+        'reference' => $reference,
+        'note' => $reference,
+        'created_at' => $now,
+        'updated_at' => $now,
+    ];
+
+    $debit = wallet_apply_available_delta_with_operation($claim, $senderUid, $amount, 'DEBIT', $transferId, 'ZPAY_TRANSFER_SENT', 'Z-Pay transfer sent', array_merge($commonExtra, [
+        'ledger_id' => $senderLedgerId,
+        'receiver_uid' => $receiverUid,
+        'counterparty_uid' => $receiverUid,
+        'counterparty_name' => $receiverName,
+        'receiver_account_masked' => zpay_dash_mask_phone($receiverPhone),
+    ]), 'sender_debited');
+    if (empty($debit['ok'])) {
+        wallet_financial_operation_mark_failed($claim, (string)($debit['code'] ?? 'WALLET_DEBIT_FAILED'), (string)($debit['message'] ?? 'Transfer debit failed'), [
+            'sender_debited' => false,
+        ]);
+        if ($tokenHash !== '') {
+            zpay_transfer_mark_preview_failed($tokenHash, (string)($debit['code'] ?? 'WALLET_DEBIT_FAILED'), (string)($debit['message'] ?? 'Transfer could not be processed.'));
+        }
+        if ($idempotencyPath !== '') {
+            fb_patch($idempotencyPath, [
+                'status' => 'FAILED',
+                'error_code' => (string)($debit['code'] ?? 'WALLET_DEBIT_FAILED'),
+                'updated_at' => now_ts(),
+            ]);
+        }
+        return zpay_transfer_validation_error(
+            (string)($debit['code'] ?? 'WALLET_DEBIT_FAILED') === 'INSUFFICIENT_BALANCE' ? 'TRANSFER_INSUFFICIENT_BALANCE' : (string)($debit['code'] ?? 'WALLET_DEBIT_FAILED'),
+            (string)($debit['code'] ?? '') === 'INSUFFICIENT_BALANCE'
+                ? ($currency === 'MYR' ? 'Insufficient MYR balance.' : 'Insufficient BDT balance.')
+                : (string)($debit['message'] ?? 'Transfer could not be processed.'),
+            [],
+            (string)($debit['code'] ?? '') === 'INSUFFICIENT_BALANCE' ? 422 : 500
+        );
+    }
+
+    $credit = wallet_apply_available_delta_with_operation($claim, $receiverUid, $amount, 'CREDIT', $transferId, 'ZPAY_TRANSFER_RECEIVED', 'Z-Pay transfer received', array_merge($commonExtra, [
+        'ledger_id' => $receiverLedgerId,
+        'sender_uid' => $senderUid,
+        'counterparty_uid' => $senderUid,
+        'counterparty_name' => $senderName,
+        'sender_account_masked' => zpay_dash_mask_phone($senderPhone),
+    ]), 'receiver_credited');
+    if (empty($credit['ok'])) {
+        wallet_financial_operation_mark_failed($claim, (string)($credit['code'] ?? 'WALLET_CREDIT_FAILED'), (string)($credit['message'] ?? 'Transfer credit failed'), [
+            'sender_debited' => true,
+            'sender_ledger_written' => true,
+        ]);
+        if ($tokenHash !== '') {
+            zpay_transfer_mark_preview_failed($tokenHash, 'TRANSFER_RETRYABLE', 'Transfer is pending recovery.');
+        }
+        if ($idempotencyPath !== '') {
+            fb_patch($idempotencyPath, [
+                'status' => 'FAILED_RETRYABLE',
+                'transfer_id' => $transferId,
+                'error_code' => (string)($credit['code'] ?? 'WALLET_CREDIT_FAILED'),
+                'updated_at' => now_ts(),
+            ]);
+        }
+        return zpay_transfer_validation_error('TRANSFER_RETRYABLE', 'Transfer is pending recovery. Please retry or check status.', [], 500);
+    }
+
+    $transfer = [
+        'transfer_id' => $transferId,
+        'request_id' => $transferId,
+        'type' => 'ZPAY_TRANSFER',
+        'sender_uid' => $senderUid,
+        'sender_account' => $senderPhone,
+        'sender_phone' => $senderPhone,
+        'sender_name' => $senderName,
+        'sender_role' => $senderRole,
+        'receiver_uid' => $receiverUid,
+        'receiver_account' => $receiverPhone,
+        'receiver_phone' => $receiverPhone,
+        'receiver_name' => $receiverName,
+        'receiver_role' => $receiverRole,
+        'sender_account_country' => (string)($ctx['sender_account_country'] ?? ''),
+        'receiver_account_country' => (string)($ctx['receiver_account_country'] ?? ''),
+        'amount' => $amount,
+        'transfer_amount' => $amount,
+        'currency' => $currency,
+        'wallet_currency' => $currency,
+        'fee' => 0,
+        'fee_amount' => 0,
+        'commission' => 0,
+        'commission_amount' => 0,
+        'total_paid' => $amount,
+        'total_debit' => $amount,
+        'status' => 'SUCCESS',
+        'reference' => $reference,
+        'note' => $reference,
+        'created_at' => $now,
+        'updated_at' => $now,
+        'completed_at' => $now,
+        'month' => $month,
+        'preview_token_hash' => $tokenHash,
+        'idempotency_key_hash' => (string)($ctx['idempotency_key_hash'] ?? ''),
+        'sender_wallet_debited' => true,
+        'sender_ledger_id' => $senderLedgerId,
+        'receiver_ledger_id' => $receiverLedgerId,
+        'sender_before_available' => (float)$debit['before_available'],
+        'sender_after_available' => (float)$debit['after_available'],
+        'sender_before_hold' => (float)($debit['before_hold'] ?? 0),
+        'sender_after_hold' => (float)($debit['after_hold'] ?? 0),
+        'receiver_before_available' => (float)$credit['before_available'],
+        'receiver_after_available' => (float)$credit['after_available'],
+        'receiver_before_hold' => (float)($credit['before_hold'] ?? 0),
+        'receiver_after_hold' => (float)($credit['after_hold'] ?? 0),
+        'calculation_version' => 'zpay_transfer_v1',
+    ];
+
+    $receipt = zpay_transfer_save_receipt($transfer);
+    if (!empty($receipt['receipt_url'])) {
+        $transfer = array_merge($transfer, [
+            'receipt_id' => (string)$receipt['receipt_id'],
+            'receipt_token' => (string)$receipt['receipt_token'],
+            'receipt_url' => (string)$receipt['receipt_url'],
+            'tracking_url' => (string)$receipt['tracking_url'],
+            'receipt_created_at' => (int)$receipt['receipt_created_at'],
+        ]);
+    }
+
+    $store = wallet_store_transfer_records($transfer, []);
+    if (empty($store['ok'])) {
+        wallet_financial_operation_mark_failed($claim, (string)($store['code'] ?? 'TRANSFER_STORE_FAILED'), 'Transfer history could not be saved.', [
+            'sender_debited' => true,
+            'receiver_credited' => true,
+            'request_finalized' => false,
+        ]);
+        return zpay_transfer_validation_error('TRANSFER_STORE_FAILED', 'Transfer history could not be saved.', [], 500);
+    }
+
+    if (!fb_put('TRANSFERS/' . $transferId, $transfer)
+        || !fb_put('TRANSFER_HISTORY/' . $senderUid . '/' . $transferId, array_merge($transfer, ['direction' => 'OUT']))
+        || !fb_put('TRANSFER_HISTORY/' . $receiverUid . '/' . $transferId, array_merge($transfer, ['direction' => 'IN']))
+    ) {
+        wallet_financial_operation_mark_failed($claim, 'TRANSFER_INDEX_FAILED', 'Transfer index could not be saved.', [
+            'sender_debited' => true,
+            'receiver_credited' => true,
+            'history_written' => true,
+            'request_finalized' => false,
+        ]);
+        return zpay_transfer_validation_error('TRANSFER_INDEX_FAILED', 'Transfer index could not be saved.', [], 500);
+    }
+
+    if ($tokenHash !== '') {
+        zpay_transfer_mark_preview_used($tokenHash, $transferId);
+    }
+    if ($idempotencyPath !== '') {
+        fb_patch($idempotencyPath, [
+            'status' => 'SUCCESS',
+            'transfer_id' => $transferId,
+            'updated_at' => now_ts(),
+        ]);
+    }
+
+    system_log('TRANSFER_SUCCESS', $transferId, 'Z-Pay transfer completed', [
+        'sender_uid' => $senderUid,
+        'receiver_uid' => $receiverUid,
+        'amount' => $amount,
+        'currency' => $currency,
+    ]);
+    zpay_transfer_notify_sender($transfer);
+    zpay_transfer_notify_receiver($transfer);
+
+    wallet_financial_operation_mark_completed($claim, [
+        'sender_debited' => true,
+        'receiver_credited' => true,
+        'sender_ledger_written' => true,
+        'receiver_ledger_written' => true,
+        'request_finalized' => true,
+        'history_written' => true,
+        'notification_written' => true,
+        'result_data' => [
+            'transfer' => $transfer,
+        ],
+    ]);
+
+    return [
+        'ok' => true,
+        'code' => 'TRANSFER_SUCCESS',
+        'message' => 'Transfer completed successfully.',
+        'transfer' => $transfer,
+    ];
+}
+
 function zpay_transfer_execute_preview(array $preview, string $tokenHash, string $reference = ''): array
 {
     $senderUid = trim((string)($preview['sender_uid'] ?? $preview['uid'] ?? ''));
@@ -956,11 +1278,11 @@ function zpay_transfer_execute_preview(array $preview, string $tokenHash, string
         );
     }
 
-    $transferId = wallet_make_transfer_id();
+    $transferId = trim((string)($preview['transfer_id'] ?? ''));
+    if ($transferId === '') {
+        $transferId = wallet_make_transfer_id();
+    }
     $now = now_ts();
-    $month = month_key($now);
-    $senderLedgerId = wallet_make_ledger_id();
-    $receiverLedgerId = wallet_make_ledger_id();
     $reference = zpay_transfer_clean_reference($reference);
     $senderPhone = (string)($senderUser['phone'] ?? $preview['sender_phone'] ?? '');
     $receiverPhone = (string)($receiverUser['phone'] ?? $preview['receiver_phone'] ?? '');
@@ -969,66 +1291,16 @@ function zpay_transfer_execute_preview(array $preview, string $tokenHash, string
     $senderRole = function_exists('auth_status_value') ? auth_status_value($senderUser['role'] ?? 'USER') : strtoupper(trim((string)($senderUser['role'] ?? 'USER')));
     $receiverRole = function_exists('auth_status_value') ? auth_status_value($receiverUser['role'] ?? 'USER') : strtoupper(trim((string)($receiverUser['role'] ?? 'USER')));
 
-    $commonExtra = [
+    return zpay_transfer_execute_financial([
         'transfer_id' => $transferId,
-        'currency' => $currency,
-        'wallet_currency' => $currency,
-        'fee' => 0,
-        'fee_amount' => 0,
-        'commission' => 0,
-        'commission_amount' => 0,
-        'reference' => $reference,
-        'note' => $reference,
-        'created_at' => $now,
-        'updated_at' => $now,
-    ];
-
-    $debit = wallet_debit_available($senderUid, $amount, $transferId, 'ZPAY_TRANSFER_SENT', 'Z-Pay transfer sent', array_merge($commonExtra, [
-        'ledger_id' => $senderLedgerId,
+        'preview_token_hash' => $tokenHash,
+        'sender_uid' => $senderUid,
         'receiver_uid' => $receiverUid,
-        'counterparty_uid' => $receiverUid,
-        'counterparty_name' => $receiverName,
-        'receiver_account_masked' => zpay_dash_mask_phone($receiverPhone),
-    ]));
-    if (empty($debit['ok'])) {
-        zpay_transfer_mark_preview_failed($tokenHash, (string)($debit['code'] ?? 'WALLET_DEBIT_FAILED'), (string)($debit['message'] ?? 'Transfer could not be processed.'));
-        return zpay_transfer_validation_error(
-            (string)($debit['code'] ?? 'WALLET_DEBIT_FAILED') === 'INSUFFICIENT_BALANCE' ? 'TRANSFER_INSUFFICIENT_BALANCE' : (string)($debit['code'] ?? 'WALLET_DEBIT_FAILED'),
-            (string)($debit['code'] ?? '') === 'INSUFFICIENT_BALANCE'
-                ? ($currency === 'MYR' ? 'Insufficient MYR balance.' : 'Insufficient BDT balance.')
-                : (string)($debit['message'] ?? 'Transfer could not be processed.'),
-            [],
-            422
-        );
-    }
-
-    $credit = wallet_credit_available($receiverUid, $amount, $transferId, 'ZPAY_TRANSFER_RECEIVED', 'Z-Pay transfer received', array_merge($commonExtra, [
-        'ledger_id' => $receiverLedgerId,
-        'sender_uid' => $senderUid,
-        'counterparty_uid' => $senderUid,
-        'counterparty_name' => $senderName,
-        'sender_account_masked' => zpay_dash_mask_phone($senderPhone),
-    ]));
-    if (empty($credit['ok'])) {
-        wallet_restore_available_balance($senderUid, (float)$debit['after_available'], (float)$debit['before_available']);
-        wallet_delete_ledger_record($senderUid, $now, $senderLedgerId);
-        zpay_transfer_mark_preview_failed($tokenHash, 'TRANSFER_FAILED', 'The transfer could not be completed. No money was lost.');
-        return zpay_transfer_validation_error('TRANSFER_FAILED', 'The transfer could not be completed. No money was lost.', [], 500);
-    }
-
-    $transfer = [
-        'transfer_id' => $transferId,
-        'request_id' => $transferId,
-        'type' => 'ZPAY_TRANSFER',
-        'sender_uid' => $senderUid,
-        'sender_account' => $senderPhone,
         'sender_phone' => $senderPhone,
-        'sender_name' => $senderName,
-        'sender_role' => $senderRole,
-        'receiver_uid' => $receiverUid,
-        'receiver_account' => $receiverPhone,
         'receiver_phone' => $receiverPhone,
+        'sender_name' => $senderName,
         'receiver_name' => $receiverName,
+        'sender_role' => $senderRole,
         'receiver_role' => $receiverRole,
         'sender_account_country' => (string)$senderContext['account_country'],
         'receiver_account_country' => (string)$receiverContext['account_country'],
@@ -1036,113 +1308,10 @@ function zpay_transfer_execute_preview(array $preview, string $tokenHash, string
         'transfer_amount' => $amount,
         'currency' => $currency,
         'wallet_currency' => $currency,
-        'fee' => 0,
-        'fee_amount' => 0,
-        'commission' => 0,
-        'commission_amount' => 0,
-        'total_paid' => $amount,
-        'total_debit' => $amount,
-        'status' => 'SUCCESS',
         'reference' => $reference,
         'note' => $reference,
         'created_at' => $now,
-        'updated_at' => $now,
-        'completed_at' => $now,
-        'month' => $month,
-        'preview_token_hash' => $tokenHash,
-        'sender_wallet_debited' => true,
-        'sender_ledger_id' => $senderLedgerId,
-        'receiver_ledger_id' => $receiverLedgerId,
-        'sender_before_available' => (float)$debit['before_available'],
-        'sender_after_available' => (float)$debit['after_available'],
-        'sender_before_hold' => (float)($debit['hold_balance'] ?? 0),
-        'sender_after_hold' => (float)($debit['hold_balance'] ?? 0),
-        'receiver_before_available' => (float)$credit['before_available'],
-        'receiver_after_available' => (float)$credit['after_available'],
-        'receiver_before_hold' => (float)($credit['hold_balance'] ?? 0),
-        'receiver_after_hold' => (float)($credit['hold_balance'] ?? 0),
-        'calculation_version' => 'zpay_transfer_v1',
-    ];
-
-    $receipt = zpay_transfer_save_receipt($transfer);
-    if (!empty($receipt['receipt_url'])) {
-        $transfer = array_merge($transfer, [
-            'receipt_id' => (string)$receipt['receipt_id'],
-            'receipt_token' => (string)$receipt['receipt_token'],
-            'receipt_url' => (string)$receipt['receipt_url'],
-            'tracking_url' => (string)$receipt['tracking_url'],
-            'receipt_created_at' => (int)$receipt['receipt_created_at'],
-        ]);
-    }
-
-    $store = wallet_store_transfer_records($transfer, [
-        ['uid' => $senderUid, 'row' => array_merge($transfer, [
-            'ledger_id' => $senderLedgerId,
-            'direction' => 'DEBIT',
-            'type' => 'ZPAY_TRANSFER_SENT',
-        ])],
-        ['uid' => $receiverUid, 'row' => array_merge($transfer, [
-            'ledger_id' => $receiverLedgerId,
-            'direction' => 'CREDIT',
-            'type' => 'ZPAY_TRANSFER_RECEIVED',
-        ])],
     ]);
-
-    if (empty($store['ok'])) {
-        wallet_restore_available_balance($senderUid, (float)$debit['after_available'], (float)$debit['before_available']);
-        wallet_restore_available_balance($receiverUid, (float)$credit['after_available'], (float)$credit['before_available']);
-        wallet_delete_ledger_record($senderUid, $now, $senderLedgerId);
-        wallet_delete_ledger_record($receiverUid, $now, $receiverLedgerId);
-        foreach (($receipt['written_paths'] ?? []) as $path) {
-            if (is_string($path) && trim($path) !== '') {
-                fb_delete($path);
-            }
-        }
-        zpay_transfer_mark_preview_failed($tokenHash, (string)($store['code'] ?? 'TRANSFER_STORE_FAILED'), 'Transfer history could not be saved.');
-        return zpay_transfer_validation_error('TRANSFER_FAILED', 'The transfer could not be completed. No money was lost.', [], 500);
-    }
-
-    if (!fb_put('TRANSFERS/' . $transferId, $transfer)
-        || !fb_put('TRANSFER_HISTORY/' . $senderUid . '/' . $transferId, array_merge($transfer, ['direction' => 'OUT']))
-        || !fb_put('TRANSFER_HISTORY/' . $receiverUid . '/' . $transferId, array_merge($transfer, ['direction' => 'IN']))
-    ) {
-        wallet_restore_available_balance($senderUid, (float)$debit['after_available'], (float)$debit['before_available']);
-        wallet_restore_available_balance($receiverUid, (float)$credit['after_available'], (float)$credit['before_available']);
-        wallet_delete_ledger_record($senderUid, $now, $senderLedgerId);
-        wallet_delete_ledger_record($receiverUid, $now, $receiverLedgerId);
-        foreach (($store['written_paths'] ?? []) as $path) {
-            if (is_string($path) && trim($path) !== '') {
-                fb_delete($path);
-            }
-        }
-        foreach (($receipt['written_paths'] ?? []) as $path) {
-            if (is_string($path) && trim($path) !== '') {
-                fb_delete($path);
-            }
-        }
-        fb_delete('TRANSFERS/' . $transferId);
-        fb_delete('TRANSFER_HISTORY/' . $senderUid . '/' . $transferId);
-        fb_delete('TRANSFER_HISTORY/' . $receiverUid . '/' . $transferId);
-        zpay_transfer_mark_preview_failed($tokenHash, 'TRANSFER_FAILED', 'The transfer could not be completed. No money was lost.');
-        return zpay_transfer_validation_error('TRANSFER_FAILED', 'The transfer could not be completed. No money was lost.', [], 500);
-    }
-
-    zpay_transfer_mark_preview_used($tokenHash, $transferId);
-    system_log('TRANSFER_SUCCESS', $transferId, 'Z-Pay transfer completed', [
-        'sender_uid' => $senderUid,
-        'receiver_uid' => $receiverUid,
-        'amount' => $amount,
-        'currency' => $currency,
-    ]);
-    zpay_transfer_notify_sender($transfer);
-    zpay_transfer_notify_receiver($transfer);
-
-    return [
-        'ok' => true,
-        'code' => 'TRANSFER_SUCCESS',
-        'message' => 'Transfer completed successfully.',
-        'transfer' => $transfer,
-    ];
 }
 
 function zpay_transfer_public_row(array $row): array

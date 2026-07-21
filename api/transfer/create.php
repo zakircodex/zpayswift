@@ -105,9 +105,6 @@ if ($amount < 1.0) {
 $transferId = wallet_make_transfer_id();
 $idempotencyPath = zpay_transfer_acquire_idempotency($senderUid, $idempotencyKey, $transferId);
 $now = now_ts();
-$month = month_key($now);
-$senderLedgerId = wallet_make_ledger_id();
-$receiverLedgerId = wallet_make_ledger_id();
 
 $senderPhone = (string)($senderUser['phone'] ?? '');
 $receiverPhone = (string)($recipient['phone'] ?? $receiverUser['phone'] ?? '');
@@ -116,179 +113,37 @@ $receiverName = (string)($receiverUser['name'] ?? '');
 $senderRole = auth_status_value($senderUser['role'] ?? 'USER');
 $receiverRole = auth_status_value($receiverUser['role'] ?? 'USER');
 
-$commonExtra = [
+$result = zpay_transfer_execute_financial([
     'transfer_id' => $transferId,
-    'currency' => $currency,
-    'wallet_currency' => $currency,
-    'fee' => 0,
-    'fee_amount' => 0,
-    'commission' => 0,
-    'commission_amount' => 0,
-    'reference' => $note,
-    'note' => $note,
-    'created_at' => $now,
-    'updated_at' => $now,
-];
-
-$debit = wallet_debit_available($senderUid, $amount, $transferId, 'TRANSFER_OUT', 'Z-Pay account transfer out', array_merge($commonExtra, [
-    'ledger_id' => $senderLedgerId,
+    'idempotency_path' => $idempotencyPath,
+    'idempotency_key_hash' => hash('sha256', $idempotencyKey),
+    'sender_uid' => $senderUid,
     'receiver_uid' => $receiverUid,
-    'receiver_account_masked' => zpay_dash_mask_phone($receiverPhone),
-]));
-if (empty($debit['ok'])) {
-    fb_patch($idempotencyPath, [
-        'status' => 'FAILED',
-        'error_code' => (string)($debit['code'] ?? 'WALLET_DEBIT_FAILED'),
-        'updated_at' => now_ts(),
-    ]);
-    api_response(false, (string)($debit['code'] ?? 'WALLET_DEBIT_FAILED'), (string)($debit['message'] ?? 'Transfer could not be processed.'), [], 422);
-}
-
-$credit = wallet_credit_available($receiverUid, $amount, $transferId, 'TRANSFER_IN', 'Z-Pay account transfer in', array_merge($commonExtra, [
-    'ledger_id' => $receiverLedgerId,
-    'sender_uid' => $senderUid,
-    'sender_account_masked' => zpay_dash_mask_phone($senderPhone),
-]));
-if (empty($credit['ok'])) {
-    wallet_restore_available_balance($senderUid, (float)$debit['after_available'], (float)$debit['before_available']);
-    wallet_delete_ledger_record($senderUid, $now, $senderLedgerId);
-    fb_patch($idempotencyPath, [
-        'status' => 'FAILED',
-        'error_code' => (string)($credit['code'] ?? 'WALLET_CREDIT_FAILED'),
-        'updated_at' => now_ts(),
-    ]);
-    api_response(false, 'TRANSFER_ROLLED_BACK', 'Transfer failed and sender balance was restored.', [], 500);
-}
-
-$transfer = [
-    'transfer_id' => $transferId,
-    'request_id' => $transferId,
-    'type' => 'ZPAY_TRANSFER',
-    'sender_uid' => $senderUid,
-    'sender_account' => $senderPhone,
     'sender_phone' => $senderPhone,
-    'sender_name' => $senderName,
-    'sender_role' => $senderRole,
-    'receiver_uid' => $receiverUid,
-    'receiver_account' => $receiverPhone,
     'receiver_phone' => $receiverPhone,
+    'sender_name' => $senderName,
     'receiver_name' => $receiverName,
+    'sender_role' => $senderRole,
     'receiver_role' => $receiverRole,
     'amount' => $amount,
     'transfer_amount' => $amount,
     'currency' => $currency,
     'wallet_currency' => $currency,
-    'fee' => 0,
-    'fee_amount' => 0,
-    'commission' => 0,
-    'commission_amount' => 0,
-    'total_paid' => $amount,
-    'total_debit' => $amount,
-    'status' => 'SUCCESS',
     'reference' => $note,
     'note' => $note,
     'created_at' => $now,
-    'updated_at' => $now,
-    'completed_at' => $now,
-    'month' => $month,
-    'idempotency_key_hash' => hash('sha256', $idempotencyKey),
-    'sender_wallet_debited' => true,
-    'sender_ledger_id' => $senderLedgerId,
-    'receiver_ledger_id' => $receiverLedgerId,
-    'sender_before_available' => (float)$debit['before_available'],
-    'sender_after_available' => (float)$debit['after_available'],
-    'sender_before_hold' => (float)($debit['hold_balance'] ?? 0),
-    'sender_after_hold' => (float)($debit['hold_balance'] ?? 0),
-    'receiver_before_available' => (float)$credit['before_available'],
-    'receiver_after_available' => (float)$credit['after_available'],
-    'receiver_before_hold' => (float)($credit['hold_balance'] ?? 0),
-    'receiver_after_hold' => (float)($credit['hold_balance'] ?? 0),
-    'calculation_version' => 'zpay_transfer_v1',
-];
-
-$receipt = zpay_transfer_save_receipt($transfer);
-if (!empty($receipt['receipt_url'])) {
-    $transfer = array_merge($transfer, [
-        'receipt_id' => (string)$receipt['receipt_id'],
-        'receipt_token' => (string)$receipt['receipt_token'],
-        'receipt_url' => (string)$receipt['receipt_url'],
-        'tracking_url' => (string)$receipt['tracking_url'],
-        'receipt_created_at' => (int)$receipt['receipt_created_at'],
-    ]);
-}
-
-$store = wallet_store_transfer_records($transfer, [
-    ['uid' => $senderUid, 'row' => array_merge($transfer, [
-        'ledger_id' => $senderLedgerId,
-        'direction' => 'DEBIT',
-        'type' => 'TRANSFER_OUT',
-    ])],
-    ['uid' => $receiverUid, 'row' => array_merge($transfer, [
-        'ledger_id' => $receiverLedgerId,
-        'direction' => 'CREDIT',
-        'type' => 'TRANSFER_IN',
-    ])],
-]);
-if (empty($store['ok'])) {
-    wallet_restore_available_balance($senderUid, (float)$debit['after_available'], (float)$debit['before_available']);
-    wallet_restore_available_balance($receiverUid, (float)$credit['after_available'], (float)$credit['before_available']);
-    wallet_delete_ledger_record($senderUid, $now, $senderLedgerId);
-    wallet_delete_ledger_record($receiverUid, $now, $receiverLedgerId);
-    foreach (($receipt['written_paths'] ?? []) as $path) {
-        if (is_string($path) && trim($path) !== '') {
-            fb_delete($path);
-        }
-    }
-    fb_patch($idempotencyPath, [
-        'status' => 'FAILED',
-        'error_code' => (string)($store['code'] ?? 'TRANSFER_STORE_FAILED'),
-        'updated_at' => now_ts(),
-    ]);
-    api_response(false, 'TRANSFER_STORE_FAILED', 'Transfer history could not be saved.', [], 500);
-}
-
-if (!fb_put('TRANSFERS/' . $transferId, $transfer)
-    || !fb_put('TRANSFER_HISTORY/' . $senderUid . '/' . $transferId, array_merge($transfer, ['direction' => 'OUT']))
-    || !fb_put('TRANSFER_HISTORY/' . $receiverUid . '/' . $transferId, array_merge($transfer, ['direction' => 'IN']))
-) {
-    wallet_restore_available_balance($senderUid, (float)$debit['after_available'], (float)$debit['before_available']);
-    wallet_restore_available_balance($receiverUid, (float)$credit['after_available'], (float)$credit['before_available']);
-    wallet_delete_ledger_record($senderUid, $now, $senderLedgerId);
-    wallet_delete_ledger_record($receiverUid, $now, $receiverLedgerId);
-    foreach (($store['written_paths'] ?? []) as $path) {
-        if (is_string($path) && trim($path) !== '') {
-            fb_delete($path);
-        }
-    }
-    foreach (($receipt['written_paths'] ?? []) as $path) {
-        if (is_string($path) && trim($path) !== '') {
-            fb_delete($path);
-        }
-    }
-    fb_delete('TRANSFERS/' . $transferId);
-    fb_delete('TRANSFER_HISTORY/' . $senderUid . '/' . $transferId);
-    fb_delete('TRANSFER_HISTORY/' . $receiverUid . '/' . $transferId);
-    fb_patch($idempotencyPath, [
-        'status' => 'FAILED',
-        'error_code' => 'TRANSFER_INDEX_FAILED',
-        'updated_at' => now_ts(),
-    ]);
-    api_response(false, 'TRANSFER_INDEX_FAILED', 'Transfer index could not be saved and balances were restored.', [], 500);
-}
-
-fb_patch($idempotencyPath, [
-    'status' => 'SUCCESS',
-    'transfer_id' => $transferId,
-    'updated_at' => now_ts(),
 ]);
 
-system_log('TRANSFER_SUCCESS', $transferId, 'Account transfer completed', [
-    'sender_uid' => $senderUid,
-    'receiver_uid' => $receiverUid,
-    'amount' => $amount,
-    'currency' => $currency,
-]);
+if (empty($result['ok'])) {
+    api_response(
+        false,
+        (string)($result['code'] ?? 'TRANSFER_FAILED'),
+        (string)($result['message'] ?? 'Transfer could not be processed.'),
+        (array)($result['data'] ?? []),
+        (int)($result['status'] ?? 422)
+    );
+}
 
 api_response(true, 'TRANSFER_SUCCESS', 'Transfer completed successfully.', [
-    'transfer' => zpay_transfer_public_row($transfer),
+    'transfer' => zpay_transfer_public_row((array)($result['transfer'] ?? [])),
 ]);

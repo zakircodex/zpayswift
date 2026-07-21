@@ -70,23 +70,79 @@ if ($currentAvailable < $walletDebit) {
 $requestId = make_uid();
 $now = now_ts();
 $userPhone = trim((string)($user['phone'] ?? ''));
-$newAvailable = round($currentAvailable - $walletDebit, 2);
-$newHold = round($currentHold + $walletDebit, 2);
+$operationSeed = trim((string)($body['idempotency_key'] ?? $body['client_request_id'] ?? $body['request_reference'] ?? $body['reference_id'] ?? ''));
+if ($operationSeed === '') {
+    $operationSeed = hash('sha256', implode('|', [
+        'API_TOPUP_CREATE',
+        $keyId,
+        $uid,
+        $countryCode,
+        $operator,
+        $topupNumber,
+        number_format($amount, 2, '.', ''),
+        number_format($walletDebit, 2, '.', ''),
+        (string)floor($now / 120),
+    ]));
+}
+$operationRef = 'API_TOPUP_CREATE:' . hash('sha256', implode('|', [$keyId, $uid, $operationSeed]));
+$operation = wallet_financial_operation_begin($operationRef, 'API_TOPUP_CREATE_HOLD', 'REQUEST_CREATE', $uid, $walletDebit, (string)$financials['wallet_debit_currency'], [
+    'request_id' => $requestId,
+    'key_id' => $keyId,
+    'operator' => $operator,
+    'topup_number_hash' => hash('sha256', $topupNumber),
+]);
+if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+    $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+    api_response(true, 'SUCCESS', 'Topup request created successfully', $resultData);
+}
+if (empty($operation['ok']) || empty($operation['claim'])) {
+    api_response(false, (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'), (string)($operation['message'] ?? 'Wallet operation is unavailable'), [], 409);
+}
+$financialClaim = $operation['claim'];
+$requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
 
 /*
 |--------------------------------------------------------------------------
 | Hold balance first
 |--------------------------------------------------------------------------
 */
-$walletHoldOk = fb_patch('USER_WALLETS/' . $uid, [
-    'available_balance' => $newAvailable,
-    'hold_balance' => $newHold,
-    'updated_at' => $now,
+$hold = wallet_hold_amount($uid, $walletDebit, $operationRef, 'API_TOPUP_HOLD', [
+    'financial_operation' => $financialClaim,
+    'ledger_extra' => [
+        'ledger_id' => wallet_financial_operation_ledger_id($operationRef, 'API_TOPUP_CREATE_HOLD'),
+        'request_id' => $requestId,
+        'ref_id' => $requestId,
+        'key_id' => $keyId,
+        'topup_amount' => (float)($financials['topup_amount'] ?? $amount),
+        'topup_currency' => (string)($financials['topup_currency'] ?? ($countryCode === 'MY' ? 'MYR' : 'BDT')),
+        'topup_amount_bdt' => (float)($financials['topup_amount_bdt'] ?? 0),
+        'topup_amount_myr' => (float)($financials['topup_amount_myr'] ?? 0),
+        'account_country' => (string)($financials['account_country'] ?? ''),
+        'commission_per_1000' => $financials['commission_per_1000'],
+        'commission_bdt' => $financials['commission_bdt'],
+        'commission_applicable' => (bool)($financials['commission_applicable'] ?? false),
+        'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
+        'commission_amount' => (float)($financials['commission_amount'] ?? $financials['commission_bdt'] ?? 0),
+        'commission_credit' => (float)($financials['commission_credit'] ?? 0),
+        'fee_amount' => (float)($financials['fee_amount'] ?? 0),
+        'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
+        'wallet_debit_myr' => (float)($financials['wallet_debit_myr'] ?? 0),
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => $financials['wallet_debit_currency'],
+        'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
+        'rate_snapshot' => $financials['rate_snapshot'] ?? null,
+        'rate_used' => $financials['rate_used'],
+        'calculation_version' => (string)($financials['calculation_version'] ?? ''),
+        'note' => 'Balance moved to hold for API topup request',
+    ],
 ]);
 
-if (!$walletHoldOk) {
-    api_response(false, 'SERVER_ERROR', 'Failed to hold wallet balance', [], 500);
+if (empty($hold['ok'])) {
+    api_response(false, (string)($hold['code'] ?? 'SERVER_ERROR'), (string)($hold['message'] ?? 'Failed to hold wallet balance'), [], 500);
 }
+
+$newAvailable = (float)($hold['available_balance'] ?? $hold['after_available'] ?? round($currentAvailable - $walletDebit, 2));
+$newHold = (float)($hold['hold_balance'] ?? $hold['after_hold'] ?? round($currentHold + $walletDebit, 2));
 
 /*
 |--------------------------------------------------------------------------
@@ -151,13 +207,15 @@ $requestRow = [
 $requestSaved = fb_put('TOPUP_REQUESTS/PENDING/' . $requestId, $requestRow);
 
 if (!$requestSaved) {
-    fb_patch('USER_WALLETS/' . $uid, [
-        'available_balance' => $currentAvailable,
-        'hold_balance' => $currentHold,
-        'updated_at' => now_ts(),
+    wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'Topup request could not be saved after wallet hold', [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_id' => $requestId,
+        'request_row' => $requestRow,
+        'request_finalized' => false,
     ]);
 
-    api_response(false, 'SERVER_ERROR', 'Failed to create topup request', [], 500);
+    api_response(false, 'SERVER_ERROR', 'Failed to create topup request', ['request_id' => $requestId], 500);
 }
 
 /*
@@ -181,46 +239,7 @@ topup_write_history($requestRow);
 | Wallet ledger entry
 |--------------------------------------------------------------------------
 */
-$ledgerId = make_uid();
-$ledgerMonth = date('Y-m', (int)$now);
-
-fb_put('WALLET_LEDGER/' . $uid . '/' . $ledgerMonth . '/' . $ledgerId, [
-    'ledger_id' => $ledgerId,
-    'uid' => $uid,
-    'type' => 'API_TOPUP_HOLD',
-    'direction' => 'HOLD',
-    'amount' => $walletDebit,
-    'currency' => $financials['wallet_debit_currency'],
-    'wallet_currency' => $financials['wallet_debit_currency'],
-    'topup_amount' => (float)($financials['topup_amount'] ?? $amount),
-    'topup_currency' => (string)($financials['topup_currency'] ?? ($countryCode === 'MY' ? 'MYR' : 'BDT')),
-    'topup_amount_bdt' => (float)($financials['topup_amount_bdt'] ?? 0),
-    'topup_amount_myr' => (float)($financials['topup_amount_myr'] ?? 0),
-    'account_country' => (string)($financials['account_country'] ?? ''),
-    'commission_per_1000' => $financials['commission_per_1000'],
-    'commission_bdt' => $financials['commission_bdt'],
-    'commission_applicable' => (bool)($financials['commission_applicable'] ?? false),
-    'commission_type' => (string)($financials['commission_type'] ?? 'NONE'),
-    'commission_amount' => (float)($financials['commission_amount'] ?? $financials['commission_bdt'] ?? 0),
-    'commission_credit' => (float)($financials['commission_credit'] ?? 0),
-    'fee_amount' => (float)($financials['fee_amount'] ?? 0),
-    'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
-    'wallet_debit_myr' => (float)($financials['wallet_debit_myr'] ?? 0),
-    'wallet_debit_amount' => $walletDebit,
-    'wallet_debit_currency' => $financials['wallet_debit_currency'],
-    'rate_applicable' => (bool)($financials['rate_applicable'] ?? false),
-    'rate_snapshot' => $financials['rate_snapshot'] ?? null,
-    'rate_used' => $financials['rate_used'],
-    'calculation_version' => (string)($financials['calculation_version'] ?? ''),
-    'before_available' => $currentAvailable,
-    'after_available' => $newAvailable,
-    'before_hold' => $currentHold,
-    'after_hold' => $newHold,
-    'ref_id' => $requestId,
-    'key_id' => $keyId,
-    'note' => 'Balance moved to hold for API topup request',
-    'created_at' => $now,
-]);
+$ledgerId = (string)($hold['ledger_id'] ?? '');
 
 /*
 |--------------------------------------------------------------------------
@@ -275,7 +294,7 @@ if (function_exists('system_log')) {
 
 topup_notify_telegram_request($requestRow);
 
-api_response(true, 'SUCCESS', 'Topup request created successfully', [
+$responseData = [
     'request_id' => $requestId,
     'uid' => $uid,
     'status' => 'PENDING',
@@ -305,4 +324,17 @@ api_response(true, 'SUCCESS', 'Topup request created successfully', [
         'available_balance' => $newAvailable,
         'hold_balance' => $newHold,
     ],
+];
+
+wallet_financial_operation_mark_completed($financialClaim, [
+    'wallet_applied' => true,
+    'ledger_written' => true,
+    'request_finalized' => true,
+    'history_written' => true,
+    'notification_written' => true,
+    'request_id' => $requestId,
+    'ledger_id' => $ledgerId,
+    'result_data' => $responseData,
 ]);
+
+api_response(true, 'SUCCESS', 'Topup request created successfully', $responseData);

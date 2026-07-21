@@ -165,10 +165,69 @@ $payableAmount = bundle_round_money((float)($data['payable_amount'] ?? $data['yo
 $walletDebit = bundle_round_money((float)($data['wallet_debit_amount'] ?? $data['wallet_hold_amount'] ?? $payableAmount));
 $walletCurrency = (string)($data['wallet_debit_currency'] ?? $data['wallet_currency'] ?? 'BDT');
 
-$hold = wallet_hold_amount($uid, $walletDebit, $requestId, 'BUNDLE_HOLD');
+$operationSeed = $idempotencyKey !== ''
+    ? 'idem:' . $idempotencyKey
+    : implode('|', [
+        $uid,
+        $tokenHash,
+        $offerId,
+        $normalizedBundleNumber,
+        number_format($walletDebit, 2, '.', ''),
+        $hasPreviewToken ? $tokenHash : (string)floor(bundle_now() / 120),
+    ]);
+$operationRef = 'ANDROID_BUNDLE_CREATE:' . hash('sha256', $operationSeed);
+$operation = wallet_financial_operation_begin(
+    $operationRef,
+    'ANDROID_BUNDLE_CREATE_HOLD',
+    'REQUEST_CREATE',
+    $uid,
+    $walletDebit,
+    $walletCurrency,
+    [
+        'request_id' => $requestId,
+        'preview_token_hash' => $hasPreviewToken ? $tokenHash : '',
+        'idempotency_key_hash' => $idempotencyKey !== '' ? hash('sha256', $idempotencyKey) : '',
+        'offer_id' => $offerId,
+        'bundle_number_hash' => hash('sha256', $normalizedBundleNumber),
+    ]
+);
+if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
+    $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+    $resultData['duplicate'] = true;
+    api_response(true, 'BUNDLE_REQUEST_CREATED', 'Bundle request already submitted', $resultData);
+}
+if (empty($operation['ok']) || empty($operation['claim'])) {
+    $failPreview((string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'), (string)($operation['message'] ?? 'Wallet operation is unavailable'));
+    api_response(false, (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'), (string)($operation['message'] ?? 'Wallet operation is unavailable'), [], 409);
+}
+$financialClaim = (array)$operation['claim'];
+$requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
+
+$hold = wallet_hold_amount($uid, $walletDebit, $operationRef, 'ANDROID_BUNDLE_HOLD', [
+    'financial_operation' => $financialClaim,
+    'ledger_extra' => [
+        'ledger_id' => wallet_financial_operation_ledger_id($operationRef, 'ANDROID_BUNDLE_CREATE_HOLD'),
+        'request_id' => $requestId,
+        'ref_id' => $requestId,
+        'offer_id' => $offerId,
+        'bundle_number_hash' => hash('sha256', $normalizedBundleNumber),
+        'service_amount_bdt' => $priceAmount,
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => $walletCurrency,
+        'wallet_currency' => $walletCurrency,
+        'bundle_commission' => (float)($offer['user_commission'] ?? $data['bundle_commission'] ?? $data['user_commission'] ?? 0),
+        'commission_currency' => 'BDT',
+        'rate_applicable' => (bool)($data['rate_applicable'] ?? false),
+        'rate_snapshot' => $data['rate_snapshot'] ?? null,
+        'rate_used' => (float)($data['rate_used'] ?? 0),
+        'source' => 'ANDROID',
+        'note' => 'Balance moved to hold for Android bundle request',
+    ],
+]);
 if (!($hold['ok'] ?? false)) {
     $code = (string)($hold['code'] ?? 'WALLET_HOLD_FAILED');
     $status = $code === 'INSUFFICIENT_BALANCE' ? 422 : 500;
+    wallet_financial_operation_mark_failed($financialClaim, $code, (string)($hold['message'] ?? 'Wallet hold failed'));
     $failPreview($code, (string)($hold['message'] ?? 'Wallet hold failed'));
     api_response(false, $code, (string)($hold['message'] ?? 'Wallet hold failed'), [
         'available_balance' => (float)($hold['available_balance'] ?? 0),
@@ -238,15 +297,26 @@ $saved = create_bundle_pending_request(
 
 if (!$saved) {
     $failPreview('BUNDLE_REQUEST_SAVE_FAILED', 'Failed to create bundle request');
-    wallet_refund_hold($uid, $walletDebit, $requestId, 'BUNDLE_REFUND');
+    wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'Bundle request could not be saved after wallet hold', [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_id' => $requestId,
+        'request_extra' => $extra,
+        'request_finalized' => false,
+    ]);
     api_response(false, 'BUNDLE_REQUEST_SAVE_FAILED', 'Failed to create bundle request', [], 500);
 }
 
 if (function_exists('create_request_status')
     && !create_request_status($requestId, 'BUNDLE', $uid, 'WAITING_ADMIN', 'Bundle request submitted and waiting for admin')) {
     $failPreview('BUNDLE_STATUS_SAVE_FAILED', 'Failed to create request status');
-    fb_delete('BUNDLE_REQUESTS/PENDING/' . $requestId);
-    wallet_refund_hold($uid, $walletDebit, $requestId, 'BUNDLE_REFUND');
+    wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_STATUS_CREATE_FAILED', 'Bundle request status could not be saved after wallet hold', [
+        'wallet_applied' => true,
+        'ledger_written' => true,
+        'request_id' => $requestId,
+        'request_extra' => $extra,
+        'request_finalized' => false,
+    ]);
     api_response(false, 'BUNDLE_STATUS_SAVE_FAILED', 'Failed to create request status', [], 500);
 }
 
@@ -276,7 +346,7 @@ if (function_exists('system_log')) {
 $savedRow = fb_get('BUNDLE_REQUESTS/PENDING/' . $requestId);
 $savedRow = is_array($savedRow) ? $savedRow : [];
 
-api_response(true, 'BUNDLE_REQUEST_CREATED', 'Bundle request submitted', [
+$responseData = [
     'request_id' => $requestId,
     'status' => 'WAITING_ADMIN',
     'display_status' => 'Pending',
@@ -301,4 +371,17 @@ api_response(true, 'BUNDLE_REQUEST_CREATED', 'Bundle request submitted', [
     'balance_after' => (float)($hold['after_available'] ?? $data['balance_after'] ?? 0),
     'telegram_sent' => (bool)($savedRow['telegram_sent'] ?? false),
     'telegram_message' => (string)($savedRow['telegram_error'] ?? ''),
+];
+
+wallet_financial_operation_mark_completed($financialClaim, [
+    'wallet_applied' => true,
+    'ledger_written' => true,
+    'request_finalized' => true,
+    'history_written' => true,
+    'notification_written' => true,
+    'request_id' => $requestId,
+    'ledger_id' => (string)($hold['ledger_id'] ?? ''),
+    'result_data' => $responseData,
 ]);
+
+api_response(true, 'BUNDLE_REQUEST_CREATED', 'Bundle request submitted', $responseData);

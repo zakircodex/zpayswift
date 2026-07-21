@@ -255,14 +255,14 @@ function bundle_notification_amount_text(array $row): string
     return number_format($amount, 2, '.', '') . ' BDT';
 }
 
-function bundle_record_user_notification(array $row, string $requestId, string $status): void
+function bundle_record_user_notification(array $row, string $requestId, string $status): bool
 {
     $uid = trim((string)($row['uid'] ?? ''));
     $requestId = trim($requestId);
     if ($uid === '' || $requestId === '') {
-        return;
+        return false;
     }
-    notification_emit_request_status_notification(
+    $res = notification_emit_request_status_notification(
         'BUNDLE',
         $requestId,
         $uid,
@@ -271,6 +271,7 @@ function bundle_record_user_notification(array $row, string $requestId, string $
         $row,
         'bundle_status'
     );
+    return !empty($res['ok']) || !empty($res['notification_id']);
 }
 
 function bundle_wallet_breakdown(
@@ -1850,13 +1851,13 @@ function create_bundle_pending_request(
     return true;
 }
 
-function bundle_write_history(array $done): void
+function bundle_write_history(array $done): bool
 {
     $uid = (string)($done['uid'] ?? '');
     $requestId = (string)($done['request_id'] ?? '');
 
     if ($uid === '' || $requestId === '') {
-        return;
+        return false;
     }
 
     $priceAmount = bundle_round_money((float)($done['price_amount'] ?? $done['amount'] ?? 0));
@@ -1893,7 +1894,7 @@ function bundle_write_history(array $done): void
         'completed_at' => (int)($done['completed_at'] ?? bundle_now()),
     ];
 
-    fb_put('BUNDLE_HISTORY/' . $uid . '/' . bundle_month_key() . '/' . $requestId, bundle_with_financial_aliases($historyRow));
+    return fb_put('BUNDLE_HISTORY/' . $uid . '/' . bundle_month_key() . '/' . $requestId, bundle_with_financial_aliases($historyRow));
 }
 
 function bundle_update_subadmin_request_log(array $row, string $status, string $message): void
@@ -2120,10 +2121,10 @@ function bundle_credit_user_commission_wallet(string $uid, float $amount, string
     );
 }
 
-function bundle_credit_subadmin_profit_wallet(string $subadminUid, float $amount, string $requestId, array $meta = []): array
+function bundle_credit_subadmin_profit_wallet(string $subadminUid, float $amount, string $requestId, array $meta = [], array $options = []): array
 {
     if (function_exists('wallet_credit_bundle_subadmin_profit')) {
-        return wallet_credit_bundle_subadmin_profit($subadminUid, $amount, $requestId, $meta);
+        return wallet_credit_bundle_subadmin_profit($subadminUid, $amount, $requestId, $meta, $options);
     }
 
     return bundle_wallet_credit_available_fallback(
@@ -2248,16 +2249,67 @@ function bundle_credit_commissions_after_success(array &$done): array
     ];
 
     $creditedSubadmin = false;
+    $commissionClaim = [];
 
     if ($subadminProfitWalletAmount > 0 && $subadminUid !== '') {
+        $commissionOperation = function_exists('wallet_financial_operation_begin')
+            ? wallet_financial_operation_begin($requestId, 'BUNDLE_COMMISSION_CREDIT', 'BUNDLE_COMMISSION', $subadminUid, $subadminProfitWalletAmount, $subadminProfitWalletCurrency, [
+                'request_type' => 'BUNDLE',
+                'target_uid' => $uid,
+                'subadmin_profit_bdt' => $subadminProfit,
+            ])
+            : ['ok' => true, 'claim' => []];
+
+        if (empty($commissionOperation['ok'])) {
+            return [
+                'ok' => false,
+                'code' => (string)($commissionOperation['code'] ?? 'BUNDLE_COMMISSION_BUSY'),
+                'message' => (string)($commissionOperation['message'] ?? 'Bundle commission is already being processed'),
+            ];
+        }
+        if (!empty($commissionOperation['duplicate'])) {
+            $operationRow = is_array($commissionOperation['operation'] ?? null) ? $commissionOperation['operation'] : [];
+            $done['price_amount'] = $priceAmount;
+            $done['offer_price'] = $priceAmount;
+            $done['you_pay'] = $payableAmount;
+            $done['payable_amount'] = $payableAmount;
+            $done['wallet_hold_amount'] = $walletHoldAmount;
+            $done['held_amount'] = $walletHoldAmount;
+            $done['wallet_debit_amount'] = $walletHoldAmount;
+            $done['admin_commission'] = $adminCommission;
+            $done['user_commission'] = $userCommission;
+            $done['customer_commission'] = $userCommission;
+            $done['user_discount'] = $userCommission;
+            $done['subadmin_profit'] = $subadminProfit;
+            $done['subadmin_commission'] = $subadminProfit;
+            $done['subadmin_profit_bdt'] = $subadminProfit;
+            $done['subadmin_profit_wallet_amount'] = $subadminProfitWalletAmount;
+            $done['subadmin_profit_wallet_currency'] = $subadminProfitWalletCurrency;
+            $done['subadmin_profit_rate_used'] = $subadminProfitRateUsed;
+            $done['commission_status'] = 'CREDITED';
+            $done['commission_credited_at'] = (int)($operationRow['completed_at'] ?? $operationRow['updated_at'] ?? bundle_now());
+            $done['user_commission_credited'] = false;
+            $done['subadmin_profit_credited'] = true;
+            return [
+                'ok' => true,
+                'code' => 'ALREADY_CREDITED',
+                'message' => 'Bundle commission already credited',
+            ];
+        }
+
+        $commissionClaim = (array)($commissionOperation['claim'] ?? []);
         $creditSub = bundle_credit_subadmin_profit_wallet(
             $subadminUid,
             $subadminProfitWalletAmount,
             $requestId,
-            $meta
+            $meta,
+            ['financial_operation' => $commissionClaim]
         );
 
         if (!($creditSub['ok'] ?? false)) {
+            if (function_exists('wallet_financial_operation_mark_failed')) {
+                wallet_financial_operation_mark_failed($commissionClaim, (string)($creditSub['code'] ?? 'SUBADMIN_PROFIT_FAILED'), (string)($creditSub['message'] ?? 'Failed to credit subadmin bundle profit'));
+            }
             return [
                 'ok' => false,
                 'code' => (string)($creditSub['code'] ?? 'SUBADMIN_PROFIT_FAILED'),
@@ -2295,6 +2347,12 @@ function bundle_credit_commissions_after_success(array &$done): array
 
     $done['user_commission_credited'] = false;
     $done['subadmin_profit_credited'] = $creditedSubadmin;
+    if ($commissionClaim !== [] && function_exists('wallet_financial_operation_mark_completed')) {
+        wallet_financial_operation_mark_completed($commissionClaim, [
+            'final_status' => 'CREDITED',
+            'target_uid' => $uid,
+        ]);
+    }
 
     return [
         'ok' => true,
@@ -2329,8 +2387,39 @@ function bundle_mark_success(string $requestId, string $message): array
         ?? $pending['amount']
         ?? 0
     ));
+    $walletCurrency = (string)($pending['wallet_debit_currency'] ?? $pending['wallet_currency'] ?? 'BDT');
+    $operation = function_exists('wallet_financial_operation_begin')
+        ? wallet_financial_operation_begin($requestId, 'BUNDLE_SUCCESS', 'REQUEST_FINAL', $uid, $settleAmount, $walletCurrency, [
+            'request_type' => 'BUNDLE',
+            'status' => (string)($pending['status'] ?? 'WAITING_ADMIN'),
+        ])
+        : ['ok' => true, 'claim' => []];
+
+    if (empty($operation['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_FAILED'),
+            'message' => (string)($operation['message'] ?? 'Bundle financial operation is already being processed'),
+        ];
+    }
+    if (!empty($operation['duplicate'])) {
+        return [
+            'ok' => true,
+            'code' => 'BUNDLE_SUCCESS',
+            'message' => 'Bundle request already completed',
+            'data' => [
+                'request_id' => $requestId,
+                'status' => 'SUCCESS',
+                'settle_amount' => $settleAmount,
+            ],
+        ];
+    }
+    $financialClaim = (array)($operation['claim'] ?? []);
 
     if (!function_exists('wallet_settle_hold_bundle')) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'MISSING_WALLET_HELPER', 'wallet_settle_hold_bundle helper missing');
+        }
         return [
             'ok' => false,
             'code' => 'MISSING_WALLET_HELPER',
@@ -2338,8 +2427,13 @@ function bundle_mark_success(string $requestId, string $message): array
         ];
     }
 
-    $settle = wallet_settle_hold_bundle($uid, $settleAmount, $requestId, 'BUNDLE_SETTLE');
+    $settle = wallet_settle_hold_bundle($uid, $settleAmount, $requestId, 'BUNDLE_SETTLE', [
+        'financial_operation' => $financialClaim,
+    ]);
     if (!($settle['ok'] ?? false)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, (string)($settle['code'] ?? 'BUNDLE_SETTLE_FAILED'), (string)($settle['message'] ?? 'Bundle wallet settle failed'));
+        }
         return $settle;
     }
 
@@ -2351,13 +2445,57 @@ function bundle_mark_success(string $requestId, string $message): array
 
     $commission = bundle_credit_commissions_after_success($done);
     if (!($commission['ok'] ?? false)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, (string)($commission['code'] ?? 'BUNDLE_COMMISSION_FAILED'), (string)($commission['message'] ?? 'Bundle commission processing failed'), [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
         return $commission;
     }
 
-    fb_put('BUNDLE_REQUESTS/DONE/' . $requestId, $done);
-    fb_delete('BUNDLE_REQUESTS/PENDING/' . $requestId);
+    if (!fb_put('BUNDLE_REQUESTS/DONE/' . $requestId, $done)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to move bundle request to done bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to move bundle request to done bucket',
+        ];
+    }
 
-    bundle_write_history($done);
+    if (!fb_delete('BUNDLE_REQUESTS/PENDING/' . $requestId)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to remove pending bundle request bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to move bundle request to done bucket',
+        ];
+    }
+
+    if (function_exists('wallet_financial_operation_mark_applied')) {
+        wallet_financial_operation_mark_applied($financialClaim, [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_finalized' => true,
+            'final_status' => 'SUCCESS',
+            'completed_bucket' => 'DONE',
+        ]);
+    }
+
+    $historyWritten = bundle_write_history($done);
     bundle_update_subadmin_request_log($done, 'SUCCESS', $message);
     bundle_telegram_edit_request_message($done, 'SUCCESS', $message);
 
@@ -2377,7 +2515,16 @@ function bundle_mark_success(string $requestId, string $message): array
             'commission_status' => (string)($done['commission_status'] ?? ''),
         ]);
     }
-    bundle_record_user_notification($done, $requestId, 'SUCCESS');
+    $notificationWritten = bundle_record_user_notification($done, $requestId, 'SUCCESS');
+    if (function_exists('wallet_financial_operation_mark_completed')) {
+        wallet_financial_operation_mark_completed($financialClaim, [
+            'final_status' => 'SUCCESS',
+            'completed_bucket' => 'DONE',
+            'request_finalized' => true,
+            'history_written' => $historyWritten,
+            'notification_written' => $notificationWritten,
+        ]);
+    }
 
     return [
         'ok' => true,
@@ -2421,8 +2568,39 @@ function bundle_mark_failed(string $requestId, string $message): array
         ?? $pending['amount']
         ?? 0
     ));
+    $walletCurrency = (string)($pending['wallet_debit_currency'] ?? $pending['wallet_currency'] ?? 'BDT');
+    $operation = function_exists('wallet_financial_operation_begin')
+        ? wallet_financial_operation_begin($requestId, 'BUNDLE_REFUND', 'REQUEST_FINAL', $uid, $refundAmount, $walletCurrency, [
+            'request_type' => 'BUNDLE',
+            'status' => (string)($pending['status'] ?? 'WAITING_ADMIN'),
+        ])
+        : ['ok' => true, 'claim' => []];
+
+    if (empty($operation['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($operation['code'] ?? 'FINANCIAL_OPERATION_FAILED'),
+            'message' => (string)($operation['message'] ?? 'Bundle financial operation is already being processed'),
+        ];
+    }
+    if (!empty($operation['duplicate'])) {
+        return [
+            'ok' => true,
+            'code' => 'BUNDLE_FAILED',
+            'message' => 'Bundle request already completed',
+            'data' => [
+                'request_id' => $requestId,
+                'status' => 'FAILED',
+                'refund_amount' => $refundAmount,
+            ],
+        ];
+    }
+    $financialClaim = (array)($operation['claim'] ?? []);
 
     if (!function_exists('wallet_refund_hold')) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'MISSING_WALLET_HELPER', 'wallet_refund_hold helper missing');
+        }
         return [
             'ok' => false,
             'code' => 'MISSING_WALLET_HELPER',
@@ -2430,8 +2608,13 @@ function bundle_mark_failed(string $requestId, string $message): array
         ];
     }
 
-    $refund = wallet_refund_hold($uid, $refundAmount, $requestId, 'BUNDLE_REFUND');
+    $refund = wallet_refund_hold($uid, $refundAmount, $requestId, 'BUNDLE_REFUND', [
+        'financial_operation' => $financialClaim,
+    ]);
     if (!($refund['ok'] ?? false)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, (string)($refund['code'] ?? 'BUNDLE_REFUND_FAILED'), (string)($refund['message'] ?? 'Bundle wallet refund failed'));
+        }
         return $refund;
     }
 
@@ -2445,10 +2628,47 @@ function bundle_mark_failed(string $requestId, string $message): array
     $done['user_commission_credited'] = false;
     $done['subadmin_profit_credited'] = false;
 
-    fb_put('BUNDLE_REQUESTS/DONE/' . $requestId, $done);
-    fb_delete('BUNDLE_REQUESTS/PENDING/' . $requestId);
+    if (!fb_put('BUNDLE_REQUESTS/DONE/' . $requestId, $done)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to move bundle request to done bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to move bundle request to done bucket',
+        ];
+    }
 
-    bundle_write_history($done);
+    if (!fb_delete('BUNDLE_REQUESTS/PENDING/' . $requestId)) {
+        if (function_exists('wallet_financial_operation_mark_failed')) {
+            wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Failed to remove pending bundle request bucket', [
+                'wallet_applied' => true,
+                'ledger_written' => true,
+                'request_finalized' => false,
+            ]);
+        }
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Failed to move bundle request to done bucket',
+        ];
+    }
+
+    if (function_exists('wallet_financial_operation_mark_applied')) {
+        wallet_financial_operation_mark_applied($financialClaim, [
+            'wallet_applied' => true,
+            'ledger_written' => true,
+            'request_finalized' => true,
+            'final_status' => 'FAILED',
+            'completed_bucket' => 'DONE',
+        ]);
+    }
+
+    $historyWritten = bundle_write_history($done);
     bundle_update_subadmin_request_log($done, 'FAILED', $message);
     bundle_telegram_edit_request_message($done, 'FAILED', $message);
 
@@ -2465,7 +2685,16 @@ function bundle_mark_failed(string $requestId, string $message): array
             'you_pay' => (float)($done['you_pay'] ?? $refundAmount),
         ]);
     }
-    bundle_record_user_notification($done, $requestId, 'FAILED');
+    $notificationWritten = bundle_record_user_notification($done, $requestId, 'FAILED');
+    if (function_exists('wallet_financial_operation_mark_completed')) {
+        wallet_financial_operation_mark_completed($financialClaim, [
+            'final_status' => 'FAILED',
+            'completed_bucket' => 'DONE',
+            'request_finalized' => true,
+            'history_written' => $historyWritten,
+            'notification_written' => $notificationWritten,
+        ]);
+    }
 
     return [
         'ok' => true,
