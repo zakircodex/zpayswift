@@ -1,8 +1,6 @@
 <?php
 declare(strict_types=1);
 
-require_once dirname(__DIR__) . '/lib/app_paths.php';
-require_once app_private_config_path();
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/subadmin_api.php';
 require_once dirname(__DIR__) . '/lib/topup.php';
@@ -17,6 +15,9 @@ header('Pragma: no-cache');
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
     $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
+        $https = true;
+    }
     session_name('zawtopup_subadmin');
     session_set_cookie_params([
         'lifetime' => 0,
@@ -2649,7 +2650,6 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
 
         sub_proxy_response(true, 'SUCCESS', 'MFS request loaded', [
             'item' => $public,
-            'raw' => $row,
         ]);
         break;
         

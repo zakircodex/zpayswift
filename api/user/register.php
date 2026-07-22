@@ -57,6 +57,19 @@ header('Pragma: no-cache');
       </div>
 
       <div class="field">
+        <label>Identity Type</label>
+        <select id="regIdentityType" class="input">
+          <option value="NID">National ID (NID)</option>
+          <option value="PASSPORT">Passport</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>NID or Passport Number</label>
+        <input id="regIdentityNumber" class="input" type="text" autocomplete="off" maxlength="40" placeholder="Enter document number">
+      </div>
+
+      <div class="field">
         <label>Password</label>
         <input id="regPassword" class="input" type="password" placeholder="Minimum 6 characters">
       </div>
@@ -176,6 +189,6 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/register.js?v=4"></script>
+<script src="/api/user/assets/register.js?v=5"></script>
 </body>
 </html>

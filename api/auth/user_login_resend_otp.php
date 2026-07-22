@@ -78,6 +78,13 @@ if (!is_array($otpRow)) {
     api_response(false, 'OTP_NOT_FOUND', 'OTP request not found', [], 404);
 }
 
+if (
+    strtoupper(trim((string)($preAuthRow['purpose'] ?? ''))) !== 'USER_LOGIN'
+    || strtoupper(trim((string)($otpRow['purpose'] ?? ''))) !== 'USER_LOGIN'
+) {
+    api_response(false, 'OTP_PURPOSE_MISMATCH', 'OTP purpose mismatch', [], 400);
+}
+
 if ((string)($otpRow['uid'] ?? '') !== $uid) {
     api_response(false, 'OTP_UID_MISMATCH', 'OTP does not match this account', [], 400);
 }
@@ -103,25 +110,29 @@ if (empty($resendState['ok'])) {
 
 $newExpiresAt = $now + 300;
 $newOtpCode = (string)random_int(100000, 999999);
+$newOtpRequestId = 'OTP' . strtoupper(bin2hex(random_bytes(6)));
 
-$patchOtp = [
+$newOtpRow = $otpRow;
+$newOtpRow = array_replace($newOtpRow, [
+    'otp_request_id' => $newOtpRequestId,
     'code_hash' => password_hash($newOtpCode, PASSWORD_DEFAULT),
     'status' => 'RESENT',
+    'used' => false,
     'resent_at' => $now,
     'resend_count' => (int)($resendState['resend_count'] ?? 0) + 1,
+    'created_at' => $now,
     'expires_at' => $newExpiresAt,
     'updated_at' => $now,
-] + auth_otp_reset_attempts_patch();
+], auth_otp_reset_attempts_patch());
+unset(
+    $newOtpRow['used_at'],
+    $newOtpRow['verified_at'],
+    $newOtpRow['verification_owner_hash'],
+    $newOtpRow['verification_lease_expires_at'],
+    $newOtpRow['verification_previous_status']
+);
 
-$patchPreAuth = [
-    'expires_at' => $newExpiresAt,
-    'updated_at' => $now,
-];
-
-$okOtp = fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, $patchOtp);
-$okPre = $okOtp ? fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, $patchPreAuth) : false;
-
-if (!($okOtp && $okPre)) {
+if (!fb_put('AUTH_OTP_REQUESTS/' . $newOtpRequestId, $newOtpRow)) {
     api_response(false, 'SERVER_ERROR', 'Failed to resend OTP', [], 500);
 }
 
@@ -130,22 +141,40 @@ $smsResult = auth_send_otp_sms_by_country(
     $phoneCountry,
     $phone,
     $message,
-    $otpRequestId,
+    $newOtpRequestId,
     'USER_LOGIN',
     $newOtpCode
 );
 $smsPatch = auth_sms_result_log_fields($smsResult);
 
 if (empty($smsResult['ok'])) {
-    fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+    fb_patch('AUTH_OTP_REQUESTS/' . $newOtpRequestId, [
         'status' => 'SMS_FAILED',
         'updated_at' => now_ts(),
     ] + $smsPatch);
 
-    api_response(false, 'SMS_FAILED', 'Failed to resend OTP SMS', [], 500);
+    api_response(false, 'SMS_FAILED', 'Failed to resend OTP SMS. Your previous OTP remains valid.', [], 500);
 }
 
-fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+$okPre = fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, [
+    'otp_request_id' => $newOtpRequestId,
+    'expires_at' => $newExpiresAt,
+    'updated_at' => $now,
+]);
+if (!$okPre) {
+    @fb_patch('AUTH_OTP_REQUESTS/' . $newOtpRequestId, [
+        'status' => 'CANCELLED',
+        'updated_at' => now_ts(),
+    ]);
+    api_response(false, 'SERVER_ERROR', 'Failed to update login OTP session', [], 500);
+}
+
+@fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+    'status' => 'CANCELLED',
+    'updated_at' => now_ts(),
+]);
+
+fb_patch('AUTH_OTP_REQUESTS/' . $newOtpRequestId, [
     'phone_country' => $phoneCountry,
     'country' => $phoneCountry,
     'dial_code' => $phoneCountry === 'MY' ? '+60' : '+880',
@@ -154,7 +183,7 @@ fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
 ] + $smsPatch);
 
 if (function_exists('system_log')) {
-    system_log('USER_LOGIN_OTP_RESENT', $otpRequestId, 'User login OTP resent', [
+    system_log('USER_LOGIN_OTP_RESENT', $newOtpRequestId, 'User login OTP resent', [
         'uid' => $uid,
         'phone' => $phone,
     ]);
@@ -162,7 +191,7 @@ if (function_exists('system_log')) {
 
 api_response(true, 'SUCCESS', 'OTP resent successfully', [
     'pre_auth_token' => $preAuthToken,
-    'otp_request_id' => $otpRequestId,
+    'otp_request_id' => $newOtpRequestId,
     'masked_phone' => user_resend_mask_phone($phone),
     'expires_in_seconds' => 300,
     'phone_country' => $phoneCountry,

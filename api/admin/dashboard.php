@@ -813,7 +813,7 @@ header('Pragma: no-cache');
     </main>
   </div>
 
-  <div class="drawer" id="drawer">
+  <div class="drawer" id="drawer" aria-hidden="true" inert>
     <div class="drawer-head">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
         <div>

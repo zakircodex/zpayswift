@@ -8,8 +8,25 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 
 header('Content-Type: application/json; charset=utf-8');
 
+// API failures must never render PHP warnings, stack traces, or private paths.
+ini_set('display_errors', '0');
+ini_set('html_errors', '0');
+
 require_once __DIR__ . '/lib/app_paths.php';
-require_once app_private_config_path();
+$privateConfigPath = app_private_config_path();
+if (!is_file($privateConfigPath) || !is_readable($privateConfigPath)) {
+    error_log('Z-Pay Swift private configuration is unavailable.');
+    http_response_code(503);
+    echo json_encode([
+        'ok' => false,
+        'success' => false,
+        'code' => 'SERVICE_UNAVAILABLE',
+        'message' => 'Service is temporarily unavailable.',
+        'data' => [],
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
+}
+require_once $privateConfigPath;
 require_once __DIR__ . '/lib/helpers.php';
 require_once __DIR__ . '/lib/firebase.php';
 require_once __DIR__ . '/lib/security.php';

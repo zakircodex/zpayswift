@@ -4102,6 +4102,8 @@ switch ($action) {
             'phone' => trim((string)($body['phone'] ?? '')),
             'phone_country' => auth_normalize_country_code((string)($body['phone_country'] ?? '')),
             'email' => trim((string)($body['email'] ?? '')),
+            'identity_type' => strtoupper(trim((string)($body['identity_type'] ?? 'NID'))),
+            'identity_number' => trim((string)($body['identity_number'] ?? '')),
             'password' => (string)($body['password'] ?? ''),
             'confirm_password' => (string)($body['confirm_password'] ?? ''),
             'pin' => trim((string)($body['pin'] ?? '')),

@@ -24,7 +24,7 @@ function sub_verify_allowed_role(string $role): bool
     return in_array($role, ['SUBADMIN', 'ADMIN'], true);
 }
 
-function sub_verify_issue_session(array $user, string $uid, string $deviceId, string $deviceName, array $preAuthRow = []): string
+function sub_verify_issue_session(array $user, string $uid, string $deviceId, string $deviceName, array $preAuthRow = []): array
 {
     $token = random_token(32);
     $hash = session_hash($token);
@@ -43,10 +43,11 @@ function sub_verify_issue_session(array $user, string $uid, string $deviceId, st
         'created_at' => $now,
         'expires_at' => $now + SESSION_TTL_SECONDS,
         'last_seen_at' => $now,
+        'auth_session_epoch' => auth_session_epoch_from_user($user),
     ];
 
     if (!fb_put('USER_SESSIONS/' . $hash, $session)) {
-        api_response(false, 'SERVER_ERROR', 'Failed to create session', [], 500);
+        return ['ok' => false, 'code' => 'SESSION_WRITE_FAILED'];
     }
 
     fb_patch('USERS/' . $uid, [
@@ -58,7 +59,11 @@ function sub_verify_issue_session(array $user, string $uid, string $deviceId, st
         'updated_at' => $now,
     ]);
 
-    return $token;
+    return [
+        'ok' => true,
+        'session_token' => $token,
+        'session_hash' => $hash,
+    ];
 }
 
 function sub_verify_create_trusted_device(string $uid, string $deviceId, string $deviceName): array
@@ -133,56 +138,6 @@ if ((int)($preAuthRow['expires_at'] ?? 0) < now_ts()) {
     api_response(false, 'PREAUTH_EXPIRED', 'Login session expired. Please login again.', [], 410);
 }
 
-$otpRow = fb_get('AUTH_OTP_REQUESTS/' . $otpRequestId);
-if (!is_array($otpRow)) {
-    api_response(false, 'OTP_NOT_FOUND', 'OTP request not found', [], 404);
-}
-
-if ((string)($otpRow['uid'] ?? '') !== (string)($preAuthRow['uid'] ?? '')) {
-    api_response(false, 'OTP_UID_MISMATCH', 'OTP does not match this account', [], 400);
-}
-
-if ((bool)($otpRow['used'] ?? false)) {
-    api_response(false, 'OTP_ALREADY_USED', 'OTP already used', [], 400);
-}
-
-$otpStatus = strtoupper(trim((string)($otpRow['status'] ?? '')));
-if (!in_array($otpStatus, ['SENT', 'RESENT', 'LOCKED'], true)) {
-    api_response(false, 'OTP_INVALID_STATUS', 'OTP is not active', [], 400);
-}
-
-if ((int)($otpRow['expires_at'] ?? 0) < now_ts()) {
-    fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
-        'status' => 'EXPIRED',
-        'updated_at' => now_ts(),
-    ]);
-
-    api_response(false, 'OTP_EXPIRED', 'OTP expired', [], 410);
-}
-
-$codeHash = (string)($otpRow['code_hash'] ?? '');
-
-$lockState = auth_otp_lock_state($otpRow);
-if (!empty($lockState['locked'])) {
-    api_response(false, 'OTP_LOCKED', 'Maximum OTP attempts exceeded. Please request a new OTP.', [
-        'attempts_left' => 0,
-    ], 423);
-}
-
-if ($codeHash === '' || !password_verify($otp, $codeHash)) {
-    $failedState = auth_otp_record_failed_attempt($otpRequestId, $otpRow, now_ts());
-
-    if (!empty($failedState['locked'])) {
-        api_response(false, 'OTP_LOCKED', 'Maximum OTP attempts exceeded. Please request a new OTP.', [
-            'attempts_left' => 0,
-        ], 423);
-    }
-
-    api_response(false, 'OTP_INVALID', 'Invalid OTP', [
-        'attempts_left' => (int)($failedState['attempts_left'] ?? 0),
-    ], 400);
-}
-
 $uid = trim((string)($preAuthRow['uid'] ?? ''));
 $user = fb_get('USERS/' . $uid);
 
@@ -201,17 +156,38 @@ if (!sub_verify_allowed_role($role)) {
     api_response(false, 'FORBIDDEN', 'Subadmin access required', [], 403);
 }
 
-$sessionToken = sub_verify_issue_session($user, $uid, $deviceId, $deviceName, $preAuthRow);
 $now = now_ts();
+$expectedPurpose = $role === 'ADMIN' ? 'ADMIN_LOGIN' : 'SUBADMIN_LOGIN';
+$otpClaim = auth_otp_claim_verification($otpRequestId, $expectedPurpose, $uid, $otp, $now);
+if (empty($otpClaim['ok'])) {
+    api_response(
+        false,
+        (string)($otpClaim['code'] ?? 'OTP_VERIFY_FAILED'),
+        (string)($otpClaim['message'] ?? 'OTP verification failed'),
+        (array)($otpClaim['data'] ?? []),
+        (int)($otpClaim['http_status'] ?? 400)
+    );
+}
 
-fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
-    'used' => true,
-    'used_at' => $now,
-    'status' => 'VERIFIED',
-    'updated_at' => $now,
-]);
+$otpOwner = (string)($otpClaim['owner_token'] ?? '');
+$sessionResult = sub_verify_issue_session($user, $uid, $deviceId, $deviceName, $preAuthRow);
+if (empty($sessionResult['ok'])) {
+    auth_otp_release_verification($otpRequestId, $otpOwner, $now);
+    api_response(false, 'SERVER_ERROR', 'Failed to create session', [], 500);
+}
 
-fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, [
+$sessionToken = (string)($sessionResult['session_token'] ?? '');
+$sessionHash = (string)($sessionResult['session_hash'] ?? '');
+
+if (!auth_otp_complete_verification($otpRequestId, $otpOwner, $now)) {
+    if ($sessionHash !== '') {
+        @fb_delete('USER_SESSIONS/' . $sessionHash);
+    }
+    auth_otp_release_verification($otpRequestId, $otpOwner, $now);
+    api_response(false, 'OTP_VERIFY_CONFLICT', 'OTP verification could not be finalized. Please retry.', [], 409);
+}
+
+@fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, [
     'status' => 'VERIFIED',
     'verified_at' => $now,
     'updated_at' => $now,

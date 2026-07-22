@@ -544,11 +544,8 @@ function proxy_finalize_admin_login_with_session_token(string $sessionToken): ar
         proxy_response(
             false,
             (string)($json['code'] ?? 'SESSION_EXPIRED'),
-            (string)($json['message'] ?? $sessionRes['error'] ?? 'Failed to verify admin session'),
-            [
-                'internal_status' => $sessionRes['status'] ?? 0,
-                'raw' => $sessionRes['raw'] ?? '',
-            ],
+            (string)($json['message'] ?? 'Failed to verify admin session'),
+            (array)($json['data'] ?? []),
             $sessionRes['status'] > 0 ? $sessionRes['status'] : 401
         );
     }
@@ -594,11 +591,8 @@ function proxy_require_admin_login(bool $touch = true): array
         proxy_response(
             false,
             (string)($json['code'] ?? 'SESSION_EXPIRED'),
-            (string)($json['message'] ?? $res['error'] ?? 'Session expired'),
-            [
-                'internal_status' => $res['status'] ?? 0,
-                'raw' => $res['raw'] ?? '',
-            ],
+            (string)($json['message'] ?? 'Session expired'),
+            (array)($json['data'] ?? []),
             $res['status'] > 0 ? $res['status'] : 401
         );
     }
@@ -684,12 +678,8 @@ function proxy_forward_admin_get(string $relativeAdminPath, array $query = []): 
         proxy_response(
             false,
             (string)($json['code'] ?? 'SERVER_ERROR'),
-            (string)($json['message'] ?? $res['error'] ?? 'Admin request failed'),
-            (array)($json['data'] ?? [
-                'internal_status' => $res['status'] ?? 0,
-                'internal_url' => $res['url'] ?? '',
-                'raw' => $res['raw'] ?? '',
-            ]),
+            (string)($json['message'] ?? 'Admin request failed'),
+            (array)($json['data'] ?? []),
             $res['status'] > 0 ? $res['status'] : 500
         );
     }
@@ -722,12 +712,8 @@ function proxy_forward_admin_post(string $relativeAdminPath, array $body = []): 
         proxy_response(
             false,
             (string)($json['code'] ?? 'SERVER_ERROR'),
-            (string)($json['message'] ?? $res['error'] ?? 'Admin request failed'),
-            (array)($json['data'] ?? [
-                'internal_status' => $res['status'] ?? 0,
-                'internal_url' => $res['url'] ?? '',
-                'raw' => $res['raw'] ?? '',
-            ]),
+            (string)($json['message'] ?? 'Admin request failed'),
+            (array)($json['data'] ?? []),
             $res['status'] > 0 ? $res['status'] : 500
         );
     }
@@ -1009,11 +995,8 @@ switch ($action) {
             proxy_response(
                 false,
                 (string)($json['code'] ?? 'LOGIN_FAILED'),
-                (string)($json['message'] ?? $loginRes['error'] ?? 'Login failed'),
-                (array)($json['data'] ?? [
-                    'internal_status' => $loginRes['status'] ?? 0,
-                    'raw' => $loginRes['raw'] ?? '',
-                ]),
+                (string)($json['message'] ?? 'Login failed'),
+                (array)($json['data'] ?? []),
                 $loginRes['status'] > 0 ? $loginRes['status'] : 401
             );
         }
@@ -1079,11 +1062,8 @@ switch ($action) {
             proxy_response(
                 false,
                 (string)($json['code'] ?? 'OTP_VERIFY_FAILED'),
-                (string)($json['message'] ?? $verifyRes['error'] ?? 'OTP verification failed'),
-                (array)($json['data'] ?? [
-                    'internal_status' => $verifyRes['status'] ?? 0,
-                    'raw' => $verifyRes['raw'] ?? '',
-                ]),
+                (string)($json['message'] ?? 'OTP verification failed'),
+                (array)($json['data'] ?? []),
                 $verifyRes['status'] > 0 ? $verifyRes['status'] : 400
             );
         }
@@ -1131,11 +1111,8 @@ switch ($action) {
             proxy_response(
                 false,
                 (string)($json['code'] ?? 'OTP_RESEND_FAILED'),
-                (string)($json['message'] ?? $resendRes['error'] ?? 'Failed to resend OTP'),
-                (array)($json['data'] ?? [
-                    'internal_status' => $resendRes['status'] ?? 0,
-                    'raw' => $resendRes['raw'] ?? '',
-                ]),
+                (string)($json['message'] ?? 'Failed to resend OTP'),
+                (array)($json['data'] ?? []),
                 $resendRes['status'] > 0 ? $resendRes['status'] : 400
             );
         }
@@ -1153,6 +1130,7 @@ switch ($action) {
 
     case 'logout':
         proxy_require_method('POST');
+        proxy_require_csrf();
 
         $token = proxy_get_session_token();
 

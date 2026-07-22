@@ -527,6 +527,7 @@ function openSection(id){
 }
 
 function openDrawer(title, sub, html, footHtml=''){
+  const drawer = document.getElementById('drawer');
   const titleNode = document.getElementById('drawerTitle');
   const subNode = document.getElementById('drawerSub');
   const bodyNode = document.getElementById('drawerBody');
@@ -539,12 +540,17 @@ function openDrawer(title, sub, html, footHtml=''){
     footNode.innerHTML = footHtml || '<button class="btn ghost" id="drawerFootCloseDynamic">Close</button>';
   }
 
-  document.getElementById('drawer')?.classList.add('open');
+  drawer?.removeAttribute('inert');
+  drawer?.setAttribute('aria-hidden', 'false');
+  drawer?.classList.add('open');
   document.getElementById('drawerFootCloseDynamic')?.addEventListener('click', closeDrawer);
 }
 
 function closeDrawer(){
-  document.getElementById('drawer')?.classList.remove('open');
+  const drawer = document.getElementById('drawer');
+  drawer?.classList.remove('open');
+  drawer?.setAttribute('aria-hidden', 'true');
+  drawer?.setAttribute('inert', '');
 }
 
 function openModal(title, bodyHtml, footHtml){

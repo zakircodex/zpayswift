@@ -115,6 +115,13 @@ if (!is_array($oldOtpRow)) {
     user_reg_res_response(false, 'OTP_NOT_FOUND', 'Previous OTP request not found', [], 404);
 }
 
+if (
+    strtoupper(trim((string)($preAuthRow['purpose'] ?? 'USER_REGISTER'))) !== 'USER_REGISTER'
+    || strtoupper(trim((string)($oldOtpRow['purpose'] ?? ''))) !== 'USER_REGISTER'
+) {
+    user_reg_res_response(false, 'OTP_PURPOSE_MISMATCH', 'OTP purpose mismatch', [], 400);
+}
+
 $resendState = auth_otp_resend_state($oldOtpRow, $now);
 if (empty($resendState['ok'])) {
     user_reg_res_response(false, (string)$resendState['code'], (string)$resendState['message'], [
@@ -123,11 +130,6 @@ if (empty($resendState['ok'])) {
         'resend_limit' => (int)($resendState['resend_limit'] ?? auth_otp_resend_limit()),
     ], (int)($resendState['http_status'] ?? 429));
 }
-
-@fb_patch('AUTH_OTP_REQUESTS/' . $oldOtpRequestId, [
-    'status' => 'CANCELLED',
-    'updated_at' => $now,
-]);
 
 $otpRow = [
     'otp_request_id' => $newOtpRequestId,
@@ -175,21 +177,6 @@ if (!$okOtp) {
     user_reg_res_response(false, 'SERVER_ERROR', 'Failed to prepare new OTP', [], 500);
 }
 
-$okPre = fb_patch('AUTH_USER_REGISTER_PREAUTH/' . $preAuthToken, [
-    'otp_request_id' => $newOtpRequestId,
-    'status' => 'OTP_PENDING',
-    'updated_at' => $now,
-    'expires_at' => $expiresAt,
-]);
-
-if (!$okPre) {
-    if (function_exists('fb_delete')) {
-        @fb_delete('AUTH_OTP_REQUESTS/' . $newOtpRequestId);
-    }
-
-    user_reg_res_response(false, 'SERVER_ERROR', 'Failed to update register OTP session', [], 500);
-}
-
 $message = 'Z-Pay Swift register OTP is ' . $newOtpCode . '. Valid for 5 minutes. Do not share this code.';
 $smsResult = user_reg_res_send_sms(
     $phoneCountry,
@@ -208,8 +195,29 @@ if (empty($smsResult['ok'])) {
         'updated_at' => user_reg_res_now(),
     ] + $smsPatch);
 
-    user_reg_res_response(false, 'SMS_FAILED', 'Failed to send OTP SMS', [], 500);
+    user_reg_res_response(false, 'SMS_FAILED', 'Failed to send OTP SMS. Your previous OTP remains valid.', [], 500);
 }
+
+$okPre = fb_patch('AUTH_USER_REGISTER_PREAUTH/' . $preAuthToken, [
+    'otp_request_id' => $newOtpRequestId,
+    'status' => 'OTP_PENDING',
+    'updated_at' => $now,
+    'expires_at' => $expiresAt,
+]);
+
+if (!$okPre) {
+    @fb_patch('AUTH_OTP_REQUESTS/' . $newOtpRequestId, [
+        'status' => 'CANCELLED',
+        'updated_at' => user_reg_res_now(),
+    ]);
+
+    user_reg_res_response(false, 'SERVER_ERROR', 'Failed to update register OTP session', [], 500);
+}
+
+@fb_patch('AUTH_OTP_REQUESTS/' . $oldOtpRequestId, [
+    'status' => 'CANCELLED',
+    'updated_at' => user_reg_res_now(),
+]);
 
 @fb_patch('AUTH_OTP_REQUESTS/' . $newOtpRequestId, [
     'updated_at' => user_reg_res_now(),

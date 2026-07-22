@@ -115,6 +115,91 @@ function admin_users_country_code(array $user, array $wallet = []): string
     ));
 }
 
+function admin_users_multi_get(array $paths): array
+{
+    $paths = array_values(array_unique(array_filter(array_map(
+        static fn($path): string => trim((string)$path, '/'),
+        $paths
+    ))));
+    if ($paths === []) {
+        return [];
+    }
+
+    $allResults = [];
+    foreach (array_chunk($paths, 75) as $chunk) {
+        $multi = curl_multi_init();
+        $handles = [];
+
+        foreach ($chunk as $path) {
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => fb_build_url($path),
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CUSTOMREQUEST => 'GET',
+                CURLOPT_CONNECTTIMEOUT => 10,
+                CURLOPT_TIMEOUT => 20,
+                CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            ]);
+            curl_multi_add_handle($multi, $ch);
+            $handles[spl_object_id($ch)] = [$path, $ch];
+        }
+
+        do {
+            $status = curl_multi_exec($multi, $running);
+            if ($running) {
+                curl_multi_select($multi, 1.0);
+            }
+        } while ($running && $status === CURLM_OK);
+
+        foreach ($handles as [$path, $ch]) {
+            $raw = curl_multi_getcontent($ch);
+            $httpStatus = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $decoded = null;
+            if ($httpStatus >= 200 && $httpStatus < 300 && is_string($raw) && $raw !== '' && $raw !== 'null') {
+                $decoded = json_decode($raw, true);
+            }
+            $allResults[$path] = $decoded;
+            curl_multi_remove_handle($multi, $ch);
+            curl_close($ch);
+        }
+
+        curl_multi_close($multi);
+    }
+
+    return $allResults;
+}
+
+function admin_users_query_subadmin_users(string $actorUid): ?array
+{
+    $actorUid = trim($actorUid);
+    if ($actorUid === '') {
+        return [];
+    }
+
+    $all = [];
+    foreach (['parent_subadmin_uid', 'created_by_uid'] as $field) {
+        $response = fb_request('GET', 'USERS', null, [
+            'orderBy' => json_encode($field, JSON_UNESCAPED_SLASHES),
+            'equalTo' => json_encode($actorUid, JSON_UNESCAPED_SLASHES),
+        ]);
+        if (empty($response['ok'])) {
+            return null;
+        }
+
+        $rows = $response['json'] ?? null;
+        if (!is_array($rows)) {
+            continue;
+        }
+        foreach ($rows as $uid => $row) {
+            if (is_array($row)) {
+                $all[(string)$uid] = $row;
+            }
+        }
+    }
+
+    return $all;
+}
+
 function admin_users_find_user_by_uid(string $uid): array
 {
     $user = admin_users_load_user($uid);
@@ -346,17 +431,38 @@ function admin_users_list_users(
     string $actorUid = '',
     string $actorRole = 'ADMIN'
 ): array {
-    $all = fb_get('USERS');
-    if (!is_array($all)) {
-        return [];
-    }
-
     $actorUid = trim($actorUid);
     $actorRole = admin_users_normalize_role($actorRole);
     $roleFilter = strtoupper(trim($roleFilter));
     $statusFilter = strtoupper(trim($statusFilter));
 
-    $items = [];
+    $all = $actorRole === 'SUBADMIN'
+        ? admin_users_query_subadmin_users($actorUid)
+        : null;
+
+    // Keep the legacy global scan as a compatibility fallback if indexed
+    // owner queries are unavailable in the deployed Firebase rules.
+    if ($all === null) {
+        $shallowUsers = fb_get('USERS', ['shallow' => 'true']);
+        if (!is_array($shallowUsers)) {
+            return [];
+        }
+
+        $userKeys = array_values(array_filter(array_map('strval', array_keys($shallowUsers))));
+        $userRows = admin_users_multi_get(array_map(
+            static fn(string $uid): string => 'USERS/' . $uid,
+            $userKeys
+        ));
+        $all = [];
+        foreach ($userKeys as $uid) {
+            $row = $userRows['USERS/' . $uid] ?? null;
+            if (is_array($row)) {
+                $all[$uid] = $row;
+            }
+        }
+    }
+
+    $eligibleUids = [];
 
     foreach ($all as $uid => $row) {
         if (!is_array($row)) {
@@ -378,9 +484,49 @@ function admin_users_list_users(
             continue;
         }
 
-        $wallet = admin_users_load_wallet((string)$uid);
+        $eligibleUids[] = (string)$uid;
+    }
+
+    usort($eligibleUids, static function (string $a, string $b) use ($all): int {
+        $aRow = is_array($all[$a] ?? null) ? $all[$a] : [];
+        $bRow = is_array($all[$b] ?? null) ? $all[$b] : [];
+        $aTime = (int)(($aRow['updated_at'] ?? 0) ?: ($aRow['created_at'] ?? 0));
+        $bTime = (int)(($bRow['updated_at'] ?? 0) ?: ($bRow['created_at'] ?? 0));
+        return $bTime <=> $aTime;
+    });
+
+    if ($limit > 0 && count($eligibleUids) > $limit) {
+        $eligibleUids = array_slice($eligibleUids, 0, $limit);
+    }
+
+    $walletRows = admin_users_multi_get(array_map(
+        static fn(string $uid): string => 'USER_WALLETS/' . $uid,
+        $eligibleUids
+    ));
+    $settingsRows = admin_users_multi_get(array_map(
+        static fn(string $uid): string => 'USER_ROLE_SETTINGS/' . $uid,
+        $eligibleUids
+    ));
+
+    $items = [];
+    foreach ($eligibleUids as $uid) {
+        $row = $all[$uid] ?? null;
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $role = admin_users_normalize_role((string)($row['role'] ?? 'USER'));
+        $status = admin_users_normalize_status((string)($row['status'] ?? 'ACTIVE'));
+
+        $wallet = $walletRows['USER_WALLETS/' . $uid] ?? [];
+        $wallet = is_array($wallet) ? $wallet : [];
         $walletDisplay = function_exists('mfs_wallet_display_payload') ? mfs_wallet_display_payload($row, $wallet) : [];
-        $roleSettings = admin_users_load_role_settings((string)$uid, $role);
+        $storedSettings = $settingsRows['USER_ROLE_SETTINGS/' . $uid] ?? [];
+        $roleSettings = is_array($storedSettings)
+            ? (function_exists('role_settings_with_defaults')
+                ? role_settings_with_defaults($storedSettings, $role)
+                : array_replace(admin_users_role_default($role), $storedSettings))
+            : admin_users_role_default($role);
 
         $items[] = [
             'uid' => (string)($row['uid'] ?? $uid),

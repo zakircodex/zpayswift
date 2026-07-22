@@ -41,42 +41,9 @@ function user_login_allowed_role(string $role): bool
     return in_array($role, ['USER', 'RETAILER'], true);
 }
 
-function user_login_issue_session(array $user, string $uid, string $deviceId, string $deviceName, array $requestMeta = []): string
+function user_login_issue_session(array $user, string $uid, string $deviceId, string $deviceName, array $requestMeta = []): array
 {
-    $token = random_token(32);
-    $hash = session_hash($token);
-    $sessionId = make_session_id();
-    $now = now_ts();
-
-    $session = [
-        'session_id'   => $sessionId,
-        'uid'          => $uid,
-        'phone'        => (string)($user['phone'] ?? ''),
-        'token_last8'  => substr($token, -8),
-        'device_name'  => $deviceName,
-        'device_id'    => $deviceId,
-        'status'       => 'ACTIVE',
-        'ip'           => client_ip(),
-        'created_at'   => $now,
-        'expires_at'   => $now + SESSION_TTL_SECONDS,
-        'last_seen_at' => $now,
-        'auth_session_epoch' => auth_session_epoch_from_user($user),
-    ];
-
-    if (!fb_put('USER_SESSIONS/' . $hash, $session)) {
-        api_response(false, 'SERVER_ERROR', 'Failed to create session', [], 500);
-    }
-
-    fb_patch('USERS/' . $uid, [
-        'last_login_at' => $now,
-        'last_login_ip' => (string)($requestMeta['ip'] ?? ''),
-        'last_login_ip_country' => (string)($requestMeta['ip_country'] ?? ''),
-        'last_login_user_agent' => (string)($requestMeta['user_agent'] ?? ''),
-        'browser_timezone' => (string)($requestMeta['browser_timezone'] ?? ($user['browser_timezone'] ?? '')),
-        'updated_at'    => $now,
-    ]);
-
-    return $token;
+    return auth_issue_website_user_session($user, $uid, $deviceId, $deviceName, $requestMeta);
 }
 
 function user_login_has_valid_trusted_device(string $uid, string $cookieValue): bool
@@ -208,7 +175,11 @@ if ($passwordHash === '' || !password_verify($password, $passwordHash)) {
 |--------------------------------------------------------------------------
 */
 if (user_login_has_valid_trusted_device($uid, $trustedDeviceCookie)) {
-    $sessionToken = user_login_issue_session($user, $uid, $deviceId, $deviceName, $requestMeta);
+    $sessionResult = user_login_issue_session($user, $uid, $deviceId, $deviceName, $requestMeta);
+    if (empty($sessionResult['ok'])) {
+        api_response(false, 'SERVER_ERROR', 'Failed to create session', [], 500);
+    }
+    $sessionToken = (string)($sessionResult['session_token'] ?? '');
 
     if (function_exists('system_log')) {
         system_log('USER_TRUSTED_LOGIN', $uid, 'Trusted device login successful', [

@@ -135,6 +135,8 @@ function getFormData(){
     phone: (el('regPhone')?.value || '').trim(),
     phone_country: (el('regPhoneCountry')?.value || 'BD').toUpperCase(),
     email: (el('regEmail')?.value || '').trim(),
+    identity_type: (el('regIdentityType')?.value || 'NID').toUpperCase(),
+    identity_number: (el('regIdentityNumber')?.value || '').trim(),
     password: el('regPassword')?.value || '',
     confirm_password: el('regConfirmPassword')?.value || '',
     pin: (el('regPin')?.value || '').trim(),
@@ -150,8 +152,12 @@ function getFormData(){
 }
 
 function validateForm(data){
-  if (!data.name || !data.phone || !data.email || !data.password || !data.confirm_password || !data.pin || !data.confirm_pin) {
+  if (!data.name || !data.phone || !data.email || !data.identity_number || !data.password || !data.confirm_password || !data.pin || !data.confirm_pin) {
     return 'All fields are required';
+  }
+
+  if (!['NID', 'PASSPORT'].includes(data.identity_type)) {
+    return 'Select a valid identity type';
   }
 
   if (!state.registrationLocation.verified) {
@@ -451,9 +457,10 @@ function resetOtpState(){
 }
 
 function clearForm(){
-  ['regName','regPhone','regEmail','regPassword','regConfirmPassword','regPin','regConfirmPin'].forEach(id => {
+  ['regName','regPhone','regEmail','regIdentityNumber','regPassword','regConfirmPassword','regPin','regConfirmPin'].forEach(id => {
     if (el(id)) el(id).value = '';
   });
+  if (el('regIdentityType')) el('regIdentityType').value = 'NID';
   if (el('regTermsAccepted')) el('regTermsAccepted').checked = false;
 }
 

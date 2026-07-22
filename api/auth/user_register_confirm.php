@@ -194,60 +194,6 @@ if ($termsAcceptedAt <= 0) {
     user_reg_confirm_response(false, 'TERMS_REQUIRED', 'Terms & Conditions acceptance is required. Please start again.', [], 422);
 }
 
-$otpRow = fb_get('AUTH_OTP_REQUESTS/' . $otpRequestId);
-
-if (!is_array($otpRow)) {
-    user_reg_confirm_response(false, 'OTP_NOT_FOUND', 'OTP request not found', [], 404);
-}
-
-if (trim((string)($otpRow['uid'] ?? '')) !== $uid) {
-    user_reg_confirm_response(false, 'OTP_UID_MISMATCH', 'OTP does not match this registration', [], 400);
-}
-
-if (!empty($otpRow['used'])) {
-    user_reg_confirm_response(false, 'OTP_ALREADY_USED', 'OTP already used', [], 400);
-}
-
-$otpStatus = strtoupper(trim((string)($otpRow['status'] ?? '')));
-
-if (!in_array($otpStatus, ['SENT', 'RESENT', 'LOCKED'], true)) {
-    user_reg_confirm_response(false, 'OTP_INVALID_STATUS', 'OTP is not active', [], 400);
-}
-
-$otpExpiresAt = (int)($otpRow['expires_at'] ?? 0);
-
-if ($otpExpiresAt <= $now) {
-    @fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
-        'status' => 'EXPIRED',
-        'updated_at' => $now,
-    ]);
-
-    user_reg_confirm_response(false, 'OTP_EXPIRED', 'OTP expired. Please send OTP again.', [], 410);
-}
-
-$codeHash = trim((string)($otpRow['code_hash'] ?? ''));
-
-$lockState = auth_otp_lock_state($otpRow);
-if (!empty($lockState['locked'])) {
-    user_reg_confirm_response(false, 'OTP_LOCKED', 'Maximum OTP attempts exceeded. Please request a new OTP.', [
-        'attempts_left' => 0,
-    ], 423);
-}
-
-if ($codeHash === '' || !password_verify($otp, $codeHash)) {
-    $failedState = auth_otp_record_failed_attempt($otpRequestId, $otpRow, $now);
-
-    if (!empty($failedState['locked'])) {
-        user_reg_confirm_response(false, 'OTP_LOCKED', 'Maximum OTP attempts exceeded. Please request a new OTP.', [
-            'attempts_left' => 0,
-        ], 423);
-    }
-
-    user_reg_confirm_response(false, 'OTP_INVALID', 'Invalid OTP', [
-        'attempts_left' => (int)($failedState['attempts_left'] ?? 0),
-    ], 400);
-}
-
 if (user_reg_confirm_find_uid_by_phone($phone, $phoneCountry) !== '') {
     user_reg_confirm_response(false, 'DUPLICATE_PHONE', 'Phone number already registered', [], 409);
 }
@@ -255,6 +201,18 @@ if (user_reg_confirm_find_uid_by_phone($phone, $phoneCountry) !== '') {
 if (user_reg_confirm_find_uid_by_email($email) !== '') {
     user_reg_confirm_response(false, 'DUPLICATE_EMAIL', 'Email already registered', [], 409);
 }
+
+$otpClaim = auth_otp_claim_verification($otpRequestId, 'USER_REGISTER', $uid, $otp, $now);
+if (empty($otpClaim['ok'])) {
+    user_reg_confirm_response(
+        false,
+        (string)($otpClaim['code'] ?? 'OTP_VERIFY_FAILED'),
+        (string)($otpClaim['message'] ?? 'OTP verification failed'),
+        (array)($otpClaim['data'] ?? []),
+        (int)($otpClaim['http_status'] ?? 400)
+    );
+}
+$otpOwner = (string)($otpClaim['owner_token'] ?? '');
 
 $userRow = [
     'uid' => $uid,
@@ -367,6 +325,7 @@ foreach ($indexPayloads as $path => $payload) {
         foreach (array_reverse($indexClaims) as $claimedPath) {
             @auth_index_release($claimedPath, $uid);
         }
+        auth_otp_release_verification($otpRequestId, $otpOwner, $now);
 
         $code = str_contains($path, '/EMAIL/')
             ? 'EMAIL_ALREADY_REGISTERED'
@@ -395,23 +354,27 @@ if (!($okUser && $okWallet && $okRole)) {
     foreach (array_reverse($indexClaims) as $path) {
         @auth_index_release($path, $uid);
     }
+    auth_otp_release_verification($otpRequestId, $otpOwner, $now);
 
     user_reg_confirm_response(false, 'SERVER_ERROR', 'Failed to create account', [], 500);
 }
 
-@fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
-    'used' => true,
-    'used_at' => $now,
-    'status' => 'VERIFIED',
-    'updated_at' => $now,
-]);
+$otpFinalized = auth_otp_complete_verification($otpRequestId, $otpOwner, $now);
 
 @fb_patch('AUTH_USER_REGISTER_PREAUTH/' . $preAuthToken, [
     'status' => 'COMPLETED',
     'verified_at' => $now,
     'completed_at' => $now,
+    'otp_finalize_pending' => !$otpFinalized,
     'updated_at' => $now,
 ]);
+
+if (!$otpFinalized && function_exists('system_log')) {
+    system_log('USER_REGISTER_OTP_FINALIZE_PENDING', $uid, 'Account created but OTP finalization needs review', [
+        'uid' => $uid,
+        'otp_request_id' => $otpRequestId,
+    ]);
+}
 
 if (function_exists('system_log')) {
     system_log('USER_REGISTER_COMPLETED', $uid, 'User register completed with OTP', [

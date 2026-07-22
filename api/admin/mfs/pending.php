@@ -6,11 +6,7 @@ require_once dirname(__DIR__, 2) . '/bootstrap.php';
 try {
     require_once dirname(__DIR__, 2) . '/lib/mfs.php';
 } catch (Throwable $e) {
-    api_response(false, 'MFS_LIB_ERROR', 'Failed to load mfs.php', [
-        'error' => $e->getMessage(),
-        'file' => basename($e->getFile()),
-        'line' => $e->getLine(),
-    ], 500);
+    api_response(false, 'MFS_LIB_ERROR', 'MFS service could not be loaded', [], 500);
 }
 
 api_require_method('GET');
@@ -44,9 +40,5 @@ try {
         ],
     ]);
 } catch (Throwable $e) {
-    api_response(false, 'MFS_PENDING_ERROR', 'Pending MFS request load failed', [
-        'error' => $e->getMessage(),
-        'file' => basename($e->getFile()),
-        'line' => $e->getLine(),
-    ], 500);
+    api_response(false, 'MFS_PENDING_ERROR', 'Pending MFS request load failed', [], 500);
 }

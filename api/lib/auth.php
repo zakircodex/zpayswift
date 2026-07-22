@@ -229,6 +229,272 @@ function auth_otp_record_failed_attempt(string $otpRequestId, array $otpRow, ?in
     ];
 }
 
+function auth_otp_verification_lease_seconds(): int
+{
+    $seconds = defined('OTP_VERIFICATION_LEASE_SECONDS')
+        ? (int)OTP_VERIFICATION_LEASE_SECONDS
+        : 45;
+
+    return max(15, min(180, $seconds));
+}
+
+function auth_otp_claim_error(string $code, string $message, int $httpStatus, array $data = []): array
+{
+    return [
+        'ok' => false,
+        'code' => $code,
+        'message' => $message,
+        'http_status' => $httpStatus,
+        'data' => $data,
+    ];
+}
+
+function auth_otp_claim_verification(
+    string $otpRequestId,
+    string $purpose,
+    string $uid,
+    string $otp,
+    ?int $now = null
+): array {
+    $otpRequestId = auth_clean_string($otpRequestId);
+    $purpose = auth_status_value($purpose);
+    $uid = auth_clean_string($uid);
+    $otp = trim($otp);
+    $now = $now ?? now_ts();
+
+    if ($otpRequestId === '' || $purpose === '' || $uid === '' || $otp === '') {
+        return auth_otp_claim_error('VALIDATION_ERROR', 'OTP verification data is incomplete', 422);
+    }
+
+    $path = 'AUTH_OTP_REQUESTS/' . $otpRequestId;
+    $ownerToken = bin2hex(random_bytes(32));
+    $ownerHash = hash('sha256', $ownerToken);
+
+    for ($attempt = 0; $attempt < 6; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+            return auth_otp_claim_error('SERVER_ERROR', 'Failed to read OTP request', 500);
+        }
+
+        $row = $snapshot['value'] ?? null;
+        if (!is_array($row)) {
+            return auth_otp_claim_error('OTP_NOT_FOUND', 'OTP request not found', 404);
+        }
+
+        if (auth_clean_string($row['uid'] ?? '') !== $uid) {
+            return auth_otp_claim_error('OTP_UID_MISMATCH', 'OTP does not match this account', 400);
+        }
+
+        if (auth_status_value($row['purpose'] ?? '') !== $purpose) {
+            return auth_otp_claim_error('OTP_PURPOSE_MISMATCH', 'OTP purpose mismatch', 400);
+        }
+
+        $status = auth_status_value($row['status'] ?? '');
+        if (!empty($row['used']) || $status === 'VERIFIED') {
+            return auth_otp_claim_error('OTP_ALREADY_USED', 'OTP already used', 409);
+        }
+
+        if ((int)($row['expires_at'] ?? 0) <= $now) {
+            $expired = $row;
+            $expired['status'] = 'EXPIRED';
+            $expired['updated_at'] = $now;
+            $write = fb_put_if_match($path, $expired, (string)$snapshot['etag']);
+            if (empty($write['ok']) && (int)($write['status'] ?? 0) === 412) {
+                continue;
+            }
+
+            return auth_otp_claim_error('OTP_EXPIRED', 'OTP expired', 410);
+        }
+
+        $lockState = auth_otp_lock_state($row);
+        if (!empty($lockState['locked'])) {
+            return auth_otp_claim_error(
+                'OTP_LOCKED',
+                'Maximum OTP attempts exceeded. Please request a new OTP.',
+                423,
+                ['attempts_left' => 0]
+            );
+        }
+
+        if ($status === 'VERIFYING' && (int)($row['verification_lease_expires_at'] ?? 0) > $now) {
+            return auth_otp_claim_error(
+                'OTP_VERIFY_IN_PROGRESS',
+                'OTP verification is already in progress',
+                409
+            );
+        }
+
+        if (!in_array($status, ['SENT', 'RESENT', 'VERIFYING'], true)) {
+            return auth_otp_claim_error('OTP_INVALID_STATUS', 'OTP is not active', 400);
+        }
+
+        $codeHash = auth_clean_string($row['code_hash'] ?? '');
+        if ($codeHash === '' || !password_verify($otp, $codeHash)) {
+            $attempts = (int)$lockState['attempts'] + 1;
+            $maxAttempts = (int)$lockState['max_attempts'];
+            $locked = $attempts >= $maxAttempts;
+            $failed = $row;
+            $failed['attempts'] = $attempts;
+            $failed['max_attempts'] = $maxAttempts;
+            $failed['failed_attempt_at'] = $now;
+            $failed['updated_at'] = $now;
+            if ($locked) {
+                $failed['status'] = 'LOCKED';
+                $failed['locked_at'] = $now;
+            }
+
+            $write = fb_put_if_match($path, $failed, (string)$snapshot['etag']);
+            if (empty($write['ok']) && (int)($write['status'] ?? 0) === 412) {
+                continue;
+            }
+            if (empty($write['ok'])) {
+                return auth_otp_claim_error('SERVER_ERROR', 'Failed to record OTP attempt', 500);
+            }
+
+            return auth_otp_claim_error(
+                $locked ? 'OTP_LOCKED' : 'OTP_INVALID',
+                $locked
+                    ? 'Maximum OTP attempts exceeded. Please request a new OTP.'
+                    : 'Invalid OTP',
+                $locked ? 423 : 400,
+                ['attempts_left' => max(0, $maxAttempts - $attempts)]
+            );
+        }
+
+        $claimed = $row;
+        $claimed['status'] = 'VERIFYING';
+        $claimed['verification_previous_status'] = $status === 'VERIFYING'
+            ? auth_status_value($row['verification_previous_status'] ?? 'SENT')
+            : $status;
+        $claimed['verification_owner_hash'] = $ownerHash;
+        $claimed['verification_claimed_at'] = $now;
+        $claimed['verification_lease_expires_at'] = $now + auth_otp_verification_lease_seconds();
+        $claimed['verification_attempt_count'] = max(0, (int)($row['verification_attempt_count'] ?? 0)) + 1;
+        $claimed['updated_at'] = $now;
+
+        $write = fb_put_if_match($path, $claimed, (string)$snapshot['etag']);
+        if (!empty($write['ok'])) {
+            return [
+                'ok' => true,
+                'code' => 'OTP_CLAIMED',
+                'message' => 'OTP verification claimed',
+                'http_status' => 200,
+                'data' => [],
+                'owner_token' => $ownerToken,
+                'row' => $claimed,
+            ];
+        }
+
+        if ((int)($write['status'] ?? 0) !== 412) {
+            return auth_otp_claim_error('SERVER_ERROR', 'Failed to claim OTP verification', 500);
+        }
+    }
+
+    return auth_otp_claim_error('OTP_VERIFY_CONFLICT', 'OTP verification conflict. Please retry.', 409);
+}
+
+function auth_otp_complete_verification(
+    string $otpRequestId,
+    string $ownerToken,
+    ?int $now = null
+): bool {
+    $otpRequestId = auth_clean_string($otpRequestId);
+    $ownerToken = trim($ownerToken);
+    $now = $now ?? now_ts();
+    if ($otpRequestId === '' || $ownerToken === '') {
+        return false;
+    }
+
+    $path = 'AUTH_OTP_REQUESTS/' . $otpRequestId;
+    $ownerHash = hash('sha256', $ownerToken);
+
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        $row = $snapshot['value'] ?? null;
+        if (empty($snapshot['ok']) || !is_array($row) || !is_string($snapshot['etag'] ?? null)) {
+            return false;
+        }
+
+        if (
+            auth_status_value($row['status'] ?? '') !== 'VERIFYING'
+            || !hash_equals(auth_clean_string($row['verification_owner_hash'] ?? ''), $ownerHash)
+        ) {
+            return false;
+        }
+
+        $row['used'] = true;
+        $row['used_at'] = $now;
+        $row['status'] = 'VERIFIED';
+        $row['verified_at'] = $now;
+        $row['updated_at'] = $now;
+        unset(
+            $row['verification_owner_hash'],
+            $row['verification_lease_expires_at'],
+            $row['verification_previous_status']
+        );
+
+        $write = fb_put_if_match($path, $row, (string)$snapshot['etag']);
+        if (!empty($write['ok'])) {
+            return true;
+        }
+        if ((int)($write['status'] ?? 0) !== 412) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+function auth_otp_release_verification(
+    string $otpRequestId,
+    string $ownerToken,
+    ?int $now = null
+): bool {
+    $otpRequestId = auth_clean_string($otpRequestId);
+    $ownerToken = trim($ownerToken);
+    $now = $now ?? now_ts();
+    if ($otpRequestId === '' || $ownerToken === '') {
+        return false;
+    }
+
+    $path = 'AUTH_OTP_REQUESTS/' . $otpRequestId;
+    $ownerHash = hash('sha256', $ownerToken);
+
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        $row = $snapshot['value'] ?? null;
+        if (empty($snapshot['ok']) || !is_array($row) || !is_string($snapshot['etag'] ?? null)) {
+            return false;
+        }
+
+        if (
+            auth_status_value($row['status'] ?? '') !== 'VERIFYING'
+            || !hash_equals(auth_clean_string($row['verification_owner_hash'] ?? ''), $ownerHash)
+        ) {
+            return false;
+        }
+
+        $previous = auth_status_value($row['verification_previous_status'] ?? 'SENT');
+        $row['status'] = in_array($previous, ['SENT', 'RESENT'], true) ? $previous : 'SENT';
+        $row['updated_at'] = $now;
+        unset(
+            $row['verification_owner_hash'],
+            $row['verification_lease_expires_at'],
+            $row['verification_previous_status']
+        );
+
+        $write = fb_put_if_match($path, $row, (string)$snapshot['etag']);
+        if (!empty($write['ok'])) {
+            return true;
+        }
+        if ((int)($write['status'] ?? 0) !== 412) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
 function auth_otp_resend_state(array $otpRow, ?int $now = null): array
 {
     $now = $now ?? now_ts();
@@ -382,6 +648,82 @@ function auth_session_epoch_from_user(array $user): string
 function auth_new_session_epoch(): string
 {
     return 'SE' . strtoupper(bin2hex(random_bytes(16)));
+}
+
+function auth_issue_website_user_session(
+    array $user,
+    string $uid,
+    string $deviceId,
+    string $deviceName,
+    array $requestMeta = []
+): array {
+    $uid = auth_clean_string($uid);
+    $deviceId = auth_clean_string($deviceId);
+    $deviceName = auth_clean_string($deviceName);
+    if ($uid === '' || $deviceId === '') {
+        return ['ok' => false, 'code' => 'SESSION_INPUT_INVALID'];
+    }
+
+    $now = now_ts();
+    $epoch = auth_new_session_epoch();
+    $token = random_token(32);
+    $hash = session_hash($token);
+
+    $session = [
+        'session_id' => make_session_id(),
+        'uid' => $uid,
+        'phone' => (string)($user['phone'] ?? ''),
+        'token_last8' => substr($token, -8),
+        'device_name' => $deviceName,
+        'device_id' => $deviceId,
+        'status' => 'ACTIVE',
+        'activated_at' => $now,
+        'ip' => client_ip(),
+        'created_at' => $now,
+        'expires_at' => $now + SESSION_TTL_SECONDS,
+        'last_seen_at' => $now,
+        'auth_session_epoch' => $epoch,
+    ];
+
+    if (!fb_put('USER_SESSIONS/' . $hash, $session)) {
+        return ['ok' => false, 'code' => 'SESSION_WRITE_FAILED'];
+    }
+
+    $userPatch = [
+        'auth_session_epoch' => $epoch,
+        'active_device_id' => $deviceId,
+        'ACTIVE_DEVICE_ID' => $deviceId,
+        'active_device_name' => $deviceName,
+        'active_device_app_version' => (string)($requestMeta['app_version'] ?? ''),
+        'active_device_updated_at' => $now,
+        'last_login_at' => $now,
+        'last_login_ip' => (string)($requestMeta['created_ip'] ?? $requestMeta['ip'] ?? ''),
+        'last_login_ip_country' => (string)($requestMeta['ip_country'] ?? ''),
+        'last_login_user_agent' => (string)($requestMeta['user_agent'] ?? ''),
+        'browser_timezone' => (string)($requestMeta['browser_timezone'] ?? ($user['browser_timezone'] ?? '')),
+        'updated_at' => $now,
+    ];
+
+    if (!fb_patch('USERS/' . $uid, $userPatch)) {
+        @fb_delete('USER_SESSIONS/' . $hash);
+        return ['ok' => false, 'code' => 'USER_SESSION_STATE_WRITE_FAILED'];
+    }
+
+    auth_mark_device_trusted(
+        $uid,
+        $deviceId,
+        $deviceName,
+        (string)($requestMeta['app_version'] ?? '')
+    );
+    auth_mark_other_devices_replaced($uid, $deviceId);
+
+    return [
+        'ok' => true,
+        'code' => 'SUCCESS',
+        'session_token' => $token,
+        'session_hash' => $hash,
+        'auth_session_epoch' => $epoch,
+    ];
 }
 
 function auth_get_session_token_from_request(): string

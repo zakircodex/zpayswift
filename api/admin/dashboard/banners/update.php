@@ -6,7 +6,7 @@ require_once dirname(__DIR__, 3) . '/lib/mobile_dashboard.php';
 
 api_require_method('POST');
 api_require_app_key();
-$auth = zpay_dash_require_admin_or_subadmin(true);
+$auth = auth_require_admin_session(true);
 $actor = is_array($auth['user'] ?? null) ? $auth['user'] : [];
 $body = zpay_dash_request_data();
 
