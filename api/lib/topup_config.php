@@ -27,7 +27,7 @@ function topup_effective_min_amount(string $countryCode, float $configuredMin): 
 {
     $configuredMin = topup_money($configuredMin);
     return topup_country_code($countryCode) === 'BD'
-        ? max(500.0, $configuredMin)
+        ? 20.0
         : $configuredMin;
 }
 

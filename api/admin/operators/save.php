@@ -18,7 +18,8 @@ $serviceType = topup_service_type($body['service_type'] ?? 'PREPAID');
 $active = topup_bool($body['active'] ?? true, true);
 $minAmount = topup_money($body['min_amount'] ?? 0);
 $maxAmount = topup_money($body['max_amount'] ?? 0);
-$quickAmounts = topup_normalize_quick_amounts($body['quick_amounts'] ?? [], $minAmount > 0 ? $minAmount : 0, $maxAmount > 0 ? $maxAmount : 999999);
+$quickAmountsInput = $body['quick_amounts'] ?? [];
+$quickAmounts = [];
 $prefixes = topup_normalize_prefixes($body['prefixes'] ?? []);
 $sortOrder = topup_int($body['sort_order'] ?? 999, 999);
 $dialTemplate = trim((string)($body['dial_template'] ?? ''));
@@ -33,6 +34,9 @@ if (!is_valid_operator($operator)) {
 if (!in_array($countryCode, ['BD', 'MY'], true)) {
     api_response(false, 'VALIDATION_ERROR', 'country_code must be BD or MY', ['field' => 'country_code'], 422);
 }
+
+$minAmount = topup_effective_min_amount($countryCode, $minAmount);
+$quickAmounts = topup_normalize_quick_amounts($quickAmountsInput, $minAmount > 0 ? $minAmount : 0, $maxAmount > 0 ? $maxAmount : 999999);
 
 if ($serviceType !== 'PREPAID') {
     api_response(false, 'VALIDATION_ERROR', 'Only PREPAID service_type is supported', ['field' => 'service_type'], 422);

@@ -42,14 +42,16 @@ if ($operator === '') {
     api_response(false, 'VALIDATION_ERROR', 'operator is required', ['field' => 'operator'], 422);
 }
 
-[$amountOk, $amountMsg] = subapi_validate_amount_limits($amount, $roleSettings);
-if (!$amountOk) {
-    api_response(false, 'VALIDATION_ERROR', $amountMsg, ['field' => 'amount'], 422);
-}
-
 $topupValidation = topup_validate_request($countryCode, $operator, topup_money($amount), true, true);
 if (empty($topupValidation['ok'])) {
     topup_api_error($topupValidation);
+}
+
+$topupRoleLimits = $roleSettings;
+$topupRoleLimits['min_amount'] = (float)($topupValidation['min_amount'] ?? topup_effective_min_amount($countryCode, 20.0));
+[$amountOk, $amountMsg] = subapi_validate_amount_limits($amount, $topupRoleLimits);
+if (!$amountOk) {
+    api_response(false, 'VALIDATION_ERROR', $amountMsg, ['field' => 'amount'], 422);
 }
 
 $currentAvailable = (float)($wallet['available_balance'] ?? 0);

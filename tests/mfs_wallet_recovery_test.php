@@ -13,6 +13,7 @@ $testNow = 1700000000;
 $walletWriteCount = [];
 $failNextLedgerPut = false;
 $failNextDonePut = false;
+$failNextPendingPut = false;
 
 function test_path_parts(string $path): array
 {
@@ -82,13 +83,17 @@ function fb_get(string $path)
 
 function fb_put(string $path, $data): bool
 {
-    global $failNextLedgerPut, $failNextDonePut;
+    global $failNextLedgerPut, $failNextDonePut, $failNextPendingPut;
     if ($failNextLedgerPut && str_starts_with($path, 'WALLET_LEDGER/')) {
         $failNextLedgerPut = false;
         return false;
     }
     if ($failNextDonePut && str_starts_with($path, 'MFS_REQUESTS/DONE/')) {
         $failNextDonePut = false;
+        return false;
+    }
+    if ($failNextPendingPut && str_starts_with($path, 'MFS_REQUESTS/PENDING/')) {
+        $failNextPendingPut = false;
         return false;
     }
     test_store_set($path, $data);
@@ -351,5 +356,148 @@ assert_true(!wallet_financial_operation_mark_applied($active['claim'], ['old_own
 
 assert_true(history_count($uid) >= 5, 'MFS history should use deterministic request ids');
 assert_true(notification_count($uid) >= 5, 'MFS notifications should use existing idempotent notification rows');
+
+function put_mfs_create_user(string $uid, string $country, string $currency): void
+{
+    fb_put('USERS/' . $uid, [
+        'uid' => $uid,
+        'full_name' => 'MFS Create Test',
+        'name' => 'MFS Create Test',
+        'phone' => $country === 'MY' ? '60123456789' : '01700000001',
+        'role' => 'USER',
+        'status' => 'ACTIVE',
+        'pricing_country' => $country,
+        'wallet_currency' => $currency,
+        'pin_hash' => password_hash('1234', PASSWORD_DEFAULT),
+    ]);
+    put_wallet($uid, 1000.00, 0.00, $currency);
+}
+
+function mfs_create_body(string $provider, string $idempotencyKey): array
+{
+    return [
+        'provider' => $provider,
+        'service_type' => 'SEND_MONEY',
+        'account_type' => 'PERSONAL',
+        'receiver_number' => '01700000000',
+        'amount_bdt' => 620.00,
+        'currency' => 'BDT',
+        'pin' => '1234',
+        'idempotency_key' => $idempotencyKey,
+    ];
+}
+
+function mfs_confirm_from_preview(string $uid, string $provider, string $idempotencyKey): array
+{
+    $body = mfs_create_body($provider, $idempotencyKey);
+    $preview = mfs_preview_payload($uid, $body);
+    if (empty($preview['ok'])) {
+        return ['preview' => $preview, 'result' => $preview, 'preview_hash' => ''];
+    }
+
+    $previewData = (array)$preview['data'];
+    $previewToken = mfs_create_preview_token(array_merge($previewData, [
+        'expires_at' => now_ts() + 300,
+        'status' => 'READY',
+    ]));
+    $previewHash = mfs_preview_token_hash($previewToken);
+    $claim = mfs_claim_preview_token($previewHash, $uid);
+    if (empty($claim['ok'])) {
+        return ['preview' => $preview, 'result' => $claim, 'preview_hash' => $previewHash];
+    }
+
+    $result = mfs_create_request(
+        $uid,
+        $body,
+        'USER_API',
+        'PANEL',
+        [
+            'uid' => $uid,
+            'role' => 'USER',
+            'preview_token_hash' => $previewHash,
+            'preview_data' => (array)($claim['preview'] ?? []),
+        ]
+    );
+
+    return ['preview' => $preview, 'result' => $result, 'preview_hash' => $previewHash];
+}
+
+put_mfs_create_user('MFS_CREATE_BKASH_MY', 'MY', 'MYR');
+$bkashConfirm = mfs_confirm_from_preview('MFS_CREATE_BKASH_MY', 'BKASH', 'MFS_CREATE_BKASH_MY_ONCE');
+$bkashCreate = (array)$bkashConfirm['result'];
+assert_true(!empty($bkashConfirm['preview']['ok']), 'bKash MY preview must succeed with default provider config');
+assert_true(!empty($bkashCreate['ok']), 'bKash MY confirm must create a request with default provider config');
+assert_true(array_keys($bkashCreate) === ['ok', 'code', 'message', 'data'], 'MFS create result envelope must remain unchanged');
+$bkashData = (array)$bkashCreate['data'];
+assert_true((string)($bkashData['provider'] ?? '') === 'BKASH', 'bKash provider must remain canonical');
+assert_true((string)($bkashData['wallet_currency'] ?? '') === 'MYR', 'bKash MY wallet currency must remain MYR');
+assert_true((float)($bkashData['total_debit'] ?? 0) === (float)($bkashData['amount_rm'] ?? 0) + (float)($bkashData['fee_rm'] ?? 0), 'bKash MY fee and total debit must remain consistent');
+$bkashWrites = wallet_write_count('MFS_CREATE_BKASH_MY');
+$bkashDuplicate = mfs_create_request(
+    'MFS_CREATE_BKASH_MY',
+    mfs_create_body('BKASH', 'MFS_CREATE_BKASH_MY_ONCE'),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_CREATE_BKASH_MY', 'role' => 'USER']
+);
+assert_true(!empty($bkashDuplicate['ok']), 'duplicate bKash confirm must replay canonical success: ' . json_encode($bkashDuplicate));
+assert_true(wallet_write_count('MFS_CREATE_BKASH_MY') === $bkashWrites, 'duplicate bKash confirm must not hold wallet twice');
+
+put_mfs_create_user('MFS_CREATE_NAGAD_MY', 'MY', 'MYR');
+$nagadConfirm = mfs_confirm_from_preview('MFS_CREATE_NAGAD_MY', 'NAGAD', 'MFS_CREATE_NAGAD_MY_ONCE');
+$nagadCreate = (array)$nagadConfirm['result'];
+assert_true(!empty($nagadConfirm['preview']['ok']), 'Nagad MY preview must succeed with default provider config');
+assert_true(!empty($nagadCreate['ok']), 'Nagad MY confirm must create a request with default provider config');
+assert_true((string)($nagadCreate['data']['provider'] ?? '') === 'NAGAD', 'Nagad provider must remain canonical');
+
+put_mfs_create_user('MFS_CREATE_BD', 'BD', 'BDT');
+$bdConfirm = mfs_confirm_from_preview('MFS_CREATE_BD', 'BKASH', 'MFS_CREATE_BD_ONCE');
+$bdCreate = (array)$bdConfirm['result'];
+assert_true(!empty($bdConfirm['preview']['ok']), 'BD MFS preview must succeed');
+assert_true(!empty($bdCreate['ok']), 'BD MFS confirm must create a request');
+assert_true((float)($bdCreate['data']['total_debit'] ?? 0) === (float)($bdCreate['data']['amount_bdt'] ?? 0) + (float)($bdCreate['data']['fee_bdt'] ?? 0), 'BD fee and total debit must remain consistent');
+assert_true((string)($bdCreate['data']['wallet_currency'] ?? '') === 'BDT', 'BD wallet currency must remain BDT');
+
+put_mfs_create_user('MFS_CREATE_RETRY', 'MY', 'MYR');
+$failNextPendingPut = true;
+$createSaveFailure = mfs_create_request(
+    'MFS_CREATE_RETRY',
+    mfs_create_body('BKASH', 'MFS_CREATE_REQUEST_SAVE_RETRY'),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_CREATE_RETRY', 'role' => 'USER']
+);
+assert_true(empty($createSaveFailure['ok']) && ($createSaveFailure['code'] ?? '') === 'SERVER_ERROR', 'request-save failure must be reported after one hold');
+$retryWrites = wallet_write_count('MFS_CREATE_RETRY');
+$createSaveRetry = mfs_create_request(
+    'MFS_CREATE_RETRY',
+    mfs_create_body('BKASH', 'MFS_CREATE_REQUEST_SAVE_RETRY'),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_CREATE_RETRY', 'role' => 'USER']
+);
+assert_true(!empty($createSaveRetry['ok']), 'request-save retry must repair the request');
+assert_true(wallet_write_count('MFS_CREATE_RETRY') === $retryWrites, 'request-save retry must not repeat MFS hold');
+
+$invalidProvider = mfs_create_request(
+    'MFS_CREATE_BD',
+    mfs_create_body('INVALID', 'MFS_CREATE_INVALID_PROVIDER'),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_CREATE_BD', 'role' => 'USER']
+);
+assert_true(empty($invalidProvider['ok']) && ($invalidProvider['code'] ?? '') === 'VALIDATION_ERROR', 'invalid MFS provider must be rejected');
+
+if (!defined('MFS_PROVIDER_NAGAD_ENABLED')) {
+    define('MFS_PROVIDER_NAGAD_ENABLED', false);
+}
+$disabledProvider = mfs_create_request(
+    'MFS_CREATE_BD',
+    mfs_create_body('NAGAD', 'MFS_CREATE_DISABLED_PROVIDER'),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_CREATE_BD', 'role' => 'USER']
+);
+assert_true(empty($disabledProvider['ok']) && ($disabledProvider['code'] ?? '') === 'PROVIDER_DISABLED', 'disabled provider must return the canonical unavailable code');
 
 echo "mfs wallet recovery tests passed\n";

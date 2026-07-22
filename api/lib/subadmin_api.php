@@ -846,7 +846,21 @@ function subapi_create_panel_topup(
         ];
     }
 
-    [$limitOk, $limitMessage] = subapi_validate_amount_limits($amount, $roleSettings);
+    $topupRoleLimits = $roleSettings;
+    if (function_exists('topup_validate_request')) {
+        $topupValidation = topup_validate_request($countryCode, $operator, $amount, true, true);
+        if (empty($topupValidation['ok'])) {
+            return [
+                'ok' => false,
+                'code' => (string)($topupValidation['code'] ?? 'VALIDATION_ERROR'),
+                'message' => (string)($topupValidation['message'] ?? 'Invalid top-up request'),
+                'data' => (array)($topupValidation['data'] ?? []),
+            ];
+        }
+        $topupRoleLimits['min_amount'] = (float)($topupValidation['min_amount'] ?? topup_effective_min_amount($countryCode, 20.0));
+    }
+
+    [$limitOk, $limitMessage] = subapi_validate_amount_limits($amount, $topupRoleLimits);
     if (!$limitOk) {
         return [
             'ok' => false,

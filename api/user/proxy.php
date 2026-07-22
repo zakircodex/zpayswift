@@ -1810,17 +1810,7 @@ function user_proxy_create_topup_request(string $uid, array $body): array
         ];
     }
 
-    [$amountOk, $amountMsg] = user_proxy_validate_amount($amount, $roleSettings);
-
-    if (!$amountOk) {
-        return [
-            'ok' => false,
-            'code' => 'VALIDATION_ERROR',
-            'message' => $amountMsg,
-            'data' => [],
-        ];
-    }
-
+    $topupRoleLimits = $roleSettings;
     if (function_exists('topup_validate_request')) {
         $topupValidation = topup_validate_request($countryCode, $operator, $amount, true, true);
         if (empty($topupValidation['ok'])) {
@@ -1831,6 +1821,18 @@ function user_proxy_create_topup_request(string $uid, array $body): array
                 'data' => (array)($topupValidation['data'] ?? []),
             ];
         }
+        $topupRoleLimits['min_amount'] = (float)($topupValidation['min_amount'] ?? topup_effective_min_amount($countryCode, 20.0));
+    }
+
+    [$amountOk, $amountMsg] = user_proxy_validate_amount($amount, $topupRoleLimits);
+
+    if (!$amountOk) {
+        return [
+            'ok' => false,
+            'code' => 'VALIDATION_ERROR',
+            'message' => $amountMsg,
+            'data' => [],
+        ];
     }
 
     if ($pin === '') {

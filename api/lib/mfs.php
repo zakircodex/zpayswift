@@ -1918,7 +1918,15 @@ function mfs_hold_wallet(string $uid, float $amount, string $currency, string $r
         'note' => $note,
     ], is_array($options['ledger_extra'] ?? null) ? $options['ledger_extra'] : []);
 
-    $hold = wallet_hold_amount($uid, $amount, $requestId, 'MFS_HOLD', $options);
+    $financialOperation = is_array($options['financial_operation'] ?? null)
+        ? (array)$options['financial_operation']
+        : [];
+    $walletOperationRef = trim((string)($financialOperation['request_id'] ?? ''));
+    if ($walletOperationRef === '') {
+        $walletOperationRef = $requestId;
+    }
+
+    $hold = wallet_hold_amount($uid, $amount, $walletOperationRef, 'MFS_HOLD', $options);
 
     if (empty($hold['ok'])) {
         $code = (string)($hold['code'] ?? 'SERVER_ERROR');
@@ -2883,7 +2891,7 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'MFS request could not be saved after wallet hold', [
             'wallet_applied' => true,
             'ledger_written' => true,
-            'request_id' => $requestId,
+            'business_request_id' => $requestId,
             'request_row' => $row,
             'request_finalized' => false,
         ]);
@@ -3008,7 +3016,7 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         'request_finalized' => true,
         'history_written' => true,
         'notification_written' => false,
-        'request_id' => $requestId,
+        'business_request_id' => $requestId,
         'ledger_id' => (string)($hold['ledger_id'] ?? ''),
         'result_data' => (array)$response['data'],
     ]);
