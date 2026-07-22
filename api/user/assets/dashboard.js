@@ -557,9 +557,18 @@ function showUserExitModal(){
 function handleUserPopState(event){
   if (userBackExitAllowed) return;
 
+  if (typeof window.zpayUserAppHandlePopState === 'function' && window.zpayUserAppHandlePopState(event)) {
+    return;
+  }
+
   const flowState = event.state?.zpayUserFlow || {};
   const flow = String(flowState.flow || 'dashboard');
   const step = String(flowState.step || 'base');
+
+  if (flow === 'section' && el(step)) {
+    openSection(step, { fromHistory: true, history: false });
+    return;
+  }
 
   userBackRestoring = true;
   try {
@@ -598,8 +607,13 @@ function initUserBackHandling(){
   if (userBackHandlingReady || !window.history?.pushState) return;
 
   userBackHandlingReady = true;
+  const initialSection = getInitialSection();
   window.history.replaceState(userFlowHistoryState('dashboard', 'base'), '', userHistoryUrl());
-  window.history.pushState(userFlowHistoryState('dashboard', 'guard'), '', userHistoryUrl());
+  window.history.pushState(
+    userFlowHistoryState('section', initialSection),
+    '',
+    userSectionMeta(initialSection).path
+  );
   window.addEventListener('popstate', handleUserPopState);
 }
 
@@ -753,11 +767,21 @@ async function copyText(text, okMessage = 'Copied'){
 function openSidebar(){
   el('sidebar')?.classList.add('show');
   el('sidebarOverlay')?.classList.add('show');
+  syncSidebarAccessibility(true);
 }
 
 function closeSidebar(){
   el('sidebar')?.classList.remove('show');
   el('sidebarOverlay')?.classList.remove('show');
+  syncSidebarAccessibility(false);
+}
+
+function syncSidebarAccessibility(isOpen = false){
+  const sidebar = el('sidebar');
+  if (!sidebar) return;
+  const hiddenOnMobile = window.innerWidth <= 980 && !isOpen;
+  sidebar.toggleAttribute('inert', hiddenOnMobile);
+  sidebar.setAttribute('aria-hidden', hiddenOnMobile ? 'true' : 'false');
 }
 
 function getInitialSection(){
@@ -765,13 +789,36 @@ function getInitialSection(){
 
   if (p === '/user/topup') return 'topupSection';
   if (p === '/user/bundle' || p === '/user/bundles') return 'bundleSection';
+  if (p === '/user/send-money' || p === '/user/bkash' || p === '/user/nagad') return 'mfsSection';
   if (p === '/user/add-money') return 'addMoneySection';
   if (p === '/user/history') return 'historySection';
+  if (p === '/user/services') return 'servicesSection';
+  if (p === '/user/transfer' || p === '/user/z-pay-transfer') return 'transferSection';
+  if (p === '/user/support' || p === '/user/contact-us') return 'supportSection';
+  if (p === '/user/profile') return 'profileSection';
 
   return 'overviewSection';
 }
 
-function openSection(sectionId){
+function userSectionMeta(sectionId){
+  const sections = {
+    overviewSection: { title: 'Z-Pay Swift', path: '/user/' },
+    servicesSection: { title: 'Services', path: '/user/services' },
+    topupSection: { title: 'Mobile Top-Up', path: '/user/topup' },
+    bundleSection: { title: 'Bundle', path: '/user/bundle' },
+    mfsSection: { title: 'Send Money', path: '/user/send-money' },
+    addMoneySection: { title: 'Add Money', path: '/user/add-money' },
+    transferSection: { title: 'Z-Pay Transfer', path: '/user/transfer' },
+    historySection: { title: 'My History', path: '/user/history' },
+    supportSection: { title: 'Support', path: '/user/support' },
+    profileSection: { title: 'Profile', path: '/user/profile' }
+  };
+  return sections[sectionId] || sections.overviewSection;
+}
+
+function openSection(sectionId, options = {}){
+  if (!el(sectionId)) sectionId = 'overviewSection';
+  const previousSection = document.body.getAttribute('data-active-section') || '';
   document.body.setAttribute('data-active-section', sectionId || 'overviewSection');
 
   document.querySelectorAll('.page-section').forEach(node => node.classList.remove('active'));
@@ -782,6 +829,21 @@ function openSection(sectionId){
 
   document.querySelector(`.side-btn[data-page-section="${sectionId}"]`)?.classList.add('active');
   document.querySelector(`.bottom-btn[data-page-section="${sectionId}"]`)?.classList.add('active');
+
+  const meta = userSectionMeta(sectionId);
+  if (el('appHeaderTitle')) el('appHeaderTitle').textContent = meta.title;
+  if (el('appNavIcon')) el('appNavIcon').textContent = sectionId === 'overviewSection' ? '\u2630' : '\u2190';
+  if (el('openSidebarBtn')) {
+    el('openSidebarBtn').setAttribute('aria-label', sectionId === 'overviewSection' ? 'Open menu' : 'Back to dashboard');
+  }
+
+  if (options.history !== false && !options.fromHistory && userBackHandlingReady && previousSection && previousSection !== sectionId) {
+    window.history.pushState(
+      { ...userFlowHistoryState('section', sectionId), zpayUserApp: null },
+      '',
+      meta.path
+    );
+  }
 
   if (window.innerWidth <= 980) {
     closeSidebar();
@@ -831,7 +893,12 @@ function openSection(sectionId){
 
   const main = document.querySelector('.main-panel');
   if (main) {
-    main.scrollTo({ top: 0, behavior: 'smooth' });
+    main.scrollTo({ top: 0, behavior: 'auto' });
+  }
+  window.scrollTo({ top: 0, behavior: 'auto' });
+
+  if (typeof window.zpayUserAppSectionChanged === 'function') {
+    window.zpayUserAppSectionChanged(sectionId);
   }
 }
 
@@ -1207,6 +1274,16 @@ function renderHero(){
     el('heroHold').title = wallet.conversion_note || '';
   }
   if (el('heroRequests')) el('heroRequests').textContent = String((state.requestLogs || []).length);
+  if (el('heroRate')) {
+    const pricingCountry = String(me.pricing_country || data.pricing_country || wallet.pricing_country || '').toUpperCase();
+    const rate = Number(wallet.rate_myr_bdt || data.rate_myr_bdt || data.current_rate || 0);
+    el('heroRate').textContent = pricingCountry === 'MY' && rate > 0
+      ? `RM 1 = ${rate.toFixed(2)} BDT`
+      : 'BDT Wallet';
+  }
+  if (el('heroName')) {
+    el('heroName').textContent = String(me.name || data.name || 'Z-Pay User').toUpperCase();
+  }
   if (el('heroRole')) el('heroRole').textContent = String(me.role || data.role || '-').toUpperCase();
 
   if (el('heroTopupAccess')) {
@@ -3621,7 +3698,7 @@ async function doLogin(){
 
     showApp();
     await refreshAll(false);
-    openSection(getInitialSection());
+    openSection(getInitialSection(), { history: false });
     showToast('Login successful', 'ok');
   }catch(err){
     setLoginError(err.message || 'Login failed');
@@ -3692,7 +3769,7 @@ async function verifyLoginOtp(){
     closeLoginOtpModal();
     showApp();
     await refreshAll(false);
-    openSection(getInitialSection());
+    openSection(getInitialSection(), { history: false });
     showToast('Login successful', 'ok');
   }catch(err){
     if (el('loginOtpStatus')) {
@@ -3871,6 +3948,8 @@ function bindBundleDelegatedEvents(){
 }
 
 function bindEvents(){
+  syncSidebarAccessibility(false);
+  window.addEventListener('resize', () => syncSidebarAccessibility(el('sidebar')?.classList.contains('show')));
   el('loginBtn')?.addEventListener('click', doLogin);
 
   el('loginPassword')?.addEventListener('keydown', (e) => {
@@ -3883,7 +3962,14 @@ function bindEvents(){
 
   el('loginPhoneCountry')?.addEventListener('change', updateLoginCountryUi);
 
-  el('openSidebarBtn')?.addEventListener('click', openSidebar);
+  el('openSidebarBtn')?.addEventListener('click', () => {
+    const activeSection = document.body.getAttribute('data-active-section') || 'overviewSection';
+    if (activeSection === 'overviewSection') {
+      openSidebar();
+    } else {
+      openSection('overviewSection');
+    }
+  });
   el('sidebarOverlay')?.addEventListener('click', closeSidebar);
 
   el('quickRefreshBtn')?.addEventListener('click', () => safeRefreshAll(true));
@@ -4101,6 +4187,7 @@ window.proxyPost = proxyPost;
 window.openSection = openSection;
 window.showToast = showToast;
 window.setBusy = setBusy;
+window.refreshUserDashboard = safeRefreshAll;
 window.syncUserModalLock = syncUserModalLock;
 window.pushUserFlowHistory = pushUserFlowHistory;
 window.replaceUserFlowHistory = replaceUserFlowHistory;
@@ -4137,7 +4224,7 @@ async function bootstrap(){
 
   showApp();
   renderAll();
-  openSection(getInitialSection());
+  openSection(getInitialSection(), { history: false });
 }
 
 bootstrap();

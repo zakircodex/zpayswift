@@ -9,14 +9,15 @@ header('Pragma: no-cache');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#07111f">
+  <meta name="theme-color" content="#07172f">
   <title>Create Z-Pay Swift User Account</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/api/user/assets/register.css?v=2">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=1">
 </head>
-<body>
+<body class="user-auth-page">
 
 <div class="page">
   <div class="card">

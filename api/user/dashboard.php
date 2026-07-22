@@ -22,13 +22,14 @@ header('Pragma: no-cache');
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#07111f">
+  <meta name="theme-color" content="#07172f">
   <title>Z-Pay Swift User Dashboard</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=1">
 </head>
 <body>
 
@@ -119,9 +120,24 @@ header('Pragma: no-cache');
           <span>&rsaquo;</span>
         </button>
 
+        <button class="side-btn" data-page-section="transferSection" type="button">
+          <span>Z-Pay Transfer</span>
+          <span>&rsaquo;</span>
+        </button>
+
         <button class="side-btn" data-page-section="historySection" type="button">
           <span>My History</span>
           <span>›</span>
+        </button>
+
+        <button class="side-btn" data-page-section="supportSection" type="button">
+          <span>Support</span>
+          <span>&rsaquo;</span>
+        </button>
+
+        <button class="side-btn" data-page-section="profileSection" type="button">
+          <span>My Profile</span>
+          <span>&rsaquo;</span>
         </button>
       </div>
 
@@ -150,9 +166,14 @@ header('Pragma: no-cache');
       <div class="mobile-header">
         <div class="mobile-top-card">
           <div class="mobile-top-row">
-            <button id="openSidebarBtn" class="icon-btn" type="button">☰</button>
-            <div class="mobile-title">Z-Pay Swift</div>
-            <button id="quickRefreshBtn" class="icon-btn" type="button">↻</button>
+            <button id="openSidebarBtn" class="icon-btn" type="button" aria-label="Open menu">
+              <span id="appNavIcon" aria-hidden="true">&#9776;</span>
+            </button>
+            <div id="appHeaderTitle" class="mobile-title">Z-Pay Swift</div>
+            <button id="notificationButton" class="icon-btn notification-button" type="button" aria-label="Notifications">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 22a2.5 2.5 0 0 0 2.35-1.65h-4.7A2.5 2.5 0 0 0 12 22Zm7-5.5-1.4-1.7V10a5.6 5.6 0 0 0-4.35-5.45V3.5a1.25 1.25 0 1 0-2.5 0v1.05A5.6 5.6 0 0 0 6.4 10v4.8L5 16.5V18h14v-1.5Z"/></svg>
+              <span id="notificationBadge" class="notification-badge hidden">0</span>
+            </button>
           </div>
         </div>
       </div>
@@ -168,32 +189,33 @@ header('Pragma: no-cache');
         </div>
 
         <div class="hero-balance-label">Available Balance</div>
-        <div class="hero-balance"><span id="heroBalancePrefix">BDT</span> <span id="heroBalance">0.00</span></div>
+        <div class="hero-balance-row">
+          <div class="hero-balance"><span id="heroBalancePrefix">BDT</span> <span id="heroBalance">0.00</span></div>
+          <button class="hero-add-money" type="button" data-open-section="addMoneySection">Add Money <span aria-hidden="true">&rsaquo;</span></button>
+        </div>
+
+        <div class="hero-hold-line">Hold Balance: <span id="heroHoldPrefix">BDT</span> <span id="heroHold">0.00</span></div>
 
         <div class="hero-grid">
           <div class="hero-mini">
-            <div class="hero-mini-label">Hold Balance</div>
-            <div class="hero-mini-value"><span id="heroHoldPrefix">BDT</span> <span id="heroHold">0.00</span></div>
+            <div class="hero-mini-label hero-rate-label">Today Rate</div>
+            <div class="hero-mini-value hero-rate-value" id="heroRate">Rate unavailable</div>
           </div>
 
           <div class="hero-mini">
-            <div class="hero-mini-label">This Month Requests</div>
-            <div class="hero-mini-value" id="heroRequests">0</div>
+            <div class="hero-mini-label">This Month</div>
+            <div class="hero-mini-value">Requests: <span id="heroRequests">0</span></div>
           </div>
 
           <div class="hero-mini">
-            <div class="hero-mini-label">Account Type</div>
-            <div class="hero-mini-value" id="heroRole">USER</div>
-          </div>
-
-          <div class="hero-mini">
-            <div class="hero-mini-label">Services</div>
-            <div class="hero-mini-value">
-              <span id="heroTopupAccess">Topup: No</span><br>
-              <span id="heroBundleAccess">Bundle: No</span>
-            </div>
+            <div class="hero-mini-label">Hello</div>
+            <div class="hero-mini-value" id="heroName">Z-Pay User</div>
           </div>
         </div>
+      </div>
+
+      <div class="android-tagline" aria-label="Z-Pay Swift tagline">
+        <div class="android-tagline-track">টাকা পাঠানোর সব থেকে সহজ উপায় &quot;Z-Pay Swift&quot;</div>
       </div>
 
       <section id="overviewSection" class="page-section active">
@@ -513,6 +535,174 @@ header('Pragma: no-cache');
           </div>
         </div>
       </section>
+
+      <section id="servicesSection" class="page-section">
+        <div class="feature-card services-hub">
+          <div class="feature-heading">
+            <div>
+              <span class="feature-eyebrow">Z-Pay Swift</span>
+              <h2>Services</h2>
+              <p>Choose a service to continue.</p>
+            </div>
+          </div>
+          <div class="android-service-grid">
+            <button class="android-service-card" type="button" data-open-section="addMoneySection"><span class="service-glyph">+</span><strong>Add Money</strong></button>
+            <button class="android-service-card" type="button" data-open-section="transferSection"><span class="service-glyph">⇄</span><strong>Transfer</strong></button>
+            <button class="android-service-card" type="button" data-open-section="topupSection"><span class="service-glyph">▯</span><strong>Top-Up</strong></button>
+            <button class="android-service-card" type="button" data-open-section="mfsSection" data-mfs-provider="BKASH"><span class="service-glyph service-glyph-send">➤</span><strong>bKash</strong></button>
+            <button class="android-service-card" type="button" data-open-section="mfsSection" data-mfs-provider="NAGAD"><span class="service-glyph service-glyph-send">➤</span><strong>Nagad</strong></button>
+            <button class="android-service-card" type="button" data-open-section="bundleSection"><span class="service-glyph">▣</span><strong>Bundle</strong></button>
+            <button class="android-service-card" type="button" data-open-section="historySection"><span class="service-glyph">↻</span><strong>History</strong></button>
+            <button class="android-service-card" type="button" data-open-section="supportSection"><span class="service-glyph">?</span><strong>Support</strong></button>
+            <button class="android-service-card" type="button" data-open-section="profileSection"><span class="service-glyph">○</span><strong>Profile</strong></button>
+          </div>
+        </div>
+      </section>
+
+      <section id="transferSection" class="page-section">
+        <div class="feature-card transfer-card">
+          <div class="feature-heading">
+            <div>
+              <span class="feature-eyebrow">Secure wallet transfer</span>
+              <h2>Z-Pay Transfer</h2>
+              <p>Send money to another Z-Pay account.</p>
+            </div>
+          </div>
+
+          <div class="android-stepper" aria-label="Transfer progress">
+            <span id="transferPill1" class="active">Receiver</span>
+            <span id="transferPill2">Amount</span>
+            <span id="transferPill3">PIN</span>
+            <span id="transferPill4">Review</span>
+          </div>
+
+          <div id="transferStepReceiver" class="transfer-step active">
+            <div class="step-copy"><h3>Receiver account</h3><p>Enter the receiver's Z-Pay phone number.</p></div>
+            <label class="feature-field" for="transferReceiverInput"><span>Phone or account</span><input id="transferReceiverInput" type="tel" inputmode="tel" autocomplete="tel" placeholder="01XXXXXXXXX"></label>
+            <div id="transferReceiverResult" class="inline-state hidden" role="status"></div>
+            <button id="transferResolveBtn" class="android-primary-button" type="button">Check Receiver</button>
+          </div>
+
+          <div id="transferStepAmount" class="transfer-step">
+            <div id="transferReceiverCard" class="recipient-card"></div>
+            <label class="feature-field" for="transferAmountInput"><span>Amount</span><div class="money-input-wrap"><b id="transferCurrencyPrefix">BDT</b><input id="transferAmountInput" type="number" inputmode="decimal" min="1" step="0.01" placeholder="0.00"></div></label>
+            <label class="feature-field" for="transferReferenceInput"><span>Reference <small>Optional</small></span><input id="transferReferenceInput" maxlength="80" placeholder="What is this transfer for?"></label>
+            <div class="feature-actions"><button class="android-secondary-button" type="button" data-transfer-back="1">Back</button><button id="transferAmountNextBtn" class="android-primary-button" type="button">Continue</button></div>
+          </div>
+
+          <div id="transferStepPin" class="transfer-step">
+            <div class="step-copy"><h3>Enter transaction PIN</h3><p>Your PIN verifies this transfer. It is never displayed or stored in the browser.</p></div>
+            <label class="feature-field" for="transferPinInput"><span>4-digit PIN</span><input id="transferPinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="4" placeholder="••••"></label>
+            <div class="feature-actions"><button class="android-secondary-button" type="button" data-transfer-back="2">Back</button><button id="transferPreviewBtn" class="android-primary-button" type="button">Review Transfer</button></div>
+          </div>
+
+          <div id="transferStepReview" class="transfer-step">
+            <div class="review-panel">
+              <h3>Z-Pay Transfer Preview</h3>
+              <div id="transferReviewRows" class="review-rows"></div>
+            </div>
+            <p class="hold-hint">Press and hold until confirmation completes.</p>
+            <button id="transferHoldConfirmBtn" class="hold-confirm-button" type="button" aria-label="Press and hold to confirm transfer">
+              <span class="hold-confirm-progress" aria-hidden="true"></span>
+              <span class="hold-confirm-label">Press &amp; Hold to Transfer</span>
+            </button>
+            <button class="android-secondary-button full-width" type="button" data-transfer-back="3">Edit Transfer</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="profileSection" class="page-section">
+        <div class="profile-hero-panel">
+          <button id="profileAvatarButton" class="profile-avatar-button" type="button" aria-label="Change profile photo">
+            <img id="profileAvatarImage" class="hidden" alt="Profile photo">
+            <span id="profileAvatarInitials">ZP</span>
+            <small>Edit</small>
+          </button>
+          <div class="profile-identity">
+            <h2 id="profileName">Z-Pay User</h2>
+            <p id="profilePhone">-</p>
+            <p id="profileEmail">-</p>
+            <div class="profile-badges"><span id="profileRoleBadge">USER</span><span id="profileStatusBadge">ACTIVE</span></div>
+            <p id="profileCountryCurrency">-</p>
+          </div>
+          <button id="profileEditButton" class="profile-edit-button" type="button" aria-label="Edit profile">✎</button>
+          <input id="profilePhotoInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp">
+        </div>
+
+        <div class="feature-card profile-section-card">
+          <h3>Account Details</h3>
+          <div class="profile-info-list">
+            <div><span>Account ID / UID</span><strong id="profileUid">-</strong><button id="profileCopyUidBtn" type="button" aria-label="Copy account ID">Copy</button></div>
+            <div><span>Phone Country</span><strong id="profilePhoneCountry">-</strong></div>
+            <div><span>Pricing Country</span><strong id="profilePricingCountry">-</strong></div>
+            <div><span>Wallet Currency</span><strong id="profileWalletCurrency">-</strong></div>
+            <div><span>Registered</span><strong id="profileCreatedAt">-</strong></div>
+            <div><span>Last Login</span><strong id="profileLastLogin">-</strong></div>
+          </div>
+        </div>
+
+        <div class="feature-card profile-section-card">
+          <h3>Security</h3>
+          <button id="profileChangePasswordBtn" class="profile-action-row" type="button"><span><strong>Change Password</strong><small>Update your login password securely</small></span><b>›</b></button>
+          <button id="profileChangePinBtn" class="profile-action-row" type="button"><span><strong>Change PIN</strong><small>Update your 4-digit transaction PIN</small></span><b>›</b></button>
+        </div>
+
+        <div class="feature-card profile-section-card">
+          <h3>Help &amp; Session</h3>
+          <button class="profile-action-row" type="button" data-open-section="supportSection"><span><strong>Contact Us</strong><small>Message Z-Pay Swift support</small></span><b>›</b></button>
+          <button id="profileLogoutBtn" class="profile-action-row danger-row" type="button"><span><strong>Logout</strong><small>Sign out from this browser</small></span><b>›</b></button>
+        </div>
+      </section>
+
+      <section id="supportSection" class="page-section">
+        <div id="supportHomeView">
+          <div class="support-hero-panel">
+            <span class="support-hero-icon" aria-hidden="true">?</span>
+            <div><span class="feature-eyebrow">Z-Pay Swift Help</span><h2>How can we help?</h2><p id="supportNotice">Create a request or continue an existing conversation.</p></div>
+          </div>
+
+          <div id="supportContactActions" class="support-contact-actions"></div>
+
+          <div class="segmented-tabs" role="tablist" aria-label="Support views">
+            <button id="supportNewTab" class="active" type="button" role="tab" aria-selected="true">Contact Us</button>
+            <button id="supportListTab" type="button" role="tab" aria-selected="false">My Requests <span id="supportUnreadBadge" class="tab-badge hidden">0</span></button>
+          </div>
+
+          <div id="supportCreatePanel" class="support-tab-panel active">
+            <form id="supportCreateForm" class="feature-card support-form" novalidate>
+              <label class="feature-field" for="supportCategory"><span>Category</span><select id="supportCategory" name="category_code"><option value="">Select a category</option></select></label>
+              <label class="feature-field" for="supportSubject"><span>Subject</span><input id="supportSubject" name="subject" maxlength="120" placeholder="Short issue title"></label>
+              <label id="supportRelatedWrap" class="feature-field hidden" for="supportRelatedRequest"><span>Related request <small>Optional</small></span><select id="supportRelatedRequest" name="related_request_id"><option value="">No related request</option></select></label>
+              <label class="feature-field" for="supportMessage"><span>Message</span><textarea id="supportMessage" name="message" maxlength="2500" rows="5" placeholder="Describe your issue"></textarea></label>
+              <label class="attachment-picker" for="supportAttachments"><span>Add screenshots</span><small>JPG, PNG or WebP. Up to 3 files.</small><input id="supportAttachments" type="file" accept="image/jpeg,image/png,image/webp" multiple></label>
+              <div id="supportAttachmentSummary" class="attachment-summary"></div>
+              <button id="supportCreateButton" class="android-primary-button" type="submit">Submit Request</button>
+            </form>
+          </div>
+
+          <div id="supportListPanel" class="support-tab-panel">
+            <div class="support-list-head"><div><h3>My Support Requests</h3><p>Open a request to continue the conversation.</p></div><button id="supportRefreshButton" class="icon-command" type="button" aria-label="Refresh support requests">↻</button></div>
+            <div id="supportTicketList" class="support-ticket-list"><div class="feature-empty-state">No support requests loaded.</div></div>
+          </div>
+        </div>
+
+        <div id="supportConversationView" class="support-conversation hidden">
+          <div class="conversation-header">
+            <button id="supportConversationBack" class="icon-command" type="button" aria-label="Back to support requests">‹</button>
+            <div><h2 id="supportConversationTitle">Support Request</h2><p id="supportConversationMeta">-</p></div>
+            <span id="supportConversationStatus" class="status-pill pending">Open</span>
+          </div>
+          <div id="supportMessages" class="support-messages" aria-live="polite"></div>
+          <form id="supportReplyForm" class="support-composer" novalidate>
+            <label class="composer-attachment" for="supportReplyAttachment" aria-label="Attach screenshot">+</label>
+            <input id="supportReplyAttachment" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp" multiple>
+            <textarea id="supportReplyMessage" rows="1" maxlength="2500" placeholder="Write a reply..."></textarea>
+            <button id="supportReplyButton" type="submit" aria-label="Send reply">Send</button>
+            <div id="supportReplyAttachmentSummary" class="attachment-summary composer-summary"></div>
+          </form>
+          <div id="supportClosedNotice" class="closed-notice hidden"></div>
+        </div>
+      </section>
     </main>
   </div>
 </div>
@@ -633,23 +823,23 @@ header('Pragma: no-cache');
   <div class="bottom-nav-inner">
     <button class="bottom-btn active" data-page-section="overviewSection" type="button" aria-label="Dashboard">
       <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5v9A1.5 1.5 0 0 1 19.5 21h-4.25v-6h-6.5v6H4.5A1.5 1.5 0 0 1 3 19.5v-9Z"/></svg></span>
-      <span class="bottom-label">Dashboard</span>
+      <span class="bottom-label">Home</span>
     </button>
-    <button class="bottom-btn" data-page-section="topupSection" type="button" aria-label="Topup">
-      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 4v12h8V6H8Zm3 13.25v1.25h2v-1.25h-2Z"/><path d="M20 7h2v3h3v2h-3v3h-2v-3h-3v-2h3V7Z" transform="scale(.75) translate(9 -1)"/></svg></span>
-      <span class="bottom-label">Topup</span>
-    </button>
-    <button class="bottom-btn" data-page-section="bundleSection" type="button" aria-label="Bundle">
-      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6.5 12 2l8 4.5v11L12 22l-8-4.5v-11Zm8 2.2 5.2-2.9L12 3 6.8 5.8 12 8.7Zm-6 7.6 5 2.8v-8.6L6 7.7v8.6Zm7 2.8 5-2.8V7.7l-5 2.8v8.6Z"/></svg></span>
-      <span class="bottom-label">Bundle</span>
-    </button>
-    <button class="bottom-btn" data-page-section="mfsSection" type="button" aria-label="Send Money">
-      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 6.5A2.5 2.5 0 0 1 5.5 4h13A2.5 2.5 0 0 1 21 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 17.5v-11Zm2 2V10h14V8.5H5Zm0 4v5h14v-5H5Zm8.5 1.2 3.8 1.8-3.8 1.8v-1.2H8v-1.2h5.5v-1.2Z"/></svg></span>
-      <span class="bottom-label">Send Money</span>
+    <button class="bottom-btn" data-page-section="servicesSection" type="button" aria-label="Services">
+      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 3h6v6H4V3Zm10 0h6v6h-6V3ZM4 15h6v6H4v-6Zm10 0h6v6h-6v-6Z"/></svg></span>
+      <span class="bottom-label">Services</span>
     </button>
     <button class="bottom-btn" data-page-section="historySection" type="button" aria-label="History">
       <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 1-8.5 12h2.2A7 7 0 1 0 5 12H2l4-4 4 4H7a5 5 0 1 1 1.5 3.6l1.4-1.4A3 3 0 1 0 9 12h3V7h2v7H9V9.4l-1.8 1.8A7 7 0 0 0 12 19a7 7 0 0 0 0-14Z"/></svg></span>
       <span class="bottom-label">History</span>
+    </button>
+    <button class="bottom-btn" data-page-section="supportSection" type="button" aria-label="Support">
+      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9v4a3 3 0 0 0 3 3h2v-8H5.1a7 7 0 0 1 13.8 0H16v8h2.1A3.1 3.1 0 0 1 15 21h-3v-2h3a1 1 0 0 0 1-1v-7h3v5h1v-4a7 7 0 0 0-14 0v5h1v-6h3v8H6a3 3 0 0 1-3-3v-4a9 9 0 0 1 9-9Z"/></svg></span>
+      <span class="bottom-label">Support</span>
+    </button>
+    <button class="bottom-btn" data-page-section="profileSection" type="button" aria-label="Profile">
+      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-5 0-8 2.6-8 6v1h16v-1c0-3.4-3-6-8-6Z"/></svg></span>
+      <span class="bottom-label">Profile</span>
     </button>
   </div>
 </div>
@@ -660,5 +850,6 @@ window.USER_LOGIN_URL = '/user/';
 </script>
 <script src="/api/user/assets/dashboard.js?v=21"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=12"></script>
+<script src="/api/user/assets/user-app.js?v=1"></script>
 </body>
 </html>

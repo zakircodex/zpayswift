@@ -1262,6 +1262,174 @@ function user_proxy_hold_balance(string $uid, float $amount, string $requestId, 
     ];
 }
 
+function user_proxy_internal_multipart_request(string $relativePath, array $fields, array $files, array $headers = []): array
+{
+    $url = user_proxy_api_base_url() . '/' . ltrim($relativePath, '/');
+    $payload = [];
+
+    foreach ($fields as $key => $value) {
+        if (is_scalar($value) || $value === null) {
+            $payload[(string)$key] = (string)($value ?? '');
+        }
+    }
+
+    foreach ($files as $field => $file) {
+        if (!is_array($file)) {
+            continue;
+        }
+
+        $names = $file['name'] ?? '';
+        $tmpNames = $file['tmp_name'] ?? '';
+        $types = $file['type'] ?? '';
+        $errors = $file['error'] ?? UPLOAD_ERR_NO_FILE;
+
+        if (is_array($names)) {
+            foreach ($names as $index => $name) {
+                $tmp = (string)($tmpNames[$index] ?? '');
+                $error = (int)($errors[$index] ?? UPLOAD_ERR_NO_FILE);
+                if ($error !== UPLOAD_ERR_OK || $tmp === '' || !is_uploaded_file($tmp)) {
+                    continue;
+                }
+                $payload[(string)$field . '[' . $index . ']'] = new CURLFile(
+                    $tmp,
+                    (string)($types[$index] ?? 'application/octet-stream'),
+                    basename((string)$name)
+                );
+            }
+            continue;
+        }
+
+        $tmp = (string)$tmpNames;
+        if ((int)$errors !== UPLOAD_ERR_OK || $tmp === '' || !is_uploaded_file($tmp)) {
+            continue;
+        }
+        $payload[(string)$field] = new CURLFile(
+            $tmp,
+            (string)($types ?: 'application/octet-stream'),
+            basename((string)$names)
+        );
+    }
+
+    $ch = curl_init();
+    $finalHeaders = ['Accept: application/json'];
+    foreach ($headers as $key => $value) {
+        $finalHeaders[] = $key . ': ' . $value;
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTPHEADER => $finalHeaders,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_POSTFIELDS => $payload,
+    ]);
+
+    $raw = curl_exec($ch);
+    $error = curl_error($ch);
+    $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($raw === false) {
+        return ['ok' => false, 'status' => 0, 'json' => null, 'error' => $error ?: 'Internal upload failed'];
+    }
+
+    $json = json_decode((string)$raw, true);
+    return [
+        'ok' => $status >= 200 && $status < 300 && is_array($json) && !empty($json['ok']),
+        'status' => $status,
+        'json' => is_array($json) ? $json : null,
+        'error' => is_array($json) ? null : 'Invalid JSON response from internal API',
+    ];
+}
+
+function user_proxy_internal_binary_request(string $relativePath, array $headers = []): array
+{
+    $url = user_proxy_api_base_url() . '/' . ltrim($relativePath, '/');
+    $ch = curl_init();
+    $finalHeaders = ['Accept: image/jpeg,image/png,image/webp,application/json'];
+    foreach ($headers as $key => $value) {
+        $finalHeaders[] = $key . ': ' . $value;
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_URL => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_TIMEOUT => 20,
+        CURLOPT_HTTPHEADER => $finalHeaders,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+    ]);
+
+    $body = curl_exec($ch);
+    $error = curl_error($ch);
+    $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $contentType = (string)(curl_getinfo($ch, CURLINFO_CONTENT_TYPE) ?: '');
+    curl_close($ch);
+
+    return [
+        'ok' => $body !== false && $status >= 200 && $status < 300,
+        'status' => $status,
+        'content_type' => strtolower(trim(explode(';', $contentType)[0] ?? '')),
+        'body' => $body === false ? '' : (string)$body,
+        'error' => $body === false ? ($error ?: 'Internal attachment request failed') : '',
+    ];
+}
+
+function user_proxy_authenticated_headers(): array
+{
+    return [
+        'X-APP-KEY' => APP_KEY,
+        'X-SESSION-TOKEN' => user_proxy_get_session_token(),
+        'X-ZPAY-CLIENT' => 'USER_WEB',
+    ];
+}
+
+function user_proxy_forward_authenticated_json(
+    string $method,
+    string $relativePath,
+    ?array $body,
+    string $fallbackCode,
+    string $fallbackMessage
+): void {
+    $res = user_proxy_internal_api_request($method, $relativePath, $body, user_proxy_authenticated_headers());
+    $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+
+    user_proxy_response(
+        !empty($res['ok']),
+        (string)($json['code'] ?? $fallbackCode),
+        (string)($json['message'] ?? $fallbackMessage),
+        (array)($json['data'] ?? []),
+        (int)(($res['status'] ?? 0) > 0 ? $res['status'] : 502)
+    );
+}
+
+function user_proxy_forward_authenticated_multipart(
+    string $relativePath,
+    array $fields,
+    array $files,
+    string $fallbackCode,
+    string $fallbackMessage
+): void {
+    $res = user_proxy_internal_multipart_request(
+        $relativePath,
+        $fields,
+        $files,
+        user_proxy_authenticated_headers()
+    );
+    $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+
+    user_proxy_response(
+        !empty($res['ok']),
+        (string)($json['code'] ?? $fallbackCode),
+        (string)($json['message'] ?? $fallbackMessage),
+        (array)($json['data'] ?? []),
+        (int)(($res['status'] ?? 0) > 0 ? $res['status'] : 502)
+    );
+}
+
 function user_proxy_release_hold_rollback(string $uid, float $amount, string $requestId, string $type, string $note): void
 {
     $uid = trim($uid);
@@ -4089,6 +4257,306 @@ switch ($action) {
             (array)($res['data'] ?? []),
             200
         );
+        break;
+
+    case 'profile_get':
+        user_proxy_require_method('GET');
+        user_proxy_require_login(true, false);
+        user_proxy_forward_authenticated_json(
+            'GET',
+            'auth/session.php',
+            null,
+            'PROFILE_LOAD_FAILED',
+            'Profile could not be loaded.'
+        );
+        break;
+
+    case 'profile_update':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        $body = user_proxy_read_json_body();
+        $profileBody = [];
+        if (array_key_exists('name', $body)) {
+            $profileBody['name'] = (string)$body['name'];
+        }
+        if (array_key_exists('email', $body)) {
+            $profileBody['email'] = (string)$body['email'];
+        }
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'user/profile_update.php',
+            $profileBody,
+            'PROFILE_UPDATE_FAILED',
+            'Profile could not be updated.'
+        );
+        break;
+
+    case 'profile_photo_upload':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        user_proxy_forward_authenticated_multipart(
+            'user/profile_photo_upload.php',
+            [],
+            array_intersect_key($_FILES, array_flip(['profile_photo', 'photo', 'avatar', 'file'])),
+            'PROFILE_PHOTO_UPLOAD_FAILED',
+            'Profile photo could not be updated.'
+        );
+        break;
+
+    case 'profile_change_password':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        $body = user_proxy_read_json_body();
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'user/change_password.php',
+            [
+                'current_password' => (string)($body['current_password'] ?? ''),
+                'new_password' => (string)($body['new_password'] ?? ''),
+                'confirm_password' => (string)($body['confirm_password'] ?? ''),
+            ],
+            'PASSWORD_UPDATE_FAILED',
+            'Password could not be updated.'
+        );
+        break;
+
+    case 'profile_change_pin':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        $body = user_proxy_read_json_body();
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'user/change_pin.php',
+            [
+                'current_pin' => (string)($body['current_pin'] ?? ''),
+                'new_pin' => (string)($body['new_pin'] ?? ''),
+                'confirm_pin' => (string)($body['confirm_pin'] ?? ''),
+            ],
+            'PIN_UPDATE_FAILED',
+            'PIN could not be updated.'
+        );
+        break;
+
+    case 'transfer_recipient':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        $body = user_proxy_read_json_body();
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'transfer/check_recipient.php',
+            ['recipient_phone' => trim((string)($body['recipient_phone'] ?? $body['receiver_phone'] ?? ''))],
+            'TRANSFER_LOOKUP_FAILED',
+            'Receiver could not be checked.'
+        );
+        break;
+
+    case 'transfer_preview':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        $sessionUser = user_proxy_require_login(true, false);
+        $body = user_proxy_read_json_body();
+        $pinResult = user_proxy_validate_transaction_pin(
+            trim((string)($sessionUser['uid'] ?? '')),
+            trim((string)($body['pin'] ?? ''))
+        );
+        if (empty($pinResult['ok'])) {
+            $pinCode = (string)($pinResult['code'] ?? 'INVALID_PIN');
+            user_proxy_response(
+                false,
+                $pinCode,
+                (string)($pinResult['message'] ?? 'PIN is incorrect.'),
+                [],
+                in_array($pinCode, ['INVALID_PIN', 'ACCOUNT_INACTIVE'], true) ? 403 : 422
+            );
+        }
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'transfer/preview.php',
+            [
+                'recipient_phone' => trim((string)($body['recipient_phone'] ?? $body['receiver_phone'] ?? '')),
+                'amount' => $body['amount'] ?? 0,
+            ],
+            'TRANSFER_PREVIEW_FAILED',
+            'Transfer preview could not be loaded.'
+        );
+        break;
+
+    case 'transfer_create':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        $body = user_proxy_read_json_body();
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'transfer/create.php',
+            [
+                'preview_token' => trim((string)($body['preview_token'] ?? '')),
+                'reference' => trim((string)($body['reference'] ?? $body['note'] ?? '')),
+            ],
+            'TRANSFER_FAILED',
+            'Transfer could not be completed.'
+        );
+        break;
+
+    case 'transfer_history':
+        user_proxy_require_method('GET');
+        user_proxy_require_login(true, false);
+        $limit = max(1, min(100, (int)($_GET['limit'] ?? 25)));
+        user_proxy_forward_authenticated_json(
+            'GET',
+            'transfer/history.php?' . http_build_query(['limit' => $limit]),
+            null,
+            'TRANSFER_HISTORY_FAILED',
+            'Transfer history could not be loaded.'
+        );
+        break;
+
+    case 'support_config':
+        user_proxy_require_method('GET');
+        user_proxy_require_login(true, false);
+        user_proxy_forward_authenticated_json('GET', 'support/config.php', null, 'SUPPORT_LOAD_FAILED', 'Support could not be loaded.');
+        break;
+
+    case 'support_list':
+        user_proxy_require_method('GET');
+        user_proxy_require_login(true, false);
+        $supportStatus = strtoupper(trim((string)($_GET['status'] ?? '')));
+        $supportLimit = max(1, min(100, (int)($_GET['limit'] ?? 50)));
+        user_proxy_forward_authenticated_json(
+            'GET',
+            'support/list.php?' . http_build_query(['status' => $supportStatus, 'limit' => $supportLimit]),
+            null,
+            'SUPPORT_LIST_FAILED',
+            'Support requests could not be loaded.'
+        );
+        break;
+
+    case 'support_details':
+        user_proxy_require_method('GET');
+        user_proxy_require_login(true, false);
+        $ticketId = trim((string)($_GET['ticket_id'] ?? ''));
+        user_proxy_forward_authenticated_json(
+            'GET',
+            'support/details.php?' . http_build_query(['ticket_id' => $ticketId]),
+            null,
+            'SUPPORT_DETAILS_FAILED',
+            'Support conversation could not be loaded.'
+        );
+        break;
+
+    case 'support_create':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        $supportFields = array_intersect_key($_POST, array_flip([
+            'category_code', 'subject', 'message', 'related_type', 'related_request_id', 'idempotency_key',
+        ]));
+        user_proxy_forward_authenticated_multipart(
+            'support/create.php',
+            $supportFields,
+            array_intersect_key($_FILES, array_flip(['attachments', 'attachment', 'file'])),
+            'SUPPORT_CREATE_FAILED',
+            'Support request could not be submitted.'
+        );
+        break;
+
+    case 'support_reply':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        $supportFields = array_intersect_key($_POST, array_flip([
+            'ticket_id', 'message', 'reply_to_message_id', 'idempotency_key',
+        ]));
+        user_proxy_forward_authenticated_multipart(
+            'support/reply.php',
+            $supportFields,
+            array_intersect_key($_FILES, array_flip(['attachments', 'attachment', 'file'])),
+            'SUPPORT_REPLY_FAILED',
+            'Reply could not be sent.'
+        );
+        break;
+
+    case 'support_attachment':
+        user_proxy_require_method('GET');
+        user_proxy_require_login(true, false);
+        $ticketId = trim((string)($_GET['ticket_id'] ?? ''));
+        $attachmentId = trim((string)($_GET['attachment_id'] ?? ''));
+        $binary = user_proxy_internal_binary_request(
+            'support/attachment.php?' . http_build_query([
+                'ticket_id' => $ticketId,
+                'attachment_id' => $attachmentId,
+            ]),
+            user_proxy_authenticated_headers()
+        );
+        if (empty($binary['ok'])) {
+            $json = json_decode((string)($binary['body'] ?? ''), true);
+            user_proxy_response(
+                false,
+                (string)($json['code'] ?? 'SUPPORT_ATTACHMENT_FAILED'),
+                (string)($json['message'] ?? 'Attachment could not be loaded.'),
+                [],
+                (int)(($binary['status'] ?? 0) > 0 ? $binary['status'] : 502)
+            );
+        }
+        $contentType = (string)($binary['content_type'] ?? '');
+        if (!in_array($contentType, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            user_proxy_response(false, 'SUPPORT_ATTACHMENT_UNSUPPORTED', 'Attachment type is not supported.', [], 415);
+        }
+        header('Content-Type: ' . $contentType);
+        header('Content-Length: ' . strlen((string)$binary['body']));
+        header('Content-Disposition: inline; filename="support-' . preg_replace('/[^A-Za-z0-9_-]+/', '_', $attachmentId) . '"');
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            @session_write_close();
+        }
+        echo (string)$binary['body'];
+        exit;
+
+    case 'notifications_list':
+        user_proxy_require_method('GET');
+        user_proxy_require_login(true, false);
+        $notificationLimit = max(1, min(50, (int)($_GET['limit'] ?? 30)));
+        $notificationFilter = strtoupper(trim((string)($_GET['filter'] ?? 'ALL')));
+        user_proxy_forward_authenticated_json(
+            'GET',
+            'notifications/list.php?' . http_build_query(['limit' => $notificationLimit, 'filter' => $notificationFilter]),
+            null,
+            'NOTIFICATIONS_LOAD_FAILED',
+            'Notifications could not be loaded.'
+        );
+        break;
+
+    case 'notifications_unread':
+        user_proxy_require_method('GET');
+        user_proxy_require_login(true, false);
+        user_proxy_forward_authenticated_json('GET', 'notifications/unread_count.php', null, 'NOTIFICATIONS_LOAD_FAILED', 'Notifications could not be loaded.');
+        break;
+
+    case 'notification_mark_read':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        $body = user_proxy_read_json_body();
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'notifications/mark_read.php',
+            ['notification_id' => trim((string)($body['notification_id'] ?? ''))],
+            'NOTIFICATION_UPDATE_FAILED',
+            'Notification could not be updated.'
+        );
+        break;
+
+    case 'notifications_mark_all_read':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        user_proxy_forward_authenticated_json('POST', 'notifications/mark_all_read.php', [], 'NOTIFICATION_UPDATE_FAILED', 'Notifications could not be updated.');
         break;
 
     case 'register':

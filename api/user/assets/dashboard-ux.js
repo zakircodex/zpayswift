@@ -636,13 +636,18 @@
     card.innerHTML = '<div class="zpay-quick-head"><div><h3 class="zpay-quick-title">Quick Services</h3><p class="zpay-quick-sub">Fast access to Z-Pay Swift services</p></div><div class="zpay-rate-chip">Fast - Secure</div></div>';
     var grid = document.createElement('div');
     grid.className = 'zpay-service-grid';
-    grid.appendChild(quickButton('T', 'Topup', 'topupSection'));
+    grid.appendChild(quickButton('+', 'Add Money', 'addMoneySection'));
+    grid.appendChild(quickButton('Z', 'Transfer', 'transferSection'));
+    grid.appendChild(quickButton('T', 'Top-Up', 'topupSection'));
     grid.appendChild(quickButton('b', 'bKash', 'mfsSection', 'BKASH'));
     grid.appendChild(quickButton('N', 'Nagad', 'mfsSection', 'NAGAD'));
     grid.appendChild(quickButton('B', 'Bundle', 'bundleSection'));
     grid.appendChild(quickButton('H', 'History', 'historySection'));
+    grid.appendChild(quickButton('?', 'Support', 'supportSection'));
+    grid.appendChild(quickButton('P', 'Profile', 'profileSection'));
     card.appendChild(grid);
-    hero.insertAdjacentElement('afterend', card);
+    var tagline = document.querySelector('.android-tagline');
+    (tagline || hero).insertAdjacentElement('afterend', card);
   }
 
   function bindMfs(){
