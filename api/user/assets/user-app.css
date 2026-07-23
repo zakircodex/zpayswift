@@ -2702,21 +2702,20 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 }
 
 .drawer-logout {
-  grid-template-columns: 46px minmax(0, 1fr) 46px;
+  grid-template-columns: 46px minmax(0, 1fr) 18px;
   margin-top: 2px;
   margin-bottom: 4px;
 }
 
 .drawer-logout::after {
-  content: "";
-  width: 46px;
-  height: 1px;
+  content: none;
+  display: none;
 }
 
 .drawer-logout .drawer-menu-copy {
-  align-items: center;
-  justify-items: center;
-  text-align: center;
+  align-items: start;
+  justify-items: start;
+  text-align: left;
 }
 
 .drawer-logout .drawer-menu-icon {
@@ -2729,6 +2728,8 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 }
 
 .logout-confirm-card {
+  border-radius: 30px;
+  overflow: hidden;
   text-align: center;
 }
 
@@ -2817,11 +2818,7 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
   }
 
   .user-drawer .drawer-logout {
-    grid-template-columns: 42px minmax(0, 1fr) 42px;
-  }
-
-  .user-drawer .drawer-logout::after {
-    width: 42px;
+    grid-template-columns: 42px minmax(0, 1fr) 16px;
   }
 
   .drawer-menu-icon {
@@ -2897,7 +2894,7 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 }
 
 .user-drawer .drawer-logout .drawer-menu-copy {
-  align-items: center;
-  justify-items: center;
-  text-align: center;
+  align-items: start;
+  justify-items: start;
+  text-align: left;
 }
