@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=2">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=3">
 </head>
 <body>
 
@@ -250,9 +250,17 @@ header('Pragma: no-cache');
               <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></span>
               <span class="zpay-service-name">Bundle</span>
             </button>
+            <button class="zpay-service-btn" type="button" data-dashboard-action="shopping" aria-label="Shopping">
+              <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 7V6a5 5 0 0 1 10 0v1h3l-1 14H5L4 7h3Zm2 0h6V6a3 3 0 0 0-6 0v1Zm0 3v2h2v-2H9Zm4 0v2h2v-2h-2Z"/></svg></span>
+              <span class="zpay-service-name">Shopping</span>
+            </button>
             <button class="zpay-service-btn" type="button" data-open-section="supportSection" aria-label="Contact Us">
               <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9v4a3 3 0 0 0 3 3h2v-8H5.1a7 7 0 0 1 13.8 0H16v8h2.1A3.1 3.1 0 0 1 15 21h-3v-2h3a1 1 0 0 0 1-1v-7h3v5h1v-4a7 7 0 0 0-14 0v5h1v-6h3v8H6a3 3 0 0 1-3-3v-4a9 9 0 0 1 9-9Z"/></svg></span>
               <span class="zpay-service-name">Contact Us</span>
+            </button>
+            <button class="zpay-service-btn" type="button" data-dashboard-action="info" aria-label="Info">
+              <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M11 10h2v8h-2v-8Zm0-4h2v2h-2V6Zm1-4a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/></svg></span>
+              <span class="zpay-service-name">Info</span>
             </button>
           </div>
         </div>
@@ -864,6 +872,6 @@ window.USER_LOGIN_URL = '/user/';
 </script>
 <script src="/api/user/assets/dashboard.js?v=22"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=12"></script>
-<script src="/api/user/assets/user-app.js?v=2"></script>
+<script src="/api/user/assets/user-app.js?v=3"></script>
 </body>
 </html>

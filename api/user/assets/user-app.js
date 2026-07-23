@@ -254,6 +254,20 @@
     });
   }
 
+  function openDashboardUtility(action) {
+    if (action === 'shopping') {
+      showResult('Shopping', 'Shopping is coming soon.', 'success');
+      return;
+    }
+    if (action === 'info') {
+      showResult(
+        'Z-Pay Swift',
+        'A fast, secure and simple way to manage wallet services, payments and requests.',
+        'success'
+      );
+    }
+  }
+
   function openFormModal(title, fields, submitLabel, submitHandler) {
     openActionModal((body) => {
       const heading = document.createElement('h3');
@@ -1066,6 +1080,12 @@
 
   function bind() {
     document.addEventListener('click', (event) => {
+      const dashboardAction = event.target.closest('[data-dashboard-action]');
+      if (dashboardAction) {
+        event.preventDefault();
+        openDashboardUtility(String(dashboardAction.getAttribute('data-dashboard-action') || ''));
+        return;
+      }
       const sectionButton = event.target.closest('[data-open-section]');
       if (!sectionButton) return;
       event.preventDefault();

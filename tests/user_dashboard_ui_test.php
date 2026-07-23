@@ -54,7 +54,7 @@ dashboard_expect(
 );
 
 $servicePositions = [];
-foreach (['Add Money', 'Transfer', 'Top-Up', 'bKash', 'Nagad', 'Bundle', 'Contact Us'] as $service) {
+foreach (['Add Money', 'Transfer', 'Top-Up', 'bKash', 'Nagad', 'Bundle', 'Shopping', 'Contact Us', 'Info'] as $service) {
     $servicePositions[] = strpos($overview, '<span class="zpay-service-name">' . $service . '</span>');
 }
 dashboard_expect(
@@ -82,8 +82,14 @@ dashboard_expect(!str_contains($bottomNav, '>Services<') && !str_contains($botto
 dashboard_expect(
     str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .mobile-header")
     && str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .hero-card")
+    && str_contains($css, 'position: sticky')
     && str_contains($css, "grid-template-columns: repeat(3, minmax(0, 168px))"),
     'Dashboard-only responsive layout rules are missing'
+);
+dashboard_expect(
+    str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .bottom-label")
+    && str_contains($css, 'white-space: nowrap'),
+    'Dashboard navigation labels can wrap'
 );
 dashboard_expect(
     str_contains($dashboardJs, "el('heroMenuButton')?.addEventListener('click', openSidebar)")
@@ -95,6 +101,12 @@ dashboard_expect(
     str_contains($dashboardJs, "pricingCountry === 'MY'")
     && str_contains($dashboardJs, ": 'Not applicable'"),
     'Dashboard rate visibility is not pricing-country aware'
+);
+dashboard_expect(
+    str_contains($appJs, "event.target.closest('[data-dashboard-action]')")
+    && str_contains($appJs, 'Shopping is coming soon.')
+    && str_contains($appJs, "'Z-Pay Swift'"),
+    'Shopping and Info Dashboard actions are not wired to safe local UI behavior'
 );
 
 echo "User Dashboard UI tests passed ({$tests} assertions).\n";
