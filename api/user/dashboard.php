@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=14">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=15">
 </head>
 <body>
 
@@ -690,46 +690,70 @@ header('Pragma: no-cache');
         </div>
       </section>
 
-      <section id="profileSection" class="page-section">
-        <div class="profile-hero-panel">
-          <button id="profileAvatarButton" class="profile-avatar-button" type="button" aria-label="Change profile photo">
-            <img id="profileAvatarImage" class="hidden" alt="Profile photo">
-            <span id="profileAvatarInitials">ZP</span>
-            <small>Edit</small>
-          </button>
-          <div class="profile-identity">
-            <h2 id="profileName">Z-Pay User</h2>
-            <p id="profilePhone">-</p>
-            <p id="profileEmail">-</p>
-            <div class="profile-badges"><span id="profileRoleBadge">USER</span><span id="profileStatusBadge">ACTIVE</span></div>
-            <p id="profileCountryCurrency">-</p>
+      <section id="profileSection" class="page-section profile-page-section" aria-labelledby="profilePageTitle">
+        <div class="profile-page-shell">
+          <div class="profile-fixed-hero">
+            <span class="profile-hero-orb profile-hero-orb-one" aria-hidden="true"></span>
+            <span class="profile-hero-orb profile-hero-orb-two" aria-hidden="true"></span>
+            <span class="profile-hero-orb profile-hero-orb-three" aria-hidden="true"></span>
+
+            <div class="profile-toolbar">
+              <button id="profileBackButton" class="profile-hero-icon-button" data-open-section="overviewSection" type="button" aria-label="Back to dashboard">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.7 5.3-1.4-1.4L5.2 12l8.1 8.1 1.4-1.4L9 13h11v-2H9l5.7-5.7Z"/></svg>
+              </button>
+              <h2 id="profilePageTitle">Profile</h2>
+              <button id="profileNotificationButton" class="profile-hero-icon-button notification-button" type="button" aria-label="Notifications">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 22a2.5 2.5 0 0 0 2.35-1.65h-4.7A2.5 2.5 0 0 0 12 22Zm7-5.5-1.4-1.7V10a5.6 5.6 0 0 0-4.35-5.45V3.5a1.25 1.25 0 1 0-2.5 0v1.05A5.6 5.6 0 0 0 6.4 10v4.8L5 16.5V18h14v-1.5Z"/></svg>
+                <span id="profileNotificationBadge" class="notification-badge hidden">0</span>
+              </button>
+            </div>
+
+            <div class="profile-hero-panel">
+              <button id="profileAvatarButton" class="profile-avatar-button" type="button" aria-label="Change profile photo">
+                <img id="profileAvatarImage" class="hidden" alt="Profile photo">
+                <span id="profileAvatarInitials">ZP</span>
+                <small>Edit</small>
+              </button>
+              <div class="profile-identity">
+                <h2 id="profileName">Z-Pay User</h2>
+                <p id="profilePhone">-</p>
+                <p id="profileEmail">-</p>
+                <div class="profile-badges"><span id="profileRoleBadge">USER</span><span id="profileStatusBadge">ACTIVE</span></div>
+                <p id="profileCountryCurrency">-</p>
+              </div>
+              <button id="profileEditButton" class="profile-edit-button" type="button" aria-label="Edit profile">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16.9-.7 3.8 3.8-.7L18.5 8.6l-3.1-3.1L4 16.9Zm16.7-10.5a1.5 1.5 0 0 0 0-2.1l-1-1a1.5 1.5 0 0 0-2.1 0l-.9.9 3.1 3.1.9-.9Z"/></svg>
+              </button>
+              <input id="profilePhotoInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp">
+            </div>
           </div>
-          <button id="profileEditButton" class="profile-edit-button" type="button" aria-label="Edit profile">✎</button>
-          <input id="profilePhotoInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp">
-        </div>
 
-        <div class="feature-card profile-section-card">
-          <h3>Account Details</h3>
-          <div class="profile-info-list">
-            <div><span>Account ID / UID</span><strong id="profileUid">-</strong><button id="profileCopyUidBtn" type="button" aria-label="Copy account ID">Copy</button></div>
-            <div><span>Phone Country</span><strong id="profilePhoneCountry">-</strong></div>
-            <div><span>Pricing Country</span><strong id="profilePricingCountry">-</strong></div>
-            <div><span>Wallet Currency</span><strong id="profileWalletCurrency">-</strong></div>
-            <div><span>Registered</span><strong id="profileCreatedAt">-</strong></div>
-            <div><span>Last Login</span><strong id="profileLastLogin">-</strong></div>
+          <div class="profile-scroll-body">
+            <div class="feature-card profile-section-card profile-security-card">
+              <h3>Security</h3>
+              <button id="profileChangePasswordBtn" class="profile-action-row" type="button"><span><strong>Change Password</strong><small>Update securely</small></span><b aria-hidden="true">&rsaquo;</b></button>
+              <button id="profileChangePinBtn" class="profile-action-row" type="button"><span><strong>Change PIN</strong><small>Update transaction PIN</small></span><b aria-hidden="true">&rsaquo;</b></button>
+              <button id="profileBiometricBtn" class="profile-action-row disabled-row" type="button" disabled aria-disabled="true"><span><strong>Fingerprint / Biometric</strong><small>Android app only</small></span><b aria-hidden="true">&rsaquo;</b></button>
+            </div>
+
+            <div class="feature-card profile-section-card profile-account-app-card">
+              <h3>Account &amp; App</h3>
+              <div class="profile-account-list">
+                <button id="profileCopyUidBtn" class="profile-copy-row" type="button" aria-label="Copy account ID">
+                  <span><strong>Account ID / UID</strong><small id="profileUid">-</small></span>
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 8h11v13H8V8Zm2 2v9h7v-9h-7ZM5 3h11v3h-2V5H7v9H5V3Z"/></svg>
+                </button>
+                <div class="profile-info-row"><i aria-hidden="true"></i><span><small>Registered Date</small><strong id="profileCreatedAt">-</strong></span></div>
+                <div class="profile-info-row"><i aria-hidden="true"></i><span><small>Web Version</small><strong id="profileAppVersion">Version 1.0.0</strong></span></div>
+                <div class="profile-info-row"><i aria-hidden="true"></i><span><small>Session Status</small><strong id="profileSessionStatus">Active</strong></span></div>
+              </div>
+            </div>
+
+            <div class="feature-card profile-section-card profile-logout-card">
+              <button id="profileLogoutBtn" class="profile-logout-button" type="button">Logout</button>
+            </div>
+            <div class="profile-bottom-safe" aria-hidden="true"></div>
           </div>
-        </div>
-
-        <div class="feature-card profile-section-card">
-          <h3>Security</h3>
-          <button id="profileChangePasswordBtn" class="profile-action-row" type="button"><span><strong>Change Password</strong><small>Update your login password securely</small></span><b>›</b></button>
-          <button id="profileChangePinBtn" class="profile-action-row" type="button"><span><strong>Change PIN</strong><small>Update your 4-digit transaction PIN</small></span><b>›</b></button>
-        </div>
-
-        <div class="feature-card profile-section-card">
-          <h3>Help &amp; Session</h3>
-          <button class="profile-action-row" type="button" data-open-section="supportSection"><span><strong>Contact Us</strong><small>Message Z-Pay Swift support</small></span><b>›</b></button>
-          <button id="profileLogoutBtn" class="profile-action-row danger-row" type="button"><span><strong>Logout</strong><small>Sign out from this browser</small></span><b>›</b></button>
         </div>
       </section>
 
@@ -929,6 +953,6 @@ window.USER_LOGIN_URL = '/user/';
 </script>
 <script src="/api/user/assets/dashboard.js?v=28"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=12"></script>
-<script src="/api/user/assets/user-app.js?v=6"></script>
+<script src="/api/user/assets/user-app.js?v=7"></script>
 </body>
 </html>

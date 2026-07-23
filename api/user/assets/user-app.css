@@ -1923,6 +1923,464 @@ body.user-authenticated[data-active-section='overviewSection'] .bottom-btn.activ
   }
 }
 
+/* Android-aligned Profile page. */
+body.user-authenticated[data-active-section='profileSection'] .mobile-header,
+body.user-authenticated[data-active-section='profileSection'] .dashboard-fixed-stack,
+body.user-authenticated[data-active-section='profileSection'] .bottom-nav {
+  display: none !important;
+}
+
+body.user-authenticated[data-active-section='profileSection'] {
+  overflow: hidden;
+}
+
+body.user-authenticated[data-active-section='profileSection'] #appView,
+body.user-authenticated[data-active-section='profileSection'] .app-shell {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body.user-authenticated[data-active-section='profileSection'] .main-panel {
+  width: 100%;
+  max-width: 820px;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0 auto;
+  padding: 0;
+  overflow: hidden;
+}
+
+body.user-authenticated[data-active-section='profileSection'] #profileSection {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+.profile-page-shell {
+  width: min(calc(100% - 28px), 640px);
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin: 0 auto;
+  padding: calc(10px + env(safe-area-inset-top)) 0 0;
+  overflow: hidden;
+}
+
+.profile-fixed-hero {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 12px 16px 16px;
+  overflow: hidden;
+  border: 1px solid rgba(50, 230, 134, 0.28);
+  border-radius: 28px;
+  background: linear-gradient(135deg, #123f7a 0%, #0a3d72 48%, #05a37e 100%);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28), 0 0 24px rgba(50, 230, 134, 0.08);
+}
+
+.profile-hero-orb {
+  position: absolute;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+.profile-hero-orb-one {
+  width: 158px;
+  height: 158px;
+  top: -18px;
+  right: -18px;
+  background: rgba(50, 230, 134, 0.25);
+}
+
+.profile-hero-orb-two {
+  width: 122px;
+  height: 122px;
+  right: 72px;
+  bottom: -28px;
+  background: rgba(11, 45, 92, 0.38);
+}
+
+.profile-hero-orb-three {
+  width: 84px;
+  height: 84px;
+  right: -16px;
+  bottom: 16px;
+  background: rgba(50, 230, 134, 0.18);
+}
+
+.profile-toolbar {
+  position: relative;
+  z-index: 1;
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+}
+
+.profile-toolbar h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--z-text);
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-hero-icon-button {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  color: var(--z-text);
+  background: transparent;
+  cursor: pointer;
+}
+
+.profile-hero-icon-button:hover,
+.profile-hero-icon-button:focus-visible {
+  color: var(--z-green);
+  background: rgba(50, 230, 134, 0.1);
+}
+
+.profile-hero-icon-button:active {
+  transform: scale(0.94);
+}
+
+.profile-hero-icon-button svg {
+  width: 26px;
+  height: 26px;
+  fill: currentColor;
+}
+
+.profile-fixed-hero .profile-hero-panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 10px;
+  padding: 0 40px 0 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.profile-fixed-hero .profile-avatar-button {
+  width: 104px;
+  height: 104px;
+  flex: 0 0 104px;
+  border: 4px solid var(--z-green);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
+}
+
+.profile-fixed-hero .profile-avatar-button small {
+  inset: auto -2px 0 auto;
+  min-width: 36px;
+  padding: 3px 6px;
+  border-radius: 10px;
+  color: #061b31;
+  background: var(--z-green);
+  font-size: 9px;
+}
+
+.profile-fixed-hero .profile-identity h2 {
+  color: var(--z-text);
+  font-size: 21px;
+  line-height: 1.12;
+  text-transform: uppercase;
+}
+
+.profile-fixed-hero .profile-identity p {
+  margin-top: 6px;
+  color: var(--z-muted);
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.profile-fixed-hero .profile-badges {
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.profile-fixed-hero .profile-badges span {
+  min-height: 28px;
+  padding: 4px 12px;
+  border-color: rgba(50, 230, 134, 0.74);
+  border-radius: 15px;
+  background: rgba(11, 45, 92, 0.72);
+  font-size: 11px;
+}
+
+.profile-fixed-hero .profile-edit-button {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  width: 44px;
+  min-height: 44px;
+  border-color: rgba(255, 255, 255, 0.78);
+  border-radius: 50%;
+  color: #07182c;
+  background: var(--z-green);
+}
+
+.profile-fixed-hero .profile-edit-button svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+}
+
+.profile-scroll-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 12px 2px calc(28px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(50, 230, 134, 0.42) rgba(7, 23, 47, 0.18);
+}
+
+.profile-scroll-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.profile-scroll-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(50, 230, 134, 0.38);
+}
+
+.profile-section-card {
+  margin-top: 12px;
+  padding: 20px;
+  border-radius: 24px;
+  background: rgba(11, 45, 92, 0.72);
+}
+
+.profile-section-card:first-child {
+  margin-top: 0;
+}
+
+.profile-section-card h3 {
+  margin-bottom: 14px;
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+.profile-security-card .profile-action-row,
+.profile-account-list .profile-copy-row,
+.profile-account-list .profile-info-row {
+  width: 100%;
+  min-width: 0;
+  min-height: 66px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px 16px;
+  border: 1px solid rgba(200, 214, 236, 0.24);
+  border-radius: 18px;
+  color: var(--z-text);
+  background: rgba(26, 47, 77, 0.78);
+  text-align: left;
+}
+
+.profile-security-card .profile-action-row:first-of-type,
+.profile-account-list .profile-copy-row:first-child,
+.profile-account-list .profile-info-row:first-child {
+  margin-top: 0;
+}
+
+.profile-security-card .profile-action-row {
+  cursor: pointer;
+}
+
+.profile-security-card .profile-action-row:hover,
+.profile-security-card .profile-action-row:focus-visible,
+.profile-account-list .profile-copy-row:hover,
+.profile-account-list .profile-copy-row:focus-visible {
+  border-color: rgba(50, 230, 134, 0.64);
+}
+
+.profile-security-card .profile-action-row:active,
+.profile-account-list .profile-copy-row:active {
+  transform: scale(0.99);
+}
+
+.profile-security-card .profile-action-row.disabled-row {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.profile-security-card .profile-action-row > span,
+.profile-account-list .profile-copy-row > span,
+.profile-account-list .profile-info-row > span {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.profile-security-card .profile-action-row strong,
+.profile-account-list .profile-copy-row strong,
+.profile-account-list .profile-info-row strong {
+  color: var(--z-text);
+  font-size: 15px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.profile-security-card .profile-action-row small,
+.profile-account-list .profile-copy-row small,
+.profile-account-list .profile-info-row small {
+  color: var(--z-muted);
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.profile-security-card .profile-action-row b {
+  color: var(--z-green);
+  font-size: 31px;
+  line-height: 1;
+}
+
+.profile-account-list .profile-copy-row svg {
+  width: 34px;
+  height: 34px;
+  fill: var(--z-green);
+}
+
+.profile-account-list .profile-info-row {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.profile-account-list .profile-info-row i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--z-green);
+  box-shadow: 0 0 12px rgba(50, 230, 134, 0.55);
+}
+
+.profile-logout-card {
+  padding: 28px;
+}
+
+.profile-logout-button {
+  width: 100%;
+  min-height: 58px;
+  border: 1px solid rgba(255, 139, 139, 0.78);
+  border-radius: 19px;
+  color: var(--z-error);
+  background: rgba(36, 26, 42, 0.14);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.profile-logout-button:hover,
+.profile-logout-button:focus-visible {
+  background: rgba(255, 139, 139, 0.1);
+}
+
+.profile-bottom-safe {
+  min-height: 8px;
+}
+
+@media (min-width: 981px) {
+  body.user-authenticated[data-active-section='profileSection'] .app-shell {
+    display: block;
+  }
+
+  body.user-authenticated[data-active-section='profileSection'] .sidebar:not(.show) {
+    display: none;
+  }
+
+  body.user-authenticated[data-active-section='profileSection'] .sidebar.show {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 95;
+    display: block;
+  }
+}
+
+@media (max-width: 420px) {
+  .profile-page-shell {
+    width: calc(100% - 20px);
+  }
+
+  .profile-fixed-hero {
+    padding: 10px 14px 14px;
+    border-radius: 26px;
+  }
+
+  .profile-toolbar {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+  }
+
+  .profile-hero-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+
+  .profile-fixed-hero .profile-hero-panel {
+    gap: 12px;
+    padding-right: 38px;
+  }
+
+  .profile-fixed-hero .profile-avatar-button {
+    width: 88px;
+    height: 88px;
+    flex-basis: 88px;
+  }
+
+  .profile-fixed-hero .profile-identity h2 {
+    font-size: 19px;
+  }
+
+  .profile-fixed-hero .profile-identity p {
+    font-size: 13px;
+  }
+
+  .profile-section-card {
+    padding: 18px;
+  }
+}
+
+@media (max-width: 340px) {
+  .profile-fixed-hero .profile-hero-panel {
+    align-items: flex-start;
+  }
+
+  .profile-fixed-hero .profile-avatar-button {
+    width: 74px;
+    height: 74px;
+    flex-basis: 74px;
+  }
+
+  .profile-fixed-hero .profile-identity h2 {
+    font-size: 17px;
+  }
+
+  .profile-fixed-hero .profile-badges span {
+    padding-right: 9px;
+    padding-left: 9px;
+  }
+}
+
 /* Android-aligned notification page. */
 body.user-authenticated[data-active-section='notificationsSection'] .mobile-header,
 body.user-authenticated[data-active-section='notificationsSection'] .dashboard-fixed-stack,

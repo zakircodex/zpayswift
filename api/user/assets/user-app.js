@@ -107,6 +107,36 @@
     return phone.slice(0, 4) + '***' + phone.slice(-3);
   }
 
+  function maskEmail(value) {
+    const email = String(value || '').trim();
+    if (!email) return '-';
+    const at = email.indexOf('@');
+    if (at <= 0 || at === email.length - 1) {
+      return email.length <= 20 ? email : email.slice(0, 17) + '...';
+    }
+    const local = email.slice(0, at);
+    let domain = email.slice(at + 1);
+    if (domain.length > 16) domain = domain.slice(0, 13) + '...';
+    return local.slice(0, Math.min(5, local.length)) + '***@' + domain;
+  }
+
+  function profileCountryLabel(value) {
+    const country = String(value || '').toUpperCase();
+    if (country === 'MY') return 'Malaysia';
+    if (country === 'BD') return 'Bangladesh';
+    return country || '-';
+  }
+
+  function profileSessionStatus(value) {
+    const status = String(value || '').trim();
+    if (!status || status.toUpperCase() === 'ACTIVE') return 'Active';
+    return status.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  function profileVersionLabel() {
+    return 'Version 1.0.0';
+  }
+
   function initials(name) {
     const parts = String(name || 'Z P').trim().split(/\s+/).filter(Boolean);
     return ((parts[0] || 'Z')[0] + (parts[1] || parts[0] || 'P')[0]).toUpperCase();
@@ -386,20 +416,23 @@
     const name = String(profile.name || 'Z-Pay User');
     const status = String(profile.account_status || profile.status || 'ACTIVE').toUpperCase();
     const currency = String(profile.wallet_currency || 'BDT').toUpperCase();
-    const pricing = String(profile.pricing_country || '-').toUpperCase();
+    const pricing = String(profile.pricing_country || profile.market_country || '').toUpperCase();
+    const displayCountry = profileCountryLabel(pricing || (currency === 'MYR' ? 'MY' : 'BD'));
     const image = safeProfileImage(profile.profile_photo_url);
     if ($('profileName')) $('profileName').textContent = name;
     if ($('profilePhone')) $('profilePhone').textContent = maskPhone(profile.phone);
-    if ($('profileEmail')) $('profileEmail').textContent = profile.email || 'No email added';
+    if ($('profileEmail')) $('profileEmail').textContent = maskEmail(profile.email);
     if ($('profileRoleBadge')) $('profileRoleBadge').textContent = String(profile.role || 'USER').toUpperCase();
     if ($('profileStatusBadge')) $('profileStatusBadge').textContent = status;
-    if ($('profileCountryCurrency')) $('profileCountryCurrency').textContent = pricing + ' pricing - ' + currency + ' wallet';
+    if ($('profileCountryCurrency')) $('profileCountryCurrency').textContent = displayCountry + ' | ' + currency;
     if ($('profileUid')) $('profileUid').textContent = profile.uid || '-';
     if ($('profilePhoneCountry')) $('profilePhoneCountry').textContent = String(profile.phone_country || '-').toUpperCase();
-    if ($('profilePricingCountry')) $('profilePricingCountry').textContent = pricing;
+    if ($('profilePricingCountry')) $('profilePricingCountry').textContent = pricing || '-';
     if ($('profileWalletCurrency')) $('profileWalletCurrency').textContent = currency;
     if ($('profileCreatedAt')) $('profileCreatedAt').textContent = formatDate(profile.created_at);
     if ($('profileLastLogin')) $('profileLastLogin').textContent = formatDate(profile.last_login_at);
+    if ($('profileAppVersion')) $('profileAppVersion').textContent = profileVersionLabel();
+    if ($('profileSessionStatus')) $('profileSessionStatus').textContent = profileSessionStatus(profile.session_status || profile.sessionStatus || 'Active');
     if ($('profileAvatarInitials')) $('profileAvatarInitials').textContent = initials(name);
     if ($('profileAvatarImage')) {
       $('profileAvatarImage').classList.toggle('hidden', !image);
@@ -1004,7 +1037,7 @@
   function renderNotificationBadge(count) {
     const unreadCount = Math.min(99, Math.max(0, Number(count || 0)));
     app.notifications.unreadCount = unreadCount;
-    ['notificationBadge', 'heroNotificationBadge'].forEach((id) => {
+    ['notificationBadge', 'heroNotificationBadge', 'profileNotificationBadge'].forEach((id) => {
       const badge = $(id);
       if (!badge) return;
       badge.textContent = String(unreadCount);
@@ -1248,7 +1281,11 @@
 
   function sectionChanged(sectionId) {
     if (sectionId !== 'supportSection') stopSupportPolling();
-    if (sectionId === 'profileSection') loadProfile(false);
+    if (sectionId === 'profileSection') {
+      loadProfile(false);
+      loadUnreadCount();
+      document.querySelector('.profile-scroll-body')?.scrollTo?.({ top: 0, behavior: 'auto' });
+    }
     if (sectionId === 'supportSection') {
       loadSupportConfig(false);
       loadSupportTickets(false);
@@ -1295,6 +1332,7 @@
 
     $('notificationButton')?.addEventListener('click', openNotificationsPage);
     $('heroNotificationButton')?.addEventListener('click', openNotificationsPage);
+    $('profileNotificationButton')?.addEventListener('click', openNotificationsPage);
     $('notificationsBackButton')?.addEventListener('click', closeNotificationsPage);
     $('notificationsMarkAllButton')?.addEventListener('click', markAllNotifications);
     document.querySelectorAll('[data-notification-filter]').forEach((tab) => {
