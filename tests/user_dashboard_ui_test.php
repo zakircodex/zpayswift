@@ -35,6 +35,7 @@ $hero = dashboard_fragment($dashboard, '<div class="hero-card"', '<div class="an
 $fixedStack = dashboard_fragment($dashboard, '<div class="dashboard-fixed-stack">', '<section id="overviewSection"');
 $overview = dashboard_fragment($dashboard, '<section id="overviewSection"', '<section id="topupSection"');
 $bottomNav = dashboard_fragment($dashboard, '<div class="bottom-nav">', '<script>');
+$loadingPreview = dashboard_fragment($dashboardJs, 'function prepareDashboardLoadingPreview(){', 'function showLogin(){');
 $showApp = dashboard_fragment($dashboardJs, 'function showApp(){', '/* =========================');
 
 dashboard_expect($hero !== '', 'Dashboard hero markup is missing');
@@ -114,10 +115,19 @@ dashboard_expect(
     'Dashboard rate visibility is not pricing-country aware'
 );
 dashboard_expect(
-    str_contains($dashboardJs, "wrap.classList.toggle('session-check'")
-    && str_contains($dashboardJs, "wrap.classList.remove('session-check')")
-    && str_contains($css, '.loading.session-check'),
-    'Session verification does not use the opaque loading state'
+    str_contains($dashboardJs, "const DASHBOARD_LOADING_TEXT = 'Loading dashboard, please wait...'")
+    && !str_contains($dashboardJs, 'Checking session...')
+    && str_contains($dashboardJs, "wrap.classList.toggle('dashboard-load'")
+    && str_contains($css, '.loading.dashboard-load'),
+    'Dashboard loading message or dimmed overlay is not configured'
+);
+dashboard_expect(
+    str_contains($loadingPreview, "heroBalance: '--'")
+    && str_contains($loadingPreview, "document.body.setAttribute('data-active-section', 'overviewSection')")
+    && str_contains($loadingPreview, "document.body.classList.add('user-authenticated', 'dashboard-loading-preview')")
+    && str_contains($loadingPreview, "el('appView')?.classList.remove('hidden')")
+    && str_contains($css, 'body.dashboard-loading-preview #appView'),
+    'Dashboard loading preview is not sanitized before display'
 );
 $sectionStateAt = strpos($showApp, "document.body.setAttribute('data-active-section'");
 $authenticatedAt = strpos($showApp, "document.body.classList.add('user-authenticated')");

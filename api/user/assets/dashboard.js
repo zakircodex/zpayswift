@@ -1,4 +1,5 @@
 const USER_PROXY_URL = window.USER_PROXY_URL || '/api/user/proxy.php';
+const DASHBOARD_LOADING_TEXT = 'Loading dashboard, please wait...';
 
 const state = {
   csrf: '',
@@ -455,7 +456,7 @@ function setBusy(on, text = 'Loading...'){
   if (on) {
     state.busyCount++;
     txt.textContent = text || 'Loading...';
-    wrap.classList.toggle('session-check', String(text || '').trim().toLowerCase() === 'checking session...');
+    wrap.classList.toggle('dashboard-load', String(text || '').trim().toLowerCase() === DASHBOARD_LOADING_TEXT.toLowerCase());
     wrap.classList.add('show');
     return;
   }
@@ -464,7 +465,7 @@ function setBusy(on, text = 'Loading...'){
 
   if (state.busyCount === 0) {
     wrap.classList.remove('show');
-    wrap.classList.remove('session-check');
+    wrap.classList.remove('dashboard-load');
     txt.textContent = 'Loading...';
   }
 }
@@ -633,8 +634,46 @@ function setLoginError(msg = ''){
   box.textContent = msg;
 }
 
+function prepareDashboardLoadingPreview(){
+  const placeholders = {
+    heroBalancePrefix: '',
+    heroBalance: '--',
+    heroHoldPrefix: '',
+    heroHold: '--',
+    heroRate: 'Loading...',
+    heroRequests: '--',
+    heroName: 'Z-Pay User',
+    sideMeName: '-',
+    sideMeRole: '-',
+    sideMeStatus: '-'
+  };
+
+  Object.entries(placeholders).forEach(([id, value]) => {
+    if (el(id)) el(id).textContent = value;
+  });
+
+  ['notificationBadge', 'heroNotificationBadge'].forEach(id => {
+    const badge = el(id);
+    if (!badge) return;
+    badge.textContent = '0';
+    badge.classList.add('hidden');
+  });
+
+  document.querySelectorAll('.page-section').forEach(section => {
+    section.classList.toggle('active', section.id === 'overviewSection');
+  });
+  document.querySelectorAll('.side-btn, .bottom-btn').forEach(button => {
+    button.classList.toggle('active', button.dataset.pageSection === 'overviewSection');
+  });
+
+  document.body.setAttribute('data-active-section', 'overviewSection');
+  document.body.classList.add('user-authenticated', 'dashboard-loading-preview');
+  el('loginView')?.classList.add('hidden');
+  el('appView')?.classList.remove('hidden');
+}
+
 function showLogin(){
-  document.body.classList.remove('user-authenticated');
+  document.body.classList.remove('user-authenticated', 'dashboard-loading-preview');
 
   el('loginView')?.classList.remove('hidden');
   el('appView')?.classList.add('hidden');
@@ -650,6 +689,7 @@ function showApp(){
   const initialSection = getInitialSection();
   document.body.setAttribute('data-active-section', initialSection || 'overviewSection');
   document.body.classList.add('user-authenticated');
+  document.body.classList.remove('dashboard-loading-preview');
 
   el('loginView')?.classList.add('hidden');
   el('appView')?.classList.remove('hidden');
@@ -937,7 +977,7 @@ function applyDashboardBootstrap(data){
   }
 }
 
-async function loadDashboardBootstrap(showBusy = true, busyText = 'Checking session...'){
+async function loadDashboardBootstrap(showBusy = true, busyText = DASHBOARD_LOADING_TEXT){
   const data = await proxyGet(
     'dashboard_bootstrap',
     { limit: state.historyLimit, month: state.historyMonth },
@@ -953,7 +993,7 @@ async function loadMe(options = {}){
   const data = await proxyGet(
     'me',
     {},
-    options.busyText || 'Checking session...',
+    options.busyText || DASHBOARD_LOADING_TEXT,
     { busy: options.busy !== false }
   );
 
@@ -1014,7 +1054,7 @@ async function ensureHistoryLoaded(options = {}){
   });
 }
 
-async function loadInitialDashboard(showBusy = true, busyText = 'Checking session...'){
+async function loadInitialDashboard(showBusy = true, busyText = DASHBOARD_LOADING_TEXT){
   try{
     await loadDashboardBootstrap(showBusy, busyText);
     renderAll();
@@ -1026,7 +1066,7 @@ async function loadInitialDashboard(showBusy = true, busyText = 'Checking sessio
 
     await loadMe({
       busy: showBusy,
-      busyText: 'Checking session...'
+      busyText: DASHBOARD_LOADING_TEXT
     });
 
     await Promise.all([
@@ -1039,7 +1079,7 @@ async function loadInitialDashboard(showBusy = true, busyText = 'Checking sessio
 }
 
 async function refreshAll(showMessage = false){
-  await loadInitialDashboard(true, showMessage ? 'Refreshing dashboard...' : 'Checking session...');
+  await loadInitialDashboard(true, showMessage ? 'Refreshing dashboard...' : DASHBOARD_LOADING_TEXT);
 
   if (el('bundleSection')?.classList.contains('active')) {
     await loadBundleOffers().catch(err => {
@@ -3703,8 +3743,9 @@ async function doLogin(){
     state.me = data.user || null;
     state.csrf = data.csrf || '';
 
-    showApp();
+    prepareDashboardLoadingPreview();
     await refreshAll(false);
+    showApp();
     openSection(getInitialSection(), { history: false });
     showToast('Login successful', 'ok');
   }catch(err){
@@ -3774,8 +3815,9 @@ async function verifyLoginOtp(){
     state.csrf = data.csrf || '';
 
     closeLoginOtpModal();
-    showApp();
+    prepareDashboardLoadingPreview();
     await refreshAll(false);
+    showApp();
     openSection(getInitialSection(), { history: false });
     showToast('Login successful', 'ok');
   }catch(err){
@@ -4214,9 +4256,10 @@ window.showMfsErrorModal = showMfsErrorModal;
 
 async function bootstrap(){
   bindEvents();
+  prepareDashboardLoadingPreview();
 
   try{
-    await loadInitialDashboard(true, 'Checking session...');
+    await loadInitialDashboard(true, DASHBOARD_LOADING_TEXT);
   }catch(err){
     setBusy(false);
     showLogin();

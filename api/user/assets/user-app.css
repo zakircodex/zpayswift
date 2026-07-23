@@ -1433,9 +1433,20 @@ body.user-authenticated .filter-btn.active {
   z-index: 140;
 }
 
-.loading.session-check {
-  background: linear-gradient(180deg, var(--z-bg-deep) 0%, var(--z-bg) 100%);
-  backdrop-filter: none;
+.loading.dashboard-load {
+  background: rgba(4, 16, 31, 0.48);
+  backdrop-filter: blur(2px);
+}
+
+body.dashboard-loading-preview #appView {
+  pointer-events: none;
+  user-select: none;
+}
+
+body.dashboard-loading-preview .hero-balance,
+body.dashboard-loading-preview .hero-hold-line,
+body.dashboard-loading-preview .hero-mini-value {
+  opacity: 0.72;
 }
 
 .loading-box {
