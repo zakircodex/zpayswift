@@ -455,6 +455,7 @@ function setBusy(on, text = 'Loading...'){
   if (on) {
     state.busyCount++;
     txt.textContent = text || 'Loading...';
+    wrap.classList.toggle('session-check', String(text || '').trim().toLowerCase() === 'checking session...');
     wrap.classList.add('show');
     return;
   }
@@ -463,6 +464,7 @@ function setBusy(on, text = 'Loading...'){
 
   if (state.busyCount === 0) {
     wrap.classList.remove('show');
+    wrap.classList.remove('session-check');
     txt.textContent = 'Loading...';
   }
 }
@@ -645,6 +647,8 @@ function showLogin(){
 }
 
 function showApp(){
+  const initialSection = getInitialSection();
+  document.body.setAttribute('data-active-section', initialSection || 'overviewSection');
   document.body.classList.add('user-authenticated');
 
   el('loginView')?.classList.add('hidden');

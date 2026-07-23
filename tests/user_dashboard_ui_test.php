@@ -35,6 +35,7 @@ $hero = dashboard_fragment($dashboard, '<div class="hero-card"', '<div class="an
 $fixedStack = dashboard_fragment($dashboard, '<div class="dashboard-fixed-stack">', '<section id="overviewSection"');
 $overview = dashboard_fragment($dashboard, '<section id="overviewSection"', '<section id="topupSection"');
 $bottomNav = dashboard_fragment($dashboard, '<div class="bottom-nav">', '<script>');
+$showApp = dashboard_fragment($dashboardJs, 'function showApp(){', '/* =========================');
 
 dashboard_expect($hero !== '', 'Dashboard hero markup is missing');
 dashboard_expect(
@@ -111,6 +112,23 @@ dashboard_expect(
     str_contains($dashboardJs, "pricingCountry === 'MY'")
     && str_contains($dashboardJs, ": 'Not applicable'"),
     'Dashboard rate visibility is not pricing-country aware'
+);
+dashboard_expect(
+    str_contains($dashboardJs, "wrap.classList.toggle('session-check'")
+    && str_contains($dashboardJs, "wrap.classList.remove('session-check')")
+    && str_contains($css, '.loading.session-check'),
+    'Session verification does not use the opaque loading state'
+);
+$sectionStateAt = strpos($showApp, "document.body.setAttribute('data-active-section'");
+$authenticatedAt = strpos($showApp, "document.body.classList.add('user-authenticated')");
+$appRevealAt = strpos($showApp, "el('appView')?.classList.remove('hidden')");
+dashboard_expect(
+    $sectionStateAt !== false
+    && $authenticatedAt !== false
+    && $appRevealAt !== false
+    && $sectionStateAt < $authenticatedAt
+    && $authenticatedAt < $appRevealAt,
+    'Authenticated layout state is not prepared before the app is revealed'
 );
 dashboard_expect(
     str_contains($appJs, "event.target.closest('[data-dashboard-action]')")
