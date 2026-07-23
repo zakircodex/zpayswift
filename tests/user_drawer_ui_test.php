@@ -100,7 +100,7 @@ drawer_expect(
     'Drawer open buttons do not expose aria-expanded/controls'
 );
 drawer_expect(
-    str_contains($dashboard, '/api/user/assets/user-app.css?v=9')
+    str_contains($dashboard, '/api/user/assets/user-app.css?v=10')
     && str_contains($dashboard, '/api/user/assets/dashboard.js?v=26')
     && str_contains($dashboard, '/api/user/assets/user-app.js?v=6'),
     'Drawer asset versions were not bumped after the alignment CSS/JS change'
@@ -121,6 +121,9 @@ drawer_expect(
 drawer_expect(
     str_contains($appCss, 'width: min(86vw, 336px)')
     && str_contains($appCss, 'border-radius: 0 30px 30px 0')
+    && str_contains($appCss, 'z-index: 170')
+    && str_contains($appCss, 'z-index: 160')
+    && str_contains($appCss, 'backdrop-filter: none')
     && str_contains($appCss, 'rgba(50, 230, 134')
     && str_contains($appCss, '.sidebar-overlay.show')
     && str_contains($appCss, 'transform: translateX(0)'),

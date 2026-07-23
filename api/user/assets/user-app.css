@@ -2374,7 +2374,7 @@ body.user-drawer-open {
 .user-drawer.sidebar {
   position: fixed;
   inset: 0 auto 0 0;
-  z-index: 96;
+  z-index: 170;
   display: flex;
   flex-direction: column;
   width: min(86vw, 336px);
@@ -2414,9 +2414,11 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 }
 
 .sidebar-overlay {
+  z-index: 160;
   background: rgba(1, 8, 20, 0.62);
   opacity: 0;
-  backdrop-filter: blur(3px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   transition: opacity 0.2s ease;
 }
 
