@@ -100,7 +100,7 @@ drawer_expect(
     'Drawer open buttons do not expose aria-expanded/controls'
 );
 drawer_expect(
-    str_contains($dashboard, '/api/user/assets/user-app.css?v=13')
+    str_contains($dashboard, '/api/user/assets/user-app.css?v=14')
     && str_contains($dashboard, '/api/user/assets/dashboard.js?v=28')
     && str_contains($dashboard, '/api/user/assets/user-app.js?v=6'),
     'Drawer asset versions were not bumped after the alignment CSS/JS change'
@@ -147,6 +147,7 @@ drawer_expect(
     && str_contains($appCss, '.logout-confirm-icon')
     && str_contains($appCss, '.logout-confirm-actions')
     && str_contains($appCss, 'flex-direction: row')
+    && str_contains($appCss, 'border-radius: 18px')
     && str_contains($appCss, '.drawer-logout .drawer-menu-copy')
     && str_contains($appCss, 'text-align: left'),
     'Web version alignment or logout confirmation styling is missing'
