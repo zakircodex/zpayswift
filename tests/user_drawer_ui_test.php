@@ -99,6 +99,12 @@ drawer_expect(
     && str_contains($dashboard, 'id="heroMenuButton"'),
     'Drawer open buttons do not expose aria-expanded/controls'
 );
+drawer_expect(
+    str_contains($dashboard, '/api/user/assets/user-app.css?v=9')
+    && str_contains($dashboard, '/api/user/assets/dashboard.js?v=26')
+    && str_contains($dashboard, '/api/user/assets/user-app.js?v=6'),
+    'Drawer asset versions were not bumped after the alignment CSS/JS change'
+);
 
 drawer_expect(
     str_contains($appCss, '.user-drawer.sidebar')
@@ -119,6 +125,16 @@ drawer_expect(
     && str_contains($appCss, '.sidebar-overlay.show')
     && str_contains($appCss, 'transform: translateX(0)'),
     'Android-like drawer width, overlay, accent or animation CSS is missing'
+);
+drawer_expect(
+    str_contains($appCss, '.user-drawer .drawer-avatar > img#drawerAvatarImage')
+    && str_contains($appCss, 'width: 100% !important')
+    && str_contains($appCss, 'max-width: 100% !important')
+    && str_contains($appCss, 'object-fit: cover')
+    && str_contains($appCss, '.user-drawer .drawer-menu-copy')
+    && str_contains($appCss, 'flex-direction: column')
+    && str_contains($appCss, 'white-space: normal'),
+    'Drawer avatar and menu text alignment hardening is missing'
 );
 
 drawer_expect(

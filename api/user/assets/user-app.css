@@ -2770,3 +2770,60 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
     transition: none;
   }
 }
+
+/* Drawer alignment hardening for cached/mobile browser quirks */
+.user-drawer,
+.user-drawer * {
+  box-sizing: border-box;
+}
+
+.user-drawer button,
+.user-drawer a {
+  font: inherit;
+}
+
+.user-drawer .drawer-profile-fixed {
+  max-width: 100%;
+}
+
+.user-drawer .drawer-avatar {
+  flex: 0 0 auto;
+}
+
+.user-drawer .drawer-avatar > img#drawerAvatarImage {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100% !important;
+  max-width: 100% !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  object-fit: cover;
+  border-radius: inherit;
+}
+
+.user-drawer .drawer-profile-copy,
+.user-drawer .drawer-menu-copy {
+  align-items: start;
+  justify-items: start;
+  text-align: left;
+}
+
+.user-drawer .drawer-menu-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+
+.user-drawer .drawer-menu-copy strong,
+.user-drawer .drawer-menu-copy small {
+  width: 100%;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.user-drawer .drawer-version .drawer-menu-copy {
+  align-items: end;
+  text-align: right;
+}
