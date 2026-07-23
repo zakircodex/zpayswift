@@ -570,7 +570,6 @@ function ensureLogoutConfirmModal(){
   wrap.setAttribute('aria-labelledby', 'logoutConfirmTitle');
   wrap.innerHTML = `
     <div class="modal-card modal-card-sm logout-confirm-card">
-      <button id="closeLogoutConfirmModalBtn" class="modal-close" type="button" aria-label="Close">&times;</button>
       <div class="logout-confirm-icon" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M10 4h9v16h-9v-2h7V6h-7V4Zm-1 4 1.4 1.4L8.8 11H15v2H8.8l1.6 1.6L9 16l-4-4 4-4Z"/></svg>
       </div>
@@ -585,7 +584,6 @@ function ensureLogoutConfirmModal(){
   document.body.appendChild(wrap);
 
   const close = () => hideModalById('logoutConfirmModal');
-  el('closeLogoutConfirmModalBtn')?.addEventListener('click', close);
   el('cancelLogoutConfirmBtn')?.addEventListener('click', close);
   el('confirmLogoutBtn')?.addEventListener('click', () => {
     hideModalById('logoutConfirmModal');
@@ -986,6 +984,7 @@ function renderDrawerProfile(){
     wallet.currency ||
     (pricingCountry === 'MY' ? 'MYR' : 'BDT')
   ).toUpperCase() === 'MYR' ? 'MYR' : 'BDT';
+  const displayCountry = drawerCountryLabel(pricingCountry || (currency === 'MYR' ? 'MY' : 'BD'));
   const image = drawerSafeImage(
     me.profile_photo_url ||
     me.photo_url ||
@@ -998,7 +997,7 @@ function renderDrawerProfile(){
   if (el('drawerUserPhone')) el('drawerUserPhone').textContent = maskDrawerPhone(phone);
   if (el('drawerRoleChip')) el('drawerRoleChip').textContent = role === 'USER' ? 'User' : role;
   if (el('drawerStatusChip')) el('drawerStatusChip').textContent = userStatusLabel(status);
-  if (el('drawerCountryCurrency')) el('drawerCountryCurrency').textContent = drawerCountryLabel(pricingCountry) + ' | ' + currency;
+  if (el('drawerCountryCurrency')) el('drawerCountryCurrency').textContent = displayCountry + ' | ' + currency;
   if (el('drawerAvatarInitials')) el('drawerAvatarInitials').textContent = drawerInitials(name);
 
   const img = el('drawerAvatarImage');

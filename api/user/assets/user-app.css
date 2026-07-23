@@ -2702,8 +2702,21 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 }
 
 .drawer-logout {
+  grid-template-columns: 46px minmax(0, 1fr) 46px;
   margin-top: 2px;
   margin-bottom: 4px;
+}
+
+.drawer-logout::after {
+  content: "";
+  width: 46px;
+  height: 1px;
+}
+
+.drawer-logout .drawer-menu-copy {
+  align-items: center;
+  justify-items: center;
+  text-align: center;
 }
 
 .drawer-logout .drawer-menu-icon {
@@ -2717,6 +2730,10 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 
 .logout-confirm-card {
   text-align: center;
+}
+
+.logout-confirm-card .modal-title {
+  margin-right: 0;
 }
 
 .logout-confirm-icon {
@@ -2738,8 +2755,16 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 }
 
 .logout-confirm-actions {
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
   gap: 10px;
+}
+
+.logout-confirm-actions .btn {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
 }
 
 @media (min-width: 769px) {
@@ -2789,6 +2814,14 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
     grid-template-columns: 42px minmax(0, 1fr) 16px;
     gap: 10px;
     border-radius: 20px;
+  }
+
+  .user-drawer .drawer-logout {
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+  }
+
+  .user-drawer .drawer-logout::after {
+    width: 42px;
   }
 
   .drawer-menu-icon {
@@ -2861,4 +2894,10 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 .user-drawer .drawer-version .drawer-menu-copy {
   align-items: start;
   text-align: left;
+}
+
+.user-drawer .drawer-logout .drawer-menu-copy {
+  align-items: center;
+  justify-items: center;
+  text-align: center;
 }
