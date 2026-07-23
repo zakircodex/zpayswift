@@ -2690,6 +2690,12 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
   opacity: 0.86;
 }
 
+.drawer-version .drawer-menu-copy {
+  align-items: start;
+  justify-items: start;
+  text-align: left;
+}
+
 .drawer-version:hover,
 .drawer-version:active {
   transform: none;
@@ -2707,6 +2713,33 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 
 .drawer-logout .drawer-chevron {
   display: none;
+}
+
+.logout-confirm-card {
+  text-align: center;
+}
+
+.logout-confirm-icon {
+  width: 62px;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 12px;
+  border: 1px solid rgba(255, 138, 168, 0.38);
+  border-radius: 22px;
+  background: rgba(80, 21, 37, 0.45);
+  color: #ff8aa8;
+}
+
+.logout-confirm-icon svg {
+  width: 30px;
+  height: 30px;
+  fill: currentColor;
+}
+
+.logout-confirm-actions {
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
 @media (min-width: 769px) {
@@ -2826,6 +2859,6 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 }
 
 .user-drawer .drawer-version .drawer-menu-copy {
-  align-items: end;
-  text-align: right;
+  align-items: start;
+  text-align: left;
 }

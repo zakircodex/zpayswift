@@ -559,6 +559,50 @@ function showUserExitModal(){
   showModalById('userExitModal');
 }
 
+function ensureLogoutConfirmModal(){
+  if (el('logoutConfirmModal')) return;
+
+  const wrap = document.createElement('div');
+  wrap.id = 'logoutConfirmModal';
+  wrap.className = 'modal';
+  wrap.setAttribute('role', 'dialog');
+  wrap.setAttribute('aria-modal', 'true');
+  wrap.setAttribute('aria-labelledby', 'logoutConfirmTitle');
+  wrap.innerHTML = `
+    <div class="modal-card modal-card-sm logout-confirm-card">
+      <button id="closeLogoutConfirmModalBtn" class="modal-close" type="button" aria-label="Close">&times;</button>
+      <div class="logout-confirm-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M10 4h9v16h-9v-2h7V6h-7V4Zm-1 4 1.4 1.4L8.8 11H15v2H8.8l1.6 1.6L9 16l-4-4 4-4Z"/></svg>
+      </div>
+      <h3 id="logoutConfirmTitle" class="modal-title">Logout?</h3>
+      <p class="modal-sub">Do you really want to logout from this browser?</p>
+      <div class="wizard-actions logout-confirm-actions">
+        <button id="cancelLogoutConfirmBtn" class="btn ghost" type="button">Cancel</button>
+        <button id="confirmLogoutBtn" class="btn green" type="button">Yes, Logout</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+
+  const close = () => hideModalById('logoutConfirmModal');
+  el('closeLogoutConfirmModalBtn')?.addEventListener('click', close);
+  el('cancelLogoutConfirmBtn')?.addEventListener('click', close);
+  el('confirmLogoutBtn')?.addEventListener('click', () => {
+    hideModalById('logoutConfirmModal');
+    doLogout();
+  });
+  wrap.addEventListener('click', event => {
+    if (event.target === wrap) close();
+  });
+}
+
+function requestLogoutConfirmation(){
+  ensureLogoutConfirmModal();
+  closeSidebar({ restoreFocus: false });
+  showModalById('logoutConfirmModal');
+  setTimeout(() => el('cancelLogoutConfirmBtn')?.focus?.({ preventScroll: true }), 0);
+}
+
 function handleUserPopState(event){
   if (userBackExitAllowed) return;
 
@@ -4211,8 +4255,8 @@ function bindEvents(){
   el('quickRefreshBtn')?.addEventListener('click', () => safeRefreshAll(true));
   el('desktopRefreshBtn')?.addEventListener('click', () => safeRefreshAll(true));
   el('sidebarRefreshBtn')?.addEventListener('click', () => safeRefreshAll(true));
-  el('sidebarLogoutBtn')?.addEventListener('click', doLogout);
-  el('drawerLogoutBtn')?.addEventListener('click', doLogout);
+  el('sidebarLogoutBtn')?.addEventListener('click', requestLogoutConfirmation);
+  el('drawerLogoutBtn')?.addEventListener('click', requestLogoutConfirmation);
   document.querySelectorAll('.user-drawer [data-dashboard-action]').forEach(btn => {
     if (btn.dataset.bound === '1') return;
     btn.dataset.bound = '1';
