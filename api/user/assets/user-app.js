@@ -959,10 +959,12 @@
   }
 
   function renderNotificationBadge(count) {
-    const badge = $('notificationBadge');
-    if (!badge) return;
-    badge.textContent = String(Math.min(99, Math.max(0, count)));
-    badge.classList.toggle('hidden', count < 1);
+    ['notificationBadge', 'heroNotificationBadge'].forEach((id) => {
+      const badge = $(id);
+      if (!badge) return;
+      badge.textContent = String(Math.min(99, Math.max(0, count)));
+      badge.classList.toggle('hidden', count < 1);
+    });
   }
 
   async function openNotifications() {
@@ -1073,6 +1075,7 @@
     });
 
     $('notificationButton')?.addEventListener('click', openNotifications);
+    $('heroNotificationButton')?.addEventListener('click', openNotifications);
     $('profileEditButton')?.addEventListener('click', editProfile);
     $('profileAvatarButton')?.addEventListener('click', () => $('profilePhotoInput')?.click());
     $('profilePhotoInput')?.addEventListener('change', (event) => uploadProfilePhoto(event.target.files && event.target.files[0]));

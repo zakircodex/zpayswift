@@ -779,9 +779,10 @@ function closeSidebar(){
 function syncSidebarAccessibility(isOpen = false){
   const sidebar = el('sidebar');
   if (!sidebar) return;
-  const hiddenOnMobile = window.innerWidth <= 980 && !isOpen;
-  sidebar.toggleAttribute('inert', hiddenOnMobile);
-  sidebar.setAttribute('aria-hidden', hiddenOnMobile ? 'true' : 'false');
+  const activeSection = document.body.getAttribute('data-active-section') || 'overviewSection';
+  const hiddenFromLayout = !isOpen && (window.innerWidth <= 980 || activeSection === 'overviewSection');
+  sidebar.toggleAttribute('inert', hiddenFromLayout);
+  sidebar.setAttribute('aria-hidden', hiddenFromLayout ? 'true' : 'false');
 }
 
 function getInitialSection(){
@@ -845,8 +846,10 @@ function openSection(sectionId, options = {}){
     );
   }
 
-  if (window.innerWidth <= 980) {
+  if (window.innerWidth <= 980 || el('sidebar')?.classList.contains('show')) {
     closeSidebar();
+  } else {
+    syncSidebarAccessibility(false);
   }
 
   if (sectionId === 'topupSection') {
@@ -1277,12 +1280,12 @@ function renderHero(){
   if (el('heroRate')) {
     const pricingCountry = String(me.pricing_country || data.pricing_country || wallet.pricing_country || '').toUpperCase();
     const rate = Number(wallet.rate_myr_bdt || data.rate_myr_bdt || data.current_rate || 0);
-    el('heroRate').textContent = pricingCountry === 'MY' && rate > 0
-      ? `RM 1 = ${rate.toFixed(2)} BDT`
-      : 'BDT Wallet';
+    el('heroRate').textContent = pricingCountry === 'MY'
+      ? (rate > 0 ? `RM 1 = ${rate.toFixed(2)} BDT` : 'Rate unavailable')
+      : 'Not applicable';
   }
   if (el('heroName')) {
-    el('heroName').textContent = String(me.name || data.name || 'Z-Pay User').toUpperCase();
+    el('heroName').textContent = String(me.name || data.name || 'Z-Pay User');
   }
   if (el('heroRole')) el('heroRole').textContent = String(me.role || data.role || '-').toUpperCase();
 
@@ -3970,6 +3973,7 @@ function bindEvents(){
       openSection('overviewSection');
     }
   });
+  el('heroMenuButton')?.addEventListener('click', openSidebar);
   el('sidebarOverlay')?.addEventListener('click', closeSidebar);
 
   el('quickRefreshBtn')?.addEventListener('click', () => safeRefreshAll(true));

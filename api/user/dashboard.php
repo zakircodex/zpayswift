@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=1">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=2">
 </head>
 <body>
 
@@ -178,14 +178,16 @@ header('Pragma: no-cache');
         </div>
       </div>
 
-      <div class="hero-card">
-        <div class="hero-top desktop-only">
-          <div class="status-chip">
-            <span class="status-dot"></span>
-            <span id="heroStatusText">ACTIVE</span>
-          </div>
-
-          <button id="desktopRefreshBtn" class="icon-btn icon-btn-sm" type="button">↻</button>
+      <div class="hero-card" aria-labelledby="dashboardHeroTitle">
+        <div class="dashboard-hero-topbar">
+          <button id="heroMenuButton" class="icon-btn hero-menu-button" type="button" aria-label="Open menu" aria-controls="sidebar">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6.5h16v2H4v-2Zm0 4.5h16v2H4v-2Zm0 4.5h16v2H4v-2Z"/></svg>
+          </button>
+          <h1 id="dashboardHeroTitle" class="dashboard-hero-title">Z-Pay Swift</h1>
+          <button id="heroNotificationButton" class="icon-btn notification-button" type="button" aria-label="Notifications">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 22a2.5 2.5 0 0 0 2.35-1.65h-4.7A2.5 2.5 0 0 0 12 22Zm7-5.5-1.4-1.7V10a5.6 5.6 0 0 0-4.35-5.45V3.5a1.25 1.25 0 1 0-2.5 0v1.05A5.6 5.6 0 0 0 6.4 10v4.8L5 16.5V18h14v-1.5Z"/></svg>
+            <span id="heroNotificationBadge" class="notification-badge hidden">0</span>
+          </button>
         </div>
 
         <div class="hero-balance-label">Available Balance</div>
@@ -215,31 +217,43 @@ header('Pragma: no-cache');
       </div>
 
       <div class="android-tagline" aria-label="Z-Pay Swift tagline">
-        <div class="android-tagline-track">টাকা পাঠানোর সব থেকে সহজ উপায় &quot;Z-Pay Swift&quot;</div>
+        <div class="android-tagline-track">টাকা পাঠানোর সব থেকে সহজ উপায় &quot;Z-Pay Swift&quot;</div>
       </div>
 
       <section id="overviewSection" class="page-section active">
-        <div class="summary-card">
-          <div class="section-head">
-            <div>
-              <h3 class="section-title">Account Summary</h3>
-              <p class="section-sub">Your profile, wallet and access information</p>
-            </div>
+        <div id="zpayQuickActions" class="zpay-quick-card dashboard-recommended">
+          <div class="zpay-quick-head">
+            <h2 class="zpay-quick-title">Recommended</h2>
           </div>
-
-          <div class="summary-grid">
-            <div class="summary-box"><label>Name</label><strong id="meName">-</strong></div>
-            <div class="summary-box"><label>Phone</label><strong id="mePhone">-</strong></div>
-            <div class="summary-box"><label>Email</label><strong id="meEmail">-</strong></div>
-            <div class="summary-box"><label>Role</label><strong id="meRole">-</strong></div>
-            <div class="summary-box"><label>Status</label><strong id="meStatus">-</strong></div>
-            <div class="summary-box"><label>Last Login</label><strong id="meLastLogin">-</strong></div>
-            <div class="summary-box"><label>Commission / 1000</label><strong id="meCommission">0.00</strong></div>
-            <div class="summary-box"><label>API Enabled</label><strong id="meApiEnabled">No</strong></div>
-            <div class="summary-box"><label>Topup Enabled</label><strong id="meTopupEnabled">No</strong></div>
-            <div class="summary-box"><label>Bundle Enabled</label><strong id="meBundleEnabled">No</strong></div>
-            <div class="summary-box"><label>Amount Limits</label><strong id="meAmountLimits">0.00 - 0.00</strong></div>
-            <div class="summary-box"><label>Wallet Updated</label><strong id="meWalletUpdated">-</strong></div>
+          <div class="zpay-service-grid">
+            <button class="zpay-service-btn" type="button" data-open-section="addMoneySection" aria-label="Add Money">
+              <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5V8h-5a3 3 0 0 0 0 6h5v3.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11Zm11 3.5a1 1 0 1 0 0 2h5v-2h-5Z"/></svg></span>
+              <span class="zpay-service-name">Add Money</span>
+            </button>
+            <button class="zpay-service-btn" type="button" data-open-section="transferSection" aria-label="Transfer">
+              <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m15.5 4 4 4-4 4V9H5V7h10.5V4ZM8.5 12v3H19v2H8.5v3l-4-4 4-4Z"/></svg></span>
+              <span class="zpay-service-name">Transfer</span>
+            </button>
+            <button class="zpay-service-btn" type="button" data-open-section="topupSection" aria-label="Top-Up">
+              <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm0 3v12h8V5H8Zm3 14v1h2v-1h-2Z"/></svg></span>
+              <span class="zpay-service-name">Top-Up</span>
+            </button>
+            <button class="zpay-service-btn" type="button" data-open-section="mfsSection" data-mfs-provider="BKASH" aria-label="bKash">
+              <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 12 15-8-4.5 16-3.2-6.1L4 12Zm7.8-.2 1.7 3.2 1.9-6.7-6.3 3.4 2.7.1Z"/></svg></span>
+              <span class="zpay-service-name">bKash</span>
+            </button>
+            <button class="zpay-service-btn" type="button" data-open-section="mfsSection" data-mfs-provider="NAGAD" aria-label="Nagad">
+              <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m4 12 15-8-4.5 16-3.2-6.1L4 12Zm7.8-.2 1.7 3.2 1.9-6.7-6.3 3.4 2.7.1Z"/></svg></span>
+              <span class="zpay-service-name">Nagad</span>
+            </button>
+            <button class="zpay-service-btn" type="button" data-open-section="bundleSection" aria-label="Bundle">
+              <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></span>
+              <span class="zpay-service-name">Bundle</span>
+            </button>
+            <button class="zpay-service-btn" type="button" data-open-section="supportSection" aria-label="Contact Us">
+              <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9v4a3 3 0 0 0 3 3h2v-8H5.1a7 7 0 0 1 13.8 0H16v8h2.1A3.1 3.1 0 0 1 15 21h-3v-2h3a1 1 0 0 0 1-1v-7h3v5h1v-4a7 7 0 0 0-14 0v5h1v-6h3v8H6a3 3 0 0 1-3-3v-4a9 9 0 0 1 9-9Z"/></svg></span>
+              <span class="zpay-service-name">Contact Us</span>
+            </button>
           </div>
         </div>
       </section>
@@ -825,17 +839,17 @@ header('Pragma: no-cache');
       <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5v9A1.5 1.5 0 0 1 19.5 21h-4.25v-6h-6.5v6H4.5A1.5 1.5 0 0 1 3 19.5v-9Z"/></svg></span>
       <span class="bottom-label">Home</span>
     </button>
-    <button class="bottom-btn" data-page-section="servicesSection" type="button" aria-label="Services">
-      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 3h6v6H4V3Zm10 0h6v6h-6V3ZM4 15h6v6H4v-6Zm10 0h6v6h-6v-6Z"/></svg></span>
-      <span class="bottom-label">Services</span>
+    <button class="bottom-btn" data-page-section="addMoneySection" type="button" aria-label="Add Money">
+      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5V8h-5a3 3 0 0 0 0 6h5v3.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5v-11Zm11 3.5a1 1 0 1 0 0 2h5v-2h-5Z"/></svg></span>
+      <span class="bottom-label">Add Money</span>
+    </button>
+    <button class="bottom-btn" data-page-section="transferSection" type="button" aria-label="Transfer">
+      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m15.5 4 4 4-4 4V9H5V7h10.5V4ZM8.5 12v3H19v2H8.5v3l-4-4 4-4Z"/></svg></span>
+      <span class="bottom-label">Transfer</span>
     </button>
     <button class="bottom-btn" data-page-section="historySection" type="button" aria-label="History">
       <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 1-8.5 12h2.2A7 7 0 1 0 5 12H2l4-4 4 4H7a5 5 0 1 1 1.5 3.6l1.4-1.4A3 3 0 1 0 9 12h3V7h2v7H9V9.4l-1.8 1.8A7 7 0 0 0 12 19a7 7 0 0 0 0-14Z"/></svg></span>
       <span class="bottom-label">History</span>
-    </button>
-    <button class="bottom-btn" data-page-section="supportSection" type="button" aria-label="Support">
-      <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9v4a3 3 0 0 0 3 3h2v-8H5.1a7 7 0 0 1 13.8 0H16v8h2.1A3.1 3.1 0 0 1 15 21h-3v-2h3a1 1 0 0 0 1-1v-7h3v5h1v-4a7 7 0 0 0-14 0v5h1v-6h3v8H6a3 3 0 0 1-3-3v-4a9 9 0 0 1 9-9Z"/></svg></span>
-      <span class="bottom-label">Support</span>
     </button>
     <button class="bottom-btn" data-page-section="profileSection" type="button" aria-label="Profile">
       <span class="bottom-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 2c-5 0-8 2.6-8 6v1h16v-1c0-3.4-3-6-8-6Z"/></svg></span>
@@ -848,8 +862,8 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=21"></script>
+<script src="/api/user/assets/dashboard.js?v=22"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=12"></script>
-<script src="/api/user/assets/user-app.js?v=1"></script>
+<script src="/api/user/assets/user-app.js?v=2"></script>
 </body>
 </html>

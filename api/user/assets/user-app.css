@@ -1554,3 +1554,304 @@ body.user-authenticated .filter-btn.active {
     grid-template-columns: 1fr;
   }
 }
+
+/* Android-aligned Dashboard shell. Other User Panel sections keep their existing layout. */
+body.user-authenticated[data-active-section='overviewSection'] {
+  min-width: 0;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .main-panel {
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 0 0 calc(var(--z-nav-height) + 28px + env(safe-area-inset-bottom));
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .mobile-header {
+  display: none;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-card {
+  width: min(calc(100% - 28px), 760px);
+  margin: 8px auto 0;
+  padding: 14px 16px 16px;
+  border: 1px solid rgba(50, 230, 134, 0.3);
+  border-radius: 28px;
+  background: linear-gradient(135deg, #123f7a 0%, #0a3b70 54%, #075b63 100%);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28), 0 0 24px rgba(50, 230, 134, 0.08);
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-card::after {
+  display: none;
+}
+
+.dashboard-hero-topbar {
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+}
+
+.dashboard-hero-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--z-text);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-hero-topbar .icon-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-balance-label {
+  margin-top: 10px;
+  color: var(--z-muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-balance-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-top: 4px;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-balance {
+  overflow: hidden;
+  font-size: 30px;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-add-money {
+  min-width: 104px;
+  min-height: 38px;
+  padding: 0 10px;
+  border-radius: 20px;
+  font-size: 12px;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-hold-line {
+  margin-top: 6px;
+  color: var(--z-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-grid {
+  gap: 8px;
+  margin-top: 10px;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-mini {
+  min-height: 60px;
+  gap: 4px;
+  padding: 7px 5px;
+  border-radius: 18px;
+  background: rgba(7, 23, 47, 0.22);
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-mini:first-child {
+  border-color: rgba(50, 230, 134, 0.55);
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-mini-label {
+  color: var(--z-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-mini:first-child .hero-mini-label,
+body.user-authenticated[data-active-section='overviewSection'] .hero-mini:first-child .hero-mini-value {
+  color: var(--z-green);
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-mini-value {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--z-text);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .android-tagline {
+  width: min(calc(100% - 36px), 752px);
+  min-height: 48px;
+  height: auto;
+  justify-content: center;
+  margin: 10px auto 0;
+  border-radius: 18px;
+  background: rgba(11, 45, 92, 0.84);
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .android-tagline-track {
+  min-width: 0;
+  padding: 11px 16px;
+  animation: none;
+  color: var(--z-text);
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: center;
+  white-space: normal;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] #overviewSection {
+  width: min(calc(100% - 36px), 752px);
+  margin: 0 auto;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .dashboard-recommended {
+  margin: 18px 0 0;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .dashboard-recommended .zpay-quick-head {
+  margin-bottom: 8px;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .dashboard-recommended .zpay-quick-title {
+  margin: 0;
+  color: var(--z-text);
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .dashboard-recommended .zpay-service-grid {
+  max-width: 560px;
+  grid-template-columns: repeat(3, minmax(0, 168px));
+  justify-content: center;
+  gap: 8px;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .dashboard-recommended .zpay-service-btn {
+  min-height: 104px;
+  gap: 8px;
+  padding: 12px 8px;
+  border-radius: 18px;
+  background: rgba(11, 45, 92, 0.82);
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .dashboard-recommended .zpay-service-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 16px;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .dashboard-recommended .zpay-service-icon svg {
+  width: 27px;
+  height: 27px;
+  fill: currentColor;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .dashboard-recommended .zpay-service-name {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .bottom-nav {
+  left: 0;
+  padding: 0 18px calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, transparent, rgba(4, 16, 31, 0.96) 38%);
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .bottom-nav-inner {
+  min-height: 76px;
+  padding: 7px 5px;
+  border-radius: 24px;
+  background: rgba(11, 45, 92, 0.97);
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .bottom-btn {
+  min-height: 60px;
+  border-radius: 16px;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .bottom-btn.active {
+  color: var(--z-green);
+  background: rgba(50, 230, 134, 0.1);
+}
+
+@media (min-width: 981px) {
+  body.user-authenticated[data-active-section='overviewSection'] .app-shell {
+    display: block;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .sidebar:not(.show) {
+    display: none;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .sidebar.show {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 95;
+    display: block;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .bottom-nav {
+    left: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  body.user-authenticated[data-active-section='overviewSection'] .dashboard-recommended .zpay-service-grid {
+    max-width: none;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 360px) {
+  body.user-authenticated[data-active-section='overviewSection'] .hero-card {
+    padding-right: 13px;
+    padding-left: 13px;
+  }
+
+  .dashboard-hero-title {
+    font-size: 20px;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .hero-balance {
+    font-size: 26px;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .hero-add-money {
+    min-width: 92px;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .hero-mini-label {
+    font-size: 10px;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .hero-mini-value {
+    font-size: 9px;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .dashboard-recommended .zpay-service-btn {
+    min-height: 98px;
+    padding-right: 5px;
+    padding-left: 5px;
+  }
+}
+
+@media (max-width: 330px) {
+  body.user-authenticated[data-active-section='overviewSection'] .hero-balance-row {
+    grid-template-columns: 1fr;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .hero-add-money {
+    justify-self: start;
+    margin-top: 8px;
+  }
+}

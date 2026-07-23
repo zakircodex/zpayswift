@@ -44,7 +44,7 @@ foreach (['servicesSection', 'transferSection', 'profileSection', 'supportSectio
     expect_true(contains($source['dashboard'], 'id="' . $sectionId . '"'), "missing User Panel section {$sectionId}");
 }
 
-foreach (['overviewSection', 'servicesSection', 'historySection', 'supportSection', 'profileSection'] as $sectionId) {
+foreach (['overviewSection', 'addMoneySection', 'transferSection', 'historySection', 'profileSection'] as $sectionId) {
     expect_true(contains($source['dashboard'], 'data-page-section="' . $sectionId . '"'), "missing primary navigation destination {$sectionId}");
 }
 
@@ -135,7 +135,7 @@ expect_true(
 expect_true(
     contains($source['app_js'], "event.currentTarget.id === 'notificationModal'")
     && contains($source['app_js'], "setTimeout(() => $('notificationClose')?.focus(), 0)")
-    && contains($source['dashboard_js'], "sidebar.toggleAttribute('inert', hiddenOnMobile)"),
+    && contains($source['dashboard_js'], "sidebar.toggleAttribute('inert', hiddenFromLayout)"),
     'modal or mobile navigation accessibility guard is missing'
 );
 
