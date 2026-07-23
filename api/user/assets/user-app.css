@@ -1571,12 +1571,23 @@ body.user-authenticated[data-active-section='overviewSection'] .mobile-header {
   display: none;
 }
 
-body.user-authenticated[data-active-section='overviewSection'] .hero-card {
+body.user-authenticated[data-active-section='overviewSection'] .dashboard-fixed-stack {
   position: sticky;
   top: calc(8px + env(safe-area-inset-top));
   z-index: 35;
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  padding: 0 0 2px;
+  background: var(--z-bg);
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-card {
+  position: relative;
+  top: auto;
+  z-index: 1;
   width: min(calc(100% - 28px), 760px);
-  margin: 8px auto 0;
+  margin: 0 auto;
   padding: 14px 16px 16px;
   border: 1px solid rgba(50, 230, 134, 0.3);
   border-radius: 28px;
@@ -1691,22 +1702,46 @@ body.user-authenticated[data-active-section='overviewSection'] .hero-mini-value 
 body.user-authenticated[data-active-section='overviewSection'] .android-tagline {
   width: min(calc(100% - 36px), 752px);
   min-height: 48px;
-  height: auto;
-  justify-content: center;
-  margin: 10px auto 0;
+  height: 48px;
+  justify-content: flex-start;
+  margin: 0 auto;
   border-radius: 18px;
   background: rgba(11, 45, 92, 0.84);
 }
 
 body.user-authenticated[data-active-section='overviewSection'] .android-tagline-track {
-  min-width: 0;
-  padding: 11px 16px;
-  animation: none;
+  width: max-content;
+  min-width: max-content;
+  display: flex;
+  align-items: center;
+  padding: 0;
+  animation: zpayDashboardTagline 16s linear infinite;
   color: var(--z-text);
   font-size: 14px;
   line-height: 1.45;
-  text-align: center;
-  white-space: normal;
+  text-align: left;
+  white-space: nowrap;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .android-tagline-item {
+  flex: 0 0 auto;
+  padding: 11px 28px;
+}
+
+@keyframes zpayDashboardTagline {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.user-authenticated[data-active-section='overviewSection'] .android-tagline-track {
+    transform: none;
+    animation: none;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .android-tagline-item + .android-tagline-item {
+    display: none;
+  }
 }
 
 body.user-authenticated[data-active-section='overviewSection'] #overviewSection {

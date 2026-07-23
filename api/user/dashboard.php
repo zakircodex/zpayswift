@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=3">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=4">
 </head>
 <body>
 
@@ -178,6 +178,7 @@ header('Pragma: no-cache');
         </div>
       </div>
 
+      <div class="dashboard-fixed-stack">
       <div class="hero-card" aria-labelledby="dashboardHeroTitle">
         <div class="dashboard-hero-topbar">
           <button id="heroMenuButton" class="icon-btn hero-menu-button" type="button" aria-label="Open menu" aria-controls="sidebar">
@@ -216,8 +217,12 @@ header('Pragma: no-cache');
         </div>
       </div>
 
-      <div class="android-tagline" aria-label="Z-Pay Swift tagline">
-        <div class="android-tagline-track">টাকা পাঠানোর সব থেকে সহজ উপায় &quot;Z-Pay Swift&quot;</div>
+      <div class="android-tagline" aria-label="টাকা পাঠানোর সব থেকে সহজ উপায় Z-Pay Swift">
+        <div class="android-tagline-track" aria-hidden="true">
+          <span class="android-tagline-item">টাকা পাঠানোর সব থেকে সহজ উপায় &quot;Z-Pay Swift&quot;</span>
+          <span class="android-tagline-item">টাকা পাঠানোর সব থেকে সহজ উপায় &quot;Z-Pay Swift&quot;</span>
+        </div>
+      </div>
       </div>
 
       <section id="overviewSection" class="page-section active">

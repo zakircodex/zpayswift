@@ -32,10 +32,17 @@ function dashboard_fragment(string $source, string $start, string $end): string
 }
 
 $hero = dashboard_fragment($dashboard, '<div class="hero-card"', '<div class="android-tagline"');
+$fixedStack = dashboard_fragment($dashboard, '<div class="dashboard-fixed-stack">', '<section id="overviewSection"');
 $overview = dashboard_fragment($dashboard, '<section id="overviewSection"', '<section id="topupSection"');
 $bottomNav = dashboard_fragment($dashboard, '<div class="bottom-nav">', '<script>');
 
 dashboard_expect($hero !== '', 'Dashboard hero markup is missing');
+dashboard_expect(
+    str_contains($fixedStack, 'class="hero-card"')
+    && str_contains($fixedStack, 'class="android-tagline"')
+    && substr_count($fixedStack, 'class="android-tagline-item"') === 2,
+    'Hero and marquee tagline are not grouped in the fixed Dashboard stack'
+);
 dashboard_expect(
     str_contains($hero, 'class="dashboard-hero-topbar"')
     && str_contains($hero, 'id="heroMenuButton"')
@@ -81,8 +88,11 @@ dashboard_expect(!str_contains($bottomNav, '>Services<') && !str_contains($botto
 
 dashboard_expect(
     str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .mobile-header")
+    && str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .dashboard-fixed-stack")
     && str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .hero-card")
     && str_contains($css, 'position: sticky')
+    && str_contains($css, 'animation: zpayDashboardTagline 16s linear infinite')
+    && str_contains($css, '@keyframes zpayDashboardTagline')
     && str_contains($css, "grid-template-columns: repeat(3, minmax(0, 168px))"),
     'Dashboard-only responsive layout rules are missing'
 );
