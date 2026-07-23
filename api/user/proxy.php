@@ -4540,8 +4540,8 @@ switch ($action) {
 
     case 'notification_mark_read':
         user_proxy_require_method('POST');
-        user_proxy_require_csrf();
         user_proxy_require_login(true, false);
+        user_proxy_require_csrf();
         $body = user_proxy_read_json_body();
         user_proxy_forward_authenticated_json(
             'POST',
@@ -4554,8 +4554,8 @@ switch ($action) {
 
     case 'notifications_mark_all_read':
         user_proxy_require_method('POST');
-        user_proxy_require_csrf();
         user_proxy_require_login(true, false);
+        user_proxy_require_csrf();
         user_proxy_forward_authenticated_json('POST', 'notifications/mark_all_read.php', [], 'NOTIFICATION_UPDATE_FAILED', 'Notifications could not be updated.');
         break;
 

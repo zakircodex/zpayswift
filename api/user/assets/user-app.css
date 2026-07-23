@@ -1930,29 +1930,52 @@ body.user-authenticated[data-active-section='notificationsSection'] .bottom-nav 
   display: none !important;
 }
 
+body.user-authenticated[data-active-section='notificationsSection'] {
+  overflow: hidden;
+}
+
+body.user-authenticated[data-active-section='notificationsSection'] #appView,
+body.user-authenticated[data-active-section='notificationsSection'] .app-shell {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 body.user-authenticated[data-active-section='notificationsSection'] .main-panel {
   width: 100%;
   max-width: 820px;
+  height: 100vh;
+  height: 100dvh;
   margin: 0 auto;
   padding: 0;
+  overflow: hidden;
 }
 
 body.user-authenticated[data-active-section='notificationsSection'] #notificationsSection {
   width: 100%;
+  height: 100%;
   margin: 0;
+  overflow: hidden;
 }
 
 .notification-page-shell {
   width: min(calc(100% - 28px), 640px);
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   margin: 0 auto;
-  padding: calc(12px + env(safe-area-inset-top)) 0 36px;
+  padding: calc(12px + env(safe-area-inset-top)) 0 0;
+  overflow: hidden;
+}
+
+.notification-page-fixed-area {
+  flex: 0 0 auto;
+  padding-bottom: 12px;
 }
 
 .notification-page-header {
-  position: sticky;
-  top: calc(10px + env(safe-area-inset-top));
-  z-index: 25;
   min-height: 76px;
   display: grid;
   grid-template-columns: 50px minmax(0, 1fr) 50px;
@@ -2021,7 +2044,7 @@ body.user-authenticated[data-active-section='notificationsSection'] #notificatio
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
-  margin: 20px 2px 12px;
+  margin: 20px 2px 0;
 }
 
 .notification-page-tab {
@@ -2072,10 +2095,35 @@ body.user-authenticated[data-active-section='notificationsSection'] #notificatio
   border: 0;
 }
 
+.notification-page-scroll-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 2px calc(28px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(50, 230, 134, 0.42) rgba(7, 23, 47, 0.18);
+}
+
+.notification-page-scroll-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.notification-page-scroll-body::-webkit-scrollbar-track {
+  background: rgba(7, 23, 47, 0.18);
+}
+
+.notification-page-scroll-body::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(50, 230, 134, 0.42);
+}
+
 .notification-page-list {
   display: grid;
   gap: 10px;
-  padding: 2px;
+  padding: 2px 0 0;
 }
 
 .notification-page-card {

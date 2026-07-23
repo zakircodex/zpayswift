@@ -133,6 +133,47 @@
     return window.proxyPost(action, payload || {}, label || 'Processing...', options || {});
   }
 
+  function isSessionError(error) {
+    const code = String(error && error.code || '').toUpperCase();
+    return ['SESSION_EXPIRED', 'AUTH_REQUIRED', 'UNAUTHORIZED', 'USER_SESSION_EXPIRED'].includes(code)
+      || Number(error && error.status || 0) === 401;
+  }
+
+  function isCsrfError(error) {
+    const code = String(error && error.code || '').toUpperCase();
+    const message = String(error && error.message || '').toLowerCase();
+    return Number(error && error.status || 0) === 403
+      && (code === 'FORBIDDEN' || code === 'CSRF_INVALID' || message.includes('csrf'));
+  }
+
+  async function refreshCsrfToken() {
+    const data = await get('me', {}, 'Refreshing session...', { busy: false });
+    if (data && data.csrf && window.userState) {
+      window.userState.csrf = String(data.csrf);
+    }
+    return csrf();
+  }
+
+  async function postWithFreshCsrf(action, payload, label) {
+    if (!csrf()) {
+      await refreshCsrfToken();
+    }
+    try {
+      return await post(action, payload || {}, label || 'Processing...', { busy: false });
+    } catch (error) {
+      if (!isCsrfError(error)) throw error;
+      await refreshCsrfToken();
+      return post(action, payload || {}, label || 'Processing...', { busy: false });
+    }
+  }
+
+  function handleNotificationSessionExpired() {
+    renderNotificationMessage('Session expired', 'Please login again to view your notifications.');
+    if (typeof window.userSessionExpired === 'function') {
+      window.userSessionExpired();
+    }
+  }
+
   async function postForm(action, formData, label) {
     setBusy(true, label || 'Uploading...');
     try {
@@ -1049,7 +1090,7 @@
     item.opening = true;
     try {
       if (!item.is_read) {
-        const data = await post('notification_mark_read', { notification_id: item.notification_id }, 'Updating notification...', { busy: false });
+        const data = await postWithFreshCsrf('notification_mark_read', { notification_id: item.notification_id }, 'Updating notification...');
         item.is_read = true;
         renderNotificationBadge(Number(data.unread_count || 0));
         if (app.notifications.filter === 'UNREAD') {
@@ -1060,6 +1101,10 @@
       const destination = notificationDestination(item);
       if (destination) window.openSection?.(destination);
     } catch (error) {
+      if (isSessionError(error)) {
+        handleNotificationSessionExpired();
+        return;
+      }
       toast(safeMessage(error, 'Notification could not be updated.'), 'error');
     } finally {
       item.opening = false;
@@ -1138,6 +1183,10 @@
       renderNotifications(app.notifications.items);
     } catch (error) {
       app.notifications.loaded = false;
+      if (isSessionError(error)) {
+        handleNotificationSessionExpired();
+        return;
+      }
       renderNotificationMessage(
         'Could not load notifications',
         safeMessage(error, 'Please check your connection and try again.'),
@@ -1177,13 +1226,17 @@
     const button = $('notificationsMarkAllButton');
     if (button) button.disabled = true;
     try {
-      await post('notifications_mark_all_read', {}, 'Updating notifications...', { busy: false });
+      await postWithFreshCsrf('notifications_mark_all_read', {}, 'Updating notifications...');
       app.notifications.items.forEach((item) => { item.is_read = true; });
       if (app.notifications.filter === 'UNREAD') app.notifications.items = [];
       renderNotificationBadge(0);
       renderNotifications(app.notifications.items);
       toast('All notifications marked as read.', 'ok');
     } catch (error) {
+      if (isSessionError(error)) {
+        handleNotificationSessionExpired();
+        return;
+      }
       toast(safeMessage(error, 'Notifications could not be updated.'), 'error');
     } finally {
       if (button) button.disabled = app.notifications.unreadCount < 1;
