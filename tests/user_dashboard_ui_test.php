@@ -106,7 +106,9 @@ dashboard_expect(
 dashboard_expect(
     str_contains($dashboardJs, "el('heroMenuButton')?.addEventListener('click', openSidebar)")
     && str_contains($appJs, "'heroNotificationBadge'")
-    && str_contains($appJs, "$('heroNotificationButton')?.addEventListener('click', openNotifications)"),
+    && str_contains($appJs, "$('heroNotificationButton')?.addEventListener('click', openNotificationsPage)")
+    && str_contains($dashboard, 'id="notificationsSection"')
+    && !str_contains($appJs, 'notificationModal'),
     'Hero controls are not wired to existing menu/notification behavior'
 );
 dashboard_expect(

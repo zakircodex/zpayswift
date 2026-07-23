@@ -841,6 +841,7 @@ function getInitialSection(){
   if (p === '/user/transfer' || p === '/user/z-pay-transfer') return 'transferSection';
   if (p === '/user/support' || p === '/user/contact-us') return 'supportSection';
   if (p === '/user/profile') return 'profileSection';
+  if (p === '/user/notifications') return 'notificationsSection';
 
   return 'overviewSection';
 }
@@ -856,7 +857,8 @@ function userSectionMeta(sectionId){
     transferSection: { title: 'Z-Pay Transfer', path: '/user/transfer' },
     historySection: { title: 'My History', path: '/user/history' },
     supportSection: { title: 'Support', path: '/user/support' },
-    profileSection: { title: 'Profile', path: '/user/profile' }
+    profileSection: { title: 'Profile', path: '/user/profile' },
+    notificationsSection: { title: 'Notifications', path: '/user/notifications' }
   };
   return sections[sectionId] || sections.overviewSection;
 }

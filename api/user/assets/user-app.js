@@ -36,7 +36,14 @@
       createKey: '',
       replyKey: ''
     },
-    notificationsLoaded: false
+    notifications: {
+      filter: 'ALL',
+      items: [],
+      loading: false,
+      loaded: false,
+      unreadCount: 0,
+      returnSection: 'overviewSection'
+    }
   };
 
   function escapeHtml(value) {
@@ -187,11 +194,7 @@
 
   function trapModalFocus(event) {
     if (event.key === 'Escape') {
-      if (event.currentTarget && event.currentTarget.id === 'notificationModal') {
-        closeNotifications();
-      } else {
-        closeActionModal();
-      }
+      closeActionModal();
       return;
     }
     if (event.key !== 'Tab') return;
@@ -945,24 +948,6 @@
     app.support.pollTimer = 0;
   }
 
-  function ensureNotificationModal() {
-    if ($('notificationModal')) return;
-    const modal = document.createElement('div');
-    modal.id = 'notificationModal';
-    modal.className = 'modal';
-    modal.setAttribute('role', 'dialog');
-    modal.setAttribute('aria-modal', 'true');
-    modal.innerHTML = '<div class="zpay-action-dialog"><button id="notificationClose" class="modal-close" type="button" aria-label="Close">&times;</button>' +
-      '<div class="feature-heading"><div><span class="feature-eyebrow">Z-Pay Swift</span><h2>Notifications</h2></div>' +
-      '<button id="notificationMarkAll" class="android-secondary-button" type="button">Mark all read</button></div>' +
-      '<div id="notificationList" class="notification-list"><div class="feature-empty-state">No notifications loaded.</div></div></div>';
-    document.body.appendChild(modal);
-    $('notificationClose').addEventListener('click', closeNotifications);
-    $('notificationMarkAll').addEventListener('click', markAllNotifications);
-    modal.addEventListener('click', (event) => { if (event.target === modal) closeNotifications(); });
-    modal.addEventListener('keydown', trapModalFocus);
-  }
-
   async function loadUnreadCount() {
     try {
       const data = await get('notifications_unread', {}, 'Loading notifications...', { busy: false });
@@ -973,81 +958,235 @@
   }
 
   function renderNotificationBadge(count) {
+    const unreadCount = Math.min(99, Math.max(0, Number(count || 0)));
+    app.notifications.unreadCount = unreadCount;
     ['notificationBadge', 'heroNotificationBadge'].forEach((id) => {
       const badge = $(id);
       if (!badge) return;
-      badge.textContent = String(Math.min(99, Math.max(0, count)));
-      badge.classList.toggle('hidden', count < 1);
+      badge.textContent = String(unreadCount);
+      badge.classList.toggle('hidden', unreadCount < 1);
     });
+    if ($('notificationUnreadCount')) $('notificationUnreadCount').textContent = String(unreadCount);
+    if ($('notificationsMarkAllButton')) $('notificationsMarkAllButton').disabled = unreadCount < 1 || app.notifications.loading;
   }
 
-  async function openNotifications() {
-    ensureNotificationModal();
-    const modal = $('notificationModal');
-    if (!modal.classList.contains('show')) {
-      lastModalFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  function updateNotificationTabs() {
+    document.querySelectorAll('[data-notification-filter]').forEach((tab) => {
+      const active = String(tab.dataset.notificationFilter || '') === app.notifications.filter;
+      tab.classList.toggle('active', active);
+      tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      tab.disabled = app.notifications.loading;
+    });
+    renderNotificationBadge(app.notifications.unreadCount);
+  }
+
+  function setNotificationLive(message) {
+    if ($('notificationPageLive')) $('notificationPageLive').textContent = String(message || '');
+  }
+
+  function renderNotificationLoading() {
+    const list = $('notificationList');
+    if (!list) return;
+    list.setAttribute('aria-busy', 'true');
+    list.replaceChildren();
+    for (let index = 0; index < 4; index += 1) {
+      const skeleton = document.createElement('div');
+      skeleton.className = 'notification-page-skeleton';
+      skeleton.setAttribute('aria-hidden', 'true');
+      list.appendChild(skeleton);
     }
-    modal.classList.add('show');
-    if (typeof window.syncUserModalLock === 'function') window.syncUserModalLock();
-    setTimeout(() => $('notificationClose')?.focus(), 0);
+    setNotificationLive('Loading notifications.');
+  }
+
+  function renderNotificationMessage(title, message, actionLabel) {
+    const list = $('notificationList');
+    if (!list) return;
+    list.setAttribute('aria-busy', 'false');
+    list.replaceChildren();
+    const state = document.createElement('div');
+    state.className = 'notification-page-state';
+    const icon = document.createElement('span');
+    icon.className = 'notification-page-state-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = app.notifications.filter === 'UNREAD' ? '\u2713' : 'Z';
+    const heading = document.createElement('h3');
+    heading.textContent = title;
+    const copy = document.createElement('p');
+    copy.textContent = message;
+    state.append(icon, heading, copy);
+    if (actionLabel) {
+      const retry = document.createElement('button');
+      retry.className = 'notification-page-retry';
+      retry.type = 'button';
+      retry.textContent = actionLabel;
+      retry.addEventListener('click', () => loadNotificationPage(true));
+      state.appendChild(retry);
+    }
+    list.appendChild(state);
+    setNotificationLive(title + ' ' + message);
+  }
+
+  function notificationGlyph(item) {
+    const type = String(item && item.type || '').toUpperCase();
+    if (type.includes('FAILED') || type.includes('REJECTED')) return '!';
+    if (type.startsWith('SUPPORT_')) return 'S';
+    if (type.startsWith('ACCOUNT_') || type === 'SECURITY_REVIEW' || type === 'LOGIN_ALERT') return 'A';
+    if (type === 'RINGGIT_RATE_UPDATED') return 'R';
+    if (type.includes('TRANSFER') || type.includes('MONEY') || type.includes('SUCCESS')) return '$';
+    return 'Z';
+  }
+
+  function notificationDestination(item) {
+    const type = String(item && item.type || '').toUpperCase();
+    if (type.startsWith('SUPPORT_')) return 'supportSection';
+    if (type.startsWith('ACCOUNT_') || type === 'SECURITY_REVIEW' || type === 'LOGIN_ALERT') return 'profileSection';
+    if (type === 'ADMIN_NOTICE' || type === 'RINGGIT_RATE_UPDATED') return '';
+    return 'historySection';
+  }
+
+  async function openNotificationItem(item) {
+    if (!item || item.opening) return;
+    item.opening = true;
     try {
-      const data = await get('notifications_list', { limit: 30, filter: 'ALL' }, 'Loading notifications...', { busy: false });
-      renderNotifications(Array.isArray(data.items) ? data.items : []);
-      renderNotificationBadge(Number(data.unread_count || 0));
-      app.notificationsLoaded = true;
+      if (!item.is_read) {
+        const data = await post('notification_mark_read', { notification_id: item.notification_id }, 'Updating notification...', { busy: false });
+        item.is_read = true;
+        renderNotificationBadge(Number(data.unread_count || 0));
+        if (app.notifications.filter === 'UNREAD') {
+          app.notifications.items = app.notifications.items.filter((candidate) => candidate.notification_id !== item.notification_id);
+        }
+        renderNotifications(app.notifications.items);
+      }
+      const destination = notificationDestination(item);
+      if (destination) window.openSection?.(destination);
     } catch (error) {
-      if ($('notificationList')) $('notificationList').innerHTML = '<div class="feature-empty-state">Notifications could not be loaded.</div>';
-      toast(safeMessage(error, 'Notifications could not be loaded.'), 'error');
+      toast(safeMessage(error, 'Notification could not be updated.'), 'error');
+    } finally {
+      item.opening = false;
     }
-  }
-
-  function closeNotifications() {
-    $('notificationModal')?.classList.remove('show');
-    if (typeof window.syncUserModalLock === 'function') window.syncUserModalLock();
-    lastModalFocus?.focus();
-    lastModalFocus = null;
   }
 
   function renderNotifications(items) {
     const list = $('notificationList');
     if (!list) return;
+    list.setAttribute('aria-busy', 'false');
     list.replaceChildren();
     if (!items.length) {
-      const empty = document.createElement('div');
-      empty.className = 'feature-empty-state';
-      empty.textContent = 'No notifications yet.';
-      list.appendChild(empty);
+      renderNotificationMessage(
+        app.notifications.filter === 'UNREAD' ? 'You are all caught up' : 'No notifications yet',
+        app.notifications.filter === 'UNREAD'
+          ? 'New updates will appear here when they arrive.'
+          : 'Important account and transaction updates will appear here.'
+      );
       return;
     }
     items.forEach((item) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'notification-row' + (item.is_read ? '' : ' unread');
-      button.innerHTML = '<div><h4>' + escapeHtml(item.title || 'Z-Pay Swift') + '</h4><p>' + escapeHtml(item.body || '') + '</p><p>' + escapeHtml(formatDate(item.created_at)) + '</p></div>' +
-        '<span class="status-pill">' + (item.is_read ? 'Read' : 'New') + '</span>';
+      button.className = 'notification-page-card' + (item.is_read ? '' : ' unread');
+
+      const icon = document.createElement('span');
+      icon.className = 'notification-page-card-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = notificationGlyph(item);
+
+      const content = document.createElement('span');
+      content.className = 'notification-page-card-content';
+      const title = document.createElement('strong');
+      title.textContent = String(item.title || 'Z-Pay Swift');
+      const body = document.createElement('span');
+      body.className = 'notification-page-card-body';
+      body.textContent = String(item.body || '');
+      const time = document.createElement('time');
+      time.className = 'notification-page-card-time';
+      time.textContent = formatDate(item.created_at);
+      content.append(title, body, time);
+
+      button.append(icon, content);
       if (!item.is_read) {
-        button.addEventListener('click', async () => {
-          try {
-            const data = await post('notification_mark_read', { notification_id: item.notification_id }, 'Updating notification...', { busy: false });
-            item.is_read = true;
-            renderNotifications(items);
-            renderNotificationBadge(Number(data.unread_count || 0));
-          } catch (error) {
-            toast(safeMessage(error, 'Notification could not be updated.'), 'error');
-          }
-        });
+        const dot = document.createElement('span');
+        dot.className = 'notification-page-unread-dot';
+        dot.setAttribute('aria-label', 'Unread');
+        button.appendChild(dot);
       }
+      button.addEventListener('click', () => openNotificationItem(item));
       list.appendChild(button);
     });
+    setNotificationLive(items.length + ' notifications loaded.');
+  }
+
+  async function loadNotificationPage(force) {
+    if (app.notifications.loading) return;
+    if (!force && app.notifications.loaded) {
+      updateNotificationTabs();
+      renderNotifications(app.notifications.items);
+      return;
+    }
+    app.notifications.loading = true;
+    updateNotificationTabs();
+    renderNotificationLoading();
+    try {
+      const data = await get(
+        'notifications_list',
+        { limit: 50, filter: app.notifications.filter },
+        'Loading notifications...',
+        { busy: false }
+      );
+      app.notifications.items = Array.isArray(data.items) ? data.items : [];
+      app.notifications.loaded = true;
+      renderNotificationBadge(Number(data.unread_count || 0));
+      renderNotifications(app.notifications.items);
+    } catch (error) {
+      app.notifications.loaded = false;
+      renderNotificationMessage(
+        'Could not load notifications',
+        safeMessage(error, 'Please check your connection and try again.'),
+        'Retry'
+      );
+    } finally {
+      app.notifications.loading = false;
+      updateNotificationTabs();
+    }
+  }
+
+  function openNotificationsPage() {
+    const currentSection = document.body.getAttribute('data-active-section') || 'overviewSection';
+    if (currentSection !== 'notificationsSection') app.notifications.returnSection = currentSection;
+    window.openSection?.('notificationsSection');
+  }
+
+  function closeNotificationsPage() {
+    const destination = app.notifications.returnSection && app.notifications.returnSection !== 'notificationsSection'
+      ? app.notifications.returnSection
+      : 'overviewSection';
+    window.openSection?.(destination);
+  }
+
+  function switchNotificationFilter(filter) {
+    const nextFilter = String(filter || '').toUpperCase();
+    if (!['ALL', 'UNREAD'].includes(nextFilter) || nextFilter === app.notifications.filter || app.notifications.loading) return;
+    app.notifications.filter = nextFilter;
+    app.notifications.items = [];
+    app.notifications.loaded = false;
+    updateNotificationTabs();
+    loadNotificationPage(true);
   }
 
   async function markAllNotifications() {
+    if (app.notifications.loading || app.notifications.unreadCount < 1) return;
+    const button = $('notificationsMarkAllButton');
+    if (button) button.disabled = true;
     try {
       await post('notifications_mark_all_read', {}, 'Updating notifications...', { busy: false });
+      app.notifications.items.forEach((item) => { item.is_read = true; });
+      if (app.notifications.filter === 'UNREAD') app.notifications.items = [];
       renderNotificationBadge(0);
-      await openNotifications();
+      renderNotifications(app.notifications.items);
+      toast('All notifications marked as read.', 'ok');
     } catch (error) {
       toast(safeMessage(error, 'Notifications could not be updated.'), 'error');
+    } finally {
+      if (button) button.disabled = app.notifications.unreadCount < 1;
     }
   }
 
@@ -1057,6 +1196,10 @@
     if (sectionId === 'supportSection') {
       loadSupportConfig(false);
       loadSupportTickets(false);
+    }
+    if (sectionId === 'notificationsSection') {
+      app.notifications.loaded = false;
+      loadNotificationPage(true);
     }
     if (sectionId === 'overviewSection') loadUnreadCount();
   }
@@ -1094,8 +1237,13 @@
       window.openSection?.(sectionButton.getAttribute('data-open-section'));
     });
 
-    $('notificationButton')?.addEventListener('click', openNotifications);
-    $('heroNotificationButton')?.addEventListener('click', openNotifications);
+    $('notificationButton')?.addEventListener('click', openNotificationsPage);
+    $('heroNotificationButton')?.addEventListener('click', openNotificationsPage);
+    $('notificationsBackButton')?.addEventListener('click', closeNotificationsPage);
+    $('notificationsMarkAllButton')?.addEventListener('click', markAllNotifications);
+    document.querySelectorAll('[data-notification-filter]').forEach((tab) => {
+      tab.addEventListener('click', () => switchNotificationFilter(tab.dataset.notificationFilter));
+    });
     $('profileEditButton')?.addEventListener('click', editProfile);
     $('profileAvatarButton')?.addEventListener('click', () => $('profilePhotoInput')?.click());
     $('profilePhotoInput')?.addEventListener('change', (event) => uploadProfilePhoto(event.target.files && event.target.files[0]));

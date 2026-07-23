@@ -40,7 +40,7 @@ function contains(string $source, string $needle): bool
     return str_contains($source, $needle);
 }
 
-foreach (['servicesSection', 'transferSection', 'profileSection', 'supportSection'] as $sectionId) {
+foreach (['servicesSection', 'transferSection', 'profileSection', 'supportSection', 'notificationsSection'] as $sectionId) {
     expect_true(contains($source['dashboard'], 'id="' . $sectionId . '"'), "missing User Panel section {$sectionId}");
 }
 
@@ -125,7 +125,8 @@ expect_true(
 expect_true(
     contains($source['dashboard_js'], "p === '/user/profile'")
     && contains($source['dashboard_js'], "p === '/user/support'")
-    && contains($source['dashboard_js'], "p === '/user/transfer'"),
+    && contains($source['dashboard_js'], "p === '/user/transfer'")
+    && contains($source['dashboard_js'], "p === '/user/notifications'"),
     'User Panel route mapping is incomplete'
 );
 expect_true(
@@ -133,10 +134,12 @@ expect_true(
     'direct User Panel routes do not initialize their feature data'
 );
 expect_true(
-    contains($source['app_js'], "event.currentTarget.id === 'notificationModal'")
-    && contains($source['app_js'], "setTimeout(() => $('notificationClose')?.focus(), 0)")
+    contains($source['dashboard'], 'id="notificationsPageTitle"')
+    && contains($source['dashboard'], 'id="notificationPageLive"')
+    && contains($source['app_js'], "window.openSection?.('notificationsSection')")
+    && !contains($source['app_js'], 'notificationModal')
     && contains($source['dashboard_js'], "sidebar.toggleAttribute('inert', hiddenFromLayout)"),
-    'modal or mobile navigation accessibility guard is missing'
+    'dedicated notification page or mobile navigation accessibility guard is missing'
 );
 
 echo "User Panel feature tests passed ({$tests} assertions).\n";

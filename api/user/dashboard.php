@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=6">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=7">
 </head>
 <body>
 
@@ -267,6 +267,37 @@ header('Pragma: no-cache');
               <span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M11 10h2v8h-2v-8Zm0-4h2v2h-2V6Zm1-4a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/></svg></span>
               <span class="zpay-service-name">Info</span>
             </button>
+          </div>
+        </div>
+      </section>
+
+      <section id="notificationsSection" class="page-section notification-page-section" aria-labelledby="notificationsPageTitle">
+        <div class="notification-page-shell">
+          <header class="notification-page-header">
+            <button id="notificationsBackButton" class="notification-page-icon-button" type="button" aria-label="Back to dashboard">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.7 5.3-1.4-1.4L5.2 12l8.1 8.1 1.4-1.4L9 13h11v-2H9l5.7-5.7Z"/></svg>
+            </button>
+            <h2 id="notificationsPageTitle">Notifications</h2>
+            <button id="notificationsMarkAllButton" class="notification-page-icon-button notification-mark-all-button" type="button" aria-label="Mark all notifications as read" title="Mark all as read">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m1.7 12.3 4 4 1.4-1.4-4-4-1.4 1.4Zm15.2-4.2-7.8 7.8-3-3-1.4 1.4 4.4 4.4 9.2-9.2-1.4-1.4Zm-4.2 0-1.4-1.4-4.2 4.2 1.4 1.4 4.2-4.2Zm7.6 0-9.2 9.2 1.4 1.4 9.2-9.2-1.4-1.4Z"/></svg>
+            </button>
+          </header>
+
+          <div class="notification-page-tabs" role="tablist" aria-label="Notification filters">
+            <button id="notificationAllTab" class="notification-page-tab active" type="button" role="tab" aria-selected="true" data-notification-filter="ALL">
+              All Notifications
+            </button>
+            <button id="notificationUnreadTab" class="notification-page-tab" type="button" role="tab" aria-selected="false" data-notification-filter="UNREAD">
+              Unread <span id="notificationUnreadCount">0</span>
+            </button>
+          </div>
+
+          <div id="notificationPageLive" class="notification-page-live" aria-live="polite"></div>
+          <div id="notificationList" class="notification-page-list" aria-busy="true">
+            <div class="notification-page-skeleton" aria-hidden="true"></div>
+            <div class="notification-page-skeleton" aria-hidden="true"></div>
+            <div class="notification-page-skeleton" aria-hidden="true"></div>
+            <div class="notification-page-skeleton" aria-hidden="true"></div>
           </div>
         </div>
       </section>
@@ -875,8 +906,8 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=24"></script>
+<script src="/api/user/assets/dashboard.js?v=25"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=12"></script>
-<script src="/api/user/assets/user-app.js?v=3"></script>
+<script src="/api/user/assets/user-app.js?v=4"></script>
 </body>
 </html>
