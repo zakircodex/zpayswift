@@ -37,6 +37,8 @@ const state = {
 
 window.userState = state;
 
+let lastSidebarOpener = null;
+
 const wizard = {
   step: 1,
   operator: '',
@@ -560,6 +562,11 @@ function showUserExitModal(){
 function handleUserPopState(event){
   if (userBackExitAllowed) return;
 
+  if (el('sidebar')?.classList.contains('show')) {
+    closeSidebar({ restoreFocus: false });
+    return;
+  }
+
   if (typeof window.zpayUserAppHandlePopState === 'function' && window.zpayUserAppHandlePopState(event)) {
     return;
   }
@@ -642,15 +649,13 @@ function prepareDashboardLoadingPreview(){
     heroHold: '--',
     heroRate: 'Loading...',
     heroRequests: '--',
-    heroName: 'Z-Pay User',
-    sideMeName: '-',
-    sideMeRole: '-',
-    sideMeStatus: '-'
+    heroName: 'Z-Pay User'
   };
 
   Object.entries(placeholders).forEach(([id, value]) => {
     if (el(id)) el(id).textContent = value;
   });
+  renderDrawerProfile();
 
   ['notificationBadge', 'heroNotificationBadge'].forEach(id => {
     const badge = el(id);
@@ -674,6 +679,7 @@ function prepareDashboardLoadingPreview(){
 
 function showLogin(){
   document.body.classList.remove('user-authenticated', 'dashboard-loading-preview');
+  closeSidebar({ restoreFocus: false });
 
   el('loginView')?.classList.remove('hidden');
   el('appView')?.classList.add('hidden');
@@ -809,24 +815,41 @@ async function copyText(text, okMessage = 'Copied'){
 ========================= */
 
 function openSidebar(){
-  el('sidebar')?.classList.add('show');
+  const sidebar = el('sidebar');
+  if (!sidebar) return;
+  lastSidebarOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  renderDrawerProfile();
+  sidebar.classList.add('show');
   el('sidebarOverlay')?.classList.add('show');
+  document.body.classList.add('user-drawer-open');
+  setDrawerOpenerExpanded(true);
   syncSidebarAccessibility(true);
+  requestAnimationFrame(focusSidebarFirstControl);
 }
 
-function closeSidebar(){
-  el('sidebar')?.classList.remove('show');
+function closeSidebar(options = {}){
+  const sidebar = el('sidebar');
+  if (!sidebar) return;
+  const wasOpen = sidebar.classList.contains('show');
+  sidebar.classList.remove('show');
   el('sidebarOverlay')?.classList.remove('show');
+  document.body.classList.remove('user-drawer-open');
+  setDrawerOpenerExpanded(false);
   syncSidebarAccessibility(false);
+
+  if (wasOpen && options.restoreFocus !== false && lastSidebarOpener && document.contains(lastSidebarOpener)) {
+    lastSidebarOpener.focus({ preventScroll: true });
+  }
+  lastSidebarOpener = null;
 }
 
 function syncSidebarAccessibility(isOpen = false){
   const sidebar = el('sidebar');
   if (!sidebar) return;
-  const activeSection = document.body.getAttribute('data-active-section') || 'overviewSection';
-  const hiddenFromLayout = !isOpen && (window.innerWidth <= 980 || activeSection === 'overviewSection');
+  const hiddenFromLayout = !isOpen;
   sidebar.toggleAttribute('inert', hiddenFromLayout);
   sidebar.setAttribute('aria-hidden', hiddenFromLayout ? 'true' : 'false');
+  el('sidebarOverlay')?.setAttribute('aria-hidden', hiddenFromLayout ? 'true' : 'false');
 }
 
 function getInitialSection(){
@@ -861,6 +884,127 @@ function userSectionMeta(sectionId){
     notificationsSection: { title: 'Notifications', path: '/user/notifications' }
   };
   return sections[sectionId] || sections.overviewSection;
+}
+
+function maskDrawerPhone(value){
+  const phone = String(value || '').replace(/\s+/g, '').trim();
+  if (!phone) return '-';
+  if (phone.length <= 6) return phone;
+  const head = phone.length > 10 ? 4 : 3;
+  return phone.slice(0, head) + '****' + phone.slice(-3);
+}
+
+function drawerInitials(name){
+  const parts = String(name || 'Z P').trim().split(/\s+/).filter(Boolean);
+  const first = parts[0] || 'Z';
+  const second = parts[1] || first || 'P';
+  return ((first[0] || 'Z') + (second[0] || 'P')).toUpperCase();
+}
+
+function drawerCountryLabel(country){
+  const value = String(country || '').toUpperCase();
+  if (value === 'MY') return 'Malaysia';
+  if (value === 'BD') return 'Bangladesh';
+  return value || '-';
+}
+
+function drawerSafeImage(value){
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try{
+    const url = new URL(raw, window.location.origin);
+    return url.origin === window.location.origin ? url.href : '';
+  }catch(_){
+    return '';
+  }
+}
+
+function renderDrawerProfile(){
+  const me = state.me || {};
+  const data = state.walletSummary || {};
+  const wallet = data.wallet || {};
+  const name = String(me.name || data.name || 'Z-Pay User');
+  const phone = String(me.phone || data.phone || '');
+  const role = String(me.role || data.role || 'USER').toUpperCase();
+  const status = String(me.account_status || me.status || data.account_status || data.status || 'ACTIVE').toUpperCase();
+  const pricingCountry = String(
+    me.pricing_country ||
+    me.market_country ||
+    data.pricing_country ||
+    wallet.pricing_country ||
+    ''
+  ).toUpperCase();
+  const currency = String(
+    me.wallet_currency ||
+    data.wallet_currency ||
+    wallet.display_currency ||
+    wallet.wallet_currency ||
+    wallet.currency ||
+    (pricingCountry === 'MY' ? 'MYR' : 'BDT')
+  ).toUpperCase() === 'MYR' ? 'MYR' : 'BDT';
+  const image = drawerSafeImage(
+    me.profile_photo_url ||
+    me.photo_url ||
+    data.profile_photo_url ||
+    wallet.profile_photo_url ||
+    ''
+  );
+
+  if (el('drawerUserName')) el('drawerUserName').textContent = name.toUpperCase();
+  if (el('drawerUserPhone')) el('drawerUserPhone').textContent = maskDrawerPhone(phone);
+  if (el('drawerRoleChip')) el('drawerRoleChip').textContent = role === 'USER' ? 'User' : role;
+  if (el('drawerStatusChip')) el('drawerStatusChip').textContent = userStatusLabel(status);
+  if (el('drawerCountryCurrency')) el('drawerCountryCurrency').textContent = drawerCountryLabel(pricingCountry) + ' | ' + currency;
+  if (el('drawerAvatarInitials')) el('drawerAvatarInitials').textContent = drawerInitials(name);
+
+  const img = el('drawerAvatarImage');
+  if (img) {
+    if (image) {
+      img.src = image;
+      img.classList.remove('hidden');
+    } else {
+      img.src = '/assets/brand/zpay-icon.png';
+      img.classList.remove('hidden');
+    }
+  }
+}
+
+function drawerFocusableControls(){
+  const sidebar = el('sidebar');
+  if (!sidebar) return [];
+  return Array.from(sidebar.querySelectorAll('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+    .filter(node => !node.disabled && node.getClientRects().length > 0);
+}
+
+function focusSidebarFirstControl(){
+  const controls = drawerFocusableControls();
+  (controls[0] || el('sidebar'))?.focus?.({ preventScroll: true });
+}
+
+function setDrawerOpenerExpanded(isOpen){
+  ['openSidebarBtn', 'heroMenuButton'].forEach(id => {
+    const button = el(id);
+    if (button) button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  });
+}
+
+function setSupportDrawerTab(tab){
+  if (!tab) return;
+  setTimeout(() => {
+    if (tab === 'list') {
+      el('supportListTab')?.click();
+    } else if (tab === 'new') {
+      el('supportNewTab')?.click();
+    }
+  }, 0);
+}
+
+function focusProfileSecurityAction(){
+  setTimeout(() => {
+    const target = el('profileChangePasswordBtn') || el('profileChangePinBtn');
+    target?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+    target?.focus?.({ preventScroll: true });
+  }, 80);
 }
 
 function openSection(sectionId, options = {}){
@@ -1291,6 +1435,7 @@ function applyBundleCreateSuccessToLocalState(data){
 function renderAll(){
   renderHero();
   renderSummary();
+  renderDrawerProfile();
   renderHistory();
   hideBundleSummaryBoxes();
   if (typeof window.zpayMfsRefreshCurrencyUi === 'function') {
@@ -1363,9 +1508,7 @@ function renderSummary(){
   if (el('meAmountLimits')) el('meAmountLimits').textContent = money(roleSettings.min_amount || 0) + ' - ' + money(roleSettings.max_amount || 0);
   if (el('meWalletUpdated')) el('meWalletUpdated').textContent = fmtTs(wallet.updated_at || roleSettings.updated_at || 0);
 
-  if (el('sideMeName')) el('sideMeName').textContent = me.name || data.name || '-';
-  if (el('sideMeRole')) el('sideMeRole').textContent = String(me.role || data.role || '-').toUpperCase();
-  if (el('sideMeStatus')) el('sideMeStatus').textContent = String(me.status || data.status || '-').toUpperCase();
+  renderDrawerProfile();
 }
 
 function hideBundleSummaryBoxes(){
@@ -3933,11 +4076,21 @@ async function doLogout(){
 ========================= */
 
 function bindNavigationButtons(){
-  document.querySelectorAll('.side-btn').forEach(btn => {
+  document.querySelectorAll('.side-btn[data-page-section], .drawer-profile-fixed[data-page-section]').forEach(btn => {
     if (btn.dataset.bound === '1') return;
 
     btn.dataset.bound = '1';
-    btn.addEventListener('click', () => openSection(btn.dataset.pageSection));
+    btn.addEventListener('click', () => {
+      const sectionId = btn.dataset.pageSection;
+      if (!sectionId) return;
+      openSection(sectionId);
+      if (btn.dataset.profileAction === 'security') {
+        focusProfileSecurityAction();
+      }
+      if (sectionId === 'supportSection') {
+        setSupportDrawerTab(btn.dataset.supportTab || 'new');
+      }
+    });
   });
 
   document.querySelectorAll('.bottom-btn').forEach(btn => {
@@ -3998,9 +4151,40 @@ function bindBundleDelegatedEvents(){
   });
 }
 
+function handleSidebarKeydown(e){
+  const sidebar = el('sidebar');
+  if (!sidebar?.classList.contains('show')) return;
+
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeSidebar();
+    return;
+  }
+
+  if (e.key !== 'Tab') return;
+
+  const controls = drawerFocusableControls();
+  if (!controls.length) {
+    e.preventDefault();
+    sidebar.focus({ preventScroll: true });
+    return;
+  }
+
+  const first = controls[0];
+  const last = controls[controls.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus({ preventScroll: true });
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus({ preventScroll: true });
+  }
+}
+
 function bindEvents(){
   syncSidebarAccessibility(false);
   window.addEventListener('resize', () => syncSidebarAccessibility(el('sidebar')?.classList.contains('show')));
+  document.addEventListener('keydown', handleSidebarKeydown);
   el('loginBtn')?.addEventListener('click', doLogin);
 
   el('loginPassword')?.addEventListener('keydown', (e) => {
@@ -4028,6 +4212,17 @@ function bindEvents(){
   el('desktopRefreshBtn')?.addEventListener('click', () => safeRefreshAll(true));
   el('sidebarRefreshBtn')?.addEventListener('click', () => safeRefreshAll(true));
   el('sidebarLogoutBtn')?.addEventListener('click', doLogout);
+  el('drawerLogoutBtn')?.addEventListener('click', doLogout);
+  document.querySelectorAll('.user-drawer [data-dashboard-action]').forEach(btn => {
+    if (btn.dataset.bound === '1') return;
+    btn.dataset.bound = '1';
+    btn.addEventListener('click', () => closeSidebar({ restoreFocus: false }));
+  });
+  document.querySelectorAll('.drawer-link').forEach(link => {
+    if (link.dataset.bound === '1') return;
+    link.dataset.bound = '1';
+    link.addEventListener('click', () => closeSidebar({ restoreFocus: false }));
+  });
 
   bindNavigationButtons();
   bindBundleDelegatedEvents();
@@ -4251,6 +4446,7 @@ window.renderMfsResultSuccess = renderMfsResultSuccess;
 window.applyMfsCreateSuccessToLocalState = applyMfsCreateSuccessToLocalState;
 window.renderMfsResultError = renderMfsResultError;
 window.showMfsErrorModal = showMfsErrorModal;
+window.renderUserDrawerProfile = renderDrawerProfile;
 
 /* =========================
    Bootstrap

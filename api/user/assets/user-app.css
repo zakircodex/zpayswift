@@ -2365,3 +2365,408 @@ body.user-authenticated[data-active-section='notificationsSection'] #notificatio
     animation: none;
   }
 }
+
+/* Android-style user drawer */
+body.user-drawer-open {
+  overflow: hidden;
+}
+
+.user-drawer.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 96;
+  display: flex;
+  flex-direction: column;
+  width: min(86vw, 336px);
+  max-width: 336px;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 12px 0;
+  overflow: hidden;
+  border-right: 1px solid rgba(73, 131, 189, 0.35);
+  border-radius: 0 30px 30px 0;
+  background:
+    radial-gradient(circle at 92% 8%, rgba(50, 230, 134, 0.18), transparent 30%),
+    linear-gradient(180deg, rgba(9, 41, 84, 0.98), rgba(3, 18, 38, 0.99));
+  box-shadow: 24px 0 60px rgba(0, 0, 0, 0.42);
+  transform: translateX(calc(-100% - 22px));
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.26s ease, visibility 0.26s ease;
+  scrollbar-width: none;
+}
+
+.user-drawer.sidebar.show {
+  display: flex;
+  transform: translateX(0);
+  visibility: visible;
+  pointer-events: auto;
+}
+
+body.user-authenticated .user-drawer.sidebar.show {
+  display: flex;
+}
+
+body.user-authenticated .user-drawer.sidebar:not(.show) {
+  display: flex;
+}
+
+.sidebar-overlay {
+  background: rgba(1, 8, 20, 0.62);
+  opacity: 0;
+  backdrop-filter: blur(3px);
+  transition: opacity 0.2s ease;
+}
+
+.sidebar-overlay.show {
+  opacity: 1;
+}
+
+.drawer-profile-fixed {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 190px;
+  padding: 18px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 11px;
+  overflow: hidden;
+  color: var(--z-text);
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid rgba(70, 138, 196, 0.46);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(50, 230, 134, 0.24), transparent 34%),
+    radial-gradient(circle at 12% 100%, rgba(38, 128, 255, 0.25), transparent 40%),
+    linear-gradient(145deg, #123c78 0%, #0b2d5c 54%, #075f68 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 18px 42px rgba(0, 0, 0, 0.25);
+}
+
+.drawer-profile-fixed:focus-visible,
+.user-drawer .side-btn:focus-visible,
+.drawer-link:focus-visible {
+  outline: 2px solid var(--z-green);
+  outline-offset: 3px;
+}
+
+.drawer-profile-orb {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.drawer-orb-one {
+  width: 130px;
+  height: 130px;
+  right: -34px;
+  top: -16px;
+  background: rgba(50, 230, 134, 0.16);
+}
+
+.drawer-orb-two {
+  width: 92px;
+  height: 92px;
+  right: 34px;
+  bottom: 10px;
+  background: rgba(50, 230, 134, 0.09);
+}
+
+.drawer-avatar {
+  position: relative;
+  width: 70px;
+  height: 70px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 2px solid rgba(50, 230, 134, 0.75);
+  border-radius: 26px;
+  background: rgba(6, 34, 70, 0.74);
+  color: var(--z-green);
+  font-size: 23px;
+  font-weight: 900;
+  box-shadow: 0 12px 28px rgba(50, 230, 134, 0.16);
+}
+
+.drawer-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.drawer-avatar img.hidden {
+  display: none;
+}
+
+.drawer-profile-copy {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.drawer-profile-copy strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: 0;
+  line-height: 1.18;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.drawer-profile-copy small {
+  max-width: 100%;
+  overflow: hidden;
+  color: rgba(230, 238, 252, 0.82);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.drawer-chip {
+  min-height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 11px;
+  border: 1px solid rgba(50, 230, 134, 0.48);
+  border-radius: 999px;
+  background: rgba(50, 230, 134, 0.12);
+  color: var(--z-green);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.drawer-chip.status-chip {
+  color: #dfffea;
+}
+
+.drawer-menu-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 16px 2px calc(22px + env(safe-area-inset-bottom, 0px));
+  scrollbar-width: none;
+}
+
+.drawer-menu-scroll::-webkit-scrollbar,
+.user-drawer.sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.drawer-menu-section {
+  margin-bottom: 15px;
+}
+
+.drawer-section-label {
+  margin: 0 5px 8px;
+  color: rgba(156, 178, 216, 0.78);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.drawer-section-card {
+  display: grid;
+  gap: 9px;
+}
+
+.user-drawer .side-btn {
+  width: 100%;
+  min-height: 72px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid rgba(68, 112, 167, 0.62);
+  border-radius: 22px;
+  background: rgba(12, 43, 84, 0.72);
+  color: var(--z-text);
+  text-align: left;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  touch-action: manipulation;
+}
+
+.user-drawer .side-btn:hover,
+.user-drawer .side-btn:active {
+  border-color: rgba(50, 230, 134, 0.55);
+  background: rgba(15, 58, 108, 0.92);
+  transform: translateY(-1px);
+}
+
+.user-drawer .side-btn.active {
+  border-color: rgba(50, 230, 134, 0.7);
+  background:
+    radial-gradient(circle at 12% 50%, rgba(50, 230, 134, 0.18), transparent 42%),
+    rgba(14, 53, 101, 0.92);
+  color: #ffffff;
+}
+
+.drawer-menu-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background: rgba(13, 85, 88, 0.52);
+  color: var(--z-green);
+}
+
+.drawer-menu-icon svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.drawer-menu-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.drawer-menu-copy strong,
+.drawer-menu-copy small {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawer-menu-copy strong {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.18;
+}
+
+.drawer-menu-copy small {
+  color: rgba(205, 218, 241, 0.72);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.drawer-chevron {
+  color: var(--z-green);
+  font-size: 25px;
+  font-weight: 900;
+  line-height: 1;
+  text-align: right;
+}
+
+.drawer-link {
+  text-decoration: none;
+}
+
+.drawer-version {
+  cursor: default;
+  opacity: 0.86;
+}
+
+.drawer-version:hover,
+.drawer-version:active {
+  transform: none;
+}
+
+.drawer-logout {
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+
+.drawer-logout .drawer-menu-icon {
+  background: rgba(80, 21, 37, 0.55);
+  color: #ff8aa8;
+}
+
+.drawer-logout .drawer-chevron {
+  display: none;
+}
+
+@media (min-width: 769px) {
+  .user-drawer.sidebar {
+    width: min(32vw, 336px);
+  }
+}
+
+@media (min-width: 981px) {
+  body.user-authenticated .app-shell {
+    display: block;
+  }
+
+  body.user-authenticated .main-panel {
+    max-width: 860px;
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 360px) {
+  .user-drawer.sidebar {
+    width: 88vw;
+    padding-right: 10px;
+    padding-left: 10px;
+    border-radius: 0 24px 24px 0;
+  }
+
+  .drawer-profile-fixed {
+    min-height: 178px;
+    padding: 15px 13px;
+    border-radius: 24px;
+  }
+
+  .drawer-avatar {
+    width: 62px;
+    height: 62px;
+    border-radius: 22px;
+    font-size: 20px;
+  }
+
+  .drawer-profile-copy strong {
+    font-size: 18px;
+  }
+
+  .user-drawer .side-btn {
+    min-height: 66px;
+    grid-template-columns: 42px minmax(0, 1fr) 16px;
+    gap: 10px;
+    border-radius: 20px;
+  }
+
+  .drawer-menu-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-drawer.sidebar,
+  .sidebar-overlay,
+  .user-drawer .side-btn {
+    transition: none;
+  }
+}

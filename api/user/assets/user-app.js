@@ -361,6 +361,9 @@
       window.userState.me = Object.assign({}, window.userState.me || {}, app.profile);
     }
     renderProfile();
+    if (typeof window.renderUserDrawerProfile === 'function') {
+      window.renderUserDrawerProfile();
+    }
   }
 
   async function loadProfile(force) {
@@ -1307,7 +1310,7 @@
       if (!uid) return;
       try { await navigator.clipboard.writeText(uid); toast('Account ID copied.', 'ok'); } catch (_) { toast('Account ID could not be copied.', 'error'); }
     });
-    $('profileLogoutBtn')?.addEventListener('click', () => $('sidebarLogoutBtn')?.click());
+    $('profileLogoutBtn')?.addEventListener('click', () => ($('drawerLogoutBtn') || $('sidebarLogoutBtn'))?.click());
 
     $('transferResolveBtn')?.addEventListener('click', resolveRecipient);
     $('transferReceiverInput')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') resolveRecipient(); });
