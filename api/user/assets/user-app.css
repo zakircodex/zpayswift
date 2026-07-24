@@ -2180,6 +2180,7 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
   padding: 0;
   border-color: rgba(255, 255, 255, 0.78);
   border-radius: 50%;
+  transform: translateX(8px);
   color: #07182c;
   background: var(--z-green);
 }
