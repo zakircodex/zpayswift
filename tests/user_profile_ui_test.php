@@ -36,8 +36,8 @@ $profile = profile_fragment($dashboard, '<section id="profileSection"', '<sectio
 
 profile_expect($profile !== '', 'Profile section is missing');
 profile_expect(
-    str_contains($dashboard, '/api/user/assets/user-app.css?v=15')
-    && str_contains($dashboard, '/api/user/assets/user-app.js?v=7'),
+    str_contains($dashboard, '/api/user/assets/user-app.css?v=16')
+    && str_contains($dashboard, '/api/user/assets/user-app.js?v=8'),
     'Profile CSS/JS cache versions were not bumped'
 );
 profile_expect(
@@ -122,6 +122,43 @@ profile_expect(
     && str_contains($appJs, 'loadUnreadCount();')
     && str_contains($appJs, "document.querySelector('.profile-scroll-body')?.scrollTo"),
     'Profile notification badge/action or scroll reset is missing'
+);
+profile_expect(
+    str_contains($css, 'overflow: visible;')
+    && str_contains($css, 'bottom: -9px;')
+    && str_contains($css, 'height: 44px;')
+    && str_contains($css, 'aspect-ratio: 1;'),
+    'Profile photo edit badge or main edit button is not safely shaped'
+);
+profile_expect(
+    str_contains($appJs, 'function ensureProfileCropModal()')
+    && str_contains($appJs, 'createImageBitmap')
+    && str_contains($appJs, "data.append('profile_photo', blob, 'profile-cropped.jpg')")
+    && str_contains($appJs, 'function uploadProfilePhoto(file)')
+    && str_contains($appJs, 'openProfileCrop(file)'),
+    'Profile photo selection does not require the crop confirmation flow'
+);
+profile_expect(
+    str_contains($appJs, 'zpayProfileModal')
+    && str_contains($appJs, 'closeProfileModal({ fromHistory: true })')
+    && str_contains($appJs, 'showProfileResult')
+    && str_contains($css, '.zpay-profile-modal')
+    && str_contains($css, '.zpay-profile-result-actions .android-primary-button')
+    && str_contains($css, 'width: 100%;'),
+    'Profile modal rounding, result action width or back behavior is missing'
+);
+profile_expect(
+    str_contains($appJs, 'function profileSafeMessage(error, fallback)')
+    && str_contains($appJs, 'WRONG_PASSWORD')
+    && str_contains($appJs, 'UNSUPPORTED_IMAGE')
+    && str_contains($appJs, 'stack trace'),
+    'Profile error mapping does not suppress internal implementation details'
+);
+profile_expect(
+    str_contains($appJs, "profileModal.opener = event.currentTarget")
+    && str_contains($appJs, 'trapFocusWithin(event, closeProfileModal)')
+    && str_contains($appJs, 'URL.revokeObjectURL'),
+    'Profile modal focus return, crop keyboard handling or object URL cleanup is missing'
 );
 profile_expect(
     str_contains($proxy, "case 'profile_get':")

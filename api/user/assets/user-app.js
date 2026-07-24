@@ -4,6 +4,14 @@
   const $ = (id) => document.getElementById(id);
   const allowedImages = new Set(['image/jpeg', 'image/png', 'image/webp']);
   let lastModalFocus = null;
+  const profileModal = {
+    open: false,
+    kind: '',
+    opener: null,
+    historyOpen: false,
+    closing: false,
+    crop: null
+  };
   const sectionPaths = {
     overviewSection: '/user/',
     servicesSection: '/user/services',
@@ -59,6 +67,26 @@
   function safeMessage(error, fallback) {
     const message = String(error && error.message ? error.message : fallback || 'Please try again.').trim();
     return message && message.length <= 220 ? message : String(fallback || 'Please try again.');
+  }
+
+  function profileSafeMessage(error, fallback) {
+    const code = String(error && error.code || '').toUpperCase();
+    const known = {
+      WRONG_PASSWORD: 'Current password is incorrect.',
+      WRONG_PIN: 'Current PIN is incorrect.',
+      PASSWORD_MISMATCH: 'Confirm password does not match.',
+      PIN_MISMATCH: 'Confirm PIN does not match.',
+      INVALID_PASSWORD: 'Choose a stronger password.',
+      INVALID_PIN: 'PIN must be exactly 4 digits.',
+      IMAGE_TOO_LARGE: 'Profile photo must be 5 MB or smaller.',
+      UNSUPPORTED_IMAGE: 'Choose a supported JPG, PNG or WebP image.',
+      SESSION_EXPIRED: 'Your session expired. Please login again.'
+    };
+    if (known[code]) return known[code];
+    const message = safeMessage(error, fallback);
+    return /firebase|exception|stack trace|user_wallets|session[_ -]?token|csrf[_ -]?token|\/api\//i.test(message)
+      ? String(fallback || 'Please try again.')
+      : message;
   }
 
   function toast(message, type) {
@@ -243,6 +271,61 @@
     }
   }
 
+  function isProfileSectionActive() {
+    return document.body.getAttribute('data-active-section') === 'profileSection';
+  }
+
+  function profileModalHistory(kind, replace) {
+    if (!isProfileSectionActive() || !window.history) return;
+    const state = Object.assign({}, window.history.state || {}, {
+      zpayProfileModal: { kind: String(kind || 'form') }
+    });
+    if (replace && window.history.replaceState) {
+      window.history.replaceState(state, '', window.location.href);
+      return;
+    }
+    if (!profileModal.historyOpen && window.history.pushState) {
+      window.history.pushState(state, '', window.location.href);
+      profileModal.historyOpen = true;
+    }
+  }
+
+  function profileModalVisualClose() {
+    $('zpayActionModal')?.classList.remove('show', 'zpay-profile-modal');
+    $('zpayActionBody')?.replaceChildren();
+    $('zpayProfileCropModal')?.classList.remove('show');
+  }
+
+  function finishProfileModalClose() {
+    const opener = profileModal.opener;
+    releaseProfileCrop();
+    profileModal.open = false;
+    profileModal.kind = '';
+    profileModal.historyOpen = false;
+    profileModal.closing = false;
+    profileModal.opener = null;
+    profileModal.crop = null;
+    profileModalVisualClose();
+    if (typeof window.syncUserModalLock === 'function') window.syncUserModalLock();
+    opener?.focus?.({ preventScroll: true });
+  }
+
+  function closeProfileModal(options) {
+    const settings = options || {};
+    if (!profileModal.open) return;
+    if (settings.preserveHistory) {
+      profileModalVisualClose();
+      if (typeof window.syncUserModalLock === 'function') window.syncUserModalLock();
+      return;
+    }
+    if (!settings.fromHistory && profileModal.historyOpen && !profileModal.closing && window.history?.back) {
+      profileModal.closing = true;
+      window.history.back();
+      return;
+    }
+    finishProfileModalClose();
+  }
+
   function ensureActionModal() {
     if ($('zpayActionModal')) return $('zpayActionModal');
     const modal = document.createElement('div');
@@ -251,21 +334,18 @@
     modal.setAttribute('role', 'dialog');
     modal.setAttribute('aria-modal', 'true');
     modal.setAttribute('aria-labelledby', 'zpayActionTitle');
-    modal.innerHTML = '<div class="zpay-action-dialog">' +
-      '<button id="zpayActionClose" class="modal-close" type="button" aria-label="Close">&times;</button>' +
-      '<div id="zpayActionBody"></div></div>';
+    modal.innerHTML = '<div class="zpay-action-dialog"></div>';
     document.body.appendChild(modal);
-    $('zpayActionClose').addEventListener('click', closeActionModal);
     modal.addEventListener('click', (event) => {
-      if (event.target === modal) closeActionModal();
+      if (event.target === modal && !modal.classList.contains('zpay-profile-modal')) closeActionModal();
     });
     modal.addEventListener('keydown', trapModalFocus);
     return modal;
   }
 
-  function trapModalFocus(event) {
+  function trapFocusWithin(event, closeHandler) {
     if (event.key === 'Escape') {
-      closeActionModal();
+      closeHandler();
       return;
     }
     if (event.key !== 'Tab') return;
@@ -282,18 +362,54 @@
     }
   }
 
-  function openActionModal(builder) {
+  function trapModalFocus(event) {
+    trapFocusWithin(event, closeActionModal);
+  }
+
+  function openActionModal(builder, options) {
+    const settings = options || {};
+    const isProfile = settings.profile === true;
     const modal = ensureActionModal();
-    lastModalFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const body = $('zpayActionBody');
-    body.replaceChildren();
+    if (isProfile && !profileModal.open) {
+      profileModal.opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    } else if (!isProfile) {
+      lastModalFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
+    if (isProfile) {
+      profileModal.open = true;
+      profileModal.kind = String(settings.kind || 'form');
+      profileModal.closing = false;
+      profileModalHistory(profileModal.kind, profileModal.historyOpen);
+    }
+    modal.classList.toggle('zpay-profile-modal', isProfile);
+    if (isProfile && settings.kind === 'result') modal.setAttribute('aria-describedby', 'zpayActionCopy');
+    else modal.removeAttribute('aria-describedby');
+    const dialog = modal.querySelector('.zpay-action-dialog');
+    dialog.replaceChildren();
+    if (!(isProfile && settings.kind === 'result')) {
+      const close = document.createElement('button');
+      close.id = 'zpayActionClose';
+      close.className = 'modal-close';
+      close.type = 'button';
+      close.setAttribute('aria-label', 'Close');
+      close.innerHTML = '&times;';
+      close.addEventListener('click', () => closeActionModal());
+      dialog.appendChild(close);
+    }
+    const body = document.createElement('div');
+    body.id = 'zpayActionBody';
+    dialog.appendChild(body);
     builder(body);
     modal.classList.add('show');
     if (typeof window.syncUserModalLock === 'function') window.syncUserModalLock();
     setTimeout(() => body.querySelector('input,button,textarea,select')?.focus(), 0);
   }
 
-  function closeActionModal() {
+  function closeActionModal(options) {
+    if ($('zpayActionModal')?.classList.contains('zpay-profile-modal') && profileModal.open) {
+      closeProfileModal(options);
+      return;
+    }
     $('zpayActionModal')?.classList.remove('show');
     if (typeof window.syncUserModalLock === 'function') window.syncUserModalLock();
     lastModalFocus?.focus();
@@ -326,6 +442,33 @@
       });
       body.appendChild(wrap);
     });
+  }
+
+  function showProfileResult(title, message, kind) {
+    openActionModal((body) => {
+      const icon = document.createElement('div');
+      icon.className = 'zpay-action-icon';
+      icon.textContent = kind === 'error' ? '!' : 'OK';
+      if (kind === 'error') icon.style.borderColor = icon.style.color = 'var(--z-error)';
+      const heading = document.createElement('h3');
+      heading.id = 'zpayActionTitle';
+      heading.className = 'modal-title';
+      heading.textContent = title;
+      const copy = document.createElement('p');
+      copy.id = 'zpayActionCopy';
+      copy.className = 'zpay-action-copy';
+      copy.textContent = message;
+      body.append(icon, heading, copy);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'android-primary-button';
+      button.textContent = kind === 'error' ? 'OK' : 'Done';
+      button.addEventListener('click', () => closeProfileModal());
+      const wrap = document.createElement('div');
+      wrap.className = 'zpay-profile-result-actions';
+      wrap.appendChild(button);
+      body.appendChild(wrap);
+    }, { profile: true, kind: 'result' });
   }
 
   function openDashboardUtility(action) {
@@ -377,12 +520,12 @@
         try {
           await submitHandler(values);
         } catch (error) {
-          toast(safeMessage(error, 'Unable to save changes.'), 'error');
-          setButtonBusy(submit, false);
+          closeActionModal({ preserveHistory: true });
+          showProfileResult('Update Not Completed', profileSafeMessage(error, 'Unable to save changes.'), 'error');
         }
       });
       body.append(heading, form);
-    });
+    }, { profile: true, kind: 'form' });
   }
 
   function mergeProfile(data) {
@@ -449,8 +592,8 @@
     ], 'Save Profile', async (values) => {
       const data = await post('profile_update', { name: values.name, email: values.email }, 'Updating profile...');
       mergeProfile(data);
-      closeActionModal();
-      toast('Profile updated successfully.', 'ok');
+      closeActionModal({ preserveHistory: true });
+      showProfileResult('Profile Updated', 'Your profile details were updated successfully.', 'success');
     });
   }
 
@@ -461,8 +604,8 @@
       { name: 'confirm_password', label: 'Confirm New Password', type: 'password', autocomplete: 'new-password' }
     ], 'Update Password', async (values) => {
       await post('profile_change_password', values, 'Updating password...');
-      closeActionModal();
-      showResult('Password Updated', 'Your login password was updated successfully.', 'success');
+      closeActionModal({ preserveHistory: true });
+      showProfileResult('Password Updated', 'Your login password was updated successfully.', 'success');
     });
   }
 
@@ -473,31 +616,220 @@
       { name: 'confirm_pin', label: 'Confirm New PIN', type: 'password', inputMode: 'numeric', maxLength: 4 }
     ], 'Update PIN', async (values) => {
       await post('profile_change_pin', values, 'Updating PIN...');
-      closeActionModal();
-      showResult('PIN Updated', 'Your transaction PIN was updated successfully.', 'success');
+      closeActionModal({ preserveHistory: true });
+      showProfileResult('PIN Updated', 'Your transaction PIN was updated successfully.', 'success');
     });
   }
 
-  async function uploadProfilePhoto(file) {
+  function validateProfilePhoto(file) {
     if (!file) return;
     if (!allowedImages.has(String(file.type || '').toLowerCase())) {
-      toast('Choose a JPG, PNG or WebP image.', 'error');
-      return;
+      throw new Error('Choose a JPG, PNG or WebP image.');
     }
     if (file.size <= 0 || file.size > 5 * 1024 * 1024) {
-      toast('Profile photo must be 5 MB or smaller.', 'error');
-      return;
+      throw new Error('Profile photo must be 5 MB or smaller.');
     }
-    const data = new FormData();
-    data.append('profile_photo', file, file.name);
+  }
+
+  function ensureProfileCropModal() {
+    if ($('zpayProfileCropModal')) return $('zpayProfileCropModal');
+    const modal = document.createElement('div');
+    modal.id = 'zpayProfileCropModal';
+    modal.className = 'modal zpay-profile-modal profile-crop-modal';
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'profileCropTitle');
+    modal.innerHTML = '<div class="profile-crop-dialog">' +
+      '<button id="profileCropClose" class="modal-close" type="button" aria-label="Close photo crop">&times;</button>' +
+      '<h3 id="profileCropTitle" class="modal-title">Crop Profile Photo</h3>' +
+      '<p class="modal-sub">Adjust the square crop before uploading.</p>' +
+      '<div class="profile-crop-stage"><canvas id="profileCropCanvas" width="640" height="640" tabindex="0" aria-label="Profile photo crop area"></canvas></div>' +
+      '<label class="profile-crop-zoom" for="profileCropZoom"><span>Zoom</span><input id="profileCropZoom" type="range" min="100" max="300" value="100" step="1"></label>' +
+      '<div class="profile-crop-controls"><button id="profileCropReset" class="android-secondary-button" type="button">Reset</button><button id="profileCropCancel" class="android-secondary-button" type="button">Cancel</button><button id="profileCropSave" class="android-primary-button" type="button">Use Photo</button></div>' +
+      '</div>';
+    document.body.appendChild(modal);
+    const canvas = $('profileCropCanvas');
+    const draw = () => drawProfileCrop();
+    canvas?.addEventListener('pointerdown', (event) => {
+      const crop = profileModal.crop;
+      if (!crop) return;
+      crop.dragging = true;
+      crop.lastX = event.clientX;
+      crop.lastY = event.clientY;
+      canvas.setPointerCapture?.(event.pointerId);
+    });
+    canvas?.addEventListener('pointermove', (event) => {
+      const crop = profileModal.crop;
+      if (!crop || !crop.dragging) return;
+      crop.offsetX += event.clientX - crop.lastX;
+      crop.offsetY += event.clientY - crop.lastY;
+      crop.lastX = event.clientX;
+      crop.lastY = event.clientY;
+      draw();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach((name) => canvas?.addEventListener(name, () => {
+      if (profileModal.crop) profileModal.crop.dragging = false;
+    }));
+    $('profileCropZoom')?.addEventListener('input', (event) => {
+      if (profileModal.crop) {
+        profileModal.crop.zoom = Number(event.target.value || 100) / 100;
+        draw();
+      }
+    });
+    $('profileCropReset')?.addEventListener('click', resetProfileCrop);
+    $('profileCropCancel')?.addEventListener('click', () => closeProfileModal());
+    $('profileCropClose')?.addEventListener('click', () => closeProfileModal());
+    $('profileCropSave')?.addEventListener('click', saveProfileCrop);
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) event.preventDefault();
+    });
+    modal.addEventListener('keydown', (event) => trapFocusWithin(event, closeProfileModal));
+    return modal;
+  }
+
+  function drawProfileCrop() {
+    const crop = profileModal.crop;
+    const canvas = $('profileCropCanvas');
+    if (!crop || !canvas || !crop.image) return;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    const size = 640;
+    const imageWidth = crop.image.width || crop.image.naturalWidth;
+    const imageHeight = crop.image.height || crop.image.naturalHeight;
+    const scale = Math.max(size / imageWidth, size / imageHeight) * crop.zoom;
+    const width = imageWidth * scale;
+    const height = imageHeight * scale;
+    const x = (size - width) / 2 + crop.offsetX;
+    const y = (size - height) / 2 + crop.offsetY;
+    context.clearRect(0, 0, size, size);
+    context.fillStyle = '#061426';
+    context.fillRect(0, 0, size, size);
+    context.drawImage(crop.image, x, y, width, height);
+    context.save();
+    context.fillStyle = 'rgba(2, 9, 18, 0.48)';
+    context.fillRect(0, 0, size, size);
+    context.restore();
+    context.save();
+    context.beginPath();
+    context.arc(size / 2, size / 2, size / 2 - 8, 0, Math.PI * 2);
+    context.clip();
+    context.drawImage(crop.image, x, y, width, height);
+    context.restore();
+    context.beginPath();
+    context.arc(size / 2, size / 2, size / 2 - 9, 0, Math.PI * 2);
+    context.lineWidth = 4;
+    context.strokeStyle = '#32e686';
+    context.stroke();
+  }
+
+  function resetProfileCrop() {
+    if (!profileModal.crop) return;
+    profileModal.crop.zoom = 1;
+    profileModal.crop.offsetX = 0;
+    profileModal.crop.offsetY = 0;
+    if ($('profileCropZoom')) $('profileCropZoom').value = '100';
+    drawProfileCrop();
+  }
+
+  function releaseProfileCrop() {
+    const crop = profileModal.crop;
+    if (!crop) return;
+    if (crop.image && typeof crop.image.close === 'function') crop.image.close();
+    if (crop.objectUrl) URL.revokeObjectURL(crop.objectUrl);
+  }
+
+  async function openProfileCrop(file) {
+    if (!file) return;
+    let objectUrl = '';
     try {
-      mergeProfile(await postForm('profile_photo_upload', data, 'Uploading profile photo...'));
-      toast('Profile photo updated.', 'ok');
+      validateProfilePhoto(file);
+      objectUrl = URL.createObjectURL(file);
+      let image = null;
+      if (typeof window.createImageBitmap === 'function') {
+        try {
+          image = await window.createImageBitmap(file, { imageOrientation: 'from-image' });
+        } catch (_) {
+          image = null;
+        }
+      }
+      if (!image) {
+        image = await new Promise((resolve, reject) => {
+          const element = new Image();
+          element.onload = () => resolve(element);
+          element.onerror = () => reject(new Error('The selected image could not be read.'));
+          element.src = objectUrl;
+        });
+      }
+      const width = image.width || image.naturalWidth || 0;
+      const height = image.height || image.naturalHeight || 0;
+      if (width < 80 || height < 80 || width > 10000 || height > 10000) {
+        if (typeof image.close === 'function') image.close();
+        URL.revokeObjectURL(objectUrl);
+        throw new Error('Choose a valid image between 80 and 10000 pixels.');
+      }
+      releaseProfileCrop();
+      profileModal.crop = { file, image, objectUrl, zoom: 1, offsetX: 0, offsetY: 0, dragging: false };
+      ensureProfileCropModal();
+      if ($('profileCropZoom')) $('profileCropZoom').value = '100';
+      profileModal.open = true;
+      profileModal.kind = 'crop';
+      profileModal.opener = profileModal.opener || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+      profileModal.closing = false;
+      profileModalHistory('crop', false);
+      $('zpayProfileCropModal')?.classList.add('show');
+      if (typeof window.syncUserModalLock === 'function') window.syncUserModalLock();
+      drawProfileCrop();
+      setTimeout(() => $('profileCropSave')?.focus(), 0);
     } catch (error) {
-      toast(safeMessage(error, 'Profile photo could not be updated.'), 'error');
-    } finally {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      toast(safeMessage(error, 'The selected image could not be opened.'), 'error');
       if ($('profilePhotoInput')) $('profilePhotoInput').value = '';
     }
+  }
+
+  async function saveProfileCrop() {
+    const crop = profileModal.crop;
+    const button = $('profileCropSave');
+    const canvas = $('profileCropCanvas');
+    if (!crop || !canvas || crop.uploading) return;
+    crop.uploading = true;
+    setButtonBusy(button, true, 'Uploading...');
+    try {
+      const output = document.createElement('canvas');
+      output.width = 512;
+      output.height = 512;
+      const context = output.getContext('2d');
+      if (!context) throw new Error('The cropped image could not be prepared.');
+      context.fillStyle = '#061426';
+      context.fillRect(0, 0, output.width, output.height);
+      const imageWidth = crop.image.width || crop.image.naturalWidth;
+      const imageHeight = crop.image.height || crop.image.naturalHeight;
+      const scale = Math.max(640 / imageWidth, 640 / imageHeight) * crop.zoom;
+      const width = imageWidth * scale;
+      const height = imageHeight * scale;
+      const x = (640 - width) / 2 + crop.offsetX;
+      const y = (640 - height) / 2 + crop.offsetY;
+      context.drawImage(crop.image, x * 0.8, y * 0.8, width * 0.8, height * 0.8);
+      const blob = await new Promise((resolve) => output.toBlob(resolve, 'image/jpeg', 0.9));
+      if (!blob) throw new Error('The cropped image could not be prepared.');
+      const data = new FormData();
+      data.append('profile_photo', blob, 'profile-cropped.jpg');
+      const response = await postForm('profile_photo_upload', data, 'Uploading profile photo...');
+      closeProfileModal({ preserveHistory: true });
+      mergeProfile(response);
+      showProfileResult('Profile Photo Updated', 'Your profile photo was updated successfully.', 'success');
+    } catch (error) {
+      closeProfileModal({ preserveHistory: true });
+      showProfileResult('Photo Not Updated', profileSafeMessage(error, 'Profile photo could not be updated.'), 'error');
+    } finally {
+      crop.uploading = false;
+      setButtonBusy(button, false);
+      if ($('profilePhotoInput')) $('profilePhotoInput').value = '';
+    }
+  }
+
+  function uploadProfilePhoto(file) {
+    openProfileCrop(file);
   }
 
   function transferStep(step, options) {
@@ -1280,6 +1612,7 @@
   }
 
   function sectionChanged(sectionId) {
+    if (sectionId !== 'profileSection' && profileModal.open) finishProfileModalClose();
     if (sectionId !== 'supportSection') stopSupportPolling();
     if (sectionId === 'profileSection') {
       loadProfile(false);
@@ -1298,6 +1631,10 @@
   }
 
   function handleAppPopState(event) {
+    if (profileModal.open) {
+      closeProfileModal({ fromHistory: true });
+      return true;
+    }
     const state = event.state && event.state.zpayUserApp;
     if (app.support.ticket) {
       closeSupportConversation({ fromHistory: true });
@@ -1339,7 +1676,10 @@
       tab.addEventListener('click', () => switchNotificationFilter(tab.dataset.notificationFilter));
     });
     $('profileEditButton')?.addEventListener('click', editProfile);
-    $('profileAvatarButton')?.addEventListener('click', () => $('profilePhotoInput')?.click());
+    $('profileAvatarButton')?.addEventListener('click', (event) => {
+      profileModal.opener = event.currentTarget;
+      $('profilePhotoInput')?.click();
+    });
     $('profilePhotoInput')?.addEventListener('change', (event) => uploadProfilePhoto(event.target.files && event.target.files[0]));
     $('profileChangePasswordBtn')?.addEventListener('click', changePassword);
     $('profileChangePinBtn')?.addEventListener('click', changePin);

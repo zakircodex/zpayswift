@@ -2083,17 +2083,31 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
   height: 104px;
   flex: 0 0 104px;
   border: 4px solid var(--z-green);
+  overflow: visible;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
 }
 
+.profile-fixed-hero .profile-avatar-button img,
+.profile-fixed-hero .profile-avatar-button > span {
+  border-radius: 50%;
+}
+
 .profile-fixed-hero .profile-avatar-button small {
-  inset: auto -2px 0 auto;
+  left: 50%;
+  right: auto;
+  bottom: -9px;
+  transform: translateX(-50%);
   min-width: 36px;
   padding: 3px 6px;
   border-radius: 10px;
   color: #061b31;
   background: var(--z-green);
   font-size: 9px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  z-index: 2;
 }
 
 .profile-fixed-hero .profile-identity h2 {
@@ -2129,7 +2143,12 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
   right: 0;
   bottom: 2px;
   width: 44px;
-  min-height: 44px;
+  height: 44px;
+  min-height: 0;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border-color: rgba(255, 255, 255, 0.78);
   border-radius: 50%;
   color: #07182c;
@@ -2300,6 +2319,162 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
   min-height: 8px;
 }
 
+/* Profile modal polish and the crop-before-upload flow. */
+.zpay-profile-modal {
+  z-index: 140;
+  padding: 14px;
+  background: rgba(2, 9, 18, 0.78);
+}
+
+.zpay-profile-modal .zpay-action-dialog,
+.zpay-profile-modal .profile-crop-dialog {
+  width: min(100%, 480px);
+  max-height: min(92dvh, 760px);
+  overflow-y: auto;
+  border: 1px solid rgba(200, 214, 236, 0.34);
+  border-radius: 28px;
+  color: var(--z-text);
+  background: linear-gradient(160deg, #12366c, #0b2347 72%);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.42), 0 0 26px rgba(50, 230, 134, 0.08);
+}
+
+.zpay-profile-modal .zpay-action-dialog {
+  position: relative;
+  padding: 24px;
+}
+
+.zpay-profile-modal .modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid rgba(200, 214, 236, 0.28);
+  border-radius: 50%;
+  color: var(--z-muted);
+  background: rgba(7, 23, 47, 0.56);
+  cursor: pointer;
+}
+
+.zpay-profile-modal .modal-close:hover,
+.zpay-profile-modal .modal-close:focus-visible {
+  color: var(--z-green);
+  border-color: rgba(50, 230, 134, 0.68);
+}
+
+.zpay-profile-modal .modal-title {
+  padding-right: 48px;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.zpay-profile-modal .zpay-action-form {
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.zpay-profile-modal .zpay-action-form input {
+  min-height: 54px;
+  padding: 13px 15px;
+  border: 1px solid rgba(200, 214, 236, 0.32);
+  border-radius: 17px;
+  color: var(--z-text);
+  background: rgba(4, 16, 31, 0.6);
+}
+
+.zpay-profile-modal .zpay-action-form input:focus {
+  border-color: var(--z-green);
+  box-shadow: 0 0 0 3px rgba(50, 230, 134, 0.14);
+}
+
+.zpay-profile-modal .android-primary-button,
+.zpay-profile-modal .android-secondary-button {
+  min-height: 54px;
+  margin-top: 8px;
+  border-radius: 17px;
+}
+
+.zpay-profile-modal .zpay-action-form .android-primary-button {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.zpay-profile-modal .zpay-action-icon {
+  margin-top: 4px;
+  border-width: 2px;
+}
+
+.zpay-profile-modal .zpay-profile-result-actions {
+  width: 100%;
+  margin-top: 20px;
+}
+
+.zpay-profile-modal .zpay-profile-result-actions .android-primary-button {
+  width: 100%;
+  margin-top: 0;
+}
+
+.profile-crop-dialog {
+  position: relative;
+  padding: 24px;
+}
+
+.profile-crop-stage {
+  width: min(100%, 360px);
+  aspect-ratio: 1;
+  margin: 18px auto 0;
+  overflow: hidden;
+  border: 1px solid rgba(50, 230, 134, 0.42);
+  border-radius: 22px;
+  background: #061426;
+  box-shadow: inset 0 0 0 1px rgba(200, 214, 236, 0.1);
+}
+
+.profile-crop-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.profile-crop-stage canvas:active {
+  cursor: grabbing;
+}
+
+.profile-crop-zoom {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  color: var(--z-muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.profile-crop-zoom input {
+  width: 100%;
+  accent-color: var(--z-green);
+}
+
+.profile-crop-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 1.3fr);
+  gap: 9px;
+  margin-top: 14px;
+}
+
+.profile-crop-controls .android-primary-button,
+.profile-crop-controls .android-secondary-button {
+  min-width: 0;
+  margin-top: 0;
+  padding-right: 8px;
+  padding-left: 8px;
+  white-space: nowrap;
+}
+
 @media (min-width: 981px) {
   body.user-authenticated[data-active-section='profileSection'] .app-shell {
     display: block;
@@ -2347,6 +2522,10 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
     flex-basis: 88px;
   }
 
+  .profile-fixed-hero .profile-avatar-button small {
+    bottom: -8px;
+  }
+
   .profile-fixed-hero .profile-identity h2 {
     font-size: 19px;
   }
@@ -2357,6 +2536,20 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
 
   .profile-section-card {
     padding: 18px;
+  }
+
+  .zpay-profile-modal .zpay-action-dialog,
+  .zpay-profile-modal .profile-crop-dialog {
+    padding: 20px;
+    border-radius: 24px;
+  }
+
+  .profile-crop-controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .profile-crop-controls .android-primary-button {
+    grid-column: 1 / -1;
   }
 }
 
@@ -2369,6 +2562,11 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
     width: 74px;
     height: 74px;
     flex-basis: 74px;
+  }
+
+  .profile-fixed-hero .profile-avatar-button small {
+    bottom: -8px;
+    font-size: 8px;
   }
 
   .profile-fixed-hero .profile-identity h2 {
