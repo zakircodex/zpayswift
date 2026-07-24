@@ -2093,12 +2093,18 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
 }
 
 .profile-fixed-hero .profile-avatar-button small {
+  box-sizing: border-box;
   left: 50%;
   right: auto;
-  bottom: -9px;
+  bottom: -10px;
   transform: translateX(-50%);
-  min-width: 36px;
-  padding: 3px 6px;
+  width: 44px;
+  min-width: 44px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
   border-radius: 10px;
   color: #061b31;
   background: var(--z-green);
@@ -2141,7 +2147,7 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
 .profile-fixed-hero .profile-edit-button {
   position: absolute;
   right: 0;
-  bottom: 2px;
+  bottom: -8px;
   width: 44px;
   height: 44px;
   min-height: 0;

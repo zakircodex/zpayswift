@@ -125,7 +125,7 @@ profile_expect(
 );
 profile_expect(
     str_contains($css, 'overflow: visible;')
-    && str_contains($css, 'bottom: -9px;')
+    && str_contains($css, 'bottom: -10px;')
     && str_contains($css, 'height: 44px;')
     && str_contains($css, 'aspect-ratio: 1;'),
     'Profile photo edit badge or main edit button is not safely shaped'
