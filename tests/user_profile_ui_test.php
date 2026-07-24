@@ -36,8 +36,8 @@ $profile = profile_fragment($dashboard, '<section id="profileSection"', '<sectio
 
 profile_expect($profile !== '', 'Profile section is missing');
 profile_expect(
-    str_contains($dashboard, '/api/user/assets/user-app.css?v=16')
-    && str_contains($dashboard, '/api/user/assets/user-app.js?v=8'),
+    str_contains($dashboard, '/api/user/assets/user-app.css?v=17')
+    && str_contains($dashboard, '/api/user/assets/user-app.js?v=9'),
     'Profile CSS/JS cache versions were not bumped'
 );
 profile_expect(
@@ -135,7 +135,12 @@ profile_expect(
     && str_contains($appJs, 'createImageBitmap')
     && str_contains($appJs, "data.append('profile_photo', blob, 'profile-cropped.jpg')")
     && str_contains($appJs, 'function uploadProfilePhoto(file)')
-    && str_contains($appJs, 'openProfileCrop(file)'),
+    && str_contains($appJs, 'openProfileCrop(file)')
+    && str_contains($appJs, 'profileCropCancel')
+    && str_contains($appJs, 'profileCropSave')
+    && str_contains($appJs, 'pinchDistance')
+    && !str_contains($appJs, 'profileCropZoom')
+    && !str_contains($appJs, 'profileCropReset'),
     'Profile photo selection does not require the crop confirmation flow'
 );
 profile_expect(

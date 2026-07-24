@@ -642,41 +642,74 @@
     modal.innerHTML = '<div class="profile-crop-dialog">' +
       '<button id="profileCropClose" class="modal-close" type="button" aria-label="Close photo crop">&times;</button>' +
       '<h3 id="profileCropTitle" class="modal-title">Crop Profile Photo</h3>' +
-      '<p class="modal-sub">Adjust the square crop before uploading.</p>' +
+      '<p class="modal-sub">Drag inside the circle to reposition. Pinch or scroll to zoom.</p>' +
       '<div class="profile-crop-stage"><canvas id="profileCropCanvas" width="640" height="640" tabindex="0" aria-label="Profile photo crop area"></canvas></div>' +
-      '<label class="profile-crop-zoom" for="profileCropZoom"><span>Zoom</span><input id="profileCropZoom" type="range" min="100" max="300" value="100" step="1"></label>' +
-      '<div class="profile-crop-controls"><button id="profileCropReset" class="android-secondary-button" type="button">Reset</button><button id="profileCropCancel" class="android-secondary-button" type="button">Cancel</button><button id="profileCropSave" class="android-primary-button" type="button">Use Photo</button></div>' +
+      '<div class="profile-crop-controls"><button id="profileCropCancel" class="android-secondary-button" type="button">Cancel</button><button id="profileCropSave" class="android-primary-button" type="button">Use Photo</button></div>' +
       '</div>';
     document.body.appendChild(modal);
     const canvas = $('profileCropCanvas');
     const draw = () => drawProfileCrop();
+    const pointFor = (event) => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: (event.clientX - rect.left) * (canvas.width / rect.width),
+        y: (event.clientY - rect.top) * (canvas.height / rect.height)
+      };
+    };
+    const distanceBetween = (first, second) => Math.hypot(second.x - first.x, second.y - first.y);
     canvas?.addEventListener('pointerdown', (event) => {
       const crop = profileModal.crop;
       if (!crop) return;
-      crop.dragging = true;
-      crop.lastX = event.clientX;
-      crop.lastY = event.clientY;
+      event.preventDefault();
+      const point = pointFor(event);
+      crop.pointers = crop.pointers || new Map();
+      crop.pointers.set(event.pointerId, point);
+      if (crop.pointers.size === 1) {
+        crop.dragging = true;
+        crop.lastX = point.x;
+        crop.lastY = point.y;
+      } else if (crop.pointers.size === 2) {
+        const points = Array.from(crop.pointers.values());
+        crop.dragging = false;
+        crop.pinchDistance = distanceBetween(points[0], points[1]);
+        crop.pinchZoom = crop.zoom;
+      }
       canvas.setPointerCapture?.(event.pointerId);
     });
     canvas?.addEventListener('pointermove', (event) => {
       const crop = profileModal.crop;
-      if (!crop || !crop.dragging) return;
-      crop.offsetX += event.clientX - crop.lastX;
-      crop.offsetY += event.clientY - crop.lastY;
-      crop.lastX = event.clientX;
-      crop.lastY = event.clientY;
+      if (!crop || !crop.pointers?.has(event.pointerId)) return;
+      event.preventDefault();
+      const point = pointFor(event);
+      crop.pointers.set(event.pointerId, point);
+      if (crop.pointers.size >= 2 && crop.pinchDistance) {
+        const points = Array.from(crop.pointers.values());
+        const pinchDistance = distanceBetween(points[0], points[1]);
+        crop.zoom = Math.max(1, Math.min(3, crop.pinchZoom * (pinchDistance / crop.pinchDistance)));
+      } else if (crop.dragging) {
+        crop.offsetX += point.x - crop.lastX;
+        crop.offsetY += point.y - crop.lastY;
+        crop.lastX = point.x;
+        crop.lastY = point.y;
+      }
       draw();
     });
-    ['pointerup', 'pointercancel', 'pointerleave'].forEach((name) => canvas?.addEventListener(name, () => {
-      if (profileModal.crop) profileModal.crop.dragging = false;
+    ['pointerup', 'pointercancel'].forEach((name) => canvas?.addEventListener(name, (event) => {
+      const crop = profileModal.crop;
+      if (!crop) return;
+      crop.pointers?.delete(event.pointerId);
+      crop.pinchDistance = 0;
+      crop.dragging = false;
     }));
-    $('profileCropZoom')?.addEventListener('input', (event) => {
-      if (profileModal.crop) {
-        profileModal.crop.zoom = Number(event.target.value || 100) / 100;
-        draw();
-      }
+    canvas?.addEventListener('pointerleave', (event) => {
+      if (profileModal.crop && !(canvas.hasPointerCapture?.(event.pointerId))) profileModal.crop.dragging = false;
     });
-    $('profileCropReset')?.addEventListener('click', resetProfileCrop);
+    canvas?.addEventListener('wheel', (event) => {
+      if (!profileModal.crop) return;
+      event.preventDefault();
+      profileModal.crop.zoom = Math.max(1, Math.min(3, profileModal.crop.zoom + (event.deltaY < 0 ? 0.08 : -0.08)));
+      draw();
+    }, { passive: false });
     $('profileCropCancel')?.addEventListener('click', () => closeProfileModal());
     $('profileCropClose')?.addEventListener('click', () => closeProfileModal());
     $('profileCropSave')?.addEventListener('click', saveProfileCrop);
@@ -722,15 +755,6 @@
     context.stroke();
   }
 
-  function resetProfileCrop() {
-    if (!profileModal.crop) return;
-    profileModal.crop.zoom = 1;
-    profileModal.crop.offsetX = 0;
-    profileModal.crop.offsetY = 0;
-    if ($('profileCropZoom')) $('profileCropZoom').value = '100';
-    drawProfileCrop();
-  }
-
   function releaseProfileCrop() {
     const crop = profileModal.crop;
     if (!crop) return;
@@ -768,9 +792,8 @@
         throw new Error('Choose a valid image between 80 and 10000 pixels.');
       }
       releaseProfileCrop();
-      profileModal.crop = { file, image, objectUrl, zoom: 1, offsetX: 0, offsetY: 0, dragging: false };
+      profileModal.crop = { file, image, objectUrl, zoom: 1, offsetX: 0, offsetY: 0, dragging: false, pointers: new Map(), pinchDistance: 0, pinchZoom: 1 };
       ensureProfileCropModal();
-      if ($('profileCropZoom')) $('profileCropZoom').value = '100';
       profileModal.open = true;
       profileModal.kind = 'crop';
       profileModal.opener = profileModal.opener || (document.activeElement instanceof HTMLElement ? document.activeElement : null);
