@@ -1603,7 +1603,34 @@ body.user-authenticated[data-active-section='overviewSection'] .hero-card {
 }
 
 body.user-authenticated[data-active-section='overviewSection'] .hero-card::after {
-  display: none;
+  content: "";
+  position: absolute;
+  z-index: 0;
+  width: 228px;
+  height: 228px;
+  right: -72px;
+  top: -84px;
+  border-radius: 50%;
+  background: rgba(50, 230, 134, 0.16);
+  pointer-events: none;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-card::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  width: 154px;
+  height: 154px;
+  right: 74px;
+  bottom: -92px;
+  border-radius: 50%;
+  background: rgba(23, 194, 177, 0.16);
+  pointer-events: none;
+}
+
+body.user-authenticated[data-active-section='overviewSection'] .hero-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .dashboard-hero-topbar {
@@ -3572,4 +3599,66 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
   align-items: start;
   justify-items: start;
   text-align: left;
+}
+
+/* Keep the Android-style Dashboard shell usable on laptop and desktop widths. */
+@media (min-width: 981px) {
+  body.user-authenticated[data-active-section='overviewSection'] {
+    --dashboard-drawer-width: 300px;
+    overflow: hidden;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] #appView,
+  body.user-authenticated[data-active-section='overviewSection'] .app-shell {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .app-shell {
+    display: flex;
+    width: min(100%, 1360px);
+    margin: 0 auto;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .user-drawer.sidebar {
+    position: sticky;
+    inset: auto;
+    z-index: 20;
+    flex: 0 0 var(--dashboard-drawer-width);
+    width: var(--dashboard-drawer-width);
+    max-width: var(--dashboard-drawer-width);
+    height: 100vh;
+    height: 100dvh;
+    min-height: 100vh;
+    min-height: 100dvh;
+    transform: none;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .user-drawer.sidebar.show {
+    display: flex;
+    transform: none;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .sidebar-overlay {
+    display: none !important;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .main-panel {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
+    min-height: 100vh;
+    min-height: 100dvh;
+    margin: 0;
+    overflow-y: auto;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .bottom-nav {
+    display: none;
+  }
 }

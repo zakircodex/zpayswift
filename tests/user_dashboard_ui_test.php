@@ -5,6 +5,7 @@ $root = dirname(__DIR__);
 $dashboard = (string)file_get_contents($root . '/api/user/dashboard.php');
 $css = (string)file_get_contents($root . '/api/user/assets/user-app.css');
 $dashboardJs = (string)file_get_contents($root . '/api/user/assets/dashboard.js');
+$proxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $appJs = (string)file_get_contents($root . '/api/user/assets/user-app.js');
 $tests = 0;
 
@@ -113,8 +114,25 @@ dashboard_expect(
 );
 dashboard_expect(
     str_contains($dashboardJs, "pricingCountry === 'MY'")
+    && str_contains($dashboardJs, "wallet.display_currency || wallet.wallet_currency || wallet.currency")
+    && str_contains($dashboardJs, "const isMyrAccount = pricingCountry === 'MY' || walletCurrency === 'MYR'")
     && str_contains($dashboardJs, ": 'Not applicable'"),
     'Dashboard rate visibility is not pricing-country aware'
+);
+dashboard_expect(
+    str_contains($dashboardJs, "summary_only: '1'")
+    && str_contains($proxy, "'history_complete' => !\$summaryOnly")
+    && str_contains($proxy, '$summaryOnly ? [] : user_proxy_collect_wallet_received')
+    && str_contains($dashboardJs, 'state.historyLoaded = logWrap.history_complete !== false'),
+    'Dashboard bootstrap does not defer heavy history payloads'
+);
+dashboard_expect(
+    str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .hero-card::before")
+    && str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .hero-card::after")
+    && str_contains($css, '--dashboard-drawer-width: 300px')
+    && str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .app-shell")
+    && str_contains($css, 'display: flex;'),
+    'Dashboard decorative bubbles or desktop shell rules are missing'
 );
 dashboard_expect(
     str_contains($dashboardJs, "const DASHBOARD_LOADING_TEXT = 'Loading dashboard, please wait...'")

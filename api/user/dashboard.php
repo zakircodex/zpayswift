@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=20">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=21">
 </head>
 <body>
 
@@ -955,7 +955,7 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=28"></script>
+<script src="/api/user/assets/dashboard.js?v=29"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=12"></script>
 <script src="/api/user/assets/user-app.js?v=10"></script>
 </body>

@@ -888,7 +888,10 @@ function closeSidebar(options = {}){
 function syncSidebarAccessibility(isOpen = false){
   const sidebar = el('sidebar');
   if (!sidebar) return;
-  const hiddenFromLayout = !isOpen;
+  const desktopDashboard = window.innerWidth >= 981
+    && document.body.classList.contains('user-authenticated')
+    && document.body.getAttribute('data-active-section') === 'overviewSection';
+  const hiddenFromLayout = !isOpen && !desktopDashboard;
   sidebar.toggleAttribute('inert', hiddenFromLayout);
   sidebar.setAttribute('aria-hidden', hiddenFromLayout ? 'true' : 'false');
   el('sidebarOverlay')?.setAttribute('aria-hidden', hiddenFromLayout ? 'true' : 'false');
@@ -1156,7 +1159,6 @@ function applyDashboardBootstrap(data){
   }
   if (Array.isArray(logWrap.items)) {
     state.requestLogs = logWrap.items;
-    state.historyLoaded = true;
   }
   if (Array.isArray(logWrap.wallet_history)) {
     state.walletHistory = logWrap.wallet_history;
@@ -1164,12 +1166,17 @@ function applyDashboardBootstrap(data){
   if (Array.isArray(logWrap.add_money_history)) {
     state.addMoneyHistory = logWrap.add_money_history;
   }
+
+  state.historyLoaded = logWrap.history_complete !== false
+    && Array.isArray(logWrap.items)
+    && Array.isArray(logWrap.wallet_history)
+    && Array.isArray(logWrap.add_money_history);
 }
 
 async function loadDashboardBootstrap(showBusy = true, busyText = DASHBOARD_LOADING_TEXT){
   const data = await proxyGet(
     'dashboard_bootstrap',
-    { limit: state.historyLimit, month: state.historyMonth },
+    { limit: state.historyLimit, month: state.historyMonth, summary_only: '1' },
     busyText,
     { busy: showBusy }
   );
@@ -1253,12 +1260,11 @@ async function loadInitialDashboard(showBusy = true, busyText = DASHBOARD_LOADIN
       throw err;
     }
 
-    await loadMe({
-      busy: showBusy,
-      busyText: DASHBOARD_LOADING_TEXT
-    });
-
     await Promise.all([
+      loadMe({
+        busy: showBusy,
+        busyText: DASHBOARD_LOADING_TEXT
+      }),
       loadWalletSummary({ busy: false }),
       loadRequestLogs({ busy: false, limit: 20 })
     ]);
@@ -1513,8 +1519,17 @@ function renderHero(){
   if (el('heroRequests')) el('heroRequests').textContent = String((state.requestLogs || []).length);
   if (el('heroRate')) {
     const pricingCountry = String(me.pricing_country || data.pricing_country || wallet.pricing_country || '').toUpperCase();
-    const rate = Number(wallet.rate_myr_bdt || data.rate_myr_bdt || data.current_rate || 0);
-    el('heroRate').textContent = pricingCountry === 'MY'
+    const walletCurrency = String(wallet.display_currency || wallet.wallet_currency || wallet.currency || '').toUpperCase();
+    const rate = Number(
+      wallet.rate_myr_bdt
+      ?? data.rate_myr_bdt
+      ?? wallet.rate_myr_to_bdt
+      ?? data.rate_myr_to_bdt
+      ?? data.current_rate
+      ?? 0
+    );
+    const isMyrAccount = pricingCountry === 'MY' || walletCurrency === 'MYR';
+    el('heroRate').textContent = isMyrAccount
       ? (rate > 0 ? `RM 1 = ${rate.toFixed(2)} BDT` : 'Rate unavailable')
       : 'Not applicable';
   }
@@ -4500,7 +4515,7 @@ async function bootstrap(){
   prepareDashboardLoadingPreview();
 
   try{
-    await loadInitialDashboard(true, DASHBOARD_LOADING_TEXT);
+    await loadInitialDashboard(false, DASHBOARD_LOADING_TEXT);
   }catch(err){
     setBusy(false);
     showLogin();

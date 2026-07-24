@@ -3778,6 +3778,11 @@ switch ($action) {
         }
 
         $month = user_proxy_valid_month_key($_GET['month'] ?? null);
+        $summaryOnly = in_array(
+            strtolower(trim((string)($_GET['summary_only'] ?? ''))),
+            ['1', 'true', 'yes'],
+            true
+        );
 
         user_proxy_response(true, 'SUCCESS', 'Dashboard bootstrap loaded', [
             'user' => $sessionUser,
@@ -3787,8 +3792,9 @@ switch ($action) {
                 'uid' => $uid,
                 'month' => $month,
                 'items' => user_proxy_collect_request_logs($uid, $limit, false, $month),
-                'wallet_history' => user_proxy_collect_wallet_received($uid, $month, $limit),
-                'add_money_history' => add_money_list_user_history($uid, $limit),
+                'wallet_history' => $summaryOnly ? [] : user_proxy_collect_wallet_received($uid, $month, $limit),
+                'add_money_history' => $summaryOnly ? [] : add_money_list_user_history($uid, $limit),
+                'history_complete' => !$summaryOnly,
             ],
             'loaded_at' => user_proxy_now(),
         ]);
