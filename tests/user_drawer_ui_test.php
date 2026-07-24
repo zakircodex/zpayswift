@@ -100,8 +100,8 @@ drawer_expect(
     'Drawer open buttons do not expose aria-expanded/controls'
 );
 drawer_expect(
-    str_contains($dashboard, '/api/user/assets/user-app.css?v=21')
-    && str_contains($dashboard, '/api/user/assets/dashboard.js?v=29')
+    str_contains($dashboard, '/api/user/assets/user-app.css?v=22')
+    && str_contains($dashboard, '/api/user/assets/dashboard.js?v=30')
     && str_contains($dashboard, '/api/user/assets/user-app.js?v=10'),
     'Drawer asset versions were not bumped after the alignment CSS/JS change'
 );
@@ -128,6 +128,13 @@ drawer_expect(
     && str_contains($appCss, '.sidebar-overlay.show')
     && str_contains($appCss, 'transform: translateX(0)'),
     'Android-like drawer width, overlay, accent or animation CSS is missing'
+);
+drawer_expect(
+    str_contains($dashboardJs, 'const hiddenFromLayout = !isOpen;')
+    && str_contains($appCss, "body.user-authenticated[data-active-section='overviewSection'] .app-shell")
+    && str_contains($appCss, 'display: block;')
+    && str_contains($appCss, 'dashboard-recommended .zpay-service-grid'),
+    'Desktop Dashboard drawer toggle and centered service grid rules are missing'
 );
 drawer_expect(
     str_contains($appCss, '.user-drawer .drawer-avatar > img#drawerAvatarImage')

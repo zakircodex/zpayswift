@@ -888,10 +888,7 @@ function closeSidebar(options = {}){
 function syncSidebarAccessibility(isOpen = false){
   const sidebar = el('sidebar');
   if (!sidebar) return;
-  const desktopDashboard = window.innerWidth >= 981
-    && document.body.classList.contains('user-authenticated')
-    && document.body.getAttribute('data-active-section') === 'overviewSection';
-  const hiddenFromLayout = !isOpen && !desktopDashboard;
+  const hiddenFromLayout = !isOpen;
   sidebar.toggleAttribute('inert', hiddenFromLayout);
   sidebar.setAttribute('aria-hidden', hiddenFromLayout ? 'true' : 'false');
   el('sidebarOverlay')?.setAttribute('aria-hidden', hiddenFromLayout ? 'true' : 'false');

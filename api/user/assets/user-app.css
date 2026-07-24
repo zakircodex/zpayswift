@@ -3618,44 +3618,62 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
   }
 
   body.user-authenticated[data-active-section='overviewSection'] .app-shell {
-    display: flex;
+    display: block;
     width: min(100%, 1360px);
     margin: 0 auto;
   }
 
-  body.user-authenticated[data-active-section='overviewSection'] .user-drawer.sidebar {
-    position: sticky;
-    inset: auto;
-    z-index: 20;
-    flex: 0 0 var(--dashboard-drawer-width);
+  body.user-authenticated[data-active-section='overviewSection'] .user-drawer.sidebar,
+  body.user-authenticated[data-active-section='overviewSection'] .user-drawer.sidebar:not(.show) {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 170;
+    display: flex;
+    flex: 0 0 auto;
     width: var(--dashboard-drawer-width);
     max-width: var(--dashboard-drawer-width);
     height: 100vh;
     height: 100dvh;
     min-height: 100vh;
     min-height: 100dvh;
-    transform: none;
-    visibility: visible;
-    pointer-events: auto;
+    transform: translateX(calc(-100% - 22px));
+    visibility: hidden;
+    pointer-events: none;
   }
 
   body.user-authenticated[data-active-section='overviewSection'] .user-drawer.sidebar.show {
     display: flex;
-    transform: none;
+    transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
   }
 
   body.user-authenticated[data-active-section='overviewSection'] .sidebar-overlay {
-    display: none !important;
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 160;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .sidebar-overlay.show {
+    display: block;
   }
 
   body.user-authenticated[data-active-section='overviewSection'] .main-panel {
-    flex: 1 1 auto;
-    width: auto;
-    max-width: none;
+    display: block;
+    width: min(100%, 940px);
+    max-width: 940px;
+    height: 100vh;
+    height: 100dvh;
     min-height: 100vh;
     min-height: 100dvh;
-    margin: 0;
+    margin: 0 auto;
     overflow-y: auto;
+  }
+
+  body.user-authenticated[data-active-section='overviewSection'] .dashboard-recommended .zpay-service-grid {
+    margin-right: auto;
+    margin-left: auto;
   }
 
   body.user-authenticated[data-active-section='overviewSection'] .bottom-nav {
