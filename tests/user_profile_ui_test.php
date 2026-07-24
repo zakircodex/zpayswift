@@ -36,8 +36,8 @@ $profile = profile_fragment($dashboard, '<section id="profileSection"', '<sectio
 
 profile_expect($profile !== '', 'Profile section is missing');
 profile_expect(
-    str_contains($dashboard, '/api/user/assets/user-app.css?v=17')
-    && str_contains($dashboard, '/api/user/assets/user-app.js?v=9'),
+    str_contains($dashboard, '/api/user/assets/user-app.css?v=18')
+    && str_contains($dashboard, '/api/user/assets/user-app.js?v=10'),
     'Profile CSS/JS cache versions were not bumped'
 );
 profile_expect(
@@ -58,7 +58,9 @@ profile_expect(
     str_contains($profile, 'id="profileAvatarButton"')
     && str_contains($profile, 'id="profileAvatarImage"')
     && str_contains($profile, 'id="profileAvatarInitials"')
+    && str_contains($profile, 'id="profilePhotoEditButton"')
     && str_contains($profile, 'id="profileEditButton"')
+    && !str_contains($profile, '<small>Edit</small>')
     && str_contains($profile, 'id="profilePhotoInput"'),
     'Profile identity/photo/edit controls are incomplete'
 );
@@ -124,7 +126,9 @@ profile_expect(
     'Profile notification badge/action or scroll reset is missing'
 );
 profile_expect(
-    str_contains($css, 'overflow: visible;')
+    str_contains($css, 'profile-photo-edit-badge')
+    && str_contains($css, 'profile-identity-country-row')
+    && str_contains($css, 'overflow: visible;')
     && str_contains($css, 'bottom: -10px;')
     && str_contains($css, 'height: 44px;')
     && str_contains($css, 'aspect-ratio: 1;'),
@@ -161,6 +165,7 @@ profile_expect(
 );
 profile_expect(
     str_contains($appJs, "profileModal.opener = event.currentTarget")
+    && str_contains($appJs, "$('profilePhotoEditButton')?.addEventListener('click', openProfilePhotoPicker)")
     && str_contains($appJs, 'trapFocusWithin(event, closeProfileModal)')
     && str_contains($appJs, 'URL.revokeObjectURL'),
     'Profile modal focus return, crop keyboard handling or object URL cleanup is missing'

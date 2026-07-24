@@ -863,15 +863,6 @@ body.user-authenticated .filter-btn.active {
   object-fit: cover;
 }
 
-.profile-avatar-button small {
-  position: absolute;
-  inset: auto 0 0;
-  padding: 3px;
-  color: var(--z-text);
-  background: rgba(4, 16, 31, 0.78);
-  font-size: 10px;
-}
-
 .profile-identity {
   min-width: 0;
   flex: 1;
@@ -2070,7 +2061,7 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
   align-items: center;
   gap: 14px;
   margin-top: 10px;
-  padding: 0 40px 0 0;
+  padding: 0;
   overflow: visible;
   border: 0;
   border-radius: 0;
@@ -2078,12 +2069,20 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
   box-shadow: none;
 }
 
-.profile-fixed-hero .profile-avatar-button {
+.profile-fixed-hero .profile-photo-wrap {
+  position: relative;
   width: 104px;
   height: 104px;
   flex: 0 0 104px;
-  border: 4px solid var(--z-green);
   overflow: visible;
+}
+
+.profile-fixed-hero .profile-avatar-button {
+  width: 104px;
+  height: 104px;
+  flex: 0 0 auto;
+  border: 4px solid var(--z-green);
+  overflow: hidden;
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7);
 }
 
@@ -2092,10 +2091,10 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
   border-radius: 50%;
 }
 
-.profile-fixed-hero .profile-avatar-button small {
+.profile-fixed-hero .profile-photo-edit-badge {
   box-sizing: border-box;
+  position: absolute;
   left: 50%;
-  right: auto;
   bottom: -10px;
   transform: translateX(-50%);
   width: 44px;
@@ -2105,6 +2104,7 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
   align-items: center;
   justify-content: center;
   padding: 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 10px;
   color: #061b31;
   background: var(--z-green);
@@ -2114,6 +2114,30 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
   text-align: center;
   white-space: nowrap;
   z-index: 2;
+  cursor: pointer;
+}
+
+.profile-fixed-hero .profile-photo-edit-badge:hover,
+.profile-fixed-hero .profile-photo-edit-badge:focus-visible {
+  background: var(--z-green-dark);
+}
+
+.profile-fixed-hero .profile-photo-edit-badge:active {
+  transform: translateX(-50%) scale(0.96);
+}
+
+.profile-fixed-hero .profile-identity-country-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.profile-fixed-hero .profile-identity-country-row #profileCountryCurrency {
+  min-width: 0;
+  flex: 1 1 auto;
+  margin-top: 0;
 }
 
 .profile-fixed-hero .profile-identity h2 {
@@ -2145,9 +2169,8 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
 }
 
 .profile-fixed-hero .profile-edit-button {
-  position: absolute;
-  right: 0;
-  bottom: -8px;
+  position: static;
+  flex: 0 0 44px;
   width: 44px;
   height: 44px;
   min-height: 0;
@@ -2505,16 +2528,20 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
 
   .profile-fixed-hero .profile-hero-panel {
     gap: 12px;
-    padding-right: 38px;
   }
 
-  .profile-fixed-hero .profile-avatar-button {
+  .profile-fixed-hero .profile-photo-wrap {
     width: 88px;
     height: 88px;
     flex-basis: 88px;
   }
 
-  .profile-fixed-hero .profile-avatar-button small {
+  .profile-fixed-hero .profile-avatar-button {
+    width: 88px;
+    height: 88px;
+  }
+
+  .profile-fixed-hero .profile-photo-edit-badge {
     bottom: -8px;
   }
 
@@ -2543,13 +2570,18 @@ body.user-authenticated[data-active-section='profileSection'] #profileSection {
     align-items: flex-start;
   }
 
-  .profile-fixed-hero .profile-avatar-button {
+  .profile-fixed-hero .profile-photo-wrap {
     width: 74px;
     height: 74px;
     flex-basis: 74px;
   }
 
-  .profile-fixed-hero .profile-avatar-button small {
+  .profile-fixed-hero .profile-avatar-button {
+    width: 74px;
+    height: 74px;
+  }
+
+  .profile-fixed-hero .profile-photo-edit-badge {
     bottom: -8px;
     font-size: 8px;
   }

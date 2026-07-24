@@ -1699,10 +1699,12 @@
       tab.addEventListener('click', () => switchNotificationFilter(tab.dataset.notificationFilter));
     });
     $('profileEditButton')?.addEventListener('click', editProfile);
-    $('profileAvatarButton')?.addEventListener('click', (event) => {
+    const openProfilePhotoPicker = (event) => {
       profileModal.opener = event.currentTarget;
       $('profilePhotoInput')?.click();
-    });
+    };
+    $('profileAvatarButton')?.addEventListener('click', openProfilePhotoPicker);
+    $('profilePhotoEditButton')?.addEventListener('click', openProfilePhotoPicker);
     $('profilePhotoInput')?.addEventListener('change', (event) => uploadProfilePhoto(event.target.files && event.target.files[0]));
     $('profileChangePasswordBtn')?.addEventListener('click', changePassword);
     $('profileChangePinBtn')?.addEventListener('click', changePin);

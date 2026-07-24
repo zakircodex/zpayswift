@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=17">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=18">
 </head>
 <body>
 
@@ -709,21 +709,25 @@ header('Pragma: no-cache');
             </div>
 
             <div class="profile-hero-panel">
-              <button id="profileAvatarButton" class="profile-avatar-button" type="button" aria-label="Change profile photo">
-                <img id="profileAvatarImage" class="hidden" alt="Profile photo">
-                <span id="profileAvatarInitials">ZP</span>
-                <small>Edit</small>
-              </button>
+              <div class="profile-photo-wrap">
+                <button id="profileAvatarButton" class="profile-avatar-button" type="button" aria-label="Change profile photo">
+                  <img id="profileAvatarImage" class="hidden" alt="Profile photo">
+                  <span id="profileAvatarInitials">ZP</span>
+                </button>
+                <button id="profilePhotoEditButton" class="profile-photo-edit-badge" type="button" aria-label="Edit profile photo">Edit</button>
+              </div>
               <div class="profile-identity">
                 <h2 id="profileName">Z-Pay User</h2>
                 <p id="profilePhone">-</p>
                 <p id="profileEmail">-</p>
                 <div class="profile-badges"><span id="profileRoleBadge">USER</span><span id="profileStatusBadge">ACTIVE</span></div>
-                <p id="profileCountryCurrency">-</p>
+                <div class="profile-identity-country-row">
+                  <p id="profileCountryCurrency">-</p>
+                  <button id="profileEditButton" class="profile-edit-button" type="button" aria-label="Edit profile">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16.9-.7 3.8 3.8-.7L18.5 8.6l-3.1-3.1L4 16.9Zm16.7-10.5a1.5 1.5 0 0 0 0-2.1l-1-1a1.5 1.5 0 0 0-2.1 0l-.9.9 3.1 3.1.9-.9Z"/></svg>
+                  </button>
+                </div>
               </div>
-              <button id="profileEditButton" class="profile-edit-button" type="button" aria-label="Edit profile">
-                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16.9-.7 3.8 3.8-.7L18.5 8.6l-3.1-3.1L4 16.9Zm16.7-10.5a1.5 1.5 0 0 0 0-2.1l-1-1a1.5 1.5 0 0 0-2.1 0l-.9.9 3.1 3.1.9-.9Z"/></svg>
-              </button>
               <input id="profilePhotoInput" class="visually-hidden" type="file" accept="image/jpeg,image/png,image/webp">
             </div>
           </div>
@@ -953,6 +957,6 @@ window.USER_LOGIN_URL = '/user/';
 </script>
 <script src="/api/user/assets/dashboard.js?v=28"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=12"></script>
-<script src="/api/user/assets/user-app.js?v=9"></script>
+<script src="/api/user/assets/user-app.js?v=10"></script>
 </body>
 </html>
