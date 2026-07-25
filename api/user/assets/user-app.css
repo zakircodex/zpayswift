@@ -3693,6 +3693,7 @@ body.user-authenticated[data-active-section='addMoneySection'] .mobile-header {
 }
 
 body.user-authenticated[data-active-section='addMoneySection'] .mobile-top-card {
+  width: 100%;
   border: 1px solid rgba(200, 214, 236, 0.24);
   border-radius: 20px;
   background: linear-gradient(145deg, rgba(11, 45, 92, 0.92), rgba(7, 23, 47, 0.88));
@@ -4151,6 +4152,7 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 }
 
 @media (max-width: 640px) {
+  body.user-authenticated[data-active-section='addMoneySection'] .mobile-header,
   #addMoneySection {
     width: calc(100% - 28px);
   }
