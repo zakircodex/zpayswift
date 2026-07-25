@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=27">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=28">
 </head>
 <body>
 
@@ -749,33 +749,85 @@ header('Pragma: no-cache');
 
       <section id="supportSection" class="page-section">
         <div id="supportHomeView">
-          <div class="support-hero-panel">
-            <span class="support-hero-icon" aria-hidden="true">?</span>
-            <div><span class="feature-eyebrow">Z-Pay Swift Help</span><h2>How can we help?</h2><p id="supportNotice">Create a request or continue an existing conversation.</p></div>
+          <div class="support-contact-hero-panel">
+            <span class="support-contact-bubble one" aria-hidden="true"></span>
+            <span class="support-contact-bubble two" aria-hidden="true"></span>
+            <span class="support-contact-bubble three" aria-hidden="true"></span>
+            <div class="support-contact-toolbar">
+              <button id="supportBackButton" class="support-contact-icon-button" data-open-section="overviewSection" type="button" aria-label="Back to dashboard">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4 4 12l8 8 1.4-1.4L7.8 13H20v-2Z"/></svg>
+              </button>
+              <h2>Contact Us</h2>
+              <button id="supportNotificationButton" class="support-contact-icon-button" type="button" aria-label="Open notifications">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 22a2.8 2.8 0 0 0 2.7-2h-5.4A2.8 2.8 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5-6.7V3a2 2 0 1 0-4 0v1.3A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"/></svg>
+                <span id="supportNotificationBadge" class="notification-badge hidden">0</span>
+              </button>
+            </div>
+            <div class="support-contact-copy">
+              <h3>Get In Touch</h3>
+              <p>Always Within Your Reach</p>
+            </div>
+            <div id="supportContactActions" class="support-contact-actions"></div>
           </div>
 
-          <div id="supportContactActions" class="support-contact-actions"></div>
-
-          <div class="segmented-tabs" role="tablist" aria-label="Support views">
-            <button id="supportNewTab" class="active" type="button" role="tab" aria-selected="true">Contact Us</button>
-            <button id="supportListTab" type="button" role="tab" aria-selected="false">My Requests <span id="supportUnreadBadge" class="tab-badge hidden">0</span></button>
+          <div class="support-info-stack">
+            <article class="support-info-card">
+              <h3>Support Guidelines</h3>
+              <p>Describe the issue clearly. Add a screenshot when useful. Use one ticket for one issue.</p>
+            </article>
+            <article class="support-info-card">
+              <h3>Security Warning</h3>
+              <p>Never share your password, PIN or OTP. Support will never ask for those credentials.</p>
+            </article>
+            <article class="support-info-card">
+              <h3>Support Hours</h3>
+              <p id="supportHoursText">Support hours will be shown when configured.</p>
+            </article>
+            <article class="support-info-card">
+              <h3>Average Reply Time</h3>
+              <p id="supportAverageReplyText">Average reply time will be shown when configured.</p>
+            </article>
+            <article class="support-info-card support-notice-card">
+              <div>
+                <h3>Support Notice</h3>
+                <p id="supportNotice">For faster help, keep your message short and clear.</p>
+              </div>
+              <button id="supportOpenRequestsButton" class="support-floating-button" type="button">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5A3.5 3.5 0 0 1 7.5 2h9A3.5 3.5 0 0 1 20 5.5v6A3.5 3.5 0 0 1 16.5 15H11l-5 4v-4.2A3.5 3.5 0 0 1 4 11.5v-6Zm3.5-1.3A1.3 1.3 0 0 0 6.2 5.5v6A1.3 1.3 0 0 0 7.5 12.8h.7v1.6l2-1.6h6.3a1.3 1.3 0 0 0 1.3-1.3v-6a1.3 1.3 0 0 0-1.3-1.3h-9ZM8 7h8v2H8V7Zm0 3h5v2H8v-2Z"/></svg>
+                <span>Support</span>
+              </button>
+            </article>
           </div>
 
-          <div id="supportCreatePanel" class="support-tab-panel active">
-            <form id="supportCreateForm" class="feature-card support-form" novalidate>
-              <label class="feature-field" for="supportCategory"><span>Category</span><select id="supportCategory" name="category_code"><option value="">Select a category</option></select></label>
-              <label class="feature-field" for="supportSubject"><span>Subject</span><input id="supportSubject" name="subject" maxlength="120" placeholder="Short issue title"></label>
-              <label id="supportRelatedWrap" class="feature-field hidden" for="supportRelatedRequest"><span>Related request <small>Optional</small></span><select id="supportRelatedRequest" name="related_request_id"><option value="">No related request</option></select></label>
-              <label class="feature-field" for="supportMessage"><span>Message</span><textarea id="supportMessage" name="message" maxlength="2500" rows="5" placeholder="Describe your issue"></textarea></label>
-              <label class="attachment-picker" for="supportAttachments"><span>Add screenshots</span><small>JPG, PNG or WebP. Up to 3 files.</small><input id="supportAttachments" type="file" accept="image/jpeg,image/png,image/webp" multiple></label>
-              <div id="supportAttachmentSummary" class="attachment-summary"></div>
-              <button id="supportCreateButton" class="android-primary-button" type="submit">Submit Request</button>
-            </form>
-          </div>
+          <div id="supportRequestWorkspace" class="support-request-workspace hidden">
+            <div class="support-workspace-head">
+              <div>
+                <h3>Live Chat</h3>
+                <p>Start or continue a conversation with Z-Pay Swift Support.</p>
+              </div>
+            </div>
 
-          <div id="supportListPanel" class="support-tab-panel">
-            <div class="support-list-head"><div><h3>My Support Requests</h3><p>Open a request to continue the conversation.</p></div><button id="supportRefreshButton" class="icon-command" type="button" aria-label="Refresh support requests">↻</button></div>
-            <div id="supportTicketList" class="support-ticket-list"><div class="feature-empty-state">No support requests loaded.</div></div>
+            <div class="segmented-tabs" role="tablist" aria-label="Support views">
+              <button id="supportNewTab" class="active" type="button" role="tab" aria-selected="true">Contact Us</button>
+              <button id="supportListTab" type="button" role="tab" aria-selected="false">My Requests <span id="supportUnreadBadge" class="tab-badge hidden">0</span></button>
+            </div>
+
+            <div id="supportCreatePanel" class="support-tab-panel active">
+              <form id="supportCreateForm" class="feature-card support-form" novalidate>
+                <label class="feature-field" for="supportCategory"><span>Category</span><select id="supportCategory" name="category_code"><option value="">Select a category</option></select></label>
+                <label class="feature-field" for="supportSubject"><span>Subject</span><input id="supportSubject" name="subject" maxlength="120" placeholder="Short issue title"></label>
+                <label id="supportRelatedWrap" class="feature-field hidden" for="supportRelatedRequest"><span>Related request <small>Optional</small></span><select id="supportRelatedRequest" name="related_request_id"><option value="">No related request</option></select></label>
+                <label class="feature-field" for="supportMessage"><span>Message</span><textarea id="supportMessage" name="message" maxlength="2500" rows="5" placeholder="Describe your issue"></textarea></label>
+                <label class="attachment-picker" for="supportAttachments"><span>Add screenshots</span><small>JPG, PNG or WebP. Up to 3 files.</small><input id="supportAttachments" type="file" accept="image/jpeg,image/png,image/webp" multiple></label>
+                <div id="supportAttachmentSummary" class="attachment-summary"></div>
+                <button id="supportCreateButton" class="android-primary-button" type="submit">Submit Request</button>
+              </form>
+            </div>
+
+            <div id="supportListPanel" class="support-tab-panel">
+              <div class="support-list-head"><div><h3>My Support Requests</h3><p>Open a request to continue the conversation.</p></div><button id="supportRefreshButton" class="icon-command" type="button" aria-label="Refresh support requests">↻</button></div>
+              <div id="supportTicketList" class="support-ticket-list"><div class="feature-empty-state">No support requests loaded.</div></div>
+            </div>
           </div>
         </div>
 
@@ -941,8 +993,8 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=33"></script>
+<script src="/api/user/assets/dashboard.js?v=34"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=12"></script>
-<script src="/api/user/assets/user-app.js?v=10"></script>
+<script src="/api/user/assets/user-app.js?v=11"></script>
 </body>
 </html>

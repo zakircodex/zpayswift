@@ -1069,9 +1069,11 @@ function setSupportDrawerTab(tab){
   if (!tab) return;
   setTimeout(() => {
     if (tab === 'list') {
-      el('supportListTab')?.click();
+      if (window.zpaySupportShowWorkspace) window.zpaySupportShowWorkspace('list');
+      else el('supportListTab')?.click();
     } else if (tab === 'new') {
-      el('supportNewTab')?.click();
+      if (window.zpaySupportShowHome) window.zpaySupportShowHome();
+      else el('supportNewTab')?.click();
     }
   }, 0);
 }

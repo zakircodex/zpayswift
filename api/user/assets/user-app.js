@@ -1076,7 +1076,9 @@
 
   function renderSupportConfig() {
     const config = app.support.config || {};
-    if ($('supportNotice')) $('supportNotice').textContent = config.support_notice || config.average_response_text || 'Create a request or continue an existing conversation.';
+    if ($('supportNotice')) $('supportNotice').textContent = config.support_notice || 'Never share your password, PIN or OTP with anyone.';
+    if ($('supportHoursText')) $('supportHoursText').textContent = config.support_hours || 'Every day, 10:00 AM - 10:00 PM';
+    if ($('supportAverageReplyText')) $('supportAverageReplyText').textContent = config.average_response_text || 'Average response time: within 24 hours.';
     const category = $('supportCategory');
     if (category) {
       const selected = category.value;
@@ -1088,29 +1090,62 @@
     if (actions) {
       actions.replaceChildren();
       const links = [];
+      if (config.email_enabled && config.support_email) {
+        links.push({
+          type: 'email',
+          label: 'Email',
+          detail: String(config.support_email),
+          href: 'mailto:' + String(config.support_email).trim()
+        });
+      }
       if (config.whatsapp_enabled && config.whatsapp_number) {
-        links.push({ label: 'WhatsApp', href: 'https://wa.me/' + String(config.whatsapp_number).replace(/\D/g, '') });
+        links.push({
+          type: 'chat',
+          label: 'WhatsApp',
+          detail: String(config.whatsapp_number),
+          href: 'https://wa.me/' + String(config.whatsapp_number).replace(/\D/g, '')
+        });
       }
       if (config.call_enabled && config.support_phone) {
-        links.push({ label: 'Call Support', href: 'tel:' + String(config.support_phone).replace(/[^+\d]/g, '') });
-      }
-      if (config.email_enabled && config.support_email) {
-        links.push({ label: 'Email Support', href: 'mailto:' + encodeURIComponent(String(config.support_email)) });
+        links.push({
+          type: 'phone',
+          label: 'Call',
+          detail: String(config.support_phone),
+          href: 'tel:' + String(config.support_phone).replace(/[^+\d]/g, '')
+        });
       }
       links.forEach((item) => {
         const link = document.createElement('a');
         link.className = 'support-contact-action';
-        link.textContent = item.label;
         link.href = item.href;
         if (item.href.startsWith('https:')) {
           link.target = '_blank';
           link.rel = 'noopener noreferrer';
         }
+        const icon = document.createElement('span');
+        icon.className = 'support-contact-action-icon ' + item.type;
+        icon.setAttribute('aria-hidden', 'true');
+        icon.innerHTML = supportContactIcon(item.type);
+        const title = document.createElement('strong');
+        title.textContent = item.label;
+        const detail = document.createElement('small');
+        detail.textContent = item.detail;
+        link.append(icon, title, detail);
         actions.appendChild(link);
       });
       actions.classList.toggle('hidden', !links.length);
     }
     renderRelatedRequests();
+  }
+
+  function supportContactIcon(type) {
+    if (type === 'email') {
+      return '<svg viewBox="0 0 24 24"><path d="M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm8 7.1L4.9 8H4v.8l8 5.7 8-5.7V8h-.9L12 13.1Z"/></svg>';
+    }
+    if (type === 'phone') {
+      return '<svg viewBox="0 0 24 24"><path d="M6.6 10.8a15 15 0 0 0 6.6 6.6l2.2-2.2a1.4 1.4 0 0 1 1.4-.3c1.5.5 3 .8 4.6.8a1.4 1.4 0 0 1 1.4 1.4v3.5a1.4 1.4 0 0 1-1.4 1.4A19.9 19.9 0 0 1 1.5 2.6a1.4 1.4 0 0 1 1.4-1.4h3.5a1.4 1.4 0 0 1 1.4 1.4c0 1.6.3 3.1.8 4.6.2.5.1 1-.3 1.4l-1.7 2.2Z"/></svg>';
+    }
+    return '<svg viewBox="0 0 24 24"><path d="M12 3C6.5 3 2 6.8 2 11.5c0 2.7 1.5 5.2 4 6.7V22l3.7-2.1c.7.1 1.5.2 2.3.2 5.5 0 10-3.8 10-8.5S17.5 3 12 3Zm-4 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"/></svg>';
   }
 
   function renderRelatedRequests() {
@@ -1175,6 +1210,7 @@
   }
 
   function switchSupportTab(tab) {
+    $('supportRequestWorkspace')?.classList.remove('hidden');
     const list = tab === 'list';
     $('supportNewTab')?.classList.toggle('active', !list);
     $('supportListTab')?.classList.toggle('active', list);
@@ -1183,6 +1219,24 @@
     $('supportCreatePanel')?.classList.toggle('active', !list);
     $('supportListPanel')?.classList.toggle('active', list);
     if (list) loadSupportTickets(false);
+  }
+
+  function showSupportHome() {
+    stopSupportPolling();
+    app.support.ticket = null;
+    $('supportConversationView')?.classList.add('hidden');
+    $('supportHomeView')?.classList.remove('hidden');
+    $('supportRequestWorkspace')?.classList.add('hidden');
+  }
+
+  function showSupportWorkspace(tab) {
+    $('supportHomeView')?.classList.remove('hidden');
+    $('supportConversationView')?.classList.add('hidden');
+    switchSupportTab(tab === 'new' ? 'new' : 'list');
+    const workspace = $('supportRequestWorkspace');
+    if (workspace) {
+      requestAnimationFrame(() => workspace.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    }
   }
 
   function selectedCategory() {
@@ -1325,7 +1379,7 @@
     app.support.attachments = [];
     $('supportConversationView')?.classList.add('hidden');
     $('supportHomeView')?.classList.remove('hidden');
-    switchSupportTab('list');
+    showSupportWorkspace('list');
     if (!(options && options.fromHistory) && window.history?.back) window.history.back();
   }
 
@@ -1392,7 +1446,7 @@
   function renderNotificationBadge(count) {
     const unreadCount = Math.min(99, Math.max(0, Number(count || 0)));
     app.notifications.unreadCount = unreadCount;
-    ['notificationBadge', 'heroNotificationBadge', 'profileNotificationBadge'].forEach((id) => {
+    ['notificationBadge', 'heroNotificationBadge', 'profileNotificationBadge', 'supportNotificationBadge'].forEach((id) => {
       const badge = $(id);
       if (!badge) return;
       badge.textContent = String(unreadCount);
@@ -1687,12 +1741,19 @@
       event.preventDefault();
       const provider = String(sectionButton.getAttribute('data-mfs-provider') || '').toUpperCase();
       if (provider) document.querySelector(`.mfs-provider-choice[data-provider="${provider}"]`)?.click();
-      window.openSection?.(sectionButton.getAttribute('data-open-section'));
+      const destination = sectionButton.getAttribute('data-open-section');
+      window.openSection?.(destination);
+      if (destination === 'supportSection') {
+        const supportTab = String(sectionButton.getAttribute('data-support-tab') || '');
+        if (supportTab === 'list') showSupportWorkspace('list');
+        else showSupportHome();
+      }
     });
 
     $('notificationButton')?.addEventListener('click', openNotificationsPage);
     $('heroNotificationButton')?.addEventListener('click', openNotificationsPage);
     $('profileNotificationButton')?.addEventListener('click', openNotificationsPage);
+    $('supportNotificationButton')?.addEventListener('click', openNotificationsPage);
     $('notificationsBackButton')?.addEventListener('click', closeNotificationsPage);
     $('notificationsMarkAllButton')?.addEventListener('click', markAllNotifications);
     document.querySelectorAll('[data-notification-filter]').forEach((tab) => {
@@ -1734,6 +1795,7 @@
 
     $('supportNewTab')?.addEventListener('click', () => switchSupportTab('new'));
     $('supportListTab')?.addEventListener('click', () => switchSupportTab('list'));
+    $('supportOpenRequestsButton')?.addEventListener('click', () => showSupportWorkspace('list'));
     $('supportRefreshButton')?.addEventListener('click', () => loadSupportTickets(true));
     $('supportCreateForm')?.addEventListener('submit', createSupportTicket);
     $('supportAttachments')?.addEventListener('change', () => updateAttachmentSummary($('supportAttachments'), $('supportAttachmentSummary')));
@@ -1755,6 +1817,8 @@
   window.zpayUserAppSectionChanged = sectionChanged;
   window.zpayUserAppHandlePopState = handleAppPopState;
   window.zpayUserEscapeHtml = escapeHtml;
+  window.zpaySupportShowHome = showSupportHome;
+  window.zpaySupportShowWorkspace = showSupportWorkspace;
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bind, { once: true });

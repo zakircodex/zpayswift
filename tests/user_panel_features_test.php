@@ -112,6 +112,26 @@ expect_true(
     && contains($source['proxy'], "header('Cache-Control: private, no-store"),
     'private support attachment bridge is missing or cacheable'
 );
+expect_true(
+    contains($source['dashboard'], 'support-contact-hero-panel')
+    && contains($source['dashboard'], 'Get In Touch')
+    && contains($source['dashboard'], 'supportOpenRequestsButton')
+    && contains($source['dashboard'], 'supportRequestWorkspace'),
+    'Android-style Contact Us landing layout is missing'
+);
+expect_true(
+    contains($source['app_css'], "#supportSection .support-contact-hero-panel")
+    && contains($source['app_css'], "body.user-authenticated[data-active-section='supportSection'] .bottom-nav")
+    && contains($source['app_css'], "#supportSection .support-floating-button"),
+    'Contact Us page scoped Android-style CSS is missing'
+);
+expect_true(
+    contains($source['app_js'], 'function showSupportHome')
+    && contains($source['app_js'], 'function showSupportWorkspace')
+    && contains($source['app_js'], 'supportNotificationBadge')
+    && contains($source['dashboard_js'], 'window.zpaySupportShowWorkspace'),
+    'Contact Us navigation/workspace JavaScript is missing'
+);
 
 expect_true(
     contains($source['app_js'], 'function escapeHtml')
