@@ -2297,12 +2297,17 @@ function renderAddMoneyAccountCards(accounts, country){
             </div>
             <div class="add-money-account-lines">
               <div class="add-money-account-line"><span>A/C Name</span><strong>${esc(holder)}</strong></div>
-              <div class="add-money-account-line"><span>A/C No</span><strong>${esc(number)}</strong></div>
+              <div class="add-money-account-line add-money-account-number-line">
+                <span>A/C No</span>
+                <div class="add-money-account-number-row">
+                  <strong>${esc(number)}</strong>
+                  <button class="add-money-copy-icon" type="button" data-copy-account-number="${esc(account.account_number || '')}" aria-label="Copy ${esc(account.display_name || methodLabel)} account number" title="Copy account number">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 8h11v13H8V8Zm2 2v9h7v-9h-7ZM5 3h11v3h-2V5H7v9h-1V3h-1v13h1v2H5V3Z"/></svg>
+                  </button>
+                </div>
+              </div>
             </div>
             ${instruction ? `<p class="muted add-money-account-note">${esc(instruction)}</p>` : ''}
-            <div class="add-money-copy-action">
-              <button class="btn ghost sm" type="button" data-copy-account-number="${esc(account.account_number || '')}" aria-label="Copy ${esc(account.display_name || methodLabel)} account number">Copy Number</button>
-            </div>
           </div>
         `;
       }).join('')}
@@ -2409,7 +2414,7 @@ function addMoneySubmitFormHtml(){
         <textarea id="addMoneyNote" class="input" name="note" rows="3" placeholder="Note (optional)"></textarea>
       </div>
       <div class="form-actions">
-        <button id="addMoneySubmitBtn" class="btn green full-btn" type="submit">Submit Request</button>
+        <button id="addMoneySubmitBtn" class="btn green full-btn" type="submit">Submit Receipt</button>
       </div>
     </form>
   `;

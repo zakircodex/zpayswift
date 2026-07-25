@@ -3682,8 +3682,39 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 }
 
 /* Android-aligned Add Money page. Keep every rule scoped to this section. */
+body.user-authenticated[data-active-section='addMoneySection'] .mobile-header {
+  display: block;
+  width: min(calc(100% - 28px), 720px);
+  margin: 12px auto 14px;
+  padding-top: env(safe-area-inset-top);
+  border-bottom: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+body.user-authenticated[data-active-section='addMoneySection'] .mobile-top-card {
+  border: 1px solid rgba(200, 214, 236, 0.24);
+  border-radius: 20px;
+  background: linear-gradient(145deg, rgba(11, 45, 92, 0.92), rgba(7, 23, 47, 0.88));
+  box-shadow: var(--z-shadow);
+}
+
+body.user-authenticated[data-active-section='addMoneySection'] .mobile-top-row {
+  min-height: 58px;
+  padding: 5px 12px;
+}
+
+body.user-authenticated[data-active-section='addMoneySection'] .main-panel {
+  padding-bottom: 16px;
+}
+
+body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
+  display: none !important;
+}
+
 #addMoneySection {
   width: min(calc(100% - 28px), 720px);
+  margin-top: 0;
   margin-right: auto;
   margin-left: auto;
 }
@@ -3914,15 +3945,47 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
   line-height: 1.45;
 }
 
-#addMoneySection .add-money-copy-action {
+#addMoneySection .add-money-account-number-row {
   display: flex;
-  justify-content: flex-start;
-  margin-top: auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
-#addMoneySection .add-money-copy-action .btn {
-  min-height: 40px;
+#addMoneySection .add-money-account-number-row strong {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#addMoneySection .add-money-copy-icon {
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(50, 230, 134, 0.34);
   border-radius: 14px;
+  color: var(--z-green);
+  background: rgba(50, 230, 134, 0.1);
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+#addMoneySection .add-money-copy-icon svg {
+  width: 21px;
+  height: 21px;
+  fill: currentColor;
+}
+
+#addMoneySection .add-money-copy-icon:hover,
+#addMoneySection .add-money-copy-icon:focus-visible {
+  border-color: var(--z-green);
+  background: rgba(50, 230, 134, 0.2);
+}
+
+#addMoneySection .add-money-copy-icon:active {
+  transform: scale(0.94);
 }
 
 #addMoneySection .add-money-proof-form {
@@ -4041,6 +4104,12 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
   border-radius: 23px;
 }
 
+#addMoneySection #addMoneySubmitBtn {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 999px;
+}
+
 @media (max-width: 640px) {
   #addMoneySection {
     width: calc(100% - 28px);
@@ -4073,6 +4142,7 @@ body.user-authenticated .user-drawer.sidebar:not(.show) {
 }
 
 @media (min-width: 981px) {
+  body.user-authenticated[data-active-section='addMoneySection'] .mobile-header,
   #addMoneySection {
     width: min(calc(100% - 48px), 720px);
   }
