@@ -1168,15 +1168,17 @@
   async function loadSupportTickets(force) {
     if (app.support.tickets.length && !force) {
       renderSupportTickets();
-      return;
+      return app.support.tickets;
     }
     try {
       const data = await get('support_list', { limit: 50 }, 'Loading support requests...', { busy: false });
       app.support.tickets = Array.isArray(data.tickets) ? data.tickets : [];
       renderSupportTickets();
+      return app.support.tickets;
     } catch (error) {
       if ($('supportTicketList')) $('supportTicketList').innerHTML = '<div class="feature-empty-state">Support requests could not be loaded.</div>';
       toast(safeMessage(error, 'Support requests could not be loaded.'), 'error');
+      return [];
     }
   }
 
@@ -1221,21 +1223,55 @@
     if (list) loadSupportTickets(false);
   }
 
+  function openSupportTicketCandidate() {
+    return app.support.tickets.find((ticket) => ticket && ticket.ticket_id && !supportIsClosed(ticket.status)) || null;
+  }
+
   function showSupportHome() {
     stopSupportPolling();
     app.support.ticket = null;
     $('supportConversationView')?.classList.add('hidden');
     $('supportHomeView')?.classList.remove('hidden');
     $('supportRequestWorkspace')?.classList.add('hidden');
+    $('supportContactBody')?.scrollTo?.({ top: 0, behavior: 'auto' });
   }
 
   function showSupportWorkspace(tab) {
-    $('supportHomeView')?.classList.remove('hidden');
+    $('supportHomeView')?.classList.add('hidden');
     $('supportConversationView')?.classList.add('hidden');
     switchSupportTab(tab === 'new' ? 'new' : 'list');
-    const workspace = $('supportRequestWorkspace');
-    if (workspace) {
-      requestAnimationFrame(() => workspace.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+    $('supportRequestWorkspace')?.scrollTo?.({ top: 0, behavior: 'auto' });
+  }
+
+  async function openSupportEntry() {
+    const button = $('supportOpenRequestsButton');
+    if (button) button.disabled = true;
+    try {
+      await loadSupportTickets(false);
+      const activeTicket = openSupportTicketCandidate();
+      if (activeTicket) {
+        await openSupportConversation(activeTicket.ticket_id);
+        return;
+      }
+      showSupportWorkspace('list');
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function startSupportChat() {
+    const button = $('supportStartChatButton');
+    if (button) button.disabled = true;
+    try {
+      await loadSupportTickets(false);
+      const activeTicket = openSupportTicketCandidate();
+      if (activeTicket) {
+        await openSupportConversation(activeTicket.ticket_id);
+        return;
+      }
+      showSupportWorkspace('new');
+    } finally {
+      if (button) button.disabled = false;
     }
   }
 
@@ -1299,6 +1335,7 @@
       app.support.messages = Array.isArray(data.messages) ? data.messages : [];
       app.support.attachments = Array.isArray(data.attachments) ? data.attachments : [];
       $('supportHomeView')?.classList.add('hidden');
+      $('supportRequestWorkspace')?.classList.add('hidden');
       $('supportConversationView')?.classList.remove('hidden');
       renderSupportConversation();
       window.scrollTo({ top: 0, behavior: 'auto' });
@@ -1378,7 +1415,6 @@
     app.support.messages = [];
     app.support.attachments = [];
     $('supportConversationView')?.classList.add('hidden');
-    $('supportHomeView')?.classList.remove('hidden');
     showSupportWorkspace('list');
     if (!(options && options.fromHistory) && window.history?.back) window.history.back();
   }
@@ -1795,8 +1831,10 @@
 
     $('supportNewTab')?.addEventListener('click', () => switchSupportTab('new'));
     $('supportListTab')?.addEventListener('click', () => switchSupportTab('list'));
-    $('supportOpenRequestsButton')?.addEventListener('click', () => showSupportWorkspace('list'));
+    $('supportOpenRequestsButton')?.addEventListener('click', openSupportEntry);
     $('supportRefreshButton')?.addEventListener('click', () => loadSupportTickets(true));
+    $('supportRefreshTopButton')?.addEventListener('click', () => loadSupportTickets(true));
+    $('supportStartChatButton')?.addEventListener('click', startSupportChat);
     $('supportCreateForm')?.addEventListener('submit', createSupportTicket);
     $('supportAttachments')?.addEventListener('change', () => updateAttachmentSummary($('supportAttachments'), $('supportAttachmentSummary')));
     $('supportConversationBack')?.addEventListener('click', () => closeSupportConversation());
