@@ -3825,14 +3825,14 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 
 #addMoneySection .add-money-account-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 42px;
+  grid-template-columns: 52px minmax(0, 1fr) 44px;
   grid-template-rows: auto auto;
   align-items: center;
-  column-gap: 12px;
-  row-gap: 5px;
+  column-gap: 11px;
+  row-gap: 2px;
   min-width: 0;
-  min-height: 126px;
-  padding: 16px;
+  min-height: 104px;
+  padding: 14px;
   border: 1px solid rgba(200, 214, 236, 0.24);
   border-radius: 20px;
   color: var(--z-text);
@@ -3873,18 +3873,21 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 }
 
 #addMoneySection .add-money-account-main {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
+  display: contents;
+}
+
+#addMoneySection .add-money-account-main > div {
   min-width: 0;
-  grid-column: 1;
+  grid-column: 2;
   grid-row: 1;
 }
 
 #addMoneySection .add-money-account-logo {
-  width: 48px;
-  height: 48px;
+  width: 52px;
+  height: 52px;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  align-self: center;
   border: 1px solid rgba(200, 214, 236, 0.24);
   border-radius: 14px;
   object-fit: cover;
@@ -3917,7 +3920,7 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
   display: grid;
   gap: 3px;
   min-width: 0;
-  grid-column: 1;
+  grid-column: 2;
   grid-row: 2;
   color: var(--z-muted);
   font-size: 14px;
@@ -3930,7 +3933,7 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 }
 
 #addMoneySection .add-money-copy-icon {
-  grid-column: 2;
+  grid-column: 3;
   grid-row: 1 / span 2;
   align-self: center;
 }
@@ -3980,9 +3983,9 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 }
 
 #addMoneySection .add-money-copy-icon {
-  flex: 0 0 42px;
-  width: 42px;
-  height: 42px;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   padding: 0;
@@ -4018,6 +4021,15 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 
 #addMoneySection .add-money-proof-form .field {
   margin: 0;
+}
+
+#addMoneySection .add-money-receipt-field > label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 #addMoneySection .add-money-proof-form .input,
