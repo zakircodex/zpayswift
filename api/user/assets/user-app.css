@@ -3686,7 +3686,7 @@ body.user-authenticated[data-active-section='addMoneySection'] .mobile-header {
   display: block;
   width: min(calc(100% - 28px), 720px);
   margin: 12px auto 14px;
-  padding-top: env(safe-area-inset-top);
+  padding: env(safe-area-inset-top) 0 0;
   border-bottom: 0;
   background: transparent;
   backdrop-filter: none;
@@ -3931,6 +3931,9 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 #addMoneySection .add-money-account-info strong {
   color: var(--z-text);
   font-weight: 700;
+  display: inline;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 #addMoneySection .add-money-copy-icon {
@@ -4024,7 +4027,7 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
   margin: 0;
 }
 
-#addMoneySection .add-money-receipt-field > label {
+#addMoneySection .add-money-proof-form .field > label {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -4157,6 +4160,11 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
     width: calc(100% - 28px);
   }
 
+  body.user-authenticated[data-active-section='addMoneySection'] .mobile-top-row {
+    min-height: 62px;
+    padding: 6px 12px;
+  }
+
   #addMoneySection .add-money-intro-card,
   #addMoneySection .add-money-payment-card,
   #addMoneySection .add-money-proof-card {
@@ -4167,6 +4175,55 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
   #addMoneySection .add-money-payment-card h4,
   #addMoneySection .add-money-proof-card h4 {
     font-size: 20px;
+  }
+
+  #addMoneySection .add-money-account-card {
+    grid-template-columns: 48px minmax(0, 1fr) 42px;
+    min-height: 94px;
+    padding: 12px;
+    column-gap: 10px;
+    border-radius: 19px;
+  }
+
+  #addMoneySection .add-money-account-logo {
+    width: 48px;
+    height: 48px;
+    border-radius: 13px;
+  }
+
+  #addMoneySection .add-money-account-name {
+    font-size: 16px;
+  }
+
+  #addMoneySection .add-money-account-info {
+    gap: 2px;
+    font-size: 13px;
+  }
+
+  #addMoneySection .add-money-account-info > div {
+    white-space: nowrap;
+  }
+
+  #addMoneySection .add-money-copy-icon {
+    flex-basis: 42px;
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+  }
+
+  #addMoneySection .add-money-receipt-preview {
+    grid-template-columns: 52px minmax(0, 1fr);
+    padding: 11px;
+  }
+
+  #addMoneySection .add-money-receipt-preview > img,
+  #addMoneySection .add-money-receipt-empty-icon {
+    width: 52px;
+    height: 52px;
+  }
+
+  #addMoneySection .add-money-receipt-copy strong {
+    font-size: 16px;
   }
 
   #addMoneySection .add-money-support-card {

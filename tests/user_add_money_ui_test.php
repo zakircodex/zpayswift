@@ -26,7 +26,7 @@ $addMoneyJs = ($start !== false && $end !== false) ? substr($js, $start, $end - 
 
 expect_add_money(str_contains($dashboard, 'id="addMoneySection" class="page-section add-money-page-section"'), 'Add Money page shell is missing');
 expect_add_money(!str_contains($dashboard, 'add-money-intro-card') && !str_contains($dashboard, 'id="addMoneyOpenBtn"') && !str_contains($dashboard, 'id="addMoneyReloadBtn"'), 'old Add Money intro/tab card remains visible');
-expect_add_money(str_contains($dashboard, '/api/user/assets/user-app.css?v=26') && str_contains($dashboard, '/api/user/assets/dashboard.js?v=33'), 'Add Money asset cache bust versions were not bumped');
+expect_add_money(str_contains($dashboard, '/api/user/assets/user-app.css?v=27') && str_contains($dashboard, '/api/user/assets/dashboard.js?v=33'), 'Add Money asset cache bust versions were not bumped');
 expect_add_money(str_contains($addMoneyJs, 'function addMoneyCountryProfile') && str_contains($addMoneyJs, 'profile.pricing_country'), 'payment methods are not resolved from pricing country');
 expect_add_money(!str_contains($addMoneyJs, 'phone_country'), 'Add Money UI uses phone_country for payment selection');
 expect_add_money(str_contains($addMoneyJs, 'accountCountry === country') && str_contains($addMoneyJs, 'accountCurrency === currency'), 'payment accounts are not defensively country/currency filtered');
@@ -52,5 +52,6 @@ expect_add_money(str_contains($css, 'grid-template-columns: 52px minmax(0, 1fr) 
 expect_add_money(str_contains($css, "data-active-section='addMoneySection'] .bottom-nav") && str_contains($css, "data-active-section='addMoneySection'] .main-panel"), 'Add Money bottom navigation spacing is not scoped off');
 expect_add_money(str_contains($css, "data-active-section='addMoneySection'] .mobile-header") && str_contains($css, 'width: min(calc(100% - 28px), 720px)'), 'Add Money header width styling is missing');
 expect_add_money(str_contains($css, "data-active-section='addMoneySection'] .mobile-top-card") && str_contains($css, 'width: 100%'), 'Add Money header card does not fill the page width');
+expect_add_money(str_contains($css, 'padding: env(safe-area-inset-top) 0 0') && str_contains($css, '#addMoneySection .add-money-account-info > div'), 'mobile Add Money header padding or compact account rows are missing');
 
 echo "User Add Money UI tests passed ({$tests} assertions).\n";
