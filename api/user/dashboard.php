@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=22">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=23">
 </head>
 <body>
 
@@ -559,24 +559,19 @@ header('Pragma: no-cache');
 </section>
 
 
-      <section id="addMoneySection" class="page-section">
-        <div class="history-card">
-          <div class="section-head">
-            <div>
-              <h3 class="section-title">Add Money</h3>
-              <p class="section-sub">Submit payment proof and wait for admin approval.</p>
-            </div>
-            <div class="add-money-actions">
-              <button id="addMoneyOpenBtn" class="btn green" type="button">Add Money</button>
-              <button id="addMoneyReloadBtn" class="btn ghost" type="button">Reload</button>
+      <section id="addMoneySection" class="page-section add-money-page-section">
+        <div class="add-money-page-shell">
+          <div class="add-money-intro-card">
+            <h3>Add Money</h3>
+            <p>Submit payment proof and wait for admin approval.</p>
+            <div class="add-money-tabs" role="tablist" aria-label="Add Money options">
+              <button id="addMoneyOpenBtn" class="add-money-tab active" type="button" role="tab" aria-selected="true">Add Money</button>
+              <button id="addMoneyReloadBtn" class="add-money-tab" type="button" role="tab" aria-selected="false">Reload</button>
             </div>
           </div>
 
           <div id="addMoneyContent" class="add-money-content">
-            <div class="detail-box">
-              <label>Status</label>
-              <strong>Loading add money settings...</strong>
-            </div>
+            <div class="add-money-loading-card" role="status">Loading add money settings...</div>
           </div>
         </div>
       </section>
@@ -955,7 +950,7 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=30"></script>
+<script src="/api/user/assets/dashboard.js?v=31"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=12"></script>
 <script src="/api/user/assets/user-app.js?v=10"></script>
 </body>

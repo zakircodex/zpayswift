@@ -15,6 +15,15 @@ const state = {
   addMoneyProfile: null,
   addMoneyHistory: [],
   addMoneyLoaded: false,
+  addMoneySelectedAccountId: '',
+  addMoneySubmitKey: '',
+  addMoneyReceipt: {
+    file: null,
+    objectUrl: '',
+    name: '',
+    mime: '',
+    size: 0
+  },
   bundleOffers: [],
   busyCount: 0,
   filter: 'ALL',
@@ -847,6 +856,31 @@ async function copyText(text, okMessage = 'Copied'){
   try{
     await navigator.clipboard.writeText(String(text || ''));
     showToast(okMessage, 'ok');
+  }catch(_){
+    showToast('Copy failed. Please copy manually.', 'error');
+  }
+}
+
+async function copyAddMoneyAccountNumber(text){
+  const value = String(text || '');
+  try{
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      showToast('Account number copied.', 'ok');
+      return;
+    }
+
+    const fallback = document.createElement('textarea');
+    fallback.value = value;
+    fallback.setAttribute('readonly', '');
+    fallback.style.position = 'fixed';
+    fallback.style.opacity = '0';
+    document.body.appendChild(fallback);
+    fallback.select();
+    const copied = document.execCommand('copy');
+    fallback.remove();
+    if (!copied) throw new Error('copy_failed');
+    showToast('Account number copied.', 'ok');
   }catch(_){
     showToast('Copy failed. Please copy manually.', 'error');
   }
@@ -2084,12 +2118,153 @@ function addMoneyMethodLabel(method){
   return 'Bank';
 }
 
+function addMoneyPaymentType(method, country){
+  const key = String(method || '').toUpperCase();
+  if (String(country || '').toUpperCase() === 'BD') {
+    return key === 'NAGAD' ? 'Nagad Payment' : 'bKash Payment';
+  }
+  return key === 'EWALLET' ? 'eWallet Deposit' : 'Bank Deposit';
+}
+
+function addMoneyCountryName(country){
+  return String(country || '').toUpperCase() === 'MY' ? 'Malaysia' : 'Bangladesh';
+}
+
+function addMoneySafeLogoUrl(value){
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    const url = new URL(raw, window.location.origin);
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function addMoneyAccountId(account){
+  return String(account?.account_id || account?.id || '').trim();
+}
+
+function addMoneyCountryProfile(){
+  const profile = state.addMoneyProfile || {};
+  return String(profile.pricing_country || '').toUpperCase() === 'MY' ? 'MY' : 'BD';
+}
+
+function addMoneyAccountsForProfile(){
+  const country = addMoneyCountryProfile();
+  const profile = state.addMoneyProfile || {};
+  const currency = String(profile.currency || (country === 'MY' ? 'MYR' : 'BDT')).toUpperCase();
+  return (Array.isArray(profile.accounts) ? profile.accounts : []).filter((account) => {
+    const accountCountry = String(account?.country || '').toUpperCase();
+    const accountCurrency = String(account?.currency || '').toUpperCase();
+    return accountCountry === country
+      && (accountCurrency === '' || accountCurrency === currency)
+      && account.active !== false
+      && addMoneyAccountId(account) !== '';
+  });
+}
+
+function addMoneySelectedAccount(){
+  const selectedId = String(state.addMoneySelectedAccountId || '');
+  return addMoneyAccountsForProfile().find(account => addMoneyAccountId(account) === selectedId) || null;
+}
+
+function addMoneyRevokeReceiptUrl(){
+  const receipt = state.addMoneyReceipt;
+  if (receipt?.objectUrl) {
+    URL.revokeObjectURL(receipt.objectUrl);
+    receipt.objectUrl = '';
+  }
+}
+
+function addMoneyClearReceipt(updateUi = true){
+  addMoneyRevokeReceiptUrl();
+  state.addMoneyReceipt = { file: null, objectUrl: '', name: '', mime: '', size: 0 };
+  const input = el('addMoneyReceiptInput');
+  if (input) input.value = '';
+  if (updateUi) addMoneyUpdateReceiptPreview();
+}
+
+function addMoneyFileSize(size){
+  const bytes = Number(size || 0);
+  if (!bytes) return '0 KB';
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function addMoneyReceiptAllowed(file){
+  if (!file) return false;
+  const name = String(file.name || '').toLowerCase();
+  const type = String(file.type || '').toLowerCase();
+  const extensionAllowed = /\.(jpe?g|png|webp|pdf)$/.test(name);
+  const mimeAllowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'].includes(type);
+  return extensionAllowed && (mimeAllowed || type === '');
+}
+
+function addMoneyReceiptPreviewHtml(){
+  const receipt = state.addMoneyReceipt;
+  if (!receipt.file) {
+    return `
+      <div class="add-money-receipt-empty-icon" aria-hidden="true">FILE</div>
+      <div class="add-money-receipt-copy">
+        <strong>No receipt selected</strong>
+        <small>JPG, PNG, WEBP or PDF, max 5 MB.</small>
+      </div>
+    `;
+  }
+
+  const isImage = String(receipt.mime || '').startsWith('image/') && receipt.objectUrl;
+  const preview = isImage
+    ? `<img src="${esc(receipt.objectUrl)}" alt="Selected receipt preview">`
+    : '<div class="add-money-receipt-empty-icon" aria-hidden="true">PDF</div>';
+
+  return `
+    ${preview}
+    <div class="add-money-receipt-copy">
+      <strong>${esc(receipt.name || 'Selected receipt')}</strong>
+      <small>${esc(addMoneyFileSize(receipt.size))}</small>
+    </div>
+    <div class="add-money-receipt-actions">
+      <button class="btn ghost sm" id="addMoneyReplaceReceiptBtn" type="button">Replace</button>
+      <button class="btn ghost sm danger" id="addMoneyRemoveReceiptBtn" type="button">Remove</button>
+    </div>
+  `;
+}
+
+function addMoneyUpdateReceiptPreview(){
+  const preview = el('addMoneyReceiptPreview');
+  if (preview) preview.innerHTML = addMoneyReceiptPreviewHtml();
+}
+
+function selectAddMoneyAccount(accountId){
+  const account = addMoneyAccountsForProfile().find(item => addMoneyAccountId(item) === String(accountId || ''));
+  if (!account) return;
+
+  state.addMoneySelectedAccountId = addMoneyAccountId(account);
+  state.addMoneySubmitKey = '';
+  addMoneyClearReceipt();
+
+  document.querySelectorAll('[data-add-money-account-id]').forEach((card) => {
+    const selected = card.dataset.addMoneyAccountId === state.addMoneySelectedAccountId;
+    card.classList.toggle('selected', selected);
+    card.setAttribute('aria-pressed', selected ? 'true' : 'false');
+  });
+
+  const accountIdInput = el('addMoneyPaymentAccountId');
+  const methodInput = el('addMoneyPaymentMethod');
+  const methodMirror = el('addMoneyPaymentMethodMirror');
+  const method = String(account.method || '').toUpperCase();
+  if (accountIdInput) accountIdInput.value = state.addMoneySelectedAccountId;
+  if (methodInput) methodInput.value = method;
+  if (methodMirror) methodMirror.value = method;
+}
+
 function renderAddMoneyAccountCards(accounts, country){
   const list = Array.isArray(accounts) ? accounts : [];
   if (!list.length) {
     return `
       <div class="add-money-account-list form-full">
-        <div class="detail-box add-money-account-card">
+        <div class="add-money-account-card unavailable">
           <div class="add-money-account-name">Payment account unavailable</div>
           <p class="muted">Please contact support before submitting an add money request.</p>
         </div>
@@ -2100,18 +2275,24 @@ function renderAddMoneyAccountCards(accounts, country){
   return `
     <div class="add-money-account-list form-full">
       ${list.map((account) => {
+        const accountId = addMoneyAccountId(account);
         const instruction = String(account.instruction || '').trim();
-        const holder = account.account_holder || '-';
-        const number = account.account_number || '-';
-        const methodLabel = addMoneyMethodLabel(account.method);
-        const logo = String(account.logo_url || '').trim();
+        const holder = String(account.account_holder || account.holder_name || '-');
+        const number = String(account.account_number || '-');
+        const methodLabel = addMoneyPaymentType(account.method, country);
+        const logo = addMoneySafeLogoUrl(account.logo_url || account.logo);
+        const selected = String(state.addMoneySelectedAccountId || '') === accountId;
         return `
-          <div class="detail-box add-money-account-card">
+          <div class="add-money-account-card${selected ? ' selected' : ''}"
+               data-add-money-account-id="${esc(accountId)}"
+               role="button"
+               tabindex="0"
+               aria-pressed="${selected ? 'true' : 'false'}">
             <div class="add-money-account-main">
-              ${logo ? `<img class="add-money-account-logo" src="${esc(logo)}" alt="${esc(account.display_name || methodLabel)}">` : `<div class="add-money-account-logo fallback">${esc(methodLabel.slice(0, 2))}</div>`}
+              ${logo ? `<img class="add-money-account-logo" src="${esc(logo)}" alt="${esc(account.display_name || methodLabel)}">` : `<div class="add-money-account-logo fallback" aria-hidden="true">${esc(addMoneyMethodLabel(account.method).slice(0, 2))}</div>`}
               <div>
                 <div class="add-money-account-name">${esc(account.display_name || methodLabel)}</div>
-                <div class="add-money-account-method">${esc(methodLabel)}${country === 'MY' ? ' Deposit' : ' Payment'}</div>
+                <div class="add-money-account-method">${esc(methodLabel)}</div>
               </div>
             </div>
             <div class="add-money-account-lines">
@@ -2120,7 +2301,7 @@ function renderAddMoneyAccountCards(accounts, country){
             </div>
             ${instruction ? `<p class="muted add-money-account-note">${esc(instruction)}</p>` : ''}
             <div class="add-money-copy-action">
-              <button class="btn ghost sm" type="button" data-copy-account-number="${esc(account.account_number || '')}">Copy Number</button>
+              <button class="btn ghost sm" type="button" data-copy-account-number="${esc(account.account_number || '')}" aria-label="Copy ${esc(account.display_name || methodLabel)} account number">Copy Number</button>
             </div>
           </div>
         `;
@@ -2135,154 +2316,213 @@ function renderAddMoneyPage(){
 
   const profile = state.addMoneyProfile || {};
   const settings = profile.settings || {};
-  const accounts = Array.isArray(profile.accounts) ? profile.accounts : [];
-  const country = String(profile.pricing_country || '').toUpperCase();
+  const country = addMoneyCountryProfile();
+  const accounts = addMoneyAccountsForProfile();
   const prefix = walletPrefix(profile.currency || (country === 'MY' ? 'MYR' : 'BDT'));
-  const enabled = !!settings.enabled;
-  const bdMethods = [...new Set(accounts.map(account => String(account.method || '').toUpperCase()).filter(method => ['BKASH', 'NAGAD'].includes(method)))];
-  const bdMethodOptions = (bdMethods.length ? bdMethods : ['BKASH', 'NAGAD']).map(method => `<option value="${esc(method)}">${esc(addMoneyMethodLabel(method))}</option>`).join('');
+  const enabled = !!settings.enabled && accounts.length > 0;
+
+  if (!addMoneySelectedAccount()) {
+    state.addMoneySelectedAccountId = '';
+  }
 
   if (!enabled) {
     wrap.innerHTML = `
-      <div class="detail-box">
-        <label>Add Money</label>
-        <strong>Temporarily unavailable</strong>
-        <p class="muted">Please contact support if you need help adding balance.</p>
+      <div class="add-money-unavailable-card">
+        <strong>${esc(addMoneyCountryName(country))} Add Money - ${esc(prefix)}</strong>
+        <p>Please contact support before submitting an add money request.</p>
       </div>
+      ${addMoneySupportCardHtml()}
     `;
     return;
   }
 
-  if (country === 'MY') {
-    wrap.innerHTML = `
-      <div class="add-money-section-title">Deposit With Bank & eWallet</div>
-      ${renderAddMoneyAccountCards(accounts, 'MY')}
-      <div class="detail-box add-money-instruction-card">
-        <label>Instruction</label>
-        <p class="muted">${esc(settings.instruction || 'Transfer and upload your receipt.')}</p>
-      </div>
-    `;
-  } else {
-    wrap.innerHTML = `
-      <div class="add-money-section-title">Deposit With bKash & Nagad</div>
-      ${renderAddMoneyAccountCards(accounts, 'BD')}
-      <div class="detail-box add-money-instruction-card">
-        <label>Instruction</label>
-        <p class="muted">${esc(settings.instruction || 'Send money first, then submit your transaction ID.')}</p>
-      </div>
-    `;
-  }
+  wrap.innerHTML = `
+    <section class="add-money-payment-card">
+      <h4>${esc(addMoneyCountryName(country))} Add Money - ${esc(prefix)}</h4>
+      <p class="add-money-instruction">${esc(settings.instruction || 'Transfer to one of the accounts below, then upload your receipt.')}</p>
+      <h5>${country === 'MY' ? 'Deposit With Bank & eWallet' : 'Deposit With bKash & Nagad'}</h5>
+      ${renderAddMoneyAccountCards(accounts, country)}
+    </section>
+    <section class="add-money-proof-card">
+      <h4>Submit Payment Proof</h4>
+      ${addMoneySubmitFormHtml()}
+    </section>
+    ${addMoneySupportCardHtml()}
+  `;
+  bindAddMoneyForm(el('addMoneyForm'));
+}
+
+function addMoneySupportCardHtml(){
+  return `
+    <section class="add-money-support-card">
+      <p>If your balance is not added within 1 hour after submitting the request, please contact support.</p>
+      <button class="btn green" type="button" data-open-section="supportSection" data-support-tab="new">Contact</button>
+    </section>
+  `;
 }
 
 function addMoneySubmitFormHtml(){
   const profile = state.addMoneyProfile || {};
-  const settings = profile.settings || {};
-  const accounts = Array.isArray(profile.accounts) ? profile.accounts : [];
-  const country = String(profile.pricing_country || '').toUpperCase();
+  const country = addMoneyCountryProfile();
+  const accounts = addMoneyAccountsForProfile();
   const prefix = walletPrefix(profile.currency || (country === 'MY' ? 'MYR' : 'BDT'));
-  const bdMethods = [...new Set(accounts.map(account => String(account.method || '').toUpperCase()).filter(method => ['BKASH', 'NAGAD'].includes(method)))];
-  const bdMethodOptions = (bdMethods.length ? bdMethods : ['BKASH', 'NAGAD']).map(method => `<option value="${esc(method)}">${esc(addMoneyMethodLabel(method))}</option>`).join('');
+  const selected = addMoneySelectedAccount();
+  const method = selected ? String(selected.method || '').toUpperCase() : '';
+  const receiptLabel = country === 'MY' ? 'Upload bank receipt' : 'Upload receipt (optional)';
 
-  if (!settings.enabled) {
-    return '<div class="detail-box"><label>Add Money</label><strong>Temporarily unavailable</strong><p class="muted">Please contact support if you need help adding balance.</p></div>';
-  }
-
-  if (country === 'MY') {
-    return `
-      <form id="addMoneyForm" class="add-money-modal-form" enctype="multipart/form-data">
-        <input type="hidden" name="method" value="BANK">
-        <div class="field">
-          <label>Amount (${prefix})</label>
-          <input class="input" name="amount_rm" type="number" min="1" step="0.01" placeholder="Enter amount">
-        </div>
-        <div class="field">
-          <label>Receipt Upload</label>
-          <input class="input" name="receipt_upload" type="file" accept="image/jpeg,image/png,image/webp,application/pdf">
-        </div>
-        <div class="field">
-          <label>Note / Reference (optional)</label>
-          <input class="input" name="note" placeholder="Optional note">
-        </div>
-        <div class="form-actions">
-          <button class="btn green" type="submit">Submit Add Money Request</button>
-        </div>
-      </form>
-    `;
+  if (!accounts.length) {
+    return '<div class="add-money-unavailable-card"><strong>Payment account unavailable</strong><p>Please contact support before submitting an add money request.</p></div>';
   }
 
   return `
-    <form id="addMoneyForm" class="add-money-modal-form">
-      <div class="field">
-        <label>Method</label>
-        <select class="input" name="method">${bdMethodOptions}</select>
-      </div>
+    <form id="addMoneyForm" class="add-money-proof-form" enctype="multipart/form-data" novalidate>
+      <input type="hidden" name="payment_account_id" id="addMoneyPaymentAccountId" value="${esc(addMoneyAccountId(selected))}">
+      <input type="hidden" name="method" id="addMoneyPaymentMethod" value="${esc(method)}">
+      <input type="hidden" name="payment_method" id="addMoneyPaymentMethodMirror" value="${esc(method)}">
+      <input type="hidden" name="payment_country" value="${esc(country)}">
+      <input type="hidden" name="payment_currency" value="${esc(profile.currency || (country === 'MY' ? 'MYR' : 'BDT'))}">
       <div class="field">
         <label>Amount (${prefix})</label>
-        <input class="input" name="amount_bdt" type="number" min="1" step="0.01" placeholder="Enter amount">
+        <input class="input" name="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Amount" required>
       </div>
-      <div class="field">
-        <label>Transaction ID</label>
-        <input class="input" name="transaction_id" placeholder="bKash/Nagad transaction ID">
+
+      ${country === 'BD' ? `
+        <div class="field">
+          <label>Transaction ID</label>
+          <input class="input" name="transaction_id" placeholder="bKash/Nagad transaction ID">
+        </div>
+        <div class="field">
+          <label>Sender Number</label>
+          <input class="input" name="sender_number" inputmode="tel" placeholder="Number used to send payment">
+        </div>
+      ` : ''}
+
+      <div class="field add-money-receipt-field">
+        <label for="addMoneyReceiptInput">${receiptLabel}</label>
+        <input id="addMoneyReceiptInput" class="visually-hidden" name="receipt_upload" type="file" accept="image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf">
+        <button id="addMoneyReceiptBtn" class="add-money-receipt-button" type="button">${receiptLabel}</button>
+        <div id="addMoneyReceiptPreview" class="add-money-receipt-preview" aria-live="polite">${addMoneyReceiptPreviewHtml()}</div>
       </div>
+
       <div class="field">
-        <label>Sender Number</label>
-        <input class="input" name="sender_number" placeholder="Number used to send payment">
-      </div>
-      <div class="field">
-        <label>Note / Reference (optional)</label>
-        <input class="input" name="note" placeholder="Optional note">
+        <label for="addMoneyNote">Note (optional)</label>
+        <textarea id="addMoneyNote" class="input" name="note" rows="3" placeholder="Note (optional)"></textarea>
       </div>
       <div class="form-actions">
-        <button class="btn green" type="submit">Submit Add Money Request</button>
+        <button id="addMoneySubmitBtn" class="btn green full-btn" type="submit">Submit Request</button>
       </div>
     </form>
   `;
-}
-
-function ensureAddMoneySubmitModal(){
-  if (el('addMoneySubmitModal')) return;
-
-  const wrap = document.createElement('div');
-  wrap.id = 'addMoneySubmitModal';
-  wrap.className = 'modal';
-  wrap.innerHTML = `
-    <div class="modal-card modal-card-sm">
-      <button id="closeAddMoneySubmitModalBtn" class="modal-close" type="button">&times;</button>
-      <h3 class="modal-title">Add Money</h3>
-      <p class="modal-sub">Submit payment proof and wait for admin approval.</p>
-      <div id="addMoneySubmitModalBody"></div>
-    </div>
-  `;
-  document.body.appendChild(wrap);
-  el('closeAddMoneySubmitModalBtn')?.addEventListener('click', () => hideModalById('addMoneySubmitModal'));
-  wrap.addEventListener('click', (event) => {
-    if (event.target === wrap) hideModalById('addMoneySubmitModal');
-  });
 }
 
 function bindAddMoneyForm(form){
   if (!form || form.dataset.bound === '1') return;
   form.dataset.bound = '1';
 
+  const receiptInput = el('addMoneyReceiptInput');
+  const receiptButton = el('addMoneyReceiptBtn');
+  const submitButton = el('addMoneySubmitBtn');
+
+  receiptButton?.addEventListener('click', () => receiptInput?.click());
+  receiptInput?.addEventListener('change', () => {
+    const file = receiptInput.files?.[0];
+    if (!file) return;
+    if (Number(file.size || 0) > 5 * 1024 * 1024) {
+      receiptInput.value = '';
+      showToast('Receipt file is too large. Maximum size is 5 MB.', 'error');
+      return;
+    }
+    if (!addMoneyReceiptAllowed(file)) {
+      receiptInput.value = '';
+      showToast('Unsupported file type. Please upload JPG, PNG, WEBP or PDF.', 'error');
+      return;
+    }
+
+    addMoneyRevokeReceiptUrl();
+    state.addMoneyReceipt = {
+      file,
+      objectUrl: String(file.type || '').startsWith('image/') ? URL.createObjectURL(file) : '',
+      name: String(file.name || 'receipt'),
+      mime: String(file.type || '').toLowerCase(),
+      size: Number(file.size || 0)
+    };
+    state.addMoneySubmitKey = '';
+    addMoneyUpdateReceiptPreview();
+  });
+
+  form.addEventListener('input', (event) => {
+    if (['amount', 'transaction_id', 'sender_number', 'note'].includes(event.target?.name)) {
+      state.addMoneySubmitKey = '';
+    }
+  });
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (form.dataset.submitting === '1') return;
+
+    const selected = addMoneySelectedAccount();
+    if (!selected) {
+      showToast('Please select the account you sent money to.', 'error');
+      return;
+    }
+
+    const country = addMoneyCountryProfile();
+    if (country === 'MY' && !state.addMoneyReceipt.file) {
+      showToast('Please upload your bank transfer receipt.', 'error');
+      return;
+    }
+
+    if (!state.addMoneySubmitKey) {
+      state.addMoneySubmitKey = window.crypto?.randomUUID?.() || `AM-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    }
+
     const formData = new FormData(form);
+    formData.set('idempotency_key', state.addMoneySubmitKey);
+    formData.set('payment_account_id', addMoneyAccountId(selected));
+    formData.set('method', String(selected.method || ''));
+    formData.set('payment_method', String(selected.method || ''));
+    formData.set('payment_country', country);
+    formData.set('payment_currency', String((state.addMoneyProfile || {}).currency || (country === 'MY' ? 'MYR' : 'BDT')));
+    const currentReceipt = formData.get('receipt_upload');
+    if (state.addMoneyReceipt.file && (!currentReceipt || Number(currentReceipt.size || 0) === 0)) {
+      formData.set('receipt_upload', state.addMoneyReceipt.file, state.addMoneyReceipt.name);
+    }
+
+    form.dataset.submitting = '1';
+    if (submitButton) {
+      submitButton.disabled = true;
+      submitButton.dataset.originalText = submitButton.textContent || 'Submit Request';
+      submitButton.textContent = 'Submitting...';
+    }
 
     try {
       await proxyFormPost('add_money_submit', formData, 'Submitting add money request...');
       showToast('Add money request submitted. Please wait for approval.', 'ok');
+      state.addMoneySubmitKey = '';
       form.reset();
-      hideModalById('addMoneySubmitModal');
+      addMoneyClearReceipt();
       state.addMoneyLoaded = false;
       state.historyLoaded = false;
       await loadAddMoneyPage({ force: true, busy:false });
     } catch (err) {
+      if (isSessionError(err)) {
+        showLogin();
+        setLoginError('Session expired. Please login again.');
+        return;
+      }
       showToast(err.message || 'Failed to submit add money request', 'error');
+    } finally {
+      form.dataset.submitting = '0';
+      if (submitButton && document.contains(submitButton)) {
+        submitButton.disabled = false;
+        submitButton.textContent = submitButton.dataset.originalText || 'Submit Request';
+        delete submitButton.dataset.originalText;
+      }
     }
   });
 }
 
-function openAddMoneySubmitModal(){
+function focusAddMoneyForm(){
   const profile = state.addMoneyProfile || {};
   const settings = profile.settings || {};
   if (!settings.enabled) {
@@ -2290,11 +2530,11 @@ function openAddMoneySubmitModal(){
     return;
   }
 
-  ensureAddMoneySubmitModal();
-  const body = el('addMoneySubmitModalBody');
-  if (body) body.innerHTML = addMoneySubmitFormHtml();
-  bindAddMoneyForm(el('addMoneyForm'));
-  showModalById('addMoneySubmitModal');
+  const form = el('addMoneyForm');
+  if (form) {
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    form.querySelector('[name="amount"]')?.focus({ preventScroll: true });
+  }
 }
 
 async function loadAddMoneyPage(options = {}){
@@ -4327,6 +4567,10 @@ function bindEvents(){
   if (addMoneyReloadBtn && addMoneyReloadBtn.dataset.bound !== '1') {
     addMoneyReloadBtn.dataset.bound = '1';
     addMoneyReloadBtn.addEventListener('click', () => {
+      addMoneyReloadBtn.classList.add('active');
+      addMoneyReloadBtn.setAttribute('aria-selected', 'true');
+      el('addMoneyOpenBtn')?.classList.remove('active');
+      el('addMoneyOpenBtn')?.setAttribute('aria-selected', 'false');
       loadAddMoneyPage({ force: true, busyText: 'Reloading add money...' }).catch(err => {
         if (isSessionError(err)) {
           showLogin();
@@ -4342,14 +4586,18 @@ function bindEvents(){
   if (addMoneyOpenBtn && addMoneyOpenBtn.dataset.bound !== '1') {
     addMoneyOpenBtn.dataset.bound = '1';
     addMoneyOpenBtn.addEventListener('click', () => {
+      addMoneyOpenBtn.classList.add('active');
+      addMoneyOpenBtn.setAttribute('aria-selected', 'true');
+      el('addMoneyReloadBtn')?.classList.remove('active');
+      el('addMoneyReloadBtn')?.setAttribute('aria-selected', 'false');
       if (!state.addMoneyLoaded) {
         loadAddMoneyPage({ force: true, busyText: 'Loading add money...' })
-          .then(openAddMoneySubmitModal)
+          .then(focusAddMoneyForm)
           .catch(err => showToast(err.message || 'Failed to load add money', 'error'));
         return;
       }
 
-      openAddMoneySubmitModal();
+      focusAddMoneyForm();
     });
   }
 
@@ -4357,8 +4605,38 @@ function bindEvents(){
     document.body.dataset.addMoneyCopyBound = '1';
     document.addEventListener('click', (event) => {
       const btn = event.target?.closest?.('[data-copy-account-number]');
-      if (!btn) return;
-      copyText(btn.dataset.copyAccountNumber || '', 'Account number copied.');
+      if (btn) {
+        event.preventDefault();
+        event.stopPropagation();
+        copyAddMoneyAccountNumber(btn.dataset.copyAccountNumber || '');
+        return;
+      }
+
+      const card = event.target?.closest?.('[data-add-money-account-id]');
+      if (card) {
+        selectAddMoneyAccount(card.dataset.addMoneyAccountId || '');
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      const card = event.target?.closest?.('[data-add-money-account-id]');
+      if (!card || !['Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      selectAddMoneyAccount(card.dataset.addMoneyAccountId || '');
+    });
+  }
+
+  if (document.body && document.body.dataset.addMoneyReceiptBound !== '1') {
+    document.body.dataset.addMoneyReceiptBound = '1';
+    document.addEventListener('click', (event) => {
+      if (event.target?.closest?.('#addMoneyReplaceReceiptBtn')) {
+        event.preventDefault();
+        el('addMoneyReceiptInput')?.click();
+        return;
+      }
+      if (event.target?.closest?.('#addMoneyRemoveReceiptBtn')) {
+        event.preventDefault();
+        addMoneyClearReceipt();
+      }
     });
   }
 
