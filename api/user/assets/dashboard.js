@@ -2205,7 +2205,7 @@ function addMoneyReceiptPreviewHtml(){
   const receipt = state.addMoneyReceipt;
   if (!receipt.file) {
     return `
-      <div class="add-money-receipt-empty-icon" aria-hidden="true">FILE</div>
+      <div class="add-money-receipt-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 2h8l4 4v16H6V2Zm7 2H8v16h8V8h-3V4Zm-4 8h6v2H9v-2Zm0 4h6v2H9v-2Z"/></svg></div>
       <div class="add-money-receipt-copy">
         <strong>No receipt selected</strong>
         <small>JPG, PNG, WEBP or PDF, max 5 MB.</small>
@@ -2292,21 +2292,15 @@ function renderAddMoneyAccountCards(accounts, country){
               ${logo ? `<img class="add-money-account-logo" src="${esc(logo)}" alt="${esc(account.display_name || methodLabel)}">` : `<div class="add-money-account-logo fallback" aria-hidden="true">${esc(addMoneyMethodLabel(account.method).slice(0, 2))}</div>`}
               <div>
                 <div class="add-money-account-name">${esc(account.display_name || methodLabel)}</div>
-                <div class="add-money-account-method">${esc(methodLabel)}</div>
               </div>
             </div>
-            <div class="add-money-account-lines">
-              <div class="add-money-account-line"><span>A/C Name</span><strong>${esc(holder)}</strong></div>
-              <div class="add-money-account-line add-money-account-number-line">
-                <span>A/C No</span>
-                <div class="add-money-account-number-row">
-                  <strong>${esc(number)}</strong>
-                  <button class="add-money-copy-icon" type="button" data-copy-account-number="${esc(account.account_number || '')}" aria-label="Copy ${esc(account.display_name || methodLabel)} account number" title="Copy account number">
-                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 8h11v13H8V8Zm2 2v9h7v-9h-7ZM5 3h11v3h-2V5H7v9h-1V3h-1v13h1v2H5V3Z"/></svg>
-                  </button>
-                </div>
-              </div>
+            <div class="add-money-account-info">
+              <div>Holder: <strong>${esc(holder)}</strong></div>
+              <div>Account: <strong>${esc(number)}</strong></div>
             </div>
+            <button class="add-money-copy-icon" type="button" data-copy-account-number="${esc(account.account_number || '')}" aria-label="Copy ${esc(account.display_name || methodLabel)} account number" title="Copy account number">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 8h11v13H8V8Zm2 2v9h7v-9h-7ZM5 3h11v3h-2V5H7v9h-1V3h-1v13h1v2H5V3Z"/></svg>
+            </button>
             ${instruction ? `<p class="muted add-money-account-note">${esc(instruction)}</p>` : ''}
           </div>
         `;
@@ -2345,7 +2339,6 @@ function renderAddMoneyPage(){
     <section class="add-money-payment-card">
       <h4>${esc(addMoneyCountryName(country))} Add Money - ${esc(prefix)}</h4>
       <p class="add-money-instruction">${esc(settings.instruction || 'Transfer to one of the accounts below, then upload your receipt.')}</p>
-      <h5>${country === 'MY' ? 'Deposit With Bank & eWallet' : 'Deposit With bKash & Nagad'}</h5>
       ${renderAddMoneyAccountCards(accounts, country)}
     </section>
     <section class="add-money-proof-card">
@@ -2387,8 +2380,8 @@ function addMoneySubmitFormHtml(){
       <input type="hidden" name="payment_country" value="${esc(country)}">
       <input type="hidden" name="payment_currency" value="${esc(profile.currency || (country === 'MY' ? 'MYR' : 'BDT'))}">
       <div class="field">
-        <label>Amount (${prefix})</label>
-        <input class="input" name="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Amount" required>
+        <label class="visually-hidden" for="addMoneyAmount">Amount (${prefix})</label>
+        <input id="addMoneyAmount" class="input" name="amount" type="number" min="1" step="0.01" inputmode="decimal" placeholder="Amount" required>
       </div>
 
       ${country === 'BD' ? `

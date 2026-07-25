@@ -3741,7 +3741,7 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 #addMoneySection .add-money-intro-card,
 #addMoneySection .add-money-payment-card,
 #addMoneySection .add-money-proof-card {
-  padding: 18px;
+  padding: 22px;
 }
 
 #addMoneySection .add-money-intro-card h3,
@@ -3818,19 +3818,23 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 
 #addMoneySection .add-money-account-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   margin-top: 13px;
 }
 
 #addMoneySection .add-money-account-card {
   display: grid;
-  gap: 13px;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 5px;
   min-width: 0;
-  min-height: 218px;
-  padding: 14px;
+  min-height: 126px;
+  padding: 16px;
   border: 1px solid rgba(200, 214, 236, 0.24);
-  border-radius: 19px;
+  border-radius: 20px;
   color: var(--z-text);
   background: rgba(20, 49, 91, 0.7);
   cursor: pointer;
@@ -3854,7 +3858,14 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 }
 
 #addMoneySection .add-money-account-card.unavailable {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
   cursor: default;
+}
+
+#addMoneySection .add-money-account-card.unavailable p {
+  grid-column: 1;
+  grid-row: 2;
 }
 
 #addMoneySection .add-money-account-card.unavailable:active {
@@ -3867,6 +3878,8 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
   align-items: center;
   gap: 12px;
   min-width: 0;
+  grid-column: 1;
+  grid-row: 1;
 }
 
 #addMoneySection .add-money-account-logo {
@@ -3887,8 +3900,7 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 }
 
 #addMoneySection .add-money-account-name,
-#addMoneySection .add-money-account-method,
-#addMoneySection .add-money-account-line strong,
+#addMoneySection .add-money-account-info strong,
 #addMoneySection .add-money-receipt-copy {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -3901,18 +3913,26 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
   line-height: 1.3;
 }
 
-#addMoneySection .add-money-account-method {
-  margin-top: 3px;
+#addMoneySection .add-money-account-info {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  grid-column: 1;
+  grid-row: 2;
   color: var(--z-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.35;
-  font-weight: 800;
 }
 
-#addMoneySection .add-money-account-lines {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
+#addMoneySection .add-money-account-info strong {
+  color: var(--z-text);
+  font-weight: 700;
+}
+
+#addMoneySection .add-money-copy-icon {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
 }
 
 #addMoneySection .add-money-account-line {
@@ -3941,6 +3961,8 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
 }
 
 #addMoneySection .add-money-account-note {
+  grid-column: 1 / -1;
+  grid-row: 3;
   margin: 0;
   line-height: 1.45;
 }
@@ -4055,6 +4077,12 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
   font-weight: 900;
 }
 
+#addMoneySection .add-money-receipt-empty-icon svg {
+  width: 34px;
+  height: 34px;
+  fill: currentColor;
+}
+
 #addMoneySection .add-money-receipt-copy {
   display: grid;
   gap: 4px;
@@ -4125,10 +4153,6 @@ body.user-authenticated[data-active-section='addMoneySection'] .bottom-nav {
   #addMoneySection .add-money-payment-card h4,
   #addMoneySection .add-money-proof-card h4 {
     font-size: 20px;
-  }
-
-  #addMoneySection .add-money-account-list {
-    grid-template-columns: 1fr;
   }
 
   #addMoneySection .add-money-support-card {
