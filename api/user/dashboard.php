@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=32">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=33">
 </head>
 <body>
 
@@ -699,7 +699,7 @@ header('Pragma: no-cache');
               <div id="transferReceiverCard" class="recipient-card transfer-verified-card"></div>
               <label class="feature-field transfer-field" for="transferAmountInput">
                 <span>Amount</span>
-                <div class="money-input-wrap transfer-money-wrap"><b id="transferCurrencyPrefix">BDT</b><input id="transferAmountInput" type="number" inputmode="decimal" min="1" step="0.01" placeholder="0.00"></div>
+                <div class="transfer-money-wrap"><b id="transferCurrencyPrefix">BDT</b><input id="transferAmountInput" type="number" inputmode="decimal" min="1" step="0.01" placeholder="0.00"></div>
               </label>
               <div class="feature-actions transfer-actions transfer-single-action"><button id="transferAmountNextBtn" class="android-primary-button" type="button">Continue</button></div>
             </div>
@@ -1058,8 +1058,8 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=36"></script>
+<script src="/api/user/assets/dashboard.js?v=37"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=13"></script>
-<script src="/api/user/assets/user-app.js?v=14"></script>
+<script src="/api/user/assets/user-app.js?v=15"></script>
 </body>
 </html>

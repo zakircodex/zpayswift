@@ -833,6 +833,8 @@ body.user-authenticated[data-active-section='transferSection'] .mobile-header {
 }
 
 body.user-authenticated[data-active-section='transferSection'] {
+  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
@@ -844,24 +846,29 @@ body.user-authenticated[data-active-section='transferSection'] .app-shell {
 }
 
 body.user-authenticated[data-active-section='transferSection'] .main-panel {
+  display: flex;
+  justify-content: center;
   height: 100dvh;
   min-height: 100svh;
   width: 100%;
   max-width: none;
   overflow: hidden;
-  padding-bottom: 0;
+  padding: 14px 0 0;
 }
 
 #transferSection.transfer-page-section {
+  flex: 1 1 auto;
+  display: flex;
   height: 100%;
   min-height: 0;
   width: min(calc(100% - 32px), 620px);
-  margin: 14px auto 0;
+  margin: 0 auto;
   padding-bottom: 0;
   overflow: hidden;
 }
 
 .transfer-page-shell {
+  flex: 1 1 auto;
   height: 100%;
   min-height: 0;
   width: 100%;
@@ -931,6 +938,7 @@ body.user-authenticated[data-active-section='transferSection'] .main-panel {
   background: transparent;
   box-shadow: none;
   min-height: 0;
+  max-height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -1215,6 +1223,7 @@ body.user-authenticated[data-active-section='transferSection'] .main-panel {
 }
 
 #transferSection .transfer-money-wrap {
+  box-sizing: border-box;
   min-height: 68px;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -1225,6 +1234,7 @@ body.user-authenticated[data-active-section='transferSection'] .main-panel {
   border-color: rgba(117, 156, 215, 0.38);
   background: rgba(4, 16, 31, 0.38);
   overflow: hidden;
+  isolation: isolate;
 }
 
 #transferSection .transfer-money-wrap:focus-within {
@@ -1240,17 +1250,26 @@ body.user-authenticated[data-active-section='transferSection'] .main-panel {
 }
 
 #transferSection .transfer-money-wrap input,
-#transferSection .transfer-money-wrap input:focus {
+#transferSection .transfer-money-wrap input:focus,
+#transferSection .transfer-money-wrap input:focus-visible {
   width: 100%;
   min-height: 62px;
   padding: 0;
   border: 0 !important;
   border-radius: 0;
-  outline: 0;
+  outline: 0 !important;
+  outline-offset: 0;
   box-shadow: none !important;
   background: transparent !important;
   color: #fff;
   font-size: 21px;
+  appearance: textfield;
+}
+
+#transferSection .transfer-money-wrap input::-webkit-outer-spin-button,
+#transferSection .transfer-money-wrap input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
 }
 
 #transferSection .transfer-actions {
@@ -1355,22 +1374,37 @@ body.user-authenticated[data-active-section='transferSection'] .main-panel {
 
 .zpay-transfer-result-row {
   display: grid;
-  grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: minmax(104px, auto) minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
   padding: 10px 0;
   border-bottom: 1px solid rgba(117, 156, 215, 0.16);
 }
 
 .zpay-transfer-result-row span {
+  min-width: 0;
   color: var(--z-muted);
   font-weight: 750;
+  line-height: 1.35;
 }
 
 .zpay-transfer-result-row strong {
+  min-width: 0;
   color: #fff;
   font-weight: 900;
   text-align: right;
   overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.zpay-transfer-result-row.is-long {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.zpay-transfer-result-row.is-long strong {
+  text-align: left;
 }
 
 @keyframes zpaySpin {
@@ -1404,7 +1438,6 @@ body.user-authenticated[data-active-section='transferSection'] .bottom-btn.activ
 @media (max-width: 420px) {
   #transferSection.transfer-page-section {
     width: calc(100% - 28px);
-    margin-top: 12px;
   }
 
   .transfer-page-header {

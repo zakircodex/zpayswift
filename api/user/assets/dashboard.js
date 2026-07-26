@@ -1331,8 +1331,13 @@ async function loadInitialDashboard(showBusy = true, busyText = DASHBOARD_LOADIN
   }
 }
 
-async function refreshAll(showMessage = false){
-  await loadInitialDashboard(true, showMessage ? 'Refreshing dashboard...' : DASHBOARD_LOADING_TEXT);
+async function refreshAll(showMessage = false, options = {}){
+  const settings = (showMessage && typeof showMessage === 'object') ? showMessage : (options || {});
+  const wantsMessage = (showMessage && typeof showMessage === 'object') ? !!settings.showMessage : !!showMessage;
+  const useBusy = Object.prototype.hasOwnProperty.call(settings, 'busy') ? settings.busy !== false : wantsMessage;
+  const busyText = settings.busyText || (wantsMessage ? 'Refreshing dashboard...' : DASHBOARD_LOADING_TEXT);
+
+  await loadInitialDashboard(useBusy, busyText);
 
   if (el('bundleSection')?.classList.contains('active')) {
     await loadBundleOffers().catch(err => {
@@ -1348,14 +1353,14 @@ async function refreshAll(showMessage = false){
     });
   }
 
-  if (showMessage) {
+  if (wantsMessage) {
     showToast('Dashboard refreshed', 'info');
   }
 }
 
-async function safeRefreshAll(showMessage = false){
+async function safeRefreshAll(showMessage = false, options = {}){
   try{
-    await refreshAll(showMessage);
+    await refreshAll(showMessage, options);
   }catch(err){
     if (isSessionError(err)) {
       showLogin();

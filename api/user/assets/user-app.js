@@ -963,6 +963,24 @@
     app.transfer.modalHistoryOpen = true;
   }
 
+  function closeTransferGlobalLoader() {
+    if (!isTransferSectionActive()) return;
+    const wrap = $('loadingWrap');
+    let guard = 0;
+    while (wrap?.classList.contains('show') && typeof window.setBusy === 'function' && guard < 6) {
+      window.setBusy(false);
+      guard++;
+    }
+    wrap?.classList.remove('show', 'dashboard-load');
+    if ($('loadingText')) $('loadingText').textContent = 'Loading...';
+  }
+
+  function clearTransferModalSurface() {
+    const modal = $('zpayActionModal');
+    modal?.classList.remove('show', 'zpay-transfer-modal', 'zpay-transfer-loading', 'zpay-transfer-result', 'zpay-transfer-success', 'zpay-transfer-error');
+    $('zpayActionBody')?.replaceChildren();
+  }
+
   function finishTransferModalClose(options) {
     const settings = options || {};
     const modal = $('zpayActionModal');
@@ -995,6 +1013,8 @@
   }
 
   function openTransferLoading(message) {
+    closeTransferGlobalLoader();
+    clearTransferModalSurface();
     app.transfer.modalOpen = true;
     app.transfer.modalBusy = true;
     app.transfer.modalClosing = false;
@@ -1011,9 +1031,12 @@
       copy.textContent = 'Z-Pay Swift is securely processing your request.';
       body.append(spinner, heading, copy);
     }, { closeButton: false, className: 'zpay-transfer-modal zpay-transfer-loading' });
+    closeTransferGlobalLoader();
   }
 
   function openTransferError(title, message) {
+    closeTransferGlobalLoader();
+    clearTransferModalSurface();
     app.transfer.modalOpen = true;
     app.transfer.modalBusy = false;
     app.transfer.modalClosing = false;
@@ -1040,16 +1063,17 @@
       actions.appendChild(ok);
       body.append(icon, heading, copy, actions);
     }, { closeButton: false, className: 'zpay-transfer-modal zpay-transfer-result zpay-transfer-error' });
+    closeTransferGlobalLoader();
   }
 
   function isTransferFavoriteSaved(recipientOrContext) {
-    const phone = transferDigits(transferRecipientPhone(recipientOrContext) || recipientOrContext?.phone || app.transfer.verifiedInput);
+    const phone = transferDigits(recipientOrContext?.receiver_phone_full || transferRecipientPhone(recipientOrContext) || recipientOrContext?.phone || app.transfer.verifiedInput);
     if (!phone) return false;
     return app.transfer.favorites.some((item) => transferDigits(item.phone || item.receiver_phone) === phone);
   }
 
   async function addTransferFavoriteFromContext(context, button) {
-    const phone = transferRecipientPhone(context) || context?.phone || '';
+    const phone = context?.receiver_phone_full || transferRecipientPhone(context) || context?.phone || '';
     if (!phone) return;
     setButtonBusy(button, true, 'Saving...');
     try {
@@ -1069,6 +1093,8 @@
   }
 
   function showTransferSuccess(context) {
+    closeTransferGlobalLoader();
+    clearTransferModalSurface();
     const details = context || {};
     app.transfer.successContext = details;
     app.transfer.modalOpen = true;
@@ -1087,12 +1113,13 @@
       rows.className = 'zpay-transfer-result-rows';
       [
         ['Receiver', details.receiver_name || details.name || 'Z-Pay User'],
-        ['Account', details.receiver_phone_masked || maskPhone(details.receiver_phone || details.receiver_account || '')],
+        ['Account', details.receiver_phone_masked || maskPhone(details.receiver_phone_full || details.receiver_phone || details.receiver_account || '')],
         ['Amount', details.amount_text || formatMoney(details.amount, details.wallet_currency || details.currency)],
         ['Transfer ID', details.transfer_id || details.request_id || '-']
       ].forEach((row) => {
         const item = document.createElement('div');
         item.className = 'zpay-transfer-result-row';
+        if (row[0] === 'Transfer ID') item.classList.add('is-long');
         item.innerHTML = '<span>' + escapeHtml(row[0]) + '</span><strong>' + escapeHtml(row[1]) + '</strong>';
         rows.appendChild(item);
       });
@@ -1118,10 +1145,16 @@
       done.type = 'button';
       done.className = 'android-primary-button';
       done.textContent = 'Done';
-      done.addEventListener('click', () => finishTransferModalClose({ replaceHistory: true }));
+      done.addEventListener('click', () => {
+        finishTransferModalClose({ replaceHistory: true });
+        if (typeof window.refreshUserDashboard === 'function') {
+          window.refreshUserDashboard(false, { busy: false }).catch(() => {});
+        }
+      });
       actions.append(history, done);
       body.append(icon, heading, rows, actions);
     }, { closeButton: false, className: 'zpay-transfer-modal zpay-transfer-result zpay-transfer-success' });
+    closeTransferGlobalLoader();
   }
 
   function renderRecipientCard() {
@@ -1441,10 +1474,12 @@
     if (label) label.textContent = 'Transferring...';
     app.transfer.reference = String($('transferReferenceInput')?.value || '').trim();
     const recipient = app.transfer.recipient || {};
+    const receiverFullPhone = preview.receiver_phone || transferRecipientPhone(recipient) || app.transfer.verifiedInput;
     const successBase = {
       receiver_name: preview.receiver_name || recipient.receiver_name || recipient.name || 'Z-Pay User',
-      receiver_phone: preview.receiver_phone || preview.receiver_account || transferRecipientPhone(recipient),
-      receiver_phone_masked: recipient.receiver_phone_masked || maskPhone(preview.receiver_phone || preview.receiver_account || transferRecipientPhone(recipient)),
+      receiver_phone_full: receiverFullPhone,
+      receiver_phone: receiverFullPhone,
+      receiver_phone_masked: recipient.receiver_phone_masked || maskPhone(receiverFullPhone),
       amount: preview.amount || $('transferAmountInput')?.value || 0,
       amount_text: preview.amount_text || formatMoney(preview.amount, preview.wallet_currency || recipient.wallet_currency),
       wallet_currency: preview.wallet_currency || preview.currency || recipient.wallet_currency || 'BDT',
@@ -1455,12 +1490,14 @@
       const data = await post('transfer_create', {
         preview_token: token,
         reference: app.transfer.reference
-      }, 'Completing transfer...');
+      }, 'Completing transfer...', { busy: false });
       const transfer = data.transfer || {};
+      const transferMaskedPhone = transfer.receiver_account || transfer.receiver_phone_masked || successBase.receiver_phone_masked;
       const context = Object.assign({}, successBase, transfer, {
         receiver_name: transfer.receiver_name || successBase.receiver_name,
-        receiver_phone: transfer.receiver_phone || transfer.receiver_account || successBase.receiver_phone,
-        receiver_phone_masked: maskPhone(transfer.receiver_phone || transfer.receiver_account || successBase.receiver_phone),
+        receiver_phone_full: successBase.receiver_phone_full,
+        receiver_phone: successBase.receiver_phone_full,
+        receiver_phone_masked: transferMaskedPhone || maskPhone(successBase.receiver_phone_full),
         amount_text: transfer.amount_text || transfer.total_paid_text || successBase.amount_text,
         wallet_currency: transfer.wallet_currency || transfer.currency || successBase.wallet_currency,
         transfer_id: transfer.transfer_id || transfer.request_id || '',
@@ -1470,9 +1507,6 @@
       resetTransfer();
       app.transfer.favoritesLoaded = false;
       loadTransferFavorites(true).catch(() => {});
-      if (typeof window.refreshUserDashboard === 'function') {
-        window.refreshUserDashboard(false).catch(() => {});
-      }
       showTransferSuccess(context);
     } catch (error) {
       finishTransferModalClose({ replaceHistory: true });
@@ -2416,6 +2450,7 @@
       loadNotificationPage(true);
     }
     if (sectionId === 'transferSection') {
+      closeTransferGlobalLoader();
       loadTransferFavorites(false);
       loadUnreadCount();
     }
