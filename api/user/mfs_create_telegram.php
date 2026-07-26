@@ -131,6 +131,11 @@ zpay_mfs_create_start_session();
 $sessionUser = $_SESSION['user_user'] ?? [];
 $uid = is_array($sessionUser) ? trim((string)($sessionUser['uid'] ?? '')) : '';
 if ($uid === '') zpay_mfs_create_out(false, 'UNAUTHORIZED', 'User session required', [], 401);
+$csrf = trim((string)($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''));
+$sessionCsrf = trim((string)($_SESSION['user_csrf'] ?? ''));
+if ($csrf === '' || $sessionCsrf === '' || !hash_equals($sessionCsrf, $csrf)) {
+    zpay_mfs_create_out(false, 'FORBIDDEN', 'Invalid CSRF token', [], 403);
+}
 $body = json_decode((string)file_get_contents('php://input'), true);
 $body = is_array($body) ? $body : [];
 $res = mfs_create_request($uid, $body, 'USER_PANEL', 'PANEL', ['uid' => $uid, 'role' => (string)($sessionUser['role'] ?? 'USER')]);

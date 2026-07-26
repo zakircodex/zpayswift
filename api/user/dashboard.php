@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=29">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=30">
 </head>
 <body>
 
@@ -296,8 +296,8 @@ header('Pragma: no-cache');
                 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.7 5.3-1.4-1.4L5.2 12l8.1 8.1 1.4-1.4L9 13h11v-2H9l5.7-5.7Z"/></svg>
               </button>
               <h2 id="notificationsPageTitle">Notifications</h2>
-              <button id="notificationsMarkAllButton" class="notification-page-icon-button notification-mark-all-button" type="button" aria-label="Mark all notifications as read" title="Mark all as read">
-                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m1.7 12.3 4 4 1.4-1.4-4-4-1.4 1.4Zm15.2-4.2-7.8 7.8-3-3-1.4 1.4 4.4 4.4 9.2-9.2-1.4-1.4Zm-4.2 0-1.4-1.4-4.2 4.2 1.4 1.4 4.2-4.2Zm7.6 0-9.2 9.2 1.4 1.4 9.2-9.2-1.4-1.4Z"/></svg>
+              <button id="notificationsEditButton" class="notification-page-icon-button notification-edit-button" type="button" aria-label="Edit notifications" aria-pressed="false" title="Edit notifications">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16.6 9.9-9.9 3.4 3.4L7.4 20H4v-3.4ZM18.7 8.7l-3.4-3.4 1.4-1.4a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8l-1.4 1.4Z"/></svg>
               </button>
             </header>
 
@@ -318,6 +318,32 @@ header('Pragma: no-cache');
               <div class="notification-page-skeleton" aria-hidden="true"></div>
               <div class="notification-page-skeleton" aria-hidden="true"></div>
               <div class="notification-page-skeleton" aria-hidden="true"></div>
+            </div>
+          </div>
+
+          <div id="notificationEditBar" class="notification-edit-bar hidden" role="toolbar" aria-label="Selected notification actions">
+            <button id="notificationsSelectAllButton" type="button">Select All</button>
+            <button id="notificationsDeleteButton" class="danger" type="button" disabled>Delete</button>
+            <button id="notificationsMarkSelectedButton" type="button" disabled>Mark Read</button>
+          </div>
+        </div>
+
+        <div id="notificationDetailModal" class="notification-detail-modal hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="notificationDetailTitle" aria-describedby="notificationDetailBody" inert>
+          <div class="notification-detail-backdrop" data-notification-detail-close></div>
+          <div class="notification-detail-sheet">
+            <div class="notification-detail-handle" aria-hidden="true"></div>
+            <header>
+              <span id="notificationDetailIcon" class="notification-page-card-icon" aria-hidden="true">Z</span>
+              <h3 id="notificationDetailTitle">Notification</h3>
+              <button id="notificationDetailCloseButton" type="button" aria-label="Close notification details">&times;</button>
+            </header>
+            <div class="notification-detail-content">
+              <time id="notificationDetailTime"></time>
+              <p id="notificationDetailBody">Loading notification...</p>
+            </div>
+            <div class="notification-detail-actions">
+              <button id="notificationDetailDeleteButton" class="danger" type="button">Delete</button>
+              <button id="notificationDetailOpenButton" type="button">Open Related Page</button>
             </div>
           </div>
         </div>
@@ -938,7 +964,7 @@ header('Pragma: no-cache');
     </div>
 
     <div class="otp-actions">
-      <button id="confirmBundleBuyBtn" class="btn green" type="button">Confirm Bundle</button>
+      <button id="confirmBundleBuyBtn" class="btn green" type="button">Review Bundle</button>
       <button id="cancelBundleBuyBtn" class="btn ghost" type="button">Cancel</button>
     </div>
   </div>
@@ -1005,8 +1031,8 @@ header('Pragma: no-cache');
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/dashboard.js?v=34"></script>
-<script src="/api/user/assets/dashboard-ux.js?v=12"></script>
-<script src="/api/user/assets/user-app.js?v=12"></script>
+<script src="/api/user/assets/dashboard.js?v=35"></script>
+<script src="/api/user/assets/dashboard-ux.js?v=13"></script>
+<script src="/api/user/assets/user-app.js?v=13"></script>
 </body>
 </html>

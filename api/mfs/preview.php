@@ -301,10 +301,22 @@ function mfs_preview_expected_currency_for_country(string $countryCode): string
     return '';
 }
 
-function mfs_preview_country_from_user(array $user): string
+function mfs_preview_country_from_user(array $user, array $wallet = []): string
 {
+    if (function_exists('auth_pricing_country_from_user')) {
+        $country = mfs_preview_normalize_country(
+            (string)auth_pricing_country_from_user($user, $wallet)
+        );
+        if ($country !== '') {
+            return $country;
+        }
+    }
+
     $country = mfs_preview_normalize_country((string)(
-        $user['country_code']
+        $user['pricing_country']
+        ?? $user['market_country']
+        ?? $user['service_country']
+        ?? $user['country_code']
         ?? $user['country']
         ?? $user['user_country']
         ?? ''
@@ -633,7 +645,7 @@ $note = substr(trim((string)($body['note'] ?? '')), 0, 160);
 $userStatus = strtoupper(trim((string)($user['status'] ?? 'INACTIVE')));
 $userRole = strtoupper(trim((string)($user['role'] ?? 'USER')));
 
-$countryCode = mfs_preview_country_from_user($user);
+$countryCode = mfs_preview_country_from_user($user, $wallet);
 $walletCurrency = mfs_preview_currency_from_user_wallet($user, $wallet, $countryCode);
 $expectedCurrency = mfs_preview_expected_currency_for_country($countryCode);
 $serviceMode = mfs_preview_service_mode($walletCurrency);

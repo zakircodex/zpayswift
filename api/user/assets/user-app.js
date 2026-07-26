@@ -50,7 +50,12 @@
       loading: false,
       loaded: false,
       unreadCount: 0,
-      returnSection: 'overviewSection'
+      returnSection: 'overviewSection',
+      editing: false,
+      selected: new Set(),
+      activeDetail: null,
+      detailOpener: null,
+      detailHistory: false
     }
   };
 
@@ -235,24 +240,35 @@
   async function postForm(action, formData, label) {
     setBusy(true, label || 'Uploading...');
     try {
-      const response = await fetch((window.USER_PROXY_URL || '/api/user/proxy.php') + '?action=' + encodeURIComponent(action), {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: { 'X-CSRF-Token': csrf(), 'Accept': 'application/json' },
-        body: formData
-      });
-      const text = await response.text();
-      let json = null;
-      try { json = JSON.parse(text); } catch (_) { json = null; }
-      if (!response.ok || !json || !json.ok) {
-        const error = new Error(String((json && json.message) || 'The request could not be completed.'));
-        error.code = String((json && json.code) || 'REQUEST_FAILED');
-        if (['SESSION_EXPIRED', 'AUTH_REQUIRED', 'UNAUTHORIZED'].includes(error.code) && typeof window.userSessionExpired === 'function') {
-          window.userSessionExpired();
+      const send = async () => {
+        const response = await fetch((window.USER_PROXY_URL || '/api/user/proxy.php') + '?action=' + encodeURIComponent(action), {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'X-CSRF-Token': csrf(), 'Accept': 'application/json' },
+          body: formData
+        });
+        const responseText = await response.text();
+        let json = null;
+        try { json = JSON.parse(responseText); } catch (_) { json = null; }
+        if (!response.ok || !json || !json.ok) {
+          const error = new Error(String((json && json.message) || 'The request could not be completed.'));
+          error.code = String((json && json.code) || 'REQUEST_FAILED');
+          error.status = response.status;
+          if (isSessionError(error) && typeof window.userSessionExpired === 'function') {
+            window.userSessionExpired();
+          }
+          throw error;
         }
-        throw error;
+        return json.data || {};
+      };
+      if (!csrf()) await refreshCsrfToken();
+      try {
+        return await send();
+      } catch (error) {
+        if (!isCsrfError(error)) throw error;
+        await refreshCsrfToken();
+        return send();
       }
-      return json.data || {};
     } finally {
       setBusy(false);
     }
@@ -1489,7 +1505,7 @@
       badge.classList.toggle('hidden', unreadCount < 1);
     });
     if ($('notificationUnreadCount')) $('notificationUnreadCount').textContent = String(unreadCount);
-    if ($('notificationsMarkAllButton')) $('notificationsMarkAllButton').disabled = unreadCount < 1 || app.notifications.loading;
+    updateNotificationEditActions();
   }
 
   function updateNotificationTabs() {
@@ -1500,6 +1516,40 @@
       tab.disabled = app.notifications.loading;
     });
     renderNotificationBadge(app.notifications.unreadCount);
+  }
+
+  function updateNotificationEditActions() {
+    const selectedCount = app.notifications.selected.size;
+    const visibleIds = app.notifications.items.map((item) => String(item.notification_id || '')).filter(Boolean);
+    const editButton = $('notificationsEditButton');
+    const editBar = $('notificationEditBar');
+    const selectAll = $('notificationsSelectAllButton');
+    const deleteButton = $('notificationsDeleteButton');
+    const markButton = $('notificationsMarkSelectedButton');
+    if (editButton) {
+      editButton.setAttribute('aria-pressed', app.notifications.editing ? 'true' : 'false');
+      editButton.setAttribute('aria-label', app.notifications.editing ? 'Finish editing notifications' : 'Edit notifications');
+    }
+    editBar?.classList.toggle('hidden', !app.notifications.editing);
+    if (selectAll) selectAll.textContent = visibleIds.length > 0 && selectedCount === visibleIds.length ? 'Clear All' : 'Select All';
+    if (deleteButton) deleteButton.disabled = selectedCount < 1 || app.notifications.loading;
+    if (markButton) markButton.disabled = selectedCount < 1 || app.notifications.loading;
+  }
+
+  function setNotificationEditMode(enabled) {
+    app.notifications.editing = Boolean(enabled);
+    app.notifications.selected.clear();
+    updateNotificationEditActions();
+    renderNotifications(app.notifications.items);
+  }
+
+  function toggleNotificationSelection(item) {
+    const id = String(item?.notification_id || '');
+    if (!id) return;
+    if (app.notifications.selected.has(id)) app.notifications.selected.delete(id);
+    else app.notifications.selected.add(id);
+    updateNotificationEditActions();
+    renderNotifications(app.notifications.items);
   }
 
   function setNotificationLive(message) {
@@ -1566,27 +1616,104 @@
     return 'historySection';
   }
 
-  async function openNotificationItem(item) {
-    if (!item || item.opening) return;
+  function renderNotificationDetail(item, loading) {
+    const detail = item || {};
+    if ($('notificationDetailIcon')) $('notificationDetailIcon').textContent = notificationGlyph(detail);
+    if ($('notificationDetailTitle')) $('notificationDetailTitle').textContent = String(detail.title || 'Notification');
+    if ($('notificationDetailTime')) $('notificationDetailTime').textContent = loading ? 'Loading details...' : formatDate(detail.created_at);
+    if ($('notificationDetailBody')) {
+      $('notificationDetailBody').textContent = loading
+        ? String(detail.body || 'Loading notification...')
+        : String(detail.body_full || detail.body || 'No additional details are available.');
+    }
+    const openButton = $('notificationDetailOpenButton');
+    if (openButton) openButton.classList.toggle('hidden', !notificationDestination(detail));
+  }
+
+  function setNotificationDetailInert(modal, inert) {
+    if (!modal) return;
+    modal.inert = Boolean(inert);
+    if (inert) modal.setAttribute('inert', '');
+    else modal.removeAttribute('inert');
+  }
+
+  function closeNotificationDetails(options) {
+    const settings = options || {};
+    const modal = $('notificationDetailModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    setNotificationDetailInert(modal, true);
+    document.body.classList.remove('notification-detail-open');
+    const opener = app.notifications.detailOpener;
+    app.notifications.activeDetail = null;
+    app.notifications.detailOpener = null;
+    if (app.notifications.detailHistory && !settings.fromHistory && window.history?.back) {
+      app.notifications.detailHistory = false;
+      window.history.back();
+    } else if (settings.fromHistory) {
+      app.notifications.detailHistory = false;
+    }
+    opener?.focus?.({ preventScroll: true });
+  }
+
+  async function openNotificationItem(item, opener) {
+    if (!item || item.opening || app.notifications.editing) return;
     item.opening = true;
+    app.notifications.activeDetail = item;
+    app.notifications.detailOpener = opener || document.activeElement;
+    const modal = $('notificationDetailModal');
+    modal?.classList.remove('hidden');
+    modal?.removeAttribute('aria-hidden');
+    setNotificationDetailInert(modal, false);
+    document.body.classList.add('notification-detail-open');
+    renderNotificationDetail(item, true);
+    $('notificationDetailCloseButton')?.focus?.({ preventScroll: true });
+
+    if (!app.notifications.detailHistory && window.history?.pushState) {
+      app.notifications.detailHistory = true;
+      window.history.pushState(Object.assign({}, window.history.state || {}, {
+        zpayUserApp: { view: 'notification-detail', notificationId: item.notification_id }
+      }), '', window.location.href);
+    }
+
     try {
+      const requests = [
+        get('notification_details', { notification_id: item.notification_id }, 'Loading notification...', { busy: false })
+      ];
       if (!item.is_read) {
-        const data = await postWithFreshCsrf('notification_mark_read', { notification_id: item.notification_id }, 'Updating notification...');
-        item.is_read = true;
-        renderNotificationBadge(Number(data.unread_count || 0));
-        if (app.notifications.filter === 'UNREAD') {
-          app.notifications.items = app.notifications.items.filter((candidate) => candidate.notification_id !== item.notification_id);
-        }
-        renderNotifications(app.notifications.items);
+        requests.push(postWithFreshCsrf('notification_mark_read', { notification_id: item.notification_id }, 'Updating notification...'));
       }
-      const destination = notificationDestination(item);
-      if (destination) window.openSection?.(destination);
+      const results = await Promise.allSettled(requests);
+      const detailsResult = results[0];
+      if (detailsResult.status === 'fulfilled') {
+        const detailItem = detailsResult.value.notification || item;
+        Object.assign(item, detailItem);
+        app.notifications.activeDetail = item;
+        renderNotificationDetail(item, false);
+        renderNotificationBadge(Number(detailsResult.value.unread_count ?? app.notifications.unreadCount));
+      } else {
+        throw detailsResult.reason;
+      }
+      if (results[1]?.status === 'fulfilled') {
+        item.is_read = true;
+        renderNotificationBadge(Number(results[1].value.unread_count ?? app.notifications.unreadCount));
+      } else if (results[1]?.status === 'rejected') {
+        toast(safeMessage(results[1].reason, 'Read status could not be updated.'), 'error');
+      }
+      if (app.notifications.filter === 'UNREAD' && item.is_read) {
+        app.notifications.items = app.notifications.items.filter((candidate) => candidate.notification_id !== item.notification_id);
+      }
+      renderNotifications(app.notifications.items);
     } catch (error) {
       if (isSessionError(error)) {
+        closeNotificationDetails({ fromHistory: true });
         handleNotificationSessionExpired();
         return;
       }
-      toast(safeMessage(error, 'Notification could not be updated.'), 'error');
+      renderNotificationDetail(Object.assign({}, item, {
+        body_full: safeMessage(error, 'Notification details could not be loaded.')
+      }), false);
     } finally {
       item.opening = false;
     }
@@ -1610,6 +1737,9 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'notification-page-card' + (item.is_read ? '' : ' unread');
+      const selected = app.notifications.selected.has(String(item.notification_id || ''));
+      button.classList.toggle('selected', selected);
+      button.setAttribute('aria-pressed', app.notifications.editing ? (selected ? 'true' : 'false') : 'false');
 
       const icon = document.createElement('span');
       icon.className = 'notification-page-card-icon';
@@ -1629,13 +1759,25 @@
       content.append(title, body, time);
 
       button.append(icon, content);
-      if (!item.is_read) {
+      if (app.notifications.editing) {
+        const selection = document.createElement('span');
+        selection.className = 'notification-page-select-indicator';
+        selection.setAttribute('aria-hidden', 'true');
+        selection.textContent = selected ? '\u2713' : '';
+        button.appendChild(selection);
+      } else if (!item.is_read) {
         const dot = document.createElement('span');
         dot.className = 'notification-page-unread-dot';
         dot.setAttribute('aria-label', 'Unread');
         button.appendChild(dot);
       }
-      button.addEventListener('click', () => openNotificationItem(item));
+      button.addEventListener('click', () => {
+        if (app.notifications.editing) {
+          toggleNotificationSelection(item);
+          return;
+        }
+        openNotificationItem(item, button);
+      });
       list.appendChild(button);
     });
     setNotificationLive(items.length + ' notifications loaded.');
@@ -1702,17 +1844,32 @@
     loadNotificationPage(true);
   }
 
-  async function markAllNotifications() {
-    if (app.notifications.loading || app.notifications.unreadCount < 1) return;
-    const button = $('notificationsMarkAllButton');
-    if (button) button.disabled = true;
+  function selectedNotificationIds() {
+    return Array.from(app.notifications.selected).filter(Boolean);
+  }
+
+  async function markSelectedNotifications() {
+    const ids = selectedNotificationIds();
+    if (app.notifications.loading || ids.length < 1) return;
+    app.notifications.loading = true;
+    updateNotificationEditActions();
     try {
-      await postWithFreshCsrf('notifications_mark_all_read', {}, 'Updating notifications...');
-      app.notifications.items.forEach((item) => { item.is_read = true; });
-      if (app.notifications.filter === 'UNREAD') app.notifications.items = [];
-      renderNotificationBadge(0);
+      const data = await postWithFreshCsrf(
+        'notification_mark_read',
+        { notification_ids: ids },
+        'Updating notifications...'
+      );
+      const selected = new Set(ids);
+      app.notifications.items.forEach((item) => {
+        if (selected.has(String(item.notification_id || ''))) item.is_read = true;
+      });
+      if (app.notifications.filter === 'UNREAD') {
+        app.notifications.items = app.notifications.items.filter((item) => !selected.has(String(item.notification_id || '')));
+      }
+      app.notifications.selected.clear();
+      renderNotificationBadge(Number(data.unread_count ?? app.notifications.unreadCount));
       renderNotifications(app.notifications.items);
-      toast('All notifications marked as read.', 'ok');
+      toast('Selected notifications marked as read.', 'ok');
     } catch (error) {
       if (isSessionError(error)) {
         handleNotificationSessionExpired();
@@ -1720,13 +1877,100 @@
       }
       toast(safeMessage(error, 'Notifications could not be updated.'), 'error');
     } finally {
-      if (button) button.disabled = app.notifications.unreadCount < 1;
+      app.notifications.loading = false;
+      updateNotificationEditActions();
+    }
+  }
+
+  async function deleteNotifications(ids, options) {
+    const notificationIds = Array.from(new Set((ids || []).map((id) => String(id || '')).filter(Boolean)));
+    if (app.notifications.loading || notificationIds.length < 1) return;
+    const settings = options || {};
+    app.notifications.loading = true;
+    updateNotificationEditActions();
+    try {
+      const data = await postWithFreshCsrf(
+        'notifications_delete',
+        { notification_ids: notificationIds },
+        'Deleting notifications...'
+      );
+      const deleted = new Set(notificationIds);
+      app.notifications.items = app.notifications.items.filter(
+        (item) => !deleted.has(String(item.notification_id || ''))
+      );
+      notificationIds.forEach((id) => app.notifications.selected.delete(id));
+      renderNotificationBadge(Number(data.unread_count ?? app.notifications.unreadCount));
+      if (settings.closeDetail) closeNotificationDetails();
+      renderNotifications(app.notifications.items);
+      toast(notificationIds.length === 1 ? 'Notification deleted.' : 'Notifications deleted.', 'ok');
+    } catch (error) {
+      if (isSessionError(error)) {
+        if (settings.closeDetail) closeNotificationDetails({ fromHistory: true });
+        handleNotificationSessionExpired();
+        return;
+      }
+      toast(safeMessage(error, 'Notifications could not be deleted.'), 'error');
+    } finally {
+      app.notifications.loading = false;
+      updateNotificationEditActions();
+    }
+  }
+
+  function toggleSelectAllNotifications() {
+    const visibleIds = app.notifications.items.map((item) => String(item.notification_id || '')).filter(Boolean);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => app.notifications.selected.has(id));
+    app.notifications.selected.clear();
+    if (!allSelected) visibleIds.forEach((id) => app.notifications.selected.add(id));
+    updateNotificationEditActions();
+    renderNotifications(app.notifications.items);
+  }
+
+  function openNotificationRelatedPage() {
+    const destination = notificationDestination(app.notifications.activeDetail);
+    if (!destination) return;
+    closeNotificationDetails({ fromHistory: true });
+    if (window.history?.replaceState) {
+      window.history.replaceState(Object.assign({}, window.history.state || {}, { zpayUserApp: null }), '', window.location.href);
+    }
+    window.openSection?.(destination);
+  }
+
+  function deleteActiveNotification() {
+    const id = String(app.notifications.activeDetail?.notification_id || '');
+    if (id) deleteNotifications([id], { closeDetail: true });
+  }
+
+  function handleNotificationDetailKeydown(event) {
+    const modal = $('notificationDetailModal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeNotificationDetails();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(modal.querySelectorAll(
+      'button:not([disabled]):not(.hidden), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    )).filter((node) => !node.hidden && node.offsetParent !== null);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
     }
   }
 
   function sectionChanged(sectionId) {
     if (sectionId !== 'profileSection' && profileModal.open) finishProfileModalClose();
     if (sectionId !== 'supportSection') stopSupportPolling();
+    if (sectionId !== 'notificationsSection') {
+      if (app.notifications.activeDetail) closeNotificationDetails({ fromHistory: true });
+      if (app.notifications.editing) setNotificationEditMode(false);
+    }
     if (sectionId === 'profileSection') {
       loadProfile(false);
       loadUnreadCount();
@@ -1744,6 +1988,10 @@
   }
 
   function handleAppPopState(event) {
+    if (app.notifications.activeDetail) {
+      closeNotificationDetails({ fromHistory: true });
+      return true;
+    }
     if (profileModal.open) {
       closeProfileModal({ fromHistory: true });
       return true;
@@ -1791,7 +2039,15 @@
     $('profileNotificationButton')?.addEventListener('click', openNotificationsPage);
     $('supportNotificationButton')?.addEventListener('click', openNotificationsPage);
     $('notificationsBackButton')?.addEventListener('click', closeNotificationsPage);
-    $('notificationsMarkAllButton')?.addEventListener('click', markAllNotifications);
+    $('notificationsEditButton')?.addEventListener('click', () => setNotificationEditMode(!app.notifications.editing));
+    $('notificationsSelectAllButton')?.addEventListener('click', toggleSelectAllNotifications);
+    $('notificationsDeleteButton')?.addEventListener('click', () => deleteNotifications(selectedNotificationIds()));
+    $('notificationsMarkSelectedButton')?.addEventListener('click', markSelectedNotifications);
+    $('notificationDetailCloseButton')?.addEventListener('click', () => closeNotificationDetails());
+    $('notificationDetailModal')?.addEventListener('keydown', handleNotificationDetailKeydown);
+    document.querySelector('[data-notification-detail-close]')?.addEventListener('click', () => closeNotificationDetails());
+    $('notificationDetailDeleteButton')?.addEventListener('click', deleteActiveNotification);
+    $('notificationDetailOpenButton')?.addEventListener('click', openNotificationRelatedPage);
     document.querySelectorAll('[data-notification-filter]').forEach((tab) => {
       tab.addEventListener('click', () => switchNotificationFilter(tab.dataset.notificationFilter));
     });

@@ -3980,8 +3980,7 @@ switch ($action) {
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
 
-        $sessionUser = user_proxy_require_login(true, false);
-        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        user_proxy_require_login(true, false);
         $body = user_proxy_read_json_body();
 
         if ($action === 'bkash_preview') {
@@ -3990,36 +3989,12 @@ switch ($action) {
             $body['provider'] = 'NAGAD';
         }
 
-        $res = user_proxy_mfs_preview_payload($uid, $body);
-
-        if (!($res['ok'] ?? false)) {
-            $code = (string)($res['code'] ?? 'SERVER_ERROR');
-
-            $httpStatus = 500;
-
-            if (in_array($code, ['VALIDATION_ERROR', 'INSUFFICIENT_BALANCE'], true)) {
-                $httpStatus = 422;
-            } elseif (in_array($code, ['ACCOUNT_INACTIVE', 'INVALID_PIN'], true)) {
-                $httpStatus = 403;
-            } elseif ($code === 'USER_NOT_FOUND') {
-                $httpStatus = 404;
-            }
-
-            user_proxy_response(
-                false,
-                $code,
-                (string)($res['message'] ?? 'Failed to preview MFS request'),
-                (array)($res['data'] ?? []),
-                $httpStatus
-            );
-        }
-
-        user_proxy_response(
-            true,
-            (string)($res['code'] ?? 'SUCCESS'),
-            (string)($res['message'] ?? 'MFS preview ready'),
-            (array)($res['data'] ?? []),
-            200
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'mfs/preview.php',
+            $body,
+            'MFS_PREVIEW_FAILED',
+            'MFS preview could not be loaded.'
         );
         break;
 
@@ -4030,8 +4005,7 @@ switch ($action) {
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
 
-        $sessionUser = user_proxy_require_login(true, false);
-        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        user_proxy_require_login(true, false);
         $body = user_proxy_read_json_body();
 
         if ($action === 'bkash_create') {
@@ -4039,37 +4013,14 @@ switch ($action) {
         } elseif ($action === 'nagad_create') {
             $body['provider'] = 'NAGAD';
         }
+        $body['source'] = 'USER_API';
 
-        $res = user_proxy_create_mfs_request($uid, $body);
-
-        if (!($res['ok'] ?? false)) {
-            $code = (string)($res['code'] ?? 'SERVER_ERROR');
-
-            $httpStatus = 500;
-
-            if (in_array($code, ['VALIDATION_ERROR', 'INSUFFICIENT_BALANCE'], true)) {
-                $httpStatus = 422;
-            } elseif (in_array($code, ['ACCOUNT_INACTIVE', 'INVALID_PIN'], true)) {
-                $httpStatus = 403;
-            } elseif ($code === 'USER_NOT_FOUND') {
-                $httpStatus = 404;
-            }
-
-            user_proxy_response(
-                false,
-                $code,
-                (string)($res['message'] ?? 'Failed to create MFS request'),
-                (array)($res['data'] ?? []),
-                $httpStatus
-            );
-        }
-
-        user_proxy_response(
-            true,
-            (string)($res['code'] ?? 'SUCCESS'),
-            (string)($res['message'] ?? 'MFS request created successfully'),
-            (array)($res['data'] ?? []),
-            200
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'mfs/create.php',
+            $body,
+            'MFS_CREATE_FAILED',
+            'MFS request could not be created.'
         );
         break;
         
@@ -4163,61 +4114,59 @@ switch ($action) {
         break;
         
         
-        case 'mfs_create':
+    case 'bundle_preview':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
-
-        $sessionUser = user_proxy_require_login(true, false);
-        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        user_proxy_require_login(true, false);
         $body = user_proxy_read_json_body();
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'bundle/preview.php',
+            $body,
+            'BUNDLE_PREVIEW_FAILED',
+            'Bundle preview could not be loaded.'
+        );
+        break;
 
-        if (!function_exists('mfs_create_request')) {
-            user_proxy_response(false, 'SERVER_ERROR', 'MFS helper not loaded', [], 500);
-        }
+    case 'bundle_submit':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        $body = user_proxy_read_json_body();
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'bundle/submit.php',
+            $body,
+            'BUNDLE_SUBMIT_FAILED',
+            'Bundle request could not be submitted.'
+        );
+        break;
 
-        $res = mfs_create_request($uid, $body, 'USER_PANEL', 'PANEL', [
-            'uid' => $uid,
-            'role' => (string)($sessionUser['role'] ?? 'USER'),
-        ]);
+    case 'topup_preview':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        $body = user_proxy_read_json_body();
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'topup/preview.php',
+            $body,
+            'TOPUP_PREVIEW_FAILED',
+            'Top-up preview could not be loaded.'
+        );
+        break;
 
-        if (!($res['ok'] ?? false)) {
-            $code = (string)($res['code'] ?? 'SERVER_ERROR');
-
-            $httpStatus = 500;
-
-            if (in_array($code, [
-                'VALIDATION_ERROR',
-                'INSUFFICIENT_BALANCE',
-                'MFS_DISABLED',
-                'PROVIDER_DISABLED',
-                'SERVICE_NOT_ALLOWED',
-                'COUNTRY_MISSING',
-                'WALLET_CURRENCY_MISSING',
-                'COUNTRY_CURRENCY_MISMATCH',
-                'UNSUPPORTED_COUNTRY_CURRENCY',
-            ], true)) {
-                $httpStatus = 422;
-            } elseif (in_array($code, ['ACCOUNT_INACTIVE', 'INVALID_PIN'], true)) {
-                $httpStatus = 403;
-            } elseif ($code === 'USER_NOT_FOUND') {
-                $httpStatus = 404;
-            }
-
-            user_proxy_response(
-                false,
-                $code,
-                (string)($res['message'] ?? 'Failed to create MFS request'),
-                (array)($res['data'] ?? []),
-                $httpStatus
-            );
-        }
-
-        user_proxy_response(
-            true,
-            (string)($res['code'] ?? 'SUCCESS'),
-            (string)($res['message'] ?? 'MFS request created successfully'),
-            (array)($res['data'] ?? []),
-            200
+    case 'topup_submit':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        $body = user_proxy_read_json_body();
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'topup/submit.php',
+            $body,
+            'TOPUP_SUBMIT_FAILED',
+            'Top-up request could not be submitted.'
         );
         break;
         
@@ -4549,12 +4498,48 @@ switch ($action) {
         user_proxy_require_login(true, false);
         user_proxy_require_csrf();
         $body = user_proxy_read_json_body();
+        $markReadPayload = [];
+        if (is_array($body['notification_ids'] ?? null)) {
+            $markReadPayload['notification_ids'] = array_values((array)$body['notification_ids']);
+        } else {
+            $markReadPayload['notification_id'] = trim((string)($body['notification_id'] ?? ''));
+        }
         user_proxy_forward_authenticated_json(
             'POST',
             'notifications/mark_read.php',
-            ['notification_id' => trim((string)($body['notification_id'] ?? ''))],
+            $markReadPayload,
             'NOTIFICATION_UPDATE_FAILED',
             'Notification could not be updated.'
+        );
+        break;
+
+    case 'notification_details':
+        user_proxy_require_method('GET');
+        user_proxy_require_login(true, false);
+        $notificationId = trim((string)($_GET['notification_id'] ?? ''));
+        user_proxy_forward_authenticated_json(
+            'GET',
+            'notifications/details.php?' . http_build_query(['notification_id' => $notificationId]),
+            null,
+            'NOTIFICATION_DETAILS_FAILED',
+            'Notification details could not be loaded.'
+        );
+        break;
+
+    case 'notifications_delete':
+        user_proxy_require_method('POST');
+        user_proxy_require_login(true, false);
+        user_proxy_require_csrf();
+        $body = user_proxy_read_json_body();
+        $notificationIds = is_array($body['notification_ids'] ?? null)
+            ? array_values((array)$body['notification_ids'])
+            : [trim((string)($body['notification_id'] ?? ''))];
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'notifications/delete.php',
+            ['notification_ids' => $notificationIds],
+            'NOTIFICATION_DELETE_FAILED',
+            'Notifications could not be deleted.'
         );
         break;
 

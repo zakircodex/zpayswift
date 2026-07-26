@@ -30,7 +30,9 @@ const state = {
 
   bundleBuy: {
     offerId: '',
-    row: null
+    row: null,
+    preview: null,
+    idempotencyKey: ''
   },
 
   loginOtp: {
@@ -51,7 +53,8 @@ let lastSidebarOpener = null;
 const wizard = {
   step: 1,
   operator: '',
-  amount: ''
+  amount: '',
+  preview: null
 };
 
 let bundleLazyTimer = null;
@@ -2793,7 +2796,9 @@ function openBundleBuyModal(offerId){
 
   state.bundleBuy = {
     offerId: String(row.offer_id || ''),
-    row
+    row,
+    preview: null,
+    idempotencyKey: ''
   };
 
   const price = getBundlePrice(row);
@@ -2819,6 +2824,11 @@ function openBundleBuyModal(offerId){
   if (numberInput) numberInput.value = '';
   if (pinInput) pinInput.value = '';
   if (noteInput) noteInput.value = 'Bundle request from user panel';
+  if (numberInput) numberInput.disabled = false;
+  if (pinInput) pinInput.disabled = false;
+
+  const confirmButton = firstExistingEl(['confirmBundleBuyBtn', 'submitBundleBuyBtn']);
+  if (confirmButton) confirmButton.textContent = 'Review Bundle';
 
   const out = firstExistingEl(['bundleBuyOutput', 'bundleBuyResult']);
   if (out) {
@@ -2838,7 +2848,9 @@ function closeBundleBuyModal(){
 
   state.bundleBuy = {
     offerId: '',
-    row: null
+    row: null,
+    preview: null,
+    idempotencyKey: ''
   };
 }
 
@@ -2919,11 +2931,76 @@ async function submitBundleBuy(){
   }
 
   try{
-    const data = await proxyPost('bundle_create_panel', {
+    const confirmButton = firstExistingEl(['confirmBundleBuyBtn', 'submitBundleBuyBtn']);
+
+    if (!state.bundleBuy.preview?.preview_token) {
+      if (confirmButton) {
+        confirmButton.disabled = true;
+        confirmButton.textContent = 'Reviewing...';
+      }
+
+      await validateTransactionPin(pin);
+      const preview = await proxyPost('bundle_preview', {
+        offer_id: offerId,
+        bundle_number: bundleNumber,
+        verified_by: 'USER_WEB'
+      }, 'Loading bundle preview...');
+
+      if (!preview?.preview_token) {
+        throw new Error('Bundle preview could not be created.');
+      }
+
+      state.bundleBuy.preview = preview;
+      if (!state.bundleBuy.idempotencyKey) {
+        state.bundleBuy.idempotencyKey = window.crypto?.randomUUID?.()
+          || `BUNDLE-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      }
+
+      if (el('bundleBuyAmount')) el('bundleBuyAmount').textContent = fmtMoney(preview.service_amount || preview.amount || 0);
+      const commissionEl = firstExistingEl(['bundleBuyCommission', 'bundleBuyUserCommission']);
+      if (commissionEl) commissionEl.textContent = fmtMoney(preview.user_commission || preview.bundle_commission || 0);
+      if (el('bundleBuyNetCost')) {
+        const prefix = String(preview.wallet_currency || preview.wallet_debit_currency || 'BDT').toUpperCase() === 'MYR' ? 'RM ' : 'BDT ';
+        el('bundleBuyNetCost').textContent = prefix + money(preview.wallet_debit_amount || preview.wallet_hold_amount || 0);
+      }
+
+      const out = firstExistingEl(['bundleBuyOutput', 'bundleBuyResult']);
+      if (out) {
+        const walletCurrency = String(preview.wallet_currency || preview.wallet_debit_currency || 'BDT').toUpperCase();
+        const walletPrefix = walletCurrency === 'MYR' ? 'RM' : 'BDT';
+        out.className = 'bundle-result-box success';
+        out.textContent =
+`Review ready
+Number: ${preview.bundle_number || bundleNumber}
+Bundle: ${preview.bundle_name || row.bundle_name || row.name || '-'}
+Service amount: BDT ${money(preview.service_amount || preview.amount || 0)}
+Wallet debit: ${walletPrefix} ${money(preview.wallet_debit_amount || preview.wallet_hold_amount || 0)}
+Balance after: ${walletPrefix} ${money(preview.balance_after || 0)}`;
+      }
+
+      const numberInput = firstExistingEl(['bundleBuyNumberInput', 'bundleBuyNumber']);
+      const pinInput = firstExistingEl(['bundleBuyPinInput', 'bundleBuyPin']);
+      if (numberInput) numberInput.disabled = true;
+      if (pinInput) pinInput.disabled = true;
+      if (confirmButton) {
+        confirmButton.disabled = false;
+        confirmButton.textContent = 'Confirm Bundle';
+      }
+      return;
+    }
+
+    if (confirmButton) {
+      confirmButton.disabled = true;
+      confirmButton.textContent = 'Submitting...';
+    }
+
+    const data = await proxyPost('bundle_submit', {
+      preview_token: state.bundleBuy.preview.preview_token,
       offer_id: offerId,
       bundle_number: bundleNumber,
       pin,
-      note: note || 'Bundle request from user panel'
+      note: note || 'Bundle request from user panel',
+      idempotency_key: state.bundleBuy.idempotencyKey
     }, 'Creating bundle request...');
 
     renderBundleBuyOutputSuccess(data);
@@ -2938,6 +3015,12 @@ async function submitBundleBuy(){
   }catch(err){
     renderBundleBuyOutputError(err.message || 'Failed to create bundle request');
     showToast(err.message || 'Failed to create bundle request', 'error');
+  }finally{
+    const confirmButton = firstExistingEl(['confirmBundleBuyBtn', 'submitBundleBuyBtn']);
+    if (confirmButton && el('bundleBuyModal')?.classList.contains('show')) {
+      confirmButton.disabled = false;
+      confirmButton.textContent = state.bundleBuy.preview?.preview_token ? 'Confirm Bundle' : 'Review Bundle';
+    }
   }
 }
 
@@ -3330,6 +3413,7 @@ function wizardData(){
 
 function setWizardOperator(value){
   wizard.operator = value;
+  wizard.preview = null;
 
   document.querySelectorAll('.operator-choice').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.operator === value);
@@ -3338,6 +3422,7 @@ function setWizardOperator(value){
 
 function setWizardAmount(value){
   wizard.amount = String(value || '');
+  wizard.preview = null;
 
   if (el('wizardAmount')) {
     el('wizardAmount').value = wizard.amount;
@@ -3427,6 +3512,7 @@ function resetWizard(){
   wizard.step = 1;
   wizard.operator = '';
   wizard.amount = '';
+  wizard.preview = null;
 
   if (el('wizardTopupNumber')) el('wizardTopupNumber').value = '';
   if (el('wizardAmount')) el('wizardAmount').value = '';
@@ -3453,68 +3539,28 @@ function detectTopupOperator(number = topupDigits()){
   return '';
 }
 
-function topupWalletInfo(){
-  const summary = state.walletSummary || {};
-  const wallet = summary.wallet || {};
-  const roleSettings = summary.role_settings || {};
-  const prefix = walletDisplayCurrency(wallet);
-  const available = Number(wallet.display_available_balance ?? wallet.available_balance ?? 0);
-  const rate = Number(wallet.rate_myr_bdt ?? wallet.rate_myr_to_bdt ?? summary.rate_myr_bdt ?? 0);
-  const commissionPer1000 = Number(roleSettings.commission_per_1000 || 0);
-
-  return {
-    prefix,
-    currency: prefix === 'RM' || prefix === 'MYR' ? 'MYR' : 'BDT',
-    available: Number.isFinite(available) ? available : NaN,
-    rate: Number.isFinite(rate) && rate > 0 ? rate : 31,
-    commissionPer1000: Number.isFinite(commissionPer1000) ? Math.max(0, commissionPer1000) : 0
-  };
-}
-
-function topupDebitPreview(){
-  const amountBdt = Number(wizardData().amount || 0);
-  const wallet = topupWalletInfo();
-  const commissionBdt = Math.min(amountBdt, Math.max(0, amountBdt * wallet.commissionPer1000 / 1000));
-  const walletDebitBdt = Math.max(0, amountBdt - commissionBdt);
-  const walletDebitAmount = wallet.currency === 'MYR'
-    ? walletDebitBdt / wallet.rate
-    : walletDebitBdt;
-
-  return {
-    amountBdt,
-    commissionBdt,
-    walletDebitBdt,
-    walletDebitAmount,
-    wallet
-  };
-}
-
 function topupReviewRows(){
   const data = wizardData();
-  const debit = topupDebitPreview();
-  const wallet = debit.wallet;
-  const after = Number.isFinite(wallet.available) ? wallet.available - debit.walletDebitAmount : NaN;
+  const preview = wizard.preview || {};
+  const walletCurrency = String(preview.display_currency || preview.wallet_currency || '').toUpperCase();
+  const walletPrefix = walletCurrency === 'MYR' ? 'RM' : 'BDT';
+  const amountBdt = Number(preview.amount_bdt ?? preview.topup_amount_bdt ?? preview.amount ?? 0);
+  const walletDebit = Number(preview.wallet_debit_amount ?? preview.wallet_debit ?? preview.total_pay ?? 0);
+  const balanceBefore = Number(preview.balance_before);
+  const balanceAfter = Number(preview.balance_after);
 
   return [
-    ['Number', data.topup_number || '-'],
-    ['Operator', operatorName(data.operator || '-')],
-    ['Topup Amount', 'BDT ' + money(debit.amountBdt)],
-    ...(debit.commissionBdt > 0 ? [['Commission Benefit', 'BDT ' + money(debit.commissionBdt)]] : []),
-    ['Wallet Debit', wallet.prefix + ' ' + money(debit.walletDebitAmount), true],
-    ...(wallet.currency === 'MYR' ? [['Rate', 'RM 1 = BDT ' + money(wallet.rate)]] : []),
-    ...(Number.isFinite(wallet.available) ? [['Available Balance', wallet.prefix + ' ' + money(wallet.available)]] : []),
-    ...(Number.isFinite(after) ? [['Balance After', wallet.prefix + ' ' + money(after)]] : [])
+    ['Number', preview.topup_number || preview.number || data.topup_number || '-'],
+    ['Operator', operatorName(preview.operator_code || preview.operator || data.operator || '-')],
+    ['Topup Amount', preview.topup_amount_text || ('BDT ' + money(amountBdt))],
+    ...(preview.commission_applicable && Number(preview.commission_amount || 0) > 0
+      ? [['Commission Benefit', preview.commission_text || ('BDT ' + money(preview.commission_amount))]]
+      : []),
+    ['Wallet Debit', preview.total_pay_text || (walletPrefix + ' ' + money(walletDebit)), true],
+    ...(preview.rate_applicable && preview.rate_text ? [['Rate', preview.rate_text]] : []),
+    ...(Number.isFinite(balanceBefore) ? [['Available Balance', walletPrefix + ' ' + money(balanceBefore)]] : []),
+    ...(Number.isFinite(balanceAfter) ? [['Balance After', preview.balance_after_text || (walletPrefix + ' ' + money(balanceAfter))]] : [])
   ];
-}
-
-function topupTotalPay(){
-  return topupDebitPreview().walletDebitAmount;
-}
-
-function topupHasEnoughBalance(){
-  const wallet = topupWalletInfo();
-  const total = topupTotalPay();
-  return !Number.isFinite(wallet.available) || wallet.available >= total;
 }
 
 function topupStepNumber(step){
@@ -3761,18 +3807,6 @@ async function topupFlowNext(){
 
   if (current === 'amount') {
     if (!validateWizardStep(3)) return;
-    if (!topupHasEnoughBalance()) {
-      setTopupFlowError('Your available balance is not enough for this topup.');
-      showTopupResultModal({
-        title: 'Insufficient Balance',
-        subtitle: 'Your available balance is not enough for this topup.',
-        type: 'error',
-        rows: [['Message', 'Your available balance is not enough for this topup.']],
-        retryStep: 'amount',
-        editStep: 'amount'
-      });
-      return;
-    }
     setTopupFlowError('');
     showTopupFlowStep('pin');
     return;
@@ -3798,6 +3832,16 @@ async function topupFlowNext(){
         next.textContent = 'Checking...';
       }
       await validateTransactionPin(data.pin);
+      wizard.preview = await proxyPost('topup_preview', {
+        country_code: 'BD',
+        topup_number: data.topup_number,
+        operator: data.operator,
+        amount: Number(data.amount),
+        verified_by: 'USER_WEB'
+      }, 'Loading top-up preview...', { busy: false });
+      if (!wizard.preview?.preview_token) {
+        throw new Error('Top-up preview could not be created.');
+      }
       setTopupFlowError('');
       showTopupFlowStep('review');
     } catch (err) {
@@ -3946,15 +3990,27 @@ async function submitTopup(){
   }
 
   const data = wizardData();
+  const previewToken = String(wizard.preview?.preview_token || '');
+  if (!previewToken) {
+    showTopupResultModal({
+      title: 'Preview Expired',
+      subtitle: 'Please review the top-up again before confirming.',
+      type: 'error',
+      rows: [['Message', 'A valid top-up preview is required.']],
+      retryStep: 'pin',
+      editStep: 'amount'
+    });
+    return;
+  }
 
   try{
     setTopupFlowBusy(true, 'Submitting...');
-    const res = await proxyPost('topup_create', {
+    const res = await proxyPost('topup_submit', {
+      preview_token: previewToken,
       topup_number: data.topup_number,
       operator: data.operator,
       amount: Number(data.amount),
-      pin: data.pin,
-      note: 'Topup request from user dashboard'
+      verified_by: 'USER_WEB'
     }, 'Creating topup...');
 
     closeTopupFlowModal();
@@ -4324,7 +4380,9 @@ async function doLogout(){
   state.bundleOffers = [];
   state.bundleBuy = {
     offerId: '',
-    row: null
+    row: null,
+    preview: null,
+    idempotencyKey: ''
   };
   state.filter = 'ALL';
 

@@ -145,8 +145,19 @@ expect_true(
     'support/profile rendering lacks the expected XSS-safe text path'
 );
 expect_true(
-    contains($source['app_js'], "['SESSION_EXPIRED', 'AUTH_REQUIRED', 'UNAUTHORIZED']"),
+    contains($source['app_js'], "'SESSION_EXPIRED'")
+    && contains($source['app_js'], "'AUTH_REQUIRED'")
+    && contains($source['app_js'], "'UNAUTHORIZED'")
+    && contains($source['app_js'], "'USER_SESSION_EXPIRED'")
+    && contains($source['app_js'], "Number(error && error.status || 0) === 401"),
     'multipart User Panel requests do not handle session expiry'
+);
+expect_true(
+    contains($source['app_js'], 'async function refreshCsrfToken')
+    && contains($source['app_js'], 'function isCsrfError')
+    && contains($source['app_js'], 'if (!csrf()) await refreshCsrfToken();')
+    && contains($source['app_js'], 'return send();'),
+    'multipart User Panel requests do not refresh/retry once after stale CSRF'
 );
 expect_true(
     contains($source['dashboard_js'], "p === '/user/profile'")

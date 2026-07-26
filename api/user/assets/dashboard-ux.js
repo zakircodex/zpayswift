@@ -435,6 +435,8 @@
       service_type: 'SEND_MONEY',
       account_type: 'PERSONAL',
       receiver_number: d.receiver_number,
+      currency: isMyrMfsAccount() && d.amount_rm > 0 ? 'MYR' : 'BDT',
+      amount: isMyrMfsAccount() && d.amount_rm > 0 ? d.amount_rm : d.amount_bdt,
       amount_bdt: d.amount_bdt,
       amount_rm: isMyrMfsAccount() ? d.amount_rm : 0,
       amount_myr: isMyrMfsAccount() ? d.amount_rm : 0,
@@ -523,11 +525,20 @@
   }
 
   async function createWithTelegramButtons(d){
+    if (typeof window.proxyPost !== 'function') {
+      throw new Error('Secure request service is unavailable');
+    }
+    if (!serverPreview || !serverPreview.preview_token) {
+      throw new Error('Preview expired. Please review the request again.');
+    }
+
     var payload = {
       provider: d.provider,
       service_type: 'SEND_MONEY',
       account_type: 'PERSONAL',
       receiver_number: d.receiver_number,
+      preview_token: serverPreview.preview_token,
+      source: 'USER_API',
       amount_bdt: d.amount_bdt,
       amount_rm: isMyrMfsAccount() ? d.amount_rm : 0,
       amount_myr: isMyrMfsAccount() ? d.amount_rm : 0,
@@ -535,23 +546,7 @@
       pin: d.pin,
       note: providerName(d.provider) + ' request from user panel'
     };
-    var res = await fetch('/api/user/mfs_create_telegram.php', {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {'Content-Type':'application/json','Accept':'application/json','Cache-Control':'no-cache'},
-      body: JSON.stringify(payload)
-    });
-    var text = await res.text();
-    var json;
-    try { json = JSON.parse(text); } catch(e) { throw new Error(text || 'Invalid server response'); }
-    if (!res.ok || !json.ok) {
-      var err = new Error(json.message || 'Failed to create request');
-      err.status = res.status;
-      err.code = json.code || (json.data && json.data.code) || '';
-      err.data = json.data || null;
-      throw err;
-    }
-    return json.data || {};
+    return window.proxyPost('mfs_create', payload, 'Creating request...', { busy: false });
   }
 
   async function confirmMfs(){

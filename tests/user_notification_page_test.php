@@ -21,7 +21,20 @@ function notification_expect(bool $condition, string $message): void
 
 notification_expect(str_contains($dashboard, 'id="notificationsSection"'), 'Dedicated notification section is missing');
 notification_expect(str_contains($dashboard, 'id="notificationsBackButton"'), 'Notification back button is missing');
-notification_expect(str_contains($dashboard, 'id="notificationsMarkAllButton"'), 'Mark-all action is missing');
+notification_expect(
+    str_contains($dashboard, 'id="notificationsEditButton"')
+    && str_contains($dashboard, 'id="notificationEditBar"')
+    && str_contains($dashboard, 'id="notificationsSelectAllButton"')
+    && str_contains($dashboard, 'id="notificationsDeleteButton"')
+    && str_contains($dashboard, 'id="notificationsMarkSelectedButton"'),
+    'Android-style notification edit controls are missing'
+);
+notification_expect(
+    str_contains($dashboard, 'id="notificationDetailModal"')
+    && str_contains($dashboard, 'id="notificationDetailDeleteButton"')
+    && str_contains($dashboard, 'id="notificationDetailOpenButton"'),
+    'Android-style notification detail sheet is missing'
+);
 notification_expect(
     str_contains($dashboard, 'data-notification-filter="ALL"')
     && str_contains($dashboard, 'data-notification-filter="UNREAD"'),
@@ -49,14 +62,16 @@ notification_expect(
 );
 notification_expect(
     str_contains($appJs, "'notification_mark_read'")
-    && str_contains($appJs, "'notifications_mark_all_read'"),
-    'Existing read-state APIs are not preserved'
+    && str_contains($appJs, "'notification_details'")
+    && str_contains($appJs, "'notifications_delete'"),
+    'Notification read, details and delete APIs are not wired'
 );
 notification_expect(
     str_contains($appJs, 'function refreshCsrfToken()')
     && str_contains($appJs, 'function postWithFreshCsrf(')
     && str_contains($appJs, 'isCsrfError(error)')
-    && str_contains($appJs, 'postWithFreshCsrf(\'notifications_mark_all_read\''),
+    && str_contains($appJs, "postWithFreshCsrf(\n        'notification_mark_read'")
+    && str_contains($appJs, "postWithFreshCsrf(\n        'notifications_delete'"),
     'Notification write actions do not refresh and retry stale CSRF safely'
 );
 notification_expect(
@@ -72,7 +87,9 @@ notification_expect(
 notification_expect(
     str_contains($css, "body.user-authenticated[data-active-section='notificationsSection'] .bottom-nav")
     && str_contains($css, '.notification-page-header')
-    && str_contains($css, '.notification-page-card.unread'),
+    && str_contains($css, '.notification-page-card.unread')
+    && str_contains($css, '.notification-edit-bar')
+    && str_contains($css, '.notification-detail-sheet'),
     'Android-aligned notification page styling is incomplete'
 );
 notification_expect(
@@ -100,6 +117,25 @@ notification_expect(
     && $markAllCase !== ''
     && strpos($markAllCase, 'user_proxy_require_login(true, false);') < strpos($markAllCase, 'user_proxy_require_csrf();'),
     'Notification write proxy must resolve session before validating CSRF'
+);
+notification_expect(
+    str_contains($proxy, "case 'notification_details':")
+    && str_contains($proxy, "'notifications/details.php?'")
+    && str_contains($proxy, "case 'notifications_delete':")
+    && str_contains($proxy, "'notifications/delete.php'"),
+    'Own-user notification details/delete proxy routes are missing'
+);
+notification_expect(
+    str_contains($appJs, 'if (app.notifications.activeDetail)')
+    && str_contains($appJs, 'closeNotificationDetails({ fromHistory: true })')
+    && str_contains($appJs, 'function handleNotificationDetailKeydown('),
+    'Notification details do not close safely with browser/device back and keyboard'
+);
+notification_expect(
+    str_contains($appJs, 'title.textContent = String(item.title')
+    && str_contains($appJs, 'body.textContent = String(item.body')
+    && str_contains($appJs, "$('notificationDetailBody').textContent"),
+    'Notification list/details content is not rendered through textContent'
 );
 
 echo "User notification page tests passed ({$tests} assertions).\n";
