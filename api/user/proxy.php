@@ -4571,19 +4571,22 @@ switch ($action) {
         user_proxy_require_csrf();
         $sessionUser = user_proxy_require_login(true, false);
         $body = user_proxy_read_json_body();
-        $pinResult = user_proxy_validate_transaction_pin(
-            trim((string)($sessionUser['uid'] ?? '')),
-            trim((string)($body['pin'] ?? ''))
-        );
-        if (empty($pinResult['ok'])) {
-            $pinCode = (string)($pinResult['code'] ?? 'INVALID_PIN');
-            user_proxy_response(
-                false,
-                $pinCode,
-                (string)($pinResult['message'] ?? 'PIN is incorrect.'),
-                [],
-                in_array($pinCode, ['INVALID_PIN', 'ACCOUNT_INACTIVE'], true) ? 403 : 422
+        $checkOnly = !empty($body['check_only']) || !empty($body['validate_only']);
+        if (!$checkOnly) {
+            $pinResult = user_proxy_validate_transaction_pin(
+                trim((string)($sessionUser['uid'] ?? '')),
+                trim((string)($body['pin'] ?? ''))
             );
+            if (empty($pinResult['ok'])) {
+                $pinCode = (string)($pinResult['code'] ?? 'INVALID_PIN');
+                user_proxy_response(
+                    false,
+                    $pinCode,
+                    (string)($pinResult['message'] ?? 'PIN is incorrect.'),
+                    [],
+                    in_array($pinCode, ['INVALID_PIN', 'ACCOUNT_INACTIVE'], true) ? 403 : 422
+                );
+            }
         }
         user_proxy_forward_authenticated_json(
             'POST',
@@ -4591,6 +4594,7 @@ switch ($action) {
             [
                 'recipient_phone' => trim((string)($body['recipient_phone'] ?? $body['receiver_phone'] ?? '')),
                 'amount' => $body['amount'] ?? 0,
+                'check_only' => $checkOnly,
             ],
             'TRANSFER_PREVIEW_FAILED',
             'Transfer preview could not be loaded.'

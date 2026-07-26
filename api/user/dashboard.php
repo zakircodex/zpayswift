@@ -681,7 +681,6 @@ header('Pragma: no-cache');
                     <input id="transferReceiverInput" type="tel" inputmode="tel" autocomplete="tel" placeholder="Phone number">
                   </div>
                 </label>
-                <div id="transferReceiverResult" class="inline-state hidden" role="status"></div>
                 <button id="transferResolveBtn" class="android-primary-button transfer-primary-button" type="button">Continue</button>
               </div>
 
@@ -698,20 +697,18 @@ header('Pragma: no-cache');
 
             <div id="transferStepAmount" class="transfer-step">
               <div id="transferReceiverCard" class="recipient-card transfer-verified-card"></div>
-              <button id="transferFavoriteAddBtn" class="android-secondary-button transfer-favorite-add hidden" type="button">Add to Favourite</button>
               <label class="feature-field transfer-field" for="transferAmountInput">
                 <span>Amount</span>
                 <div class="money-input-wrap transfer-money-wrap"><b id="transferCurrencyPrefix">BDT</b><input id="transferAmountInput" type="number" inputmode="decimal" min="1" step="0.01" placeholder="0.00"></div>
               </label>
-              <label class="feature-field transfer-field" for="transferReferenceInput"><span>Reference <small>Optional</small></span><input id="transferReferenceInput" maxlength="80" placeholder="Reference"></label>
-              <div class="feature-actions transfer-actions"><button class="android-secondary-button" type="button" data-transfer-back="1">Back</button><button id="transferAmountNextBtn" class="android-primary-button" type="button">Continue</button></div>
+              <div class="feature-actions transfer-actions transfer-single-action"><button id="transferAmountNextBtn" class="android-primary-button" type="button">Continue</button></div>
             </div>
 
             <div id="transferStepPin" class="transfer-step">
               <div class="transfer-step-card">
                 <div class="step-copy transfer-step-title"><h3>Transaction PIN</h3><p>Enter your PIN to prepare a secure preview.</p></div>
                 <label class="feature-field transfer-field" for="transferPinInput"><span>4-digit PIN</span><input id="transferPinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="4" placeholder="...."></label>
-                <div class="feature-actions transfer-actions"><button class="android-secondary-button" type="button" data-transfer-back="2">Back</button><button id="transferPreviewBtn" class="android-primary-button" type="button">Review Transfer</button></div>
+                <div class="feature-actions transfer-actions transfer-single-action"><button id="transferPreviewBtn" class="android-primary-button" type="button">Review Transfer</button></div>
               </div>
             </div>
 
@@ -719,6 +716,7 @@ header('Pragma: no-cache');
               <div class="review-panel transfer-review-panel">
                 <h3>Review Transfer</h3>
                 <div id="transferReviewRows" class="review-rows"></div>
+                <label class="feature-field transfer-field transfer-review-reference" for="transferReferenceInput"><span>Reference <small>Optional</small></span><input id="transferReferenceInput" maxlength="80" placeholder="Enter reference (optional)"></label>
               </div>
               <p class="hold-hint">Tap and hold to confirm transfer</p>
               <button id="transferHoldConfirmBtn" class="hold-confirm-button transfer-hold-button" type="button" aria-label="Tap and hold to confirm transfer">

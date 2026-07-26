@@ -31,12 +31,18 @@
       reference: '',
       submitting: false,
       resolving: false,
+      amountChecking: false,
       favorites: [],
       favoritesLoaded: false,
       favoritesLoading: false,
       verifiedInput: '',
       holdFrame: 0,
-      holdStartedAt: 0
+      holdStartedAt: 0,
+      modalOpen: false,
+      modalBusy: false,
+      modalHistoryOpen: false,
+      modalClosing: false,
+      successContext: null
     },
     support: {
       config: null,
@@ -402,12 +408,16 @@
       profileModal.closing = false;
       profileModalHistory(profileModal.kind, profileModal.historyOpen);
     }
+    ['zpay-profile-modal', 'zpay-transfer-modal', 'zpay-transfer-loading', 'zpay-transfer-result', 'zpay-transfer-success', 'zpay-transfer-error'].forEach((className) => {
+      modal.classList.remove(className);
+    });
     modal.classList.toggle('zpay-profile-modal', isProfile);
+    String(settings.className || '').split(/\s+/).filter(Boolean).forEach((className) => modal.classList.add(className));
     if (isProfile && settings.kind === 'result') modal.setAttribute('aria-describedby', 'zpayActionCopy');
     else modal.removeAttribute('aria-describedby');
     const dialog = modal.querySelector('.zpay-action-dialog');
     dialog.replaceChildren();
-    if (!(isProfile && settings.kind === 'result')) {
+    if (settings.closeButton !== false && !(isProfile && settings.kind === 'result')) {
       const close = document.createElement('button');
       close.id = 'zpayActionClose';
       close.className = 'modal-close';
@@ -429,6 +439,10 @@
   function closeActionModal(options) {
     if ($('zpayActionModal')?.classList.contains('zpay-profile-modal') && profileModal.open) {
       closeProfileModal(options);
+      return;
+    }
+    if ($('zpayActionModal')?.classList.contains('zpay-transfer-modal') && app.transfer.modalOpen) {
+      closeTransferModal(options);
       return;
     }
     $('zpayActionModal')?.classList.remove('show');
@@ -888,19 +902,25 @@
 
   function transferRecipientName(recipient) {
     return String(
-      (recipient && (recipient.receiver_name_masked || recipient.receiver_name || recipient.name)) || 'Z-Pay User'
+      (recipient && (recipient.receiver_name || recipient.name || recipient.receiver_name_masked)) || 'Z-Pay User'
     ).trim();
   }
 
   function transferStep(step, options) {
     const next = Math.max(1, Math.min(4, Number(step || 1)));
+    const previous = app.transfer.step;
     app.transfer.step = next;
+    if (next !== 3 && $('transferPinInput')) $('transferPinInput').value = '';
+    if (next < 4) {
+      app.transfer.holdStartedAt = 0;
+      cancelHold();
+    }
     document.querySelectorAll('.transfer-step').forEach((node, index) => node.classList.toggle('active', index + 1 === next));
     for (let index = 1; index <= 4; index += 1) {
       $('transferPill' + index)?.classList.toggle('active', index === next);
       $('transferPill' + index)?.classList.toggle('complete', index < next);
     }
-    if (!(options && options.fromHistory) && next > 1 && window.history && window.history.pushState) {
+    if (!(options && options.fromHistory) && next > 1 && next !== previous && window.history && window.history.pushState) {
       window.history.pushState(Object.assign({}, window.history.state || {}, {
         zpayUserApp: { view: 'transfer', step: next }
       }), '', sectionPaths.transferSection);
@@ -909,7 +929,7 @@
     if (focusId) {
       setTimeout(() => $(focusId)?.focus(), 0);
     } else {
-      window.scrollTo({ top: 0, behavior: 'auto' });
+      document.querySelector('#transferSection .transfer-card')?.scrollTo?.({ top: 0, behavior: 'auto' });
     }
   }
 
@@ -928,6 +948,180 @@
     button.classList.toggle('hidden', duplicate);
     button.disabled = duplicate;
     button.textContent = duplicate ? 'Saved to Favourite' : 'Add to Favourite';
+  }
+
+  function isTransferSectionActive() {
+    return document.body.getAttribute('data-active-section') === 'transferSection';
+  }
+
+  function transferModalHistory(kind) {
+    if (!isTransferSectionActive() || !window.history?.pushState || app.transfer.modalHistoryOpen) return;
+    window.history.pushState(Object.assign({}, window.history.state || {}, {
+      zpayUserApp: { view: 'transfer', step: app.transfer.step },
+      zpayTransferModal: { kind: String(kind || 'modal') }
+    }), '', sectionPaths.transferSection);
+    app.transfer.modalHistoryOpen = true;
+  }
+
+  function finishTransferModalClose(options) {
+    const settings = options || {};
+    const modal = $('zpayActionModal');
+    app.transfer.modalOpen = false;
+    app.transfer.modalBusy = false;
+    app.transfer.modalClosing = false;
+    if (settings.replaceHistory && app.transfer.modalHistoryOpen && window.history?.replaceState) {
+      window.history.replaceState(Object.assign({}, window.history.state || {}, {
+        zpayUserApp: { view: 'transfer', step: app.transfer.step },
+        zpayTransferModal: null
+      }), '', sectionPaths.transferSection);
+    }
+    app.transfer.modalHistoryOpen = false;
+    modal?.classList.remove('show', 'zpay-transfer-modal', 'zpay-transfer-loading', 'zpay-transfer-result', 'zpay-transfer-success', 'zpay-transfer-error');
+    $('zpayActionBody')?.replaceChildren();
+    if (typeof window.syncUserModalLock === 'function') window.syncUserModalLock();
+    lastModalFocus?.focus?.({ preventScroll: true });
+    lastModalFocus = null;
+  }
+
+  function closeTransferModal(options) {
+    const settings = options || {};
+    if (!app.transfer.modalOpen || app.transfer.modalBusy) return;
+    if (!settings.fromHistory && app.transfer.modalHistoryOpen && !app.transfer.modalClosing && window.history?.back) {
+      app.transfer.modalClosing = true;
+      window.history.back();
+      return;
+    }
+    finishTransferModalClose();
+  }
+
+  function openTransferLoading(message) {
+    app.transfer.modalOpen = true;
+    app.transfer.modalBusy = true;
+    app.transfer.modalClosing = false;
+    transferModalHistory('loading');
+    openActionModal((body) => {
+      const spinner = document.createElement('div');
+      spinner.className = 'zpay-transfer-spinner';
+      const heading = document.createElement('h3');
+      heading.id = 'zpayActionTitle';
+      heading.className = 'modal-title';
+      heading.textContent = message || 'Please wait...';
+      const copy = document.createElement('p');
+      copy.className = 'zpay-action-copy';
+      copy.textContent = 'Z-Pay Swift is securely processing your request.';
+      body.append(spinner, heading, copy);
+    }, { closeButton: false, className: 'zpay-transfer-modal zpay-transfer-loading' });
+  }
+
+  function openTransferError(title, message) {
+    app.transfer.modalOpen = true;
+    app.transfer.modalBusy = false;
+    app.transfer.modalClosing = false;
+    transferModalHistory('error');
+    openActionModal((body) => {
+      const icon = document.createElement('div');
+      icon.className = 'zpay-action-icon';
+      icon.textContent = '!';
+      icon.style.borderColor = icon.style.color = 'var(--z-error)';
+      const heading = document.createElement('h3');
+      heading.id = 'zpayActionTitle';
+      heading.className = 'modal-title';
+      heading.textContent = title || 'Transfer Error';
+      const copy = document.createElement('p');
+      copy.className = 'zpay-action-copy';
+      copy.textContent = safeMessage({ message }, 'Transfer could not be processed.');
+      const actions = document.createElement('div');
+      actions.className = 'zpay-transfer-result-actions';
+      const ok = document.createElement('button');
+      ok.type = 'button';
+      ok.className = 'android-primary-button';
+      ok.textContent = 'OK';
+      ok.addEventListener('click', () => closeTransferModal());
+      actions.appendChild(ok);
+      body.append(icon, heading, copy, actions);
+    }, { closeButton: false, className: 'zpay-transfer-modal zpay-transfer-result zpay-transfer-error' });
+  }
+
+  function isTransferFavoriteSaved(recipientOrContext) {
+    const phone = transferDigits(transferRecipientPhone(recipientOrContext) || recipientOrContext?.phone || app.transfer.verifiedInput);
+    if (!phone) return false;
+    return app.transfer.favorites.some((item) => transferDigits(item.phone || item.receiver_phone) === phone);
+  }
+
+  async function addTransferFavoriteFromContext(context, button) {
+    const phone = transferRecipientPhone(context) || context?.phone || '';
+    if (!phone) return;
+    setButtonBusy(button, true, 'Saving...');
+    try {
+      await postWithFreshCsrf('transfer_favorite_add', {
+        recipient_phone: phone,
+        name: context.receiver_name || context.name || ''
+      }, 'Saving favorite...');
+      app.transfer.favoritesLoaded = false;
+      await loadTransferFavorites(true);
+      button.textContent = 'Saved to Favourite';
+      button.disabled = true;
+      toast('Favorite receiver saved.', 'success');
+    } catch (error) {
+      setButtonBusy(button, false);
+      openTransferError('Favourite Not Saved', safeMessage(error, 'Transfer completed, but the receiver could not be saved as favourite.'));
+    }
+  }
+
+  function showTransferSuccess(context) {
+    const details = context || {};
+    app.transfer.successContext = details;
+    app.transfer.modalOpen = true;
+    app.transfer.modalBusy = false;
+    app.transfer.modalClosing = false;
+    transferModalHistory('success');
+    openActionModal((body) => {
+      const icon = document.createElement('div');
+      icon.className = 'zpay-action-icon';
+      icon.textContent = 'OK';
+      const heading = document.createElement('h3');
+      heading.id = 'zpayActionTitle';
+      heading.className = 'modal-title';
+      heading.textContent = 'Transfer Successful';
+      const rows = document.createElement('div');
+      rows.className = 'zpay-transfer-result-rows';
+      [
+        ['Receiver', details.receiver_name || details.name || 'Z-Pay User'],
+        ['Account', details.receiver_phone_masked || maskPhone(details.receiver_phone || details.receiver_account || '')],
+        ['Amount', details.amount_text || formatMoney(details.amount, details.wallet_currency || details.currency)],
+        ['Transfer ID', details.transfer_id || details.request_id || '-']
+      ].forEach((row) => {
+        const item = document.createElement('div');
+        item.className = 'zpay-transfer-result-row';
+        item.innerHTML = '<span>' + escapeHtml(row[0]) + '</span><strong>' + escapeHtml(row[1]) + '</strong>';
+        rows.appendChild(item);
+      });
+      const actions = document.createElement('div');
+      actions.className = 'zpay-transfer-result-actions';
+      if (!isTransferFavoriteSaved(details)) {
+        const favorite = document.createElement('button');
+        favorite.type = 'button';
+        favorite.className = 'android-secondary-button';
+        favorite.textContent = 'Add to Favourite';
+        favorite.addEventListener('click', () => addTransferFavoriteFromContext(details, favorite));
+        actions.appendChild(favorite);
+      }
+      const history = document.createElement('button');
+      history.type = 'button';
+      history.className = 'android-secondary-button';
+      history.textContent = 'View History / Track';
+      history.addEventListener('click', () => {
+        finishTransferModalClose({ replaceHistory: true });
+        window.openSection?.('historySection');
+      });
+      const done = document.createElement('button');
+      done.type = 'button';
+      done.className = 'android-primary-button';
+      done.textContent = 'Done';
+      done.addEventListener('click', () => finishTransferModalClose({ replaceHistory: true }));
+      actions.append(history, done);
+      body.append(icon, heading, rows, actions);
+    }, { closeButton: false, className: 'zpay-transfer-modal zpay-transfer-result zpay-transfer-success' });
   }
 
   function renderRecipientCard() {
@@ -1023,9 +1217,9 @@
 
     app.transfer.recipient = null;
     app.transfer.preview = null;
+    app.transfer.reference = '';
     app.transfer.verifiedInput = '';
     syncTransferFavoriteAdd();
-    $('transferReceiverResult')?.classList.add('hidden');
   }
 
   async function selectTransferFavorite(phone) {
@@ -1084,12 +1278,13 @@
     const button = $('transferResolveBtn');
     const receiver = String($('transferReceiverInput')?.value || '').trim();
     if (!receiver) {
-      showInlineTransfer('Enter the receiver phone number.', true);
+      openTransferError('Receiver Required', 'Enter the receiver phone number.');
       return;
     }
     if (app.transfer.resolving) return;
     app.transfer.resolving = true;
     setButtonBusy(button, true, 'Checking...');
+    openTransferLoading('Checking receiver...');
     try {
       const data = await postWithFreshCsrf('transfer_recipient', { recipient_phone: receiver }, 'Checking receiver...');
       const recipient = Object.assign({}, data.recipient || {}, {
@@ -1101,38 +1296,49 @@
       app.transfer.recipient = recipient;
       app.transfer.preview = null;
       app.transfer.verifiedInput = receiver;
-      showInlineTransfer((recipient.receiver_name_masked || recipient.receiver_name || 'Receiver') + ' verified.', false);
+      finishTransferModalClose({ replaceHistory: true });
       renderRecipientCard();
       transferStep(2);
     } catch (error) {
-      showInlineTransfer(safeMessage(error, 'Receiver could not be verified.'), true);
+      finishTransferModalClose({ replaceHistory: true });
+      openTransferError('Receiver Not Found', safeMessage(error, 'Receiver could not be verified.'));
     } finally {
       app.transfer.resolving = false;
       setButtonBusy(button, false);
     }
   }
 
-  function showInlineTransfer(message, error) {
-    const box = $('transferReceiverResult');
-    if (!box) return;
-    box.classList.remove('hidden');
-    box.classList.toggle('error', !!error);
-    box.textContent = message;
-  }
-
-  function continueTransferAmount() {
+  async function continueTransferAmount() {
     if (!app.transfer.recipient) {
-      toast('Verify the receiver first.', 'error');
+      openTransferError('Receiver Required', 'Verify the receiver first.');
       transferStep(1);
       return;
     }
     const amount = Number($('transferAmountInput')?.value || 0);
     if (!Number.isFinite(amount) || amount < 1) {
-      toast('Enter an amount of at least 1.00.', 'error');
+      openTransferError('Invalid Amount', 'Enter an amount of at least 1.00.');
       return;
     }
-    app.transfer.reference = String($('transferReferenceInput')?.value || '').trim();
-    transferStep(3);
+    if (app.transfer.amountChecking) return;
+    app.transfer.amountChecking = true;
+    setButtonBusy($('transferAmountNextBtn'), true, 'Checking...');
+    openTransferLoading('Checking balance...');
+    try {
+      await postWithFreshCsrf('transfer_preview', {
+        recipient_phone: app.transfer.verifiedInput || String($('transferReceiverInput')?.value || '').trim(),
+        amount: amount,
+        check_only: true
+      }, 'Checking balance...');
+      app.transfer.preview = null;
+      finishTransferModalClose({ replaceHistory: true });
+      transferStep(3);
+    } catch (error) {
+      finishTransferModalClose({ replaceHistory: true });
+      openTransferError('Amount Not Ready', safeMessage(error, 'Transfer amount could not be validated.'));
+    } finally {
+      app.transfer.amountChecking = false;
+      setButtonBusy($('transferAmountNextBtn'), false);
+    }
   }
 
   async function previewTransfer() {
@@ -1142,15 +1348,16 @@
     const receiver = app.transfer.verifiedInput || String($('transferReceiverInput')?.value || '').trim();
     const amount = Number($('transferAmountInput')?.value || 0);
     if (!app.transfer.recipient) {
-      toast('Verify the receiver first.', 'error');
+      openTransferError('Receiver Required', 'Verify the receiver first.');
       transferStep(1);
       return;
     }
     if (!/^\d{4}$/.test(pin)) {
-      toast('Enter your correct 4-digit transaction PIN.', 'error');
+      openTransferError('PIN Required', 'Enter your correct 4-digit transaction PIN.');
       return;
     }
     setButtonBusy(button, true, 'Preparing...');
+    openTransferLoading('Loading transfer preview...');
     try {
       const preview = await post('transfer_preview', {
         recipient_phone: receiver,
@@ -1159,11 +1366,13 @@
       }, 'Preparing transfer preview...', { busy: false });
       app.transfer.preview = preview;
       if (pinInput) pinInput.value = '';
+      finishTransferModalClose({ replaceHistory: true });
       renderTransferReview();
       transferStep(4);
     } catch (error) {
       if (pinInput) pinInput.value = '';
-      toast(safeMessage(error, 'Transfer preview could not be loaded.'), 'error');
+      finishTransferModalClose({ replaceHistory: true });
+      openTransferError('Preview Failed', safeMessage(error, 'Transfer preview could not be loaded.'));
     } finally {
       setButtonBusy(button, false);
     }
@@ -1175,23 +1384,19 @@
     const currency = String(preview.wallet_currency || preview.currency || recipient.wallet_currency || 'BDT').toUpperCase();
     const feeAmount = Number(preview.fee_amount || preview.fee || 0);
     const rows = [
-      ['Receiver', preview.receiver_name || recipient.receiver_name_masked || recipient.receiver_name || '-'],
+      ['Receiver', preview.receiver_name || recipient.receiver_name || recipient.name || '-'],
       ['Account', maskPhone(preview.receiver_phone || preview.receiver_account || recipient.receiver_phone)],
       ['Amount', preview.amount_text || formatMoney(preview.amount, currency)]
     ];
-    if (Number.isFinite(feeAmount) && feeAmount > 0) {
-      rows.push(['Fee', preview.fee_text || formatMoney(feeAmount, currency)]);
-    }
-    rows.push(['Total Pay', preview.total_paid_text || preview.total_pay_text || formatMoney(preview.total_debit, currency)]);
+    rows.push(['Fee', preview.fee_text || formatMoney(Number.isFinite(feeAmount) ? feeAmount : 0, currency)]);
+    rows.push(['Total Amount', preview.total_paid_text || preview.total_pay_text || formatMoney(preview.total_debit, currency)]);
     if (preview.balance_after_text || preview.balance_after !== undefined) {
       rows.push(['Remaining Balance', preview.balance_after_text || formatMoney(preview.balance_after, currency)]);
-    }
-    if (app.transfer.reference) {
-      rows.push(['Reference', app.transfer.reference]);
     }
     if ($('transferReviewRows')) {
       $('transferReviewRows').innerHTML = rows.map((row) => '<div class="review-row"><span>' + escapeHtml(row[0]) + '</span><strong>' + escapeHtml(row[1]) + '</strong></div>').join('');
     }
+    if ($('transferReferenceInput')) $('transferReferenceInput').value = app.transfer.reference || '';
   }
 
   function cancelHold() {
@@ -1205,6 +1410,9 @@
     if (app.transfer.submitting || !app.transfer.preview || app.transfer.holdStartedAt) return;
     if (event && event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
     if (event) event.preventDefault();
+    if (event && event.pointerId !== undefined && event.currentTarget?.setPointerCapture) {
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch (_) {}
+    }
     app.transfer.holdStartedAt = performance.now();
     const duration = 2300;
     const tick = (now) => {
@@ -1231,25 +1439,44 @@
     const label = button?.querySelector('.hold-confirm-label');
     if (button) button.disabled = true;
     if (label) label.textContent = 'Transferring...';
+    app.transfer.reference = String($('transferReferenceInput')?.value || '').trim();
+    const recipient = app.transfer.recipient || {};
+    const successBase = {
+      receiver_name: preview.receiver_name || recipient.receiver_name || recipient.name || 'Z-Pay User',
+      receiver_phone: preview.receiver_phone || preview.receiver_account || transferRecipientPhone(recipient),
+      receiver_phone_masked: recipient.receiver_phone_masked || maskPhone(preview.receiver_phone || preview.receiver_account || transferRecipientPhone(recipient)),
+      amount: preview.amount || $('transferAmountInput')?.value || 0,
+      amount_text: preview.amount_text || formatMoney(preview.amount, preview.wallet_currency || recipient.wallet_currency),
+      wallet_currency: preview.wallet_currency || preview.currency || recipient.wallet_currency || 'BDT',
+      reference: app.transfer.reference
+    };
+    openTransferLoading('Submitting transfer...');
     try {
       const data = await post('transfer_create', {
         preview_token: token,
         reference: app.transfer.reference
       }, 'Completing transfer...');
       const transfer = data.transfer || {};
-      const transferId = String(transfer.transfer_id || transfer.request_id || '');
+      const context = Object.assign({}, successBase, transfer, {
+        receiver_name: transfer.receiver_name || successBase.receiver_name,
+        receiver_phone: transfer.receiver_phone || transfer.receiver_account || successBase.receiver_phone,
+        receiver_phone_masked: maskPhone(transfer.receiver_phone || transfer.receiver_account || successBase.receiver_phone),
+        amount_text: transfer.amount_text || transfer.total_paid_text || successBase.amount_text,
+        wallet_currency: transfer.wallet_currency || transfer.currency || successBase.wallet_currency,
+        transfer_id: transfer.transfer_id || transfer.request_id || '',
+        reference: transfer.reference || successBase.reference
+      });
+      finishTransferModalClose({ replaceHistory: true });
       resetTransfer();
       app.transfer.favoritesLoaded = false;
       loadTransferFavorites(true).catch(() => {});
       if (typeof window.refreshUserDashboard === 'function') {
         window.refreshUserDashboard(false).catch(() => {});
       }
-      showResult('Transfer Successful', transferId ? 'Transfer ID: ' + transferId : 'The wallet transfer completed successfully.', 'success', [
-        { label: 'View History / Track', action: () => { closeActionModal(); window.openSection?.('historySection'); } },
-        { label: 'Done', action: closeActionModal }
-      ]);
+      showTransferSuccess(context);
     } catch (error) {
-      showResult('Transfer Not Completed', safeMessage(error, 'No money was moved. Please review and try again.'), 'error');
+      finishTransferModalClose({ replaceHistory: true });
+      openTransferError('Transfer Not Completed', safeMessage(error, 'No money was moved. Please review and try again.'));
     } finally {
       app.transfer.submitting = false;
       if (button) button.disabled = false;
@@ -1266,7 +1493,6 @@
     ['transferReceiverInput', 'transferAmountInput', 'transferReferenceInput', 'transferPinInput'].forEach((id) => {
       if ($(id)) $(id).value = '';
     });
-    $('transferReceiverResult')?.classList.add('hidden');
     syncTransferFavoriteAdd();
     transferStep(1, { fromHistory: true });
   }
@@ -2197,6 +2423,20 @@
   }
 
   function handleAppPopState(event) {
+    if (app.transfer.modalOpen) {
+      if (app.transfer.modalBusy) {
+        if (window.history?.pushState) {
+          window.history.pushState(Object.assign({}, window.history.state || {}, {
+            zpayUserApp: { view: 'transfer', step: app.transfer.step },
+            zpayTransferModal: { kind: 'loading' }
+          }), '', sectionPaths.transferSection);
+          app.transfer.modalHistoryOpen = true;
+        }
+        return true;
+      }
+      closeTransferModal({ fromHistory: true });
+      return true;
+    }
     if (app.notifications.activeDetail) {
       closeNotificationDetails({ fromHistory: true });
       return true;

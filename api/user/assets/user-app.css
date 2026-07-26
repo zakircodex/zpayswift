@@ -832,22 +832,41 @@ body.user-authenticated[data-active-section='transferSection'] .mobile-header {
   display: none !important;
 }
 
+body.user-authenticated[data-active-section='transferSection'] {
+  overflow: hidden;
+}
+
+body.user-authenticated[data-active-section='transferSection'] #appView,
+body.user-authenticated[data-active-section='transferSection'] .app-shell {
+  height: 100dvh;
+  min-height: 100svh;
+  overflow: hidden;
+}
+
 body.user-authenticated[data-active-section='transferSection'] .main-panel {
+  height: 100dvh;
+  min-height: 100svh;
   width: 100%;
   max-width: none;
-  overflow-x: hidden;
-  padding-bottom: calc(var(--z-nav-height) + 38px + env(safe-area-inset-bottom));
+  overflow: hidden;
+  padding-bottom: 0;
 }
 
 #transferSection.transfer-page-section {
+  height: 100%;
+  min-height: 0;
   width: min(calc(100% - 32px), 620px);
   margin: 14px auto 0;
-  padding-bottom: calc(var(--z-nav-height) + 34px + env(safe-area-inset-bottom));
+  padding-bottom: 0;
+  overflow: hidden;
 }
 
 .transfer-page-shell {
+  height: 100%;
+  min-height: 0;
   width: 100%;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -911,6 +930,21 @@ body.user-authenticated[data-active-section='transferSection'] .main-panel {
   border: 0;
   background: transparent;
   box-shadow: none;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-bottom: calc(var(--z-nav-height) + 44px + env(safe-area-inset-bottom));
+}
+
+#transferSection .transfer-card::-webkit-scrollbar {
+  width: 4px;
+}
+
+#transferSection .transfer-card::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(50, 230, 134, 0.5);
 }
 
 #transferSection .transfer-progress {
@@ -950,6 +984,11 @@ body.user-authenticated[data-active-section='transferSection'] .main-panel {
 #transferSection .transfer-step-card,
 #transferSection .transfer-favorite-panel {
   padding: 22px;
+}
+
+#transferSection #transferStepReceiver.active {
+  display: grid;
+  gap: 18px;
 }
 
 #transferSection .transfer-step-title {
@@ -1176,13 +1215,50 @@ body.user-authenticated[data-active-section='transferSection'] .main-panel {
 }
 
 #transferSection .transfer-money-wrap {
-  min-height: 64px;
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px;
+  border: 2px solid rgba(117, 156, 215, 0.38);
   border-color: rgba(117, 156, 215, 0.38);
   background: rgba(4, 16, 31, 0.38);
+  overflow: hidden;
+}
+
+#transferSection .transfer-money-wrap:focus-within {
+  border-color: rgba(50, 230, 134, 0.78);
+  box-shadow: 0 0 0 3px rgba(50, 230, 134, 0.11);
+}
+
+#transferSection .transfer-money-wrap b {
+  color: var(--z-green);
+  font-size: 21px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+#transferSection .transfer-money-wrap input,
+#transferSection .transfer-money-wrap input:focus {
+  width: 100%;
+  min-height: 62px;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0;
+  outline: 0;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: #fff;
+  font-size: 21px;
 }
 
 #transferSection .transfer-actions {
   margin-top: 18px;
+}
+
+#transferSection .transfer-single-action {
+  grid-template-columns: 1fr;
 }
 
 #transferSection .transfer-review-panel {
@@ -1212,6 +1288,93 @@ body.user-authenticated[data-active-section='transferSection'] .main-panel {
   border-radius: 999px;
   font-size: 18px;
   box-shadow: 0 10px 22px rgba(50, 230, 134, 0.18);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#transferSection .transfer-hold-button * {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.zpay-transfer-modal.modal {
+  z-index: 180;
+}
+
+.zpay-transfer-modal .zpay-action-dialog {
+  width: min(100%, 430px);
+  border-radius: 30px;
+  border-color: rgba(117, 156, 215, 0.38);
+  background:
+    radial-gradient(circle at 84% 18%, rgba(50, 230, 134, 0.12), transparent 32%),
+    linear-gradient(145deg, rgba(15, 54, 105, 0.98), rgba(7, 28, 58, 0.98));
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.42);
+}
+
+.zpay-transfer-modal .zpay-action-copy {
+  text-align: center;
+}
+
+.zpay-transfer-modal .feature-actions,
+.zpay-transfer-modal .zpay-transfer-result-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.zpay-transfer-modal .feature-actions .android-primary-button,
+.zpay-transfer-modal .feature-actions .android-secondary-button,
+.zpay-transfer-modal .zpay-transfer-result-actions .android-primary-button,
+.zpay-transfer-modal .zpay-transfer-result-actions .android-secondary-button {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 20px;
+}
+
+.zpay-transfer-spinner {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 16px;
+  border: 6px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--z-green);
+  border-radius: 50%;
+  animation: zpaySpin 0.8s linear infinite;
+}
+
+.zpay-transfer-result-rows {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.zpay-transfer-result-row {
+  display: grid;
+  grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(117, 156, 215, 0.16);
+}
+
+.zpay-transfer-result-row span {
+  color: var(--z-muted);
+  font-weight: 750;
+}
+
+.zpay-transfer-result-row strong {
+  color: #fff;
+  font-weight: 900;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+@keyframes zpaySpin {
+  to { transform: rotate(360deg); }
 }
 
 body.user-authenticated[data-active-section='transferSection'] .bottom-nav {

@@ -79,6 +79,12 @@ expect_true(
     'website transfer preview does not validate the transaction PIN server-side'
 );
 expect_true(
+    contains($source['proxy'], '$checkOnly = !empty($body[\'check_only\'])')
+    && contains($source['proxy'], 'if (!$checkOnly)')
+    && contains($source['proxy'], "'check_only' => \$checkOnly"),
+    'website transfer amount step does not reuse the existing backend check_only preview validation'
+);
+expect_true(
     contains($source['proxy'], "'preview_token' => trim")
     && contains($source['transfer_create'], 'zpay_transfer_claim_preview_token'),
     'transfer execution is not bound to the existing preview-token flow'
@@ -92,7 +98,11 @@ expect_true(
     contains($source['dashboard'], 'transfer-page-header')
     && contains($source['dashboard'], 'Receiver Account')
     && contains($source['dashboard'], 'transferFavoriteList')
-    && contains($source['dashboard'], 'transferFavoriteAddBtn'),
+    && contains($source['dashboard'], 'transferReviewRows')
+    && contains($source['dashboard'], 'transferReferenceInput')
+    && !contains($source['dashboard'], 'transferReceiverResult')
+    && !contains($source['dashboard'], 'data-transfer-back="1"')
+    && !contains($source['dashboard'], 'data-transfer-back="2"'),
     'Android-style Transfer page shell or favorite receiver UI is missing'
 );
 expect_true(
@@ -104,14 +114,22 @@ expect_true(
 expect_true(
     contains($source['app_js'], 'invalidateTransferReceiver')
     && contains($source['app_js'], 'app.transfer.verifiedInput')
-    && contains($source['app_js'], 'loadTransferFavorites'),
-    'Transfer frontend does not invalidate stale receiver state or load favorites'
+    && contains($source['app_js'], 'loadTransferFavorites')
+    && contains($source['app_js'], 'openTransferLoading')
+    && contains($source['app_js'], 'openTransferError')
+    && contains($source['app_js'], 'showTransferSuccess')
+    && contains($source['app_js'], 'check_only: true')
+    && !contains($source['app_js'], 'showInlineTransfer'),
+    'Transfer frontend does not use Android-style modals, amount validation or stale receiver cleanup'
 );
 expect_true(
     contains($source['app_css'], "body.user-authenticated[data-active-section='transferSection'] .bottom-nav-inner")
     && contains($source['app_css'], '#transferSection .transfer-hold-button')
-    && contains($source['app_css'], '.transfer-favorite-item'),
-    'Transfer Android-style scoped CSS or rounded bottom navigation styling is missing'
+    && contains($source['app_css'], '.transfer-favorite-item')
+    && contains($source['app_css'], '.zpay-transfer-modal')
+    && contains($source['app_css'], '-webkit-touch-callout: none')
+    && contains($source['app_css'], 'overflow-y: auto;'),
+    'Transfer Android-style scoped CSS, modal styling or fixed scroll architecture is missing'
 );
 
 foreach (['support_config', 'support_list', 'support_details', 'support_create', 'support_reply', 'support_attachment'] as $action) {
