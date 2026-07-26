@@ -125,6 +125,10 @@ expect_true(
     && contains($source['app_css'], "body.user-authenticated[data-active-section='supportSection'] .bottom-nav")
     && contains($source['app_css'], "#supportSection .support-floating-button")
     && contains($source['app_css'], "#supportSection .support-scroll-body")
+    && contains($source['app_css'], "#supportSection #supportListPanel.active")
+    && contains($source['app_css'], "#supportSection .support-ticket-card .status-pill")
+    && contains($source['app_css'], "#supportSection .conversation-header")
+    && contains($source['app_css'], "#supportSection .support-composer textarea")
     && contains($source['app_css'], 'height: 100dvh'),
     'Contact Us page scoped fixed/scroll Android-style CSS is missing'
 );

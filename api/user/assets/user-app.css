@@ -1103,6 +1103,20 @@ body.user-authenticated .filter-btn.active {
   text-align: left;
 }
 
+#supportSection .support-ticket-card {
+  align-items: start;
+  border-radius: 22px;
+}
+
+#supportSection .support-ticket-card .status-pill {
+  align-self: start;
+  justify-self: end;
+  min-height: 34px;
+  padding: 7px 13px;
+  border-radius: 18px;
+  white-space: nowrap;
+}
+
 .support-ticket-card h4,
 .support-ticket-card p,
 .notification-row h4,
@@ -4948,7 +4962,9 @@ body.user-authenticated[data-active-section='supportSection'] .main-panel {
   min-height: 0;
   margin: 0;
   padding: 14px 0 calc(28px + env(safe-area-inset-bottom));
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   overscroll-behavior: contain;
   border: 0;
   border-radius: 0;
@@ -4959,6 +4975,7 @@ body.user-authenticated[data-active-section='supportSection'] .main-panel {
 
 #supportSection .support-live-hero {
   position: relative;
+  flex: 0 0 auto;
   overflow: hidden;
   display: grid;
   gap: 12px;
@@ -4992,8 +5009,20 @@ body.user-authenticated[data-active-section='supportSection'] .main-panel {
 }
 
 #supportSection .support-workspace-head {
+  flex: 0 0 auto;
   grid-template-columns: minmax(0, 1fr) 44px;
   align-items: center;
+}
+
+#supportSection #supportRefreshTopButton,
+#supportSection #supportRefreshButton {
+  width: 46px;
+  height: 46px;
+  border-color: rgba(188, 220, 255, 0.18);
+  color: rgba(220, 232, 250, 0.92);
+  background: rgba(11, 45, 92, 0.32);
+  font-size: 23px;
+  line-height: 1;
 }
 
 #supportSection .support-hidden-tabs,
@@ -5005,13 +5034,50 @@ body.user-authenticated[data-active-section='supportSection'] .main-panel {
   margin-top: 16px;
 }
 
-#supportSection .support-conversation {
-  height: 100vh;
-  height: 100dvh;
+#supportSection .support-tab-panel.active {
+  min-height: 0;
+}
+
+#supportSection #supportCreatePanel.active {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  scrollbar-width: none;
+}
+
+#supportSection #supportCreatePanel.active::-webkit-scrollbar,
+#supportSection #supportTicketList::-webkit-scrollbar,
+#supportSection .support-messages::-webkit-scrollbar {
+  display: none;
+}
+
+#supportSection #supportListPanel.active {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#supportSection #supportTicketList {
+  flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 14px 0 calc(20px + env(safe-area-inset-bottom));
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
+  scrollbar-width: none;
+}
+
+#supportSection .support-conversation {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  padding: 8px 0 calc(12px + env(safe-area-inset-bottom));
   scrollbar-width: none;
 }
 
@@ -5020,7 +5086,53 @@ body.user-authenticated[data-active-section='supportSection'] .main-panel {
 }
 
 #supportSection .support-composer {
-  bottom: env(safe-area-inset-bottom);
+  position: relative;
+  bottom: auto;
+  flex: 0 0 auto;
+  padding: 10px 0 12px;
+  background: linear-gradient(180deg, rgba(4, 17, 33, 0), rgba(4, 17, 33, 0.96) 28%);
+}
+
+#supportSection .conversation-header {
+  position: relative;
+  top: auto;
+  flex: 0 0 auto;
+  margin: 0 0 8px;
+  padding: 8px 0 10px;
+  background: rgba(4, 17, 33, 0.94);
+}
+
+#supportSection .conversation-header .status-pill {
+  align-self: start;
+  margin-top: 4px;
+  padding: 7px 13px;
+  border-radius: 18px;
+}
+
+#supportSection .support-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 0 14px;
+  scrollbar-width: none;
+}
+
+#supportSection .support-composer textarea {
+  min-height: 54px;
+  padding: 14px 18px;
+  border-radius: 22px;
+}
+
+#supportSection .support-composer button {
+  min-height: 54px;
+  padding: 0 18px;
+  border-radius: 22px;
+}
+
+#supportSection .composer-attachment {
+  width: 54px;
+  height: 54px;
 }
 
 @media (max-width: 420px) {
