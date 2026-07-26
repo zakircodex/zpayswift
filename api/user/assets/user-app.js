@@ -30,6 +30,11 @@
       preview: null,
       reference: '',
       submitting: false,
+      resolving: false,
+      favorites: [],
+      favoritesLoaded: false,
+      favoritesLoading: false,
+      verifiedInput: '',
       holdFrame: 0,
       holdStartedAt: 0
     },
@@ -871,12 +876,29 @@
     openProfileCrop(file);
   }
 
+  function transferDigits(value) {
+    return String(value || '').replace(/\D+/g, '');
+  }
+
+  function transferRecipientPhone(recipient) {
+    return String(
+      (recipient && (recipient.receiver_phone || recipient.phone || recipient.account || recipient.recipient_phone)) || ''
+    ).trim();
+  }
+
+  function transferRecipientName(recipient) {
+    return String(
+      (recipient && (recipient.receiver_name_masked || recipient.receiver_name || recipient.name)) || 'Z-Pay User'
+    ).trim();
+  }
+
   function transferStep(step, options) {
     const next = Math.max(1, Math.min(4, Number(step || 1)));
     app.transfer.step = next;
     document.querySelectorAll('.transfer-step').forEach((node, index) => node.classList.toggle('active', index + 1 === next));
     for (let index = 1; index <= 4; index += 1) {
-      $('transferPill' + index)?.classList.toggle('active', index <= next);
+      $('transferPill' + index)?.classList.toggle('active', index === next);
+      $('transferPill' + index)?.classList.toggle('complete', index < next);
     }
     if (!(options && options.fromHistory) && next > 1 && window.history && window.history.pushState) {
       window.history.pushState(Object.assign({}, window.history.state || {}, {
@@ -891,14 +913,171 @@
     }
   }
 
+  function syncTransferFavoriteAdd() {
+    const button = $('transferFavoriteAddBtn');
+    if (!button) return;
+    const recipient = app.transfer.recipient;
+    if (!recipient) {
+      button.classList.add('hidden');
+      button.disabled = true;
+      return;
+    }
+
+    const recipientDigits = transferDigits(transferRecipientPhone(recipient) || app.transfer.verifiedInput);
+    const duplicate = app.transfer.favorites.some((item) => transferDigits(item.phone || item.receiver_phone) === recipientDigits);
+    button.classList.toggle('hidden', duplicate);
+    button.disabled = duplicate;
+    button.textContent = duplicate ? 'Saved to Favourite' : 'Add to Favourite';
+  }
+
   function renderRecipientCard() {
     const recipient = app.transfer.recipient || {};
+    const phone = transferRecipientPhone(recipient);
     if ($('transferReceiverCard')) {
-      $('transferReceiverCard').innerHTML = '<strong>' + escapeHtml(recipient.receiver_name_masked || recipient.receiver_name || 'Z-Pay User') + '</strong>' +
-        '<p>' + escapeHtml(recipient.receiver_phone_masked || maskPhone(recipient.receiver_phone)) + '</p>';
+      const currencyText = String(recipient.wallet_currency || recipient.sender_wallet_currency || (window.userState && window.userState.walletSummary && window.userState.walletSummary.wallet_currency) || 'BDT').toUpperCase();
+      $('transferReceiverCard').innerHTML =
+        '<div class="transfer-verified-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9.2 16.6-4.1-4.1 1.4-1.4 2.7 2.7 8.3-8.3 1.4 1.4-9.7 9.7Z"/></svg></div>' +
+        '<div class="transfer-verified-copy"><strong>' + escapeHtml(transferRecipientName(recipient)) + '</strong>' +
+        '<p>' + escapeHtml(recipient.receiver_phone_masked || maskPhone(phone)) + ' - ' + escapeHtml(currencyText) + '</p></div>';
     }
     const currency = String(recipient.wallet_currency || recipient.sender_wallet_currency || (window.userState && window.userState.walletSummary && window.userState.walletSummary.wallet_currency) || 'BDT').toUpperCase();
     if ($('transferCurrencyPrefix')) $('transferCurrencyPrefix').textContent = currency === 'MYR' ? 'RM' : currency;
+    syncTransferFavoriteAdd();
+  }
+
+  function renderTransferFavorites(loading) {
+    const list = $('transferFavoriteList');
+    if (!list) return;
+
+    if (loading) {
+      list.innerHTML = '<div class="transfer-empty-card">Loading favorite accounts...</div>';
+      return;
+    }
+
+    const favorites = Array.isArray(app.transfer.favorites) ? app.transfer.favorites : [];
+    if (!favorites.length) {
+      list.innerHTML = '<div class="transfer-empty-card">No favorite accounts yet.</div>';
+      return;
+    }
+
+    list.innerHTML = favorites.map((favorite) => {
+      const id = escapeHtml(favorite.favorite_id || '');
+      const phone = escapeHtml(favorite.phone || favorite.receiver_phone || '');
+      const title = escapeHtml(favorite.name || favorite.receiver_name || 'Z-Pay User');
+      const subtitle = escapeHtml((favorite.phone || favorite.receiver_phone || favorite.phone_masked || '-') + ' - Z-Pay');
+      return '<article class="transfer-favorite-item" tabindex="0" role="button" data-favorite-phone="' + phone + '">' +
+        '<div class="transfer-favorite-avatar" aria-hidden="true">Z</div>' +
+        '<div class="transfer-favorite-copy"><strong>' + title + '</strong><small>' + subtitle + '</small></div>' +
+        '<button class="transfer-favorite-remove" type="button" data-favorite-id="' + id + '" aria-label="Remove favorite receiver">Remove</button>' +
+        '</article>';
+    }).join('');
+
+    list.querySelectorAll('.transfer-favorite-item').forEach((item) => {
+      item.addEventListener('click', () => selectTransferFavorite(item.dataset.favoritePhone || ''));
+      item.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          selectTransferFavorite(item.dataset.favoritePhone || '');
+        }
+      });
+    });
+
+    list.querySelectorAll('.transfer-favorite-remove').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        removeTransferFavorite(button.dataset.favoriteId || '');
+      });
+    });
+  }
+
+  async function loadTransferFavorites(force) {
+    if (app.transfer.favoritesLoaded && !force) {
+      renderTransferFavorites(false);
+      syncTransferFavoriteAdd();
+      return;
+    }
+    if (app.transfer.favoritesLoading) return;
+
+    app.transfer.favoritesLoading = true;
+    renderTransferFavorites(true);
+    try {
+      const data = await get('transfer_favorites', { limit: 10 }, 'Loading favorite accounts...', { busy: false });
+      app.transfer.favorites = Array.isArray(data.favorites) ? data.favorites : [];
+      app.transfer.favoritesLoaded = true;
+      renderTransferFavorites(false);
+      syncTransferFavoriteAdd();
+    } catch (error) {
+      app.transfer.favoritesLoaded = false;
+      if ($('transferFavoriteList')) {
+        $('transferFavoriteList').innerHTML = '<div class="transfer-empty-card error">Favorite accounts could not be loaded.</div>';
+      }
+    } finally {
+      app.transfer.favoritesLoading = false;
+    }
+  }
+
+  function invalidateTransferReceiver() {
+    if (!app.transfer.recipient) return;
+    const current = transferDigits($('transferReceiverInput')?.value || '');
+    if (current === transferDigits(app.transfer.verifiedInput)) return;
+
+    app.transfer.recipient = null;
+    app.transfer.preview = null;
+    app.transfer.verifiedInput = '';
+    syncTransferFavoriteAdd();
+    $('transferReceiverResult')?.classList.add('hidden');
+  }
+
+  async function selectTransferFavorite(phone) {
+    const input = $('transferReceiverInput');
+    if (!input || !phone) return;
+    input.value = phone;
+    app.transfer.recipient = null;
+    app.transfer.preview = null;
+    app.transfer.verifiedInput = '';
+    await resolveRecipient();
+  }
+
+  async function addTransferFavorite() {
+    const recipient = app.transfer.recipient || {};
+    const phone = transferRecipientPhone(recipient) || app.transfer.verifiedInput;
+    if (!phone) {
+      toast('Verify a receiver first.', 'error');
+      return;
+    }
+
+    const button = $('transferFavoriteAddBtn');
+    setButtonBusy(button, true, 'Saving...');
+    try {
+      await postWithFreshCsrf('transfer_favorite_add', {
+        recipient_phone: phone,
+        name: recipient.receiver_name || recipient.receiver_name_masked || ''
+      }, 'Saving favorite...');
+      toast('Favorite receiver saved.', 'success');
+      app.transfer.favoritesLoaded = false;
+      await loadTransferFavorites(true);
+      syncTransferFavoriteAdd();
+    } catch (error) {
+      toast(safeMessage(error, 'Favorite receiver could not be saved.'), 'error');
+    } finally {
+      setButtonBusy(button, false);
+    }
+  }
+
+  async function removeTransferFavorite(favoriteId) {
+    const id = String(favoriteId || '').trim();
+    if (!id) return;
+    if (!window.confirm('Remove this favorite receiver?')) return;
+
+    try {
+      await postWithFreshCsrf('transfer_favorite_remove', { favorite_id: id }, 'Removing favorite...');
+      toast('Favorite receiver removed.', 'success');
+      app.transfer.favoritesLoaded = false;
+      await loadTransferFavorites(true);
+      syncTransferFavoriteAdd();
+    } catch (error) {
+      toast(safeMessage(error, 'Favorite receiver could not be removed.'), 'error');
+    }
   }
 
   async function resolveRecipient() {
@@ -908,9 +1087,11 @@
       showInlineTransfer('Enter the receiver phone number.', true);
       return;
     }
+    if (app.transfer.resolving) return;
+    app.transfer.resolving = true;
     setButtonBusy(button, true, 'Checking...');
     try {
-      const data = await post('transfer_recipient', { recipient_phone: receiver }, 'Checking receiver...', { busy: false });
+      const data = await postWithFreshCsrf('transfer_recipient', { recipient_phone: receiver }, 'Checking receiver...');
       const recipient = Object.assign({}, data.recipient || {}, {
         wallet_currency: data.wallet_currency || data.sender_wallet_currency || ''
       });
@@ -918,12 +1099,15 @@
         throw new Error(data.validation_message || 'This account cannot receive this transfer.');
       }
       app.transfer.recipient = recipient;
+      app.transfer.preview = null;
+      app.transfer.verifiedInput = receiver;
       showInlineTransfer((recipient.receiver_name_masked || recipient.receiver_name || 'Receiver') + ' verified.', false);
       renderRecipientCard();
       transferStep(2);
     } catch (error) {
       showInlineTransfer(safeMessage(error, 'Receiver could not be verified.'), true);
     } finally {
+      app.transfer.resolving = false;
       setButtonBusy(button, false);
     }
   }
@@ -937,6 +1121,11 @@
   }
 
   function continueTransferAmount() {
+    if (!app.transfer.recipient) {
+      toast('Verify the receiver first.', 'error');
+      transferStep(1);
+      return;
+    }
     const amount = Number($('transferAmountInput')?.value || 0);
     if (!Number.isFinite(amount) || amount < 1) {
       toast('Enter an amount of at least 1.00.', 'error');
@@ -950,8 +1139,13 @@
     const button = $('transferPreviewBtn');
     const pinInput = $('transferPinInput');
     const pin = String(pinInput?.value || '').trim();
-    const receiver = String($('transferReceiverInput')?.value || '').trim();
+    const receiver = app.transfer.verifiedInput || String($('transferReceiverInput')?.value || '').trim();
     const amount = Number($('transferAmountInput')?.value || 0);
+    if (!app.transfer.recipient) {
+      toast('Verify the receiver first.', 'error');
+      transferStep(1);
+      return;
+    }
     if (!/^\d{4}$/.test(pin)) {
       toast('Enter your correct 4-digit transaction PIN.', 'error');
       return;
@@ -979,15 +1173,22 @@
     const preview = app.transfer.preview || {};
     const recipient = app.transfer.recipient || {};
     const currency = String(preview.wallet_currency || preview.currency || recipient.wallet_currency || 'BDT').toUpperCase();
+    const feeAmount = Number(preview.fee_amount || preview.fee || 0);
     const rows = [
       ['Receiver', preview.receiver_name || recipient.receiver_name_masked || recipient.receiver_name || '-'],
       ['Account', maskPhone(preview.receiver_phone || preview.receiver_account || recipient.receiver_phone)],
-      ['Transfer Amount', preview.amount_text || formatMoney(preview.amount, currency)],
-      ['Fee', preview.fee_text || formatMoney(preview.fee_amount, currency)],
-      ['Total Debit', preview.total_paid_text || preview.total_pay_text || formatMoney(preview.total_debit, currency)],
-      ['Remaining Balance', preview.balance_after_text || formatMoney(preview.balance_after, currency)],
-      ['Reference', app.transfer.reference || 'No reference']
+      ['Amount', preview.amount_text || formatMoney(preview.amount, currency)]
     ];
+    if (Number.isFinite(feeAmount) && feeAmount > 0) {
+      rows.push(['Fee', preview.fee_text || formatMoney(feeAmount, currency)]);
+    }
+    rows.push(['Total Pay', preview.total_paid_text || preview.total_pay_text || formatMoney(preview.total_debit, currency)]);
+    if (preview.balance_after_text || preview.balance_after !== undefined) {
+      rows.push(['Remaining Balance', preview.balance_after_text || formatMoney(preview.balance_after, currency)]);
+    }
+    if (app.transfer.reference) {
+      rows.push(['Reference', app.transfer.reference]);
+    }
     if ($('transferReviewRows')) {
       $('transferReviewRows').innerHTML = rows.map((row) => '<div class="review-row"><span>' + escapeHtml(row[0]) + '</span><strong>' + escapeHtml(row[1]) + '</strong></div>').join('');
     }
@@ -1038,11 +1239,13 @@
       const transfer = data.transfer || {};
       const transferId = String(transfer.transfer_id || transfer.request_id || '');
       resetTransfer();
+      app.transfer.favoritesLoaded = false;
+      loadTransferFavorites(true).catch(() => {});
       if (typeof window.refreshUserDashboard === 'function') {
         window.refreshUserDashboard(false).catch(() => {});
       }
       showResult('Transfer Successful', transferId ? 'Transfer ID: ' + transferId : 'The wallet transfer completed successfully.', 'success', [
-        { label: 'View History', action: () => { closeActionModal(); window.openSection?.('historySection'); } },
+        { label: 'View History / Track', action: () => { closeActionModal(); window.openSection?.('historySection'); } },
         { label: 'Done', action: closeActionModal }
       ]);
     } catch (error) {
@@ -1050,7 +1253,7 @@
     } finally {
       app.transfer.submitting = false;
       if (button) button.disabled = false;
-      if (label) label.textContent = 'Press & Hold to Transfer';
+      if (label) label.textContent = 'Tap and hold to confirm transfer';
       cancelHold();
     }
   }
@@ -1059,10 +1262,12 @@
     app.transfer.recipient = null;
     app.transfer.preview = null;
     app.transfer.reference = '';
+    app.transfer.verifiedInput = '';
     ['transferReceiverInput', 'transferAmountInput', 'transferReferenceInput', 'transferPinInput'].forEach((id) => {
       if ($(id)) $(id).value = '';
     });
     $('transferReceiverResult')?.classList.add('hidden');
+    syncTransferFavoriteAdd();
     transferStep(1, { fromHistory: true });
   }
 
@@ -1498,7 +1703,7 @@
   function renderNotificationBadge(count) {
     const unreadCount = Math.min(99, Math.max(0, Number(count || 0)));
     app.notifications.unreadCount = unreadCount;
-    ['notificationBadge', 'heroNotificationBadge', 'profileNotificationBadge', 'supportNotificationBadge'].forEach((id) => {
+    ['notificationBadge', 'heroNotificationBadge', 'profileNotificationBadge', 'supportNotificationBadge', 'transferNotificationBadge'].forEach((id) => {
       const badge = $(id);
       if (!badge) return;
       badge.textContent = String(unreadCount);
@@ -1984,6 +2189,10 @@
       app.notifications.loaded = false;
       loadNotificationPage(true);
     }
+    if (sectionId === 'transferSection') {
+      loadTransferFavorites(false);
+      loadUnreadCount();
+    }
     if (sectionId === 'overviewSection') loadUnreadCount();
   }
 
@@ -2068,7 +2277,11 @@
     });
     $('profileLogoutBtn')?.addEventListener('click', () => ($('drawerLogoutBtn') || $('sidebarLogoutBtn'))?.click());
 
+    $('transferNotificationButton')?.addEventListener('click', () => window.openSection?.('notificationsSection'));
     $('transferResolveBtn')?.addEventListener('click', resolveRecipient);
+    $('transferFavoriteAddBtn')?.addEventListener('click', addTransferFavorite);
+    $('transferFavoriteRefreshBtn')?.addEventListener('click', () => loadTransferFavorites(true));
+    $('transferReceiverInput')?.addEventListener('input', invalidateTransferReceiver);
     $('transferReceiverInput')?.addEventListener('keydown', (event) => { if (event.key === 'Enter') resolveRecipient(); });
     $('transferAmountNextBtn')?.addEventListener('click', continueTransferAmount);
     $('transferPreviewBtn')?.addEventListener('click', previewTransfer);

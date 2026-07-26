@@ -739,6 +739,73 @@ function user_proxy_normalize_phone(string $phone): string
     return preg_replace('/\D+/', '', trim($phone)) ?? '';
 }
 
+function user_proxy_transfer_favorite_path(string $uid): string
+{
+    return 'USER_TRANSFER_FAVORITES/' . trim($uid);
+}
+
+function user_proxy_transfer_favorite_id(string $phone): string
+{
+    return hash('sha256', user_proxy_normalize_phone($phone));
+}
+
+function user_proxy_transfer_mask_phone(string $phone): string
+{
+    $phone = trim($phone);
+    if (function_exists('zpay_dash_mask_phone')) {
+        return zpay_dash_mask_phone($phone);
+    }
+
+    $digits = user_proxy_normalize_phone($phone);
+    if (strlen($digits) < 7) {
+        return $phone !== '' ? $phone : '-';
+    }
+
+    return substr($digits, 0, 4) . '***' . substr($digits, -3);
+}
+
+function user_proxy_public_transfer_favorite(array $row): array
+{
+    $phone = trim((string)($row['phone'] ?? $row['receiver_phone'] ?? ''));
+
+    return [
+        'favorite_id' => (string)($row['favorite_id'] ?? user_proxy_transfer_favorite_id($phone)),
+        'name' => (string)($row['name'] ?? $row['receiver_name'] ?? 'Z-Pay User'),
+        'phone' => $phone,
+        'phone_masked' => (string)($row['phone_masked'] ?? user_proxy_transfer_mask_phone($phone)),
+        'wallet_currency' => strtoupper(trim((string)($row['wallet_currency'] ?? ''))),
+        'created_at' => (int)($row['created_at'] ?? 0),
+        'updated_at' => (int)($row['updated_at'] ?? 0),
+    ];
+}
+
+function user_proxy_load_transfer_favorites(string $uid, int $limit = 10): array
+{
+    $rows = fb_get(user_proxy_transfer_favorite_path($uid));
+    if (!is_array($rows)) {
+        return [];
+    }
+
+    $items = [];
+    foreach ($rows as $id => $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $row['favorite_id'] = (string)($row['favorite_id'] ?? $id);
+        $phone = user_proxy_normalize_phone((string)($row['phone'] ?? $row['receiver_phone'] ?? ''));
+        if ($phone === '') {
+            continue;
+        }
+        $items[] = user_proxy_public_transfer_favorite($row);
+    }
+
+    usort($items, static function (array $a, array $b): int {
+        return ((int)($b['updated_at'] ?? 0)) <=> ((int)($a['updated_at'] ?? 0));
+    });
+
+    return array_slice($items, 0, max(1, min(20, $limit)));
+}
+
 function user_proxy_operator_code(string $operator): string
 {
     if (function_exists('normalize_operator')) {
@@ -4373,6 +4440,116 @@ switch ($action) {
             'PIN_UPDATE_FAILED',
             'PIN could not be updated.'
         );
+        break;
+
+    case 'transfer_favorites':
+        user_proxy_require_method('GET');
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $limit = max(1, min(10, (int)($_GET['limit'] ?? 10)));
+        user_proxy_response(true, 'TRANSFER_FAVORITES_OK', 'Favorite receivers loaded.', [
+            'favorites' => user_proxy_load_transfer_favorites($uid, $limit),
+            'limit' => $limit,
+        ]);
+        break;
+
+    case 'transfer_favorite_add':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $body = user_proxy_read_json_body();
+        $recipientInput = trim((string)($body['recipient_phone'] ?? $body['receiver_phone'] ?? $body['phone'] ?? ''));
+        $recipientDigits = user_proxy_normalize_phone($recipientInput);
+        if ($recipientDigits === '') {
+            user_proxy_response(false, 'VALIDATION_ERROR', 'Receiver phone number is required.', [], 422);
+        }
+
+        $lookup = user_proxy_internal_api_request(
+            'POST',
+            'transfer/check_recipient.php',
+            ['recipient_phone' => $recipientInput],
+            user_proxy_authenticated_headers()
+        );
+        $lookupJson = is_array($lookup['json'] ?? null) ? $lookup['json'] : [];
+        $lookupData = is_array($lookupJson['data'] ?? null) ? $lookupJson['data'] : [];
+        $recipient = is_array($lookupData['recipient'] ?? null) ? $lookupData['recipient'] : [];
+        if (empty($lookup['ok']) || empty($lookupData['can_transfer']) || empty($recipient['can_transfer'])) {
+            user_proxy_response(
+                false,
+                (string)($lookupJson['code'] ?? $lookupData['validation_code'] ?? 'TRANSFER_FAVORITE_INVALID'),
+                (string)($lookupJson['message'] ?? $lookupData['validation_message'] ?? 'This receiver cannot be saved.'),
+                [],
+                (int)(($lookup['status'] ?? 0) > 0 ? $lookup['status'] : 422)
+            );
+        }
+
+        $receiverPhone = trim((string)($recipient['receiver_phone'] ?? $recipientInput));
+        $favoriteId = user_proxy_transfer_favorite_id($receiverPhone);
+        $favoritePath = user_proxy_transfer_favorite_path($uid);
+        $existing = fb_get($favoritePath . '/' . $favoriteId);
+        if (is_array($existing)) {
+            user_proxy_response(false, 'TRANSFER_FAVORITE_DUPLICATE', 'This receiver is already in your favorites.', [
+                'favorite' => user_proxy_public_transfer_favorite($existing),
+                'favorites' => user_proxy_load_transfer_favorites($uid, 10),
+            ], 409);
+        }
+
+        $currentFavorites = user_proxy_load_transfer_favorites($uid, 20);
+        if (count($currentFavorites) >= 10) {
+            user_proxy_response(false, 'TRANSFER_FAVORITES_LIMIT', 'You can save up to 10 favorite receivers.', [], 422);
+        }
+
+        $now = user_proxy_now();
+        $row = [
+            'favorite_id' => $favoriteId,
+            'uid' => $uid,
+            'receiver_uid' => (string)($recipient['receiver_uid'] ?? ''),
+            'name' => trim((string)($recipient['receiver_name'] ?? $recipient['receiver_name_masked'] ?? 'Z-Pay User')),
+            'phone' => $receiverPhone,
+            'phone_masked' => trim((string)($recipient['receiver_phone_masked'] ?? user_proxy_transfer_mask_phone($receiverPhone))),
+            'wallet_currency' => strtoupper(trim((string)($lookupData['receiver_wallet_currency'] ?? $lookupData['wallet_currency'] ?? ''))),
+            'source' => 'USER_WEB',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+
+        if (!fb_put($favoritePath . '/' . $favoriteId, $row)) {
+            user_proxy_response(false, 'TRANSFER_FAVORITE_SAVE_FAILED', 'Favorite receiver could not be saved.', [], 500);
+        }
+
+        user_proxy_response(true, 'TRANSFER_FAVORITE_SAVED', 'Favorite receiver saved.', [
+            'favorite' => user_proxy_public_transfer_favorite($row),
+            'favorites' => user_proxy_load_transfer_favorites($uid, 10),
+        ]);
+        break;
+
+    case 'transfer_favorite_remove':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $body = user_proxy_read_json_body();
+        $favoriteId = trim((string)($body['favorite_id'] ?? ''));
+        if (!preg_match('/^[a-f0-9]{64}$/', $favoriteId)) {
+            user_proxy_response(false, 'VALIDATION_ERROR', 'Favorite receiver is invalid.', [], 422);
+        }
+
+        $path = user_proxy_transfer_favorite_path($uid) . '/' . $favoriteId;
+        $existing = fb_get($path);
+        if (!is_array($existing)) {
+            user_proxy_response(true, 'TRANSFER_FAVORITE_REMOVED', 'Favorite receiver removed.', [
+                'favorites' => user_proxy_load_transfer_favorites($uid, 10),
+            ]);
+        }
+
+        if (!fb_delete($path)) {
+            user_proxy_response(false, 'TRANSFER_FAVORITE_REMOVE_FAILED', 'Favorite receiver could not be removed.', [], 500);
+        }
+
+        user_proxy_response(true, 'TRANSFER_FAVORITE_REMOVED', 'Favorite receiver removed.', [
+            'favorites' => user_proxy_load_transfer_favorites($uid, 10),
+        ]);
         break;
 
     case 'transfer_recipient':

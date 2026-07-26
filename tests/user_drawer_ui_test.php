@@ -100,9 +100,9 @@ drawer_expect(
     'Drawer open buttons do not expose aria-expanded/controls'
 );
 drawer_expect(
-    str_contains($dashboard, '/api/user/assets/user-app.css?v=31')
+    str_contains($dashboard, '/api/user/assets/user-app.css?v=32')
     && str_contains($dashboard, '/api/user/assets/dashboard.js?v=36')
-    && str_contains($dashboard, '/api/user/assets/user-app.js?v=13'),
+    && str_contains($dashboard, '/api/user/assets/user-app.js?v=14'),
     'Drawer asset versions were not bumped after the alignment CSS/JS change'
 );
 

@@ -29,7 +29,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/user/assets/dashboard.css?v=14">
   <link rel="stylesheet" href="/api/user/assets/dashboard-ux.css?v=10">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=31">
+  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=32">
 </head>
 <body>
 
@@ -650,54 +650,83 @@ header('Pragma: no-cache');
         </div>
       </section>
 
-      <section id="transferSection" class="page-section">
-        <div class="feature-card transfer-card">
-          <div class="feature-heading">
-            <div>
-              <span class="feature-eyebrow">Secure wallet transfer</span>
-              <h2>Z-Pay Transfer</h2>
-              <p>Send money to another Z-Pay account.</p>
-            </div>
-          </div>
-
-          <div class="android-stepper" aria-label="Transfer progress">
-            <span id="transferPill1" class="active">Receiver</span>
-            <span id="transferPill2">Amount</span>
-            <span id="transferPill3">PIN</span>
-            <span id="transferPill4">Review</span>
-          </div>
-
-          <div id="transferStepReceiver" class="transfer-step active">
-            <div class="step-copy"><h3>Receiver account</h3><p>Enter the receiver's Z-Pay phone number.</p></div>
-            <label class="feature-field" for="transferReceiverInput"><span>Phone or account</span><input id="transferReceiverInput" type="tel" inputmode="tel" autocomplete="tel" placeholder="01XXXXXXXXX"></label>
-            <div id="transferReceiverResult" class="inline-state hidden" role="status"></div>
-            <button id="transferResolveBtn" class="android-primary-button" type="button">Check Receiver</button>
-          </div>
-
-          <div id="transferStepAmount" class="transfer-step">
-            <div id="transferReceiverCard" class="recipient-card"></div>
-            <label class="feature-field" for="transferAmountInput"><span>Amount</span><div class="money-input-wrap"><b id="transferCurrencyPrefix">BDT</b><input id="transferAmountInput" type="number" inputmode="decimal" min="1" step="0.01" placeholder="0.00"></div></label>
-            <label class="feature-field" for="transferReferenceInput"><span>Reference <small>Optional</small></span><input id="transferReferenceInput" maxlength="80" placeholder="What is this transfer for?"></label>
-            <div class="feature-actions"><button class="android-secondary-button" type="button" data-transfer-back="1">Back</button><button id="transferAmountNextBtn" class="android-primary-button" type="button">Continue</button></div>
-          </div>
-
-          <div id="transferStepPin" class="transfer-step">
-            <div class="step-copy"><h3>Enter transaction PIN</h3><p>Your PIN verifies this transfer. It is never displayed or stored in the browser.</p></div>
-            <label class="feature-field" for="transferPinInput"><span>4-digit PIN</span><input id="transferPinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="4" placeholder="••••"></label>
-            <div class="feature-actions"><button class="android-secondary-button" type="button" data-transfer-back="2">Back</button><button id="transferPreviewBtn" class="android-primary-button" type="button">Review Transfer</button></div>
-          </div>
-
-          <div id="transferStepReview" class="transfer-step">
-            <div class="review-panel">
-              <h3>Z-Pay Transfer Preview</h3>
-              <div id="transferReviewRows" class="review-rows"></div>
-            </div>
-            <p class="hold-hint">Press and hold until confirmation completes.</p>
-            <button id="transferHoldConfirmBtn" class="hold-confirm-button" type="button" aria-label="Press and hold to confirm transfer">
-              <span class="hold-confirm-progress" aria-hidden="true"></span>
-              <span class="hold-confirm-label">Press &amp; Hold to Transfer</span>
+      <section id="transferSection" class="page-section transfer-page-section" aria-labelledby="transferPageTitle">
+        <div class="transfer-page-shell">
+          <header class="transfer-page-header">
+            <button class="transfer-header-button" data-open-section="overviewSection" type="button" aria-label="Back to dashboard">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.7 5.3-1.4-1.4L5.2 12l8.1 8.1 1.4-1.4L9 13h11v-2H9l5.7-5.7Z"/></svg>
             </button>
-            <button class="android-secondary-button full-width" type="button" data-transfer-back="3">Edit Transfer</button>
+            <h2 id="transferPageTitle">Z-Pay Transfer</h2>
+            <button id="transferNotificationButton" class="transfer-header-button notification-button" type="button" aria-label="Notifications">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 22a2.5 2.5 0 0 0 2.35-1.65h-4.7A2.5 2.5 0 0 0 12 22Zm7-5.5-1.4-1.7V10a5.6 5.6 0 0 0-4.35-5.45V3.5a1.25 1.25 0 1 0-2.5 0v1.05A5.6 5.6 0 0 0 6.4 10v4.8L5 16.5V18h14v-1.5Z"/></svg>
+              <span id="transferNotificationBadge" class="notification-badge hidden">0</span>
+            </button>
+          </header>
+
+          <div class="feature-card transfer-card">
+            <div class="android-stepper transfer-progress" aria-label="Transfer progress">
+              <span id="transferPill1" class="active">Receiver</span>
+              <span id="transferPill2">Amount</span>
+              <span id="transferPill3">PIN</span>
+              <span id="transferPill4">Review</span>
+            </div>
+
+            <div id="transferStepReceiver" class="transfer-step active">
+              <div class="transfer-step-card transfer-receiver-card">
+                <div class="step-copy transfer-step-title"><h3>Receiver Account</h3></div>
+                <label class="feature-field transfer-field" for="transferReceiverInput">
+                  <span>Z-Pay Phone Number</span>
+                  <div class="transfer-input-shell">
+                    <span class="transfer-input-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm0 2v14h10V5H7Zm3 12h4v1h-4v-1Z"/></svg></span>
+                    <input id="transferReceiverInput" type="tel" inputmode="tel" autocomplete="tel" placeholder="Phone number">
+                  </div>
+                </label>
+                <div id="transferReceiverResult" class="inline-state hidden" role="status"></div>
+                <button id="transferResolveBtn" class="android-primary-button transfer-primary-button" type="button">Continue</button>
+              </div>
+
+              <div class="transfer-favorite-panel">
+                <div class="transfer-panel-heading">
+                  <h3>Favorite Account</h3>
+                  <button id="transferFavoriteRefreshBtn" class="transfer-mini-button" type="button" aria-label="Refresh favorite accounts">Refresh</button>
+                </div>
+                <div id="transferFavoriteList" class="transfer-favorite-list" aria-live="polite">
+                  <div class="transfer-empty-card">No favorite accounts yet.</div>
+                </div>
+              </div>
+            </div>
+
+            <div id="transferStepAmount" class="transfer-step">
+              <div id="transferReceiverCard" class="recipient-card transfer-verified-card"></div>
+              <button id="transferFavoriteAddBtn" class="android-secondary-button transfer-favorite-add hidden" type="button">Add to Favourite</button>
+              <label class="feature-field transfer-field" for="transferAmountInput">
+                <span>Amount</span>
+                <div class="money-input-wrap transfer-money-wrap"><b id="transferCurrencyPrefix">BDT</b><input id="transferAmountInput" type="number" inputmode="decimal" min="1" step="0.01" placeholder="0.00"></div>
+              </label>
+              <label class="feature-field transfer-field" for="transferReferenceInput"><span>Reference <small>Optional</small></span><input id="transferReferenceInput" maxlength="80" placeholder="Reference"></label>
+              <div class="feature-actions transfer-actions"><button class="android-secondary-button" type="button" data-transfer-back="1">Back</button><button id="transferAmountNextBtn" class="android-primary-button" type="button">Continue</button></div>
+            </div>
+
+            <div id="transferStepPin" class="transfer-step">
+              <div class="transfer-step-card">
+                <div class="step-copy transfer-step-title"><h3>Transaction PIN</h3><p>Enter your PIN to prepare a secure preview.</p></div>
+                <label class="feature-field transfer-field" for="transferPinInput"><span>4-digit PIN</span><input id="transferPinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="4" placeholder="...."></label>
+                <div class="feature-actions transfer-actions"><button class="android-secondary-button" type="button" data-transfer-back="2">Back</button><button id="transferPreviewBtn" class="android-primary-button" type="button">Review Transfer</button></div>
+              </div>
+            </div>
+
+            <div id="transferStepReview" class="transfer-step">
+              <div class="review-panel transfer-review-panel">
+                <h3>Review Transfer</h3>
+                <div id="transferReviewRows" class="review-rows"></div>
+              </div>
+              <p class="hold-hint">Tap and hold to confirm transfer</p>
+              <button id="transferHoldConfirmBtn" class="hold-confirm-button transfer-hold-button" type="button" aria-label="Tap and hold to confirm transfer">
+                <span class="hold-confirm-progress" aria-hidden="true"></span>
+                <span class="hold-confirm-label">Tap and hold to confirm transfer</span>
+              </button>
+              <button class="android-secondary-button full-width" type="button" data-transfer-back="3">Edit Transfer</button>
+            </div>
           </div>
         </div>
       </section>
@@ -1033,6 +1062,6 @@ window.USER_LOGIN_URL = '/user/';
 </script>
 <script src="/api/user/assets/dashboard.js?v=36"></script>
 <script src="/api/user/assets/dashboard-ux.js?v=13"></script>
-<script src="/api/user/assets/user-app.js?v=13"></script>
+<script src="/api/user/assets/user-app.js?v=14"></script>
 </body>
 </html>

@@ -71,7 +71,7 @@ expect_true(
     'profile backend no longer rejects authority-field updates'
 );
 
-foreach (['transfer_recipient', 'transfer_preview', 'transfer_create', 'transfer_history'] as $action) {
+foreach (['transfer_recipient', 'transfer_preview', 'transfer_create', 'transfer_history', 'transfer_favorites', 'transfer_favorite_add', 'transfer_favorite_remove'] as $action) {
     expect_true(contains($source['proxy'], "case '{$action}':"), "missing transfer proxy action {$action}");
 }
 expect_true(
@@ -85,8 +85,33 @@ expect_true(
 );
 expect_true(
     contains($source['app_js'], 'app.transfer.submitting')
-    && contains($source['app_js'], 'Press & Hold to Transfer'),
+    && contains($source['app_js'], 'Tap and hold to confirm transfer'),
     'transfer confirmation lacks duplicate-submit or Android-style hold control'
+);
+expect_true(
+    contains($source['dashboard'], 'transfer-page-header')
+    && contains($source['dashboard'], 'Receiver Account')
+    && contains($source['dashboard'], 'transferFavoriteList')
+    && contains($source['dashboard'], 'transferFavoriteAddBtn'),
+    'Android-style Transfer page shell or favorite receiver UI is missing'
+);
+expect_true(
+    contains($source['proxy'], 'USER_TRANSFER_FAVORITES/')
+    && contains($source['proxy'], "transfer/check_recipient.php")
+    && contains($source['proxy'], 'fb_delete($path)'),
+    'Transfer favorite storage must be authenticated, receiver-validated and removable'
+);
+expect_true(
+    contains($source['app_js'], 'invalidateTransferReceiver')
+    && contains($source['app_js'], 'app.transfer.verifiedInput')
+    && contains($source['app_js'], 'loadTransferFavorites'),
+    'Transfer frontend does not invalidate stale receiver state or load favorites'
+);
+expect_true(
+    contains($source['app_css'], "body.user-authenticated[data-active-section='transferSection'] .bottom-nav-inner")
+    && contains($source['app_css'], '#transferSection .transfer-hold-button')
+    && contains($source['app_css'], '.transfer-favorite-item'),
+    'Transfer Android-style scoped CSS or rounded bottom navigation styling is missing'
 );
 
 foreach (['support_config', 'support_list', 'support_details', 'support_create', 'support_reply', 'support_attachment'] as $action) {

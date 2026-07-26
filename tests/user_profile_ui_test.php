@@ -36,8 +36,8 @@ $profile = profile_fragment($dashboard, '<section id="profileSection"', '<sectio
 
 profile_expect($profile !== '', 'Profile section is missing');
 profile_expect(
-    str_contains($dashboard, '/api/user/assets/user-app.css?v=31')
-    && str_contains($dashboard, '/api/user/assets/user-app.js?v=13'),
+    str_contains($dashboard, '/api/user/assets/user-app.css?v=32')
+    && str_contains($dashboard, '/api/user/assets/user-app.js?v=14'),
     'Profile CSS/JS cache versions were not bumped'
 );
 profile_expect(
