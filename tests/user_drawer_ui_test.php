@@ -101,7 +101,7 @@ drawer_expect(
 );
 drawer_expect(
     str_contains($dashboard, '/api/user/assets/user-app.css?v=30')
-    && str_contains($dashboard, '/api/user/assets/dashboard.js?v=35')
+    && str_contains($dashboard, '/api/user/assets/dashboard.js?v=36')
     && str_contains($dashboard, '/api/user/assets/user-app.js?v=13'),
     'Drawer asset versions were not bumped after the alignment CSS/JS change'
 );

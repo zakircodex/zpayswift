@@ -178,5 +178,21 @@ expect_true(
     && contains($source['dashboard_js'], "sidebar.toggleAttribute('inert', hiddenFromLayout)"),
     'dedicated notification page or mobile navigation accessibility guard is missing'
 );
+expect_true(
+    contains($source['dashboard_js'], 'function apiResponseOk')
+    && contains($source['dashboard_js'], 'function apiResponseMessage')
+    && contains($source['dashboard_js'], "Object.prototype.hasOwnProperty.call(json, 'success')")
+    && contains($source['dashboard_js'], 'apiResponseData(json)'),
+    'User Panel proxy response parser does not support the canonical success/error envelope variants'
+);
+expect_true(
+    contains($source['proxy'], 'function user_proxy_internal_api_attempts')
+    && contains($source['proxy'], 'CURLOPT_RESOLVE')
+    && contains($source['proxy'], 'http://127.0.0.1')
+    && contains($source['proxy'], "'Host: ' . \$hostHeader")
+    && contains($source['proxy'], "'X-Forwarded-Proto: '")
+    && contains($source['proxy'], "\$json['ok'] ?? \$json['success'] ?? false"),
+    'User login proxy does not have the safe same-host internal API fallback'
+);
 
 echo "User Panel feature tests passed ({$tests} assertions).\n";

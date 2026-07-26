@@ -26,7 +26,7 @@ $addMoneyJs = ($start !== false && $end !== false) ? substr($js, $start, $end - 
 
 expect_add_money(str_contains($dashboard, 'id="addMoneySection" class="page-section add-money-page-section"'), 'Add Money page shell is missing');
 expect_add_money(!str_contains($dashboard, 'add-money-intro-card') && !str_contains($dashboard, 'id="addMoneyOpenBtn"') && !str_contains($dashboard, 'id="addMoneyReloadBtn"'), 'old Add Money intro/tab card remains visible');
-expect_add_money(str_contains($dashboard, '/api/user/assets/user-app.css?v=30') && str_contains($dashboard, '/api/user/assets/dashboard.js?v=35'), 'Add Money asset cache bust versions were not bumped');
+expect_add_money(str_contains($dashboard, '/api/user/assets/user-app.css?v=30') && str_contains($dashboard, '/api/user/assets/dashboard.js?v=36'), 'Add Money asset cache bust versions were not bumped');
 expect_add_money(str_contains($addMoneyJs, 'function addMoneyCountryProfile') && str_contains($addMoneyJs, 'profile.pricing_country'), 'payment methods are not resolved from pricing country');
 expect_add_money(!str_contains($addMoneyJs, 'phone_country'), 'Add Money UI uses phone_country for payment selection');
 expect_add_money(str_contains($addMoneyJs, 'accountCountry === country') && str_contains($addMoneyJs, 'accountCurrency === currency'), 'payment accounts are not defensively country/currency filtered');

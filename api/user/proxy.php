@@ -188,72 +188,151 @@ function user_proxy_api_base_url(): string
     return rtrim(user_proxy_scheme() . '://' . user_proxy_host() . $apiPath, '/');
 }
 
+function user_proxy_is_loopback_host(string $host): bool
+{
+    $host = strtolower(trim($host, "[] \t\n\r\0\x0B"));
+    return in_array($host, ['localhost', '127.0.0.1', '::1'], true);
+}
+
+function user_proxy_internal_api_attempts(string $url): array
+{
+    $attempts = [];
+    $parts = parse_url($url);
+    $scheme = strtolower((string)($parts['scheme'] ?? 'http'));
+    $host = strtolower((string)($parts['host'] ?? ''));
+    $port = isset($parts['port']) ? (int)$parts['port'] : ($scheme === 'https' ? 443 : 80);
+
+    if ($host !== '' && !user_proxy_is_loopback_host($host)) {
+        $hostHeader = $host;
+        if (isset($parts['port']) && $parts['port'] !== 80 && $parts['port'] !== 443) {
+            $hostHeader .= ':' . (int)$parts['port'];
+        }
+
+        $attempts[] = [
+            'url' => $url,
+            'headers' => [],
+            'options' => [
+                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_TIMEOUT => 10,
+                CURLOPT_RESOLVE => [$host . ':' . $port . ':127.0.0.1'],
+            ],
+        ];
+
+        $path = (string)($parts['path'] ?? '');
+        $query = isset($parts['query']) && $parts['query'] !== '' ? '?' . $parts['query'] : '';
+        if ($path !== '') {
+            $attempts[] = [
+                'url' => 'http://127.0.0.1' . $path . $query,
+                'headers' => ['Host: ' . $hostHeader, 'X-Forwarded-Proto: ' . ($scheme === 'https' ? 'https' : 'http')],
+                'options' => [
+                    CURLOPT_CONNECTTIMEOUT => 3,
+                    CURLOPT_TIMEOUT => 10,
+                ],
+            ];
+        }
+    }
+
+    $attempts[] = [
+        'url' => $url,
+        'headers' => [],
+        'options' => [
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 15,
+        ],
+    ];
+
+    return $attempts;
+}
+
 function user_proxy_internal_api_request(string $method, string $relativePath, ?array $body = null, array $headers = []): array
 {
     $url = user_proxy_api_base_url() . '/' . ltrim($relativePath, '/');
+    $lastResult = null;
 
-    $ch = curl_init();
-    $finalHeaders = ['Accept: application/json'];
+    foreach (user_proxy_internal_api_attempts($url) as $attempt) {
+        $ch = curl_init();
+        $finalHeaders = ['Accept: application/json'];
 
-    foreach ($headers as $k => $v) {
-        $finalHeaders[] = $k . ': ' . $v;
-    }
+        foreach ($headers as $k => $v) {
+            $finalHeaders[] = $k . ': ' . $v;
+        }
 
-    if ($body !== null) {
-        $finalHeaders[] = 'Content-Type: application/json';
-    }
+        foreach ((array)($attempt['headers'] ?? []) as $extraHeader) {
+            $finalHeaders[] = (string)$extraHeader;
+        }
 
-    curl_setopt_array($ch, [
-        CURLOPT_URL => $url,
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_CUSTOMREQUEST => strtoupper($method),
-        CURLOPT_CONNECTTIMEOUT => 5,
-        CURLOPT_TIMEOUT => 15,
-        CURLOPT_HTTPHEADER => $finalHeaders,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-    ]);
+        if ($body !== null) {
+            $finalHeaders[] = 'Content-Type: application/json';
+        }
 
-    if ($body !== null) {
-        curl_setopt(
-            $ch,
-            CURLOPT_POSTFIELDS,
-            json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-        );
-    }
-
-    $raw = curl_exec($ch);
-    $err = curl_error($ch);
-    $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($raw === false) {
-        return [
-            'ok' => false,
-            'status' => 0,
-            'json' => null,
-            'error' => $err ?: 'Unknown cURL error',
-            'raw' => '',
+        $curlOptions = [
+            CURLOPT_URL => (string)$attempt['url'],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => strtoupper($method),
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_HTTPHEADER => $finalHeaders,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
         ];
-    }
 
-    $json = json_decode((string)$raw, true);
+        foreach ((array)($attempt['options'] ?? []) as $option => $value) {
+            $curlOptions[(int)$option] = $value;
+        }
 
-    if (!is_array($json)) {
+        curl_setopt_array($ch, $curlOptions);
+
+        if ($body !== null) {
+            curl_setopt(
+                $ch,
+                CURLOPT_POSTFIELDS,
+                json_encode($body, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+            );
+        }
+
+        $raw = curl_exec($ch);
+        $err = curl_error($ch);
+        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($raw === false) {
+            $lastResult = [
+                'ok' => false,
+                'status' => 0,
+                'json' => null,
+                'error' => $err ?: 'Unknown cURL error',
+                'raw' => '',
+            ];
+            continue;
+        }
+
+        $json = json_decode((string)$raw, true);
+
+        if (!is_array($json)) {
+            $lastResult = [
+                'ok' => false,
+                'status' => $status,
+                'json' => null,
+                'error' => 'Invalid JSON response from internal API',
+                'raw' => substr((string)$raw, 0, 800),
+            ];
+            continue;
+        }
+
         return [
-            'ok' => false,
+            'ok' => $status >= 200 && $status < 300 && (bool)($json['ok'] ?? $json['success'] ?? false),
             'status' => $status,
-            'json' => null,
-            'error' => 'Invalid JSON response from internal API',
+            'json' => $json,
+            'error' => null,
             'raw' => substr((string)$raw, 0, 800),
         ];
     }
 
-    return [
-        'ok' => $status >= 200 && $status < 300 && !empty($json['ok']),
-        'status' => $status,
-        'json' => $json,
-        'error' => null,
-        'raw' => substr((string)$raw, 0, 800),
+    return $lastResult ?: [
+        'ok' => false,
+        'status' => 0,
+        'json' => null,
+        'error' => 'Internal API request failed',
+        'raw' => '',
     ];
 }
 

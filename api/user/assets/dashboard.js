@@ -774,6 +774,28 @@ async function readJsonSafe(res){
   }
 }
 
+function apiResponseOk(json){
+  if (!json || typeof json !== 'object') return false;
+  if (Object.prototype.hasOwnProperty.call(json, 'ok')) return !!json.ok;
+  if (Object.prototype.hasOwnProperty.call(json, 'success')) return !!json.success;
+  return false;
+}
+
+function apiResponseMessage(json, fallback = 'Request failed'){
+  if (!json || typeof json !== 'object') return fallback;
+  return String(json.message || json.error_message || json.error || json.msg || fallback);
+}
+
+function apiResponseCode(json){
+  if (!json || typeof json !== 'object') return 'ERROR';
+  return String(json.code || json.error_code || json.status || 'ERROR');
+}
+
+function apiResponseData(json){
+  if (!json || typeof json !== 'object') return {};
+  return (json.data && typeof json.data === 'object') ? json.data : {};
+}
+
 async function proxyGet(action, params = {}, busyText = 'Loading...', options = {}){
   const useBusy = options.busy !== false;
 
@@ -796,15 +818,15 @@ async function proxyGet(action, params = {}, busyText = 'Loading...', options = 
 
     const json = await readJsonSafe(res);
 
-    if (!res.ok || !json.ok) {
-      const err = new Error(json.message || 'Request failed');
-      err.code = json.code || 'ERROR';
-      err.data = json.data || {};
+    if (!res.ok || !apiResponseOk(json)) {
+      const err = new Error(apiResponseMessage(json));
+      err.code = apiResponseCode(json);
+      err.data = apiResponseData(json);
       err.status = res.status;
       throw err;
     }
 
-    return json.data || {};
+    return apiResponseData(json);
   } finally {
     if (useBusy) {
       setBusy(false);
@@ -839,15 +861,15 @@ async function proxyPost(action, body = {}, busyText = 'Processing...', options 
 
     const json = await readJsonSafe(res);
 
-    if (!res.ok || !json.ok) {
-      const err = new Error(json.message || 'Request failed');
-      err.code = json.code || 'ERROR';
-      err.data = json.data || {};
+    if (!res.ok || !apiResponseOk(json)) {
+      const err = new Error(apiResponseMessage(json));
+      err.code = apiResponseCode(json);
+      err.data = apiResponseData(json);
       err.status = res.status;
       throw err;
     }
 
-    return json.data || {};
+    return apiResponseData(json);
   } finally {
     if (useBusy) {
       setBusy(false);
@@ -4080,15 +4102,15 @@ async function proxyFormPost(action, formData, busyText = 'Processing...', optio
 
     const json = await readJsonSafe(res);
 
-    if (!res.ok || !json.ok) {
-      const err = new Error(json.message || 'Request failed');
-      err.code = json.code || 'ERROR';
-      err.data = json.data || {};
+    if (!res.ok || !apiResponseOk(json)) {
+      const err = new Error(apiResponseMessage(json));
+      err.code = apiResponseCode(json);
+      err.data = apiResponseData(json);
       err.status = res.status;
       throw err;
     }
 
-    return json.data || {};
+    return apiResponseData(json);
   } finally {
     if (useBusy) {
       setBusy(false);
