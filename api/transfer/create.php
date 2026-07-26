@@ -31,9 +31,18 @@ if ($previewToken !== '') {
 
     $duplicateTransferId = trim((string)($claim['transfer_id'] ?? ''));
     if (!empty($claim['duplicate']) && $duplicateTransferId !== '') {
-        $existing = fb_get('TRANSFERS/' . $duplicateTransferId);
+        $existing = zpay_transfer_replay_preview_result($duplicateTransferId, (array)($claim['preview'] ?? []));
+        if (empty($existing['ok'])) {
+            api_response(
+                false,
+                (string)($existing['code'] ?? 'TRANSFER_PROCESSING'),
+                (string)($existing['message'] ?? 'This transfer is still being finalized. Please check status.'),
+                (array)($existing['data'] ?? []),
+                (int)($existing['status'] ?? 409)
+            );
+        }
         api_response(true, 'TRANSFER_SUCCESS', 'Transfer completed successfully.', [
-            'transfer' => zpay_transfer_public_row(is_array($existing) ? $existing : []),
+            'transfer' => zpay_transfer_public_row((array)($existing['transfer'] ?? [])),
         ]);
     }
 

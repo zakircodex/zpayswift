@@ -85,6 +85,22 @@
     return message && message.length <= 220 ? message : String(fallback || 'Please try again.');
   }
 
+  function transferStatusUnknown(error) {
+    const code = String(error && error.code || '').toUpperCase();
+    const status = Number(error && error.status || 0);
+    return status === 0
+      || status >= 500
+      || [
+        'REQUEST_FAILED',
+        'TRANSFER_FAILED',
+        'TRANSFER_PROCESSING',
+        'TRANSFER_STORE_FAILED',
+        'TRANSFER_INDEX_FAILED',
+        'TRANSFER_RETRYABLE',
+        'FINANCIAL_OPERATION_UNAVAILABLE'
+      ].includes(code);
+  }
+
   function profileSafeMessage(error, fallback) {
     const code = String(error && error.code || '').toUpperCase();
     const known = {
@@ -1510,7 +1526,13 @@
       showTransferSuccess(context);
     } catch (error) {
       finishTransferModalClose({ replaceHistory: true });
-      openTransferError('Transfer Not Completed', safeMessage(error, 'No money was moved. Please review and try again.'));
+      const uncertain = transferStatusUnknown(error);
+      openTransferError(
+        uncertain ? 'Transfer Status Unknown' : 'Transfer Not Completed',
+        uncertain
+          ? 'Transfer status could not be confirmed. Please check History before trying again.'
+          : safeMessage(error, 'Transfer could not be completed. Please review again.')
+      );
     } finally {
       app.transfer.submitting = false;
       if (button) button.disabled = false;

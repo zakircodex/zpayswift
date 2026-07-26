@@ -711,7 +711,9 @@ function zpay_transfer_notify_receiver(array $transfer): void
                 'amount_text' => $amountText,
                 'sender_name' => strtoupper($senderName),
             ],
-            'ZPAY_TRANSFER_RECEIVED:' . $transferId
+            'ZPAY_TRANSFER_RECEIVED:' . $transferId,
+            2,
+            1
         );
     }
 }
@@ -944,27 +946,116 @@ function zpay_transfer_completed_operation_result(string $transferId, array $ope
     if ($transferId !== '') {
         $row = fb_get('TRANSFERS/' . $transferId);
         if (is_array($row) && !empty($row)) {
-            return [
-                'ok' => true,
-                'code' => 'TRANSFER_SUCCESS',
-                'message' => 'Transfer completed successfully.',
-                'transfer' => $row,
-            ];
+            return zpay_transfer_success_result($row);
         }
     }
 
     $data = is_array($operation['result_data'] ?? null) ? $operation['result_data'] : [];
     $transfer = is_array($data['transfer'] ?? null) ? $data['transfer'] : [];
     if (!empty($transfer)) {
-        return [
-            'ok' => true,
-            'code' => 'TRANSFER_SUCCESS',
-            'message' => 'Transfer completed successfully.',
-            'transfer' => $transfer,
-        ];
+        return zpay_transfer_success_result($transfer, !empty($operation['finalization_pending']) || !empty($transfer['finalization_pending']));
     }
 
     return zpay_transfer_validation_error('TRANSFER_PROCESSING', 'This transfer is still being finalized. Please check status.', [], 409);
+}
+
+function zpay_transfer_success_result(array $transfer, bool $finalizationPending = false): array
+{
+    if ($finalizationPending) {
+        $transfer['finalization_pending'] = true;
+    }
+    return [
+        'ok' => true,
+        'code' => 'TRANSFER_SUCCESS',
+        'message' => 'Transfer completed successfully.',
+        'transfer' => $transfer,
+        'finalization_pending' => $finalizationPending,
+    ];
+}
+
+function zpay_transfer_transfer_from_preview(string $transferId, array $preview, bool $finalizationPending = false): array
+{
+    $transferId = trim($transferId);
+    if ($transferId === '' || $preview === []) {
+        return [];
+    }
+
+    $currency = wallet_normalize_currency_code((string)($preview['wallet_currency'] ?? $preview['currency'] ?? 'BDT'), 'BDT');
+    $amount = zpay_transfer_money($preview['transfer_amount'] ?? $preview['amount'] ?? 0);
+    $now = now_ts();
+    $createdAt = (int)($preview['processing_at'] ?? $preview['created_at'] ?? $now);
+    $reference = zpay_transfer_clean_reference($preview['reference'] ?? $preview['note'] ?? '');
+
+    return [
+        'transfer_id' => $transferId,
+        'request_id' => $transferId,
+        'type' => 'ZPAY_TRANSFER',
+        'sender_uid' => (string)($preview['sender_uid'] ?? $preview['uid'] ?? ''),
+        'receiver_uid' => (string)($preview['receiver_uid'] ?? ''),
+        'sender_account' => (string)($preview['sender_phone'] ?? $preview['sender_account'] ?? ''),
+        'sender_phone' => (string)($preview['sender_phone'] ?? $preview['sender_account'] ?? ''),
+        'sender_name' => (string)($preview['sender_name'] ?? ''),
+        'receiver_account' => (string)($preview['receiver_phone'] ?? $preview['receiver_account'] ?? ''),
+        'receiver_phone' => (string)($preview['receiver_phone'] ?? $preview['receiver_account'] ?? ''),
+        'receiver_name' => (string)($preview['receiver_name'] ?? ''),
+        'amount' => $amount,
+        'transfer_amount' => $amount,
+        'currency' => $currency,
+        'wallet_currency' => $currency,
+        'fee' => 0,
+        'fee_amount' => 0,
+        'commission' => 0,
+        'commission_amount' => 0,
+        'total_paid' => $amount,
+        'total_debit' => $amount,
+        'status' => 'SUCCESS',
+        'reference' => $reference,
+        'note' => $reference,
+        'created_at' => $createdAt,
+        'updated_at' => $now,
+        'completed_at' => $now,
+        'month' => month_key($createdAt),
+        'finalization_pending' => $finalizationPending,
+    ];
+}
+
+function zpay_transfer_replay_preview_result(string $transferId, array $preview = []): array
+{
+    $transferId = trim($transferId);
+    if ($transferId === '') {
+        return zpay_transfer_validation_error('TRANSFER_PREVIEW_INVALID', 'This transfer preview is invalid. Please review again.');
+    }
+
+    $operation = fb_get(wallet_financial_operation_scope_path($transferId, 'REQUEST_FINAL'));
+    $completed = zpay_transfer_completed_operation_result($transferId, is_array($operation) ? $operation : []);
+    if (!empty($completed['ok'])) {
+        return $completed;
+    }
+
+    $fallback = zpay_transfer_transfer_from_preview($transferId, $preview, true);
+    if ($fallback !== []) {
+        return zpay_transfer_success_result($fallback, true);
+    }
+
+    return $completed;
+}
+
+function zpay_transfer_post_commit_retryable_result(array $claim, string $code, string $message, array $transfer, array $patch = []): array
+{
+    $transfer['finalization_pending'] = true;
+    wallet_financial_operation_mark_failed($claim, $code, $message, array_merge([
+        'sender_debited' => true,
+        'receiver_credited' => true,
+        'sender_ledger_written' => true,
+        'receiver_ledger_written' => true,
+        'request_finalized' => false,
+        'finalization_pending' => true,
+        'result_data' => [
+            'transfer' => $transfer,
+        ],
+    ], $patch));
+
+    return zpay_transfer_success_result($transfer, true);
 }
 
 function zpay_transfer_execute_financial(array $ctx): array
@@ -1172,25 +1263,25 @@ function zpay_transfer_execute_financial(array $ctx): array
 
     $store = wallet_store_transfer_records($transfer, []);
     if (empty($store['ok'])) {
-        wallet_financial_operation_mark_failed($claim, (string)($store['code'] ?? 'TRANSFER_STORE_FAILED'), 'Transfer history could not be saved.', [
-            'sender_debited' => true,
-            'receiver_credited' => true,
-            'request_finalized' => false,
-        ]);
-        return zpay_transfer_validation_error('TRANSFER_STORE_FAILED', 'Transfer history could not be saved.', [], 500);
+        return zpay_transfer_post_commit_retryable_result(
+            $claim,
+            (string)($store['code'] ?? 'TRANSFER_STORE_FAILED'),
+            'Transfer history could not be saved.',
+            $transfer
+        );
     }
 
     if (!fb_put('TRANSFERS/' . $transferId, $transfer)
         || !fb_put('TRANSFER_HISTORY/' . $senderUid . '/' . $transferId, array_merge($transfer, ['direction' => 'OUT']))
         || !fb_put('TRANSFER_HISTORY/' . $receiverUid . '/' . $transferId, array_merge($transfer, ['direction' => 'IN']))
     ) {
-        wallet_financial_operation_mark_failed($claim, 'TRANSFER_INDEX_FAILED', 'Transfer index could not be saved.', [
-            'sender_debited' => true,
-            'receiver_credited' => true,
-            'history_written' => true,
-            'request_finalized' => false,
-        ]);
-        return zpay_transfer_validation_error('TRANSFER_INDEX_FAILED', 'Transfer index could not be saved.', [], 500);
+        return zpay_transfer_post_commit_retryable_result(
+            $claim,
+            'TRANSFER_INDEX_FAILED',
+            'Transfer index could not be saved.',
+            $transfer,
+            ['history_written' => true]
+        );
     }
 
     if ($tokenHash !== '') {
@@ -1204,16 +1295,7 @@ function zpay_transfer_execute_financial(array $ctx): array
         ]);
     }
 
-    system_log('TRANSFER_SUCCESS', $transferId, 'Z-Pay transfer completed', [
-        'sender_uid' => $senderUid,
-        'receiver_uid' => $receiverUid,
-        'amount' => $amount,
-        'currency' => $currency,
-    ]);
-    zpay_transfer_notify_sender($transfer);
-    zpay_transfer_notify_receiver($transfer);
-
-    wallet_financial_operation_mark_completed($claim, [
+    $operationCompleted = wallet_financial_operation_mark_completed($claim, [
         'sender_debited' => true,
         'receiver_credited' => true,
         'sender_ledger_written' => true,
@@ -1226,12 +1308,16 @@ function zpay_transfer_execute_financial(array $ctx): array
         ],
     ]);
 
-    return [
-        'ok' => true,
-        'code' => 'TRANSFER_SUCCESS',
-        'message' => 'Transfer completed successfully.',
-        'transfer' => $transfer,
-    ];
+    system_log('TRANSFER_SUCCESS', $transferId, 'Z-Pay transfer completed', [
+        'sender_uid' => $senderUid,
+        'receiver_uid' => $receiverUid,
+        'amount' => $amount,
+        'currency' => $currency,
+    ]);
+    zpay_transfer_notify_sender($transfer);
+    zpay_transfer_notify_receiver($transfer);
+
+    return zpay_transfer_success_result($transfer, !$operationCompleted);
 }
 
 function zpay_transfer_execute_preview(array $preview, string $tokenHash, string $reference = ''): array
@@ -1372,6 +1458,7 @@ function zpay_transfer_public_row(array $row): array
         'created_at' => (int)($row['created_at'] ?? 0),
         'updated_at' => (int)($row['updated_at'] ?? 0),
         'completed_at' => (int)($row['completed_at'] ?? 0),
+        'finalization_pending' => !empty($row['finalization_pending']),
     ];
 }
 

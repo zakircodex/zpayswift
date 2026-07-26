@@ -83,7 +83,7 @@ function fcm_base64url(string $value): string
     return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
 }
 
-function fcm_access_token(array $serviceAccount): array
+function fcm_access_token(array $serviceAccount, int $timeoutSeconds = 25, int $connectTimeoutSeconds = 10): array
 {
     $clientEmail = trim((string)($serviceAccount['client_email'] ?? ''));
     $privateKey = (string)($serviceAccount['private_key'] ?? '');
@@ -115,8 +115,8 @@ function fcm_access_token(array $serviceAccount): array
             'grant_type' => 'urn:ietf:params:oauth:grant-type:jwt-bearer',
             'assertion' => $jwt,
         ]),
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_TIMEOUT => 25,
+        CURLOPT_CONNECTTIMEOUT => max(1, $connectTimeoutSeconds),
+        CURLOPT_TIMEOUT => max(1, $timeoutSeconds),
     ]);
     $raw = curl_exec($ch);
     $err = curl_error($ch);
@@ -249,7 +249,7 @@ function fcm_active_user_tokens(string $uid): array
     return $out;
 }
 
-function fcm_send_one(string $projectId, string $accessToken, string $token, string $title, string $body, array $data): array
+function fcm_send_one(string $projectId, string $accessToken, string $token, string $title, string $body, array $data, int $timeoutSeconds = 25, int $connectTimeoutSeconds = 10): array
 {
     $payloadData = [];
     foreach ($data as $key => $value) {
@@ -277,8 +277,8 @@ function fcm_send_one(string $projectId, string $accessToken, string $token, str
             'Content-Type: application/json',
         ],
         CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-        CURLOPT_CONNECTTIMEOUT => 10,
-        CURLOPT_TIMEOUT => 25,
+        CURLOPT_CONNECTTIMEOUT => max(1, $connectTimeoutSeconds),
+        CURLOPT_TIMEOUT => max(1, $timeoutSeconds),
     ]);
     $raw = curl_exec($ch);
     $err = curl_error($ch);
@@ -306,7 +306,7 @@ function fcm_error_means_unregister(array $result): bool
         || ($status === 400 && str_contains($code, 'INVALID_ARGUMENT'));
 }
 
-function fcm_send_to_user(string $uid, string $title, string $body, array $data, string $dedupeKey = ''): array
+function fcm_send_to_user(string $uid, string $title, string $body, array $data, string $dedupeKey = '', int $timeoutSeconds = 25, int $connectTimeoutSeconds = 10): array
 {
     $uid = trim($uid);
     if ($uid === '') {
@@ -326,7 +326,7 @@ function fcm_send_to_user(string $uid, string $title, string $body, array $data,
     if ($projectId === '' || $serviceAccount === []) {
         return ['ok' => false, 'code' => 'FCM_CONFIG_MISSING', 'sent' => 0];
     }
-    $access = fcm_access_token($serviceAccount);
+    $access = fcm_access_token($serviceAccount, $timeoutSeconds, $connectTimeoutSeconds);
     if (empty($access['ok'])) {
         return ['ok' => false, 'code' => (string)($access['code'] ?? 'FCM_AUTH_FAILED'), 'sent' => 0];
     }
@@ -334,7 +334,7 @@ function fcm_send_to_user(string $uid, string $title, string $body, array $data,
     $sent = 0;
     $failed = 0;
     foreach ($tokens as $row) {
-        $result = fcm_send_one($projectId, (string)$access['token'], (string)$row['token'], $title, $body, $data);
+        $result = fcm_send_one($projectId, (string)$access['token'], (string)$row['token'], $title, $body, $data, $timeoutSeconds, $connectTimeoutSeconds);
         if (!empty($result['ok'])) {
             $sent++;
             continue;

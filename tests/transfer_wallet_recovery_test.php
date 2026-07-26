@@ -5,6 +5,9 @@ $GLOBALS['fb_store'] = [];
 $GLOBALS['fb_etags'] = [];
 $GLOBALS['wallet_writes'] = [];
 $GLOBALS['fail_put_once'] = [];
+$GLOBALS['fail_put_if_match_status_once'] = [];
+$GLOBALS['fcm_fail_once'] = false;
+$GLOBALS['fcm_calls'] = 0;
 $GLOBALS['test_now'] = 1800000000;
 
 function test_path_parts(string $path): array
@@ -85,6 +88,11 @@ function fb_put_if_match(string $path, $data, string $etag): array
     if ('E' . (string)($GLOBALS['fb_etags'][$path] ?? 0) !== $etag) {
         return ['ok' => false, 'status' => 412];
     }
+    $nextStatus = is_array($data) ? strtoupper(trim((string)($data['status'] ?? ''))) : '';
+    if ($nextStatus !== '' && !empty($GLOBALS['fail_put_if_match_status_once'][$path][$nextStatus])) {
+        unset($GLOBALS['fail_put_if_match_status_once'][$path][$nextStatus]);
+        return ['ok' => false, 'status' => 500];
+    }
     if (!empty($GLOBALS['fail_put_once'][$path])) {
         unset($GLOBALS['fail_put_once'][$path]);
         return ['ok' => false, 'status' => 500];
@@ -105,7 +113,15 @@ function zpay_dash_mask_name(string $name): string { return $name; }
 function zpay_dash_allowed_mobile_role(string $role): bool { return true; }
 function auth_status_value($value): string { return strtoupper(trim((string)$value)); }
 function system_log(string $type, string $ref, string $message, array $context = []): void {}
-function fcm_send_to_user(...$args): array { return ['ok' => true]; }
+function fcm_send_to_user(...$args): array
+{
+    $GLOBALS['fcm_calls'] = (int)($GLOBALS['fcm_calls'] ?? 0) + 1;
+    if (!empty($GLOBALS['fcm_fail_once'])) {
+        $GLOBALS['fcm_fail_once'] = false;
+        return ['ok' => false, 'code' => 'FCM_TIMEOUT', 'sent' => 0, 'failed' => 1];
+    }
+    return ['ok' => true, 'sent' => 1];
+}
 function api_response(bool $ok, string $code, string $message, array $data = [], int $httpStatus = 200): void
 {
     throw new RuntimeException($code . ':' . $message);
@@ -212,13 +228,45 @@ put_wallet('S3', 90.00, 'MYR');
 put_wallet('R3', 10.00, 'MYR');
 $GLOBALS['fail_put_once']['TRANSFERS/TR_FINAL'] = true;
 $finalFail = execute_transfer('TR_FINAL', 'S3', 'R3', 30.00, 'MYR');
-assert_true(empty($finalFail['ok']) && ($finalFail['code'] ?? '') === 'TRANSFER_INDEX_FAILED', 'finalization failure should be reported');
+assert_true(!empty($finalFail['ok']) && ($finalFail['code'] ?? '') === 'TRANSFER_SUCCESS', 'post-commit finalization failure should return safe success');
+assert_true(!empty($finalFail['finalization_pending']) || !empty($finalFail['transfer']['finalization_pending']), 'post-commit finalization failure should retain repair evidence');
+assert_true((float)fb_get('USER_WALLETS/S3')['available_balance'] === 60.00, 'post-commit failure debits sender once');
+assert_true((float)fb_get('USER_WALLETS/R3')['available_balance'] === 40.00, 'post-commit failure credits receiver once');
+$pendingReplay = zpay_transfer_replay_preview_result('TR_FINAL', [
+    'sender_uid' => 'S3',
+    'receiver_uid' => 'R3',
+    'sender_phone' => '60111111111',
+    'receiver_phone' => '60122222222',
+    'sender_name' => 'Sender',
+    'receiver_name' => 'Receiver',
+    'amount' => 30.00,
+    'currency' => 'MYR',
+]);
+assert_true(!empty($pendingReplay['ok']) && ($pendingReplay['code'] ?? '') === 'TRANSFER_SUCCESS', 'committed preview replay should return safe success');
 $writesS3 = wallet_writes('S3');
 $writesR3 = wallet_writes('R3');
 $finalRetry = execute_transfer('TR_FINAL', 'S3', 'R3', 30.00, 'MYR');
 assert_true(!empty($finalRetry['ok']), 'finalization retry should succeed');
 assert_true(wallet_writes('S3') === $writesS3 && wallet_writes('R3') === $writesR3, 'finalization retry must not repeat wallet mutations');
 assert_true(is_array(fb_get('TRANSFERS/TR_FINAL')), 'finalization retry stores transfer row');
+
+put_wallet('S5', 80.00, 'MYR');
+put_wallet('R5', 20.00, 'MYR');
+$GLOBALS['fail_put_if_match_status_once'][wallet_financial_operation_scope_path('TR_MARK', 'REQUEST_FINAL')]['COMPLETED'] = true;
+$markFail = execute_transfer('TR_MARK', 'S5', 'R5', 15.00, 'MYR');
+assert_true(!empty($markFail['ok']) && ($markFail['code'] ?? '') === 'TRANSFER_SUCCESS', 'operation completion mark failure should still return safe success');
+assert_true(!empty($markFail['finalization_pending']) || !empty($markFail['transfer']['finalization_pending']), 'operation completion mark failure should be marked pending');
+assert_true((float)fb_get('USER_WALLETS/S5')['available_balance'] === 65.00, 'mark failure debits sender once');
+assert_true((float)fb_get('USER_WALLETS/R5')['available_balance'] === 35.00, 'mark failure credits receiver once');
+
+put_wallet('S6', 70.00, 'BDT');
+put_wallet('R6', 3.00, 'BDT');
+$GLOBALS['fcm_fail_once'] = true;
+$fcmFail = execute_transfer('TR_FCM', 'S6', 'R6', 12.00, 'BDT');
+assert_true(!empty($fcmFail['ok']) && ($fcmFail['code'] ?? '') === 'TRANSFER_SUCCESS', 'FCM failure must not fail a committed transfer');
+assert_true((float)fb_get('USER_WALLETS/S6')['available_balance'] === 58.00, 'FCM failure debits sender once');
+assert_true((float)fb_get('USER_WALLETS/R6')['available_balance'] === 15.00, 'FCM failure credits receiver once');
+assert_true(notification_count('S6') === 1 && notification_count('R6') === 1, 'FCM failure still records in-app notifications');
 
 put_wallet('S4', 50.00, 'BDT');
 put_wallet('R4', 0.00, 'BDT');
