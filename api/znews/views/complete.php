@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
-require_once dirname(__DIR__) . '/lib/views.php';
+require_once dirname(__DIR__) . '/lib/views_v2.php';
 
 api_require_method('POST');
 $body = api_read_json_body();
@@ -17,7 +17,7 @@ if ($viewToken === '' || strlen($viewToken) > 160) {
     api_response(false, 'ZNEWS_VIEW_TOKEN_REQUIRED', 'view_token is required.', [], 422);
 }
 
-$result = znews_view_complete($viewId, $viewToken);
+$result = znews_view_complete_v2($viewId, $viewToken);
 api_response(
     !empty($result['ok']),
     (string)($result['code'] ?? 'ZNEWS_VIEW_COMPLETE_FAILED'),
