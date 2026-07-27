@@ -45,7 +45,7 @@ znews_moderation_expect(str_contains($moderation, 'auth_require_admin_session') 
 znews_moderation_expect(str_contains($moderation, 'fb_put_if_match'), 'moderation does not use optimistic concurrency');
 znews_moderation_expect(str_contains($moderation, 'ZNEWS_ADMIN_IDEMPOTENCY/'), 'admin idempotency is missing');
 znews_moderation_expect(str_contains($moderation, 'lease_expires_at'), 'admin action lease is missing');
-znews_moderation_expect(str_contains($moderation, "status'] = $approve ? 'ACTIVE' : 'BLOCKED'"), 'approve/reject status transition is missing');
+znews_moderation_expect(str_contains($moderation, "status'] = \$approve ? 'ACTIVE' : 'BLOCKED'"), 'approve/reject status transition is missing');
 znews_moderation_expect(str_contains($moderation, 'ZNEWS_COPYRIGHT_CHECKS/'), 'copyright audit records are missing');
 znews_moderation_expect(str_contains($moderation, 'ZNEWS_MODERATION_ACTIONS/'), 'moderation audit records are missing');
 znews_moderation_expect(str_contains($moderation, 'znews_path_public_feed($postId) => $publicIndex'), 'public feed activation/removal is missing');
