@@ -1,21 +1,50 @@
+body.user-dashboard-page {
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.user-dashboard-page #appView,
+.user-dashboard-page .app-shell,
+.user-dashboard-page .main-panel,
+.user-dashboard-page .user-page-panel {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.user-dashboard-page .user-page-panel {
+  padding-bottom: 0;
+}
+
 .user-dashboard-page .user-page-content {
-  width: min(100%, 760px);
-  padding-top: 14px;
+  width: min(100%, 560px);
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  margin: 0 auto;
+  padding: 10px 12px calc(var(--z-nav-height) + 14px + env(safe-area-inset-bottom));
+  overflow: hidden;
 }
 
 .user-dashboard-page .dashboard-fixed-stack {
   width: 100%;
+  min-width: 0;
 }
 
 .user-dashboard-page .hero-card {
   position: relative;
-  min-height: 350px;
+  width: 100%;
+  height: clamp(258px, 70vw, 300px);
+  min-height: 0;
   overflow: hidden;
-  padding: 20px;
-  border: 1px solid rgba(50, 230, 134, 0.3);
+  padding: 14px 16px;
+  border: 1px solid rgba(50, 230, 134, 0.34);
   border-radius: 28px;
-  background: linear-gradient(135deg, #123f80 0%, #075c75 56%, #08a977 100%);
-  box-shadow: var(--z-shadow);
+  background:
+    linear-gradient(135deg, rgba(18, 63, 128, 0.98) 0%, rgba(5, 93, 112, 0.98) 55%, rgba(5, 174, 119, 0.98) 100%);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
 }
 
 .user-dashboard-page .hero-card > * {
@@ -27,30 +56,44 @@
   position: absolute;
   z-index: 0;
   border-radius: 50%;
-  background: rgba(50, 230, 134, 0.11);
+  background: rgba(68, 231, 142, 0.12);
   pointer-events: none;
 }
 
 .user-dashboard-page .dashboard-orb-one {
-  width: 180px;
-  height: 180px;
-  top: -62px;
-  right: -34px;
+  width: 176px;
+  height: 176px;
+  top: -60px;
+  right: -36px;
 }
 
 .user-dashboard-page .dashboard-orb-two {
-  width: 112px;
-  height: 112px;
-  right: 42px;
-  bottom: -45px;
+  width: 118px;
+  height: 118px;
+  right: 44px;
+  bottom: -54px;
+  background: rgba(11, 64, 126, 0.22);
+}
+
+.user-dashboard-page .dashboard-orb-three {
+  width: 76px;
+  height: 76px;
+  right: -18px;
+  bottom: 38px;
+  background: rgba(50, 230, 134, 0.1);
 }
 
 .user-dashboard-page .dashboard-hero-topbar {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 24px;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.user-dashboard-page .dashboard-hero-topbar .icon-btn {
+  width: 44px;
+  height: 44px;
 }
 
 .user-dashboard-page .dashboard-hero-title {
@@ -58,8 +101,9 @@
   margin: 0;
   overflow: hidden;
   color: var(--z-text);
-  font-size: 26px;
+  font-size: 24px;
   font-weight: 900;
+  letter-spacing: 0;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -67,79 +111,169 @@
 
 .user-dashboard-page .hero-balance-label {
   color: var(--z-muted);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 700;
+  line-height: 1.2;
 }
 
 .user-dashboard-page .hero-balance-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 8px;
+  gap: 8px;
+  margin-top: 3px;
 }
 
 .user-dashboard-page .hero-balance {
   min-width: 0;
+  overflow: hidden;
   color: var(--z-text);
-  font-size: clamp(30px, 9vw, 46px);
+  font-size: 34px;
   font-weight: 900;
+  letter-spacing: 0;
   line-height: 1.08;
-  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-dashboard-page .hero-balance.is-long {
+  font-size: 29px;
+}
+
+.user-dashboard-page .hero-balance.is-very-long {
+  font-size: 25px;
 }
 
 .user-dashboard-page .hero-add-money {
+  min-width: 102px;
+  min-height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0 10px;
+  border-radius: 22px;
+  font-size: 12px;
 }
 
 .user-dashboard-page .hero-hold-line {
-  margin-top: 14px;
+  margin-top: 6px;
+  overflow: hidden;
   color: var(--z-muted);
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-dashboard-page .hero-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.user-dashboard-page .hero-mini {
+  height: 60px;
+  min-height: 60px;
+  gap: 4px;
+  padding: 5px 4px;
+  border-radius: 18px;
+}
+
+.user-dashboard-page .hero-mini-label,
+.user-dashboard-page .hero-mini-value {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-dashboard-page .hero-mini-label {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.user-dashboard-page .hero-mini-value {
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .user-dashboard-page .android-tagline {
   width: 100%;
-  margin-right: 0;
-  margin-left: 0;
+  height: 44px;
+  margin: 10px 0 0;
+  border-radius: 22px;
+}
+
+.user-dashboard-page .android-tagline-track {
+  min-width: max-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 48px;
+  padding-left: 0;
+  font-size: 13px;
+  animation: dashboardTagline 18s linear infinite;
+}
+
+.user-dashboard-page .android-tagline-item {
+  display: block;
+  padding: 0 18px;
+}
+
+@keyframes dashboardTagline {
+  from { transform: translateX(0); }
+  to { transform: translateX(calc(-50% - 24px)); }
 }
 
 .user-dashboard-page #overviewSection {
+  min-height: 0;
   margin: 0;
+  padding: 12px 0 16px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
 
 .user-dashboard-page .dashboard-recommended {
-  margin-right: 0;
-  margin-left: 0;
+  margin: 0;
+}
+
+.user-dashboard-page .zpay-quick-head {
+  margin-bottom: 9px;
 }
 
 .user-dashboard-page .zpay-quick-title {
   margin: 0;
-  font-size: 25px;
+  font-size: 22px;
   font-weight: 900;
+  letter-spacing: 0;
 }
 
 .user-dashboard-page .zpay-service-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .user-dashboard-page .zpay-service-btn {
+  width: 100%;
   min-width: 0;
-  min-height: 142px;
+  height: 104px;
+  min-height: 104px;
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 12px;
-  padding: 14px 8px;
+  gap: 8px;
+  padding: 10px 6px;
   border: 1px solid var(--z-line-strong);
-  border-radius: 22px;
+  border-radius: 18px;
   color: var(--z-text);
-  background: rgba(11, 45, 92, 0.78);
+  background: rgba(11, 45, 92, 0.8);
   text-align: center;
 }
 
@@ -148,8 +282,8 @@
 }
 
 .user-dashboard-page .zpay-service-icon {
-  width: 54px;
-  height: 54px;
+  width: 42px;
+  height: 42px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -160,75 +294,144 @@
 }
 
 .user-dashboard-page .zpay-service-icon svg {
-  width: 27px;
-  height: 27px;
+  width: 24px;
+  height: 24px;
   fill: currentColor;
 }
 
 .user-dashboard-page .zpay-service-name {
   max-width: 100%;
-  overflow-wrap: anywhere;
-  font-size: 14px;
+  overflow: hidden;
+  font-size: 12px;
   font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-@media (min-width: 769px) {
-  .user-dashboard-page .user-page-content {
-    width: min(calc(100% - 32px), 820px);
+.user-dashboard-page .bottom-nav-inner {
+  width: min(100%, 560px);
+}
+
+@media (min-width: 600px) {
+  .user-dashboard-page .android-tagline-track {
+    width: 100%;
+    min-width: 0;
+    display: block;
+    overflow: hidden;
+    padding: 0 18px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    animation: none;
+  }
+
+  .user-dashboard-page .android-tagline-item {
+    display: block;
+    overflow: hidden;
+    padding: 0;
+    text-overflow: ellipsis;
+  }
+
+  .user-dashboard-page .android-tagline-item + .android-tagline-item {
+    display: none;
   }
 }
 
-@media (max-width: 480px) {
+@media (prefers-reduced-motion: reduce) {
+  .user-dashboard-page .android-tagline-track {
+    width: 100%;
+    min-width: 0;
+    display: block;
+    overflow: hidden;
+    padding: 0 18px;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    animation: none;
+  }
+
+  .user-dashboard-page .android-tagline-item {
+    display: block;
+    overflow: hidden;
+    padding: 0;
+    text-overflow: ellipsis;
+  }
+
+  .user-dashboard-page .android-tagline-item + .android-tagline-item {
+    display: none;
+  }
+}
+
+@media (max-width: 375px) {
+  .user-dashboard-page .hero-balance {
+    font-size: 29px;
+  }
+
+  .user-dashboard-page .hero-balance.is-long {
+    font-size: 26px;
+  }
+
+  .user-dashboard-page .hero-balance.is-very-long {
+    font-size: 23px;
+  }
+
+  .user-dashboard-page .hero-mini-value {
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 359px) {
   .user-dashboard-page .user-page-content {
-    padding-right: 12px;
-    padding-left: 12px;
+    padding-right: 10px;
+    padding-left: 10px;
   }
 
   .user-dashboard-page .hero-card {
-    min-height: 330px;
-    padding: 16px;
+    height: 258px;
+    padding: 12px 14px;
     border-radius: 24px;
   }
 
   .user-dashboard-page .dashboard-hero-title {
-    font-size: 23px;
+    font-size: 21px;
   }
 
   .user-dashboard-page .hero-balance {
-    font-size: 33px;
+    font-size: 25px;
+  }
+
+  .user-dashboard-page .hero-balance.is-long {
+    font-size: 23px;
+  }
+
+  .user-dashboard-page .hero-balance.is-very-long {
+    font-size: 20px;
   }
 
   .user-dashboard-page .hero-add-money {
-    min-height: 44px;
-    padding: 0 13px;
+    min-width: 94px;
+    min-height: 38px;
+    padding: 0 8px;
+    font-size: 11px;
   }
 
-  .user-dashboard-page .hero-grid {
-    gap: 7px;
+  .user-dashboard-page .hero-mini-label {
+    font-size: 10px;
   }
 
-  .user-dashboard-page .hero-mini {
-    min-height: 76px;
-    padding: 8px 5px;
+  .user-dashboard-page .hero-mini-value {
+    font-size: 8px;
   }
 
   .user-dashboard-page .zpay-service-grid {
-    gap: 9px;
+    gap: 7px;
   }
 
   .user-dashboard-page .zpay-service-btn {
-    min-height: 128px;
-    border-radius: 20px;
-  }
-}
-
-@media (max-width: 340px) {
-  .user-dashboard-page .hero-balance-row {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .user-dashboard-page .hero-add-money {
-    align-self: flex-end;
+    height: 98px;
+    min-height: 98px;
+    border-radius: 16px;
   }
 }

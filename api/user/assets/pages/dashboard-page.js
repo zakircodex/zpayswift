@@ -39,10 +39,17 @@
 
     byId('heroBalancePrefix').textContent = prefix;
     byId('heroHoldPrefix').textContent = prefix;
-    byId('heroBalance').textContent = amount(wallet.display_available_balance ?? wallet.available_balance);
+    const balanceText = amount(wallet.display_available_balance ?? wallet.available_balance);
+    const balanceValue = byId('heroBalance');
+    const balanceLine = balanceValue?.closest('.hero-balance');
+    if (balanceValue) balanceValue.textContent = balanceText;
+    balanceLine?.classList.toggle('is-long', balanceText.length > 9);
+    balanceLine?.classList.toggle('is-very-long', balanceText.length > 12);
     byId('heroHold').textContent = amount(wallet.display_hold_balance ?? wallet.hold_balance);
     byId('heroRequests').textContent = String(Array.isArray(logs.items) ? logs.items.length : 0);
-    byId('heroName').textContent = String(user.name || summary.name || 'Z-Pay User');
+    const displayName = String(user.name || summary.name || 'Z-Pay User');
+    byId('heroName').textContent = displayName;
+    byId('heroName').title = displayName;
     byId('heroRate').textContent = pricingCountry === 'MY' || currency === 'MYR'
       ? (rate > 0 ? `RM 1 = ${rate.toFixed(2)} BDT` : 'Rate unavailable')
       : 'Not applicable';

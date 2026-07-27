@@ -95,8 +95,23 @@ dashboard_expect(
     str_contains($pageCss, '.user-dashboard-page .hero-card')
     && str_contains($pageCss, '.user-dashboard-page .dashboard-orb')
     && str_contains($pageCss, 'grid-template-columns: repeat(3, minmax(0, 1fr))')
-    && str_contains($pageCss, '@media (max-width: 340px)'),
+    && str_contains($pageCss, '@media (max-width: 359px)'),
     'Dashboard responsive hero/service layout is incomplete'
+);
+dashboard_expect(
+    str_contains($dashboard, 'class="page-section dashboard-scroll-body active"')
+    && str_contains($pageCss, 'body.user-dashboard-page')
+    && str_contains($pageCss, 'height: 100dvh')
+    && str_contains($pageCss, '.user-dashboard-page #overviewSection')
+    && str_contains($pageCss, 'overflow-y: auto'),
+    'Dashboard fixed hero and body-only scroll architecture is incomplete'
+);
+dashboard_expect(
+    str_contains($pageCss, 'white-space: nowrap')
+    && str_contains($pageCss, '.user-dashboard-page .hero-balance.is-long')
+    && str_contains($pageJs, "balanceLine?.classList.toggle('is-long'")
+    && str_contains($pageCss, 'height: 104px'),
+    'Dashboard balance fitting or compact service-card treatment is incomplete'
 );
 dashboard_expect(
     str_contains($bottomNav, "['dashboard', '/user/dashboard'")

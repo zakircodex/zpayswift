@@ -36,6 +36,7 @@ user_page_begin($page);
   <div class="hero-card" aria-labelledby="dashboardHeroTitle">
     <span class="dashboard-orb dashboard-orb-one" aria-hidden="true"></span>
     <span class="dashboard-orb dashboard-orb-two" aria-hidden="true"></span>
+    <span class="dashboard-orb dashboard-orb-three" aria-hidden="true"></span>
     <div class="dashboard-hero-topbar">
       <button id="openSidebarBtn" class="icon-btn hero-menu-button" type="button" aria-label="Open menu" aria-controls="sidebar" aria-expanded="false">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6.5h16v2H4v-2Zm0 4.5h16v2H4v-2Zm0 4.5h16v2H4v-2Z"/></svg>
@@ -78,7 +79,7 @@ user_page_begin($page);
   </div>
 </div>
 
-<section id="overviewSection" class="page-section active">
+<section id="overviewSection" class="page-section dashboard-scroll-body active">
   <div id="zpayQuickActions" class="zpay-quick-card dashboard-recommended">
     <div class="zpay-quick-head"><h2 class="zpay-quick-title">Recommended</h2></div>
     <div class="zpay-service-grid">
