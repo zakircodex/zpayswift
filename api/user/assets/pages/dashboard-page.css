@@ -36,7 +36,7 @@ body.user-dashboard-page {
 .user-dashboard-page .hero-card {
   position: relative;
   width: 100%;
-  height: clamp(258px, 70vw, 300px);
+  height: auto;
   min-height: 0;
   overflow: hidden;
   padding: 14px 16px;
@@ -503,7 +503,7 @@ body.user-dashboard-page {
   }
 
   .user-dashboard-page .hero-card {
-    height: 258px;
+    height: auto;
     padding: 12px 14px;
     border-radius: 24px;
   }
