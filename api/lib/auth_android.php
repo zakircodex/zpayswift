@@ -314,6 +314,142 @@ function auth_app_trusted_login_allowed(string $uid, string $deviceId): bool
     return auth_device_is_trusted($uid, $deviceId);
 }
 
+function auth_app_repair_device_trust_from_current_session(
+    string $uid,
+    string $deviceId,
+    string $deviceName = '',
+    string $appVersion = ''
+): array {
+    $uid = auth_clean_string($uid);
+    $deviceId = auth_clean_string($deviceId);
+    if ($uid === '' || $deviceId === '') {
+        return [
+            'ok' => false,
+            'code' => 'DEVICE_REQUIRED',
+            'message' => 'Device verification required.',
+            'http_status' => 422,
+        ];
+    }
+
+    if (auth_device_is_trusted($uid, $deviceId)) {
+        return ['ok' => true, 'repaired' => false];
+    }
+
+    $token = auth_get_session_token_from_request();
+    if ($token === '') {
+        return [
+            'ok' => false,
+            'code' => 'SESSION_EXPIRED',
+            'message' => 'Session expired. Please sign in again.',
+            'http_status' => 401,
+        ];
+    }
+
+    $session = get_session_by_token($token);
+    if (!is_array($session)) {
+        return [
+            'ok' => false,
+            'code' => 'SESSION_EXPIRED',
+            'message' => 'Session not found. Please sign in again.',
+            'http_status' => 401,
+        ];
+    }
+
+    $sessionStatus = auth_status_value($session['status'] ?? '');
+    if ($sessionStatus !== 'ACTIVE') {
+        return [
+            'ok' => false,
+            'code' => 'SESSION_EXPIRED',
+            'message' => 'Session is inactive. Please sign in again.',
+            'http_status' => 401,
+        ];
+    }
+
+    $expiresAt = (int)($session['expires_at'] ?? 0);
+    if ($expiresAt > 0 && $expiresAt < now_ts()) {
+        if (!empty($session['_session_hash'])) {
+            @fb_patch('USER_SESSIONS/' . $session['_session_hash'], [
+                'status' => 'EXPIRED',
+                'updated_at' => now_ts(),
+            ]);
+        }
+
+        return [
+            'ok' => false,
+            'code' => 'SESSION_EXPIRED',
+            'message' => 'Session expired. Please sign in again.',
+            'http_status' => 401,
+        ];
+    }
+
+    if (auth_clean_string($session['uid'] ?? '') !== $uid) {
+        return [
+            'ok' => false,
+            'code' => 'UNAUTHORIZED',
+            'message' => 'Session does not match this account.',
+            'http_status' => 401,
+        ];
+    }
+
+    if (auth_clean_string($session['device_id'] ?? '') !== $deviceId) {
+        return [
+            'ok' => false,
+            'code' => 'DEVICE_REPLACED',
+            'message' => 'This account is logged in on another device.',
+            'http_status' => 401,
+        ];
+    }
+
+    $user = fb_get('USERS/' . $uid);
+    if (!is_array($user)) {
+        return [
+            'ok' => false,
+            'code' => 'ACCOUNT_NOT_FOUND',
+            'message' => 'Account not found.',
+            'http_status' => 404,
+        ];
+    }
+
+    $activeDeviceId = auth_clean_string($user['active_device_id'] ?? $user['ACTIVE_DEVICE_ID'] ?? '');
+    if ($activeDeviceId === '' || $activeDeviceId !== $deviceId) {
+        return [
+            'ok' => false,
+            'code' => 'DEVICE_REPLACED',
+            'message' => 'This account is logged in on another device.',
+            'http_status' => 401,
+        ];
+    }
+
+    $userSessionEpoch = auth_session_epoch_from_user($user);
+    $sessionEpoch = auth_clean_string($session['auth_session_epoch'] ?? $session['session_epoch'] ?? '');
+    if ($userSessionEpoch !== '' && $sessionEpoch !== $userSessionEpoch) {
+        if (!empty($session['_session_hash'])) {
+            @fb_patch('USER_SESSIONS/' . $session['_session_hash'], [
+                'status' => 'RESET_REVOKED',
+                'updated_at' => now_ts(),
+            ]);
+        }
+
+        return [
+            'ok' => false,
+            'code' => 'SESSION_EXPIRED',
+            'message' => 'Session expired. Please sign in again.',
+            'http_status' => 401,
+        ];
+    }
+
+    if (!auth_mark_device_trusted($uid, $deviceId, $deviceName, $appVersion)) {
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Unable to restore trusted device state. Please sign in again.',
+            'http_status' => 500,
+        ];
+    }
+
+    return ['ok' => true, 'repaired' => true];
+}
+
 function auth_app_revoke_user_sessions_and_trust(string $uid): void
 {
     $uid = auth_clean_string($uid);

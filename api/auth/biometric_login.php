@@ -84,13 +84,28 @@ if ($preAuthToken !== '') {
     $meta = auth_request_metadata($body);
 }
 
-if (!auth_app_trusted_login_allowed($uid, $deviceId)
-    || !biometric_login_has_valid_trusted_cookie($uid, $trustedDeviceCookie)) {
+if (!biometric_login_has_valid_trusted_cookie($uid, $trustedDeviceCookie)) {
     api_response(false, 'DEVICE_REPLACED', 'This account is logged in on another device.', [], 401);
 }
 
 $meta['app_version'] = trim((string)($body['app_version'] ?? ($meta['app_version'] ?? '')));
 $meta['verification_method'] = 'BIOMETRIC';
+$trust = auth_app_repair_device_trust_from_current_session(
+    $uid,
+    $deviceId,
+    $deviceName,
+    (string)$meta['app_version']
+);
+if (empty($trust['ok'])) {
+    api_response(
+        false,
+        (string)($trust['code'] ?? 'SESSION_EXPIRED'),
+        (string)($trust['message'] ?? 'Session expired. Please sign in again.'),
+        [],
+        (int)($trust['http_status'] ?? 401)
+    );
+}
+
 $session = auth_app_issue_session($user, $uid, $deviceId, $deviceName, $meta);
 
 if ($preAuthToken !== '') {

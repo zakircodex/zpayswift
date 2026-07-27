@@ -11,6 +11,7 @@ $versions = [];
 $getPaths = [];
 $failUserPatch = false;
 $ownerQueryRows = [];
+$requestHeaders = [];
 
 function test_parts(string $path): array
 {
@@ -113,6 +114,12 @@ function fb_request(
     ];
 }
 
+function api_get_header(string $name): ?string
+{
+    global $requestHeaders;
+    return $requestHeaders[strtolower($name)] ?? null;
+}
+
 function now_ts(): int
 {
     global $testNow;
@@ -135,6 +142,7 @@ function client_ip(): string
 }
 
 require_once dirname(__DIR__) . '/api/lib/auth.php';
+require_once dirname(__DIR__) . '/api/lib/auth_android.php';
 require_once dirname(__DIR__) . '/api/lib/users_admin.php';
 
 function assert_true(bool $condition, string $message): void
@@ -223,6 +231,56 @@ $failedSession = auth_issue_website_user_session((array)$userRow, 'U1', 'USER_WE
 $failUserPatch = false;
 assert_true(empty($failedSession['ok']), 'checked user-state write failure must stop session creation');
 
+test_set('USERS/U2', [
+    'uid' => 'U2',
+    'phone' => '60146321294',
+    'role' => 'USER',
+    'status' => 'ACTIVE',
+    'account_status' => 'ACTIVE',
+    'active_device_id' => 'ANDROID_DEV',
+    'ACTIVE_DEVICE_ID' => 'ANDROID_DEV',
+    'auth_session_epoch' => 'ANDROID_EPOCH',
+    'pin_hash' => password_hash('1234', PASSWORD_DEFAULT),
+]);
+$androidToken = 'ANDROID_VALID_SESSION_TOKEN';
+$androidHash = session_hash($androidToken);
+test_set('USER_SESSIONS/' . $androidHash, [
+    'uid' => 'U2',
+    'device_id' => 'ANDROID_DEV',
+    'status' => 'ACTIVE',
+    'expires_at' => now_ts() + 3600,
+    'auth_session_epoch' => 'ANDROID_EPOCH',
+]);
+$requestHeaders = ['x-session-token' => $androidToken];
+$repair = auth_app_repair_device_trust_from_current_session('U2', 'ANDROID_DEV', 'Android App Test', '1.0.0');
+assert_true(!empty($repair['ok']) && !empty($repair['repaired']), 'Android quick login must repair missing device-trust row from same active session');
+assert_true(auth_app_trusted_login_allowed('U2', 'ANDROID_DEV'), 'repaired Android device must pass trusted quick-login check');
+
+test_set('USERS/U3', [
+    'uid' => 'U3',
+    'phone' => '60100000003',
+    'role' => 'USER',
+    'status' => 'ACTIVE',
+    'account_status' => 'ACTIVE',
+    'active_device_id' => 'ANDROID_EXPIRED',
+    'ACTIVE_DEVICE_ID' => 'ANDROID_EXPIRED',
+    'auth_session_epoch' => 'ANDROID_EXPIRED_EPOCH',
+]);
+$expiredToken = 'ANDROID_EXPIRED_SESSION_TOKEN';
+$expiredHash = session_hash($expiredToken);
+test_set('USER_SESSIONS/' . $expiredHash, [
+    'uid' => 'U3',
+    'device_id' => 'ANDROID_EXPIRED',
+    'status' => 'ACTIVE',
+    'expires_at' => now_ts() - 1,
+    'auth_session_epoch' => 'ANDROID_EXPIRED_EPOCH',
+]);
+$requestHeaders = ['x-session-token' => $expiredToken];
+$expiredRepair = auth_app_repair_device_trust_from_current_session('U3', 'ANDROID_EXPIRED', 'Android App Test', '1.0.0');
+assert_true(empty($expiredRepair['ok']) && ($expiredRepair['code'] ?? '') === 'SESSION_EXPIRED', 'expired Android quick-login session must return canonical SESSION_EXPIRED');
+assert_true(!auth_app_trusted_login_allowed('U3', 'ANDROID_EXPIRED'), 'expired Android session must not repair trusted-device state');
+$requestHeaders = [];
+
 $ownerQueryRows = [
     'parent_subadmin_uid' => ['OWN_1' => ['uid' => 'OWN_1', 'parent_subadmin_uid' => 'SUB_1']],
     'created_by_uid' => ['OWN_2' => ['uid' => 'OWN_2', 'created_by_uid' => 'SUB_1']],
@@ -234,6 +292,8 @@ $root = dirname(__DIR__);
 $registerJs = (string)file_get_contents($root . '/api/user/assets/register.js');
 $registerProxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $userVerify = (string)file_get_contents($root . '/api/auth/user_login_verify_otp.php');
+$pinLogin = (string)file_get_contents($root . '/api/auth/pin_login.php');
+$biometricLogin = (string)file_get_contents($root . '/api/auth/biometric_login.php');
 $adminProxy = (string)file_get_contents($root . '/api/admin/proxy.php');
 $mfsPending = (string)file_get_contents($root . '/api/admin/mfs/pending.php');
 $htaccess = (string)file_get_contents($root . '/.htaccess');
@@ -258,6 +318,8 @@ assert_true(str_contains($registerJs, 'identity_number'), 'registration JS must 
 assert_true(str_contains($registerProxy, "'identity_number'"), 'registration proxy must forward identity number');
 assert_true(str_contains($userVerify, 'auth_otp_claim_verification'), 'user OTP endpoint must use CAS claim');
 assert_true(!str_contains($userVerify, 'auth_activate_user_device('), 'user OTP endpoint must not run global session revocation');
+assert_true(str_contains($pinLogin, 'auth_app_repair_device_trust_from_current_session'), 'PIN quick login must repair same-device trust from the saved session');
+assert_true(str_contains($biometricLogin, 'auth_app_repair_device_trust_from_current_session'), 'Biometric quick login must repair same-device trust from the saved session');
 assert_true(!str_contains($adminProxy, "'internal_url' =>"), 'admin proxy must not expose internal URLs');
 assert_true(str_contains($adminProxy, "case 'logout':") && str_contains($adminProxy, 'proxy_require_csrf();'), 'admin logout must require CSRF');
 assert_true(!str_contains($mfsPending, 'getMessage()'), 'admin MFS errors must not expose exception details');

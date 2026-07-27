@@ -23,12 +23,28 @@ $user = (array)$account['user'];
 auth_app_guard_user_login($user);
 
 $activeDeviceId = auth_clean_string($user['active_device_id'] ?? $user['ACTIVE_DEVICE_ID'] ?? '');
-if ($activeDeviceId === '' || $activeDeviceId !== $deviceId || !auth_device_is_trusted($uid, $deviceId)) {
+if ($activeDeviceId === '' || $activeDeviceId !== $deviceId) {
     api_response(false, 'DEVICE_REPLACED', 'এই অ্যাকাউন্ট অন্য ডিভাইসে লগইন করা হয়েছে।', [], 401);
 }
 
 if (!auth_app_pin_ok($user, $pin)) {
     api_response(false, 'WRONG_PIN', 'PIN ভুল হয়েছে।', [], 401);
+}
+
+$trust = auth_app_repair_device_trust_from_current_session(
+    $uid,
+    $deviceId,
+    $deviceName,
+    trim((string)($body['app_version'] ?? ''))
+);
+if (empty($trust['ok'])) {
+    api_response(
+        false,
+        (string)($trust['code'] ?? 'SESSION_EXPIRED'),
+        (string)($trust['message'] ?? 'Session expired. Please sign in again.'),
+        [],
+        (int)($trust['http_status'] ?? 401)
+    );
 }
 
 $session = auth_app_issue_session($user, $uid, $deviceId, $deviceName, auth_request_metadata($body) + [
