@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
-require_once dirname(__DIR__) . '/lib/posts.php';
+require_once dirname(__DIR__) . '/lib/post_media_attach.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -10,14 +10,24 @@ api_require_app_key();
 $auth = znews_require_creator(true);
 $body = api_read_json_body();
 
-$text = znews_validate_post_text($body['text'] ?? '', 1, 5000);
+$content = znews_post_validate_content(
+    $body['text'] ?? '',
+    $body['media_id'] ?? $body['image_media_id'] ?? ''
+);
 $idempotencyKey = znews_idempotency_key(
     $body['idempotency_key']
     ?? $body['client_request_id']
     ?? ''
 );
 
-$result = znews_create_text_post($auth, $text, $idempotencyKey);
+$result = znews_create_post_with_media(
+    $auth,
+    (string)$content['text'],
+    (string)$content['media_id'],
+    (string)$content['content_type'],
+    $idempotencyKey
+);
+
 if (empty($result['ok'])) {
     api_response(
         false,
