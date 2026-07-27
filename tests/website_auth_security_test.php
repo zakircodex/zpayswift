@@ -9,9 +9,11 @@ $testNow = 1700000000;
 $store = [];
 $versions = [];
 $getPaths = [];
+$writePaths = [];
 $failUserPatch = false;
 $ownerQueryRows = [];
 $requestHeaders = [];
+$firebaseDelayUs = [];
 
 function test_parts(string $path): array
 {
@@ -48,20 +50,26 @@ function test_set(string $path, $value): void
 
 function fb_get(string $path, array $query = [])
 {
-    global $getPaths;
+    global $getPaths, $firebaseDelayUs;
     $getPaths[] = $path;
+    if (!empty($firebaseDelayUs[$path])) {
+        usleep((int)$firebaseDelayUs[$path]);
+    }
     return test_get($path);
 }
 
 function fb_put(string $path, $data): bool
 {
+    global $writePaths;
+    $writePaths[] = $path;
     test_set($path, $data);
     return true;
 }
 
 function fb_patch(string $path, array $data): bool
 {
-    global $failUserPatch;
+    global $failUserPatch, $writePaths;
+    $writePaths[] = $path;
     if ($failUserPatch && str_starts_with($path, 'USERS/')) {
         return false;
     }
@@ -72,6 +80,8 @@ function fb_patch(string $path, array $data): bool
 
 function fb_delete(string $path): bool
 {
+    global $writePaths;
+    $writePaths[] = $path;
     test_set($path, null);
     return true;
 }
@@ -141,6 +151,7 @@ function client_ip(): string
     return '127.0.0.1';
 }
 
+require_once dirname(__DIR__) . '/api/lib/phone_country.php';
 require_once dirname(__DIR__) . '/api/lib/auth.php';
 require_once dirname(__DIR__) . '/api/lib/auth_android.php';
 require_once dirname(__DIR__) . '/api/lib/users_admin.php';
@@ -256,6 +267,36 @@ $repair = auth_app_repair_device_trust_from_current_session('U2', 'ANDROID_DEV',
 assert_true(!empty($repair['ok']) && !empty($repair['repaired']), 'Android quick login must repair missing device-trust row from same active session');
 assert_true(auth_app_trusted_login_allowed('U2', 'ANDROID_DEV'), 'repaired Android device must pass trusted quick-login check');
 
+$sessionCountBeforeQuickLogin = count((array)test_get('USER_SESSIONS'));
+$getPaths = [];
+$writePaths = [];
+$quickStartedAt = microtime(true);
+$quickContext = auth_app_quick_login_context([
+    'phone' => '60146321294',
+    'phone_country' => 'MY',
+    'device_id' => 'ANDROID_DEV',
+]);
+$quickSession = auth_app_complete_quick_login_session(
+    $quickContext,
+    'Android App Test',
+    '1.0.0'
+);
+$quickDurationMs = (microtime(true) - $quickStartedAt) * 1000;
+assert_true(!empty($quickContext['ok']), 'Android quick login must validate the saved session by direct token path');
+assert_true(!empty($quickSession['ok']) && !empty($quickSession['reused']), 'Android quick login must reuse the OTP-created session');
+assert_true(($quickSession['session_token'] ?? '') === $androidToken, 'Android quick login must return the same session token');
+assert_true(count((array)test_get('USER_SESSIONS')) === $sessionCountBeforeQuickLogin, 'Android quick login must not create another session');
+assert_true(!in_array('USER_SESSIONS', $getPaths, true), 'Android quick login must not scan the global session node');
+assert_true(!in_array('USERS', $getPaths, true), 'Android quick login must not scan the global user node');
+assert_true(in_array('USER_SESSIONS/' . $androidHash, $getPaths, true), 'Android quick login must directly read the saved session hash');
+assert_true(in_array('USERS/U2', $getPaths, true), 'Android quick login must directly read the authenticated user');
+assert_true(
+    $writePaths === ['USER_SESSIONS/' . $androidHash],
+    'Android quick login must refresh only the existing session when trust is already valid'
+);
+assert_true($quickDurationMs < 50, 'in-memory direct quick-login validation must remain bounded');
+assert_true(!auth_app_pin_ok((array)test_get('USERS/U2'), '9999'), 'wrong quick-login PIN must fail without issuing a session');
+
 test_set('USERS/U3', [
     'uid' => 'U3',
     'phone' => '60100000003',
@@ -279,6 +320,71 @@ $requestHeaders = ['x-session-token' => $expiredToken];
 $expiredRepair = auth_app_repair_device_trust_from_current_session('U3', 'ANDROID_EXPIRED', 'Android App Test', '1.0.0');
 assert_true(empty($expiredRepair['ok']) && ($expiredRepair['code'] ?? '') === 'SESSION_EXPIRED', 'expired Android quick-login session must return canonical SESSION_EXPIRED');
 assert_true(!auth_app_trusted_login_allowed('U3', 'ANDROID_EXPIRED'), 'expired Android session must not repair trusted-device state');
+
+$expiredQuickContext = auth_app_quick_login_context([
+    'phone' => '60100000003',
+    'phone_country' => 'MY',
+    'device_id' => 'ANDROID_EXPIRED',
+]);
+assert_true(
+    empty($expiredQuickContext['ok']) && ($expiredQuickContext['code'] ?? '') === 'SESSION_EXPIRED',
+    'expired saved session must fail quick login canonically without creating a session'
+);
+
+test_set('USERS/U5', [
+    'uid' => 'U5',
+    'phone' => '60100000005',
+    'role' => 'USER',
+    'status' => 'ACTIVE',
+    'account_status' => 'ACTIVE',
+    'active_device_id' => 'ANDROID_NEW_DEVICE',
+    'ACTIVE_DEVICE_ID' => 'ANDROID_NEW_DEVICE',
+    'auth_session_epoch' => 'ANDROID_REVOKED_EPOCH',
+]);
+$revokedToken = 'ANDROID_REVOKED_SESSION_TOKEN';
+$revokedHash = session_hash($revokedToken);
+test_set('USER_SESSIONS/' . $revokedHash, [
+    'uid' => 'U5',
+    'device_id' => 'ANDROID_OLD_DEVICE',
+    'status' => 'ACTIVE',
+    'expires_at' => now_ts() + 3600,
+    'auth_session_epoch' => 'ANDROID_REVOKED_EPOCH',
+]);
+$requestHeaders = ['x-session-token' => $revokedToken];
+$revokedQuickContext = auth_app_quick_login_context([
+    'phone' => '60100000005',
+    'phone_country' => 'MY',
+    'device_id' => 'ANDROID_OLD_DEVICE',
+]);
+assert_true(
+    empty($revokedQuickContext['ok']) && ($revokedQuickContext['code'] ?? '') === 'DEVICE_REPLACED',
+    'replaced Android device must fail quick login canonically'
+);
+
+test_set('USERS/U4', [
+    'uid' => 'U4',
+    'phone' => '60100000004',
+    'role' => 'USER',
+    'status' => 'ACTIVE',
+    'account_status' => 'ACTIVE',
+    'active_device_id' => 'ANDROID_OLD_FLOW',
+    'ACTIVE_DEVICE_ID' => 'ANDROID_OLD_FLOW',
+    'auth_session_epoch' => 'ANDROID_OLD_EPOCH',
+]);
+$firebaseDelayUs = ['USER_SESSIONS' => 120000];
+$getPaths = [];
+$legacyStartedAt = microtime(true);
+auth_app_issue_session(
+    (array)test_get('USERS/U4'),
+    'U4',
+    'ANDROID_OLD_FLOW',
+    'Android Legacy Test',
+    ['app_version' => '1.0.0']
+);
+$legacyDurationMs = (microtime(true) - $legacyStartedAt) * 1000;
+$firebaseDelayUs = [];
+assert_true(in_array('USER_SESSIONS', $getPaths, true), 'legacy Android session issuance demonstrates the global session scan root cause');
+assert_true($legacyDurationMs >= 100, 'controlled legacy timing must include the simulated global-node delay');
 $requestHeaders = [];
 
 $ownerQueryRows = [
@@ -294,6 +400,7 @@ $registerProxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $userVerify = (string)file_get_contents($root . '/api/auth/user_login_verify_otp.php');
 $pinLogin = (string)file_get_contents($root . '/api/auth/pin_login.php');
 $biometricLogin = (string)file_get_contents($root . '/api/auth/biometric_login.php');
+$authAndroid = (string)file_get_contents($root . '/api/lib/auth_android.php');
 $adminProxy = (string)file_get_contents($root . '/api/admin/proxy.php');
 $mfsPending = (string)file_get_contents($root . '/api/admin/mfs/pending.php');
 $htaccess = (string)file_get_contents($root . '/.htaccess');
@@ -318,8 +425,12 @@ assert_true(str_contains($registerJs, 'identity_number'), 'registration JS must 
 assert_true(str_contains($registerProxy, "'identity_number'"), 'registration proxy must forward identity number');
 assert_true(str_contains($userVerify, 'auth_otp_claim_verification'), 'user OTP endpoint must use CAS claim');
 assert_true(!str_contains($userVerify, 'auth_activate_user_device('), 'user OTP endpoint must not run global session revocation');
-assert_true(str_contains($pinLogin, 'auth_app_repair_device_trust_from_current_session'), 'PIN quick login must repair same-device trust from the saved session');
-assert_true(str_contains($biometricLogin, 'auth_app_repair_device_trust_from_current_session'), 'Biometric quick login must repair same-device trust from the saved session');
+assert_true(str_contains($pinLogin, 'auth_app_quick_login_context'), 'PIN quick login must load the saved session directly');
+assert_true(str_contains($pinLogin, 'auth_app_complete_quick_login_session'), 'PIN quick login must reuse the saved session');
+assert_true(!str_contains($pinLogin, 'auth_app_issue_session'), 'PIN quick login must not issue a new session');
+assert_true(str_contains($biometricLogin, 'auth_app_quick_login_context'), 'Biometric quick login must load the saved session directly');
+assert_true(str_contains($biometricLogin, 'auth_app_complete_quick_login_session'), 'Biometric quick login must reuse the saved session');
+assert_true(str_contains($authAndroid, "get_session_by_token(\$token)"), 'Quick login helper must use the direct hashed session lookup');
 assert_true(!str_contains($adminProxy, "'internal_url' =>"), 'admin proxy must not expose internal URLs');
 assert_true(str_contains($adminProxy, "case 'logout':") && str_contains($adminProxy, 'proxy_require_csrf();'), 'admin logout must require CSRF');
 assert_true(!str_contains($mfsPending, 'getMessage()'), 'admin MFS errors must not expose exception details');
@@ -359,4 +470,9 @@ foreach ([
     );
 }
 
+printf(
+    "quick login controlled timing: legacy %.2f ms, direct %.2f ms\n",
+    $legacyDurationMs,
+    $quickDurationMs
+);
 echo "website auth and panel security tests passed\n";

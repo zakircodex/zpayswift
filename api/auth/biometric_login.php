@@ -77,9 +77,19 @@ if ($preAuthToken !== '') {
     $user = (array)$account['user'];
     $meta = $preAuthRow;
 } else {
-    $account = auth_app_lookup_user_by_body($body);
-    $uid = (string)$account['uid'];
-    $user = (array)$account['user'];
+    $quickLogin = auth_app_quick_login_context($body);
+    if (empty($quickLogin['ok'])) {
+        api_response(
+            false,
+            (string)($quickLogin['code'] ?? 'SESSION_EXPIRED'),
+            (string)($quickLogin['message'] ?? 'Session expired. Please sign in again.'),
+            [],
+            (int)($quickLogin['http_status'] ?? 401)
+        );
+    }
+
+    $uid = (string)$quickLogin['uid'];
+    $user = (array)$quickLogin['user'];
     auth_app_guard_user_login($user);
     $meta = auth_request_metadata($body);
 }
@@ -90,23 +100,24 @@ if (!biometric_login_has_valid_trusted_cookie($uid, $trustedDeviceCookie)) {
 
 $meta['app_version'] = trim((string)($body['app_version'] ?? ($meta['app_version'] ?? '')));
 $meta['verification_method'] = 'BIOMETRIC';
-$trust = auth_app_repair_device_trust_from_current_session(
-    $uid,
-    $deviceId,
-    $deviceName,
-    (string)$meta['app_version']
-);
-if (empty($trust['ok'])) {
-    api_response(
-        false,
-        (string)($trust['code'] ?? 'SESSION_EXPIRED'),
-        (string)($trust['message'] ?? 'Session expired. Please sign in again.'),
-        [],
-        (int)($trust['http_status'] ?? 401)
+if ($preAuthToken !== '') {
+    $session = auth_app_issue_session($user, $uid, $deviceId, $deviceName, $meta);
+} else {
+    $session = auth_app_complete_quick_login_session(
+        $quickLogin,
+        $deviceName,
+        (string)$meta['app_version']
     );
+    if (empty($session['ok'])) {
+        api_response(
+            false,
+            (string)($session['code'] ?? 'SESSION_EXPIRED'),
+            (string)($session['message'] ?? 'Session expired. Please sign in again.'),
+            [],
+            (int)($session['http_status'] ?? 401)
+        );
+    }
 }
-
-$session = auth_app_issue_session($user, $uid, $deviceId, $deviceName, $meta);
 
 if ($preAuthToken !== '') {
     @fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, [

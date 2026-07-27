@@ -274,6 +274,190 @@ function auth_app_device_name(array $body, string $fallback = 'Android App'): st
     return $deviceName !== '' ? $deviceName : $fallback;
 }
 
+function auth_app_quick_login_error(string $code, string $message, int $httpStatus): array
+{
+    return [
+        'ok' => false,
+        'code' => $code,
+        'message' => $message,
+        'http_status' => $httpStatus,
+    ];
+}
+
+function auth_app_quick_login_context(array $body): array
+{
+    $token = auth_get_session_token_from_request();
+    if ($token === '') {
+        return auth_app_quick_login_error(
+            'SESSION_EXPIRED',
+            'Session expired. Please sign in again.',
+            401
+        );
+    }
+
+    $session = get_session_by_token($token);
+    if (!is_array($session)) {
+        return auth_app_quick_login_error(
+            'SESSION_EXPIRED',
+            'Session not found. Please sign in again.',
+            401
+        );
+    }
+
+    $sessionStatus = auth_status_value($session['status'] ?? '');
+    if ($sessionStatus !== 'ACTIVE') {
+        $code = $sessionStatus === 'DEVICE_REPLACED' ? 'DEVICE_REPLACED' : 'SESSION_EXPIRED';
+        $message = $code === 'DEVICE_REPLACED'
+            ? 'This account is logged in on another device.'
+            : 'Session is inactive. Please sign in again.';
+        return auth_app_quick_login_error($code, $message, 401);
+    }
+
+    $sessionHash = auth_clean_string($session['_session_hash'] ?? '');
+    $expiresAt = (int)($session['expires_at'] ?? 0);
+    if ($expiresAt > 0 && $expiresAt < now_ts()) {
+        if ($sessionHash !== '') {
+            @fb_patch('USER_SESSIONS/' . $sessionHash, [
+                'status' => 'EXPIRED',
+                'updated_at' => now_ts(),
+            ]);
+        }
+
+        return auth_app_quick_login_error(
+            'SESSION_EXPIRED',
+            'Session expired. Please sign in again.',
+            401
+        );
+    }
+
+    $uid = auth_clean_string($session['uid'] ?? '');
+    if ($uid === '') {
+        return auth_app_quick_login_error(
+            'SESSION_EXPIRED',
+            'Session is invalid. Please sign in again.',
+            401
+        );
+    }
+
+    $deviceId = auth_app_device_id($body);
+    if (auth_clean_string($session['device_id'] ?? '') !== $deviceId) {
+        return auth_app_quick_login_error(
+            'DEVICE_REPLACED',
+            'This account is logged in on another device.',
+            401
+        );
+    }
+
+    $user = fb_get('USERS/' . $uid);
+    if (!is_array($user)) {
+        return auth_app_quick_login_error('ACCOUNT_NOT_FOUND', 'Account not found.', 404);
+    }
+
+    $activeDeviceId = auth_clean_string($user['active_device_id'] ?? $user['ACTIVE_DEVICE_ID'] ?? '');
+    if ($activeDeviceId === '' || $activeDeviceId !== $deviceId) {
+        return auth_app_quick_login_error(
+            'DEVICE_REPLACED',
+            'This account is logged in on another device.',
+            401
+        );
+    }
+
+    $userSessionEpoch = auth_session_epoch_from_user($user);
+    $sessionEpoch = auth_clean_string($session['auth_session_epoch'] ?? $session['session_epoch'] ?? '');
+    if ($userSessionEpoch !== '' && $sessionEpoch !== $userSessionEpoch) {
+        if ($sessionHash !== '') {
+            @fb_patch('USER_SESSIONS/' . $sessionHash, [
+                'status' => 'RESET_REVOKED',
+                'updated_at' => now_ts(),
+            ]);
+        }
+
+        return auth_app_quick_login_error(
+            'SESSION_EXPIRED',
+            'Session expired. Please sign in again.',
+            401
+        );
+    }
+
+    $requestPhone = trim((string)($body['phone'] ?? ''));
+    if ($requestPhone !== '') {
+        $phoneCountry = auth_phone_country_from_user($user);
+        $normalizedRequestPhone = normalize_phone_by_country($requestPhone, $phoneCountry);
+        $normalizedUserPhone = normalize_phone_by_country((string)($user['phone'] ?? ''), $phoneCountry);
+        if (
+            $normalizedRequestPhone === ''
+            || $normalizedUserPhone === ''
+            || !hash_equals($normalizedUserPhone, $normalizedRequestPhone)
+        ) {
+            return auth_app_quick_login_error(
+                'SESSION_EXPIRED',
+                'Saved account does not match the active session.',
+                401
+            );
+        }
+    }
+
+    return [
+        'ok' => true,
+        'uid' => $uid,
+        'user' => $user,
+        'session' => $session,
+        'session_hash' => $sessionHash,
+        'session_token' => $token,
+        'device_id' => $deviceId,
+    ];
+}
+
+function auth_app_complete_quick_login_session(
+    array $context,
+    string $deviceName,
+    string $appVersion = ''
+): array {
+    if (empty($context['ok'])) {
+        return auth_app_quick_login_error('SESSION_EXPIRED', 'Session expired. Please sign in again.', 401);
+    }
+
+    $uid = auth_clean_string($context['uid'] ?? '');
+    $deviceId = auth_clean_string($context['device_id'] ?? '');
+    $sessionHash = auth_clean_string($context['session_hash'] ?? '');
+    $sessionToken = trim((string)($context['session_token'] ?? ''));
+    if ($uid === '' || $deviceId === '' || $sessionHash === '' || $sessionToken === '') {
+        return auth_app_quick_login_error('SESSION_EXPIRED', 'Session is invalid. Please sign in again.', 401);
+    }
+
+    if (
+        !auth_device_is_trusted($uid, $deviceId)
+        && !auth_mark_device_trusted($uid, $deviceId, $deviceName, $appVersion)
+    ) {
+        return auth_app_quick_login_error(
+            'SERVER_ERROR',
+            'Unable to restore trusted device state. Please sign in again.',
+            500
+        );
+    }
+
+    $now = now_ts();
+    if (!fb_patch('USER_SESSIONS/' . $sessionHash, [
+        'device_name' => $deviceName,
+        'last_seen_at' => $now,
+        'expires_at' => $now + SESSION_TTL_SECONDS,
+        'updated_at' => $now,
+    ])) {
+        return auth_app_quick_login_error(
+            'SERVER_ERROR',
+            'Unable to refresh login session. Please try again.',
+            500
+        );
+    }
+
+    return [
+        'ok' => true,
+        'session_token' => $sessionToken,
+        'session_hash' => $sessionHash,
+        'reused' => true,
+    ];
+}
+
 function auth_app_preauth_user(array $preAuthRow): array
 {
     $uid = trim((string)($preAuthRow['uid'] ?? ''));
