@@ -213,6 +213,16 @@
     }
   }
 
+  function showProfileAvatarFallback() {
+    const image = $('profileAvatarImage');
+    const fallback = $('profileAvatarInitials');
+    if (image) {
+      image.classList.add('hidden');
+      image.removeAttribute('src');
+    }
+    fallback?.classList.remove('hidden');
+  }
+
   async function get(action, params, label, options) {
     if (typeof window.proxyGet !== 'function') throw new Error('User API is unavailable.');
     return window.proxyGet(action, params || {}, label || 'Loading...', options || {});
@@ -630,8 +640,12 @@
     if ($('profileAvatarInitials')) $('profileAvatarInitials').textContent = initials(name);
     if ($('profileAvatarImage')) {
       $('profileAvatarImage').classList.toggle('hidden', !image);
-      if (image) $('profileAvatarImage').src = image;
-      else $('profileAvatarImage').removeAttribute('src');
+      $('profileAvatarInitials')?.classList.toggle('hidden', Boolean(image));
+      if (image) {
+        $('profileAvatarImage').src = image;
+      } else {
+        showProfileAvatarFallback();
+      }
     }
   }
 
@@ -909,6 +923,7 @@
 
   function bindProfilePage() {
     const openPhoto = (event) => { profileModal.opener = event.currentTarget; $("profilePhotoInput")?.click(); };
+    $("profileAvatarImage")?.addEventListener("error", showProfileAvatarFallback);
     $("profileEditButton")?.addEventListener("click", editProfile);
     $("profileAvatarButton")?.addEventListener("click", openPhoto);
     $("profilePhotoEditButton")?.addEventListener("click", openPhoto);
