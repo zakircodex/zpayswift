@@ -24,6 +24,7 @@ function znews_view_test_read(string $path): string
 
 $files = [
     'api/znews/lib/views.php',
+    'api/znews/lib/views_v2.php',
     'api/znews/views/start.php',
     'api/znews/views/heartbeat.php',
     'api/znews/views/complete.php',
@@ -46,6 +47,7 @@ foreach ($files as $relative) {
 }
 
 $views = znews_view_test_read($root . '/api/znews/lib/views.php');
+$v2 = znews_view_test_read($root . '/api/znews/lib/views_v2.php');
 znews_view_test_expect(str_contains($views, 'security_client_ip'), 'safe client IP helper is not reused');
 znews_view_test_expect(str_contains($views, 'security_ip_hash'), 'IP hashing is missing');
 znews_view_test_expect(str_contains($views, "'httponly' => true"), 'visitor cookie is not HttpOnly');
@@ -73,7 +75,16 @@ znews_view_test_expect(!str_contains($views, "['duration']") && !str_contains($v
 znews_view_test_expect(str_contains($views, "'token_hash' => hash('sha256'"), 'view token is not hashed at rest');
 znews_view_test_expect(str_contains($views, 'hash_equals($stored, hash'), 'view token comparison is not timing-safe');
 znews_view_test_expect(str_contains($views, 'reconciliation_required'), 'partial failure reconciliation evidence missing');
-znews_view_test_expect(str_contains($views, "unset($row['token_hash'], $row['session_hash'], $row['visitor_hash'])"), 'admin details leak sensitive hashes');
+znews_view_test_expect(str_contains($views, "unset(\$row['token_hash'], \$row['session_hash'], \$row['visitor_hash'])"), 'admin details leak sensitive hashes');
+
+znews_view_test_expect(str_contains($v2, 'znews_view_analytics_apply_once'), 'exact-once analytics helper missing');
+znews_view_test_expect(str_contains($v2, "'applied_events'"), 'analytics event ledger missing');
+znews_view_test_expect(str_contains($v2, "'OPEN|' . \$viewId") && str_contains($v2, "'COMPLETE|' . \$viewId"), 'open/complete event keys missing');
+znews_view_test_expect(str_contains($v2, 'znews_view_open_sync'), 'view-start reconciliation helper missing');
+znews_view_test_expect(str_contains($v2, 'znews_view_complete_sync'), 'view-completion reconciliation helper missing');
+znews_view_test_expect(str_contains($v2, "'invalid_views' => 1") && str_contains($v2, "'suspicious_views' => 1"), 'blocked starts are not counted as invalid/suspicious');
+znews_view_test_expect(str_contains($v2, 'znews_view_unique_owner'), 'retry-safe unique-view ownership missing');
+znews_view_test_expect(str_contains($v2, 'znews_view_start_v2') && str_contains($v2, 'znews_view_complete_v2'), 'exact-once start/complete flows missing');
 
 foreach (['start.php', 'heartbeat.php', 'complete.php'] as $name) {
     $source = znews_view_test_read($root . '/api/znews/views/' . $name);
@@ -81,10 +92,13 @@ foreach (['start.php', 'heartbeat.php', 'complete.php'] as $name) {
     znews_view_test_expect(!str_contains($source, 'api_require_app_key();'), "{$name} incorrectly requires app key for public web reading");
 }
 
+$start = znews_view_test_read($root . '/api/znews/views/start.php');
 $heartbeat = znews_view_test_read($root . '/api/znews/views/heartbeat.php');
 $complete = znews_view_test_read($root . '/api/znews/views/complete.php');
+znews_view_test_expect(str_contains($start, 'views_v2.php') && str_contains($start, 'znews_view_start_v2'), 'start endpoint bypasses exact-once flow');
 znews_view_test_expect(str_contains($heartbeat, 'X-ZNEWS-VIEW-TOKEN') && str_contains($heartbeat, 'view_token'), 'heartbeat view-token protection missing');
 znews_view_test_expect(str_contains($complete, 'X-ZNEWS-VIEW-TOKEN') && str_contains($complete, 'view_token'), 'completion view-token protection missing');
+znews_view_test_expect(str_contains($complete, 'views_v2.php') && str_contains($complete, 'znews_view_complete_v2'), 'complete endpoint bypasses exact-once flow');
 
 $analytics = znews_view_test_read($root . '/api/znews/posts/analytics.php');
 znews_view_test_expect(str_contains($analytics, 'api_require_app_key();') && str_contains($analytics, 'znews_require_creator(true)'), 'creator analytics lacks authentication');
