@@ -28,7 +28,14 @@ drawer_expect(
     'Shared drawer accessibility shell is incomplete'
 );
 drawer_expect(
+    str_contains($drawer, '$needsSharedDrawerTrigger')
+    && str_contains($drawer, 'id="openSidebarBtn"')
+    && str_contains($drawer, 'class="icon-btn user-drawer-page-trigger hidden"'),
+    'Custom-header pages do not receive a shared drawer trigger'
+);
+drawer_expect(
     str_contains($drawer, 'class="drawer-profile-fixed"')
+    && substr_count($drawer, 'class="drawer-profile-orb') === 3
     && str_contains($drawer, 'id="drawerAvatarImage"')
     && str_contains($drawer, 'id="drawerUserName"')
     && str_contains($drawer, 'id="drawerUserPhone"')
@@ -60,6 +67,18 @@ foreach ([
     );
 }
 drawer_expect(
+    str_contains($drawer, '<strong>App Version</strong>')
+    && !str_contains($drawer, 'About Z-Pay Swift')
+    && !str_contains($drawer, '<strong>Web Version</strong>'),
+    'Android drawer App Version mapping is incorrect'
+);
+foreach (['profile', 'security', 'notifications', 'contact-us', 'support'] as $pageKey) {
+    drawer_expect(
+        str_contains($drawer, 'data-drawer-page="' . $pageKey . '"'),
+        "missing drawer active-state key {$pageKey}"
+    );
+}
+drawer_expect(
     str_contains($header, 'id="openSidebarBtn"')
     && str_contains($header, 'aria-controls="sidebar"')
     && str_contains($header, 'aria-expanded="false"'),
@@ -67,23 +86,44 @@ drawer_expect(
 );
 drawer_expect(
     str_contains($css, '.user-drawer')
+    && str_contains($css, 'height: 100dvh')
     && str_contains($css, 'overflow-y: auto')
+    && str_contains($css, 'scrollbar-width: none')
     && str_contains($css, 'min-height: 0')
+    && str_contains($css, '.user-drawer-item.active')
     && str_contains($css, 'body.user-drawer-open')
     && str_contains($css, '.sidebar-overlay.show'),
     'Drawer fixed profile/scroll body CSS is incomplete'
 );
 drawer_expect(
     str_contains($js, 'function openDrawer(event)')
-    && str_contains($js, 'function closeDrawer()')
+    && str_contains($js, 'function closeDrawer(options = {})')
     && str_contains($js, 'state.drawerOpener')
+    && str_contains($js, 'zpayUserDrawer')
+    && str_contains($js, 'event.stopImmediatePropagation()')
     && str_contains($js, "event.key === 'Escape'")
     && str_contains($js, "event.key !== 'Tab'")
     && str_contains($js, 'document.body.classList.toggle(\'user-drawer-open\''),
     'Drawer open/close/focus handling is incomplete'
 );
 drawer_expect(
-    str_contains($js, "$('drawerLogoutBtn')?.addEventListener('click', openLogoutDialog)")
+    str_contains($js, 'function syncDrawerActiveState()')
+    && str_contains($js, 'function installDrawerPageTrigger()')
+    && str_contains($js, 'backControl.replaceWith(trigger)')
+    && str_contains($js, 'aria-current')
+    && str_contains($js, 'function navigateFromDrawer(event)')
+    && str_contains($js, 'state.drawerPendingLink = link')
+    && str_contains($js, 'pendingLink.click()'),
+    'Separate-page drawer navigation/active-state handling is incomplete'
+);
+drawer_expect(
+    str_contains($js, 'displayCountry(pricingCountry, currency)')
+    && !str_contains($js, 'user.pricing_country || user.country')
+    && !str_contains($js, 'phone_country'),
+    'Drawer country/currency rendering is not pricing-country safe'
+);
+drawer_expect(
+    str_contains($js, "$('drawerLogoutBtn')?.addEventListener('click', (event) => {")
     && str_contains($bottomNav, 'id="userLogoutDialog"')
     && str_contains($js, 'closeLogoutDialog')
     && str_contains($js, "post('logout'")

@@ -10,6 +10,10 @@
     unread: 0,
     bootstrapData: null,
     drawerOpener: null,
+    drawerOpen: false,
+    drawerHistoryClosing: false,
+    drawerPendingLink: null,
+    drawerScrollY: 0,
     logoutDialogOpen: false,
     logoutOpener: null,
     ready: false
@@ -163,26 +167,71 @@
 
   function maskPhone(phone) {
     const value = String(phone || '');
+    if (value.includes('*')) return value;
     if (value.length < 7) return value || '-';
     return `${value.slice(0, 4)}****${value.slice(-3)}`;
   }
 
+  function displayCountry(countryCode, currency) {
+    const country = String(countryCode || '').trim().toUpperCase();
+    const walletCurrency = String(currency || '').trim().toUpperCase();
+    if (country === 'MY' || (!country && walletCurrency === 'MYR')) return 'Malaysia';
+    if (country === 'BD' || (!country && walletCurrency === 'BDT')) return 'Bangladesh';
+    return country || 'Account';
+  }
+
+  function drawerWalletData() {
+    const data = state.bootstrapData && typeof state.bootstrapData === 'object' ? state.bootstrapData : {};
+    const summary = data.wallet_summary && typeof data.wallet_summary === 'object' ? data.wallet_summary : {};
+    if (data.wallet && typeof data.wallet === 'object') return data.wallet;
+    if (summary.wallet && typeof summary.wallet === 'object') return summary.wallet;
+    return summary;
+  }
+
+  function syncDrawerActiveState() {
+    const pageKey = String(window.USER_PAGE_KEY || document.body.dataset.userPage || '').toLowerCase();
+    const activeKey = pageKey === 'profile' && window.location.hash.toLowerCase() === '#security'
+      ? 'security'
+      : pageKey;
+    document.querySelectorAll('[data-drawer-page]').forEach((item) => {
+      const active = String(item.dataset.drawerPage || '').toLowerCase() === activeKey;
+      item.classList.toggle('active', active);
+      if (active) {
+        item.setAttribute('aria-current', 'page');
+      } else {
+        item.removeAttribute('aria-current');
+      }
+    });
+  }
+
   function renderDrawer() {
     const user = state.user || {};
+    const wallet = drawerWalletData();
     const name = String(user.name || user.full_name || 'Z-Pay User');
     const image = String(user.profile_photo_url || user.profile_photo || '');
+    const pricingCountry = String(user.pricing_country || user.market_country || wallet.pricing_country || '').toUpperCase();
+    const currency = String(
+      user.wallet_currency
+      || user.currency
+      || wallet.wallet_currency
+      || wallet.currency
+      || (pricingCountry === 'MY' ? 'MYR' : pricingCountry === 'BD' ? 'BDT' : '')
+    ).toUpperCase();
     $('drawerUserName') && ($('drawerUserName').textContent = name.toUpperCase());
-    $('drawerUserPhone') && ($('drawerUserPhone').textContent = maskPhone(user.phone));
+    $('drawerUserPhone') && ($('drawerUserPhone').textContent = maskPhone(user.phone_masked || user.phone));
     $('drawerRoleChip') && ($('drawerRoleChip').textContent = String(user.role || 'User'));
-    $('drawerStatusChip') && ($('drawerStatusChip').textContent = String(user.status || 'Active'));
+    $('drawerStatusChip') && ($('drawerStatusChip').textContent = String(user.account_status || user.status || 'Active'));
     $('drawerCountryCurrency') && ($('drawerCountryCurrency').textContent =
-      `${String(user.pricing_country || user.country || '-').toUpperCase()} | ${String(user.wallet_currency || user.currency || '-').toUpperCase()}`);
+      `${displayCountry(pricingCountry, currency)} | ${currency || 'Wallet'}`);
     $('drawerAvatarInitials') && ($('drawerAvatarInitials').textContent = initials(name));
     const avatar = $('drawerAvatarImage');
-    if (avatar && image) {
-      avatar.src = image;
+    if (avatar) {
+      delete avatar.dataset.fallback;
+      avatar.src = image || '/assets/brand/zpay-icon.png';
+      avatar.alt = image ? `${name} profile photo` : '';
       avatar.classList.remove('hidden');
     }
+    syncDrawerActiveState();
   }
 
   async function loadUnread() {
@@ -202,9 +251,23 @@
     return Array.from($('sidebar')?.querySelectorAll('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])') || []);
   }
 
+  function installDrawerPageTrigger() {
+    const trigger = $('openSidebarBtn');
+    if (!trigger || !trigger.classList.contains('user-drawer-page-trigger')) return;
+    const backControl = document.querySelector('main a[aria-label^="Back to dashboard"]');
+    if (backControl) {
+      trigger.className = `${backControl.className} user-drawer-page-trigger`;
+      backControl.replaceWith(trigger);
+    } else {
+      trigger.classList.remove('hidden');
+      trigger.classList.add('user-drawer-floating-trigger');
+    }
+  }
+
   function syncDrawer(open) {
     const sidebar = $('sidebar');
     if (!sidebar) return;
+    state.drawerOpen = Boolean(open);
     sidebar.classList.toggle('show', open);
     sidebar.setAttribute('aria-hidden', open ? 'false' : 'true');
     sidebar.inert = !open;
@@ -214,18 +277,60 @@
   }
 
   function openDrawer(event) {
+    if (state.drawerOpen) return;
     state.drawerOpener = event?.currentTarget || document.activeElement;
+    state.drawerScrollY = window.scrollY;
+    if (!window.history.state?.zpayUserDrawer) {
+      window.history.pushState({ ...(window.history.state || {}), zpayUserDrawer: true }, '', window.location.href);
+    }
     syncDrawer(true);
     window.setTimeout(() => focusableInDrawer()[0]?.focus({ preventScroll: true }), 0);
   }
 
-  function closeDrawer() {
-    const wasOpen = $('sidebar')?.classList.contains('show');
+  function restoreDrawerOpener() {
+    state.drawerOpener?.focus?.({ preventScroll: true });
+    state.drawerOpener = null;
+    window.requestAnimationFrame(() => {
+      if (Math.abs(window.scrollY - state.drawerScrollY) > 1) {
+        window.scrollTo({ top: state.drawerScrollY, left: 0, behavior: 'auto' });
+      }
+    });
+  }
+
+  function closeDrawer(options = {}) {
+    const wasOpen = state.drawerOpen;
     syncDrawer(false);
     if (wasOpen) {
-      state.drawerOpener?.focus?.({ preventScroll: true });
-      state.drawerOpener = null;
+      if (options.restoreFocus !== false) restoreDrawerOpener();
+      if (!options.fromHistory && window.history.state?.zpayUserDrawer) {
+        state.drawerHistoryClosing = true;
+        window.history.back();
+      }
     }
+  }
+
+  function navigateFromDrawer(event) {
+    const link = event.currentTarget;
+    if (!state.drawerOpen || !(link instanceof HTMLAnchorElement)) return;
+    if (link.target === '_blank' || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+      closeDrawer();
+      return;
+    }
+    const target = new URL(link.href, window.location.href);
+    if (target.origin !== window.location.origin) {
+      closeDrawer();
+      return;
+    }
+    if (!window.history.state?.zpayUserDrawer) {
+      syncDrawer(false);
+      return;
+    }
+    event.preventDefault();
+    syncDrawer(false);
+    state.drawerOpener = null;
+    state.drawerPendingLink = link;
+    state.drawerHistoryClosing = true;
+    window.history.back();
   }
 
   function syncLogoutDialog(open) {
@@ -272,19 +377,41 @@
   }
 
   function bindShell() {
+    installDrawerPageTrigger();
     $('openSidebarBtn')?.addEventListener('click', openDrawer);
     $('sidebarOverlay')?.addEventListener('click', closeDrawer);
-    $('drawerLogoutBtn')?.addEventListener('click', openLogoutDialog);
+    $('drawerLogoutBtn')?.addEventListener('click', (event) => {
+      const opener = state.drawerOpener;
+      syncDrawer(false);
+      state.drawerOpener = null;
+      state.logoutOpener = opener;
+      syncLogoutDialog(true);
+      if (window.history.state?.zpayUserDrawer) {
+        const historyState = { ...(window.history.state || {}) };
+        delete historyState.zpayUserDrawer;
+        historyState.zpayUserLogout = true;
+        window.history.replaceState(historyState, '', window.location.href);
+      } else {
+        window.history.pushState({ ...(window.history.state || {}), zpayUserLogout: true }, '', window.location.href);
+      }
+    });
     $('cancelUserLogout')?.addEventListener('click', () => closeLogoutDialog());
     $('confirmUserLogout')?.addEventListener('click', logout);
     $('userLogoutDialog')?.addEventListener('click', (event) => {
       if (event.target === $('userLogoutDialog')) closeLogoutDialog();
     });
-    document.querySelector('[data-shell-action="info"]')?.addEventListener('click', () => {
-      closeDrawer();
-      toast('Z-Pay Swift Web User Panel', 'info');
+    $('sidebar')?.querySelectorAll('a[href]').forEach((link) => link.addEventListener('click', navigateFromDrawer));
+    $('drawerAvatarImage')?.addEventListener('error', (event) => {
+      const image = event.currentTarget;
+      if (image.dataset.fallback === 'true') {
+        image.classList.add('hidden');
+        return;
+      }
+      image.dataset.fallback = 'true';
+      image.src = '/assets/brand/zpay-icon.png';
+      image.alt = '';
     });
-    $('sidebar')?.querySelectorAll('a[href]').forEach((link) => link.addEventListener('click', closeDrawer));
+    window.addEventListener('hashchange', syncDrawerActiveState);
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape' && state.logoutDialogOpen) {
         closeLogoutDialog();
@@ -304,8 +431,34 @@
         first.focus();
       }
     });
-    window.addEventListener('popstate', () => {
-      if (state.logoutDialogOpen) closeLogoutDialog(true);
+    window.addEventListener('popstate', (event) => {
+      if (state.drawerHistoryClosing) {
+        event.stopImmediatePropagation();
+        state.drawerHistoryClosing = false;
+        const pendingLink = state.drawerPendingLink;
+        state.drawerPendingLink = null;
+        if (pendingLink) {
+          window.setTimeout(() => pendingLink.click(), 0);
+        }
+        return;
+      }
+      if (state.logoutDialogOpen) {
+        event.stopImmediatePropagation();
+        closeLogoutDialog(true);
+        return;
+      }
+      if (state.drawerOpen) {
+        event.stopImmediatePropagation();
+        closeDrawer({ fromHistory: true });
+        return;
+      }
+      if (event.state?.zpayUserDrawer) {
+        event.stopImmediatePropagation();
+        state.drawerOpener = $('openSidebarBtn');
+        state.drawerScrollY = window.scrollY;
+        syncDrawer(true);
+        window.setTimeout(() => focusableInDrawer()[0]?.focus({ preventScroll: true }), 0);
+      }
     });
   }
 
