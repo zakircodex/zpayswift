@@ -145,15 +145,19 @@ a { color: inherit; text-decoration: none; }
 .otp-status { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; color: var(--muted); background: #0b1629; font-size: 12px; }
 .otp-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
 
-.loading { position: fixed; inset: 0; z-index: 200; display: none; place-items: center; padding: 18px; background: rgba(2, 8, 18, .72); }
-.loading.show { display: grid; }
-.loading-box { min-width: 210px; padding: 20px; border: 1px solid var(--line); border-radius: 18px; color: var(--text); background: var(--card); text-align: center; }
-.spinner { width: 38px; height: 38px; margin: 0 auto 12px; border: 4px solid #314668; border-top-color: var(--green2); border-radius: 50%; animation: spin .8s linear infinite; }
+.login-page-loading { position: fixed; inset: 0; z-index: 200; display: none; place-items: center; padding: 18px; background: rgba(2, 8, 18, .72); }
+.login-page-loading.show { display: grid; }
+.login-page-loading-card { min-width: 210px; padding: 20px; border: 1px solid var(--line); border-radius: 18px; color: var(--text); background: var(--card); text-align: center; }
+.login-page-loading-spinner { width: 38px; height: 38px; margin: 0 auto 12px; border: 4px solid #314668; border-top-color: var(--green2); border-radius: 50%; animation: login-page-spin .8s linear infinite; }
 .toast-wrap { position: fixed; right: 14px; bottom: 14px; z-index: 220; display: grid; gap: 8px; max-width: calc(100% - 28px); }
 .toast { min-width: 230px; max-width: 400px; padding: 11px 13px; border: 1px solid var(--line2); border-radius: 14px; color: #fff; background: #10203a; box-shadow: var(--shadow); font-size: 12px; }
 .toast.ok { border-color: rgba(70, 212, 138, .45); }
 .toast.error { border-color: rgba(239, 91, 113, .45); }
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes login-page-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .login-page-loading-spinner { animation: none; border-color: rgba(93, 194, 100, .5); }
+}
 
 @media (max-width: 480px) {
   .login-wrap { align-items: flex-start; padding: 18px 14px; }

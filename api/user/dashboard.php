@@ -24,6 +24,7 @@ $page = user_page_config([
     'page_js' => 'dashboard-page.js',
     'active_nav' => 'dashboard',
     'show_header' => false,
+    'show_global_loader' => false,
     'bootstrap_action' => 'dashboard_bootstrap',
     'bootstrap_params' => [
         'limit' => 50,
@@ -79,7 +80,11 @@ user_page_begin($page);
   </div>
 </div>
 
-<section id="overviewSection" class="page-section dashboard-scroll-body active">
+<section id="overviewSection" class="page-section dashboard-scroll-body active" aria-busy="true">
+  <div id="dashboardPullIndicator" class="user-dashboard-pull-indicator" role="status" aria-live="polite" aria-hidden="true">
+    <span class="user-dashboard-pull-spinner" aria-hidden="true"></span>
+    <span id="dashboardPullText">Pull to refresh</span>
+  </div>
   <div id="zpayQuickActions" class="zpay-quick-card dashboard-recommended">
     <div class="zpay-quick-head"><h2 class="zpay-quick-title">Recommended</h2></div>
     <div class="zpay-service-grid">
@@ -95,4 +100,11 @@ user_page_begin($page);
     </div>
   </div>
 </section>
+
+<div id="dashboardLoadingModal" class="user-dashboard-loading-modal" role="dialog" aria-modal="true" aria-labelledby="dashboardLoadingText" aria-hidden="true" inert>
+  <div class="user-dashboard-loading-card">
+    <span class="user-dashboard-loading-spinner" aria-hidden="true"></span>
+    <p id="dashboardLoadingText">Loading dashboard, please wait...</p>
+  </div>
+</div>
 <?php user_page_end($page); ?>

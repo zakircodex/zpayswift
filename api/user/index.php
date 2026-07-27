@@ -11,6 +11,8 @@ if (trim((string)($_SESSION['user_session_token'] ?? '')) !== '') {
 
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
+$loginCssVersion = (string)(filemtime(__DIR__ . '/assets/pages/login-page.css') ?: 1);
+$loginJsVersion = (string)(filemtime(__DIR__ . '/assets/pages/login-page.js') ?: 1);
 ?>
 <!doctype html>
 <html lang="en">
@@ -22,7 +24,7 @@ header('Pragma: no-cache');
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/pages/login-page.css?v=1">
+  <link rel="stylesheet" href="/api/user/assets/pages/login-page.css?v=<?= htmlspecialchars($loginCssVersion, ENT_QUOTES, 'UTF-8') ?>">
 </head>
 <body>
 <main class="login-wrap">
@@ -88,12 +90,15 @@ header('Pragma: no-cache');
   </div>
 </div>
 
-<div id="loadingWrap" class="loading" aria-live="polite" aria-hidden="true">
-  <div class="loading-box"><div class="spinner"></div><div id="loadingText">Loading...</div></div>
+<div id="loginLoadingModal" class="login-page-loading" role="status" aria-live="polite" aria-hidden="true">
+  <div class="login-page-loading-card">
+    <div class="login-page-loading-spinner" aria-hidden="true"></div>
+    <div id="loginLoadingText">Loading...</div>
+  </div>
 </div>
 <div id="toastWrap" class="toast-wrap" aria-live="polite"></div>
 
 <script>window.USER_PROXY_URL = '/api/user/proxy.php';</script>
-<script src="/api/user/assets/pages/login-page.js?v=1"></script>
+<script src="/api/user/assets/pages/login-page.js?v=<?= htmlspecialchars($loginJsVersion, ENT_QUOTES, 'UTF-8') ?>"></script>
 </body>
 </html>

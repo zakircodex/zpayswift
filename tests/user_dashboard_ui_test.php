@@ -7,6 +7,10 @@ $pageCss = (string)file_get_contents($root . '/api/user/assets/pages/dashboard-p
 $pageJs = (string)file_get_contents($root . '/api/user/assets/pages/dashboard-page.js');
 $shellJs = (string)file_get_contents($root . '/api/user/assets/user-shell.js');
 $bottomNav = (string)file_get_contents($root . '/api/user/includes/bottom-nav.php');
+$pageBootstrap = (string)file_get_contents($root . '/api/user/includes/page-bootstrap.php');
+$loginPage = (string)file_get_contents($root . '/api/user/index.php');
+$loginJs = (string)file_get_contents($root . '/api/user/assets/pages/login-page.js');
+$loginCss = (string)file_get_contents($root . '/api/user/assets/pages/login-page.css');
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $tests = 0;
 
@@ -81,10 +85,11 @@ dashboard_expect(
 );
 dashboard_expect(
     str_contains($pageJs, 'shell.state.bootstrapData')
-    && !str_contains($pageJs, "shell.get('dashboard_bootstrap'")
+    && substr_count($pageJs, "'dashboard_bootstrap'") === 1
+    && str_contains($pageJs, 'if (refreshPromise) return refreshPromise;')
     && !str_contains($pageJs, 'transfer_create')
     && !str_contains($pageJs, 'add_money_submit'),
-    'Dashboard page makes a duplicate bootstrap or loads unrelated features'
+    'Dashboard refresh is not locked or page JavaScript loads unrelated features'
 );
 dashboard_expect(
     str_contains($pageJs, "pricingCountry === 'MY' || currency === 'MYR'")
@@ -105,6 +110,50 @@ dashboard_expect(
     && str_contains($pageCss, '.user-dashboard-page #overviewSection')
     && str_contains($pageCss, 'overflow-y: auto'),
     'Dashboard fixed hero and body-only scroll architecture is incomplete'
+);
+dashboard_expect(
+    str_contains($dashboard, "'show_global_loader' => false")
+    && str_contains($dashboard, 'id="dashboardLoadingModal"')
+    && str_contains($dashboard, 'class="user-dashboard-loading-modal"')
+    && str_contains($dashboard, 'Loading dashboard, please wait...')
+    && str_contains($bottomNav, "if (!empty(\$userPage['show_global_loader']))")
+    && str_contains($pageBootstrap, "'show_global_loader' => true"),
+    'Dashboard loader is not isolated from the authenticated shared loader'
+);
+dashboard_expect(
+    str_contains($dashboard, 'id="dashboardPullIndicator"')
+    && str_contains($pageJs, "addEventListener('touchstart'")
+    && str_contains($pageJs, "addEventListener('touchmove'")
+    && str_contains($pageJs, 'pullDistance >= pullThreshold')
+    && str_contains($pageJs, '!shell.state.drawerOpen')
+    && str_contains($pageJs, '!hasOpenModal()')
+    && str_contains($pageJs, "pageRoot.scrollTop <= 0")
+    && str_contains($pageCss, '--dashboard-pull-offset')
+    && str_contains($pageCss, '.user-dashboard-pull-indicator'),
+    'Dashboard pull-to-refresh safeguards or indicator are incomplete'
+);
+dashboard_expect(
+    str_contains($pageJs, 'setDashboardLoading(true)')
+    && str_contains($pageJs, 'setDashboardLoading(false)')
+    && str_contains($pageJs, "window.addEventListener('pagehide'")
+    && str_contains($pageJs, "window.addEventListener('pageshow'")
+    && str_contains($pageJs, 'if (!event.persisted) return;')
+    && str_contains($pageJs, "window.refreshUserDashboard = () => refreshDashboard()")
+    && str_contains($pageCss, '.user-dashboard-loading-modal')
+    && str_contains($pageCss, '@media (prefers-reduced-motion: reduce)'),
+    'Dashboard local loading lifecycle or accessibility fallback is incomplete'
+);
+dashboard_expect(
+    str_contains($loginPage, 'id="loginLoadingModal"')
+    && str_contains($loginPage, 'id="loginLoadingText"')
+    && !str_contains($loginPage, 'id="loadingWrap"')
+    && str_contains($loginJs, 'function resetLoginLoading()')
+    && str_contains($loginJs, 'function goToDashboard()')
+    && str_contains($loginJs, "window.addEventListener('pagehide'")
+    && str_contains($loginJs, "window.addEventListener('pageshow'")
+    && str_contains($loginCss, '.login-page-loading')
+    && !str_contains($loginCss, "\n.loading "),
+    'Login loader is not page-local or lacks redirect/BFCache cleanup'
 );
 dashboard_expect(
     str_contains($pageCss, 'white-space: nowrap')

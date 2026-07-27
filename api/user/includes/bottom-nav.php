@@ -41,7 +41,9 @@ declare(strict_types=1);
   </div>
 </div>
 
+<?php if (!empty($userPage['show_global_loader'])): ?>
 <div id="loadingWrap" class="loading" aria-live="polite" aria-hidden="true">
   <div class="loading-box"><div class="spinner"></div><div id="loadingText">Loading...</div></div>
 </div>
+<?php endif; ?>
 <div id="toastWrap" class="toast-wrap" aria-live="polite"></div>

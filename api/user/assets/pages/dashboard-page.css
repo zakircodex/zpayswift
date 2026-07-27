@@ -229,6 +229,8 @@ body.user-dashboard-page {
 }
 
 .user-dashboard-page #overviewSection {
+  --dashboard-pull-offset: 0px;
+  position: relative;
   min-height: 0;
   margin: 0;
   padding: 12px 0 16px;
@@ -239,8 +241,109 @@ body.user-dashboard-page {
   -webkit-overflow-scrolling: touch;
 }
 
+.user-dashboard-page .user-dashboard-pull-indicator {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  z-index: 4;
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid rgba(50, 230, 134, 0.3);
+  border-radius: 18px;
+  opacity: 0;
+  color: var(--z-muted);
+  background: rgba(10, 43, 84, 0.96);
+  box-shadow: 0 8px 20px rgba(0, 8, 25, 0.24);
+  font-size: 11px;
+  font-weight: 800;
+  pointer-events: none;
+  transform: translate(-50%, calc(var(--dashboard-pull-offset) - 42px));
+  transition: opacity 140ms ease, transform 180ms ease;
+}
+
+.user-dashboard-page #overviewSection.is-pulling .user-dashboard-pull-indicator,
+.user-dashboard-page #overviewSection.is-pull-ready .user-dashboard-pull-indicator {
+  opacity: 1;
+  transition: none;
+}
+
+.user-dashboard-page .user-dashboard-pull-spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--z-green);
+  border-radius: 50%;
+  animation: dashboardPullSpin 0.8s linear infinite;
+}
+
 .user-dashboard-page .dashboard-recommended {
   margin: 0;
+  transform: translateY(var(--dashboard-pull-offset));
+  transition: transform 180ms ease;
+}
+
+.user-dashboard-page #overviewSection.is-pulling .dashboard-recommended {
+  transition: none;
+}
+
+.user-dashboard-page .user-dashboard-loading-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 170;
+  display: none;
+  place-items: center;
+  padding: 18px;
+  background: rgba(2, 10, 22, 0.74);
+  backdrop-filter: blur(3px);
+}
+
+.user-dashboard-page .user-dashboard-loading-modal.show {
+  display: grid;
+}
+
+.user-dashboard-page .user-dashboard-loading-card {
+  width: min(100%, 320px);
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 14px;
+  padding: 24px 20px;
+  border: 1px solid rgba(50, 230, 134, 0.28);
+  border-radius: 24px;
+  color: var(--z-text);
+  background: rgba(11, 45, 92, 0.98);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.36);
+  text-align: center;
+}
+
+.user-dashboard-page .user-dashboard-loading-card p {
+  margin: 0;
+  color: var(--z-muted);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.user-dashboard-page .user-dashboard-loading-spinner {
+  width: 42px;
+  height: 42px;
+  border: 4px solid rgba(255, 255, 255, 0.18);
+  border-top-color: var(--z-green);
+  border-radius: 50%;
+  animation: dashboardLoadingSpin 0.8s linear infinite;
+}
+
+@keyframes dashboardLoadingSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes dashboardPullSpin {
+  to { transform: rotate(360deg); }
 }
 
 .user-dashboard-page .zpay-quick-head {
@@ -340,6 +443,17 @@ body.user-dashboard-page {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .user-dashboard-page .user-dashboard-loading-spinner,
+  .user-dashboard-page .user-dashboard-pull-spinner {
+    animation: none;
+    border-color: rgba(50, 230, 134, 0.45);
+  }
+
+  .user-dashboard-page .user-dashboard-pull-indicator,
+  .user-dashboard-page .dashboard-recommended {
+    transition: none;
+  }
+
   .user-dashboard-page .android-tagline-track {
     width: 100%;
     min-width: 0;

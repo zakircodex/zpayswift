@@ -11,11 +11,43 @@
     timer: 0,
     trustDevice: true
   };
+  const activeRequests = new Set();
+  let busyRequests = 0;
+  let loginInFlight = false;
+  let verifyInFlight = false;
+  let resendInFlight = false;
+  let navigationStarted = false;
 
   function setBusy(on, label = 'Loading...') {
-    $('loadingText').textContent = label;
-    $('loadingWrap').classList.toggle('show', Boolean(on));
-    $('loadingWrap').setAttribute('aria-hidden', on ? 'false' : 'true');
+    const modal = $('loginLoadingModal');
+    const root = document.querySelector('.login-wrap');
+    if (!modal || !root) return;
+    $('loginLoadingText').textContent = label;
+    modal.classList.toggle('show', Boolean(on));
+    modal.setAttribute('aria-hidden', on ? 'false' : 'true');
+    root.setAttribute('aria-busy', on ? 'true' : 'false');
+  }
+
+  function resetLoginLoading() {
+    busyRequests = 0;
+    setBusy(false);
+    document.body.classList.remove('user-modal-open');
+  }
+
+  function clearLoginNavigationState() {
+    clearTimer();
+    resetLoginLoading();
+    $('loginOtpModal').classList.remove('show');
+    $('loginOtpModal').setAttribute('aria-hidden', 'true');
+    activeRequests.forEach((controller) => controller.abort());
+    activeRequests.clear();
+  }
+
+  function goToDashboard() {
+    if (navigationStarted) return;
+    navigationStarted = true;
+    clearLoginNavigationState();
+    window.location.replace('/user/dashboard');
   }
 
   function setLoginError(message = '') {
@@ -32,11 +64,16 @@
   }
 
   async function post(action, body, label) {
+    if (navigationStarted) throw new DOMException('Navigation started', 'AbortError');
+    const controller = new AbortController();
+    activeRequests.add(controller);
+    busyRequests += 1;
     setBusy(true, label);
     try {
       const response = await fetch(`${proxyUrl}?action=${encodeURIComponent(action)}`, {
         method: 'POST',
         credentials: 'same-origin',
+        signal: controller.signal,
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
@@ -59,7 +96,9 @@
       }
       return json.data || {};
     } finally {
-      setBusy(false);
+      activeRequests.delete(controller);
+      busyRequests = Math.max(0, busyRequests - 1);
+      setBusy(busyRequests > 0);
     }
   }
 
@@ -120,6 +159,7 @@
   }
 
   async function login() {
+    if (loginInFlight || navigationStarted) return;
     setLoginError('');
     const phone = $('loginPhone').value.trim();
     const phoneCountry = $('loginPhoneCountry').value.toUpperCase();
@@ -129,6 +169,8 @@
     if (!validPhone(phoneCountry, phone)) {
       return setLoginError(phoneCountry === 'MY' ? 'Invalid Malaysia number' : 'Invalid Bangladesh number');
     }
+    loginInFlight = true;
+    $('loginBtn').disabled = true;
     try {
       const data = await post('login', {
         phone,
@@ -145,13 +187,19 @@
         toast('OTP sent for login verification', 'ok');
         return;
       }
-      window.location.replace('/user/dashboard');
+      goToDashboard();
     } catch (error) {
-      setLoginError(error.message || 'Login failed');
+      if (!navigationStarted && error?.name !== 'AbortError') {
+        setLoginError(error.message || 'Login failed');
+      }
+    } finally {
+      loginInFlight = false;
+      if (!navigationStarted) $('loginBtn').disabled = false;
     }
   }
 
   async function verifyOtp() {
+    if (verifyInFlight || navigationStarted) return;
     const otp = $('loginOtpCode').value.trim();
     if (!otpState.preAuthToken || !otpState.otpRequestId) {
       $('loginOtpStatus').textContent = 'Login verification session missing. Please login again.';
@@ -165,6 +213,8 @@
       $('loginOtpStatus').textContent = 'Please enter the OTP first.';
       return;
     }
+    verifyInFlight = true;
+    $('verifyLoginOtpBtn').disabled = true;
     try {
       await post('login_verify_otp', {
         pre_auth_token: otpState.preAuthToken,
@@ -175,17 +225,27 @@
         device_name: 'User Dashboard'
       }, 'Verifying OTP...');
       $('loginOtpStatus').textContent = 'OTP verified successfully. Logging in...';
-      window.location.replace('/user/dashboard');
+      goToDashboard();
     } catch (error) {
-      $('loginOtpStatus').textContent = error.message || 'OTP verification failed.';
+      if (!navigationStarted && error?.name !== 'AbortError') {
+        $('loginOtpStatus').textContent = error.message || 'OTP verification failed.';
+      }
+    } finally {
+      verifyInFlight = false;
+      if (!navigationStarted) {
+        $('verifyLoginOtpBtn').disabled = Date.now() >= otpState.expiresAt;
+      }
     }
   }
 
   async function resendOtp() {
+    if (resendInFlight || navigationStarted) return;
     if (!otpState.preAuthToken || !otpState.otpRequestId) {
       $('loginOtpStatus').textContent = 'Login verification session missing. Please login again.';
       return;
     }
+    resendInFlight = true;
+    $('resendLoginOtpBtn').disabled = true;
     try {
       const data = await post('login_resend_otp', {
         pre_auth_token: otpState.preAuthToken,
@@ -194,7 +254,12 @@
       setOtpData(data);
       toast('OTP resent successfully', 'ok');
     } catch (error) {
-      $('loginOtpStatus').textContent = error.message || 'Failed to resend OTP.';
+      if (!navigationStarted && error?.name !== 'AbortError') {
+        $('loginOtpStatus').textContent = error.message || 'Failed to resend OTP.';
+      }
+    } finally {
+      resendInFlight = false;
+      if (!navigationStarted) $('resendLoginOtpBtn').disabled = false;
     }
   }
 
@@ -223,5 +288,17 @@
   $('closeLoginOtpModalBtn').addEventListener('click', closeOtp);
   $('loginOtpCode').addEventListener('keydown', (event) => { if (event.key === 'Enter') verifyOtp(); });
   $('loginOtpModal').addEventListener('click', (event) => { if (event.target === $('loginOtpModal')) closeOtp(); });
+  window.addEventListener('pagehide', clearLoginNavigationState);
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    navigationStarted = false;
+    loginInFlight = false;
+    verifyInFlight = false;
+    resendInFlight = false;
+    $('loginBtn').disabled = false;
+    $('resendLoginOtpBtn').disabled = false;
+    resetLoginLoading();
+  });
+  resetLoginLoading();
   loadCountryDefault();
 })();

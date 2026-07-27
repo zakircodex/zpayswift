@@ -16,6 +16,7 @@ function user_page_config(array $overrides): array
         'show_header' => true,
         'show_drawer' => true,
         'show_bottom_nav' => true,
+        'show_global_loader' => true,
         'back_url' => '/user/dashboard',
         'bootstrap_action' => 'me',
         'bootstrap_params' => [],
