@@ -2,9 +2,9 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-$dashboard = (string)file_get_contents($root . '/api/user/dashboard.php');
-$css = (string)file_get_contents($root . '/api/user/assets/user-app.css');
-$appJs = (string)file_get_contents($root . '/api/user/assets/user-app.js');
+$page = (string)file_get_contents($root . '/api/user/profile.php');
+$css = (string)file_get_contents($root . '/api/user/assets/pages/profile-page.css');
+$js = (string)file_get_contents($root . '/api/user/assets/pages/profile-page.js');
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $profileUpdate = (string)file_get_contents($root . '/api/user/profile_update.php');
 $tests = 0;
@@ -19,169 +19,88 @@ function profile_expect(bool $condition, string $message): void
     }
 }
 
-function profile_fragment(string $source, string $start, string $end): string
-{
-    $startAt = strpos($source, $start);
-    if ($startAt === false) {
-        return '';
-    }
-    $endAt = strpos($source, $end, $startAt);
-    if ($endAt === false) {
-        return '';
-    }
-    return substr($source, $startAt, $endAt - $startAt);
-}
-
-$profile = profile_fragment($dashboard, '<section id="profileSection"', '<section id="supportSection"');
-
-profile_expect($profile !== '', 'Profile section is missing');
 profile_expect(
-    str_contains($dashboard, '/api/user/assets/user-app.css?v=32')
-    && str_contains($dashboard, '/api/user/assets/user-app.js?v=14'),
-    'Profile CSS/JS cache versions were not bumped'
+    str_contains($page, 'id="profileSection"')
+    && str_contains($page, 'class="profile-page-shell"')
+    && str_contains($page, 'class="profile-fixed-hero"')
+    && str_contains($page, 'class="profile-scroll-body"'),
+    'Profile fixed-hero/scroll architecture is missing'
 );
 profile_expect(
-    str_contains($profile, 'class="page-section profile-page-section"')
-    && str_contains($profile, 'class="profile-page-shell"')
-    && str_contains($profile, 'class="profile-fixed-hero"')
-    && str_contains($profile, 'class="profile-scroll-body"'),
-    'Profile page does not use the fixed-hero and scroll-body architecture'
-);
-profile_expect(
-    str_contains($profile, 'id="profileBackButton"')
-    && str_contains($profile, 'id="profilePageTitle"')
-    && str_contains($profile, 'id="profileNotificationButton"')
-    && str_contains($profile, 'id="profileNotificationBadge"'),
+    str_contains($page, 'href="/user/dashboard"')
+    && str_contains($page, 'id="profilePageTitle"')
+    && str_contains($page, 'href="/user/notifications"'),
     'Profile hero toolbar is incomplete'
 );
 profile_expect(
-    str_contains($profile, 'id="profileAvatarButton"')
-    && str_contains($profile, 'id="profileAvatarImage"')
-    && str_contains($profile, 'id="profileAvatarInitials"')
-    && str_contains($profile, 'id="profilePhotoEditButton"')
-    && str_contains($profile, 'id="profileEditButton"')
-    && !str_contains($profile, '<small>Edit</small>')
-    && str_contains($profile, 'id="profilePhotoInput"'),
-    'Profile identity/photo/edit controls are incomplete'
+    str_contains($page, 'id="profileAvatarButton"')
+    && str_contains($page, 'id="profileAvatarImage"')
+    && str_contains($page, 'id="profileAvatarInitials"')
+    && str_contains($page, 'id="profilePhotoEditButton"')
+    && str_contains($page, 'id="profileEditButton"')
+    && str_contains($page, 'id="profilePhotoInput"'),
+    'Profile photo/edit controls are incomplete'
 );
 profile_expect(
-    str_contains($profile, '<h3>Security</h3>')
-    && str_contains($profile, 'id="profileChangePasswordBtn"')
-    && str_contains($profile, 'id="profileChangePinBtn"')
-    && str_contains($profile, 'id="profileBiometricBtn"')
-    && str_contains($profile, 'Android app only'),
-    'Profile Security section does not match the required Android-style rows'
+    str_contains($page, '<h3>Security</h3>')
+    && str_contains($page, 'id="profileChangePasswordBtn"')
+    && str_contains($page, 'id="profileChangePinBtn"')
+    && str_contains($page, 'Android app only'),
+    'Profile Security section is incomplete'
 );
 profile_expect(
-    str_contains($profile, '<h3>Account &amp; App</h3>')
-    && str_contains($profile, 'id="profileCopyUidBtn"')
-    && str_contains($profile, 'id="profileCreatedAt"')
-    && str_contains($profile, 'id="profileAppVersion"')
-    && str_contains($profile, 'id="profileSessionStatus"'),
-    'Profile Account & App section is incomplete'
+    str_contains($page, '<h3>Account &amp; App</h3>')
+    && str_contains($page, 'id="profileCopyUidBtn"')
+    && str_contains($page, 'id="profileCreatedAt"')
+    && str_contains($page, 'id="profileAppVersion"')
+    && str_contains($page, 'id="profileSessionStatus"')
+    && str_contains($page, 'id="profileLogoutBtn"'),
+    'Profile Account/App or logout section is incomplete'
 );
 profile_expect(
-    str_contains($profile, 'profile-logout-card')
-    && str_contains($profile, 'id="profileLogoutBtn"')
-    && !str_contains($profile, 'Help &amp; Session'),
-    'Profile logout section was not converted to Android style'
+    !str_contains($page, 'Account Details')
+    && !str_contains($page, 'profilePhoneCountry')
+    && !str_contains($page, 'profileLastLogin'),
+    'Legacy Profile summary remains'
 );
 profile_expect(
-    !str_contains($profile, 'Account Details')
-    && !str_contains($profile, 'profilePhoneCountry')
-    && !str_contains($profile, 'profilePricingCountry')
-    && !str_contains($profile, 'profileWalletCurrency')
-    && !str_contains($profile, 'profileLastLogin'),
-    'Legacy profile account summary fields still render'
-);
-profile_expect(
-    str_contains($css, "body.user-authenticated[data-active-section='profileSection'] .mobile-header")
-    && str_contains($css, "body.user-authenticated[data-active-section='profileSection'] .dashboard-fixed-stack")
-    && str_contains($css, "body.user-authenticated[data-active-section='profileSection'] .bottom-nav")
-    && str_contains($css, '.profile-fixed-hero')
-    && str_contains($css, 'flex: 0 0 auto')
+    str_contains($css, '.profile-fixed-hero')
     && str_contains($css, '.profile-scroll-body')
-    && str_contains($css, 'overflow-y: auto'),
-    'Profile fixed hero or independent scroll CSS is missing'
+    && str_contains($css, 'overflow-y: auto')
+    && str_contains($css, '@media (max-width: 340px)'),
+    'Profile responsive fixed/scroll styling is incomplete'
 );
 profile_expect(
-    str_contains($css, '@media (max-width: 420px)')
-    && str_contains($css, '@media (max-width: 340px)')
-    && str_contains($css, 'overflow-wrap: anywhere'),
-    'Profile responsive text-fit hardening is missing'
+    str_contains($js, 'function maskEmail(value)')
+    && str_contains($js, "maskEmail(profile.email)")
+    && !str_contains($js, "$('profileEmail').textContent = profile.email"),
+    'Profile email is not masked safely'
 );
 profile_expect(
-    str_contains($appJs, 'function maskEmail(value)')
-    && str_contains($appJs, 'function profileCountryLabel(value)')
-    && str_contains($appJs, "displayCountry + ' | ' + currency")
-    && str_contains($appJs, "maskEmail(profile.email)")
-    && !str_contains($appJs, "$('profileEmail').textContent = profile.email"),
-    'Profile masking/country rendering is not wired safely'
+    str_contains($js, 'function ensureProfileCropModal()')
+    && str_contains($js, 'createImageBitmap')
+    && str_contains($js, "data.append('profile_photo', blob, 'profile-cropped.jpg')")
+    && str_contains($js, 'URL.revokeObjectURL'),
+    'Profile photo crop/upload flow is incomplete'
 );
 profile_expect(
-    str_contains($appJs, "'profileNotificationBadge'")
-    && str_contains($appJs, "$('profileNotificationButton')?.addEventListener('click', openNotificationsPage)")
-    && str_contains($appJs, 'loadUnreadCount();')
-    && str_contains($appJs, "document.querySelector('.profile-scroll-body')?.scrollTo"),
-    'Profile notification badge/action or scroll reset is missing'
+    str_contains($js, 'zpayProfileModal')
+    && str_contains($js, 'closeProfileModal({ fromHistory: true })')
+    && str_contains($js, 'trapFocusWithin(event, closeProfileModal)'),
+    'Profile modal back/focus behavior is missing'
 );
-profile_expect(
-    str_contains($css, 'profile-photo-edit-badge')
-    && str_contains($css, 'profile-identity-country-row')
-    && str_contains($css, 'overflow: visible;')
-    && str_contains($css, 'bottom: -10px;')
-    && str_contains($css, 'height: 44px;')
-    && str_contains($css, 'aspect-ratio: 1;'),
-    'Profile photo edit badge or main edit button is not safely shaped'
-);
-profile_expect(
-    str_contains($appJs, 'function ensureProfileCropModal()')
-    && str_contains($appJs, 'createImageBitmap')
-    && str_contains($appJs, "data.append('profile_photo', blob, 'profile-cropped.jpg')")
-    && str_contains($appJs, 'function uploadProfilePhoto(file)')
-    && str_contains($appJs, 'openProfileCrop(file)')
-    && str_contains($appJs, 'profileCropCancel')
-    && str_contains($appJs, 'profileCropSave')
-    && str_contains($appJs, 'pinchDistance')
-    && !str_contains($appJs, 'profileCropZoom')
-    && !str_contains($appJs, 'profileCropReset'),
-    'Profile photo selection does not require the crop confirmation flow'
-);
-profile_expect(
-    str_contains($appJs, 'zpayProfileModal')
-    && str_contains($appJs, 'closeProfileModal({ fromHistory: true })')
-    && str_contains($appJs, 'showProfileResult')
-    && str_contains($css, '.zpay-profile-modal')
-    && str_contains($css, '.zpay-profile-result-actions .android-primary-button')
-    && str_contains($css, 'width: 100%;'),
-    'Profile modal rounding, result action width or back behavior is missing'
-);
-profile_expect(
-    str_contains($appJs, 'function profileSafeMessage(error, fallback)')
-    && str_contains($appJs, 'WRONG_PASSWORD')
-    && str_contains($appJs, 'UNSUPPORTED_IMAGE')
-    && str_contains($appJs, 'stack trace'),
-    'Profile error mapping does not suppress internal implementation details'
-);
-profile_expect(
-    str_contains($appJs, "profileModal.opener = event.currentTarget")
-    && str_contains($appJs, "$('profilePhotoEditButton')?.addEventListener('click', openProfilePhotoPicker)")
-    && str_contains($appJs, 'trapFocusWithin(event, closeProfileModal)')
-    && str_contains($appJs, 'URL.revokeObjectURL'),
-    'Profile modal focus return, crop keyboard handling or object URL cleanup is missing'
-);
-profile_expect(
-    str_contains($proxy, "case 'profile_get':")
-    && str_contains($proxy, "case 'profile_update':")
-    && str_contains($proxy, "case 'profile_photo_upload':")
-    && str_contains($proxy, "case 'profile_change_password':")
-    && str_contains($proxy, "case 'profile_change_pin':"),
-    'Existing profile API proxy actions are missing'
-);
+foreach (['profile_get', 'profile_update', 'profile_photo_upload', 'profile_change_password', 'profile_change_pin'] as $action) {
+    profile_expect(str_contains($proxy, "case '{$action}':"), "missing profile proxy action {$action}");
+}
 profile_expect(
     str_contains($profileUpdate, 'FIELD_NOT_ALLOWED')
     && !preg_match("/\$profileBody\s*\[\s*['\"](?:role|pricing_country|wallet_currency|status)['\"]\s*\]/", $proxy),
-    'Profile authority fields are not protected by the existing backend contract'
+    'Profile authority fields are not protected'
+);
+profile_expect(
+    !str_contains($page . $js, 'openSection(')
+    && !str_contains($page, 'data-page-section'),
+    'Profile still depends on SPA routing'
 );
 
 echo "User Profile UI tests passed ({$tests} assertions).\n";

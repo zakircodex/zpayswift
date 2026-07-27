@@ -3,10 +3,11 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $dashboard = (string)file_get_contents($root . '/api/user/dashboard.php');
-$css = (string)file_get_contents($root . '/api/user/assets/user-app.css');
-$dashboardJs = (string)file_get_contents($root . '/api/user/assets/dashboard.js');
+$pageCss = (string)file_get_contents($root . '/api/user/assets/pages/dashboard-page.css');
+$pageJs = (string)file_get_contents($root . '/api/user/assets/pages/dashboard-page.js');
+$shellJs = (string)file_get_contents($root . '/api/user/assets/user-shell.js');
+$bottomNav = (string)file_get_contents($root . '/api/user/includes/bottom-nav.php');
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
-$appJs = (string)file_get_contents($root . '/api/user/assets/user-app.js');
 $tests = 0;
 
 function dashboard_expect(bool $condition, string $message): void
@@ -19,152 +20,97 @@ function dashboard_expect(bool $condition, string $message): void
     }
 }
 
-function dashboard_fragment(string $source, string $start, string $end): string
-{
-    $startAt = strpos($source, $start);
-    if ($startAt === false) {
-        return '';
-    }
-    $endAt = strpos($source, $end, $startAt);
-    if ($endAt === false) {
-        return '';
-    }
-    return substr($source, $startAt, $endAt - $startAt);
-}
-
-$hero = dashboard_fragment($dashboard, '<div class="hero-card"', '<div class="android-tagline"');
-$fixedStack = dashboard_fragment($dashboard, '<div class="dashboard-fixed-stack">', '<section id="overviewSection"');
-$overview = dashboard_fragment($dashboard, '<section id="overviewSection"', '<section id="topupSection"');
-$bottomNav = dashboard_fragment($dashboard, '<div class="bottom-nav">', '<script>');
-$loadingPreview = dashboard_fragment($dashboardJs, 'function prepareDashboardLoadingPreview(){', 'function showLogin(){');
-$showApp = dashboard_fragment($dashboardJs, 'function showApp(){', '/* =========================');
-
-dashboard_expect($hero !== '', 'Dashboard hero markup is missing');
 dashboard_expect(
-    str_contains($fixedStack, 'class="hero-card"')
-    && str_contains($fixedStack, 'class="android-tagline"')
-    && substr_count($fixedStack, 'class="android-tagline-item"') === 2,
-    'Hero and marquee tagline are not grouped in the fixed Dashboard stack'
+    str_contains($dashboard, '$zpayMobileAppKey')
+    && str_contains($dashboard, 'zpay_dash_dashboard_payload($auth)'),
+    'Android dashboard API compatibility branch is missing'
 );
 dashboard_expect(
-    str_contains($hero, 'class="dashboard-hero-topbar"')
-    && str_contains($hero, 'id="heroMenuButton"')
-    && str_contains($hero, 'id="dashboardHeroTitle"')
-    && str_contains($hero, 'id="heroNotificationButton"'),
-    'Hero does not contain the Android-style menu, title and notification controls'
+    substr_count($dashboard, '<section') === 1
+    && str_contains($dashboard, 'id="overviewSection"')
+    && !str_contains($dashboard, 'transferSection')
+    && !str_contains($dashboard, 'addMoneySection'),
+    'Dashboard browser page is not isolated'
 );
-dashboard_expect(substr_count($dashboard, 'id="heroBalance"') === 1, 'Available balance is rendered more than once');
-dashboard_expect(substr_count($dashboard, 'id="heroHold"') === 1, 'Hold balance is rendered more than once');
-dashboard_expect(!str_contains($overview, 'Account Summary'), 'Dashboard still renders the account summary card');
-dashboard_expect(!str_contains($hero, 'heroStatusText'), 'Dashboard still renders the account status badge');
 dashboard_expect(
-    str_contains($overview, 'id="zpayQuickActions"')
-    && str_contains($overview, '<h2 class="zpay-quick-title">Recommended</h2>'),
-    'Dashboard Recommended services block is missing'
+    str_contains($dashboard, 'class="dashboard-hero-topbar"')
+    && str_contains($dashboard, 'id="openSidebarBtn"')
+    && str_contains($dashboard, 'id="dashboardHeroTitle"')
+    && str_contains($dashboard, 'href="/user/notifications"'),
+    'Android-style dashboard hero controls are incomplete'
+);
+dashboard_expect(
+    substr_count($dashboard, 'id="heroBalance"') === 1
+    && substr_count($dashboard, 'id="heroHold"') === 1
+    && !str_contains($dashboard, 'Account Summary'),
+    'Dashboard balance is duplicated or legacy summary remains'
+);
+dashboard_expect(
+    str_contains($dashboard, 'id="zpayQuickActions"')
+    && str_contains($dashboard, '<h2 class="zpay-quick-title">Recommended</h2>'),
+    'Dashboard Recommended block is missing'
 );
 
-$servicePositions = [];
-foreach (['Add Money', 'Transfer', 'Top-Up', 'bKash', 'Nagad', 'Bundle', 'Shopping', 'Contact Us', 'Info'] as $service) {
-    $servicePositions[] = strpos($overview, '<span class="zpay-service-name">' . $service . '</span>');
-}
-dashboard_expect(
-    !in_array(false, $servicePositions, true) && $servicePositions === array_values(array_unique($servicePositions)),
-    'A required Dashboard service is missing or duplicated'
-);
-$sortedServicePositions = $servicePositions;
-sort($sortedServicePositions);
-dashboard_expect($servicePositions === $sortedServicePositions, 'Recommended services are not in Android order');
-
-$bottomOrder = [
-    'data-page-section="overviewSection"',
-    'data-page-section="addMoneySection"',
-    'data-page-section="transferSection"',
-    'data-page-section="historySection"',
-    'data-page-section="profileSection"',
+$services = [
+    'Add Money' => '/user/add-money',
+    'Transfer' => '/user/transfer',
+    'Top-Up' => '/user/topup',
+    'bKash' => '/user/bkash',
+    'Nagad' => '/user/nagad',
+    'Bundle' => '/user/bundle',
+    'Contact Us' => '/user/contact-us',
 ];
-$bottomPositions = array_map(static fn(string $needle) => strpos($bottomNav, $needle), $bottomOrder);
-dashboard_expect(!in_array(false, $bottomPositions, true), 'Android-style bottom navigation destination is missing');
-$sortedBottomPositions = $bottomPositions;
-sort($sortedBottomPositions);
-dashboard_expect($bottomPositions === $sortedBottomPositions, 'Bottom navigation is not in Android order');
-dashboard_expect(!str_contains($bottomNav, '>Services<') && !str_contains($bottomNav, '>Support<'), 'Old Services/Support bottom navigation remains');
-
+foreach ($services as $label => $href) {
+    dashboard_expect(
+        str_contains($dashboard, 'href="' . $href . '"')
+        && str_contains($dashboard, '<span class="zpay-service-name">' . $label . '</span>'),
+        "Dashboard service {$label} is missing or not a normal link"
+    );
+}
 dashboard_expect(
-    str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .mobile-header")
-    && str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .dashboard-fixed-stack")
-    && str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .hero-card")
-    && str_contains($css, 'position: sticky')
-    && str_contains($css, 'animation: zpayDashboardTagline 16s linear infinite')
-    && str_contains($css, '@keyframes zpayDashboardTagline')
-    && str_contains($css, "grid-template-columns: repeat(3, minmax(0, 168px))"),
-    'Dashboard-only responsive layout rules are missing'
+    !str_contains($dashboard, 'data-open-section')
+    && !str_contains($dashboard, 'data-page-section')
+    && !str_contains($dashboard, 'openSection('),
+    'Dashboard still uses SPA section switching'
 );
 dashboard_expect(
-    str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .bottom-label")
-    && str_contains($css, 'white-space: nowrap'),
-    'Dashboard navigation labels can wrap'
+    str_contains($dashboard, "'bootstrap_action' => 'dashboard_bootstrap'")
+    && str_contains($dashboard, "'summary_only' => '1'")
+    && str_contains($proxy, "'history_complete' => !\$summaryOnly"),
+    'Dashboard does not reuse the lightweight bootstrap contract'
 );
 dashboard_expect(
-    str_contains($dashboardJs, "el('heroMenuButton')?.addEventListener('click', openSidebar)")
-    && str_contains($appJs, "'heroNotificationBadge'")
-    && str_contains($appJs, "$('heroNotificationButton')?.addEventListener('click', openNotificationsPage)")
-    && str_contains($dashboard, 'id="notificationsSection"')
-    && !str_contains($appJs, 'notificationModal'),
-    'Hero controls are not wired to existing menu/notification behavior'
+    str_contains($pageJs, 'shell.state.bootstrapData')
+    && !str_contains($pageJs, "shell.get('dashboard_bootstrap'")
+    && !str_contains($pageJs, 'transfer_create')
+    && !str_contains($pageJs, 'add_money_submit'),
+    'Dashboard page makes a duplicate bootstrap or loads unrelated features'
 );
 dashboard_expect(
-    str_contains($dashboardJs, "pricingCountry === 'MY'")
-    && str_contains($dashboardJs, "wallet.display_currency || wallet.wallet_currency || wallet.currency")
-    && str_contains($dashboardJs, "const isMyrAccount = pricingCountry === 'MY' || walletCurrency === 'MYR'")
-    && str_contains($dashboardJs, ": 'Not applicable'"),
-    'Dashboard rate visibility is not pricing-country aware'
+    str_contains($pageJs, "pricingCountry === 'MY' || currency === 'MYR'")
+    && str_contains($pageJs, ": 'Not applicable'"),
+    'Dashboard rate visibility is not pricing-country/wallet aware'
 );
 dashboard_expect(
-    str_contains($dashboardJs, "summary_only: '1'")
-    && str_contains($proxy, "'history_complete' => !\$summaryOnly")
-    && str_contains($proxy, '$summaryOnly ? [] : user_proxy_collect_wallet_received')
-    && str_contains($dashboardJs, 'state.historyLoaded = logWrap.history_complete !== false'),
-    'Dashboard bootstrap does not defer heavy history payloads'
+    str_contains($pageCss, '.user-dashboard-page .hero-card')
+    && str_contains($pageCss, '.user-dashboard-page .dashboard-orb')
+    && str_contains($pageCss, 'grid-template-columns: repeat(3, minmax(0, 1fr))')
+    && str_contains($pageCss, '@media (max-width: 340px)'),
+    'Dashboard responsive hero/service layout is incomplete'
 );
 dashboard_expect(
-    str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .hero-card::before")
-    && str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .hero-card::after")
-    && str_contains($css, '--dashboard-drawer-width: 300px')
-    && str_contains($css, "body.user-authenticated[data-active-section='overviewSection'] .app-shell")
-    && str_contains($css, 'display: flex;'),
-    'Dashboard decorative bubbles or desktop shell rules are missing'
+    str_contains($bottomNav, "['dashboard', '/user/dashboard'")
+    && str_contains($bottomNav, "['add-money', '/user/add-money'")
+    && str_contains($bottomNav, "['transfer', '/user/transfer'")
+    && str_contains($bottomNav, "['history', '/user/history'")
+    && str_contains($bottomNav, "['profile', '/user/profile'"),
+    'Shared bottom navigation order is incomplete'
 );
 dashboard_expect(
-    str_contains($dashboardJs, "const DASHBOARD_LOADING_TEXT = 'Loading dashboard, please wait...'")
-    && !str_contains($dashboardJs, 'Checking session...')
-    && str_contains($dashboardJs, "wrap.classList.toggle('dashboard-load'")
-    && str_contains($css, '.loading.dashboard-load'),
-    'Dashboard loading message or dimmed overlay is not configured'
-);
-dashboard_expect(
-    str_contains($loadingPreview, "heroBalance: '--'")
-    && str_contains($loadingPreview, "document.body.setAttribute('data-active-section', 'overviewSection')")
-    && str_contains($loadingPreview, "document.body.classList.add('user-authenticated', 'dashboard-loading-preview')")
-    && str_contains($loadingPreview, "el('appView')?.classList.remove('hidden')")
-    && str_contains($css, 'body.dashboard-loading-preview #appView'),
-    'Dashboard loading preview is not sanitized before display'
-);
-$sectionStateAt = strpos($showApp, "document.body.setAttribute('data-active-section'");
-$authenticatedAt = strpos($showApp, "document.body.classList.add('user-authenticated')");
-$appRevealAt = strpos($showApp, "el('appView')?.classList.remove('hidden')");
-dashboard_expect(
-    $sectionStateAt !== false
-    && $authenticatedAt !== false
-    && $appRevealAt !== false
-    && $sectionStateAt < $authenticatedAt
-    && $authenticatedAt < $appRevealAt,
-    'Authenticated layout state is not prepared before the app is revealed'
-);
-dashboard_expect(
-    str_contains($appJs, "event.target.closest('[data-dashboard-action]')")
-    && str_contains($appJs, 'Shopping is coming soon.')
-    && str_contains($appJs, "'Z-Pay Swift'"),
-    'Shopping and Info Dashboard actions are not wired to safe local UI behavior'
+    str_contains($shellJs, "window.USER_BOOTSTRAP_ACTION || 'me'")
+    && str_contains($shellJs, 'state.bootstrapData = data')
+    && str_contains($shellJs, 'loadUnread();'),
+    'Shared dashboard bootstrap or notification badge wiring is missing'
 );
 
 echo "User Dashboard UI tests passed ({$tests} assertions).\n";

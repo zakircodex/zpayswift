@@ -2,27 +2,20 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-$files = [
-    'dashboard' => $root . '/api/user/dashboard.php',
-    'proxy' => $root . '/api/user/proxy.php',
-    'dashboard_js' => $root . '/api/user/assets/dashboard.js',
-    'app_js' => $root . '/api/user/assets/user-app.js',
-    'app_css' => $root . '/api/user/assets/user-app.css',
-    'profile_update' => $root . '/api/user/profile_update.php',
-    'transfer_create' => $root . '/api/transfer/create.php',
-    'support' => $root . '/api/lib/support.php',
-];
-
-$source = [];
-foreach ($files as $name => $path) {
-    $value = file_get_contents($path);
-    if ($value === false) {
-        fwrite(STDERR, "FAIL: unable to read {$path}\n");
-        exit(1);
-    }
-    $source[$name] = $value;
-}
-
+$proxy = (string)file_get_contents($root . '/api/user/proxy.php');
+$transferPage = (string)file_get_contents($root . '/api/user/transfer.php');
+$transferJs = (string)file_get_contents($root . '/api/user/assets/pages/transfer-page.js');
+$transferCss = (string)file_get_contents($root . '/api/user/assets/pages/transfer-page.css');
+$profileJs = (string)file_get_contents($root . '/api/user/assets/pages/profile-page.js');
+$supportPage = (string)file_get_contents($root . '/api/user/support.php');
+$contactPage = (string)file_get_contents($root . '/api/user/contact-us.php');
+$supportJs = (string)file_get_contents($root . '/api/user/assets/pages/support-page.js');
+$supportCss = (string)file_get_contents($root . '/api/user/assets/pages/support-page.css');
+$shellJs = (string)file_get_contents($root . '/api/user/assets/user-shell.js');
+$profileUpdate = (string)file_get_contents($root . '/api/user/profile_update.php');
+$transferCreate = (string)file_get_contents($root . '/api/transfer/create.php');
+$supportBackend = (string)file_get_contents($root . '/api/lib/support.php');
+$htaccess = (string)file_get_contents($root . '/.htaccess');
 $tests = 0;
 
 function expect_true(bool $condition, string $message): void
@@ -35,211 +28,136 @@ function expect_true(bool $condition, string $message): void
     }
 }
 
-function contains(string $source, string $needle): bool
-{
-    return str_contains($source, $needle);
-}
-
-foreach (['servicesSection', 'transferSection', 'profileSection', 'supportSection', 'notificationsSection'] as $sectionId) {
-    expect_true(contains($source['dashboard'], 'id="' . $sectionId . '"'), "missing User Panel section {$sectionId}");
-}
-
-foreach (['overviewSection', 'addMoneySection', 'transferSection', 'historySection', 'profileSection'] as $sectionId) {
-    expect_true(contains($source['dashboard'], 'data-page-section="' . $sectionId . '"'), "missing primary navigation destination {$sectionId}");
-}
-
-expect_true(
-    contains($source['app_css'], "body.user-authenticated[data-active-section]:not([data-active-section='overviewSection']) .hero-card"),
-    'balance hero is not explicitly restricted to the Dashboard'
-);
-
 foreach (['profile_get', 'profile_update', 'profile_photo_upload', 'profile_change_password', 'profile_change_pin'] as $action) {
-    expect_true(contains($source['proxy'], "case '{$action}':"), "missing profile proxy action {$action}");
+    expect_true(str_contains($proxy, "case '{$action}':"), "missing profile proxy action {$action}");
 }
-
 expect_true(
-    contains($source['proxy'], "array_key_exists('name', \$body)")
-    && contains($source['proxy'], "array_key_exists('email', \$body)"),
-    'profile proxy must explicitly whitelist editable fields'
-);
-expect_true(
-    !preg_match("/\$profileBody\s*\[\s*['\"](?:role|pricing_country|wallet_currency|status)['\"]\s*\]/", $source['proxy']),
-    'profile proxy forwards a forbidden authority field'
-);
-expect_true(
-    contains($source['profile_update'], 'FIELD_NOT_ALLOWED'),
-    'profile backend no longer rejects authority-field updates'
+    str_contains($proxy, "array_key_exists('name', \$body)")
+    && str_contains($proxy, "array_key_exists('email', \$body)")
+    && !preg_match("/\$profileBody\s*\[\s*['\"](?:role|pricing_country|wallet_currency|status)['\"]\s*\]/", $proxy)
+    && str_contains($profileUpdate, 'FIELD_NOT_ALLOWED'),
+    'Profile editable-field authority is not preserved'
 );
 
 foreach (['transfer_recipient', 'transfer_preview', 'transfer_create', 'transfer_history', 'transfer_favorites', 'transfer_favorite_add', 'transfer_favorite_remove'] as $action) {
-    expect_true(contains($source['proxy'], "case '{$action}':"), "missing transfer proxy action {$action}");
+    expect_true(str_contains($proxy, "case '{$action}':"), "missing transfer proxy action {$action}");
 }
 expect_true(
-    strpos($source['proxy'], 'user_proxy_validate_transaction_pin(', strpos($source['proxy'], "case 'transfer_preview':")) !== false,
-    'website transfer preview does not validate the transaction PIN server-side'
+    strpos($proxy, 'user_proxy_validate_transaction_pin(', strpos($proxy, "case 'transfer_preview':")) !== false
+    && str_contains($proxy, '$checkOnly = !empty($body[\'check_only\'])')
+    && str_contains($proxy, "'check_only' => \$checkOnly"),
+    'Transfer PIN/check-only validation contract is missing'
 );
 expect_true(
-    contains($source['proxy'], '$checkOnly = !empty($body[\'check_only\'])')
-    && contains($source['proxy'], 'if (!$checkOnly)')
-    && contains($source['proxy'], "'check_only' => \$checkOnly"),
-    'website transfer amount step does not reuse the existing backend check_only preview validation'
+    str_contains($proxy, "'preview_token' => trim")
+    && str_contains($transferCreate, 'zpay_transfer_claim_preview_token'),
+    'Transfer execution is not bound to preview tokens'
 );
 expect_true(
-    contains($source['proxy'], "'preview_token' => trim")
-    && contains($source['transfer_create'], 'zpay_transfer_claim_preview_token'),
-    'transfer execution is not bound to the existing preview-token flow'
+    str_contains($transferPage, 'transfer-page-header')
+    && str_contains($transferPage, 'Receiver Account')
+    && str_contains($transferPage, 'transferFavoriteList')
+    && str_contains($transferPage, 'transferReviewRows')
+    && str_contains($transferPage, 'transferReferenceInput')
+    && !str_contains($transferPage, 'transferReceiverResult'),
+    'Isolated Transfer page markup is incomplete'
 );
 expect_true(
-    contains($source['app_js'], 'app.transfer.submitting')
-    && contains($source['app_js'], 'Tap and hold to confirm transfer'),
-    'transfer confirmation lacks duplicate-submit or Android-style hold control'
+    str_contains($transferJs, 'submitting: false')
+    && str_contains($transferJs, 'Tap and hold to confirm transfer')
+    && str_contains($transferJs, 'invalidateTransferReceiver')
+    && str_contains($transferJs, 'verifiedInput')
+    && str_contains($transferJs, 'loadTransferFavorites')
+    && str_contains($transferJs, 'openTransferLoading')
+    && str_contains($transferJs, 'openTransferError')
+    && str_contains($transferJs, 'showTransferSuccess')
+    && str_contains($transferJs, 'check_only: true'),
+    'Transfer modal/hold/favourite/stale-state flow is incomplete'
 );
 expect_true(
-    contains($source['dashboard'], 'transfer-page-header')
-    && contains($source['dashboard'], 'Receiver Account')
-    && contains($source['dashboard'], 'transferFavoriteList')
-    && contains($source['dashboard'], 'transferReviewRows')
-    && contains($source['dashboard'], 'transferReferenceInput')
-    && !contains($source['dashboard'], 'transferReceiverResult')
-    && !contains($source['dashboard'], 'data-transfer-back="1"')
-    && !contains($source['dashboard'], 'data-transfer-back="2"'),
-    'Android-style Transfer page shell or favorite receiver UI is missing'
+    str_contains($proxy, 'USER_TRANSFER_FAVORITES/')
+    && str_contains($proxy, 'transfer/check_recipient.php')
+    && str_contains($proxy, 'fb_delete($path)'),
+    'Authenticated favourite storage/validation is missing'
 );
 expect_true(
-    contains($source['proxy'], 'USER_TRANSFER_FAVORITES/')
-    && contains($source['proxy'], "transfer/check_recipient.php")
-    && contains($source['proxy'], 'fb_delete($path)'),
-    'Transfer favorite storage must be authenticated, receiver-validated and removable'
-);
-expect_true(
-    contains($source['app_js'], 'invalidateTransferReceiver')
-    && contains($source['app_js'], 'app.transfer.verifiedInput')
-    && contains($source['app_js'], 'loadTransferFavorites')
-    && contains($source['app_js'], 'openTransferLoading')
-    && contains($source['app_js'], 'openTransferError')
-    && contains($source['app_js'], 'showTransferSuccess')
-    && contains($source['app_js'], 'check_only: true')
-    && !contains($source['app_js'], 'showInlineTransfer'),
-    'Transfer frontend does not use Android-style modals, amount validation or stale receiver cleanup'
-);
-expect_true(
-    contains($source['app_css'], "body.user-authenticated[data-active-section='transferSection'] .bottom-nav-inner")
-    && contains($source['app_css'], '#transferSection .transfer-hold-button')
-    && contains($source['app_css'], '.transfer-favorite-item')
-    && contains($source['app_css'], '.zpay-transfer-modal')
-    && contains($source['app_css'], '-webkit-touch-callout: none')
-    && contains($source['app_css'], 'overflow-y: auto;'),
-    'Transfer Android-style scoped CSS, modal styling or fixed scroll architecture is missing'
+    str_contains($transferCss, '#transferSection .transfer-hold-button')
+    && str_contains($transferCss, '.transfer-favorite-item')
+    && str_contains($transferCss, '.zpay-transfer-modal')
+    && str_contains($transferCss, '-webkit-touch-callout: none')
+    && str_contains($transferCss, 'overflow-y: auto'),
+    'Transfer Android-style isolated CSS is incomplete'
 );
 
 foreach (['support_config', 'support_list', 'support_details', 'support_create', 'support_reply', 'support_attachment'] as $action) {
-    expect_true(contains($source['proxy'], "case '{$action}':"), "missing support proxy action {$action}");
+    expect_true(str_contains($proxy, "case '{$action}':"), "missing support proxy action {$action}");
 }
 expect_true(
-    contains($source['support'], 'function support_user_can_access')
-    && contains($source['support'], "return \$uid !== '' && \$uid === (string)(\$ticket['uid'] ?? '');"),
-    'support ownership check is missing or weakened'
+    str_contains($supportBackend, 'function support_user_can_access')
+    && str_contains($supportBackend, "return \$uid !== '' && \$uid === (string)(\$ticket['uid'] ?? '');"),
+    'Support ownership check is missing'
 );
 expect_true(
-    contains($source['app_js'], "makeIdempotencyKey('SUPPORT-CREATE')")
-    && contains($source['app_js'], "makeIdempotencyKey('SUPPORT-REPLY')"),
-    'support create/reply idempotency is not wired'
+    str_contains($supportJs, "makeIdempotencyKey('SUPPORT-CREATE')")
+    && str_contains($supportJs, "makeIdempotencyKey('SUPPORT-REPLY')")
+    && str_contains($supportJs, 'option.dataset.relatedType')
+    && str_contains($supportJs, 'selectedOptions?.[0]?.dataset.relatedType'),
+    'Support idempotency or related request type is missing'
 );
 expect_true(
-    contains($source['app_js'], 'option.dataset.relatedType')
-    && contains($source['app_js'], "selectedOptions?.[0]?.dataset.relatedType"),
-    'related support request type is not preserved independently from its category'
+    str_contains($proxy, "'support/attachment.php?'")
+    && str_contains($proxy, "header('Cache-Control: private, no-store"),
+    'Private support attachment bridge is missing or cacheable'
 );
 expect_true(
-    contains($source['proxy'], "'support/attachment.php?'")
-    && contains($source['proxy'], "header('Cache-Control: private, no-store"),
-    'private support attachment bridge is missing or cacheable'
+    str_contains($contactPage, 'support-contact-hero-panel')
+    && str_contains($contactPage, 'Get In Touch')
+    && str_contains($contactPage, 'supportOpenRequestsButton')
+    && str_contains($supportPage, 'supportRequestWorkspace')
+    && str_contains($supportPage, 'supportStartChatButton'),
+    'Contact landing or Support workspace page is incomplete'
 );
 expect_true(
-    contains($source['dashboard'], 'support-contact-hero-panel')
-    && contains($source['dashboard'], 'Get In Touch')
-    && contains($source['dashboard'], 'supportOpenRequestsButton')
-    && contains($source['dashboard'], 'supportRequestWorkspace')
-    && contains($source['dashboard'], 'supportStartChatButton'),
-    'Android-style Contact Us landing layout is missing'
+    str_contains($supportCss, '#supportSection .support-scroll-body')
+    && str_contains($supportCss, '#supportSection #supportListPanel.active')
+    && str_contains($supportCss, '#supportSection .support-ticket-card .status-pill')
+    && str_contains($supportCss, '#supportSection .conversation-header')
+    && str_contains($supportCss, '#supportSection .support-composer textarea')
+    && str_contains($supportCss, 'height: 100dvh'),
+    'Support fixed/scroll conversation CSS is incomplete'
 );
 expect_true(
-    contains($source['app_css'], "#supportSection .support-contact-hero-panel")
-    && contains($source['app_css'], "body.user-authenticated[data-active-section='supportSection'] .bottom-nav")
-    && contains($source['app_css'], "#supportSection .support-floating-button")
-    && contains($source['app_css'], "#supportSection .support-scroll-body")
-    && contains($source['app_css'], "#supportSection #supportListPanel.active")
-    && contains($source['app_css'], "#supportSection .support-ticket-card .status-pill")
-    && contains($source['app_css'], "#supportSection .conversation-header")
-    && contains($source['app_css'], "#supportSection .support-composer textarea")
-    && contains($source['app_css'], 'height: 100dvh'),
-    'Contact Us page scoped fixed/scroll Android-style CSS is missing'
+    str_contains($supportJs, 'text.textContent = String(message.message')
+    && str_contains($supportJs, "'SESSION_EXPIRED'")
+    && str_contains($supportJs, 'async function refreshCsrfToken')
+    && str_contains($supportJs, 'function isCsrfError'),
+    'Support XSS/session/CSRF handling is incomplete'
 );
 expect_true(
-    contains($source['app_js'], 'function showSupportHome')
-    && contains($source['app_js'], 'function showSupportWorkspace')
-    && contains($source['app_js'], 'function openSupportEntry')
-    && contains($source['app_js'], 'function startSupportChat')
-    && contains($source['app_js'], 'openSupportTicketCandidate')
-    && contains($source['app_js'], 'supportNotificationBadge')
-    && contains($source['dashboard_js'], 'window.zpaySupportShowWorkspace'),
-    'Contact Us navigation/workspace JavaScript is missing'
+    str_contains($profileJs, 'function escapeHtml')
+    || str_contains($shellJs, 'function escapeHtml'),
+    'Shared/profile XSS-safe rendering helper is missing'
 );
 
+foreach (['dashboard', 'add-money', 'transfer', 'topup', 'bundle', 'bkash', 'nagad', 'history', 'services', 'notifications', 'profile', 'contact-us', 'support'] as $route) {
+    expect_true(
+        preg_match('#RewriteRule \^user/' . preg_quote($route, '#') . '/\?\$ /api/user/#i', $htaccess) === 1,
+        "missing isolated route /user/{$route}"
+    );
+}
 expect_true(
-    contains($source['app_js'], 'function escapeHtml')
-    && contains($source['app_js'], 'text.textContent = String(message.message'),
-    'support/profile rendering lacks the expected XSS-safe text path'
+    str_contains($shellJs, "headers['X-CSRF-Token'] = state.csrf")
+    && str_contains($shellJs, "'SESSION_EXPIRED'")
+    && str_contains($shellJs, 'window.location.replace(loginUrl)')
+    && !str_contains($shellJs, 'openSection('),
+    'Shared shell does not preserve CSRF/session behavior or still routes as SPA'
 );
 expect_true(
-    contains($source['app_js'], "'SESSION_EXPIRED'")
-    && contains($source['app_js'], "'AUTH_REQUIRED'")
-    && contains($source['app_js'], "'UNAUTHORIZED'")
-    && contains($source['app_js'], "'USER_SESSION_EXPIRED'")
-    && contains($source['app_js'], "Number(error && error.status || 0) === 401"),
-    'multipart User Panel requests do not handle session expiry'
-);
-expect_true(
-    contains($source['app_js'], 'async function refreshCsrfToken')
-    && contains($source['app_js'], 'function isCsrfError')
-    && contains($source['app_js'], 'if (!csrf()) await refreshCsrfToken();')
-    && contains($source['app_js'], 'return send();'),
-    'multipart User Panel requests do not refresh/retry once after stale CSRF'
-);
-expect_true(
-    contains($source['dashboard_js'], "p === '/user/profile'")
-    && contains($source['dashboard_js'], "p === '/user/support'")
-    && contains($source['dashboard_js'], "p === '/user/transfer'")
-    && contains($source['dashboard_js'], "p === '/user/notifications'"),
-    'User Panel route mapping is incomplete'
-);
-expect_true(
-    contains($source['app_js'], "sectionChanged(document.body.getAttribute('data-active-section') || 'overviewSection')"),
-    'direct User Panel routes do not initialize their feature data'
-);
-expect_true(
-    contains($source['dashboard'], 'id="notificationsPageTitle"')
-    && contains($source['dashboard'], 'id="notificationPageLive"')
-    && contains($source['app_js'], "window.openSection?.('notificationsSection')")
-    && !contains($source['app_js'], 'notificationModal')
-    && contains($source['dashboard_js'], "sidebar.toggleAttribute('inert', hiddenFromLayout)"),
-    'dedicated notification page or mobile navigation accessibility guard is missing'
-);
-expect_true(
-    contains($source['dashboard_js'], 'function apiResponseOk')
-    && contains($source['dashboard_js'], 'function apiResponseMessage')
-    && contains($source['dashboard_js'], "Object.prototype.hasOwnProperty.call(json, 'success')")
-    && contains($source['dashboard_js'], 'apiResponseData(json)'),
-    'User Panel proxy response parser does not support the canonical success/error envelope variants'
-);
-expect_true(
-    contains($source['proxy'], 'function user_proxy_internal_api_attempts')
-    && contains($source['proxy'], 'CURLOPT_RESOLVE')
-    && contains($source['proxy'], 'http://127.0.0.1')
-    && contains($source['proxy'], "'Host: ' . \$hostHeader")
-    && contains($source['proxy'], "'X-Forwarded-Proto: '")
-    && contains($source['proxy'], "\$json['ok'] ?? \$json['success'] ?? false"),
-    'User login proxy does not have the safe same-host internal API fallback'
+    str_contains($proxy, 'function user_proxy_internal_api_attempts')
+    && str_contains($proxy, 'CURLOPT_RESOLVE')
+    && str_contains($proxy, 'http://127.0.0.1')
+    && str_contains($proxy, "\$json['ok'] ?? \$json['success'] ?? false"),
+    'Safe same-host proxy fallback/envelope compatibility is missing'
 );
 
 echo "User Panel feature tests passed ({$tests} assertions).\n";

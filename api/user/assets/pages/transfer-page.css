@@ -1,0 +1,916 @@
+/* Transfer page styles extracted from the current User Panel. */
+  line-height: 1.5;
+}
+
+.feature-eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--z-green);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.feature-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 15px;
+}
+
+.feature-field > span {
+  color: var(--z-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.feature-field small {
+  color: var(--z-hint);
+  font-weight: 500;
+}
+
+.feature-field input,
+.feature-field select,
+.feature-field textarea,
+.support-composer textarea,
+.zpay-action-form input {
+  width: 100%;
+  min-height: 52px;
+  padding: 13px 14px;
+  border: 1px solid var(--z-line-strong);
+  border-radius: var(--z-radius);
+  color: var(--z-text);
+  background: rgba(4, 16, 31, 0.64);
+}
+
+.feature-field textarea,
+.support-composer textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.feature-field input::placeholder,
+.feature-field textarea::placeholder,
+.support-composer textarea::placeholder,
+.zpay-action-form input::placeholder {
+  color: var(--z-hint);
+}
+
+.feature-field select option {
+  color: #0b1930;
+}
+
+.money-input-wrap {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  border: 1px solid var(--z-line-strong);
+  border-radius: var(--z-radius);
+  background: rgba(4, 16, 31, 0.64);
+}
+
+.money-input-wrap b {
+  padding-left: 14px;
+  color: var(--z-green);
+}
+
+.money-input-wrap input {
+  border: 0;
+  background: transparent;
+}
+
+.android-primary-button,
+.android-secondary-button,
+.profile-edit-button,
+.support-composer button,
+.hold-confirm-button {
+  min-height: 52px;
+  border-radius: var(--z-radius);
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.android-primary-button,
+.support-composer button {
+  width: 100%;
+  margin-top: 18px;
+  border: 1px solid var(--z-green);
+  color: #042116;
+  background: var(--z-green);
+}
+
+.android-primary-button:hover,
+.support-composer button:hover {
+  background: var(--z-green-dark);
+}
+
+.android-secondary-button {
+  border: 1px solid var(--z-line-strong);
+  color: var(--z-text);
+  background: rgba(11, 45, 92, 0.66);
+}
+
+.android-primary-button:disabled,
+.android-secondary-button:disabled,
+.support-composer button:disabled,
+.hold-confirm-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.feature-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.full-width {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.android-stepper {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  margin-bottom: 20px;
+}
+
+.android-stepper span {
+  min-width: 0;
+  padding: 8px 4px;
+  border-bottom: 2px solid var(--z-line);
+  color: var(--z-hint);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.android-stepper span.active {
+  border-color: var(--z-green);
+  color: var(--z-green);
+}
+
+.transfer-step,
+.support-tab-panel {
+  display: none;
+}
+
+.transfer-step.active,
+.support-tab-panel.active {
+  display: block;
+}
+
+.recipient-card,
+.review-panel,
+.inline-state,
+.closed-notice {
+  padding: 14px;
+  border: 1px solid var(--z-line);
+  border-radius: var(--z-radius);
+  background: rgba(4, 16, 31, 0.48);
+}
+
+.inline-state {
+  margin-top: 12px;
+  color: var(--z-muted);
+}
+
+.inline-state.error,
+.closed-notice {
+  color: var(--z-error);
+  border-color: rgba(255, 139, 139, 0.35);
+}
+
+.review-rows {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.review-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--z-muted);
+}
+
+.review-row strong {
+  color: var(--z-text);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.hold-hint {
+  margin: 16px 0 8px;
+  color: var(--z-muted);
+  text-align: center;
+}
+
+.hold-confirm-button {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--z-green);
+  color: #042116;
+  background: rgba(50, 230, 134, 0.8);
+}
+
+.hold-confirm-progress {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--hold-progress, 0%);
+  background: var(--z-green);
+  transition: width 80ms linear;
+}
+
+.hold-confirm-label {
+  position: relative;
+  z-index: 1;
+}
+
+/* Android-aligned Z-Pay Transfer page. */
+body.user-authenticated[data-active-section='transferSection'] .mobile-header {
+  display: none !important;
+}
+
+body.user-authenticated[data-active-section='transferSection'] {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+body.user-authenticated[data-active-section='transferSection'] #appView,
+body.user-authenticated[data-active-section='transferSection'] .app-shell {
+  height: 100dvh;
+  min-height: 100svh;
+  overflow: hidden;
+}
+
+body.user-authenticated[data-active-section='transferSection'] .main-panel {
+  display: flex;
+  justify-content: center;
+  height: 100dvh;
+  min-height: 100svh;
+  width: 100%;
+  max-width: none;
+  overflow: hidden;
+  padding: 14px 0 0;
+}
+
+#transferSection.transfer-page-section {
+  flex: 1 1 auto;
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  width: min(calc(100% - 32px), 620px);
+  margin: 0 auto;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+
+.transfer-page-shell {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  width: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+}
+
+.transfer-page-header {
+  min-height: 94px;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 52px;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 24px;
+  border: 1px solid rgba(117, 156, 215, 0.38);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 86% 22%, rgba(50, 230, 134, 0.13), transparent 34%),
+    linear-gradient(135deg, rgba(18, 64, 131, 0.96), rgba(8, 39, 83, 0.98));
+  box-shadow: 0 18px 35px rgba(0, 0, 0, 0.24);
+}
+
+.transfer-page-header h2 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(20px, 5.5vw, 28px);
+  font-weight: 900;
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.transfer-header-button {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: transparent;
+  cursor: pointer;
+  transition: transform 150ms ease, background 150ms ease;
+}
+
+.transfer-header-button:hover,
+.transfer-header-button:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.transfer-header-button:active {
+  transform: scale(0.96);
+}
+
+.transfer-header-button svg {
+  width: 31px;
+  height: 31px;
+  fill: currentColor;
+}
+
+#transferSection .transfer-card {
+  display: grid;
+  gap: 14px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding-bottom: calc(var(--z-nav-height) + 44px + env(safe-area-inset-bottom));
+}
+
+#transferSection .transfer-card::-webkit-scrollbar {
+  width: 4px;
+}
+
+#transferSection .transfer-card::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(50, 230, 134, 0.5);
+}
+
+#transferSection .transfer-progress {
+  margin: 0;
+  padding: 10px 8px;
+  border: 1px solid rgba(117, 156, 215, 0.28);
+  border-radius: 22px;
+  background: rgba(11, 39, 78, 0.72);
+}
+
+#transferSection .android-stepper span {
+  border: 0;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+#transferSection .android-stepper span.active,
+#transferSection .android-stepper span.complete {
+  color: #062618;
+  background: var(--z-green);
+}
+
+#transferSection .android-stepper span.complete {
+  opacity: 0.74;
+}
+
+#transferSection .transfer-step-card,
+#transferSection .transfer-favorite-panel,
+#transferSection .transfer-verified-card,
+#transferSection .transfer-review-panel {
+  border: 1px solid rgba(117, 156, 215, 0.36);
+  border-radius: 28px;
+  background: rgba(13, 48, 94, 0.86);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 34px rgba(0, 0, 0, 0.18);
+}
+
+#transferSection .transfer-step-card,
+#transferSection .transfer-favorite-panel {
+  padding: 22px;
+}
+
+#transferSection #transferStepReceiver.active {
+  display: grid;
+  gap: 18px;
+}
+
+#transferSection .transfer-step-title {
+  text-align: center;
+}
+
+#transferSection .transfer-step-title h3,
+#transferSection .transfer-favorite-panel h3,
+#transferSection .transfer-review-panel h3 {
+  margin: 0;
+  color: #fff;
+  font-size: clamp(22px, 6vw, 32px);
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+#transferSection .transfer-step-title p {
+  margin: 8px 0 0;
+  color: var(--z-muted);
+}
+
+#transferSection .transfer-field {
+  margin-top: 24px;
+}
+
+#transferSection .transfer-field > span {
+  color: var(--z-muted);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+#transferSection .transfer-input-shell,
+#transferSection .transfer-money-wrap,
+#transferSection .transfer-field input {
+  border-radius: 22px;
+}
+
+#transferSection .transfer-input-shell {
+  min-height: 70px;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 0 20px;
+  border: 2px solid rgba(50, 230, 134, 0.76);
+  background: rgba(16, 57, 104, 0.72);
+}
+
+#transferSection .transfer-input-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  color: var(--z-green);
+}
+
+#transferSection .transfer-input-icon svg {
+  width: 31px;
+  height: 31px;
+  fill: currentColor;
+}
+
+#transferSection .transfer-input-shell input {
+  width: 100%;
+  min-height: 60px;
+  padding: 0;
+  border: 0;
+  color: #fff;
+  background: transparent;
+  font-size: 22px;
+  outline: 0;
+}
+
+#transferSection .transfer-primary-button,
+#transferSection .android-primary-button,
+#transferSection .android-secondary-button {
+  min-height: 64px;
+  border-radius: 24px;
+  font-size: 18px;
+}
+
+#transferSection .transfer-favorite-panel {
+  margin-top: 0;
+}
+
+#transferSection .transfer-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+#transferSection .transfer-panel-heading h3 {
+  font-size: 20px;
+}
+
+.transfer-mini-button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(117, 156, 215, 0.35);
+  border-radius: 999px;
+  color: var(--z-green);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.transfer-favorite-list {
+  display: grid;
+  gap: 10px;
+}
+
+.transfer-empty-card,
+.transfer-favorite-item {
+  min-height: 76px;
+  display: grid;
+  align-items: center;
+  border: 1px solid rgba(117, 156, 215, 0.32);
+  border-radius: 20px;
+  background: rgba(4, 16, 31, 0.24);
+}
+
+.transfer-empty-card {
+  padding: 18px;
+  color: var(--z-muted);
+  text-align: center;
+}
+
+.transfer-empty-card.error {
+  color: var(--z-error);
+}
+
+.transfer-favorite-item {
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px;
+  color: #fff;
+  cursor: pointer;
+  transition: transform 150ms ease, border-color 150ms ease;
+}
+
+.transfer-favorite-item:hover,
+.transfer-favorite-item:focus-visible {
+  border-color: rgba(50, 230, 134, 0.55);
+  outline: 0;
+}
+
+.transfer-favorite-item:active {
+  transform: scale(0.98);
+}
+
+.transfer-favorite-avatar,
+.transfer-verified-icon {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--z-green);
+  background: rgba(50, 230, 134, 0.12);
+  font-weight: 900;
+}
+
+.transfer-favorite-avatar {
+  width: 48px;
+  height: 48px;
+}
+
+.transfer-favorite-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.transfer-favorite-copy strong,
+.transfer-verified-copy strong {
+  min-width: 0;
+  color: #fff;
+  font-size: 17px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.transfer-favorite-copy small,
+.transfer-verified-copy p {
+  margin: 0;
+  color: var(--z-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.transfer-favorite-remove {
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 139, 139, 0.36);
+  border-radius: 16px;
+  color: #ff8b9a;
+  background: rgba(255, 82, 123, 0.08);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+#transferSection .transfer-verified-card {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 16px;
+}
+
+.transfer-verified-icon {
+  width: 52px;
+  height: 52px;
+}
+
+.transfer-verified-icon svg {
+  width: 32px;
+  height: 32px;
+  fill: currentColor;
+}
+
+#transferSection .transfer-favorite-add {
+  margin-bottom: 12px;
+}
+
+#transferSection .transfer-money-wrap {
+  box-sizing: border-box;
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px;
+  border: 2px solid rgba(117, 156, 215, 0.38);
+  border-color: rgba(117, 156, 215, 0.38);
+  background: rgba(4, 16, 31, 0.38);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+#transferSection .transfer-money-wrap:focus-within {
+  border-color: rgba(50, 230, 134, 0.78);
+  box-shadow: 0 0 0 3px rgba(50, 230, 134, 0.11);
+}
+
+#transferSection .transfer-money-wrap b {
+  color: var(--z-green);
+  font-size: 21px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+#transferSection .transfer-money-wrap input,
+#transferSection .transfer-money-wrap input:focus,
+#transferSection .transfer-money-wrap input:focus-visible {
+  width: 100%;
+  min-height: 62px;
+  padding: 0;
+  border: 0 !important;
+  border-radius: 0;
+  outline: 0 !important;
+  outline-offset: 0;
+  box-shadow: none !important;
+  background: transparent !important;
+  color: #fff;
+  font-size: 21px;
+  appearance: textfield;
+}
+
+#transferSection .transfer-money-wrap input::-webkit-outer-spin-button,
+#transferSection .transfer-money-wrap input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+#transferSection .transfer-actions {
+  margin-top: 18px;
+}
+
+#transferSection .transfer-single-action {
+  grid-template-columns: 1fr;
+}
+
+#transferSection .transfer-review-panel {
+  padding: 20px;
+}
+
+#transferSection .review-row {
+  align-items: flex-start;
+  padding: 11px 0;
+  border-bottom: 1px solid rgba(117, 156, 215, 0.16);
+}
+
+#transferSection .review-row:last-child {
+  border-bottom: 0;
+}
+
+#transferSection .review-row span {
+  min-width: 108px;
+}
+
+#transferSection .review-row strong {
+  font-weight: 900;
+}
+
+#transferSection .transfer-hold-button {
+  min-height: 68px;
+  border-radius: 999px;
+  font-size: 18px;
+  box-shadow: 0 10px 22px rgba(50, 230, 134, 0.18);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#transferSection .transfer-hold-button * {
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.zpay-transfer-modal.modal {
+  z-index: 180;
+}
+
+.zpay-transfer-modal .zpay-action-dialog {
+  width: min(100%, 430px);
+  border-radius: 30px;
+  border-color: rgba(117, 156, 215, 0.38);
+  background:
+    radial-gradient(circle at 84% 18%, rgba(50, 230, 134, 0.12), transparent 32%),
+    linear-gradient(145deg, rgba(15, 54, 105, 0.98), rgba(7, 28, 58, 0.98));
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.42);
+}
+
+.zpay-transfer-modal .zpay-action-copy {
+  text-align: center;
+}
+
+.zpay-transfer-modal .feature-actions,
+.zpay-transfer-modal .zpay-transfer-result-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.zpay-transfer-modal .feature-actions .android-primary-button,
+.zpay-transfer-modal .feature-actions .android-secondary-button,
+.zpay-transfer-modal .zpay-transfer-result-actions .android-primary-button,
+.zpay-transfer-modal .zpay-transfer-result-actions .android-secondary-button {
+  width: 100%;
+  min-height: 56px;
+  border-radius: 20px;
+}
+
+.zpay-transfer-spinner {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 16px;
+  border: 6px solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--z-green);
+  border-radius: 50%;
+  animation: zpaySpin 0.8s linear infinite;
+}
+
+.zpay-transfer-result-rows {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.zpay-transfer-result-row {
+  display: grid;
+  grid-template-columns: minmax(104px, auto) minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(117, 156, 215, 0.16);
+}
+
+.zpay-transfer-result-row span {
+  min-width: 0;
+  color: var(--z-muted);
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.zpay-transfer-result-row strong {
+  min-width: 0;
+  color: #fff;
+  font-weight: 900;
+  text-align: right;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+.zpay-transfer-result-row.is-long {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.zpay-transfer-result-row.is-long strong {
+  text-align: left;
+}
+
+@keyframes zpaySpin {
+  to { transform: rotate(360deg); }
+}
+
+body.user-authenticated[data-active-section='transferSection'] .bottom-nav {
+  left: 0;
+  padding: 0 18px calc(10px + env(safe-area-inset-bottom));
+  background: linear-gradient(180deg, transparent, rgba(4, 16, 31, 0.96) 38%);
+}
+
+body.user-authenticated[data-active-section='transferSection'] .bottom-nav-inner {
+  width: min(calc(100% - 8px), 620px);
+  min-height: 78px;
+  padding: 8px;
+  border-radius: 28px;
+  background: rgba(10, 45, 91, 0.96);
+}
+
+body.user-authenticated[data-active-section='transferSection'] .bottom-btn {
+  border-radius: 20px;
+}
+
+body.user-authenticated[data-active-section='transferSection'] .bottom-btn.active {
+  color: var(--z-green);
+  background: rgba(50, 230, 134, 0.13);
+  box-shadow: inset 0 0 0 1px rgba(50, 230, 134, 0.24);
+}
+
+@media (max-width: 420px) {
+  #transferSection.transfer-page-section {
+    width: calc(100% - 28px);
+  }
+
+  .transfer-page-header {
+    min-height: 86px;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    padding: 17px 18px;
+    border-radius: 24px;
+  }
+
+  .transfer-page-header h2 {
+    font-size: clamp(18px, 5.5vw, 22px);
+  }
+
+  .transfer-header-button {
+    width: 42px;
+    height: 42px;
+  }
+
+  .transfer-header-button svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  #transferSection .transfer-step-card,
+  #transferSection .transfer-favorite-panel {
+    padding: 18px;
+    border-radius: 24px;
+  }
+
+  #transferSection .transfer-step-title h3 {
+    font-size: 26px;
+  }
+
+  #transferSection .transfer-input-shell {
+    min-height: 64px;
+    grid-template-columns: 42px minmax(0, 1fr);
+    padding: 0 16px;
+  }
+
+  #transferSection .transfer-input-shell input {
+    min-height: 56px;
+    font-size: 20px;
+  }
+
+  .transfer-favorite-item {
+    grid-template-columns: 46px minmax(0, 1fr);
+  }
+
+  .transfer-favorite-remove {
+    grid-column: 2;
+    width: fit-content;
+  }
+
+  #transferSection .transfer-actions {
+    grid-template-columns: 1fr;
+  }
+
+  #transferSection .review-row {
+    display: grid;
+    gap: 4px;
+  }
+
+  #transferSection .review-row strong {
+    text-align: left;
+  }
+}
+
+@media (min-width: 981px) {
+  #transferSection.transfer-page-section {
+    width: min(calc(100% - 48px), 620px);
+  }
+}

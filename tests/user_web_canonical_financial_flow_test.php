@@ -2,8 +2,9 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-$dashboardJs = (string)file_get_contents($root . '/api/user/assets/dashboard.js');
-$dashboardUxJs = (string)file_get_contents($root . '/api/user/assets/dashboard-ux.js');
+$dashboardJs = (string)file_get_contents($root . '/api/user/assets/pages/topup-page.js')
+    . (string)file_get_contents($root . '/api/user/assets/pages/bundle-page.js');
+$dashboardUxJs = (string)file_get_contents($root . '/api/user/assets/pages/mfs-page.js');
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $mfsPreview = (string)file_get_contents($root . '/api/mfs/preview.php');
 $legacyMfsCreate = (string)file_get_contents($root . '/api/user/mfs_create_telegram.php');

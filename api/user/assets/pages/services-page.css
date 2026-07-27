@@ -1,0 +1,47 @@
+.user-services-page .services-hub {
+  padding: 18px;
+  border: 1px solid var(--z-line);
+  border-radius: 22px;
+  background: var(--z-glass);
+  box-shadow: var(--z-shadow);
+}
+.user-services-page .feature-heading { margin-bottom: 18px; }
+.user-services-page .feature-heading h2 { margin: 0; font-size: 24px; }
+.user-services-page .feature-heading p { margin: 6px 0 0; color: var(--z-muted); }
+.user-services-page .feature-eyebrow { color: var(--z-green); font-size: 12px; font-weight: 900; }
+.user-services-page .android-service-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.user-services-page .android-service-card {
+  min-width: 0;
+  min-height: 118px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 9px;
+  padding: 12px 7px;
+  border: 1px solid var(--z-line-strong);
+  border-radius: 18px;
+  color: var(--z-text);
+  background: rgba(11, 45, 92, 0.84);
+}
+.user-services-page .android-service-card:active { border-color: var(--z-green); transform: scale(0.98); }
+.user-services-page .service-glyph {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--z-green);
+  background: rgba(50, 230, 134, 0.1);
+  font-size: 21px;
+  font-weight: 900;
+}
+.user-services-page .android-service-card strong { text-align: center; overflow-wrap: anywhere; }
+@media (max-width: 359px) {
+  .user-services-page .android-service-grid { gap: 7px; }
+  .user-services-page .android-service-card { min-height: 102px; padding: 9px 4px; font-size: 13px; }
+}
+
