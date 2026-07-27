@@ -2,9 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
-require_once dirname(__DIR__) . '/lib/posts.php';
-require_once dirname(__DIR__) . '/lib/post_access.php';
-require_once dirname(__DIR__) . '/lib/post_mutations.php';
+require_once dirname(__DIR__) . '/lib/post_media_attach.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -13,7 +11,6 @@ $auth = znews_require_creator(true);
 $body = api_read_json_body();
 
 $postId = znews_firebase_key($body['post_id'] ?? '', 'post_id');
-$text = znews_validate_post_text($body['text'] ?? '', 1, 5000);
 $expectedUpdatedAt = filter_var(
     $body['expected_updated_at'] ?? null,
     FILTER_VALIDATE_INT
@@ -27,16 +24,27 @@ if ($expectedUpdatedAt === false || $expectedUpdatedAt <= 0) {
         422
     );
 }
+
+$textProvided = array_key_exists('text', $body);
+$mediaProvided = array_key_exists('media_id', $body)
+    || array_key_exists('image_media_id', $body);
+$requestedMediaId = $mediaProvided
+    ? trim((string)($body['media_id'] ?? $body['image_media_id'] ?? ''))
+    : '';
+
 $idempotencyKey = znews_idempotency_key(
     $body['idempotency_key']
     ?? $body['client_request_id']
     ?? ''
 );
 
-$result = znews_update_text_post(
+$result = znews_update_post_with_media(
     $auth,
     $postId,
-    $text,
+    (string)($body['text'] ?? ''),
+    $textProvided,
+    $mediaProvided,
+    $requestedMediaId,
     (int)$expectedUpdatedAt,
     $idempotencyKey
 );
