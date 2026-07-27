@@ -2,7 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
-require_once dirname(__DIR__) . '/lib/views.php';
+require_once dirname(__DIR__) . '/lib/views_v2.php';
 
 api_require_method('POST');
 $body = api_read_json_body();
@@ -14,7 +14,7 @@ $idempotencyKey = znews_idempotency_key(
     ?? ''
 );
 
-$result = znews_view_start($postId, $idempotencyKey);
+$result = znews_view_start_v2($postId, $idempotencyKey);
 api_response(
     !empty($result['ok']),
     (string)($result['code'] ?? 'ZNEWS_VIEW_START_FAILED'),
