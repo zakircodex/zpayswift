@@ -6,6 +6,11 @@ on:
       - chore/znews-cpanel-package
     paths:
       - '.github/workflows/znews-cpanel-package.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/znews-cpanel-package.yml'
   workflow_dispatch:
 
 permissions:
