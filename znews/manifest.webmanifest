@@ -1,0 +1,24 @@
+{
+  "name": "Z News by Z-Pay Swift",
+  "short_name": "Z News",
+  "description": "Stories, updates and community from Z-Pay Swift.",
+  "start_url": "/znews/",
+  "scope": "/znews/",
+  "display": "standalone",
+  "background_color": "#06101f",
+  "theme_color": "#07162b",
+  "icons": [
+    {
+      "src": "/assets/brand/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/brand/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
