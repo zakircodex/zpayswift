@@ -24,4 +24,33 @@
       })
     })
   });
+
+  const publicLedgerLabels = new Map([
+    ['Ad revenue share', 'Creator share'],
+    ['Main wallet transfer', 'Balance transfer']
+  ]);
+
+  function normalisePublicUi() {
+    document.querySelectorAll('.ledger-item > div > strong').forEach((element) => {
+      const replacement = publicLedgerLabels.get(element.textContent.trim());
+      if (replacement) element.textContent = replacement;
+    });
+
+    const otpFields = document.querySelector('#otpFields');
+    const submit = document.querySelector('#authSubmit');
+    if (otpFields && submit && !otpFields.hidden && !submit.disabled && submit.textContent.trim() === 'Continue') {
+      submit.textContent = 'Verify and sign in';
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    normalisePublicUi();
+    const observer = new MutationObserver(normalisePublicUi);
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['hidden', 'disabled']
+    });
+  });
 })();
