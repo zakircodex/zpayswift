@@ -82,7 +82,11 @@ znews_view_test_expect(str_contains($v2, "'applied_events'"), 'analytics event l
 znews_view_test_expect(str_contains($v2, "'OPEN|' . \$viewId") && str_contains($v2, "'COMPLETE|' . \$viewId"), 'open/complete event keys missing');
 znews_view_test_expect(str_contains($v2, 'znews_view_open_sync'), 'view-start reconciliation helper missing');
 znews_view_test_expect(str_contains($v2, 'znews_view_complete_sync'), 'view-completion reconciliation helper missing');
-znews_view_test_expect(str_contains($v2, "'invalid_views' => 1") && str_contains($v2, "'suspicious_views' => 1"), 'blocked starts are not counted as invalid/suspicious');
+znews_view_test_expect(
+    preg_match("/\\$deltas\\['invalid_views'\\]\\s*=\\s*1/", $v2) === 1
+    && preg_match("/\\$deltas\\['suspicious_views'\\]\\s*=\\s*1/", $v2) === 1,
+    'blocked starts are not counted as invalid/suspicious'
+);
 znews_view_test_expect(str_contains($v2, 'znews_view_unique_owner'), 'retry-safe unique-view ownership missing');
 znews_view_test_expect(str_contains($v2, 'znews_view_start_v2') && str_contains($v2, 'znews_view_complete_v2'), 'exact-once start/complete flows missing');
 
