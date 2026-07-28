@@ -2,7 +2,23 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/znews/bootstrap.php';
-require_once dirname(__DIR__, 2) . '/znews/lib/media.php';
+
+/*
+ * This endpoint and znews/lib/media.php share the basename media.php.
+ * Use a temporary distinct entrypoint name while loading the guarded library.
+ */
+$znewsOriginalScriptFilename = $_SERVER['SCRIPT_FILENAME'] ?? null;
+$_SERVER['SCRIPT_FILENAME'] = __FILE__ . '.entrypoint';
+
+try {
+    require_once dirname(__DIR__, 2) . '/znews/lib/media.php';
+} finally {
+    if ($znewsOriginalScriptFilename === null) {
+        unset($_SERVER['SCRIPT_FILENAME']);
+    } else {
+        $_SERVER['SCRIPT_FILENAME'] = $znewsOriginalScriptFilename;
+    }
+}
 
 api_require_method('GET');
 auth_require_admin_session(true);
