@@ -4,11 +4,15 @@ on:
   push:
     branches:
       - feature/znews-backend-foundation
+      - feature/znews-web-ui-foundation
     paths:
       - 'api/znews/**'
       - 'api/admin/znews/**'
       - 'api/lib/firebase.php'
+      - 'znews/**'
+      - 'docs/znews-*.md'
       - 'tests/znews_*_test.php'
+      - '.cpanel.yml'
       - '.github/workflows/znews-backend-audit.yml'
   pull_request:
     branches:
@@ -17,7 +21,10 @@ on:
       - 'api/znews/**'
       - 'api/admin/znews/**'
       - 'api/lib/firebase.php'
+      - 'znews/**'
+      - 'docs/znews-*.md'
       - 'tests/znews_*_test.php'
+      - '.cpanel.yml'
       - '.github/workflows/znews-backend-audit.yml'
   workflow_dispatch:
 
@@ -86,6 +93,8 @@ jobs:
             file: tests/znews_social_engagement_test.php
           - id: view-antifraud
             file: tests/znews_view_antifraud_test.php
+          - id: web-ui-foundation
+            file: tests/znews_web_ui_foundation_test.php
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
