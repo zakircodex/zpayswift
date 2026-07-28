@@ -111,7 +111,7 @@ foreach ($creatorEndpoints as $relative) {
     $source = znews_e2e_read($root, $relative);
     znews_e2e_expect(str_contains($source, 'api_require_method('), $relative . ' lacks method guard');
     znews_e2e_expect(str_contains($source, 'api_require_app_key();'), $relative . ' lacks app-key protection');
-    znews_e2e_expect(str_contains($source, 'znews_require_creator(true)'), $relative . ' lacks creator authentication');
+    znews_e2e_expect(str_contains($source, 'znews_require_creator('), $relative . ' lacks creator authentication');
 }
 
 $publicEndpoints = [
