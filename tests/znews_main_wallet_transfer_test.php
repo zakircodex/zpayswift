@@ -31,6 +31,9 @@ $files = [
     'api/znews/lib/transfers_access.php',
     'api/znews/lib/transfers_wallet.php',
     'api/znews/lib/transfers_admin.php',
+    'api/znews/lib/transfers_admin_claims.php',
+    'api/znews/lib/transfers_admin_approve.php',
+    'api/znews/lib/transfers_admin_reject.php',
     'api/znews/transfers/preview.php',
     'api/znews/transfers/create.php',
     'api/znews/transfers/list.php',
@@ -95,7 +98,9 @@ znews_transfer_test_expect(str_contains($wallet, 'LEDGER_EVIDENCE_MISSING'), 'wa
 znews_transfer_test_expect(!str_contains($wallet, "fb_put_if_match('USER_WALLETS/"), 'adapter directly mutates main wallet');
 znews_transfer_test_expect(str_contains($wallet, 'ZNEWS_BALANCE_TRANSFER'), 'wallet ledger type missing');
 
-$admin = znews_transfer_test_read($root . '/api/znews/lib/transfers_admin.php');
+$admin = znews_transfer_test_read($root . '/api/znews/lib/transfers_admin_claims.php')
+    . znews_transfer_test_read($root . '/api/znews/lib/transfers_admin_approve.php')
+    . znews_transfer_test_read($root . '/api/znews/lib/transfers_admin_reject.php');
 $creditPos = strpos($admin, 'znews_transfer_wallet_credit');
 $consumePos = strpos($admin, 'znews_transfer_consume_balance');
 znews_transfer_test_expect($creditPos !== false && $consumePos !== false && $creditPos < $consumePos, 'source balance is consumed before wallet credit');
