@@ -152,7 +152,9 @@ znews_e2e_expect(str_contains($adSignature, 'hash_hmac'), 'ad ingestion lacks HM
 znews_e2e_expect(str_contains($adSignature, 'hash_equals'), 'ad signature comparison is not timing-safe');
 $adCommon = znews_e2e_read($root, 'api/znews/lib/ad_impressions_common.php');
 znews_e2e_expect(str_contains($adCommon, 'NOT_SETTLED'), 'ad impressions can bypass settlement state');
-znews_e2e_expect(str_contains($adCommon, 'NOT_CREDITED'), 'ad impressions can bypass credit state');
+$adIngest = znews_e2e_read($root, 'api/znews/lib/ad_impressions_ingest.php');
+znews_e2e_expect(str_contains($adIngest, "'credit_status' => 'NOT_CREDITED'"), 'ad impressions can bypass credit state');
+znews_e2e_expect(str_contains($adIngest, "'earning_eligible' => false"), 'ad impressions can directly enable earnings');
 
 $settlementCommon = znews_e2e_read($root, 'api/znews/lib/settlements_common.php');
 znews_e2e_expect(str_contains($settlementCommon, 'return 5000;'), 'creator revenue share is not 50 percent');
