@@ -2,7 +2,24 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
-require_once dirname(__DIR__) . '/lib/media_policy.php';
+
+/*
+ * This endpoint and lib/media.php intentionally share the basename media.php.
+ * The library's direct-execution guard compares SCRIPT_FILENAME basenames, so
+ * expose a temporary distinct entrypoint name while loading the library.
+ */
+$znewsOriginalScriptFilename = $_SERVER['SCRIPT_FILENAME'] ?? null;
+$_SERVER['SCRIPT_FILENAME'] = __FILE__ . '.entrypoint';
+
+try {
+    require_once dirname(__DIR__) . '/lib/media_policy.php';
+} finally {
+    if ($znewsOriginalScriptFilename === null) {
+        unset($_SERVER['SCRIPT_FILENAME']);
+    } else {
+        $_SERVER['SCRIPT_FILENAME'] = $znewsOriginalScriptFilename;
+    }
+}
 
 api_require_method('GET');
 
