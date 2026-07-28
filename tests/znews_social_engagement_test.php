@@ -83,7 +83,8 @@ znews_social_expect(str_contains($likeSet, "api_require_method('POST')") && str_
 znews_social_expect(str_contains($likeSet, "array_key_exists('liked'"), 'like endpoint does not require explicit liked value');
 znews_social_expect(!str_contains($likeSet, "['uid']") && !str_contains($likeSet, "['creator_uid']"), 'like endpoint appears to trust client UID');
 
-$comments = znews_social_read($root . '/api/znews/lib/comments.php')
+$commentsAggregator = znews_social_read($root . '/api/znews/lib/comments.php');
+$comments = $commentsAggregator
     . znews_social_read($root . '/api/znews/lib/comments/common.php')
     . znews_social_read($root . '/api/znews/lib/comments/create.php')
     . znews_social_read($root . '/api/znews/lib/comments/update.php')
@@ -98,10 +99,24 @@ znews_social_expect(str_contains($comments, "=== 'ACTIVE'") && str_contains($com
 znews_social_expect(str_contains($comments, 'znews_engagement_adjust_counter') && str_contains($comments, "'comment_count'"), 'approved comment counter update missing');
 znews_social_expect(str_contains($comments, 'auth_require_admin_session') === false, 'comment library should not start admin auth side effects');
 znews_social_expect(str_contains($comments, 'ZNEWS_COMMENT_MODERATION_ACTIONS/'), 'comment moderation audit trail missing');
+znews_social_expect(
+    str_contains($commentsAggregator, "\$_SERVER['SCRIPT_FILENAME'] = __FILE__ . '.aggregate';"),
+    'comment aggregator does not neutralize create/update/delete basename collisions'
+);
+znews_social_expect(
+    str_contains($commentsAggregator, "\$_SERVER['SCRIPT_FILENAME'] = \$znewsOriginalScriptFilename;"),
+    'comment aggregator does not restore SCRIPT_FILENAME'
+);
 
 foreach (['create.php', 'update.php', 'delete.php'] as $name) {
     $source = znews_social_read($root . '/api/znews/comments/' . $name);
     znews_social_expect(str_contains($source, 'api_require_app_key();') && str_contains($source, 'znews_require_creator(true)'), "{$name} comment endpoint lacks creator protection");
+
+    $librarySource = znews_social_read($root . '/api/znews/lib/comments/' . $name);
+    znews_social_expect(
+        str_contains($librarySource, "basename(__FILE__) === basename(\$_SERVER['SCRIPT_FILENAME'] ?? '')"),
+        "{$name} comment library lost direct-execution protection"
+    );
 }
 
 $publicComments = znews_social_read($root . '/api/znews/comments/list.php');
