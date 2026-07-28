@@ -140,7 +140,7 @@ znews_e2e_expect(str_contains($postCreate, "'moderation_status' => 'PENDING'"), 
 
 $moderation = znews_e2e_read($root, 'api/znews/lib/moderation.php');
 znews_e2e_expect(str_contains($moderation, "'status' => 'ACTIVE'"), 'approval does not activate posts');
-znews_e2e_expect(str_contains($moderation, 'ZNEWS_PUBLIC_FEED/'), 'approval does not maintain public-feed index');
+znews_e2e_expect(str_contains($moderation, 'znews_path_public_feed('), 'approval does not maintain public-feed index');
 znews_e2e_expect(str_contains($moderation, "'status' => 'BLOCKED'"), 'rejection does not block posts');
 
 $publicAccess = znews_e2e_read($root, 'api/znews/lib/post_access.php');
