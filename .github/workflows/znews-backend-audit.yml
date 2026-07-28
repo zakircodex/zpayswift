@@ -4,6 +4,19 @@ on:
   push:
     branches:
       - feature/znews-backend-foundation
+    paths:
+      - 'api/znews/**'
+      - 'api/admin/znews/**'
+      - 'tests/znews_*_test.php'
+      - '.github/workflows/znews-backend-audit.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'api/znews/**'
+      - 'api/admin/znews/**'
+      - 'tests/znews_*_test.php'
+      - '.github/workflows/znews-backend-audit.yml'
   workflow_dispatch:
 
 permissions:
