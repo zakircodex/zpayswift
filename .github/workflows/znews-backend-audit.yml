@@ -1,0 +1,46 @@
+name: Z News Backend Audit
+
+on:
+  push:
+    branches:
+      - feature/znews-backend-foundation
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: znews-backend-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php-audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show PHP runtime
+        run: php -v
+
+      - name: Syntax-check Z News PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          find api/znews api/admin/znews tests -type f -name '*.php' -print0 \
+            | sort -z \
+            | xargs -0 -n1 php -l
+
+      - name: Run Z News regression suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=0
+          for test_file in tests/znews_*_test.php; do
+            [ -f "$test_file" ] || continue
+            found=1
+            echo "Running $test_file"
+            php "$test_file"
+          done
+          [ "$found" -eq 1 ]
