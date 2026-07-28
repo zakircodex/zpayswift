@@ -26,6 +26,7 @@ $files = [
     'api/znews/media/upload.php',
     'api/znews/media/content.php',
     'api/znews/public/media.php',
+    'api/admin/znews/media.php',
 ];
 
 foreach ($files as $relative) {
@@ -74,5 +75,24 @@ znews_media_expect(str_contains($privateContent, 'znews_media_owned_record'), 'p
 $publicContent = znews_media_read($root . '/api/znews/public/media.php');
 znews_media_expect(!str_contains($publicContent, 'api_require_app_key();'), 'public approved media incorrectly requires app key');
 znews_media_expect(str_contains($publicContent, 'znews_media_public_record'), 'public media eligibility check missing');
+znews_media_expect(
+    str_contains($publicContent, "\$_SERVER['SCRIPT_FILENAME'] = __FILE__ . '.entrypoint';"),
+    'public media endpoint does not neutralize the media.php basename collision'
+);
+znews_media_expect(
+    str_contains($publicContent, "\$_SERVER['SCRIPT_FILENAME'] = \$znewsOriginalScriptFilename;"),
+    'public media endpoint does not restore SCRIPT_FILENAME'
+);
+
+$adminContent = znews_media_read($root . '/api/admin/znews/media.php');
+znews_media_expect(str_contains($adminContent, 'auth_require_admin_session(true)'), 'admin media lacks admin authentication');
+znews_media_expect(
+    str_contains($adminContent, "\$_SERVER['SCRIPT_FILENAME'] = __FILE__ . '.entrypoint';"),
+    'admin media endpoint does not neutralize the media.php basename collision'
+);
+znews_media_expect(
+    str_contains($adminContent, "\$_SERVER['SCRIPT_FILENAME'] = \$znewsOriginalScriptFilename;"),
+    'admin media endpoint does not restore SCRIPT_FILENAME'
+);
 
 echo "Z News media backend tests passed ({$assertions} assertions).\n";
