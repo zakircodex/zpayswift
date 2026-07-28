@@ -22,7 +22,8 @@ function fb_encode_path(string $path): string
 function fb_build_url(string $path, array $query = []): string
 {
     $encodedPath = fb_encode_path($path);
-    $base = FIREBASE_DB_URL . ($encodedPath === '' ? '' : '/' . $encodedPath) . '.json';
+    $root = rtrim(FIREBASE_DB_URL, '/');
+    $base = $root . ($encodedPath === '' ? '/.json' : '/' . $encodedPath . '.json');
 
     if (FIREBASE_AUTH !== '') {
         $query['auth'] = FIREBASE_AUTH;

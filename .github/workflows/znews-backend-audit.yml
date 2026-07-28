@@ -7,6 +7,7 @@ on:
     paths:
       - 'api/znews/**'
       - 'api/admin/znews/**'
+      - 'api/lib/firebase.php'
       - 'tests/znews_*_test.php'
       - '.github/workflows/znews-backend-audit.yml'
   pull_request:
@@ -15,6 +16,7 @@ on:
     paths:
       - 'api/znews/**'
       - 'api/admin/znews/**'
+      - 'api/lib/firebase.php'
       - 'tests/znews_*_test.php'
       - '.github/workflows/znews-backend-audit.yml'
   workflow_dispatch:
@@ -43,6 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           mapfile -d '' files < <(find api/znews api/admin/znews tests -type f -name '*.php' -print0 | sort -z)
+          files+=(api/lib/firebase.php)
           [ "${#files[@]}" -gt 0 ]
           for file in "${files[@]}"; do
             php -l "$file" >/dev/null
@@ -63,6 +66,8 @@ jobs:
             file: tests/znews_backend_foundation_test.php
           - id: end-to-end-contract
             file: tests/znews_end_to_end_contract_test.php
+          - id: firebase-root-url
+            file: tests/znews_firebase_root_url_test.php
           - id: http-smoke
             file: tests/znews_http_smoke_test.php
           - id: main-wallet-transfer
