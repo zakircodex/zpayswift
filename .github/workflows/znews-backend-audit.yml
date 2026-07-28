@@ -50,31 +50,62 @@ jobs:
           echo "Syntax passed for ${#files[@]} PHP files."
 
   regression:
-    name: ${{ matrix.test }}
+    name: ${{ matrix.file }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        test:
-          - tests/znews_ad_impression_ingestion_test.php
-          - tests/znews_backend_foundation_test.php
-          - tests/znews_end_to_end_contract_test.php
-          - tests/znews_http_smoke_test.php
-          - tests/znews_main_wallet_transfer_test.php
-          - tests/znews_media_backend_test.php
-          - tests/znews_moderation_backend_test.php
-          - tests/znews_post_lifecycle_test.php
-          - tests/znews_post_media_attach_test.php
-          - tests/znews_revenue_settlement_test.php
-          - tests/znews_social_engagement_test.php
-          - tests/znews_view_antifraud_test.php
+        include:
+          - id: ad-impression-ingestion
+            file: tests/znews_ad_impression_ingestion_test.php
+          - id: backend-foundation
+            file: tests/znews_backend_foundation_test.php
+          - id: end-to-end-contract
+            file: tests/znews_end_to_end_contract_test.php
+          - id: http-smoke
+            file: tests/znews_http_smoke_test.php
+          - id: main-wallet-transfer
+            file: tests/znews_main_wallet_transfer_test.php
+          - id: media-backend
+            file: tests/znews_media_backend_test.php
+          - id: moderation-backend
+            file: tests/znews_moderation_backend_test.php
+          - id: post-lifecycle
+            file: tests/znews_post_lifecycle_test.php
+          - id: post-media-attach
+            file: tests/znews_post_media_attach_test.php
+          - id: revenue-settlement
+            file: tests/znews_revenue_settlement_test.php
+          - id: social-engagement
+            file: tests/znews_social_engagement_test.php
+          - id: view-antifraud
+            file: tests/znews_view_antifraud_test.php
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Run regression suite
+        id: regression
         shell: bash
         run: |
-          set -euo pipefail
-          php "${{ matrix.test }}"
+          set +e
+          php "${{ matrix.file }}" > regression-output.txt 2>&1
+          status=$?
+          cat regression-output.txt
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload failed output
+        if: steps.regression.outputs.status != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: znews-failure-${{ matrix.id }}
+          path: regression-output.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Fail unsuccessful suite
+        if: steps.regression.outputs.status != '0'
+        shell: bash
+        run: exit 1
