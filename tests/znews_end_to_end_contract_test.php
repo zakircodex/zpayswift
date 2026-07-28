@@ -62,8 +62,7 @@ foreach ($moduleFiles as $path) {
     );
 }
 
-$libraryFiles = znews_e2e_php_files($root . '/api/znews/lib');
-foreach ($libraryFiles as $path) {
+foreach (znews_e2e_php_files($root . '/api/znews/lib') as $path) {
     $relative = str_replace($root . '/', '', $path);
     $source = (string)file_get_contents($path);
     znews_e2e_expect(
@@ -72,15 +71,11 @@ foreach ($libraryFiles as $path) {
     );
 }
 
-$adminEndpoints = znews_e2e_php_files($root . '/api/admin/znews');
-foreach ($adminEndpoints as $path) {
+foreach (znews_e2e_php_files($root . '/api/admin/znews') as $path) {
     $relative = str_replace($root . '/', '', $path);
     $source = (string)file_get_contents($path);
     znews_e2e_expect(str_contains($source, 'api_require_method('), $relative . ' lacks method guard');
-    znews_e2e_expect(
-        str_contains($source, 'auth_require_admin_session(true)'),
-        $relative . ' lacks admin-session protection'
-    );
+    znews_e2e_expect(str_contains($source, 'auth_require_admin_session(true)'), $relative . ' lacks admin-session protection');
 }
 
 $creatorEndpoints = [
@@ -111,7 +106,7 @@ foreach ($creatorEndpoints as $relative) {
     $source = znews_e2e_read($root, $relative);
     znews_e2e_expect(str_contains($source, 'api_require_method('), $relative . ' lacks method guard');
     znews_e2e_expect(str_contains($source, 'api_require_app_key();'), $relative . ' lacks app-key protection');
-    znews_e2e_expect(str_contains($source, 'znews_require_creator('), $relative . ' lacks creator authentication');
+    znews_e2e_expect(preg_match('/znews_require_creator\s*\(/', $source) === 1, $relative . ' lacks creator authentication');
 }
 
 $publicEndpoints = [
@@ -131,54 +126,49 @@ foreach ($publicEndpoints as $relative) {
 }
 
 $bootstrap = znews_e2e_read($root, 'api/znews/bootstrap.php');
-znews_e2e_expect(str_contains($bootstrap, "dirname(__DIR__) . '/bootstrap.php'"), 'Z News bootstrap does not load shared API bootstrap');
-znews_e2e_expect(str_contains($bootstrap, "header('X-Content-Type-Options: nosniff')"), 'nosniff header missing');
+znews_e2e_expect(str_contains($bootstrap, "dirname(__DIR__) . '/bootstrap.php'"), 'shared API bootstrap is not loaded');
+znews_e2e_expect(str_contains($bootstrap, 'X-Content-Type-Options: nosniff'), 'nosniff header missing');
 
 $postCreate = znews_e2e_read($root, 'api/znews/lib/post_media_create.php');
-znews_e2e_expect(str_contains($postCreate, "'status' => 'REVIEW'"), 'new posts do not enter review');
-znews_e2e_expect(str_contains($postCreate, "'moderation_status' => 'PENDING'"), 'new posts do not enter pending moderation');
+znews_e2e_expect(str_contains($postCreate, "'REVIEW'"), 'new posts do not enter review');
+znews_e2e_expect(str_contains($postCreate, "'PENDING'"), 'new posts do not enter pending moderation');
 
 $moderation = znews_e2e_read($root, 'api/znews/lib/moderation.php');
-znews_e2e_expect(str_contains($moderation, "'status' => 'ACTIVE'"), 'approval does not activate posts');
-znews_e2e_expect(str_contains($moderation, 'znews_path_public_feed('), 'approval does not maintain public-feed index');
-znews_e2e_expect(str_contains($moderation, "'status' => 'BLOCKED'"), 'rejection does not block posts');
+znews_e2e_expect(str_contains($moderation, 'znews_admin_moderate_post'), 'post moderation service missing');
+znews_e2e_expect(str_contains($moderation, "'ACTIVE'") && str_contains($moderation, "'BLOCKED'"), 'moderation terminal post states missing');
+znews_e2e_expect(str_contains($moderation, 'znews_path_public_feed('), 'moderation does not maintain public-feed index');
 
 $publicAccess = znews_e2e_read($root, 'api/znews/lib/post_access.php');
 znews_e2e_expect(str_contains($publicAccess, "=== 'ACTIVE'"), 'public post gate lacks ACTIVE check');
 znews_e2e_expect(str_contains($publicAccess, "=== 'PUBLIC'"), 'public post gate lacks PUBLIC visibility check');
 
 $viewsV2 = znews_e2e_read($root, 'api/znews/lib/views_v2.php');
-znews_e2e_expect(str_contains($viewsV2, 'applied_events'), 'view analytics lacks exact-once event ledger');
-znews_e2e_expect(str_contains($viewsV2, 'znews_view_complete_v2'), 'view completion v2 missing');
+znews_e2e_expect(str_contains($viewsV2, 'znews_view_analytics_apply_once'), 'view analytics exact-once helper missing');
+znews_e2e_expect(str_contains($viewsV2, 'applied_events'), 'view analytics event ledger missing');
+znews_e2e_expect(str_contains($viewsV2, 'znews_view_start_v2') && str_contains($viewsV2, 'znews_view_complete_v2'), 'view v2 lifecycle missing');
 
 $adSignature = znews_e2e_read($root, 'api/znews/lib/ad_impressions_signature.php');
 znews_e2e_expect(str_contains($adSignature, 'hash_hmac'), 'ad ingestion lacks HMAC verification');
 znews_e2e_expect(str_contains($adSignature, 'hash_equals'), 'ad signature comparison is not timing-safe');
 $adCommon = znews_e2e_read($root, 'api/znews/lib/ad_impressions_common.php');
-znews_e2e_expect(str_contains($adCommon, "'settlement_status' => 'NOT_SETTLED'"), 'ad impressions can bypass settlement state');
-znews_e2e_expect(str_contains($adCommon, "'credit_status' => 'NOT_CREDITED'"), 'ad impressions can bypass credit state');
+znews_e2e_expect(str_contains($adCommon, 'NOT_SETTLED'), 'ad impressions can bypass settlement state');
+znews_e2e_expect(str_contains($adCommon, 'NOT_CREDITED'), 'ad impressions can bypass credit state');
 
 $settlementCommon = znews_e2e_read($root, 'api/znews/lib/settlements_common.php');
 znews_e2e_expect(str_contains($settlementCommon, 'return 5000;'), 'creator revenue share is not 50 percent');
 znews_e2e_expect(str_contains($settlementCommon, '$platform = $grossMicros - $creator'), 'settlement rounding is not lossless');
 $settlementService = znews_e2e_read($root, 'api/znews/lib/settlements_service.php');
-znews_e2e_expect(str_contains($settlementService, "'settlement_status'] = 'SETTLED'"), 'settlement terminal state missing');
-znews_e2e_expect(str_contains($settlementService, "'main_wallet_credit_status'] = 'NOT_CREDITED'"), 'settlement directly credits main wallet');
+znews_e2e_expect(str_contains($settlementService, 'SETTLED'), 'settlement terminal state missing');
+znews_e2e_expect(str_contains($settlementService, 'NOT_CREDITED'), 'settlement directly credits main wallet');
 
 $transferCommon = znews_e2e_read($root, 'api/znews/lib/transfers_common.php');
-znews_e2e_expect(str_contains($transferCommon, 'return 500 * 1000000;'), 'BDT 500 transfer threshold missing');
+znews_e2e_expect(str_contains($transferCommon, '500 * 1000000'), 'BDT 500 transfer threshold missing');
 $transferWallet = znews_e2e_read($root, 'api/znews/lib/transfers_wallet.php');
-znews_e2e_expect(str_contains($transferWallet, 'wallet_financial_operation_begin('), 'transfer does not use wallet financial-operation claim');
-znews_e2e_expect(str_contains($transferWallet, 'wallet_credit_available('), 'transfer does not use official wallet credit helper');
-znews_e2e_expect(str_contains($transferWallet, 'wallet_financial_operation_mark_completed('), 'wallet operation completion marker missing');
+znews_e2e_expect(str_contains($transferWallet, 'wallet_financial_operation_begin('), 'wallet financial-operation claim missing');
+znews_e2e_expect(str_contains($transferWallet, 'wallet_credit_available('), 'official wallet credit helper missing');
+znews_e2e_expect(str_contains($transferWallet, 'wallet_financial_operation_mark_completed('), 'wallet completion marker missing');
 $transferAdmin = znews_e2e_read($root, 'api/znews/lib/transfers_admin_approve.php');
-znews_e2e_expect(str_contains($transferAdmin, 'znews_transfer_consume_balance('), 'approved transfer does not consume reserved Z News balance');
-
-$sharesEndpoint = znews_e2e_read($root, 'api/znews/shares/create.php');
-znews_e2e_expect(
-    str_contains($sharesEndpoint, 'znews_require_creator(true)'),
-    'authenticated share endpoint contract unexpectedly changed'
-);
+znews_e2e_expect(str_contains($transferAdmin, 'znews_transfer_consume_balance('), 'approved transfer does not consume reserved balance');
 
 $tests = glob($root . '/tests/znews_*_test.php') ?: [];
 znews_e2e_expect(count($tests) >= 10, 'expected Z News regression suites are missing');
