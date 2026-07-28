@@ -27,9 +27,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  php-audit:
+  syntax:
+    name: PHP syntax
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,19 +42,39 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          find api/znews api/admin/znews tests -type f -name '*.php' -print0 \
-            | sort -z \
-            | xargs -0 -n1 php -l
+          mapfile -d '' files < <(find api/znews api/admin/znews tests -type f -name '*.php' -print0 | sort -z)
+          [ "${#files[@]}" -gt 0 ]
+          for file in "${files[@]}"; do
+            php -l "$file" >/dev/null
+          done
+          echo "Syntax passed for ${#files[@]} PHP files."
 
-      - name: Run Z News regression suites
+  regression:
+    name: ${{ matrix.test }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        test:
+          - tests/znews_ad_impression_ingestion_test.php
+          - tests/znews_backend_foundation_test.php
+          - tests/znews_end_to_end_contract_test.php
+          - tests/znews_http_smoke_test.php
+          - tests/znews_main_wallet_transfer_test.php
+          - tests/znews_media_backend_test.php
+          - tests/znews_moderation_backend_test.php
+          - tests/znews_post_lifecycle_test.php
+          - tests/znews_post_media_attach_test.php
+          - tests/znews_revenue_settlement_test.php
+          - tests/znews_social_engagement_test.php
+          - tests/znews_view_antifraud_test.php
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run regression suite
         shell: bash
         run: |
           set -euo pipefail
-          found=0
-          for test_file in tests/znews_*_test.php; do
-            [ -f "$test_file" ] || continue
-            found=1
-            echo "Running $test_file"
-            php "$test_file"
-          done
-          [ "$found" -eq 1 ]
+          php "${{ matrix.test }}"
