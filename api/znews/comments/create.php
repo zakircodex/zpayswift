@@ -1,0 +1,40 @@
+<?php
+declare(strict_types=1);
+
+require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/comments.php';
+
+api_require_method('POST');
+api_require_app_key();
+
+$auth = znews_require_creator(true);
+$body = api_read_json_body();
+$postId = znews_firebase_key($body['post_id'] ?? '', 'post_id');
+$text = znews_comment_text($body['text'] ?? '');
+$idempotencyKey = znews_idempotency_key(
+    $body['idempotency_key']
+    ?? $body['client_request_id']
+    ?? ''
+);
+
+$result = znews_comment_create($auth, $postId, $text, $idempotencyKey);
+if (empty($result['ok'])) {
+    api_response(
+        false,
+        (string)($result['code'] ?? 'ZNEWS_COMMENT_CREATE_FAILED'),
+        (string)($result['message'] ?? 'Comment could not be submitted.'),
+        ['comment' => is_array($result['comment'] ?? null) ? (array)$result['comment'] : []],
+        (int)($result['http_status'] ?? 500)
+    );
+}
+
+api_response(
+    true,
+    !empty($result['idempotent_replay']) ? 'ZNEWS_COMMENT_ALREADY_CREATED' : 'ZNEWS_COMMENT_CREATED',
+    !empty($result['idempotent_replay']) ? 'Comment was already submitted.' : 'Comment submitted for review.',
+    [
+        'comment' => is_array($result['comment'] ?? null) ? (array)$result['comment'] : [],
+        'idempotent_replay' => !empty($result['idempotent_replay']),
+    ],
+    !empty($result['idempotent_replay']) ? 200 : 201
+);

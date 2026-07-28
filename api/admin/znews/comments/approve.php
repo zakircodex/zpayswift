@@ -1,0 +1,49 @@
+<?php
+declare(strict_types=1);
+
+require_once dirname(__DIR__, 3) . '/znews/bootstrap.php';
+require_once dirname(__DIR__, 3) . '/znews/lib/comments.php';
+
+api_require_method('POST');
+$auth = auth_require_admin_session(true);
+$body = api_read_json_body();
+
+$postId = znews_firebase_key($body['post_id'] ?? '', 'post_id');
+$commentId = znews_firebase_key($body['comment_id'] ?? '', 'comment_id');
+$expectedUpdatedAt = filter_var($body['expected_updated_at'] ?? null, FILTER_VALIDATE_INT);
+if ($expectedUpdatedAt === false || $expectedUpdatedAt <= 0) {
+    api_response(false, 'ZNEWS_EXPECTED_UPDATED_AT_REQUIRED', 'expected_updated_at is required.', [], 422);
+}
+$idempotencyKey = znews_idempotency_key(
+    $body['idempotency_key']
+    ?? $body['client_request_id']
+    ?? ''
+);
+$note = znews_comment_moderation_note($body['note'] ?? '', false);
+
+$result = znews_admin_moderate_comment(
+    $auth,
+    $postId,
+    $commentId,
+    (int)$expectedUpdatedAt,
+    $idempotencyKey,
+    'APPROVE',
+    $note
+);
+if (empty($result['ok'])) {
+    api_response(
+        false,
+        (string)($result['code'] ?? 'ZNEWS_COMMENT_APPROVE_FAILED'),
+        (string)($result['message'] ?? 'Comment could not be approved.'),
+        array_filter([
+            'comment' => is_array($result['comment'] ?? null) ? (array)$result['comment'] : null,
+            'details' => is_array($result['data'] ?? null) ? (array)$result['data'] : null,
+        ], static fn($value) => $value !== null),
+        (int)($result['http_status'] ?? 500)
+    );
+}
+
+api_response(true, 'ZNEWS_COMMENT_APPROVED', 'Comment approved.', [
+    'comment' => is_array($result['comment'] ?? null) ? (array)$result['comment'] : [],
+    'idempotent_replay' => !empty($result['idempotent_replay']),
+]);
