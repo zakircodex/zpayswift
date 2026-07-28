@@ -1,0 +1,51 @@
+name: Z News cPanel Package
+
+on:
+  push:
+    branches:
+      - chore/znews-cpanel-package
+    paths:
+      - '.github/workflows/znews-cpanel-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout merged main snapshot
+        uses: actions/checkout@v4
+
+      - name: Validate production PHP
+        shell: bash
+        run: |
+          set -euo pipefail
+          find api/znews api/admin/znews -type f -name '*.php' -print0 \
+            | sort -z \
+            | xargs -0 -n1 php -l >/dev/null
+
+      - name: Build production-only ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/api/admin
+          cp -a api/znews build/api/
+          cp -a api/admin/znews build/api/admin/
+          archive="znews-cpanel-deploy-${GITHUB_SHA::12}.zip"
+          (cd build && zip -q -r "../${archive}" api)
+          sha256sum "${archive}" > "${archive}.sha256"
+          echo "ARCHIVE=${archive}" >> "$GITHUB_ENV"
+          echo "Packaged $(find build/api -type f | wc -l) production files."
+
+      - name: Upload cPanel package
+        uses: actions/upload-artifact@v4
+        with:
+          name: znews-cpanel-deploy
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+          if-no-files-found: error
+          retention-days: 7
