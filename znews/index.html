@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07162b">
+  <meta name="description" content="Z News — Stories, updates and community from Z-Pay Swift.">
+  <title>Z News | Z-Pay Swift</title>
+  <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
+  <link rel="manifest" href="/znews/manifest.webmanifest">
+  <link rel="stylesheet" href="/znews/assets/znews.css?v=1">
+</head>
+<body>
+  <a class="skip-link" href="#mainContent">Skip to content</a>
+
+  <header class="app-header">
+    <div class="header-inner">
+      <a class="brand" href="/znews/" aria-label="Z News home">
+        <span class="brand-mark" aria-hidden="true">Z</span>
+        <span>
+          <strong>Z News</strong>
+          <small>Stories • Updates • Community</small>
+        </span>
+      </a>
+      <div class="header-actions">
+        <button class="icon-button" id="refreshButton" type="button" aria-label="Refresh feed" title="Refresh">↻</button>
+        <button class="primary-button compact" id="sessionButton" type="button">Sign in</button>
+      </div>
+    </div>
+  </header>
+
+  <nav class="mobile-nav" aria-label="Z News sections">
+    <button class="nav-item active" type="button" data-route="feed"><span>⌂</span><small>Feed</small></button>
+    <button class="nav-item" type="button" data-route="create"><span>＋</span><small>Create</small></button>
+    <button class="nav-item" type="button" data-route="mine"><span>▤</span><small>My posts</small></button>
+    <button class="nav-item" type="button" data-route="balance"><span>◈</span><small>Balance</small></button>
+  </nav>
+
+  <main id="mainContent" class="layout">
+    <aside class="left-rail" aria-label="Z News navigation">
+      <section class="profile-card card">
+        <div class="avatar large" id="sidebarAvatar">Z</div>
+        <div>
+          <strong id="sidebarName">Guest reader</strong>
+          <p id="sidebarMeta">Sign in to post and join conversations.</p>
+        </div>
+      </section>
+      <nav class="desktop-nav">
+        <button class="side-nav-item active" type="button" data-route="feed"><span>⌂</span>News feed</button>
+        <button class="side-nav-item" type="button" data-route="create"><span>＋</span>Create post</button>
+        <button class="side-nav-item" type="button" data-route="mine"><span>▤</span>My posts</button>
+        <button class="side-nav-item" type="button" data-route="balance"><span>◈</span>Creator balance</button>
+      </nav>
+      <p class="privacy-note">Public posts can be read and shared without signing in. Posting and interactions require a Z-Pay account.</p>
+    </aside>
+
+    <section class="content-column">
+      <div id="announcement" class="announcement" hidden></div>
+
+      <section id="feedView" class="view active" data-view="feed">
+        <div class="composer-card card">
+          <div class="avatar" id="composerAvatar">Z</div>
+          <button class="composer-trigger" id="composerTrigger" type="button">Share a story or update…</button>
+          <button class="icon-button media-trigger" id="composerMediaTrigger" type="button" aria-label="Create image post">▧</button>
+        </div>
+        <div class="section-heading">
+          <div>
+            <h1>Latest stories</h1>
+            <p>Public updates from the Z-Pay community.</p>
+          </div>
+          <button class="ghost-button" id="feedRefreshInline" type="button">Refresh</button>
+        </div>
+        <div id="feedList" class="post-list" aria-live="polite"></div>
+        <button class="load-more" id="loadMoreButton" type="button" hidden>Load more</button>
+      </section>
+
+      <section id="createView" class="view" data-view="create">
+        <div class="page-card card">
+          <div class="section-heading no-border">
+            <div>
+              <span class="eyebrow">Creator</span>
+              <h1>Create a post</h1>
+              <p>Write text, add one image, or use both. New posts are reviewed before appearing publicly.</p>
+            </div>
+          </div>
+          <form id="createPostForm" class="stack-form">
+            <label class="field-label" for="postText">Post text</label>
+            <textarea id="postText" name="text" maxlength="5000" rows="7" placeholder="What would you like to share?"></textarea>
+            <div class="counter-row"><span id="postTextCount">0 / 5000</span></div>
+            <label class="upload-box" for="postImage">
+              <input id="postImage" name="image" type="file" accept="image/jpeg,image/png,image/webp">
+              <span class="upload-icon">▧</span>
+              <strong>Add an image</strong>
+              <small>JPEG, PNG or WebP. Maximum 5 MB.</small>
+            </label>
+            <div id="imagePreview" class="image-preview" hidden></div>
+            <button class="primary-button" type="submit">Submit for review</button>
+          </form>
+        </div>
+      </section>
+
+      <section id="mineView" class="view" data-view="mine">
+        <div class="section-heading">
+          <div>
+            <h1>My posts</h1>
+            <p>Review status and your published stories.</p>
+          </div>
+        </div>
+        <div id="mineList" class="post-list"></div>
+      </section>
+
+      <section id="balanceView" class="view" data-view="balance">
+        <div class="balance-hero card">
+          <span class="eyebrow">Creator balance</span>
+          <strong id="balanceAmount">৳0.00</strong>
+          <p id="balanceStatus">Sign in to view your balance.</p>
+          <button class="primary-button" id="transferButton" type="button" disabled>Transfer to Z-Pay balance</button>
+          <small>Minimum transfer: ৳500. Requests require review.</small>
+        </div>
+        <div class="page-card card">
+          <div class="section-heading no-border">
+            <div><h2>Balance activity</h2><p>Credits and transfers recorded in Z News.</p></div>
+          </div>
+          <div id="ledgerList" class="ledger-list"></div>
+        </div>
+      </section>
+    </section>
+
+    <aside class="right-rail">
+      <section class="card compact-card">
+        <span class="eyebrow">Z News</span>
+        <h2>Community guidelines</h2>
+        <p>Share original, respectful content. Copyrighted or unsafe posts may be rejected.</p>
+      </section>
+      <div class="ad-slot" data-znews-ad-slot="feed_sidebar" data-format="mobile_banner" aria-label="Sponsored content"></div>
+      <section class="card compact-card balance-mini">
+        <span>Creator balance</span>
+        <strong id="miniBalance">৳0.00</strong>
+        <button class="ghost-button full" type="button" data-route="balance">View activity</button>
+      </section>
+    </aside>
+  </main>
+
+  <dialog id="authDialog" class="modal">
+    <form method="dialog" class="modal-shell" id="authForm">
+      <button class="modal-close" value="cancel" aria-label="Close">×</button>
+      <span class="eyebrow">Z-Pay account</span>
+      <h2 id="authTitle">Sign in to Z News</h2>
+      <p id="authDescription">Use your existing Z-Pay phone number, password and PIN.</p>
+      <div id="credentialFields" class="stack-form compact-form">
+        <label>Country
+          <select id="authCountry" required><option value="MY">Malaysia</option><option value="BD">Bangladesh</option></select>
+        </label>
+        <label>Phone number<input id="authPhone" inputmode="tel" autocomplete="username" required></label>
+        <label>Password<input id="authPassword" type="password" autocomplete="current-password" required></label>
+        <label>PIN<input id="authPin" type="password" inputmode="numeric" autocomplete="off" required></label>
+      </div>
+      <div id="otpFields" class="stack-form compact-form" hidden>
+        <label>SMS OTP<input id="authOtp" inputmode="numeric" autocomplete="one-time-code"></label>
+      </div>
+      <p id="authError" class="form-error" hidden></p>
+      <button class="primary-button" id="authSubmit" type="submit">Continue</button>
+    </form>
+  </dialog>
+
+  <dialog id="postDialog" class="modal post-modal">
+    <div class="modal-shell wide">
+      <button class="modal-close" id="postDialogClose" type="button" aria-label="Close">×</button>
+      <div id="postDetail"></div>
+      <section class="comments-section">
+        <h3>Comments</h3>
+        <form id="commentForm" class="comment-composer">
+          <input id="commentText" maxlength="2000" placeholder="Write a comment…" autocomplete="off">
+          <button class="primary-button compact" type="submit">Send</button>
+        </form>
+        <div id="commentList" class="comment-list"></div>
+      </section>
+    </div>
+  </dialog>
+
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+  <template id="postSkeletonTemplate">
+    <article class="post-card card skeleton-card">
+      <div class="skeleton line short"></div><div class="skeleton line"></div><div class="skeleton block"></div>
+    </article>
+  </template>
+
+  <script src="/znews/assets/znews-config.js?v=1"></script>
+  <script src="/znews/assets/znews-api.js?v=1"></script>
+  <script src="/znews/assets/znews-ads.js?v=1"></script>
+  <script src="/znews/assets/znews.js?v=1"></script>
+</body>
+</html>
