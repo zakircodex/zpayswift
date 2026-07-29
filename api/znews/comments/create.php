@@ -23,18 +23,31 @@ if (empty($result['ok'])) {
         false,
         (string)($result['code'] ?? 'ZNEWS_COMMENT_CREATE_FAILED'),
         (string)($result['message'] ?? 'Comment could not be submitted.'),
-        ['comment' => is_array($result['comment'] ?? null) ? (array)$result['comment'] : []],
+        [
+            'comment' => is_array($result['comment'] ?? null) ? (array)$result['comment'] : [],
+            'counts' => is_array($result['counts'] ?? null) ? (array)$result['counts'] : [],
+        ],
         (int)($result['http_status'] ?? 500)
     );
 }
 
+$replay = !empty($result['idempotent_replay']);
+$comment = is_array($result['comment'] ?? null) ? (array)$result['comment'] : [];
+$published = znews_comment_is_public($comment);
+$message = $replay
+    ? 'Comment was already created.'
+    : ($published ? 'Comment published.' : 'Comment requires a safety review.');
+
 api_response(
     true,
-    !empty($result['idempotent_replay']) ? 'ZNEWS_COMMENT_ALREADY_CREATED' : 'ZNEWS_COMMENT_CREATED',
-    !empty($result['idempotent_replay']) ? 'Comment was already submitted.' : 'Comment submitted for review.',
+    $replay ? 'ZNEWS_COMMENT_ALREADY_CREATED' : 'ZNEWS_COMMENT_CREATED',
+    $message,
     [
-        'comment' => is_array($result['comment'] ?? null) ? (array)$result['comment'] : [],
-        'idempotent_replay' => !empty($result['idempotent_replay']),
+        'comment' => $comment,
+        'counts' => is_array($result['counts'] ?? null) ? (array)$result['counts'] : [],
+        'published_immediately' => $published,
+        'requires_review' => !$published,
+        'idempotent_replay' => $replay,
     ],
-    !empty($result['idempotent_replay']) ? 200 : 201
+    $replay ? 200 : 201
 );

@@ -9,25 +9,28 @@
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="manifest" href="/znews/manifest.webmanifest">
   <link rel="stylesheet" href="/znews/assets/znews.css?v=2">
+  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=1">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to content</a>
 
   <header class="app-header">
     <div class="header-inner">
-      <a class="brand" href="/znews/" aria-label="Z News home">
+      <a class="brand brand-premium" href="/znews/" aria-label="Z News home">
         <span class="brand-mark" aria-hidden="true">Z</span>
-        <span>
+        <span class="brand-copy">
           <strong>Z News</strong>
           <small>Stories • Updates • Community</small>
         </span>
       </a>
-      <div class="header-actions">
-        <button class="icon-button" id="refreshButton" type="button" aria-label="Refresh feed" title="Refresh">↻</button>
-        <button class="primary-button compact" id="sessionButton" type="button">Sign in</button>
-      </div>
     </div>
   </header>
+
+  <div class="znews-hidden-controls" aria-hidden="true">
+    <button id="refreshButton" type="button" hidden>Refresh</button>
+    <button id="sessionButton" type="button" hidden>Session</button>
+    <button id="feedRefreshInline" type="button" hidden>Refresh feed</button>
+  </div>
 
   <nav class="mobile-nav" aria-label="Z News sections">
     <button class="nav-item active" type="button" data-route="feed"><span>⌂</span><small>Feed</small></button>
@@ -42,7 +45,7 @@
         <div class="avatar large" id="sidebarAvatar">Z</div>
         <div>
           <strong id="sidebarName">Guest reader</strong>
-          <p id="sidebarMeta">Sign in to post and join conversations.</p>
+          <p id="sidebarMeta">Public stories and community updates.</p>
         </div>
       </section>
       <nav class="desktop-nav">
@@ -51,14 +54,15 @@
         <button class="side-nav-item" type="button" data-route="mine"><span>▤</span>My posts</button>
         <button class="side-nav-item" type="button" data-route="balance"><span>◈</span>Creator balance</button>
       </nav>
-      <p class="privacy-note">Public posts can be read and shared without signing in. Posting and interactions require a Z-Pay account.</p>
+      <p class="privacy-note">Public posts, comments and sponsored content can be viewed without a Z-Pay account. Creator access opens only from the Z-Pay dashboard.</p>
     </aside>
 
     <section class="content-column">
       <div id="announcement" class="announcement" hidden></div>
+      <div class="znews-guest-note">You are reading as a guest. Create a Z-Pay account to publish posts and join conversations.</div>
 
       <section id="feedView" class="view active" data-view="feed">
-        <div class="composer-card card">
+        <div class="composer-card card" data-auth-only hidden>
           <div class="avatar" id="composerAvatar">Z</div>
           <button class="composer-trigger" id="composerTrigger" type="button">Share a story or update…</button>
           <button class="icon-button media-trigger" id="composerMediaTrigger" type="button" aria-label="Create image post">▧</button>
@@ -68,13 +72,12 @@
             <h1>Latest stories</h1>
             <p>Public updates from the Z-Pay community.</p>
           </div>
-          <button class="ghost-button" id="feedRefreshInline" type="button">Refresh</button>
         </div>
         <div id="feedList" class="post-list" aria-live="polite"></div>
         <button class="load-more" id="loadMoreButton" type="button" hidden>Load more</button>
       </section>
 
-      <section id="createView" class="view" data-view="create">
+      <section id="createView" class="view" data-view="create" data-auth-only hidden>
         <div class="page-card card">
           <div class="section-heading no-border">
             <div>
@@ -99,7 +102,7 @@
         </div>
       </section>
 
-      <section id="mineView" class="view" data-view="mine">
+      <section id="mineView" class="view" data-view="mine" data-auth-only hidden>
         <div class="section-heading">
           <div>
             <h1>My posts</h1>
@@ -109,11 +112,11 @@
         <div id="mineList" class="post-list"></div>
       </section>
 
-      <section id="balanceView" class="view" data-view="balance">
+      <section id="balanceView" class="view" data-view="balance" data-auth-only hidden>
         <div class="balance-hero card">
           <span class="eyebrow">Creator balance</span>
           <strong id="balanceAmount">৳0.00</strong>
-          <p id="balanceStatus">Sign in to view your balance.</p>
+          <p id="balanceStatus">Open Z News from your Z-Pay dashboard to view your balance.</p>
           <button class="primary-button" id="transferButton" type="button" disabled>Transfer to Z-Pay balance</button>
           <small>Minimum transfer: ৳500. Requests require review.</small>
         </div>
@@ -130,10 +133,10 @@
       <section class="card compact-card">
         <span class="eyebrow">Z News</span>
         <h2>Community guidelines</h2>
-        <p>Share original, respectful content. Posts may be hidden later when they violate safety or copyright rules.</p>
+        <p>Share original, respectful content. Posts and comments may be hidden later when they violate safety or copyright rules.</p>
       </section>
       <div class="ad-slot" data-znews-ad-slot="feed_sidebar" data-format="mobile_banner" aria-label="Sponsored content"></div>
-      <section class="card compact-card balance-mini">
+      <section class="card compact-card balance-mini" data-auth-only hidden>
         <span>Creator balance</span>
         <strong id="miniBalance">৳0.00</strong>
         <button class="ghost-button full" type="button" data-route="balance">View activity</button>
@@ -141,25 +144,17 @@
     </aside>
   </main>
 
-  <dialog id="authDialog" class="modal">
+  <dialog id="authDialog" class="modal" hidden aria-hidden="true">
     <form method="dialog" class="modal-shell" id="authForm">
       <button class="modal-close" value="cancel" aria-label="Close">×</button>
-      <span class="eyebrow">Z-Pay account</span>
-      <h2 id="authTitle">Sign in to Z News</h2>
-      <p id="authDescription">Use your existing Z-Pay phone number, password and PIN.</p>
-      <div id="credentialFields" class="stack-form compact-form">
-        <label>Country
-          <select id="authCountry" required><option value="MY">Malaysia</option><option value="BD">Bangladesh</option></select>
-        </label>
-        <label>Phone number<input id="authPhone" inputmode="tel" autocomplete="username" required></label>
-        <label>Password<input id="authPassword" type="password" autocomplete="current-password" required></label>
-        <label>PIN<input id="authPin" type="password" inputmode="numeric" autocomplete="off" required></label>
+      <h2 id="authTitle">Z-Pay dashboard access required</h2>
+      <p id="authDescription">Open Z News from your Z-Pay dashboard.</p>
+      <div id="credentialFields" hidden>
+        <input id="authCountry"><input id="authPhone"><input id="authPassword"><input id="authPin">
       </div>
-      <div id="otpFields" class="stack-form compact-form" hidden>
-        <label>SMS OTP<input id="authOtp" inputmode="numeric" autocomplete="one-time-code"></label>
-      </div>
-      <p id="authError" class="form-error" hidden></p>
-      <button class="primary-button" id="authSubmit" type="submit">Continue</button>
+      <div id="otpFields" hidden><input id="authOtp"></div>
+      <p id="authError" hidden></p>
+      <button id="authSubmit" type="submit">Continue</button>
     </form>
   </dialog>
 
@@ -169,8 +164,8 @@
       <div id="postDetail"></div>
       <section class="comments-section">
         <h3>Comments</h3>
-        <form id="commentForm" class="comment-composer">
-          <input id="commentText" maxlength="2000" placeholder="Write a comment…" autocomplete="off">
+        <form id="commentForm" class="comment-composer" data-auth-only hidden>
+          <input id="commentText" maxlength="1000" placeholder="Write a comment…" autocomplete="off">
           <button class="primary-button compact" type="submit">Send</button>
         </form>
         <div id="commentList" class="comment-list"></div>
@@ -186,10 +181,9 @@
     </article>
   </template>
 
-  <script src="/znews/assets/znews-config.js?v=1"></script>
-  <script src="/znews/assets/znews-api.js?v=2"></script>
+  <script src="/znews/assets/znews-config.js?v=3"></script>
+  <script src="/znews/assets/znews-api.js?v=3"></script>
   <script src="/znews/assets/znews-ads.js?v=1"></script>
-  <script src="/znews/assets/znews.js?v=2"></script>
-  <script src="/znews/assets/znews-creator.js?v=1"></script>
+  <script src="/znews/assets/znews-bootstrap.js?v=1"></script>
 </body>
 </html>

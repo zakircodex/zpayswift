@@ -67,13 +67,14 @@ function znews_comment_update(
 
     $wasPublic = znews_comment_is_public($comment);
     $now = znews_now();
+    $decision = znews_comment_publication_decision($text);
     $updated = $comment;
+    $updated['schema_version'] = max(2, (int)($comment['schema_version'] ?? 1));
     $updated['text'] = $text;
-    $updated['status'] = 'REVIEW';
-    $updated['moderation_status'] = 'PENDING';
     $updated['moderation_note'] = '';
     $updated['updated_at'] = $now;
     $updated['last_edit_at'] = $now;
+    $updated = znews_apply_comment_publication_decision($updated, $decision, $now);
 
     $write = fb_put_if_match(
         znews_comment_path($postId, $commentId),
@@ -103,31 +104,32 @@ function znews_comment_update(
         znews_comment_user_index_path($uid, $commentId) => [
             'comment_id' => $commentId,
             'post_id' => $postId,
-            'status' => 'REVIEW',
+            'status' => (string)$updated['status'],
             'created_at' => (int)($updated['created_at'] ?? $now),
             'updated_at' => $now,
+            'published_at' => (int)($updated['published_at'] ?? 0),
         ],
-        znews_comment_review_queue_path($commentId) => [
-            'comment_id' => $commentId,
-            'post_id' => $postId,
-            'author_uid' => $uid,
-            'created_at' => (int)($updated['created_at'] ?? $now),
-            'updated_at' => $now,
-        ],
+        znews_comment_review_queue_path($commentId) => znews_comment_review_queue_row($updated),
     ]);
 
-    $counterOk = true;
-    if ($wasPublic) {
-        $counterOk = !empty(znews_engagement_adjust_counter(
+    $isPublic = znews_comment_is_public($updated);
+    $counterResult = ['ok' => true, 'counts' => znews_engagement_counts($postId)];
+    if ($wasPublic !== $isPublic) {
+        $counterResult = znews_engagement_adjust_counter(
             $postId,
             'comment_count',
-            -1
-        )['ok']);
+            $isPublic ? 1 : -1
+        );
     }
+    $counterOk = !empty($counterResult['ok']);
+    $counts = is_array($counterResult['counts'] ?? null)
+        ? (array)$counterResult['counts']
+        : znews_engagement_counts($postId);
 
     $formatted = znews_comment_format($updated, true);
     $result = [
         'comment' => $formatted,
+        'counts' => $counts,
         'reconciliation_required' => !$indexOk || !$counterOk,
     ];
     znews_engagement_finish($claim, $result);
@@ -139,6 +141,7 @@ function znews_comment_update(
             'message' => 'Comment was updated but its indexes require reconciliation.',
             'http_status' => 503,
             'comment' => $formatted,
+            'counts' => $counts,
         ];
     }
 
@@ -146,5 +149,6 @@ function znews_comment_update(
         'ok' => true,
         'idempotent_replay' => false,
         'comment' => $formatted,
+        'counts' => $counts,
     ];
 }

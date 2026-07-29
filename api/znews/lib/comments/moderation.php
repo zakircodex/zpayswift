@@ -80,14 +80,20 @@ function znews_admin_moderate_comment(
         ];
     }
 
-    if (strtoupper(trim((string)($comment['status'] ?? ''))) !== 'REVIEW'
-        || strtoupper(trim((string)($comment['moderation_status'] ?? ''))) !== 'PENDING'
-        || (int)($comment['deleted_at'] ?? 0) > 0) {
-        znews_engagement_fail($claim, 'ZNEWS_COMMENT_NOT_PENDING_REVIEW');
+    $status = strtoupper(trim((string)($comment['status'] ?? '')));
+    $moderationStatus = strtoupper(trim((string)($comment['moderation_status'] ?? '')));
+    $deleted = (int)($comment['deleted_at'] ?? 0) > 0;
+    $pendingReview = $status === 'REVIEW' && $moderationStatus === 'PENDING' && !$deleted;
+    $wasPublic = znews_comment_is_public($comment);
+    $postPublicationReject = !$approve && $wasPublic;
+
+    $allowed = $approve ? $pendingReview : ($pendingReview || $postPublicationReject);
+    if (!$allowed) {
+        znews_engagement_fail($claim, 'ZNEWS_COMMENT_NOT_MODERATABLE');
         return [
             'ok' => false,
-            'code' => 'ZNEWS_COMMENT_NOT_PENDING_REVIEW',
-            'message' => 'This comment is not pending moderation.',
+            'code' => 'ZNEWS_COMMENT_NOT_MODERATABLE',
+            'message' => 'This comment is not available for this moderation action.',
             'http_status' => 409,
         ];
     }
@@ -118,6 +124,14 @@ function znews_admin_moderate_comment(
     $updated['reviewed_by_name'] = $adminName;
     $updated['reviewed_at'] = $now;
     $updated['updated_at'] = $now;
+    if ($approve) {
+        $updated['published_at'] = $now;
+    } else {
+        $updated['blocked_at'] = $now;
+        $updated['post_publication_action'] = $postPublicationReject
+            ? 'BLOCKED_AFTER_PUBLICATION'
+            : 'REJECTED_BEFORE_PUBLICATION';
+    }
 
     $write = fb_put_if_match(
         znews_comment_path($postId, $commentId),
@@ -152,12 +166,15 @@ function znews_admin_moderate_comment(
             'status' => $updated['status'],
             'created_at' => (int)($updated['created_at'] ?? $now),
             'updated_at' => $now,
+            'published_at' => (int)($updated['published_at'] ?? 0),
+            'blocked_at' => (int)($updated['blocked_at'] ?? 0),
         ],
         znews_comment_action_path($commentId, $actionId) => [
             'action_id' => $actionId,
             'comment_id' => $commentId,
             'post_id' => $postId,
             'action' => $action,
+            'mode' => $postPublicationReject ? 'POST_PUBLICATION_BLOCK' : 'PRE_PUBLICATION_REVIEW',
             'admin_uid' => $adminUid,
             'admin_name' => $adminName,
             'note' => $note,
@@ -165,18 +182,22 @@ function znews_admin_moderate_comment(
         ],
     ]);
 
-    $counterOk = true;
+    $counterResult = ['ok' => true, 'counts' => znews_engagement_counts($postId)];
     if ($approve) {
-        $counterOk = !empty(znews_engagement_adjust_counter(
-            $postId,
-            'comment_count',
-            1
-        )['ok']);
+        $counterResult = znews_engagement_adjust_counter($postId, 'comment_count', 1);
+    } elseif ($postPublicationReject) {
+        $counterResult = znews_engagement_adjust_counter($postId, 'comment_count', -1);
     }
+    $counterOk = !empty($counterResult['ok']);
+    $counts = is_array($counterResult['counts'] ?? null)
+        ? (array)$counterResult['counts']
+        : znews_engagement_counts($postId);
 
     $formatted = znews_comment_format($updated, true);
     $result = [
         'comment' => $formatted,
+        'counts' => $counts,
+        'post_publication_block' => $postPublicationReject,
         'reconciliation_required' => !$indexOk || !$counterOk,
     ];
     znews_engagement_finish($claim, $result);
@@ -188,18 +209,22 @@ function znews_admin_moderate_comment(
             'message' => 'Moderation was saved but comment indexes require reconciliation.',
             'http_status' => 503,
             'comment' => $formatted,
+            'counts' => $counts,
         ];
     }
 
     if (function_exists('system_log')) {
         system_log(
-            $approve ? 'ZNEWS_COMMENT_APPROVED' : 'ZNEWS_COMMENT_REJECTED',
+            $approve
+                ? 'ZNEWS_COMMENT_APPROVED'
+                : ($postPublicationReject ? 'ZNEWS_COMMENT_BLOCKED_AFTER_PUBLICATION' : 'ZNEWS_COMMENT_REJECTED'),
             $commentId,
             'Z News comment moderation decision',
             [
                 'post_id' => $postId,
                 'comment_id' => $commentId,
                 'admin_uid' => $adminUid,
+                'post_publication_block' => $postPublicationReject,
             ]
         );
     }
@@ -208,5 +233,7 @@ function znews_admin_moderate_comment(
         'ok' => true,
         'idempotent_replay' => false,
         'comment' => $formatted,
+        'counts' => $counts,
+        'post_publication_block' => $postPublicationReject,
     ];
 }

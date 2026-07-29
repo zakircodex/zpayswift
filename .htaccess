@@ -25,6 +25,7 @@ DirectoryIndex index.html
 
   RewriteRule ^user/?$ /api/user/index.php [L,QSA]
   RewriteRule ^user/dashboard/?$ /api/user/dashboard.php [L,QSA,NC]
+  RewriteRule ^user/znews/?$ /api/user/znews.php [L,QSA,NC]
   RewriteRule ^user/add-money/?$ /api/user/add-money.php [L,QSA,NC]
   RewriteRule ^user/transfer/?$ /api/user/transfer.php [L,QSA,NC]
   RewriteRule ^user/topup/?$ /api/user/topup.php [L,QSA,NC]

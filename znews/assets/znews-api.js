@@ -78,11 +78,12 @@
       }
       if (authenticated) {
         if (!this.sessionToken) {
-          throw new ZNewsApiError('Please sign in first.', {
-            code: 'SESSION_EXPIRED',
+          throw new ZNewsApiError('Open Z News from your Z-Pay dashboard.', {
+            code: 'ZNEWS_DASHBOARD_ACCESS_REQUIRED',
             status: 401
           });
         }
+        headers.set('Authorization', `Bearer ${this.sessionToken}`);
         headers.set('X-SESSION-TOKEN', this.sessionToken);
       }
       if (body !== undefined && !(body instanceof FormData)) {
@@ -126,7 +127,10 @@
       const ok = payload.ok === true || payload.success === true;
       if (!response.ok || !ok) {
         const code = String(payload.code || 'ZNEWS_REQUEST_FAILED');
-        if (code === 'SESSION_EXPIRED' || response.status === 401) {
+        if (code === 'SESSION_EXPIRED'
+          || code === 'DEVICE_REPLACED'
+          || code === 'ZNEWS_AUTH_REQUIRED'
+          || response.status === 401) {
           this.clearSession();
         }
         throw new ZNewsApiError(String(payload.message || 'Request failed.'), {
@@ -139,23 +143,19 @@
       return payload;
     }
 
-    verifyPassword(payload) {
-      return this.request('auth/verify_password.php', { method: 'POST', body: payload });
-    }
-
-    verifyPin(payload) {
-      return this.request('auth/verify_pin.php', { method: 'POST', body: payload });
-    }
-
-    sendLoginOtp(preAuthToken) {
-      return this.request('auth/login_send_otp.php', {
+    exchangeHandoff(code) {
+      return this.request('znews/auth/handoff.php', {
         method: 'POST',
-        body: { pre_auth_token: preAuthToken }
+        body: { code },
+        appKey: true
       });
     }
 
-    verifyLoginOtp(payload) {
-      return this.request('auth/user_login_verify_otp.php', { method: 'POST', body: payload });
+    validateCreatorSession() {
+      return this.request('znews/auth/session.php', {
+        authenticated: true,
+        appKey: true
+      });
     }
 
     publicFeed(cursor = '') {

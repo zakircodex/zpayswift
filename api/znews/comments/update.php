@@ -37,13 +37,24 @@ if (empty($result['ok'])) {
         (string)($result['message'] ?? 'Comment could not be updated.'),
         array_filter([
             'comment' => is_array($result['comment'] ?? null) ? (array)$result['comment'] : null,
+            'counts' => is_array($result['counts'] ?? null) ? (array)$result['counts'] : null,
             'details' => is_array($result['data'] ?? null) ? (array)$result['data'] : null,
         ], static fn($value) => $value !== null),
         (int)($result['http_status'] ?? 500)
     );
 }
 
-api_response(true, 'ZNEWS_COMMENT_UPDATED', 'Comment updated and submitted for review.', [
-    'comment' => is_array($result['comment'] ?? null) ? (array)$result['comment'] : [],
-    'idempotent_replay' => !empty($result['idempotent_replay']),
+$comment = is_array($result['comment'] ?? null) ? (array)$result['comment'] : [];
+$published = znews_comment_is_public($comment);
+$replay = !empty($result['idempotent_replay']);
+$message = $replay
+    ? 'Comment update was already completed.'
+    : ($published ? 'Comment updated and published.' : 'Comment update requires a safety review.');
+
+api_response(true, 'ZNEWS_COMMENT_UPDATED', $message, [
+    'comment' => $comment,
+    'counts' => is_array($result['counts'] ?? null) ? (array)$result['counts'] : [],
+    'published_immediately' => $published,
+    'requires_review' => !$published,
+    'idempotent_replay' => $replay,
 ]);
