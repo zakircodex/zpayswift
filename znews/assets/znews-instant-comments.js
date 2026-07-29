@@ -34,13 +34,12 @@
 
   function formatTime(seconds) {
     const timestamp = Number(seconds || 0) * 1000;
-    if (!timestamp) return '';
-    return new Intl.DateTimeFormat('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit'
-    }).format(new Date(timestamp));
+    if (!timestamp) return 'Just now';
+    const diff = Date.now() - timestamp;
+    if (diff >= 0 && diff < 60_000) return 'Just now';
+    if (diff >= 0 && diff < 3_600_000) return `${Math.max(1, Math.floor(diff / 60_000))}m`;
+    if (diff >= 0 && diff < 86_400_000) return `${Math.max(1, Math.floor(diff / 3_600_000))}h`;
+    return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(timestamp));
   }
 
   function safePhoto(value) {
@@ -58,6 +57,8 @@
   function commentElement(comment) {
     const row = document.createElement('div');
     row.className = 'comment';
+    row.dataset.commentId = text(comment.comment_id);
+    row.dataset.authorUid = text(comment.author_uid);
 
     const avatar = document.createElement('span');
     avatar.className = 'avatar';
@@ -86,19 +87,16 @@
     return row;
   }
 
-  function renderComments(items) {
-    const comments = Array.isArray(items) ? items : [];
-    list.textContent = '';
-    if (!comments.length) {
-      const empty = document.createElement('div');
-      empty.className = 'empty-state';
-      const heading = document.createElement('strong');
-      heading.textContent = 'No comments yet';
-      empty.append(heading, document.createTextNode('Start the conversation.'));
-      list.appendChild(empty);
-      return;
-    }
-    comments.forEach((comment) => list.appendChild(commentElement(comment)));
+  function removeEmptyState() {
+    list.querySelector('.empty-state')?.remove();
+  }
+
+  function appendPublishedComment(comment) {
+    const commentId = text(comment?.comment_id);
+    if (commentId && list.querySelector(`[data-comment-id="${CSS.escape(commentId)}"]`)) return;
+    removeEmptyState();
+    list.appendChild(commentElement(comment));
+    list.lastElementChild?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   function updateCommentCount(counts) {
@@ -108,6 +106,13 @@
       const shares = element.textContent.match(/(\d+)\s+shares?/i)?.[1] || '0';
       element.textContent = `${count} comments • ${shares} shares`;
     });
+  }
+
+  function setSending(button, sending) {
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.dataset.sending = sending ? 'true' : 'false';
+    button.disabled = sending || text(input.value) === '';
+    button.setAttribute('aria-busy', sending ? 'true' : 'false');
   }
 
   async function submitInstantComment(event) {
@@ -123,23 +128,27 @@
     if (value.length > 1000) return toast('Comment must not exceed 1000 characters.', 'error');
 
     const button = form.querySelector('button[type="submit"]');
-    const originalLabel = button?.textContent || 'Send';
-    if (button) {
-      button.disabled = true;
-      button.textContent = 'Sending…';
-    }
+    setSending(button, true);
 
     try {
       const result = await api.createComment(postId, value);
-      input.value = '';
+      const comment = result.data?.comment || {};
       const published = result.data?.published_immediately === true;
       updateCommentCount(result.data?.counts || {});
 
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+
       if (published) {
-        const comments = await api.comments(postId);
-        renderComments(comments.data?.items || []);
+        appendPublishedComment(comment);
+        window.dispatchEvent(new CustomEvent('znews:comment-created', {
+          detail: { comment, published: true }
+        }));
         toast('Comment published.');
       } else {
+        window.dispatchEvent(new CustomEvent('znews:comment-created', {
+          detail: { comment, published: false }
+        }));
         toast('Comment is being checked before it appears publicly.');
       }
     } catch (requestError) {
@@ -148,10 +157,7 @@
         : (requestError?.message || 'Comment could not be sent.');
       toast(message, 'error');
     } finally {
-      if (button) {
-        button.disabled = false;
-        button.textContent = originalLabel;
-      }
+      setSending(button, false);
     }
   }
 

@@ -10,6 +10,7 @@
   <link rel="manifest" href="/znews/manifest.webmanifest">
   <link rel="stylesheet" href="/znews/assets/znews.css?v=2">
   <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=4">
+  <link rel="stylesheet" href="/znews/assets/znews-reader.css?v=1">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -136,8 +137,32 @@
     <form method="dialog" class="modal-shell" id="authForm"><button class="modal-close" value="cancel" aria-label="Close">×</button><h2 id="authTitle">Z-Pay dashboard access required</h2><p id="authDescription">Open Z News from your Z-Pay dashboard.</p><div id="credentialFields" hidden><input id="authCountry"><input id="authPhone"><input id="authPassword"><input id="authPin"></div><div id="otpFields" hidden><input id="authOtp"></div><p id="authError" hidden></p><button id="authSubmit" type="submit">Continue</button></form>
   </dialog>
 
-  <dialog id="postDialog" class="modal post-modal">
-    <div class="modal-shell wide"><button class="modal-close" id="postDialogClose" type="button" aria-label="Close">×</button><div id="postDetail"></div><section class="comments-section"><h3>Comments</h3><form id="commentForm" class="comment-composer" data-auth-only hidden><input id="commentText" maxlength="1000" placeholder="Write a comment…" autocomplete="off"><button class="primary-button compact" type="submit">Send</button></form><div id="commentList" class="comment-list"></div></section></div>
+  <dialog id="postDialog" class="modal post-modal" aria-labelledby="postReaderTitle">
+    <div class="post-reader-shell">
+      <header class="post-reader-header">
+        <button class="post-reader-back" id="postDialogClose" type="button" aria-label="Back to news feed"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 4.6 8 12l7.4 7.4-1.4 1.4L5.2 12 14 3.2l1.4 1.4Z"/></svg></button>
+        <strong id="postReaderTitle">Z News post</strong>
+        <button class="post-reader-more" id="postReaderMenuButton" type="button" aria-label="Post options" disabled>⋯</button>
+      </header>
+      <div class="post-reader-scroll" id="postReaderScroll">
+        <div id="postDetail"></div>
+        <section class="comments-section">
+          <div class="comments-heading"><h3>Comments</h3><span>Oldest first</span></div>
+          <div id="commentList" class="comment-list" aria-live="polite"></div>
+        </section>
+      </div>
+      <footer class="comment-dock">
+        <form id="commentForm" class="comment-composer" data-auth-only hidden>
+          <div class="avatar" id="commentComposerAvatar">Z</div>
+          <div class="comment-input-shell">
+            <label class="visually-hidden" for="commentText">Write a comment</label>
+            <textarea id="commentText" maxlength="1000" rows="1" placeholder="Write a comment…" autocomplete="off"></textarea>
+            <button class="comment-send-button" type="submit" aria-label="Send comment" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.4 20.4 17.8-8a.45.45 0 0 0 0-.8l-17.8-8a.5.5 0 0 0-.69.55L4 10.5l9 1.5-9 1.5-1.29 6.35a.5.5 0 0 0 .69.55Z"/></svg></button>
+          </div>
+        </form>
+        <a class="comment-guest-cta" id="commentGuestCta" href="/user/register" hidden>Join Z-Pay to comment</a>
+      </footer>
+    </div>
   </dialog>
 
   <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
@@ -146,6 +171,6 @@
   <script src="/znews/assets/znews-config.js?v=3"></script>
   <script src="/znews/assets/znews-api.js?v=3"></script>
   <script src="/znews/assets/znews-ads.js?v=1"></script>
-  <script src="/znews/assets/znews-bootstrap.js?v=4"></script>
+  <script src="/znews/assets/znews-bootstrap.js?v=5"></script>
 </body>
 </html>

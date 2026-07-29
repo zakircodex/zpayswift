@@ -7,6 +7,7 @@ on:
       - feature/znews-web-ui-foundation
       - feature/znews-instant-publish-creator-ui
       - feature/znews-fair-feed-infinite-scroll
+      - feature/znews-post-reader-comment-ui
     paths:
       - 'api/znews/**'
       - 'api/admin/znews/**'
@@ -95,6 +96,8 @@ jobs:
             file: tests/znews_post_media_attach_test.php
           - id: post-publication-moderation
             file: tests/znews_post_publication_moderation_test.php
+          - id: post-reader-ui
+            file: tests/znews_post_reader_ui_test.php
           - id: revenue-settlement
             file: tests/znews_revenue_settlement_test.php
           - id: social-engagement
