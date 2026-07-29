@@ -30,17 +30,17 @@
     );
   }
 
-  async function exchangeHandoff() {
+  async function exchangeHandoff(api) {
     const code = handoffCode().trim();
-    if (!code || !config || !ApiClient) return;
+    if (!code) return false;
 
-    const api = new ApiClient(config);
     try {
       const result = await api.exchangeHandoff(code);
       const sessionToken = String(result.data?.session_token || '').trim();
       if (!sessionToken) throw new Error('Handoff did not return a session token.');
       api.setSession(sessionToken, result.data?.user || {});
       window.ZNEWS_HANDOFF_RESULT = { ok: true };
+      return true;
     } catch (error) {
       api.clearSession();
       window.ZNEWS_HANDOFF_RESULT = {
@@ -48,13 +48,30 @@
         code: error?.code || 'ZNEWS_HANDOFF_FAILED',
         message: error?.message || 'Z News access could not be granted.'
       };
+      return false;
     } finally {
       clearHandoffFragment();
     }
   }
 
+  async function validateStoredSession(api) {
+    if (!api.isAuthenticated()) return;
+    try {
+      const result = await api.validateCreatorSession();
+      api.setSession(api.sessionToken, result.data?.user || api.profile || {});
+    } catch (error) {
+      if (error?.status === 401 || error?.code === 'ZNEWS_AUTH_REQUIRED') {
+        api.clearSession();
+      }
+    }
+  }
+
   async function boot() {
-    await exchangeHandoff();
+    if (!config || !ApiClient) throw new Error('Z News configuration is unavailable.');
+    const api = new ApiClient(config);
+    const exchanged = await exchangeHandoff(api);
+    if (!exchanged) await validateStoredSession(api);
+
     await loadScript('/znews/assets/znews-access.js?v=1');
     await loadScript('/znews/assets/znews.js?v=3');
     await loadScript('/znews/assets/znews-creator.js?v=2');
