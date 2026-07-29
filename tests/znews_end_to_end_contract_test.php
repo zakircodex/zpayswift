@@ -129,9 +129,19 @@ $bootstrap = znews_e2e_read($root, 'api/znews/bootstrap.php');
 znews_e2e_expect(str_contains($bootstrap, "dirname(__DIR__) . '/bootstrap.php'"), 'shared API bootstrap is not loaded');
 znews_e2e_expect(str_contains($bootstrap, 'X-Content-Type-Options: nosniff'), 'nosniff header missing');
 
+$instantPolicy = znews_e2e_read($root, 'api/znews/lib/instant_publish.php');
+znews_e2e_expect(str_contains($instantPolicy, 'znews_instant_publish_enabled'), 'instant publish feature flag is missing');
+znews_e2e_expect(str_contains($instantPolicy, "'status' => 'ACTIVE'"), 'clean content cannot publish immediately');
+znews_e2e_expect(str_contains($instantPolicy, "'status' => 'REVIEW'"), 'risk review fallback is missing');
+znews_e2e_expect(str_contains($instantPolicy, 'NEAR_DUPLICATE_REVIEW'), 'near-duplicate safety fallback is missing');
+znews_e2e_expect(str_contains($instantPolicy, 'znews_public_feed_index_for_post'), 'instant publish does not maintain public-feed index');
+
 $postCreate = znews_e2e_read($root, 'api/znews/lib/post_media_create.php');
-znews_e2e_expect(str_contains($postCreate, "'REVIEW'"), 'new posts do not enter review');
-znews_e2e_expect(str_contains($postCreate, "'PENDING'"), 'new posts do not enter pending moderation');
+znews_e2e_expect(str_contains($postCreate, 'znews_post_publication_decision'), 'post create bypasses publication policy');
+znews_e2e_expect(str_contains($postCreate, 'znews_apply_media_publication_decision'), 'post create does not synchronize media publication');
+$postUpdate = znews_e2e_read($root, 'api/znews/lib/post_media_update.php');
+znews_e2e_expect(str_contains($postUpdate, 'znews_post_publication_decision'), 'post edits bypass publication policy');
+znews_e2e_expect(str_contains($postUpdate, 'expectedUpdatedAt'), 'post edits lack optimistic version protection');
 
 $moderation = znews_e2e_read($root, 'api/znews/lib/moderation.php');
 znews_e2e_expect(str_contains($moderation, 'znews_admin_moderate_post'), 'post moderation service missing');
