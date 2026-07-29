@@ -18,6 +18,7 @@ $_SERVER['SCRIPT_FILENAME'] = __FILE__ . '.aggregate';
 
 try {
     require_once __DIR__ . '/comments/common.php';
+    require_once __DIR__ . '/comments/publication.php';
     require_once __DIR__ . '/comments/create.php';
     require_once __DIR__ . '/comments/update.php';
     require_once __DIR__ . '/comments/delete.php';
