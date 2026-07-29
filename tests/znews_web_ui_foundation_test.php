@@ -32,6 +32,10 @@ $required = [
     'znews/assets/znews-config.js',
     'znews/assets/znews-api.js',
     'znews/assets/znews-ads.js',
+    'znews/assets/znews-bootstrap.js',
+    'znews/assets/znews-access.js',
+    'znews/assets/znews-instant-comments.js',
+    'znews/assets/znews-premium.css',
     'znews/assets/znews.js',
     'znews/assets/znews-creator.js',
     'znews/assets/znews.css',
@@ -46,16 +50,20 @@ foreach ($required as $relative) {
 $index = contents($root . '/znews/index.html');
 check(str_contains($index, '<strong>Z News</strong>'), 'Z News brand is missing');
 check(str_contains($index, 'Stories • Updates • Community'), 'Z News tagline is missing');
+check(str_contains($index, 'brand-premium'), 'Premium wordmark is missing');
 check(str_contains($index, 'data-view="feed"'), 'Feed view is missing');
 check(str_contains($index, 'data-view="create"'), 'Create view is missing');
 check(str_contains($index, 'data-view="mine"'), 'My posts view is missing');
 check(str_contains($index, 'data-view="balance"'), 'Balance view is missing');
 check(str_contains($index, 'data-znews-ad-slot="feed_sidebar"'), 'Sidebar ad slot is missing');
-check(str_contains($index, 'id="authDialog"'), 'Authentication dialog is missing');
 check(str_contains($index, 'id="postDialog"'), 'Post reader is missing');
 check(str_contains($index, 'Clean posts publish immediately'), 'Instant-publish disclosure is missing');
 check(str_contains($index, '>Publish post<'), 'Publish button is missing');
-check(str_contains($index, 'znews-creator.js?v=1'), 'Creator management module is missing');
+check(str_contains($index, 'znews-bootstrap.js?v=1'), 'Dashboard handoff bootstrap is missing');
+check(!str_contains($index, 'znews-quick-login.js'), 'Removed standalone login module is still loaded');
+check(str_contains($index, 'class="composer-card card" data-auth-only hidden'), 'Guest composer guard is missing');
+check(str_contains($index, 'id="refreshButton" type="button" hidden'), 'Manual refresh control must stay hidden');
+check(!str_contains($index, '<div class="header-actions">'), 'Visible Sign in/header actions are still present');
 check(!str_contains($index, 'Submit for review'), 'Every post is still presented as requiring pre-approval');
 check(!preg_match('/\b(?:Earn|Income|Cash|Profit|Revenue|Job|Work)\b/i', strip_tags($index)), 'Forbidden public wording exists in HTML');
 
@@ -63,10 +71,12 @@ $config = contents($root . '/znews/assets/znews-config.js');
 check(str_contains($config, "provider: 'INMOBI'"), 'InMobi is not the configured provider');
 check(str_contains($config, "mode: existing.ads?.mode || 'TEST'"), 'Ad test mode default is missing');
 check(str_contains($config, 'enabled: existing.ads?.enabled === true'), 'Ads must require explicit enablement');
+check(!str_contains($config, 'persistentSessionStorageKey'), 'Standalone persistent login storage remains configured');
 check(!preg_match('/(?:secret|private[_-]?key)\s*[:=]\s*[\'\"][^\'\"]{8,}/i', $config), 'Possible secret committed in public config');
 
 $api = contents($root . '/znews/assets/znews-api.js');
 foreach ([
+    'znews/auth/handoff.php',
     'znews/public/feed.php',
     'znews/public/post.php',
     'znews/posts/create.php',
@@ -83,10 +93,12 @@ foreach ([
 ] as $endpoint) {
     check(str_contains($api, $endpoint), "API endpoint missing from client: {$endpoint}");
 }
-check(str_contains($api, "sessionStorage.getItem"), 'Session storage integration is missing');
-check(str_contains($api, "X-SESSION-TOKEN"), 'Session header is missing');
-check(str_contains($api, "X-APP-KEY"), 'App-key header is missing');
+check(str_contains($api, 'sessionStorage.getItem'), 'Session storage integration is missing');
+check(str_contains($api, 'X-SESSION-TOKEN'), 'Session header is missing');
+check(str_contains($api, 'X-APP-KEY'), 'App-key header is missing');
 check(str_contains($api, "credentials: 'same-origin'"), 'Same-origin cookie policy is missing');
+check(!str_contains($api, 'verifyPassword('), 'Standalone password login remains in Z News API client');
+check(!str_contains($api, 'pinLogin('), 'Standalone PIN login remains in Z News API client');
 
 $creator = contents($root . '/znews/assets/znews-creator.js');
 foreach ([
@@ -105,9 +117,14 @@ check(str_contains($creator, 'stopImmediatePropagation'), 'Duplicate create-subm
 check(str_contains($creator, 'Remove current image'), 'Image removal UI is missing');
 check(!str_contains($creator, 'ZNEWS_AD_NETWORK_SECRETS'), 'Server ad secrets leaked into creator client');
 
+$access = contents($root . '/znews/assets/znews-access.js');
+check(str_contains($access, "['create', 'mine', 'balance']"), 'Guest creator-route guard is missing');
+check(str_contains($access, "'/user/register'"), 'Guest registration route is missing');
+check(str_contains($access, '[data-action="like"]'), 'Guest authenticated-action cleanup is missing');
+
 $ads = contents($root . '/znews/assets/znews-ads.js');
-check(str_contains($ads, "registerProviderRenderer"), 'Provider renderer registration is missing');
-check(str_contains($ads, "Provider secrets, reported value and creator settlement never belong"), 'Ad trust-boundary note is missing');
+check(str_contains($ads, 'registerProviderRenderer'), 'Provider renderer registration is missing');
+check(str_contains($ads, 'Provider secrets, reported value and creator settlement never belong'), 'Ad trust-boundary note is missing');
 check(!str_contains($ads, 'ZNEWS_AD_INGESTION_SECRET'), 'Private ingestion secret name leaked into browser adapter');
 check(!str_contains($ads, 'X-ZNEWS-AD-SIGNATURE'), 'Browser must not sign provider callbacks');
 
@@ -121,8 +138,11 @@ check(str_contains($app, 'state.balanceMicros < 500_000_000'), 'Transfer button 
 check(!str_contains($app, 'ZNEWS_AD_NETWORK_SECRETS'), 'Server ad-network map leaked into browser app');
 
 $serviceWorker = contents($root . '/znews/sw.js');
-check(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v2'"), 'Creator shell cache version is stale');
-check(str_contains($serviceWorker, 'znews-creator.js?v=1'), 'Creator module is missing from shell cache');
+check(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v4'"), 'Access shell cache version is stale');
+check(str_contains($serviceWorker, 'znews-bootstrap.js?v=1'), 'Handoff bootstrap is missing from shell cache');
+check(str_contains($serviceWorker, 'znews-access.js?v=1'), 'Guest access module is missing from shell cache');
+check(str_contains($serviceWorker, 'znews-creator.js?v=2'), 'Creator module is missing from shell cache');
+check(!str_contains($serviceWorker, 'znews-quick-login.js'), 'Removed login module remains in shell cache');
 check(str_contains($serviceWorker, "url.pathname.startsWith('/api/')"), 'Service worker API exclusion is missing');
 check(str_contains($serviceWorker, "request.method !== 'GET'"), 'Service worker mutation exclusion is missing');
 
@@ -144,8 +164,11 @@ if ($node !== '') {
         'znews/assets/znews-config.js',
         'znews/assets/znews-api.js',
         'znews/assets/znews-ads.js',
+        'znews/assets/znews-bootstrap.js',
+        'znews/assets/znews-access.js',
         'znews/assets/znews.js',
         'znews/assets/znews-creator.js',
+        'znews/assets/znews-instant-comments.js',
         'znews/sw.js',
     ] as $relative) {
         $command = escapeshellarg($node) . ' --check ' . escapeshellarg($root . '/' . $relative) . ' 2>&1';
