@@ -11,7 +11,7 @@ require_once __DIR__ . '/post_media_attach.php';
 
 function znews_media_public_approved_verdicts(): array
 {
-    return ['CLEAR', 'ORIGINAL_CONFIRMED', 'LICENSED'];
+    return ['CLEAR', 'AUTO_CLEARED', 'ORIGINAL_CONFIRMED', 'LICENSED'];
 }
 
 function znews_media_public_record_strict(string $mediaId): array
