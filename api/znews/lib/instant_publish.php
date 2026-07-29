@@ -19,7 +19,60 @@ function znews_instant_publish_enabled(): bool
     ) ?? true;
 }
 
-function znews_post_publication_decision(array $mediaRow = []): array
+function znews_text_review_terms(): array
+{
+    if (!defined('ZNEWS_TEXT_REVIEW_TERMS')) {
+        return [];
+    }
+
+    $value = constant('ZNEWS_TEXT_REVIEW_TERMS');
+    if (is_string($value)) {
+        $decoded = json_decode($value, true);
+        $value = is_array($decoded)
+            ? $decoded
+            : preg_split('/[\r\n,]+/', $value);
+    }
+    if (!is_array($value)) {
+        return [];
+    }
+
+    $terms = [];
+    foreach ($value as $term) {
+        $term = trim((string)$term);
+        if ($term !== '' && strlen($term) >= 3 && strlen($term) <= 100) {
+            $terms[] = $term;
+        }
+    }
+
+    return array_values(array_unique($terms));
+}
+
+function znews_text_review_reason(string $text): string
+{
+    $text = trim($text);
+    if ($text === '') {
+        return '';
+    }
+
+    $linkCount = preg_match_all('/(?:https?:\/\/|www\.)/iu', $text);
+    if (is_int($linkCount) && $linkCount > 2) {
+        return 'EXCESSIVE_LINKS';
+    }
+
+    if (preg_match('/(.)\1{11,}/u', $text) === 1) {
+        return 'REPETITIVE_SPAM';
+    }
+
+    foreach (znews_text_review_terms() as $term) {
+        if (stripos($text, $term) !== false) {
+            return 'CONFIGURED_TEXT_REVIEW';
+        }
+    }
+
+    return '';
+}
+
+function znews_post_publication_decision(array $mediaRow = [], string $text = ''): array
 {
     if (!znews_instant_publish_enabled()) {
         return [
@@ -32,6 +85,18 @@ function znews_post_publication_decision(array $mediaRow = []): array
         ];
     }
 
+    $textReviewReason = znews_text_review_reason($text);
+    if ($textReviewReason !== '') {
+        return [
+            'publish' => false,
+            'status' => 'REVIEW',
+            'moderation_status' => 'PENDING',
+            'copyright_status' => $mediaRow ? 'PENDING' : 'NOT_APPLICABLE',
+            'mode' => 'AUTOMATED_TEXT_REVIEW',
+            'reason' => $textReviewReason,
+        ];
+    }
+
     if (!$mediaRow) {
         return [
             'publish' => true,
@@ -39,7 +104,7 @@ function znews_post_publication_decision(array $mediaRow = []): array
             'moderation_status' => 'APPROVED',
             'copyright_status' => 'NOT_APPLICABLE',
             'mode' => 'INSTANT_PUBLISH',
-            'reason' => 'TEXT_CONTENT',
+            'reason' => 'TEXT_CHECKS_CLEAR',
         ];
     }
 
