@@ -26,8 +26,7 @@
     hasMore: false,
     loadingMore: false,
     openedFromFeed: false,
-    feedScrollY: 0,
-    initialPostPath: /^\/znews\/post\/[A-Za-z0-9_-]+\/?$/.test(window.location.pathname)
+    feedScrollY: 0
   };
 
   function text(value) {
@@ -87,14 +86,24 @@
     return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' }).format(new Date(timestamp));
   }
 
-  function cacheComments(payload) {
+  function mergeComments(existing, incoming) {
+    const merged = new Map();
+    [...existing, ...incoming].forEach((comment) => {
+      const id = text(comment?.comment_id);
+      if (id) merged.set(id, comment);
+    });
+    return [...merged.values()];
+  }
+
+  function cacheComments(payload, args = []) {
     const data = payload?.data || {};
     const items = Array.isArray(data.items) ? data.items : [];
-    state.comments = items;
+    const append = text(args[1]) !== '';
+    state.comments = append ? mergeComments(state.comments, items) : items;
     state.nextCursor = text(data.next_cursor);
     state.hasMore = data.has_more === true;
     window.dispatchEvent(new CustomEvent('znews:comments-page', {
-      detail: { items, nextCursor: state.nextCursor, hasMore: state.hasMore }
+      detail: { items, nextCursor: state.nextCursor, hasMore: state.hasMore, append }
     }));
   }
 
@@ -149,8 +158,7 @@
     if (id) return `id:${id}`;
     const name = text(row.querySelector('.comment-bubble strong')?.textContent);
     const body = text(row.querySelector('.comment-bubble p')?.textContent);
-    const time = text(row.querySelector('.comment-bubble small')?.textContent);
-    return `content:${name}|${body}|${time}`;
+    return `content:${name}|${body}`;
   }
 
   function decorateComment(row, index) {
@@ -246,9 +254,6 @@
       const result = await api.comments(postId, state.nextCursor);
       const items = Array.isArray(result.data?.items) ? result.data.items : [];
       items.forEach((comment) => commentList.appendChild(buildCommentRow(comment)));
-      state.comments = [...state.comments, ...items];
-      state.nextCursor = text(result.data?.next_cursor);
-      state.hasMore = result.data?.has_more === true;
       dedupeAndDecorateComments();
     } catch (_error) {
       // Existing comments remain readable; the user can retry the button.
@@ -265,7 +270,7 @@
     resizeComposer();
     window.setTimeout(() => {
       dedupeAndDecorateComments();
-      readerScroll?.scrollTo({ top: 0, behavior: 'instant' });
+      readerScroll?.scrollTo({ top: 0, behavior: 'auto' });
       const current = window.history.state && typeof window.history.state === 'object'
         ? window.history.state
         : {};
@@ -282,7 +287,7 @@
     document.body.classList.remove('znews-post-reader-open');
     if (state.openedFromFeed) {
       const target = Number(window.history.state?.znewsFeedScrollY ?? state.feedScrollY ?? 0);
-      window.setTimeout(() => window.scrollTo({ top: target, behavior: 'instant' }), 0);
+      window.setTimeout(() => window.scrollTo({ top: target, behavior: 'auto' }), 0);
     }
     state.openedFromFeed = false;
   }
@@ -322,7 +327,7 @@
   window.addEventListener('popstate', (event) => {
     if (window.location.pathname.startsWith('/znews/post/')) return;
     const target = Number(event.state?.znewsFeedScrollY ?? state.feedScrollY ?? 0);
-    window.setTimeout(() => window.scrollTo({ top: target, behavior: 'instant' }), 40);
+    window.setTimeout(() => window.scrollTo({ top: target, behavior: 'auto' }), 40);
   });
 
   input.addEventListener('input', resizeComposer);
@@ -337,7 +342,7 @@
   window.addEventListener('znews:comment-created', (event) => {
     const comment = event.detail?.comment;
     if (!comment || event.detail?.published !== true) return;
-    state.comments.push(comment);
+    state.comments = mergeComments(state.comments, [comment]);
     window.setTimeout(dedupeAndDecorateComments, 0);
   });
 
