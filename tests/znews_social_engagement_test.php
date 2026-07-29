@@ -86,17 +86,20 @@ znews_social_expect(!str_contains($likeSet, "['uid']") && !str_contains($likeSet
 $commentsAggregator = znews_social_read($root . '/api/znews/lib/comments.php');
 $comments = $commentsAggregator
     . znews_social_read($root . '/api/znews/lib/comments/common.php')
+    . znews_social_read($root . '/api/znews/lib/comments/publication.php')
     . znews_social_read($root . '/api/znews/lib/comments/create.php')
     . znews_social_read($root . '/api/znews/lib/comments/update.php')
     . znews_social_read($root . '/api/znews/lib/comments/delete.php')
     . znews_social_read($root . '/api/znews/lib/comments/access.php')
     . znews_social_read($root . '/api/znews/lib/comments/moderation.php');
 znews_social_expect(str_contains($comments, 'ZNEWS_COMMENTS/') && str_contains($comments, 'ZNEWS_USER_COMMENTS/') && str_contains($comments, 'ZNEWS_COMMENT_REVIEW_QUEUE/'), 'comment namespaces or review queue missing');
-znews_social_expect(str_contains($comments, "'status' => 'REVIEW'") && str_contains($comments, "'moderation_status' => 'PENDING'"), 'new comments are not held for review');
+znews_social_expect(str_contains($comments, 'znews_comment_publication_decision') && str_contains($comments, "'mode' => 'INSTANT_PUBLISH'"), 'clean comments are not eligible for instant publication');
+znews_social_expect(str_contains($comments, "'status' => 'REVIEW'") && str_contains($comments, "'moderation_status' => 'PENDING'"), 'risky-comment review fallback is missing');
 znews_social_expect(str_contains($comments, "status'] = 'DELETED'") && str_contains($comments, 'deleted_at'), 'comment delete is not soft delete');
 znews_social_expect(str_contains($comments, 'expectedUpdatedAt') && str_contains($comments, 'ZNEWS_COMMENT_VERSION_CONFLICT') && str_contains($comments, 'fb_put_if_match'), 'comment edit/delete/moderation version protection missing');
 znews_social_expect(str_contains($comments, "=== 'ACTIVE'") && str_contains($comments, "=== 'APPROVED'"), 'public comment eligibility does not require approval');
-znews_social_expect(str_contains($comments, 'znews_engagement_adjust_counter') && str_contains($comments, "'comment_count'"), 'approved comment counter update missing');
+znews_social_expect(str_contains($comments, 'znews_engagement_adjust_counter') && str_contains($comments, "'comment_count'"), 'public comment counter update missing');
+znews_social_expect(str_contains($comments, '$postPublicationReject') && str_contains($comments, "'comment_count', -1"), 'post-publication comment blocking/count reconciliation missing');
 znews_social_expect(str_contains($comments, 'auth_require_admin_session') === false, 'comment library should not start admin auth side effects');
 znews_social_expect(str_contains($comments, 'ZNEWS_COMMENT_MODERATION_ACTIONS/'), 'comment moderation audit trail missing');
 znews_social_expect(
