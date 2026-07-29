@@ -6,6 +6,7 @@ on:
       - feature/znews-pin-login-instant-comments
       - feature/znews-header-search-menu
       - feature/znews-profile-feed-back-ui
+      - feature/znews-fair-feed-infinite-scroll
   pull_request:
     branches:
       - main
@@ -26,12 +27,17 @@ jobs:
           php -l api/znews/auth/handoff.php
           php -l api/znews/auth/session.php
           php -l api/znews/public/creator.php
+          php -l api/znews/public/feed.php
+          php -l api/znews/public/impression.php
+          php -l api/znews/lib/feed_ranking.php
           php -l api/znews/lib/comments/publication.php
           php -l api/znews/lib/comments/create.php
           php -l api/znews/lib/comments/update.php
           php -l api/znews/lib/comments/moderation.php
       - name: Dashboard handoff and guest UI
         run: php tests/znews_dashboard_handoff_guest_ui_test.php
+      - name: Fair feed
+        run: php tests/znews_fair_feed_test.php
       - name: Instant comments
         run: php tests/znews_instant_comments_test.php
       - name: Web UI regression
@@ -44,6 +50,7 @@ jobs:
           node --check znews/assets/znews-api.js
           node --check znews/assets/znews-bootstrap.js
           node --check znews/assets/znews-access.js
+          node --check znews/assets/znews-feed-ui.js
           node --check znews/assets/znews-profile.js
           node --check znews/assets/znews.js
           node --check znews/assets/znews-header.js
