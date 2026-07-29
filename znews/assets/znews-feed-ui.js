@@ -81,6 +81,10 @@
       return list.querySelector('.post-card:not(.skeleton-card)') !== null;
     }
 
+    function hasResolvedContent() {
+      return hasRealCards() || list.querySelector('.empty-state') !== null;
+    }
+
     function viewIsActive() {
       if (!activeViewSelector) return true;
       return document.querySelector(activeViewSelector)?.classList.contains('active') === true;
@@ -104,6 +108,7 @@
     observer.observe(sentinel);
 
     const mutationObserver = new MutationObserver(() => {
+      if (hasResolvedContent()) pageLoaded = true;
       if (pageLoaded && button.hidden) hasMore = false;
       if (!button.hidden) hasMore = true;
       updateStatus();
@@ -120,6 +125,7 @@
         window.setTimeout(requestNextPage, 30);
       },
       refresh() {
+        if (hasResolvedContent()) pageLoaded = true;
         updateStatus();
         requestNextPage();
       }
@@ -153,8 +159,9 @@
     if (copy.closest('#postDetail') || copy.closest('#mineList')) return;
 
     copy.classList.add('feed-preview-copy');
-    const existing = card.querySelector('.see-more-button');
     window.requestAnimationFrame(() => {
+      if (!document.contains(copy)) return;
+      const existing = card.querySelector('.see-more-button');
       const overflowing = copy.scrollHeight > copy.clientHeight + 2;
       if (!overflowing) {
         existing?.remove();
@@ -207,7 +214,7 @@
       });
       postIds.forEach((postId) => fairFeed.sentImpressions.add(postId));
     } catch (_error) {
-      // Impression telemetry must never block reading. A later visibility event can retry.
+      // Telemetry is deliberately non-blocking; cards can be queued again after re-entering the viewport.
     }
 
     if (fairFeed.pendingImpressions.size > 0) {
