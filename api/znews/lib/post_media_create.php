@@ -47,7 +47,7 @@ function znews_create_post_with_media(
     }
 
     $now = znews_now();
-    $decision = znews_post_publication_decision($mediaRow);
+    $decision = znews_post_publication_decision($mediaRow, $text);
     $post = [
         'schema_version' => 3,
         'post_id' => $postId,
