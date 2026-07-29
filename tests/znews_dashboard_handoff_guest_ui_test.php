@@ -23,6 +23,7 @@ function znews_contract_expect(bool $condition, string $message): void
 
 $launcher = znews_contract_read($root . '/api/user/znews.php');
 $handoff = znews_contract_read($root . '/api/znews/auth/handoff.php');
+$session = znews_contract_read($root . '/api/znews/auth/session.php');
 $dashboard = znews_contract_read($root . '/api/user/dashboard.php');
 $rewrite = znews_contract_read($root . '/.htaccess');
 $index = znews_contract_read($root . '/znews/index.html');
@@ -42,7 +43,12 @@ znews_contract_expect(str_contains($handoff, 'api_require_app_key()'), 'Handoff 
 znews_contract_expect(str_contains($handoff, 'user_page_start_session()'), 'Handoff exchange must use the existing Z-Pay PHP session.');
 znews_contract_expect(str_contains($handoff, 'hash_equals'), 'Handoff verification must be timing-safe.');
 znews_contract_expect(str_contains($handoff, "['used'] = true"), 'Handoff must be consumed once.');
+znews_contract_expect(str_contains($handoff, "\$profilePhoto === ''"), 'Handoff must support legacy profile photo fallback.');
 znews_contract_expect(!str_contains($launcher, 'session_token='), 'Real session tokens must never be placed in the redirect URL.');
+
+znews_contract_expect(str_contains($session, "api_require_method('GET')"), 'Stored creator validation must be GET-only.');
+znews_contract_expect(str_contains($session, 'znews_require_creator(true)'), 'Stored creator validation must verify the current server session.');
+znews_contract_expect(str_contains($session, "'access_mode' => 'CREATOR'"), 'Stored creator validation must return creator mode.');
 
 znews_contract_expect(str_contains($dashboard, 'href="/user/znews"'), 'User dashboard must expose the Z News launcher.');
 znews_contract_expect(str_contains($rewrite, 'RewriteRule ^user/znews/?$ /api/user/znews.php'), 'Clean /user/znews route must map to the launcher.');
@@ -57,11 +63,14 @@ znews_contract_expect(str_contains($index, 'znews-bootstrap.js'), 'Handoff boots
 znews_contract_expect(!str_contains($index, 'znews-quick-login.js'), 'Standalone Z News PIN login must not be loaded.');
 
 znews_contract_expect(str_contains($api, 'exchangeHandoff(code)'), 'API client must support one-time dashboard handoff exchange.');
+znews_contract_expect(str_contains($api, 'validateCreatorSession()'), 'API client must validate stored creator access.');
+znews_contract_expect(str_contains($api, 'znews/auth/session.php'), 'Creator validation endpoint is missing from the API client.');
 znews_contract_expect(!str_contains($api, 'verifyPassword('), 'Z News API client must not expose password login.');
 znews_contract_expect(!str_contains($api, 'pinLogin('), 'Z News API client must not expose standalone PIN login.');
 znews_contract_expect(!str_contains($api, 'localStorage.setItem'), 'Creator session must not be persisted as a standalone Z News login.');
 
-znews_contract_expect(str_contains($bootstrap, 'await exchangeHandoff()'), 'App scripts must wait for the handoff exchange.');
+znews_contract_expect(str_contains($bootstrap, 'await exchangeHandoff(api)'), 'App scripts must wait for the handoff exchange.');
+znews_contract_expect(str_contains($bootstrap, 'await validateStoredSession(api)'), 'Stored creator access must be verified before rendering.');
 znews_contract_expect(str_contains($bootstrap, 'clearHandoffFragment()'), 'One-time handoff fragment must be removed after exchange.');
 znews_contract_expect(str_contains($access, "['create', 'mine', 'balance']"), 'Guest-only route guard must cover creator sections.');
 znews_contract_expect(str_contains($access, "'/user/register'"), 'Guest join action must open the existing Z-Pay registration page.');
