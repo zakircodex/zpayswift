@@ -1,18 +1,19 @@
 'use strict';
 
-const CACHE_NAME = 'znews-shell-v5';
+const CACHE_NAME = 'znews-shell-v6';
 const SHELL = [
   '/znews/',
   '/znews/index.html',
   '/znews/assets/znews.css?v=2',
-  '/znews/assets/znews-premium.css?v=2',
+  '/znews/assets/znews-premium.css?v=3',
   '/znews/assets/znews-config.js?v=3',
   '/znews/assets/znews-api.js?v=3',
   '/znews/assets/znews-ads.js?v=1',
-  '/znews/assets/znews-bootstrap.js?v=2',
+  '/znews/assets/znews-bootstrap.js?v=3',
   '/znews/assets/znews-access.js?v=1',
+  '/znews/assets/znews-profile.js?v=1',
   '/znews/assets/znews.js?v=3',
-  '/znews/assets/znews-header.js?v=1',
+  '/znews/assets/znews-header.js?v=2',
   '/znews/assets/znews-creator.js?v=2',
   '/znews/assets/znews-instant-comments.js?v=2',
   '/znews/manifest.webmanifest'
@@ -39,9 +40,7 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate' && url.pathname.startsWith('/znews/')) {
-    event.respondWith(
-      fetch(request).catch(() => caches.match('/znews/index.html'))
-    );
+    event.respondWith(fetch(request).catch(() => caches.match('/znews/index.html')));
     return;
   }
 
