@@ -144,10 +144,21 @@ znews_social_expect(str_contains($shares, 'fb_put_if_match'), 'share record lack
 $shareEndpoint = znews_social_read($root . '/api/znews/shares/create.php');
 znews_social_expect(str_contains($shareEndpoint, 'api_require_app_key();') && str_contains($shareEndpoint, 'znews_require_creator(true)') && str_contains($shareEndpoint, 'znews_idempotency_key'), 'share endpoint lacks authentication or idempotency');
 
-foreach (['api/znews/public/feed.php','api/znews/public/post.php','api/znews/posts/details.php','api/znews/posts/mine.php'] as $relative) {
+foreach (['api/znews/public/post.php','api/znews/posts/details.php','api/znews/posts/mine.php'] as $relative) {
     $source = znews_social_read($root . '/' . $relative);
     znews_social_expect(str_contains($source, 'znews_engagement_overlay'), "{$relative} does not overlay canonical engagement counts");
 }
+$publicFeed = znews_social_read($root . '/api/znews/public/feed.php');
+$feedRanking = znews_social_read($root . '/api/znews/lib/feed_ranking.php');
+znews_social_expect(str_contains($publicFeed, 'znews_fair_feed_page'), 'public feed is not delegated to the fair ranking page');
+znews_social_expect(
+    str_contains($feedRanking, "fb_get('ZNEWS_ENGAGEMENT')")
+    && str_contains($feedRanking, 'znews_feed_overlay_counts')
+    && str_contains($feedRanking, "'like_count'")
+    && str_contains($feedRanking, "'comment_count'")
+    && str_contains($feedRanking, "'share_count'"),
+    'fair feed does not bulk-overlay canonical engagement counts'
+);
 
 $summary = znews_social_read($root . '/api/znews/engagement/summary.php');
 znews_social_expect(str_contains($summary, 'api_require_app_key();') && str_contains($summary, 'znews_require_creator(true)') && str_contains($summary, "'liked'"), 'engagement summary lacks authenticated like state');

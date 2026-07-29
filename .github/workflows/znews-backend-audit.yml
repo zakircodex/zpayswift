@@ -6,6 +6,7 @@ on:
       - feature/znews-backend-foundation
       - feature/znews-web-ui-foundation
       - feature/znews-instant-publish-creator-ui
+      - feature/znews-fair-feed-infinite-scroll
     paths:
       - 'api/znews/**'
       - 'api/admin/znews/**'
@@ -74,6 +75,8 @@ jobs:
             file: tests/znews_backend_foundation_test.php
           - id: end-to-end-contract
             file: tests/znews_end_to_end_contract_test.php
+          - id: fair-feed
+            file: tests/znews_fair_feed_test.php
           - id: firebase-root-url
             file: tests/znews_firebase_root_url_test.php
           - id: http-smoke

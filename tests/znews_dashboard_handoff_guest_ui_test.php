@@ -75,7 +75,7 @@ znews_contract_expect(str_contains($bootstrap, 'clearHandoffFragment()'), 'One-t
 znews_contract_expect(str_contains($access, "['create', 'mine', 'balance']"), 'Guest-only route guard must cover creator sections.');
 znews_contract_expect(str_contains($access, "'/user/register'"), 'Guest join action must open the existing Z-Pay registration page.');
 znews_contract_expect(str_contains($access, '[data-action="like"]'), 'Guest readers must not receive authenticated like controls.');
-znews_contract_expect(str_contains($serviceWorker, 'znews-shell-v6'), 'PWA cache must include the latest profile/header/access model.');
+znews_contract_expect(str_contains($serviceWorker, 'znews-shell-v7'), 'PWA cache must include the latest fair-feed/profile/header/access model.');
 znews_contract_expect(!str_contains($serviceWorker, 'znews-quick-login.js'), 'Removed login module must not remain in the PWA cache.');
 
 if ($failures) {
