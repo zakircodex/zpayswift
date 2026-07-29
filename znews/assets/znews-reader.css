@@ -9,6 +9,7 @@
 .post-reader-back:hover,.post-reader-back:focus-visible,.post-reader-more:hover,.post-reader-more:focus-visible{background:rgba(255,255,255,.07);outline:none}
 .post-reader-back svg{width:25px;height:25px;fill:currentColor}
 .post-reader-more{font-size:25px;font-weight:900;line-height:1}
+.post-reader-more:disabled{visibility:hidden}
 .post-reader-scroll{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;background:#081a32}
 .post-reader-scroll::-webkit-scrollbar{width:7px}.post-reader-scroll::-webkit-scrollbar-thumb{border-radius:99px;background:rgba(142,177,226,.24)}
 #postDetail>.post-card{border:0;border-radius:0;background:transparent;box-shadow:none}
