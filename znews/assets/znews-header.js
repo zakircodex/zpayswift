@@ -27,6 +27,7 @@
   }
 
   function openFeed() {
+    if (document.querySelector('[data-view="feed"]')?.classList.contains('active')) return;
     feedRouteButton()?.click();
   }
 
