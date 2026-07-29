@@ -93,6 +93,7 @@ $createEndpoint = instant_read('api/znews/posts/create.php');
 $updateEndpoint = instant_read('api/znews/posts/update.php');
 $mediaPolicy = instant_read('api/znews/lib/media_policy.php');
 $webIndex = instant_read('znews/index.html');
+$webBootstrap = instant_read('znews/assets/znews-bootstrap.js');
 $webCreator = instant_read('znews/assets/znews-creator.js');
 
 foreach ([$createService, $updateService, $policySource, $createEndpoint, $updateEndpoint, $mediaPolicy, $webCreator] as $source) {
@@ -118,7 +119,7 @@ instant_expect(str_contains($updateEndpoint, 'requires_review'), 'update endpoin
 
 instant_expect(str_contains($webIndex, 'Clean posts publish immediately'), 'web UI does not explain instant publishing');
 instant_expect(str_contains($webIndex, '>Publish post<'), 'web publish action label is missing');
-instant_expect(str_contains($webIndex, 'znews-creator.js'), 'web creator management module is not loaded');
+instant_expect(str_contains($webBootstrap, 'znews-creator.js?v=2'), 'web creator management module is not loaded by bootstrap');
 instant_expect(!str_contains($webIndex, 'Submit for review'), 'web UI still presents every post as pre-moderated');
 instant_expect(str_contains($webCreator, 'znews/posts/update.php'), 'web edit endpoint is missing');
 instant_expect(str_contains($webCreator, 'znews/posts/delete.php'), 'web delete endpoint is missing');
