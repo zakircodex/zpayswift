@@ -20,9 +20,10 @@
   const access = window.ZNewsAccess || { authenticated: false };
   let lastFocused = null;
   let backdropTimer = 0;
+  let searchHistoryArmed = false;
 
   function feedRouteButton() {
-    return document.querySelector('.mobile-nav [data-route="feed"]')
+    return document.querySelector('.desktop-nav [data-route="feed"]')
       || document.querySelector('[data-route="feed"]');
   }
 
@@ -37,9 +38,7 @@
     header.classList.toggle('search-open', expanded);
     searchToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     searchForm.setAttribute('aria-hidden', expanded ? 'false' : 'true');
-    if (expanded && focus) {
-      window.setTimeout(() => searchInput.focus(), 60);
-    }
+    if (expanded && focus) window.setTimeout(() => searchInput.focus(), 60);
   }
 
   function searchableCards() {
@@ -77,11 +76,31 @@
       : `${matches} loaded ${matches === 1 ? 'story' : 'stories'} found.`;
   }
 
-  function clearSearch({ close = false } = {}) {
+  function clearSearchValue() {
     searchInput.value = '';
     applySearch();
-    if (close) setSearchOpen(false, { focus: false });
-    else searchInput.focus();
+  }
+
+  function openSearch() {
+    if (search.classList.contains('is-open')) return;
+    openFeed();
+    history.pushState({ ...(history.state || {}), znewsOverlay: 'search' }, '', window.location.href);
+    searchHistoryArmed = true;
+    setSearchOpen(true);
+  }
+
+  function closeSearch({ restoreFocus = true, useHistory = true } = {}) {
+    if (!search.classList.contains('is-open')) return;
+    clearSearchValue();
+
+    if (useHistory && searchHistoryArmed) {
+      history.back();
+      return;
+    }
+
+    searchHistoryArmed = false;
+    setSearchOpen(false, { focus: false });
+    if (restoreFocus) searchToggle.focus();
   }
 
   function openMenu() {
@@ -113,18 +132,15 @@
   }
 
   function syncDrawerRoute() {
-    const activeRoute = document.querySelector('.mobile-nav [data-route].active')?.dataset.route
-      || document.querySelector('.desktop-nav [data-route].active')?.dataset.route
-      || 'feed';
+    const activeRoute = document.querySelector('.desktop-nav [data-route].active')?.dataset.route || 'feed';
     menuDrawer.querySelectorAll('[data-menu-route]').forEach((item) => {
       item.classList.toggle('active', item.dataset.menuRoute === activeRoute);
     });
   }
 
   searchToggle.addEventListener('click', () => {
-    const willOpen = !search.classList.contains('is-open');
-    setSearchOpen(willOpen);
-    if (willOpen) openFeed();
+    if (search.classList.contains('is-open')) closeSearch();
+    else openSearch();
   });
 
   searchForm.addEventListener('submit', (event) => {
@@ -138,7 +154,10 @@
     applySearch();
   });
 
-  searchClear?.addEventListener('click', () => clearSearch());
+  searchClear?.addEventListener('click', () => {
+    clearSearchValue();
+    searchInput.focus();
+  });
   menuToggle.addEventListener('click', openMenu);
   menuClose.addEventListener('click', () => closeMenu());
   menuBackdrop.addEventListener('click', () => closeMenu());
@@ -147,7 +166,9 @@
     item.addEventListener('click', () => {
       const route = item.dataset.menuRoute;
       closeMenu({ restoreFocus: false });
-      document.querySelector(`.mobile-nav [data-route="${route}"]`)?.click();
+      const routeButton = document.querySelector(`.desktop-nav [data-route="${route}"]`)
+        || document.querySelector(`[data-route="${route}"]`);
+      routeButton?.click();
       syncDrawerRoute();
     });
   });
@@ -161,15 +182,21 @@
     }
     if (search.classList.contains('is-open')) {
       event.preventDefault();
-      clearSearch({ close: true });
-      searchToggle.focus();
+      closeSearch();
     }
   });
 
   document.addEventListener('click', (event) => {
     if (!search.classList.contains('is-open')) return;
     if (event.target instanceof Node && search.contains(event.target)) return;
-    if (searchInput.value.trim() === '') setSearchOpen(false, { focus: false });
+    if (searchInput.value.trim() === '') closeSearch({ restoreFocus: false });
+  });
+
+  window.addEventListener('popstate', () => {
+    if (!search.classList.contains('is-open')) return;
+    searchHistoryArmed = false;
+    clearSearchValue();
+    setSearchOpen(false, { focus: false });
   });
 
   const feedObserver = new MutationObserver(() => applySearch());
@@ -183,4 +210,9 @@
   applyMenuAccess();
   syncDrawerRoute();
   setSearchOpen(false, { focus: false });
+
+  window.ZNewsHeader = Object.freeze({
+    closeSearch: () => closeSearch({ useHistory: false }),
+    isSearchOpen: () => search.classList.contains('is-open')
+  });
 })();

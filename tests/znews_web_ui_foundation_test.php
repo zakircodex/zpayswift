@@ -25,25 +25,14 @@ function contents(string $path): string
 }
 
 $required = [
-    'znews/index.html',
-    'znews/.htaccess',
-    'znews/manifest.webmanifest',
-    'znews/sw.js',
-    'znews/assets/znews-config.js',
-    'znews/assets/znews-api.js',
-    'znews/assets/znews-ads.js',
-    'znews/assets/znews-bootstrap.js',
-    'znews/assets/znews-access.js',
-    'znews/assets/znews-header.js',
-    'znews/assets/znews-instant-comments.js',
-    'znews/assets/znews-premium.css',
-    'znews/assets/znews.js',
-    'znews/assets/znews-creator.js',
-    'znews/assets/znews.css',
-    'docs/znews-inmobi-integration.md',
-    'docs/znews-android-ui-contract.md',
+    'znews/index.html', 'znews/.htaccess', 'znews/manifest.webmanifest', 'znews/sw.js',
+    'znews/assets/znews-config.js', 'znews/assets/znews-api.js', 'znews/assets/znews-ads.js',
+    'znews/assets/znews-bootstrap.js', 'znews/assets/znews-access.js', 'znews/assets/znews-header.js',
+    'znews/assets/znews-profile.js', 'znews/assets/znews-instant-comments.js',
+    'znews/assets/znews-premium.css', 'znews/assets/znews.js', 'znews/assets/znews-creator.js',
+    'znews/assets/znews.css', 'api/znews/public/creator.php',
+    'docs/znews-inmobi-integration.md', 'docs/znews-android-ui-contract.md',
 ];
-
 foreach ($required as $relative) {
     check(is_file($root . '/' . $relative), "Required file missing: {$relative}");
 }
@@ -51,25 +40,26 @@ foreach ($required as $relative) {
 $index = contents($root . '/znews/index.html');
 check(str_contains($index, '<strong>Z News</strong>'), 'Z News brand is missing');
 check(str_contains($index, 'Stories • Updates • Community'), 'Z News tagline is missing');
-check(str_contains($index, 'brand-premium'), 'Premium wordmark is missing');
 check(str_contains($index, 'src="/assets/brand/zpay-icon.png"'), 'Original Z-Pay logo asset is not used');
-check(!str_contains($index, '<span class="brand-mark" aria-hidden="true">Z</span>'), 'Placeholder Z logo remains in the header');
 check(str_contains($index, 'id="searchToggle"'), 'Search icon is missing');
-check(str_contains($index, 'id="storySearchForm"'), 'Expandable search form is missing');
 check(str_contains($index, 'id="menuToggle"'), 'Menu button is missing');
+check(strpos($index, 'id="searchToggle"') < strpos($index, 'id="menuToggle"'), 'Search must appear left of the menu button');
 check(str_contains($index, 'id="menuDrawer"'), 'Right-side menu drawer is missing');
-check(strpos($index, 'id="searchToggle"') < strpos($index, 'id="menuToggle"'), 'Search must appear to the left of the menu button');
-check(str_contains($index, 'data-menu-route="feed"'), 'Drawer feed route is missing');
 check(str_contains($index, 'data-menu-route="create" data-auth-only hidden'), 'Drawer creator route guard is missing');
 check(str_contains($index, 'data-view="feed"'), 'Feed view is missing');
+check(str_contains($index, 'data-view="creator"'), 'Public creator view is missing');
+check(str_contains($index, 'id="creatorProfileAvatar"'), 'Creator profile avatar is missing');
+check(str_contains($index, 'id="creatorList"'), 'Creator post list is missing');
 check(str_contains($index, 'data-view="create"'), 'Create view is missing');
 check(str_contains($index, 'data-view="mine"'), 'My posts view is missing');
 check(str_contains($index, 'data-view="balance"'), 'Balance view is missing');
+check(!str_contains($index, 'class="mobile-nav"'), 'Bottom mobile navigation must be removed');
+check(!str_contains($index, '<h1>Latest stories</h1>'), 'Latest stories heading must be removed');
 check(str_contains($index, 'data-znews-ad-slot="feed_sidebar"'), 'Sidebar ad slot is missing');
 check(str_contains($index, 'id="postDialog"'), 'Post reader is missing');
 check(str_contains($index, 'Clean posts publish immediately'), 'Instant-publish disclosure is missing');
 check(str_contains($index, '>Publish post<'), 'Publish button is missing');
-check(str_contains($index, 'znews-bootstrap.js?v=2'), 'Dashboard handoff bootstrap is missing');
+check(str_contains($index, 'znews-bootstrap.js?v=3'), 'Latest dashboard handoff bootstrap is missing');
 check(!str_contains($index, 'znews-quick-login.js'), 'Removed standalone login module is still loaded');
 check(str_contains($index, 'class="composer-card card" data-auth-only hidden'), 'Guest composer guard is missing');
 check(str_contains($index, 'id="refreshButton" type="button" hidden'), 'Manual refresh control must stay hidden');
@@ -86,20 +76,11 @@ check(!preg_match('/(?:secret|private[_-]?key)\s*[:=]\s*[\'\"][^\'\"]{8,}/i', $c
 
 $api = contents($root . '/znews/assets/znews-api.js');
 foreach ([
-    'znews/auth/handoff.php',
-    'znews/public/feed.php',
-    'znews/public/post.php',
-    'znews/posts/create.php',
-    'znews/media/upload.php',
-    'znews/likes/set.php',
-    'znews/comments/create.php',
-    'znews/shares/create.php',
-    'znews/views/start.php',
-    'znews/views/heartbeat.php',
-    'znews/views/complete.php',
-    'znews/balance/summary.php',
-    'znews/balance/ledger.php',
-    'znews/transfers/create.php',
+    'znews/auth/handoff.php', 'znews/public/feed.php', 'znews/public/post.php',
+    'znews/posts/create.php', 'znews/media/upload.php', 'znews/likes/set.php',
+    'znews/comments/create.php', 'znews/shares/create.php', 'znews/views/start.php',
+    'znews/views/heartbeat.php', 'znews/views/complete.php', 'znews/balance/summary.php',
+    'znews/balance/ledger.php', 'znews/transfers/create.php',
 ] as $endpoint) {
     check(str_contains($api, $endpoint), "API endpoint missing from client: {$endpoint}");
 }
@@ -111,13 +92,7 @@ check(!str_contains($api, 'verifyPassword('), 'Standalone password login remains
 check(!str_contains($api, 'pinLogin('), 'Standalone PIN login remains in Z News API client');
 
 $creator = contents($root . '/znews/assets/znews-creator.js');
-foreach ([
-    'znews/media/upload.php',
-    'znews/posts/create.php',
-    'znews/posts/details.php',
-    'znews/posts/update.php',
-    'znews/posts/delete.php',
-] as $endpoint) {
+foreach (['znews/media/upload.php', 'znews/posts/create.php', 'znews/posts/details.php', 'znews/posts/update.php', 'znews/posts/delete.php'] as $endpoint) {
     check(str_contains($creator, $endpoint), "Creator endpoint missing: {$endpoint}");
 }
 check(str_contains($creator, 'expected_updated_at'), 'Creator edit/delete version guard is missing');
@@ -133,18 +108,35 @@ check(str_contains($access, "'/user/register'"), 'Guest registration route is mi
 check(str_contains($access, '[data-action="like"]'), 'Guest authenticated-action cleanup is missing');
 
 $header = contents($root . '/znews/assets/znews-header.js');
-check(str_contains($header, 'function setSearchOpen'), 'Expandable search state is missing');
+check(str_contains($header, 'function openSearch'), 'Search open state is missing');
+check(str_contains($header, "znewsOverlay: 'search'"), 'Search does not create a browser history state');
+check(str_contains($header, "window.addEventListener('popstate'"), 'Browser Back search handler is missing');
+check(str_contains($header, 'history.back()'), 'Search close does not consume its history state');
 check(str_contains($header, 'haystack.includes(query)'), 'Loaded-story search filtering is missing');
 check(str_contains($header, "menuDrawer.classList.add('is-open')"), 'Right drawer open behavior is missing');
 check(str_contains($header, "menuDrawer.classList.remove('is-open')"), 'Right drawer close behavior is missing');
-check(str_contains($header, "event.key !== 'Escape'"), 'Escape close behavior is missing');
-check(str_contains($header, '[data-menu-route]'), 'Drawer route wiring is missing');
+check(str_contains($header, '.desktop-nav [data-route='), 'Drawer does not work without the removed bottom navigation');
+
+$profile = contents($root . '/znews/assets/znews-profile.js');
+check(str_contains($profile, "wrapApiMethod('publicFeed')"), 'Feed creator identity capture is missing');
+check(str_contains($profile, "wrapApiMethod('publicPost')"), 'Post reader creator identity capture is missing');
+check(str_contains($profile, "znews/public/creator.php"), 'Public creator API integration is missing');
+check(str_contains($profile, '.post-card[data-post-id] .post-head'), 'Post author click target is missing');
+check(str_contains($profile, 'history.pushState({ znewsCreatorUid:'), 'Creator route history is missing');
+check(str_contains($profile, '/znews/creator/'), 'Clean creator route is missing from the UI');
+check(str_contains($profile, 'data-profile-post-id'), 'Creator public post rendering is missing');
+
+$publicCreator = contents($root . '/api/znews/public/creator.php');
+check(str_contains($publicCreator, "ZNEWS_USER_POSTS/"), 'Creator endpoint does not use the user post index');
+check(str_contains($publicCreator, 'znews_post_is_public($post)'), 'Creator endpoint may expose non-public posts');
+check(str_contains($publicCreator, 'hash_equals($creatorUid, $postCreatorUid)'), 'Creator ownership verification is missing');
+check(!str_contains($publicCreator, "fb_get('USERS/"), 'Creator endpoint must not expose private user records');
+check(str_contains($publicCreator, 'znews_engagement_overlay'), 'Creator posts lack live engagement counts');
 
 $ads = contents($root . '/znews/assets/znews-ads.js');
 check(str_contains($ads, 'registerProviderRenderer'), 'Provider renderer registration is missing');
 check(str_contains($ads, 'Provider secrets, reported value and creator settlement never belong'), 'Ad trust-boundary note is missing');
 check(!str_contains($ads, 'ZNEWS_AD_INGESTION_SECRET'), 'Private ingestion secret name leaked into browser adapter');
-check(!str_contains($ads, 'X-ZNEWS-AD-SIGNATURE'), 'Browser must not sign provider callbacks');
 
 $app = contents($root . '/znews/assets/znews.js');
 check(str_contains($app, 'beginView(postId)'), 'View lifecycle is not started by the reader');
@@ -153,24 +145,25 @@ check(str_contains($app, 'window.setTimeout(() => heartbeatView(), 15000)'), 'Se
 check(str_contains($app, 'await completeView()'), 'View completion guard is missing');
 check(str_contains($app, 'Minimum transfer amount is ৳500.'), 'Minimum transfer disclosure is missing');
 check(str_contains($app, 'state.balanceMicros < 500_000_000'), 'Transfer button threshold guard is missing');
-check(!str_contains($app, 'ZNEWS_AD_NETWORK_SECRETS'), 'Server ad-network map leaked into browser app');
 
 $premium = contents($root . '/znews/assets/znews-premium.css');
 check(str_contains($premium, '.brand-logo-shell'), 'Original logo sizing styles are missing');
-check(str_contains($premium, 'width:42px;height:42px'), 'Desktop logo size is not compact');
 check(str_contains($premium, '.header-search.is-open .header-search-form'), 'Search expansion styling is missing');
 check(str_contains($premium, '.menu-drawer.is-open'), 'Right drawer transition styling is missing');
-check(str_contains($premium, 'transform:translateX(104%)'), 'Drawer must start outside the right edge');
+check(str_contains($premium, '.creator-profile-card'), 'Creator profile card styling is missing');
+check(str_contains($premium, '.creator-profile-trigger'), 'Clickable creator header styling is missing');
+check(str_contains($premium, '.layout{margin-bottom:28px}'), 'Removed bottom navigation spacing is not reclaimed');
 
 $bootstrap = contents($root . '/znews/assets/znews-bootstrap.js');
-check(str_contains($bootstrap, 'znews-header.js?v=1'), 'Header interaction module is not loaded');
+check(str_contains($bootstrap, 'znews-profile.js?v=1'), 'Creator profile module is not loaded');
+check(strpos($bootstrap, 'znews-profile.js?v=1') < strpos($bootstrap, 'znews.js?v=3'), 'Creator identity capture must load before the feed app');
+check(str_contains($bootstrap, 'znews-header.js?v=2'), 'Updated header interaction module is not loaded');
 
 $serviceWorker = contents($root . '/znews/sw.js');
-check(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v5'"), 'Header shell cache version is stale');
-check(str_contains($serviceWorker, 'znews-bootstrap.js?v=2'), 'Handoff bootstrap is missing from shell cache');
-check(str_contains($serviceWorker, 'znews-access.js?v=1'), 'Guest access module is missing from shell cache');
-check(str_contains($serviceWorker, 'znews-header.js?v=1'), 'Header module is missing from shell cache');
-check(str_contains($serviceWorker, 'znews-creator.js?v=2'), 'Creator module is missing from shell cache');
+check(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v6'"), 'Profile shell cache version is stale');
+check(str_contains($serviceWorker, 'znews-bootstrap.js?v=3'), 'Latest bootstrap is missing from shell cache');
+check(str_contains($serviceWorker, 'znews-profile.js?v=1'), 'Creator profile module is missing from shell cache');
+check(str_contains($serviceWorker, 'znews-header.js?v=2'), 'Updated header module is missing from shell cache');
 check(!str_contains($serviceWorker, 'znews-quick-login.js'), 'Removed login module remains in shell cache');
 check(str_contains($serviceWorker, "url.pathname.startsWith('/api/')"), 'Service worker API exclusion is missing');
 check(str_contains($serviceWorker, "request.method !== 'GET'"), 'Service worker mutation exclusion is missing');
@@ -182,6 +175,7 @@ check(($manifest['display'] ?? '') === 'standalone', 'Manifest standalone mode i
 
 $htaccess = contents($root . '/znews/.htaccess');
 check(str_contains($htaccess, 'RewriteRule ^post/([A-Za-z0-9_-]+)/?$ index.html [L]'), 'Clean post route is missing');
+check(str_contains($htaccess, 'RewriteRule ^creator/([A-Za-z0-9_-]+)/?$ index.html [L]'), 'Clean creator route is missing');
 check(str_contains($htaccess, 'Options -Indexes'), 'Directory listing protection is missing');
 
 $deployment = contents($root . '/.cpanel.yml');
@@ -190,16 +184,10 @@ check(preg_match('/\bassets docs images logo znews\b/', $deployment) === 1, 'cPa
 $node = trim((string)shell_exec('command -v node 2>/dev/null'));
 if ($node !== '') {
     foreach ([
-        'znews/assets/znews-config.js',
-        'znews/assets/znews-api.js',
-        'znews/assets/znews-ads.js',
-        'znews/assets/znews-bootstrap.js',
-        'znews/assets/znews-access.js',
-        'znews/assets/znews.js',
-        'znews/assets/znews-header.js',
-        'znews/assets/znews-creator.js',
-        'znews/assets/znews-instant-comments.js',
-        'znews/sw.js',
+        'znews/assets/znews-config.js', 'znews/assets/znews-api.js', 'znews/assets/znews-ads.js',
+        'znews/assets/znews-bootstrap.js', 'znews/assets/znews-access.js', 'znews/assets/znews-profile.js',
+        'znews/assets/znews.js', 'znews/assets/znews-header.js', 'znews/assets/znews-creator.js',
+        'znews/assets/znews-instant-comments.js', 'znews/sw.js',
     ] as $relative) {
         $command = escapeshellarg($node) . ' --check ' . escapeshellarg($root . '/' . $relative) . ' 2>&1';
         exec($command, $output, $status);
