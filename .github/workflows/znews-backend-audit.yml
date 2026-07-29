@@ -5,6 +5,7 @@ on:
     branches:
       - feature/znews-backend-foundation
       - feature/znews-web-ui-foundation
+      - feature/znews-instant-publish-creator-ui
     paths:
       - 'api/znews/**'
       - 'api/admin/znews/**'
@@ -77,6 +78,8 @@ jobs:
             file: tests/znews_firebase_root_url_test.php
           - id: http-smoke
             file: tests/znews_http_smoke_test.php
+          - id: instant-publish-creator-ui
+            file: tests/znews_instant_publish_creator_ui_test.php
           - id: main-wallet-transfer
             file: tests/znews_main_wallet_transfer_test.php
           - id: media-backend
