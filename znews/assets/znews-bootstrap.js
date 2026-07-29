@@ -73,6 +73,7 @@
     if (!exchanged) await validateStoredSession(api);
 
     await loadScript('/znews/assets/znews-access.js?v=1');
+    await loadScript('/znews/assets/znews-feed-ui.js?v=1');
     await loadScript('/znews/assets/znews-profile.js?v=1');
     await loadScript('/znews/assets/znews.js?v=3');
     await loadScript('/znews/assets/znews-header.js?v=2');
