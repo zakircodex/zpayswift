@@ -36,7 +36,7 @@ znews_contract_expect(str_contains($launcher, 'user_page_require_auth()'), 'Dash
 znews_contract_expect(str_contains($launcher, 'random_bytes(32)'), 'Handoff code must use cryptographic randomness.');
 znews_contract_expect(str_contains($launcher, "'expires_at' => \$now + 90"), 'Handoff must be short-lived.');
 znews_contract_expect(str_contains($launcher, 'session_hash($sessionToken)'), 'Handoff must be bound to the existing Z-Pay session.');
-znews_contract_expect(str_contains($launcher, "'/znews/#handoff='"), 'Handoff code must travel in the URL fragment, not the query string.');
+znews_contract_expect(str_contains($launcher, '/znews/#handoff='), 'Handoff code must travel in the URL fragment, not the query string.');
 
 znews_contract_expect(str_contains($handoff, "api_require_method('POST')"), 'Handoff exchange must require POST.');
 znews_contract_expect(str_contains($handoff, 'api_require_app_key()'), 'Handoff exchange must require the app key contract.');
