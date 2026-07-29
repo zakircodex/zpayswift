@@ -151,6 +151,13 @@
       });
     }
 
+    validateCreatorSession() {
+      return this.request('znews/auth/session.php', {
+        authenticated: true,
+        appKey: true
+      });
+    }
+
     publicFeed(cursor = '') {
       return this.request('znews/public/feed.php', {
         params: { limit: this.config.feedPageSize, cursor },
