@@ -22,6 +22,7 @@ jobs:
         run: |
           php -l api/user/znews.php
           php -l api/znews/auth/handoff.php
+          php -l api/znews/auth/session.php
           php -l api/znews/lib/comments/publication.php
           php -l api/znews/lib/comments/create.php
           php -l api/znews/lib/comments/update.php
@@ -30,9 +31,17 @@ jobs:
         run: php tests/znews_dashboard_handoff_guest_ui_test.php
       - name: Instant comments
         run: php tests/znews_instant_comments_test.php
+      - name: Web UI regression
+        run: php tests/znews_web_ui_foundation_test.php
+      - name: Social engagement regression
+        run: php tests/znews_social_engagement_test.php
       - name: JavaScript syntax
         run: |
+          node --check znews/assets/znews-config.js
           node --check znews/assets/znews-api.js
           node --check znews/assets/znews-bootstrap.js
           node --check znews/assets/znews-access.js
+          node --check znews/assets/znews.js
+          node --check znews/assets/znews-creator.js
           node --check znews/assets/znews-instant-comments.js
+          node --check znews/sw.js
