@@ -77,12 +77,12 @@ $endpoint = znews_comment_test_read($root . '/api/znews/comments/create.php');
 $ui = znews_comment_test_read($root . '/znews/assets/znews-instant-comments.js');
 
 znews_comment_test_expect(str_contains($create, 'znews_comment_publication_decision($text)'), 'Create flow must use automated publication decision.');
-znews_comment_test_expect(str_contains($create, "znews_engagement_adjust_counter($postId, 'comment_count', 1)"), 'Instant create must increment public comment count.');
+znews_comment_test_expect(str_contains($create, "znews_engagement_adjust_counter(\$postId, 'comment_count', 1)"), 'Instant create must increment public comment count.');
 znews_comment_test_expect(str_contains($update, 'znews_comment_publication_decision($text)'), 'Edit flow must re-run automated comment checks.');
-znews_comment_test_expect(str_contains($update, '$counterDelta'), 'Edit flow must reconcile public comment count transitions.');
+znews_comment_test_expect(str_contains($update, '$wasPublic !== $isPublic'), 'Edit flow must reconcile public comment count transitions.');
 znews_comment_test_expect(str_contains($moderation, '$postPublicationReject'), 'Admin moderation must identify live-comment rejection.');
 znews_comment_test_expect(str_contains($moderation, "'comment_count', -1"), 'Blocking a live comment must decrement the public count.');
-znews_comment_test_expect(str_contains($endpoint, "'published_immediately' => $published"), 'Comment endpoint must expose instant-publication result.');
+znews_comment_test_expect(str_contains($endpoint, "'published_immediately' => \$published"), 'Comment endpoint must expose instant-publication result.');
 znews_comment_test_expect(str_contains($ui, "toast('Comment published.')"), 'Web UI must confirm instant comment publication.');
 znews_comment_test_expect(!str_contains($ui, 'Unlock with PIN'), 'Comment UI must not reference removed PIN login.');
 
