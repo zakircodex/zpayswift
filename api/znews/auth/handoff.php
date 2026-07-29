@@ -63,12 +63,10 @@ if (!is_array($user)) {
 auth_app_guard_user_login($user);
 $user['uid'] = $uid;
 $creator = znews_public_creator_snapshot($user);
-$profilePhoto = trim((string)(
-    $creator['profile_photo_url']
-    ?? $user['PROFILE']
-    ?? $user['profile']
-    ?? ''
-));
+$profilePhoto = trim((string)($creator['profile_photo_url'] ?? ''));
+if ($profilePhoto === '') {
+    $profilePhoto = trim((string)($user['PROFILE'] ?? $user['profile'] ?? ''));
+}
 $profile = array_merge(auth_app_user_payload($uid, $user), [
     'profile_photo_url' => $profilePhoto,
     'PROFILE' => $profilePhoto,
