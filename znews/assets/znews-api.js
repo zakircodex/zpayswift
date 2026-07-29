@@ -15,37 +15,94 @@
     constructor(config) {
       this.config = config;
       this.sessionToken = sessionStorage.getItem(config.sessionStorageKey) || '';
+      this.persistentSessionToken = localStorage.getItem(config.persistentSessionStorageKey) || '';
+      if (!this.sessionToken
+        && sessionStorage.getItem(config.sessionUnlockStorageKey) === '1'
+        && this.persistentSessionToken) {
+        this.sessionToken = this.persistentSessionToken;
+        sessionStorage.setItem(config.sessionStorageKey, this.sessionToken);
+      }
       this.profile = this.readStoredProfile();
     }
 
     readStoredProfile() {
-      try {
-        const value = JSON.parse(sessionStorage.getItem(this.config.profileStorageKey) || '{}');
-        return value && typeof value === 'object' ? value : {};
-      } catch (_error) {
-        return {};
+      const candidates = [
+        localStorage.getItem(this.config.persistentProfileStorageKey),
+        sessionStorage.getItem(this.config.profileStorageKey)
+      ];
+      for (const raw of candidates) {
+        try {
+          const value = JSON.parse(raw || '{}');
+          if (value && typeof value === 'object' && Object.keys(value).length) return value;
+        } catch (_error) {
+          // Try the next storage source.
+        }
       }
+      return {};
     }
 
-    setSession(token, profile = {}) {
+    setSession(token, profile = {}, { persist = true } = {}) {
       this.sessionToken = String(token || '').trim();
+      this.persistentSessionToken = persist ? this.sessionToken : this.persistentSessionToken;
       this.profile = profile && typeof profile === 'object' ? profile : {};
 
       if (this.sessionToken) {
         sessionStorage.setItem(this.config.sessionStorageKey, this.sessionToken);
         sessionStorage.setItem(this.config.profileStorageKey, JSON.stringify(this.profile));
+        sessionStorage.setItem(this.config.sessionUnlockStorageKey, '1');
+        if (persist) {
+          localStorage.setItem(this.config.persistentSessionStorageKey, this.sessionToken);
+          localStorage.setItem(this.config.persistentProfileStorageKey, JSON.stringify(this.profile));
+        }
       } else {
         sessionStorage.removeItem(this.config.sessionStorageKey);
         sessionStorage.removeItem(this.config.profileStorageKey);
+        sessionStorage.removeItem(this.config.sessionUnlockStorageKey);
       }
     }
 
-    clearSession() {
-      this.setSession('', {});
+    lockSession() {
+      this.sessionToken = '';
+      sessionStorage.removeItem(this.config.sessionStorageKey);
+      sessionStorage.removeItem(this.config.profileStorageKey);
+      sessionStorage.removeItem(this.config.sessionUnlockStorageKey);
+    }
+
+    clearExpiredSession() {
+      this.lockSession();
+      this.persistentSessionToken = '';
+      localStorage.removeItem(this.config.persistentSessionStorageKey);
+    }
+
+    clearSession({ forgetAccount = true } = {}) {
+      this.lockSession();
+      this.persistentSessionToken = '';
+      localStorage.removeItem(this.config.persistentSessionStorageKey);
+      if (forgetAccount) {
+        this.profile = {};
+        localStorage.removeItem(this.config.persistentProfileStorageKey);
+      }
     }
 
     isAuthenticated() {
       return this.sessionToken !== '';
+    }
+
+    hasSavedQuickLogin() {
+      return this.persistentSessionToken !== '';
+    }
+
+    getSavedProfile() {
+      return this.profile && typeof this.profile === 'object' ? this.profile : {};
+    }
+
+    getDeviceId() {
+      let deviceId = localStorage.getItem(this.config.deviceStorageKey) || '';
+      if (!deviceId) {
+        deviceId = this.idempotencyKey('device');
+        localStorage.setItem(this.config.deviceStorageKey, deviceId);
+      }
+      return deviceId;
     }
 
     url(path, params = null) {
@@ -67,6 +124,7 @@
       body = undefined,
       params = null,
       authenticated = false,
+      authToken = '',
       appKey = true,
       signal = undefined
     } = {}) {
@@ -76,14 +134,17 @@
       if (appKey && this.config.appKey) {
         headers.set('X-APP-KEY', this.config.appKey);
       }
-      if (authenticated) {
-        if (!this.sessionToken) {
-          throw new ZNewsApiError('Please sign in first.', {
-            code: 'SESSION_EXPIRED',
-            status: 401
-          });
-        }
-        headers.set('X-SESSION-TOKEN', this.sessionToken);
+      const explicitToken = String(authToken || '').trim();
+      const token = explicitToken || (authenticated ? this.sessionToken : '');
+      if (authenticated && !token) {
+        throw new ZNewsApiError('Please sign in first.', {
+          code: 'SESSION_EXPIRED',
+          status: 401
+        });
+      }
+      if (token) {
+        headers.set('Authorization', `Bearer ${token}`);
+        headers.set('X-SESSION-TOKEN', token);
       }
       if (body !== undefined && !(body instanceof FormData)) {
         headers.set('Content-Type', 'application/json');
@@ -126,8 +187,10 @@
       const ok = payload.ok === true || payload.success === true;
       if (!response.ok || !ok) {
         const code = String(payload.code || 'ZNEWS_REQUEST_FAILED');
-        if (code === 'SESSION_EXPIRED' || response.status === 401) {
-          this.clearSession();
+        if (code === 'SESSION_EXPIRED'
+          || code === 'DEVICE_REPLACED'
+          || response.status === 401) {
+          this.clearExpiredSession();
         }
         throw new ZNewsApiError(String(payload.message || 'Request failed.'), {
           code,
@@ -147,6 +210,20 @@
       return this.request('auth/verify_pin.php', { method: 'POST', body: payload });
     }
 
+    pinLogin(payload) {
+      if (!this.persistentSessionToken) {
+        return Promise.reject(new ZNewsApiError('Saved login has expired.', {
+          code: 'SESSION_EXPIRED',
+          status: 401
+        }));
+      }
+      return this.request('auth/pin_login.php', {
+        method: 'POST',
+        body: payload,
+        authToken: this.persistentSessionToken
+      });
+    }
+
     sendLoginOtp(preAuthToken) {
       return this.request('auth/login_send_otp.php', {
         method: 'POST',
@@ -155,7 +232,10 @@
     }
 
     verifyLoginOtp(payload) {
-      return this.request('auth/user_login_verify_otp.php', { method: 'POST', body: payload });
+      return this.request('auth/user_login_verify_otp.php', {
+        method: 'POST',
+        body: { ...payload, trust_device: true }
+      });
     }
 
     publicFeed(cursor = '') {
