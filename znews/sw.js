@@ -1,17 +1,19 @@
 'use strict';
 
-const CACHE_NAME = 'znews-shell-v3';
+const CACHE_NAME = 'znews-shell-v4';
 const SHELL = [
   '/znews/',
   '/znews/index.html',
   '/znews/assets/znews.css?v=2',
-  '/znews/assets/znews-config.js?v=2',
+  '/znews/assets/znews-premium.css?v=1',
+  '/znews/assets/znews-config.js?v=3',
   '/znews/assets/znews-api.js?v=3',
   '/znews/assets/znews-ads.js?v=1',
-  '/znews/assets/znews.js?v=2',
-  '/znews/assets/znews-quick-login.js?v=1',
-  '/znews/assets/znews-instant-comments.js?v=1',
-  '/znews/assets/znews-creator.js?v=1',
+  '/znews/assets/znews-bootstrap.js?v=1',
+  '/znews/assets/znews-access.js?v=1',
+  '/znews/assets/znews.js?v=3',
+  '/znews/assets/znews-creator.js?v=2',
+  '/znews/assets/znews-instant-comments.js?v=2',
   '/znews/manifest.webmanifest'
 ];
 
