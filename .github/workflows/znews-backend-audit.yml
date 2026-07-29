@@ -90,6 +90,8 @@ jobs:
             file: tests/znews_post_lifecycle_test.php
           - id: post-media-attach
             file: tests/znews_post_media_attach_test.php
+          - id: post-publication-moderation
+            file: tests/znews_post_publication_moderation_test.php
           - id: revenue-settlement
             file: tests/znews_revenue_settlement_test.php
           - id: social-engagement
