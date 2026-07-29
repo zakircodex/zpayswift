@@ -39,12 +39,17 @@ function znews_comment_create(
     $existing = fb_get(znews_comment_path($postId, $commentId));
     if (is_array($existing)) {
         $formatted = znews_comment_format($existing, true);
-        znews_engagement_finish($claim, ['comment' => $formatted]);
+        $counts = znews_engagement_counts($postId);
+        znews_engagement_finish($claim, [
+            'comment' => $formatted,
+            'counts' => $counts,
+        ]);
 
         return [
             'ok' => true,
             'idempotent_replay' => true,
             'comment' => $formatted,
+            'counts' => $counts,
         ];
     }
     if ($existing !== null) {
@@ -59,42 +64,36 @@ function znews_comment_create(
 
     $author = znews_public_creator_snapshot($user);
     $now = znews_now();
+    $decision = znews_comment_publication_decision($text);
     $comment = [
-        'schema_version' => 1,
+        'schema_version' => 2,
         'comment_id' => $commentId,
         'post_id' => $postId,
         'author_uid' => $uid,
         'author_name' => (string)($author['name'] ?? 'Z-Pay User'),
         'author_photo_url' => (string)($author['profile_photo_url'] ?? ''),
         'text' => $text,
-        'status' => 'REVIEW',
-        'moderation_status' => 'PENDING',
         'moderation_note' => '',
         'created_at' => $now,
         'updated_at' => $now,
         'deleted_at' => 0,
         'source' => 'ZPAY_API',
     ];
+    $comment = znews_apply_comment_publication_decision($comment, $decision, $now);
 
     $index = [
         'comment_id' => $commentId,
         'post_id' => $postId,
-        'status' => 'REVIEW',
+        'status' => (string)$comment['status'],
         'created_at' => $now,
         'updated_at' => $now,
-    ];
-    $queue = [
-        'comment_id' => $commentId,
-        'post_id' => $postId,
-        'author_uid' => $uid,
-        'created_at' => $now,
-        'updated_at' => $now,
+        'published_at' => (int)($comment['published_at'] ?? 0),
     ];
 
     if (!fb_patch('', [
         znews_comment_path($postId, $commentId) => $comment,
         znews_comment_user_index_path($uid, $commentId) => $index,
-        znews_comment_review_queue_path($commentId) => $queue,
+        znews_comment_review_queue_path($commentId) => znews_comment_review_queue_row($comment),
     ])) {
         znews_engagement_fail($claim, 'ZNEWS_COMMENT_CREATE_FAILED');
         return [
@@ -105,21 +104,49 @@ function znews_comment_create(
         ];
     }
 
+    $counterResult = ['ok' => true, 'counts' => znews_engagement_counts($postId)];
+    if (znews_comment_is_public($comment)) {
+        $counterResult = znews_engagement_adjust_counter($postId, 'comment_count', 1);
+    }
+    $counterOk = !empty($counterResult['ok']);
+    $counts = is_array($counterResult['counts'] ?? null)
+        ? (array)$counterResult['counts']
+        : znews_engagement_counts($postId);
+
     $formatted = znews_comment_format($comment, true);
-    if (!znews_engagement_finish($claim, ['comment' => $formatted])) {
+    $result = [
+        'comment' => $formatted,
+        'counts' => $counts,
+        'reconciliation_required' => !$counterOk,
+    ];
+    if (!znews_engagement_finish($claim, $result)) {
         return [
             'ok' => false,
             'code' => 'ZNEWS_COMMENT_FINALIZE_FAILED',
             'message' => 'Comment was submitted but the request could not be finalized.',
             'http_status' => 503,
             'comment' => $formatted,
+            'counts' => $counts,
+        ];
+    }
+
+    if (!$counterOk) {
+        return [
+            'ok' => false,
+            'code' => 'ZNEWS_COMMENT_RECONCILIATION_REQUIRED',
+            'message' => 'Comment was saved but its counter requires reconciliation.',
+            'http_status' => 503,
+            'comment' => $formatted,
+            'counts' => $counts,
         ];
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_COMMENT_CREATED', $commentId, 'Z News comment submitted', [
+        system_log('ZNEWS_COMMENT_CREATED', $commentId, 'Z News comment created', [
             'post_id' => $postId,
             'uid' => $uid,
+            'status' => (string)$comment['status'],
+            'publication_mode' => (string)($comment['publication_mode'] ?? ''),
         ]);
     }
 
@@ -127,5 +154,6 @@ function znews_comment_create(
         'ok' => true,
         'idempotent_replay' => false,
         'comment' => $formatted,
+        'counts' => $counts,
     ];
 }
