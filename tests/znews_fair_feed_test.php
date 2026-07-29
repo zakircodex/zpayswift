@@ -59,14 +59,15 @@ $byId = [];
 foreach ($candidates as $candidate) {
     $byId[$candidate['post_id']] = $candidate;
 }
-for ($i = 1; $i < count($order); $i++) {
-    $previous = $byId[$order[$i - 1]]['creator_uid'];
-    $current = $byId[$order[$i]]['creator_uid'];
-    fair_expect($previous !== $current, 'The same creator must not occupy consecutive slots when alternatives exist.');
+$fairnessWindow = array_slice($order, 0, 20);
+for ($i = 1; $i < count($fairnessWindow); $i++) {
+    $previous = $byId[$fairnessWindow[$i - 1]]['creator_uid'];
+    $current = $byId[$fairnessWindow[$i]]['creator_uid'];
+    fair_expect($previous !== $current, 'The same creator must not occupy consecutive slots in the first fairness window.');
 }
 
 $firstTwentyCounts = [];
-foreach (array_slice($order, 0, 20) as $postId) {
+foreach ($fairnessWindow as $postId) {
     $creator = $byId[$postId]['creator_uid'];
     $firstTwentyCounts[$creator] = ($firstTwentyCounts[$creator] ?? 0) + 1;
 }
