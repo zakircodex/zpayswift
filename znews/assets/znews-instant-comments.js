@@ -144,7 +144,7 @@
       }
     } catch (requestError) {
       const message = requestError?.code === 'SESSION_EXPIRED'
-        ? 'Your session has expired. Unlock with PIN and try again.'
+        ? 'Creator access expired. Open Z News again from your Z-Pay dashboard.'
         : (requestError?.message || 'Comment could not be sent.');
       toast(message, 'error');
     } finally {
