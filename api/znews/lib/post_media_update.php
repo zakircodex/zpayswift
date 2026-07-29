@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/post_media_claims.php';
+require_once __DIR__ . '/instant_publish.php';
 
 function znews_update_post_with_media(
     array $auth,
@@ -101,22 +102,21 @@ function znews_update_post_with_media(
     }
 
     $now = znews_now();
+    $decision = znews_post_publication_decision($newMediaRow, $text);
     $updated = $post;
-    $updated['schema_version'] = max(2, (int)($post['schema_version'] ?? 1));
+    $updated['schema_version'] = max(3, (int)($post['schema_version'] ?? 1));
     $updated['text'] = $text;
     $updated['image_media_id'] = $targetMediaId;
     $updated['image_url'] = znews_post_media_public_url($targetMediaId);
     $updated['content_type'] = $contentType;
     $updated['visibility'] = 'PUBLIC';
-    $updated['status'] = 'REVIEW';
-    $updated['moderation_status'] = 'PENDING';
-    $updated['copyright_status'] = 'PENDING';
     $updated['media_duplicate_status'] = $targetMediaId !== ''
         ? strtoupper(trim((string)($newMediaRow['duplicate_status'] ?? 'CLEAR')))
         : 'NONE';
     $updated['updated_at'] = $now;
     $updated['deleted_at'] = 0;
     $updated['last_edit_at'] = $now;
+    $updated = znews_apply_publication_decision($updated, $decision, $now);
 
     $write = fb_put_if_match(
         znews_path_post($postId),
@@ -155,17 +155,19 @@ function znews_update_post_with_media(
     $indexUpdates = [
         znews_path_user_post($uid, $postId) => [
             'post_id' => $postId,
-            'status' => 'REVIEW',
+            'status' => (string)$updated['status'],
             'content_type' => $contentType,
             'has_image' => $targetMediaId !== '',
             'created_at' => (int)($updated['created_at'] ?? $now),
             'updated_at' => $now,
+            'published_at' => (int)($updated['published_at'] ?? 0),
         ],
-        znews_path_public_feed($postId) => null,
+        znews_path_public_feed($postId) => znews_public_feed_index_for_post($updated),
     ];
 
     if ($newMediaClaim) {
         $attached = znews_post_media_attached_row($newMediaClaim, $postId, $now);
+        $attached = znews_apply_media_publication_decision($attached, $decision, $now);
         $indexUpdates[znews_media_path($targetMediaId)] = $attached;
         $indexUpdates[znews_media_owner_path($uid, $targetMediaId)] = [
             'media_id' => $targetMediaId,
@@ -174,6 +176,12 @@ function znews_update_post_with_media(
             'created_at' => (int)($attached['created_at'] ?? $now),
             'updated_at' => $now,
         ];
+    } elseif ($targetMediaId !== '' && !empty($decision['publish'])) {
+        $indexUpdates[znews_media_path($targetMediaId)] = znews_apply_media_publication_decision(
+            $newMediaRow,
+            $decision,
+            $now
+        );
     }
 
     if ($currentMediaId !== '' && $currentMediaId !== $targetMediaId) {
@@ -223,6 +231,8 @@ function znews_update_post_with_media(
             'content_type' => $contentType,
             'old_media_id' => $currentMediaId,
             'new_media_id' => $targetMediaId,
+            'status' => (string)$updated['status'],
+            'publication_mode' => (string)($updated['publication_mode'] ?? ''),
         ]);
     }
 
@@ -230,7 +240,7 @@ function znews_update_post_with_media(
         return [
             'ok' => false,
             'code' => 'ZNEWS_POST_RECONCILIATION_REQUIRED',
-            'message' => 'Post was updated but its media indexes require reconciliation.',
+            'message' => 'Post was updated but its indexes require reconciliation.',
             'http_status' => 503,
             'post' => $formatted,
         ];

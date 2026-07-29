@@ -8,7 +8,7 @@
   <title>Z News | Z-Pay Swift</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="manifest" href="/znews/manifest.webmanifest">
-  <link rel="stylesheet" href="/znews/assets/znews.css?v=1">
+  <link rel="stylesheet" href="/znews/assets/znews.css?v=2">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -80,7 +80,7 @@
             <div>
               <span class="eyebrow">Creator</span>
               <h1>Create a post</h1>
-              <p>Write text, add one image, or use both. New posts are reviewed before appearing publicly.</p>
+              <p>Clean posts publish immediately. Images flagged by duplicate checks are held for a safety review.</p>
             </div>
           </div>
           <form id="createPostForm" class="stack-form">
@@ -94,7 +94,7 @@
               <small>JPEG, PNG or WebP. Maximum 5 MB.</small>
             </label>
             <div id="imagePreview" class="image-preview" hidden></div>
-            <button class="primary-button" type="submit">Submit for review</button>
+            <button class="primary-button" type="submit">Publish post</button>
           </form>
         </div>
       </section>
@@ -103,7 +103,7 @@
         <div class="section-heading">
           <div>
             <h1>My posts</h1>
-            <p>Review status and your published stories.</p>
+            <p>Manage published posts and anything held for a safety review.</p>
           </div>
         </div>
         <div id="mineList" class="post-list"></div>
@@ -130,7 +130,7 @@
       <section class="card compact-card">
         <span class="eyebrow">Z News</span>
         <h2>Community guidelines</h2>
-        <p>Share original, respectful content. Copyrighted or unsafe posts may be rejected.</p>
+        <p>Share original, respectful content. Posts may be hidden later when they violate safety or copyright rules.</p>
       </section>
       <div class="ad-slot" data-znews-ad-slot="feed_sidebar" data-format="mobile_banner" aria-label="Sponsored content"></div>
       <section class="card compact-card balance-mini">
@@ -187,8 +187,9 @@
   </template>
 
   <script src="/znews/assets/znews-config.js?v=1"></script>
-  <script src="/znews/assets/znews-api.js?v=1"></script>
+  <script src="/znews/assets/znews-api.js?v=2"></script>
   <script src="/znews/assets/znews-ads.js?v=1"></script>
-  <script src="/znews/assets/znews.js?v=1"></script>
+  <script src="/znews/assets/znews.js?v=2"></script>
+  <script src="/znews/assets/znews-creator.js?v=1"></script>
 </body>
 </html>

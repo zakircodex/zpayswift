@@ -33,6 +33,7 @@ $required = [
     'znews/assets/znews-api.js',
     'znews/assets/znews-ads.js',
     'znews/assets/znews.js',
+    'znews/assets/znews-creator.js',
     'znews/assets/znews.css',
     'docs/znews-inmobi-integration.md',
     'docs/znews-android-ui-contract.md',
@@ -52,6 +53,10 @@ check(str_contains($index, 'data-view="balance"'), 'Balance view is missing');
 check(str_contains($index, 'data-znews-ad-slot="feed_sidebar"'), 'Sidebar ad slot is missing');
 check(str_contains($index, 'id="authDialog"'), 'Authentication dialog is missing');
 check(str_contains($index, 'id="postDialog"'), 'Post reader is missing');
+check(str_contains($index, 'Clean posts publish immediately'), 'Instant-publish disclosure is missing');
+check(str_contains($index, '>Publish post<'), 'Publish button is missing');
+check(str_contains($index, 'znews-creator.js?v=1'), 'Creator management module is missing');
+check(!str_contains($index, 'Submit for review'), 'Every post is still presented as requiring pre-approval');
 check(!preg_match('/\b(?:Earn|Income|Cash|Profit|Revenue|Job|Work)\b/i', strip_tags($index)), 'Forbidden public wording exists in HTML');
 
 $config = contents($root . '/znews/assets/znews-config.js');
@@ -83,6 +88,23 @@ check(str_contains($api, "X-SESSION-TOKEN"), 'Session header is missing');
 check(str_contains($api, "X-APP-KEY"), 'App-key header is missing');
 check(str_contains($api, "credentials: 'same-origin'"), 'Same-origin cookie policy is missing');
 
+$creator = contents($root . '/znews/assets/znews-creator.js');
+foreach ([
+    'znews/media/upload.php',
+    'znews/posts/create.php',
+    'znews/posts/details.php',
+    'znews/posts/update.php',
+    'znews/posts/delete.php',
+] as $endpoint) {
+    check(str_contains($creator, $endpoint), "Creator endpoint missing: {$endpoint}");
+}
+check(str_contains($creator, 'expected_updated_at'), 'Creator edit/delete version guard is missing');
+check(str_contains($creator, 'idempotency_key'), 'Creator mutation idempotency is missing');
+check(str_contains($creator, 'published_immediately'), 'Creator UI ignores publication result');
+check(str_contains($creator, 'stopImmediatePropagation'), 'Duplicate create-submit protection is missing');
+check(str_contains($creator, 'Remove current image'), 'Image removal UI is missing');
+check(!str_contains($creator, 'ZNEWS_AD_NETWORK_SECRETS'), 'Server ad secrets leaked into creator client');
+
 $ads = contents($root . '/znews/assets/znews-ads.js');
 check(str_contains($ads, "registerProviderRenderer"), 'Provider renderer registration is missing');
 check(str_contains($ads, "Provider secrets, reported value and creator settlement never belong"), 'Ad trust-boundary note is missing');
@@ -99,6 +121,8 @@ check(str_contains($app, 'state.balanceMicros < 500_000_000'), 'Transfer button 
 check(!str_contains($app, 'ZNEWS_AD_NETWORK_SECRETS'), 'Server ad-network map leaked into browser app');
 
 $serviceWorker = contents($root . '/znews/sw.js');
+check(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v2'"), 'Creator shell cache version is stale');
+check(str_contains($serviceWorker, 'znews-creator.js?v=1'), 'Creator module is missing from shell cache');
 check(str_contains($serviceWorker, "url.pathname.startsWith('/api/')"), 'Service worker API exclusion is missing');
 check(str_contains($serviceWorker, "request.method !== 'GET'"), 'Service worker mutation exclusion is missing');
 
@@ -121,6 +145,7 @@ if ($node !== '') {
         'znews/assets/znews-api.js',
         'znews/assets/znews-ads.js',
         'znews/assets/znews.js',
+        'znews/assets/znews-creator.js',
         'znews/sw.js',
     ] as $relative) {
         $command = escapeshellarg($node) . ' --check ' . escapeshellarg($root . '/' . $relative) . ' 2>&1';

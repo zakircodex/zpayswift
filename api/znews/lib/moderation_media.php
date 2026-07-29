@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/moderation.php';
+require_once __DIR__ . '/post_publication_moderation.php';
 require_once __DIR__ . '/media_policy.php';
 
 function znews_admin_moderate_post_with_media(
@@ -18,21 +19,38 @@ function znews_admin_moderate_post_with_media(
     string $copyrightVerdict,
     string $note
 ): array {
-    $result = znews_admin_moderate_post(
-        $auth,
-        $postId,
-        $expectedUpdatedAt,
-        $idempotencyKey,
-        $action,
-        $copyrightVerdict,
-        $note
-    );
+    $postId = znews_firebase_key($postId, 'post_id');
+    $action = strtoupper(trim($action));
+    $before = fb_get(znews_path_post($postId));
+    $beforeStatus = is_array($before)
+        ? znews_normalize_status($before['status'] ?? '', '')
+        : '';
+
+    if ($action === 'REJECT' && in_array($beforeStatus, ['ACTIVE', 'BLOCKED'], true)) {
+        $result = znews_admin_block_published_post(
+            $auth,
+            $postId,
+            $expectedUpdatedAt,
+            $idempotencyKey,
+            $copyrightVerdict,
+            $note
+        );
+    } else {
+        $result = znews_admin_moderate_post(
+            $auth,
+            $postId,
+            $expectedUpdatedAt,
+            $idempotencyKey,
+            $action,
+            $copyrightVerdict,
+            $note
+        );
+    }
 
     if (empty($result['ok'])) {
         return $result;
     }
 
-    $postId = znews_firebase_key($postId, 'post_id');
     $rawPost = fb_get(znews_path_post($postId));
     if (!is_array($rawPost)) {
         return [

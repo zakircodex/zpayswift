@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/post_media_claims.php';
+require_once __DIR__ . '/instant_publish.php';
 
 function znews_create_post_with_media(
     array $auth,
@@ -46,8 +47,9 @@ function znews_create_post_with_media(
     }
 
     $now = znews_now();
+    $decision = znews_post_publication_decision($mediaRow, $text);
     $post = [
-        'schema_version' => 2,
+        'schema_version' => 3,
         'post_id' => $postId,
         'creator_uid' => $uid,
         'creator_name' => (string)($creator['name'] ?? 'Z-Pay User'),
@@ -57,9 +59,6 @@ function znews_create_post_with_media(
         'image_url' => znews_post_media_public_url($mediaId),
         'content_type' => $contentType,
         'visibility' => 'PUBLIC',
-        'status' => 'REVIEW',
-        'moderation_status' => 'PENDING',
-        'copyright_status' => 'PENDING',
         'media_duplicate_status' => $mediaId !== ''
             ? strtoupper(trim((string)($mediaRow['duplicate_status'] ?? 'CLEAR')))
             : 'NONE',
@@ -71,14 +70,16 @@ function znews_create_post_with_media(
         'deleted_at' => 0,
         'source' => 'ZPAY_API',
     ];
+    $post = znews_apply_publication_decision($post, $decision, $now);
 
     $index = [
         'post_id' => $postId,
-        'status' => 'REVIEW',
+        'status' => (string)$post['status'],
         'content_type' => $contentType,
         'has_image' => $mediaId !== '',
         'created_at' => $now,
         'updated_at' => $now,
+        'published_at' => (int)($post['published_at'] ?? 0),
     ];
 
     $completedClaim = array_merge((array)($claim['claim'] ?? []), [
@@ -91,11 +92,13 @@ function znews_create_post_with_media(
     $updates = [
         znews_path_post($postId) => $post,
         znews_path_user_post($uid, $postId) => $index,
+        znews_path_public_feed($postId) => znews_public_feed_index_for_post($post),
         (string)$claim['path'] => $completedClaim,
     ];
 
     if ($mediaId !== '') {
         $attached = znews_post_media_attached_row($mediaClaim, $postId, $now);
+        $attached = znews_apply_media_publication_decision($attached, $decision, $now);
         $updates[znews_media_path($mediaId)] = $attached;
         $updates[znews_media_owner_path($uid, $mediaId)] = [
             'media_id' => $mediaId,
@@ -126,6 +129,8 @@ function znews_create_post_with_media(
             'post_id' => $postId,
             'content_type' => $contentType,
             'media_id' => $mediaId,
+            'status' => (string)$post['status'],
+            'publication_mode' => (string)($post['publication_mode'] ?? ''),
         ]);
     }
 

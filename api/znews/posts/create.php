@@ -39,12 +39,20 @@ if (empty($result['ok'])) {
 }
 
 $replay = !empty($result['idempotent_replay']);
+$post = is_array($result['post'] ?? null) ? (array)$result['post'] : [];
+$published = strtoupper(trim((string)($post['status'] ?? ''))) === 'ACTIVE';
+$message = $replay
+    ? 'Post was already created.'
+    : ($published ? 'Post published.' : 'Post requires a safety review.');
+
 api_response(
     true,
     $replay ? 'ZNEWS_POST_ALREADY_CREATED' : 'ZNEWS_POST_CREATED',
-    $replay ? 'Post was already created.' : 'Post submitted for review.',
+    $message,
     [
-        'post' => is_array($result['post'] ?? null) ? (array)$result['post'] : [],
+        'post' => $post,
+        'published_immediately' => $published,
+        'requires_review' => !$published,
         'idempotent_replay' => $replay,
     ],
     $replay ? 200 : 201
