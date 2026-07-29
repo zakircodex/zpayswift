@@ -51,7 +51,9 @@
     });
 
     const authDialog = document.querySelector('#authDialog');
-    if (authDialog instanceof HTMLDialogElement && authDialog.open) authDialog.close();
+    if (authDialog && typeof authDialog.close === 'function' && authDialog.open) {
+      authDialog.close();
+    }
     setHidden(authDialog, true);
     setHidden(document.querySelector('#sessionButton'), true);
     setHidden(document.querySelector('#refreshButton'), true);
