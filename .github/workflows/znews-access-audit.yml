@@ -5,6 +5,7 @@ on:
     branches:
       - feature/znews-pin-login-instant-comments
       - feature/znews-header-search-menu
+      - feature/znews-profile-feed-back-ui
   pull_request:
     branches:
       - main
@@ -24,6 +25,7 @@ jobs:
           php -l api/user/znews.php
           php -l api/znews/auth/handoff.php
           php -l api/znews/auth/session.php
+          php -l api/znews/public/creator.php
           php -l api/znews/lib/comments/publication.php
           php -l api/znews/lib/comments/create.php
           php -l api/znews/lib/comments/update.php
@@ -42,6 +44,7 @@ jobs:
           node --check znews/assets/znews-api.js
           node --check znews/assets/znews-bootstrap.js
           node --check znews/assets/znews-access.js
+          node --check znews/assets/znews-profile.js
           node --check znews/assets/znews.js
           node --check znews/assets/znews-header.js
           node --check znews/assets/znews-creator.js
