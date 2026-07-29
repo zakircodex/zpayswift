@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/znews-pin-login-instant-comments
+      - feature/znews-header-search-menu
   pull_request:
     branches:
       - main
@@ -42,6 +43,7 @@ jobs:
           node --check znews/assets/znews-bootstrap.js
           node --check znews/assets/znews-access.js
           node --check znews/assets/znews.js
+          node --check znews/assets/znews-header.js
           node --check znews/assets/znews-creator.js
           node --check znews/assets/znews-instant-comments.js
           node --check znews/sw.js

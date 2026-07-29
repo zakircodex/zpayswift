@@ -34,6 +34,7 @@ $required = [
     'znews/assets/znews-ads.js',
     'znews/assets/znews-bootstrap.js',
     'znews/assets/znews-access.js',
+    'znews/assets/znews-header.js',
     'znews/assets/znews-instant-comments.js',
     'znews/assets/znews-premium.css',
     'znews/assets/znews.js',
@@ -51,6 +52,15 @@ $index = contents($root . '/znews/index.html');
 check(str_contains($index, '<strong>Z News</strong>'), 'Z News brand is missing');
 check(str_contains($index, 'Stories • Updates • Community'), 'Z News tagline is missing');
 check(str_contains($index, 'brand-premium'), 'Premium wordmark is missing');
+check(str_contains($index, 'src="/assets/brand/zpay-icon.png"'), 'Original Z-Pay logo asset is not used');
+check(!str_contains($index, '<span class="brand-mark" aria-hidden="true">Z</span>'), 'Placeholder Z logo remains in the header');
+check(str_contains($index, 'id="searchToggle"'), 'Search icon is missing');
+check(str_contains($index, 'id="storySearchForm"'), 'Expandable search form is missing');
+check(str_contains($index, 'id="menuToggle"'), 'Menu button is missing');
+check(str_contains($index, 'id="menuDrawer"'), 'Right-side menu drawer is missing');
+check(strpos($index, 'id="searchToggle"') < strpos($index, 'id="menuToggle"'), 'Search must appear to the left of the menu button');
+check(str_contains($index, 'data-menu-route="feed"'), 'Drawer feed route is missing');
+check(str_contains($index, 'data-menu-route="create" data-auth-only hidden'), 'Drawer creator route guard is missing');
 check(str_contains($index, 'data-view="feed"'), 'Feed view is missing');
 check(str_contains($index, 'data-view="create"'), 'Create view is missing');
 check(str_contains($index, 'data-view="mine"'), 'My posts view is missing');
@@ -59,7 +69,7 @@ check(str_contains($index, 'data-znews-ad-slot="feed_sidebar"'), 'Sidebar ad slo
 check(str_contains($index, 'id="postDialog"'), 'Post reader is missing');
 check(str_contains($index, 'Clean posts publish immediately'), 'Instant-publish disclosure is missing');
 check(str_contains($index, '>Publish post<'), 'Publish button is missing');
-check(str_contains($index, 'znews-bootstrap.js?v=1'), 'Dashboard handoff bootstrap is missing');
+check(str_contains($index, 'znews-bootstrap.js?v=2'), 'Dashboard handoff bootstrap is missing');
 check(!str_contains($index, 'znews-quick-login.js'), 'Removed standalone login module is still loaded');
 check(str_contains($index, 'class="composer-card card" data-auth-only hidden'), 'Guest composer guard is missing');
 check(str_contains($index, 'id="refreshButton" type="button" hidden'), 'Manual refresh control must stay hidden');
@@ -122,6 +132,14 @@ check(str_contains($access, "['create', 'mine', 'balance']"), 'Guest creator-rou
 check(str_contains($access, "'/user/register'"), 'Guest registration route is missing');
 check(str_contains($access, '[data-action="like"]'), 'Guest authenticated-action cleanup is missing');
 
+$header = contents($root . '/znews/assets/znews-header.js');
+check(str_contains($header, 'function setSearchOpen'), 'Expandable search state is missing');
+check(str_contains($header, 'haystack.includes(query)'), 'Loaded-story search filtering is missing');
+check(str_contains($header, "menuDrawer.classList.add('is-open')"), 'Right drawer open behavior is missing');
+check(str_contains($header, "menuDrawer.classList.remove('is-open')"), 'Right drawer close behavior is missing');
+check(str_contains($header, "event.key !== 'Escape'"), 'Escape close behavior is missing');
+check(str_contains($header, '[data-menu-route]'), 'Drawer route wiring is missing');
+
 $ads = contents($root . '/znews/assets/znews-ads.js');
 check(str_contains($ads, 'registerProviderRenderer'), 'Provider renderer registration is missing');
 check(str_contains($ads, 'Provider secrets, reported value and creator settlement never belong'), 'Ad trust-boundary note is missing');
@@ -137,10 +155,21 @@ check(str_contains($app, 'Minimum transfer amount is ৳500.'), 'Minimum transfe
 check(str_contains($app, 'state.balanceMicros < 500_000_000'), 'Transfer button threshold guard is missing');
 check(!str_contains($app, 'ZNEWS_AD_NETWORK_SECRETS'), 'Server ad-network map leaked into browser app');
 
+$premium = contents($root . '/znews/assets/znews-premium.css');
+check(str_contains($premium, '.brand-logo-shell'), 'Original logo sizing styles are missing');
+check(str_contains($premium, 'width:42px;height:42px'), 'Desktop logo size is not compact');
+check(str_contains($premium, '.header-search.is-open .header-search-form'), 'Search expansion styling is missing');
+check(str_contains($premium, '.menu-drawer.is-open'), 'Right drawer transition styling is missing');
+check(str_contains($premium, 'transform:translateX(104%)'), 'Drawer must start outside the right edge');
+
+$bootstrap = contents($root . '/znews/assets/znews-bootstrap.js');
+check(str_contains($bootstrap, 'znews-header.js?v=1'), 'Header interaction module is not loaded');
+
 $serviceWorker = contents($root . '/znews/sw.js');
-check(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v4'"), 'Access shell cache version is stale');
-check(str_contains($serviceWorker, 'znews-bootstrap.js?v=1'), 'Handoff bootstrap is missing from shell cache');
+check(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v5'"), 'Header shell cache version is stale');
+check(str_contains($serviceWorker, 'znews-bootstrap.js?v=2'), 'Handoff bootstrap is missing from shell cache');
 check(str_contains($serviceWorker, 'znews-access.js?v=1'), 'Guest access module is missing from shell cache');
+check(str_contains($serviceWorker, 'znews-header.js?v=1'), 'Header module is missing from shell cache');
 check(str_contains($serviceWorker, 'znews-creator.js?v=2'), 'Creator module is missing from shell cache');
 check(!str_contains($serviceWorker, 'znews-quick-login.js'), 'Removed login module remains in shell cache');
 check(str_contains($serviceWorker, "url.pathname.startsWith('/api/')"), 'Service worker API exclusion is missing');
@@ -167,6 +196,7 @@ if ($node !== '') {
         'znews/assets/znews-bootstrap.js',
         'znews/assets/znews-access.js',
         'znews/assets/znews.js',
+        'znews/assets/znews-header.js',
         'znews/assets/znews-creator.js',
         'znews/assets/znews-instant-comments.js',
         'znews/sw.js',
