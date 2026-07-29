@@ -102,7 +102,7 @@ function znews_update_post_with_media(
     }
 
     $now = znews_now();
-    $decision = znews_post_publication_decision($newMediaRow);
+    $decision = znews_post_publication_decision($newMediaRow, $text);
     $updated = $post;
     $updated['schema_version'] = max(3, (int)($post['schema_version'] ?? 1));
     $updated['text'] = $text;
