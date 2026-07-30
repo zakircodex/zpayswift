@@ -17,6 +17,13 @@ $config = $read('znews/assets/znews-config.js');
 $expect(str_contains($config, "const zpayOrigin = 'https://zpayswift.com'"), 'Trusted Z-Pay profile-photo origin is missing.');
 $expect(str_contains($config, "raw.startsWith('/uploads/profile/photos/')"), 'Legacy relative profile-photo detection is missing.');
 $expect(str_contains($config, 'resolveProfilePhotoUrl'), 'Shared profile-photo resolver is missing.');
+$index = $read('znews/index.html');
+$app = $read('znews/assets/znews.js');
+$rootRewrite = $read('.htaccess');
+$expect(str_contains($index, 'znews-config.js?v=4'), 'Profile-photo config cachebuster is missing.');
+$expect(str_contains($index, 'znews-bootstrap.js?v=7'), 'Bootstrap cachebuster is missing.');
+$expect(str_contains($app, "updateViaCache: 'none'"), 'Service-worker update may reuse a stale HTTP cache.');
+$expect(str_contains($rootRewrite, 'no-cache, no-store, must-revalidate'), 'Service-worker no-cache response policy is missing.');
 
 foreach ([
     'znews/assets/znews.js',

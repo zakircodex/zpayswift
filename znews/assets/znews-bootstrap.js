@@ -99,12 +99,12 @@
 
     await loadScript('/znews/assets/znews-access.js?v=1');
     await loadScript('/znews/assets/znews-feed-ui.js?v=1');
-    await loadScript('/znews/assets/znews-profile.js?v=1');
-    await loadScript('/znews/assets/znews-reader.js?v=2');
-    await loadScript('/znews/assets/znews.js?v=3');
+    await loadScript('/znews/assets/znews-profile.js?v=2');
+    await loadScript('/znews/assets/znews-reader.js?v=3');
+    await loadScript('/znews/assets/znews.js?v=4');
     await loadScript('/znews/assets/znews-header.js?v=2');
     await loadScript('/znews/assets/znews-creator.js?v=2');
-    await loadScript('/znews/assets/znews-instant-comments.js?v=3');
+    await loadScript('/znews/assets/znews-instant-comments.js?v=4');
     document.documentElement.classList.add('znews-ready');
   }
 
