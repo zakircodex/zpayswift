@@ -1,6 +1,7 @@
 'use strict';
 
-const CACHE_NAME = 'znews-shell-v10';
+const CACHE_NAME = 'znews-shell-v9';
+const SHELL_REVISION = 'reader-full-width-1';
 const SHELL = [
   '/znews/',
   '/znews/index.html',
@@ -23,6 +24,7 @@ const SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
+  void SHELL_REVISION;
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)));
   self.skipWaiting();
 });
