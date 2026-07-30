@@ -76,8 +76,8 @@
   function currentPostId() {
     const cardId = text(detail.querySelector('[data-post-id]')?.dataset.postId);
     if (cardId) return cardId;
-    const match = window.location.pathname.match(/^\/znews\/post\/([A-Za-z0-9_-]+)\/?$/);
-    return match ? decodeURIComponent(match[1]) : '';
+    const route = config.parseRoute();
+    return route.kind === 'post' ? route.id : '';
   }
 
   function formatTime(seconds) {
@@ -127,8 +127,8 @@
   wrapApiMethod('comments', cacheComments);
   wrapApiMethod('publicPost', (payload) => {
     const post = payload?.data?.post || {};
-    const creator = text(post.creator_name || 'Z News');
-    if (title) title.textContent = creator ? `${creator}'s post` : 'Z News post';
+    const creator = text(post.creator_name || 'Z Sky 24');
+    if (title) title.textContent = creator ? `${creator}'s post` : 'Z Sky 24 post';
   });
 
   function syncAccessUi() {
@@ -390,7 +390,7 @@
   }, true);
 
   closeButton.addEventListener('click', (event) => {
-    if (!state.openedFromFeed || !window.location.pathname.startsWith('/znews/post/')) return;
+    if (!state.openedFromFeed || config.parseRoute().kind !== 'post') return;
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
@@ -398,7 +398,7 @@
   }, true);
 
   window.addEventListener('popstate', (event) => {
-    if (window.location.pathname.startsWith('/znews/post/')) return;
+    if (config.parseRoute().kind === 'post') return;
     const target = Number(event.state?.znewsFeedScrollY ?? state.feedScrollY ?? 0);
     window.setTimeout(() => window.scrollTo({ top: target, behavior: 'auto' }), 40);
   });

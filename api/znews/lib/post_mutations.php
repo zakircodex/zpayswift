@@ -333,7 +333,7 @@ function znews_update_text_post(
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_POST_UPDATED', $postId, 'Z News post updated', [
+        system_log('ZNEWS_POST_UPDATED', $postId, 'Z Sky 24 post updated', [
             'uid' => $uid,
             'post_id' => $postId,
             'status' => 'REVIEW',
@@ -476,7 +476,7 @@ function znews_delete_post(
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_POST_DELETED', $postId, 'Z News post deleted', [
+        system_log('ZNEWS_POST_DELETED', $postId, 'Z Sky 24 post deleted', [
             'uid' => $uid,
             'post_id' => $postId,
         ]);

@@ -38,7 +38,7 @@ znews_sort_index_rows_desc($rows);
 $items = [];
 $creator = [
     'uid' => $creatorUid,
-    'name' => 'Z News creator',
+    'name' => 'Z Sky 24 creator',
     'profile_photo_url' => '',
 ];
 
@@ -64,7 +64,7 @@ foreach ($rows as $row) {
     if (!$items) {
         $creator = [
             'uid' => $creatorUid,
-            'name' => trim((string)($formatted['creator_name'] ?? 'Z News creator')) ?: 'Z News creator',
+            'name' => trim((string)($formatted['creator_name'] ?? 'Z Sky 24 creator')) ?: 'Z Sky 24 creator',
             'profile_photo_url' => trim((string)($formatted['creator_photo_url'] ?? '')),
         ];
     }

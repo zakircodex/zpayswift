@@ -1,9 +1,8 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-embedded-shell-v1';
-const SHELL_REVISION = 'dual-domain-branding-1';
+const CACHE_NAME = 'zsky24-standalone-shell-v1';
 const SHELL = [
-  '/znews/',
+  '/',
   '/znews/index.html',
   '/znews/assets/znews.css?v=2',
   '/znews/assets/znews-premium.css?v=4',
@@ -20,11 +19,10 @@ const SHELL = [
   '/znews/assets/znews-header.js?v=2',
   '/znews/assets/znews-creator.js?v=2',
   '/znews/assets/znews-instant-comments.js?v=3',
-  '/znews/manifest.webmanifest'
+  '/manifest.webmanifest'
 ];
 
 self.addEventListener('install', (event) => {
-  void SHELL_REVISION;
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)));
   self.skipWaiting();
 });
@@ -32,7 +30,10 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then((keys) => Promise.all(
+        keys.filter((key) => key.startsWith('zsky24-standalone-') && key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
+      ))
       .then(() => self.clients.claim())
   );
 });
@@ -44,13 +45,13 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
-  if (request.mode === 'navigate' && url.pathname.startsWith('/znews/')) {
+  if (request.mode === 'navigate'
+    && (url.pathname === '/' || /^\/(?:post|creator)\/[A-Za-z0-9_-]+\/?$/.test(url.pathname))) {
     event.respondWith(fetch(request).catch(() => caches.match('/znews/index.html')));
     return;
   }
 
-  if (!url.pathname.startsWith('/znews/')) return;
-
+  if (!url.pathname.startsWith('/znews/') && url.pathname !== '/manifest.webmanifest') return;
   event.respondWith(
     caches.match(request).then((cached) => cached || fetch(request).then((response) => {
       if (response.ok) {

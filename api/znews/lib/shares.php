@@ -215,7 +215,7 @@ function znews_record_share(
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_POST_SHARED', $shareId, 'Z News post shared', [
+        system_log('ZNEWS_POST_SHARED', $shareId, 'Z Sky 24 post shared', [
             'post_id' => $postId,
             'uid' => $uid,
             'channel' => $channel,

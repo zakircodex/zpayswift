@@ -135,12 +135,12 @@
   }
 
   function creatorPath(uid) {
-    return `/znews/creator/${encodeURIComponent(uid)}`;
+    return config.publicPath('creator', uid);
   }
 
   function profilePostMarkup(post) {
     const id = text(post.post_id);
-    const name = text(post.creator_name || 'Z News creator');
+    const name = text(post.creator_name || 'Z Sky 24 creator');
     const photo = safeUrl(post.creator_photo_url);
     const image = safeUrl(post.image_url);
     const body = text(post.text);
@@ -181,7 +181,7 @@
       const items = Array.isArray(result.data?.items) ? result.data.items : [];
       items.forEach(rememberPost);
 
-      const name = text(creator.name || items[0]?.creator_name || 'Z News creator');
+      const name = text(creator.name || items[0]?.creator_name || 'Z Sky 24 creator');
       const photo = creator.profile_photo_url || items[0]?.creator_photo_url || '';
       els.name.textContent = name;
       setAvatar(name, photo);
@@ -232,10 +232,10 @@
   }
 
   async function sharePost(postId) {
-    const url = `${window.location.origin}/znews/post/${encodeURIComponent(postId)}`;
+    const url = config.canonicalUrl('post', postId);
     try {
       if (navigator.share) {
-        await navigator.share({ title: 'Z News', text: 'Read this story on Z News', url });
+        await navigator.share({ title: 'Z Sky 24', text: 'Read this story on Z Sky 24', url });
       } else {
         await navigator.clipboard.writeText(url);
       }
@@ -255,7 +255,7 @@
       if (!postId) return;
       event.preventDefault();
       if (profileAction.dataset.profileAction === 'share') sharePost(postId);
-      else window.location.assign(`/znews/post/${encodeURIComponent(postId)}`);
+      else window.location.assign(config.publicPath('post', postId));
       return;
     }
 
@@ -288,7 +288,7 @@
   cardObserver.observe(document.body, { childList: true, subtree: true });
 
   els.back.addEventListener('click', () => {
-    if (window.location.pathname.startsWith('/znews/creator/')) {
+    if (config.parseRoute().kind === 'creator') {
       history.back();
     } else {
       showFeed();
@@ -297,17 +297,17 @@
   els.loadMore.addEventListener('click', () => loadCreator({ append: true }));
 
   window.addEventListener('popstate', () => {
-    const match = window.location.pathname.match(/^\/znews\/creator\/([A-Za-z0-9_-]+)\/?$/);
-    if (match) {
-      openCreator(decodeURIComponent(match[1]), { pushHistory: false });
+    const route = config.parseRoute();
+    if (route.kind === 'creator') {
+      openCreator(route.id, { pushHistory: false });
     } else if (els.view.classList.contains('active')) {
       showFeed();
     }
   });
 
   decorateCards();
-  const initial = window.location.pathname.match(/^\/znews\/creator\/([A-Za-z0-9_-]+)\/?$/);
-  if (initial) openCreator(decodeURIComponent(initial[1]), { pushHistory: false });
+  const initial = config.parseRoute();
+  if (initial.kind === 'creator') openCreator(initial.id, { pushHistory: false });
 
   window.ZNewsCreatorProfile = Object.freeze({ open: openCreator });
 })();

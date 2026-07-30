@@ -225,7 +225,7 @@ function znews_update_post_with_media(
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_POST_UPDATED', $postId, 'Z News post content updated', [
+        system_log('ZNEWS_POST_UPDATED', $postId, 'Z Sky 24 post content updated', [
             'uid' => $uid,
             'post_id' => $postId,
             'content_type' => $contentType,

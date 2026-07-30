@@ -102,7 +102,7 @@ function znews_transfer_wallet_credit(array $request, array $admin): array
     );
     $now = wallet_now();
     $identity = wallet_identity($uid, $user, (string)($user['role'] ?? 'USER'));
-    $note = 'Z News balance transferred to main wallet';
+    $note = 'Z Sky 24 balance transferred to main wallet';
 
     $credit = wallet_credit_available(
         $uid,
@@ -125,7 +125,7 @@ function znews_transfer_wallet_credit(array $request, array $admin): array
             'source_to_bdt_rate_micros' => (int)($request['source_to_bdt_rate_micros'] ?? 0),
             'myr_to_bdt_rate_micros' => (int)($request['myr_to_bdt_rate_micros'] ?? 0),
             'sender_uid' => 'ZNEWS',
-            'sender_name' => 'Z News',
+            'sender_name' => 'Z Sky 24',
             'sender_role' => 'SYSTEM',
             'receiver_uid' => $identity['uid'],
             'receiver_name' => $identity['name'],
@@ -160,7 +160,7 @@ function znews_transfer_wallet_credit(array $request, array $admin): array
         wallet_financial_operation_mark_reconciliation_required(
             $claim,
             'LEDGER_EVIDENCE_MISSING',
-            'Z News wallet credit ledger evidence is missing'
+            'Z Sky 24 wallet credit ledger evidence is missing'
         );
         return [
             'ok' => false,
@@ -185,7 +185,7 @@ function znews_transfer_wallet_credit(array $request, array $admin): array
         'receiver_currency' => $destinationCurrency,
         'receiver_country_code' => wallet_account_country_code($user, $wallet),
         'sender_uid' => 'ZNEWS',
-        'sender_name' => 'Z News',
+        'sender_name' => 'Z Sky 24',
         'sender_phone' => '',
         'sender_role' => 'SYSTEM',
         'receiver_uid' => $identity['uid'],
@@ -222,7 +222,7 @@ function znews_transfer_wallet_credit(array $request, array $admin): array
         wallet_financial_operation_mark_failed(
             $claim,
             'TRANSFER_HISTORY_FAILED',
-            'Z News wallet transfer history could not be saved',
+            'Z Sky 24 wallet transfer history could not be saved',
             [
                 'wallet_applied' => true,
                 'ledger_written' => true,
@@ -262,7 +262,7 @@ function znews_transfer_wallet_credit(array $request, array $admin): array
             $uid,
             'ZNEWS_BALANCE_TRANSFER',
             'Balance transferred',
-            'Your Z News balance was transferred to your main wallet.',
+            'Your Z Sky 24 balance was transferred to your main wallet.',
             'ZNEWS_TRANSFER_REQUESTS',
             $requestId,
             'ZNEWS_BALANCE_TRANSFER:' . $requestId,

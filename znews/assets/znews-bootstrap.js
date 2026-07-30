@@ -4,6 +4,30 @@
   const config = window.ZNEWS_CONFIG;
   const ApiClient = window.ZNewsApiClient;
 
+  function syncDomainMetadata() {
+    const route = config.parseRoute();
+    const canonical = config.canonicalUrl(route.kind === 'feed' ? '' : route.kind, route.id);
+    document.querySelector('link[rel="canonical"]')?.setAttribute('href', canonical);
+    document.querySelector('meta[property="og:url"]')?.setAttribute('content', canonical);
+    document.querySelector('meta[property="og:title"]')?.setAttribute(
+      'content',
+      route.kind === 'post' ? 'Read this story on Z Sky 24' : 'Z Sky 24'
+    );
+    document.querySelector('#appManifest')?.setAttribute(
+      'href',
+      config.standalone ? '/manifest.webmanifest' : '/znews/manifest.webmanifest'
+    );
+    document.querySelectorAll('[data-public-home]').forEach((link) => {
+      link.setAttribute('href', config.publicPath());
+    });
+    document.querySelectorAll('[data-zpay-dashboard]').forEach((link) => {
+      link.setAttribute('href', config.zpayDashboardUrl);
+    });
+    document.querySelectorAll('[data-zpay-register], #commentGuestCta').forEach((link) => {
+      link.setAttribute('href', config.zpayRegisterUrl);
+    });
+  }
+
   function loadScript(src) {
     return new Promise((resolve, reject) => {
       const script = document.createElement('script');
@@ -46,7 +70,7 @@
       window.ZNEWS_HANDOFF_RESULT = {
         ok: false,
         code: error?.code || 'ZNEWS_HANDOFF_FAILED',
-        message: error?.message || 'Z News access could not be granted.'
+        message: error?.message || 'Z Sky 24 access could not be granted.'
       };
       return false;
     } finally {
@@ -67,7 +91,8 @@
   }
 
   async function boot() {
-    if (!config || !ApiClient) throw new Error('Z News configuration is unavailable.');
+    if (!config || !ApiClient) throw new Error('Z Sky 24 configuration is unavailable.');
+    syncDomainMetadata();
     const api = new ApiClient(config);
     const exchanged = await exchangeHandoff(api);
     if (!exchanged) await validateStoredSession(api);
@@ -88,7 +113,7 @@
     const announcement = document.querySelector('#announcement');
     if (announcement) {
       announcement.hidden = false;
-      announcement.textContent = 'Z News could not finish loading. Please reload the page.';
+      announcement.textContent = 'Z Sky 24 could not finish loading. Please reload the page.';
     }
   });
 })();

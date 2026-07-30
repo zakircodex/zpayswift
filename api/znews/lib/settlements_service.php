@@ -323,7 +323,7 @@ function znews_settle_impression(array $admin, string $impressionId, int $expect
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_REVENUE_SETTLED', $settlementId, 'Z News ad revenue settled', [
+        system_log('ZNEWS_REVENUE_SETTLED', $settlementId, 'Z Sky 24 ad revenue settled', [
             'impression_id' => $impressionId,
             'creator_uid' => $creatorUid,
             'currency' => $currency,

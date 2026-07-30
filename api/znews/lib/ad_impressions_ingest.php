@@ -239,7 +239,7 @@ function znews_ad_ingest(): array
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_AD_IMPRESSION_INGESTED', $impressionId, 'Z News ad impression ingested', [
+        system_log('ZNEWS_AD_IMPRESSION_INGESTED', $impressionId, 'Z Sky 24 ad impression ingested', [
             'network' => $network,
             'post_id' => (string)$payload['post_id'],
             'view_id' => (string)$payload['view_id'],

@@ -4,6 +4,21 @@
   const existing = window.ZNEWS_CONFIG && typeof window.ZNEWS_CONFIG === 'object'
     ? window.ZNEWS_CONFIG
     : {};
+  const standaloneHost = 'zsky24.com';
+  const requestHost = window.location.hostname.toLowerCase().replace(/^www\./, '');
+  const standalone = requestHost === standaloneHost;
+  const routeBase = standalone ? '' : '/znews';
+  const publicPath = (kind = '', id = '') => {
+    const suffix = kind ? `/${kind}/${encodeURIComponent(String(id || ''))}` : '/';
+    return `${routeBase}${suffix}`.replace(/\/+$/, kind ? '' : '/');
+  };
+  const parseRoute = (pathname = window.location.pathname) => {
+    const pattern = standalone
+      ? /^\/(post|creator)\/([A-Za-z0-9_-]+)\/?$/
+      : /^\/znews\/(post|creator)\/([A-Za-z0-9_-]+)\/?$/;
+    const match = String(pathname).match(pattern);
+    return match ? { kind: match[1], id: decodeURIComponent(match[2]) } : { kind: 'feed', id: '' };
+  };
 
   window.ZNEWS_CONFIG = Object.freeze({
     apiBase: existing.apiBase || '/api',
@@ -13,6 +28,15 @@
     feedPageSize: 12,
     commentPageSize: 50,
     creatorPostPageSize: 30,
+    brandName: 'Z Sky 24',
+    standaloneHost,
+    standalone,
+    routeBase,
+    publicPath,
+    parseRoute,
+    canonicalUrl: (kind = '', id = '') => `https://${standaloneHost}${kind ? `/${kind}/${encodeURIComponent(String(id || ''))}` : '/'}`,
+    zpayDashboardUrl: 'https://zpayswift.com/user/dashboard',
+    zpayRegisterUrl: 'https://zpayswift.com/user/register',
     ads: Object.freeze({
       provider: 'INMOBI',
       mode: existing.ads?.mode || 'TEST',

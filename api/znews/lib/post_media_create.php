@@ -124,7 +124,7 @@ function znews_create_post_with_media(
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_POST_CREATED', $postId, 'Z News post created', [
+        system_log('ZNEWS_POST_CREATED', $postId, 'Z Sky 24 post created', [
             'uid' => $uid,
             'post_id' => $postId,
             'content_type' => $contentType,

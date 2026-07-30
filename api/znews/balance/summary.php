@@ -41,7 +41,7 @@ usort($balances, static fn(array $a, array $b): int =>
 api_response(
     true,
     'ZNEWS_BALANCE_SUMMARY_OK',
-    'Z News balance loaded.',
+    'Z Sky 24 balance loaded.',
     [
         'creator_share_percent' => 50,
         'platform_share_percent' => 50,

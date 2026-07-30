@@ -4,6 +4,29 @@ DirectoryIndex index.html
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
+  # zsky24.com is an isolated public Z Sky 24 host sharing this codebase.
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
+  RewriteCond %{HTTPS} !=on
+  RewriteRule ^ https://zsky24.com%{REQUEST_URI} [R=301,L,NE]
+
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
+  RewriteRule ^(?:\.git|\.env|\.svn|\.hg)(?:/|$) - [F,L]
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
+  RewriteRule ^api/(?!znews(?:/|$)).* - [F,L,NC]
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
+  RewriteRule ^(?:admin|subadmin|user|wallet|worker|private)(?:/|$) - [F,L,NC]
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
+  RewriteRule ^(?:post|creator)/([A-Za-z0-9_-]+)/?$ /znews/index.html [L]
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
+  RewriteRule ^$ /znews/index.html [L]
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
+  RewriteRule ^(?!znews(?:/|$)|api/znews(?:/|$)|assets/brand/(?:zpay-icon|favicon|apple-touch-icon)\.png$|manifest\.webmanifest$|sw\.js$).+ - [F,L,NC]
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
+  RewriteRule ^manifest\.webmanifest$ /znews/manifest-root.webmanifest [L]
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
+  RewriteRule ^sw\.js$ /znews/sw-root.js [L]
+
+  RewriteCond %{HTTP_HOST} !^(?:www\.)?zsky24\.com$ [NC]
   RewriteCond %{HTTPS} !=on
   RewriteRule ^ https://zpayswift.com%{REQUEST_URI} [R=301,L,NE]
 

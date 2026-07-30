@@ -25,7 +25,8 @@ function contents(string $path): string
 }
 
 $required = [
-    'znews/index.html', 'znews/.htaccess', 'znews/manifest.webmanifest', 'znews/sw.js',
+    'znews/index.html', 'znews/.htaccess', 'znews/manifest.webmanifest', 'znews/manifest-root.webmanifest',
+    'znews/sw.js', 'znews/sw-root.js',
     'znews/assets/znews-config.js', 'znews/assets/znews-api.js', 'znews/assets/znews-ads.js',
     'znews/assets/znews-bootstrap.js', 'znews/assets/znews-access.js', 'znews/assets/znews-header.js',
     'znews/assets/znews-feed-ui.js', 'znews/assets/znews-profile.js', 'znews/assets/znews-reader.js',
@@ -40,8 +41,8 @@ foreach ($required as $relative) {
 }
 
 $index = contents($root . '/znews/index.html');
-check(str_contains($index, '<strong>Z News</strong>'), 'Z News brand is missing');
-check(str_contains($index, 'Stories • Updates • Community'), 'Z News tagline is missing');
+check(str_contains($index, '<strong>Z Sky 24</strong>'), 'Z Sky 24 brand is missing');
+check(str_contains($index, 'News • Stories • Community'), 'Z Sky 24 tagline is missing');
 check(str_contains($index, 'src="/assets/brand/zpay-icon.png"'), 'Original Z-Pay logo asset is not used');
 check(str_contains($index, 'interactive-widget=resizes-content'), 'Keyboard-resizing viewport mode is missing');
 check(str_contains($index, 'id="searchToggle"') && str_contains($index, 'id="menuToggle"'), 'Header tools are missing');
@@ -99,7 +100,7 @@ check(str_contains($creator, 'stopImmediatePropagation'), 'Duplicate creator sub
 
 $access = contents($root . '/znews/assets/znews-access.js');
 check(str_contains($access, "['create', 'mine', 'balance']"), 'Guest creator-route guard is missing');
-check(str_contains($access, "'/user/register'"), 'Guest registration route is missing');
+check(str_contains($access, 'config.zpayRegisterUrl'), 'Guest registration route is missing');
 check(str_contains($access, '[data-action="like"]'), 'Guest like cleanup is missing');
 
 $header = contents($root . '/znews/assets/znews-header.js');
@@ -113,7 +114,7 @@ check(str_contains($header, "menuDrawer.classList.add('is-open')"), 'Menu open b
 $profile = contents($root . '/znews/assets/znews-profile.js');
 check(str_contains($profile, "wrapApiMethod('publicFeed')"), 'Creator identity capture is missing');
 check(str_contains($profile, 'znews/public/creator.php'), 'Public creator API is missing');
-check(str_contains($profile, '/znews/creator/'), 'Clean creator route is missing');
+check(str_contains($profile, "config.publicPath('creator', uid)"), 'Domain-aware creator route is missing');
 check(str_contains($profile, 'data-profile-post-id'), 'Creator public post rendering is missing');
 
 $feedUi = contents($root . '/znews/assets/znews-feed-ui.js');
@@ -190,7 +191,7 @@ check(strpos($bootstrap, 'znews-reader.js?v=2') < strpos($bootstrap, 'znews.js?v
 check(str_contains($bootstrap, 'znews-instant-comments.js?v=3'), 'Latest comment module is not loaded');
 
 $serviceWorker = contents($root . '/znews/sw.js');
-check(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v9'"), 'Reader shell cache is stale');
+check(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v1'"), 'Embedded reader shell cache is stale');
 check(str_contains($serviceWorker, 'znews-bootstrap.js?v=6'), 'Latest bootstrap is missing from cache');
 check(str_contains($serviceWorker, 'znews-reader.css?v=2'), 'Latest reader CSS is missing from cache');
 check(str_contains($serviceWorker, 'znews-reader.js?v=2'), 'Latest reader JS is missing from cache');
@@ -202,6 +203,9 @@ $manifest = json_decode(contents($root . '/znews/manifest.webmanifest'), true);
 check(is_array($manifest), 'Web manifest is invalid JSON');
 check(($manifest['start_url'] ?? '') === '/znews/', 'Manifest start URL is incorrect');
 check(($manifest['display'] ?? '') === 'standalone', 'Manifest standalone mode is missing');
+$rootManifest = json_decode(contents($root . '/znews/manifest-root.webmanifest'), true);
+check(($rootManifest['start_url'] ?? '') === '/', 'Standalone manifest start URL is incorrect');
+check(($rootManifest['scope'] ?? '') === '/', 'Standalone manifest scope is incorrect');
 
 $htaccess = contents($root . '/znews/.htaccess');
 check(str_contains($htaccess, 'RewriteRule ^post/([A-Za-z0-9_-]+)/?$ index.html [L]'), 'Clean post route is missing');
