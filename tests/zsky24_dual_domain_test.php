@@ -53,8 +53,8 @@ zsky_expect(str_contains($handoff, 'ZNEWS_HANDOFF_REPLAYED'), 'Replay response i
 zsky_expect(str_contains($handoff, 'auth_session_epoch') && str_contains($handoff, 'device_id'), 'Session/device binding is missing.');
 zsky_expect(str_contains($handoff, 'znews_request_host()'), 'Intended-host validation is missing.');
 
-zsky_expect(str_contains($embeddedWorker, 'zsky24-embedded-shell-v1'), 'Embedded PWA namespace is missing.');
-zsky_expect(str_contains($standaloneWorker, 'zsky24-standalone-shell-v1'), 'Standalone PWA namespace is missing.');
+zsky_expect(str_contains($embeddedWorker, 'zsky24-embedded-shell-v2'), 'Embedded PWA namespace is missing.');
+zsky_expect(str_contains($standaloneWorker, 'zsky24-standalone-shell-v2'), 'Standalone PWA namespace is missing.');
 zsky_expect(str_contains($embeddedWorker, "url.pathname.startsWith('/api/')"), 'Embedded worker may cache API responses.');
 zsky_expect(str_contains($standaloneWorker, "url.pathname.startsWith('/api/')"), 'Standalone worker may cache API responses.');
 

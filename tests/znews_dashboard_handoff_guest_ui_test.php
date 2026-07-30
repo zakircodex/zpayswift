@@ -78,7 +78,7 @@ znews_contract_expect(str_contains($bootstrap, 'znews-reader.js?v=2'), 'Latest p
 znews_contract_expect(str_contains($access, "['create', 'mine', 'balance']"), 'Guest-only route guard must cover creator sections.');
 znews_contract_expect(str_contains($access, 'config.zpayRegisterUrl'), 'Guest join action must open the existing Z-Pay registration page.');
 znews_contract_expect(str_contains($access, '[data-action="like"]'), 'Guest readers must not receive authenticated like controls.');
-znews_contract_expect(str_contains($serviceWorker, 'zsky24-embedded-shell-v1'), 'Embedded PWA cache namespace is missing.');
+znews_contract_expect(str_contains($serviceWorker, 'zsky24-embedded-shell-v2'), 'Embedded PWA cache namespace is missing.');
 znews_contract_expect(str_contains($serviceWorker, 'znews-reader.js?v=2'), 'Latest reader module must be cached.');
 znews_contract_expect(!str_contains($serviceWorker, 'znews-quick-login.js'), 'Removed login module must not remain in the PWA cache.');
 

@@ -1,7 +1,7 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-embedded-shell-v1';
-const SHELL_REVISION = 'dual-domain-branding-1';
+const CACHE_NAME = 'zsky24-embedded-shell-v2';
+const SHELL_REVISION = 'profile-photo-origin-1';
 const SHELL = [
   '/znews/',
   '/znews/index.html',
