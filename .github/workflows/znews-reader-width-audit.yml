@@ -1,0 +1,35 @@
+name: Z News Reader Width Audit
+
+on:
+  push:
+    branches:
+      - feature/znews-reader-full-width-fix
+    paths:
+      - 'znews/assets/znews-reader.css'
+      - 'znews/sw.js'
+      - 'tests/znews_reader_full_width_test.php'
+      - '.github/workflows/znews-reader-width-audit.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'znews/assets/znews-reader.css'
+      - 'znews/sw.js'
+      - 'tests/znews_reader_full_width_test.php'
+      - '.github/workflows/znews-reader-width-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  reader-width:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      - name: Reader width regression
+        run: php tests/znews_reader_full_width_test.php
