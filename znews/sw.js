@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'znews-shell-v9';
+const CACHE_NAME = 'znews-shell-v10';
 const SHELL = [
   '/znews/',
   '/znews/index.html',
