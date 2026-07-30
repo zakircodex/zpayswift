@@ -51,7 +51,7 @@
     const renderer = renderers.get('INMOBI');
     if (typeof renderer !== 'function') {
       hideSlot(slot);
-      console.warn('Z News: InMobi renderer is not registered.');
+      console.warn('Z Sky 24: InMobi renderer is not registered.');
       return;
     }
 
@@ -67,7 +67,7 @@
       });
     } catch (error) {
       hideSlot(slot);
-      console.warn('Z News: ad placement could not be rendered.', error);
+      console.warn('Z Sky 24: ad placement could not be rendered.', error);
     }
   }
 

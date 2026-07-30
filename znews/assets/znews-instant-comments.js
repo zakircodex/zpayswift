@@ -28,8 +28,8 @@
   function currentPostId() {
     const cardId = text(document.querySelector('#postDetail [data-post-id]')?.dataset.postId);
     if (cardId) return cardId;
-    const match = window.location.pathname.match(/^\/znews\/post\/([A-Za-z0-9_-]+)\/?$/);
-    return match ? decodeURIComponent(match[1]) : '';
+    const route = config.parseRoute();
+    return route.kind === 'post' ? route.id : '';
   }
 
   function formatTime(seconds) {
@@ -153,7 +153,7 @@
       }
     } catch (requestError) {
       const message = requestError?.code === 'SESSION_EXPIRED'
-        ? 'Creator access expired. Open Z News again from your Z-Pay dashboard.'
+        ? 'Creator access expired. Open Z Sky 24 again from your Z-Pay dashboard.'
         : (requestError?.message || 'Comment could not be sent.');
       toast(message, 'error');
     } finally {

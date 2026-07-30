@@ -213,7 +213,7 @@ function znews_like_set(
             system_log(
                 $liked ? 'ZNEWS_POST_LIKED' : 'ZNEWS_POST_UNLIKED',
                 $postId,
-                $liked ? 'Z News post liked' : 'Z News post unliked',
+                $liked ? 'Z Sky 24 post liked' : 'Z Sky 24 post unliked',
                 ['post_id' => $postId, 'uid' => $uid]
             );
         }

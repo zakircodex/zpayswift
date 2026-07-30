@@ -113,7 +113,7 @@
       ZNEWS_POST_NOT_FOUND: 'This post is no longer available.',
       ZNEWS_COMMENT_MESSAGE_REQUIRED: 'Write a comment first.',
       ZNEWS_TRANSFER_MINIMUM_NOT_MET: 'Minimum transfer amount is ৳500.',
-      ZNEWS_TRANSFER_INSUFFICIENT_BALANCE: 'Your available Z News balance is not enough.',
+      ZNEWS_TRANSFER_INSUFFICIENT_BALANCE: 'Your available Z Sky 24 balance is not enough.',
       NETWORK_FAILURE: 'Network connection failed. Please try again.',
       MALFORMED_RESPONSE: 'The server returned an invalid response.'
     };
@@ -177,7 +177,7 @@
     els.credentialFields.hidden = false;
     els.otpFields.hidden = true;
     els.authError.hidden = true;
-    els.authTitle.textContent = 'Sign in to Z News';
+    els.authTitle.textContent = 'Open Z Sky 24 from Z-Pay';
     els.authDescription.textContent = 'Use your existing Z-Pay phone number, password and PIN.';
     els.authSubmit.textContent = 'Continue';
     if (!els.authDialog.open) els.authDialog.showModal();
@@ -198,7 +198,7 @@
         localStorage.setItem('znews_web_device_id', deviceId);
         const base = {
           device_id: deviceId,
-          device_name: 'Z News Web',
+          device_name: 'Z Sky 24 Web',
           app_version: 'znews-web-1'
         };
 
@@ -242,7 +242,7 @@
         otp,
         trust_device: false,
         device_id: state.authContext.deviceId,
-        device_name: 'Z News Web'
+        device_name: 'Z Sky 24 Web'
       });
       const session = text(result.data?.session_token);
       if (!session) throw new window.ZNewsApiError('Login did not return a session token.');
@@ -288,7 +288,7 @@
 
   function postMarkup(post, { detail = false, creatorMode = false } = {}) {
     const id = text(post.post_id);
-    const name = text(post.creator_name || 'Z News creator');
+    const name = text(post.creator_name || 'Z Sky 24 creator');
     const image = postImage(post);
     const body = text(post.text);
     const status = text(post.status || 'ACTIVE').toUpperCase();
@@ -399,12 +399,12 @@
   }
 
   async function sharePost(postId, button) {
-    const url = `${window.location.origin}/znews/post/${encodeURIComponent(postId)}`;
+    const url = config.canonicalUrl('post', postId);
     setBusy(button, true, 'Sharing…');
     try {
       let channel = 'COPY_LINK';
       if (navigator.share) {
-        await navigator.share({ title: 'Z News', text: 'Read this story on Z News', url });
+        await navigator.share({ title: 'Z Sky 24', text: 'Read this story on Z Sky 24', url });
         channel = 'NATIVE_SHARE';
       } else {
         await navigator.clipboard.writeText(url);
@@ -426,7 +426,7 @@
     els.postDetail.innerHTML = '<div class="skeleton-card"><div class="skeleton line short"></div><div class="skeleton block"></div></div>';
     els.commentList.textContent = '';
     if (!els.postDialog.open) els.postDialog.showModal();
-    history.pushState({ postId }, '', `/znews/post/${encodeURIComponent(postId)}`);
+    history.pushState({ postId }, '', config.publicPath('post', postId));
 
     try {
       const [postResult, commentResult] = await Promise.all([
@@ -517,7 +517,7 @@
     completeView();
     if (els.postDialog.open) els.postDialog.close();
     state.currentPostId = '';
-    if (location.pathname.startsWith('/znews/post/')) history.pushState({}, '', '/znews/');
+    if (config.parseRoute().kind === 'post') history.pushState({}, '', config.publicPath());
   }
 
   async function submitPost(event) {
@@ -560,7 +560,7 @@
       const items = Array.isArray(result.data?.items) ? result.data.items : [];
       els.mineList.innerHTML = items.length
         ? items.map((post) => postMarkup(post, { creatorMode: true })).join('')
-        : '<div class="empty-state card"><strong>No posts yet</strong>Create your first Z News post.</div>';
+        : '<div class="empty-state card"><strong>No posts yet</strong>Create your first Z Sky 24 post.</div>';
       bindPostActions(els.mineList);
     } catch (error) {
       els.mineList.innerHTML = `<div class="empty-state card"><strong>Posts could not be loaded</strong>${escapeHtml(errorMessage(error))}</div>`;
@@ -665,8 +665,8 @@
     els.postDialog.addEventListener('click', (event) => { if (event.target === els.postDialog) closePost(); });
     els.transferButton.addEventListener('click', requestTransfer);
     window.addEventListener('popstate', () => {
-      const match = location.pathname.match(/^\/znews\/post\/([A-Za-z0-9_-]+)\/?$/);
-      if (match) openPost(decodeURIComponent(match[1]));
+      const route = config.parseRoute();
+      if (route.kind === 'post') openPost(route.id);
       else if (els.postDialog.open) closePost();
     });
     window.addEventListener('pagehide', () => completeView());
@@ -677,9 +677,11 @@
     bindEvents();
     window.ZNewsAds.mountAll();
     await loadFeed();
-    const match = location.pathname.match(/^\/znews\/post\/([A-Za-z0-9_-]+)\/?$/);
-    if (match) openPost(decodeURIComponent(match[1]));
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/znews/sw.js').catch(() => {});
+    const route = config.parseRoute();
+    if (route.kind === 'post') openPost(route.id);
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register(config.standalone ? '/sw.js' : '/znews/sw.js').catch(() => {});
+    }
   }
 
   boot();

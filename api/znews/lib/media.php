@@ -46,13 +46,13 @@ function znews_media_ensure_storage_dir(string $relativeDir): string
 {
     $relativeDir = trim(str_replace('\\', '/', $relativeDir), '/');
     if ($relativeDir === '' || preg_match('#^(?:[0-9]{4})/(?:0[1-9]|1[0-2])$#', $relativeDir) !== 1) {
-        throw new RuntimeException('Invalid Z News media storage directory.');
+        throw new RuntimeException('Invalid Z Sky 24 media storage directory.');
     }
 
     $root = znews_media_storage_root();
     $target = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relativeDir);
     if (!is_dir($target) && !mkdir($target, 0750, true) && !is_dir($target)) {
-        throw new RuntimeException('Unable to create Z News media storage directory.');
+        throw new RuntimeException('Unable to create Z Sky 24 media storage directory.');
     }
 
     return $target;
@@ -74,7 +74,7 @@ function znews_media_resolve_path(string $storageKey): string
 {
     $storageKey = trim(str_replace('\\', '/', $storageKey), '/');
     if (preg_match('#^[0-9]{4}/(?:0[1-9]|1[0-2])/znews_[a-z0-9]+\.(?:jpg|png|webp)$#', $storageKey) !== 1) {
-        throw new RuntimeException('Invalid Z News media storage key.');
+        throw new RuntimeException('Invalid Z Sky 24 media storage key.');
     }
 
     $root = rtrim(znews_media_storage_root(), DIRECTORY_SEPARATOR);
@@ -82,7 +82,7 @@ function znews_media_resolve_path(string $storageKey): string
     $rootReal = realpath($root);
     $dirReal = realpath(dirname($path));
     if ($rootReal !== false && $dirReal !== false && !str_starts_with($dirReal . DIRECTORY_SEPARATOR, $rootReal . DIRECTORY_SEPARATOR)) {
-        throw new RuntimeException('Invalid Z News media storage path.');
+        throw new RuntimeException('Invalid Z Sky 24 media storage path.');
     }
 
     return $path;
@@ -599,7 +599,7 @@ function znews_media_create(array $auth, array $validated, string $idempotencyKe
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_MEDIA_UPLOADED', $mediaId, 'Z News image uploaded', [
+        system_log('ZNEWS_MEDIA_UPLOADED', $mediaId, 'Z Sky 24 image uploaded', [
             'uid' => $uid,
             'media_id' => $mediaId,
             'mime' => $row['mime'],

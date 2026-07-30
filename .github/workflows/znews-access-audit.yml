@@ -27,6 +27,7 @@ jobs:
           php -l api/user/znews.php
           php -l api/znews/auth/handoff.php
           php -l api/znews/auth/session.php
+          php -l api/znews/lib/domain.php
           php -l api/znews/public/creator.php
           php -l api/znews/public/feed.php
           php -l api/znews/public/impression.php
@@ -47,6 +48,8 @@ jobs:
         run: php tests/znews_web_ui_foundation_test.php
       - name: Social engagement regression
         run: php tests/znews_social_engagement_test.php
+      - name: Z Sky 24 dual-domain security
+        run: php tests/zsky24_dual_domain_test.php
       - name: JavaScript syntax
         run: |
           node --check znews/assets/znews-config.js
@@ -61,3 +64,4 @@ jobs:
           node --check znews/assets/znews-creator.js
           node --check znews/assets/znews-instant-comments.js
           node --check znews/sw.js
+          node --check znews/sw-root.js

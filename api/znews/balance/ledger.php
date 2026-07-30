@@ -17,6 +17,6 @@ $cursor = znews_settlement_cursor_decode($_GET['cursor'] ?? '');
 api_response(
     true,
     'ZNEWS_BALANCE_LEDGER_OK',
-    'Z News balance activity loaded.',
+    'Z Sky 24 balance activity loaded.',
     znews_creator_ledger($uid, $currency, $limit, $cursor)
 );

@@ -15,6 +15,7 @@ on:
       - 'znews/**'
       - 'docs/znews-*.md'
       - 'tests/znews_*_test.php'
+      - 'tests/zsky24_*_test.php'
       - '.cpanel.yml'
       - '.github/workflows/znews-backend-audit.yml'
   pull_request:
@@ -27,6 +28,7 @@ on:
       - 'znews/**'
       - 'docs/znews-*.md'
       - 'tests/znews_*_test.php'
+      - 'tests/zsky24_*_test.php'
       - '.cpanel.yml'
       - '.github/workflows/znews-backend-audit.yml'
   workflow_dispatch:
@@ -106,6 +108,8 @@ jobs:
             file: tests/znews_view_antifraud_test.php
           - id: web-ui-foundation
             file: tests/znews_web_ui_foundation_test.php
+          - id: zsky24-dual-domain
+            file: tests/zsky24_dual_domain_test.php
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

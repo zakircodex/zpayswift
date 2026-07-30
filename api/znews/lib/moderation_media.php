@@ -95,7 +95,7 @@ function znews_admin_moderate_post_with_media(
     $result['media_moderation_replay'] = !empty($mediaResult['idempotent_replay']);
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_MEDIA_' . strtoupper($action), $mediaId, 'Z News image moderation synced', [
+        system_log('ZNEWS_MEDIA_' . strtoupper($action), $mediaId, 'Z Sky 24 image moderation synced', [
             'post_id' => $postId,
             'media_id' => $mediaId,
             'admin_uid' => (string)($admin['uid'] ?? ''),

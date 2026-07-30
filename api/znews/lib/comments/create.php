@@ -142,7 +142,7 @@ function znews_comment_create(
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_COMMENT_CREATED', $commentId, 'Z News comment created', [
+        system_log('ZNEWS_COMMENT_CREATED', $commentId, 'Z Sky 24 comment created', [
             'post_id' => $postId,
             'uid' => $uid,
             'status' => (string)$comment['status'],

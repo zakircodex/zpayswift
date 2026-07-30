@@ -547,7 +547,7 @@ function znews_admin_moderate_post(
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_POST_' . ($approve ? 'APPROVED' : 'REJECTED'), $postId, 'Z News moderation decision', [
+        system_log('ZNEWS_POST_' . ($approve ? 'APPROVED' : 'REJECTED'), $postId, 'Z Sky 24 moderation decision', [
             'post_id' => $postId,
             'admin_uid' => $adminUid,
             'creator_uid' => $creatorUid,

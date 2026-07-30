@@ -171,7 +171,7 @@ function znews_require_creator(bool $touchSession = true): array
     }
 
     if (!in_array($role, ['USER', 'RETAILER'], true)) {
-        api_response(false, 'ZNEWS_ROLE_NOT_ALLOWED', 'This account cannot publish Z News posts.', [], 403);
+        api_response(false, 'ZNEWS_ROLE_NOT_ALLOWED', 'This account cannot publish Z Sky 24 posts.', [], 403);
     }
 
     return $auth;

@@ -6,6 +6,7 @@ user_page_require_auth();
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/auth_android.php';
+require_once dirname(__DIR__) . '/znews/lib/domain.php';
 
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
@@ -37,15 +38,28 @@ auth_app_guard_user_login($user);
 
 $code = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
 $now = now_ts();
-$_SESSION['znews_handoff'] = [
+$context = znews_handoff_context();
+$grant = array_merge([
     'code_hash' => hash('sha256', $code),
     'uid' => $uid,
     'session_hash' => session_hash($sessionToken),
+    'auth_session_epoch' => trim((string)($session['auth_session_epoch'] ?? '')),
+    'device_id' => trim((string)($session['device_id'] ?? '')),
+    'target_host' => znews_handoff_target_host(),
     'created_at' => $now,
     'expires_at' => $now + 90,
     'used' => false,
-];
+    'used_at' => 0,
+    'ip_hash' => $context['ip_hash'],
+    'user_agent_hash' => $context['user_agent_hash'],
+], znews_handoff_encrypt_token($sessionToken));
+
+if (!fb_put(znews_handoff_path($code), $grant)) {
+    session_write_close();
+    http_response_code(503);
+    exit('Z Sky 24 access is temporarily unavailable.');
+}
 
 session_write_close();
-header('Location: /znews/#handoff=' . rawurlencode($code), true, 302);
+header('Location: https://' . znews_handoff_target_host() . '/#handoff=' . rawurlencode($code), true, 302);
 exit;

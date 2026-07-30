@@ -16,7 +16,7 @@ if ($profilePhoto === '') {
     $profilePhoto = trim((string)($user['PROFILE'] ?? $user['profile'] ?? ''));
 }
 
-api_response(true, 'ZNEWS_CREATOR_SESSION_OK', 'Z News creator access is active.', [
+api_response(true, 'ZNEWS_CREATOR_SESSION_OK', 'Z Sky 24 creator access is active.', [
     'access_mode' => 'CREATOR',
     'user' => array_merge(auth_app_user_payload($uid, $user), [
         'profile_photo_url' => $profilePhoto,

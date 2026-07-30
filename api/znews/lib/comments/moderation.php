@@ -219,7 +219,7 @@ function znews_admin_moderate_comment(
                 ? 'ZNEWS_COMMENT_APPROVED'
                 : ($postPublicationReject ? 'ZNEWS_COMMENT_BLOCKED_AFTER_PUBLICATION' : 'ZNEWS_COMMENT_REJECTED'),
             $commentId,
-            'Z News comment moderation decision',
+            'Z Sky 24 comment moderation decision',
             [
                 'post_id' => $postId,
                 'comment_id' => $commentId,

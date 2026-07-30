@@ -304,7 +304,7 @@ function znews_transfer_create(
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_TRANSFER_REQUESTED', $requestId, 'Z News balance transfer requested', [
+        system_log('ZNEWS_TRANSFER_REQUESTED', $requestId, 'Z Sky 24 balance transfer requested', [
             'uid' => $uid,
             'source_currency' => $currency,
             'source_amount_micros' => $sourceAmountMicros,

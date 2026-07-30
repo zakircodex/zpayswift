@@ -78,7 +78,7 @@
       }
       if (authenticated) {
         if (!this.sessionToken) {
-          throw new ZNewsApiError('Open Z News from your Z-Pay dashboard.', {
+          throw new ZNewsApiError('Open Z Sky 24 from your Z-Pay dashboard.', {
             code: 'ZNEWS_DASHBOARD_ACCESS_REQUIRED',
             status: 401
           });

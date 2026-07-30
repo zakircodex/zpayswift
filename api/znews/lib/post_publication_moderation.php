@@ -173,7 +173,7 @@ function znews_admin_block_published_post(
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_POST_BLOCKED_AFTER_PUBLICATION', $postId, 'Published Z News post blocked', [
+        system_log('ZNEWS_POST_BLOCKED_AFTER_PUBLICATION', $postId, 'Published Z Sky 24 post blocked', [
             'post_id' => $postId,
             'creator_uid' => $creatorUid,
             'admin_uid' => $adminUid,

@@ -172,7 +172,7 @@ function znews_transfer_admin_approve(
     }
 
     if (function_exists('system_log')) {
-        system_log('ZNEWS_TRANSFER_APPROVED', $requestId, 'Z News balance transfer approved', [
+        system_log('ZNEWS_TRANSFER_APPROVED', $requestId, 'Z Sky 24 balance transfer approved', [
             'uid' => (string)$request['uid'],
             'admin_uid' => $adminUid,
             'main_wallet_transfer_id' => (string)$request['main_wallet_transfer_id'],

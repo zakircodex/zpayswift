@@ -7,7 +7,7 @@
 
   const api = new ApiClient(config);
   const authenticated = api.isAuthenticated();
-  const registerUrl = '/user/register';
+  const registerUrl = config.zpayRegisterUrl;
 
   function goToRegister() {
     window.location.assign(registerUrl);
@@ -79,7 +79,7 @@
     const announcement = document.querySelector('#announcement');
     if (handoff?.ok === false && announcement) {
       announcement.hidden = false;
-      announcement.textContent = 'Creator access expired. Open Z News again from your Z-Pay dashboard.';
+      announcement.textContent = 'Creator access expired. Open Z Sky 24 again from your Z-Pay dashboard.';
     }
   }
 
