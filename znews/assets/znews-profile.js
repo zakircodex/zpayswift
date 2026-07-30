@@ -40,7 +40,7 @@
     const raw = text(value).trim();
     if (!raw) return '';
     try {
-      const url = new URL(raw, window.location.origin);
+      const url = new URL(config.resolveProfilePhotoUrl(raw), window.location.origin);
       if (url.protocol !== 'https:' && url.origin !== window.location.origin) return '';
       return url.toString();
     } catch (_error) {

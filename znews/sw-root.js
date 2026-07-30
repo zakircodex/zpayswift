@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-standalone-shell-v1';
+const CACHE_NAME = 'zsky24-standalone-shell-v2';
 const SHELL = [
   '/',
   '/znews/index.html',

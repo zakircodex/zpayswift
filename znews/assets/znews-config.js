@@ -8,6 +8,7 @@
   const requestHost = window.location.hostname.toLowerCase().replace(/^www\./, '');
   const standalone = requestHost === standaloneHost;
   const routeBase = standalone ? '' : '/znews';
+  const zpayOrigin = 'https://zpayswift.com';
   const publicPath = (kind = '', id = '') => {
     const suffix = kind ? `/${kind}/${encodeURIComponent(String(id || ''))}` : '/';
     return `${routeBase}${suffix}`.replace(/\/+$/, kind ? '' : '/');
@@ -18,6 +19,12 @@
       : /^\/znews\/(post|creator)\/([A-Za-z0-9_-]+)\/?$/;
     const match = String(pathname).match(pattern);
     return match ? { kind: match[1], id: decodeURIComponent(match[2]) } : { kind: 'feed', id: '' };
+  };
+  const resolveProfilePhotoUrl = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const base = raw.startsWith('/uploads/profile/photos/') ? zpayOrigin : window.location.origin;
+    return new URL(raw, base).toString();
   };
 
   window.ZNEWS_CONFIG = Object.freeze({
@@ -32,11 +39,13 @@
     standaloneHost,
     standalone,
     routeBase,
+    zpayOrigin,
     publicPath,
     parseRoute,
+    resolveProfilePhotoUrl,
     canonicalUrl: (kind = '', id = '') => `https://${standaloneHost}${kind ? `/${kind}/${encodeURIComponent(String(id || ''))}` : '/'}`,
-    zpayDashboardUrl: 'https://zpayswift.com/user/dashboard',
-    zpayRegisterUrl: 'https://zpayswift.com/user/register',
+    zpayDashboardUrl: `${zpayOrigin}/user/dashboard`,
+    zpayRegisterUrl: `${zpayOrigin}/user/register`,
     ads: Object.freeze({
       provider: 'INMOBI',
       mode: existing.ads?.mode || 'TEST',
