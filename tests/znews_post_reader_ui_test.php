@@ -31,7 +31,8 @@ $instant = reader_source('znews/assets/znews-instant-comments.js');
 $bootstrap = reader_source('znews/assets/znews-bootstrap.js');
 $serviceWorker = reader_source('znews/sw.js');
 
-reader_expect(str_contains($index, 'znews-reader.css?v=1'), 'Reader stylesheet is not activated.');
+reader_expect(str_contains($index, 'interactive-widget=resizes-content'), 'Android keyboard resize viewport mode is missing.');
+reader_expect(str_contains($index, 'znews-reader.css?v=2'), 'Latest reader stylesheet is not activated.');
 reader_expect(str_contains($index, 'class="post-reader-shell"'), 'Post reader shell is missing.');
 reader_expect(str_contains($index, 'class="post-reader-header"'), 'Sticky post reader header is missing.');
 reader_expect(str_contains($index, 'id="postDialogClose"'), 'Reader Back control is missing.');
@@ -44,7 +45,7 @@ reader_expect(str_contains($index, 'class="comment-send-button"'), 'Compact send
 reader_expect(str_contains($index, 'id="commentGuestCta"'), 'Guest comment CTA is missing.');
 reader_expect(str_contains($index, 'Join Z-Pay to comment'), 'Guest comment CTA wording is missing.');
 reader_expect(!str_contains($index, '<button class="primary-button compact" type="submit">Send</button>'), 'Legacy oversized Send button remains.');
-reader_expect(str_contains($index, 'znews-bootstrap.js?v=5'), 'Reader bootstrap version is not activated.');
+reader_expect(str_contains($index, 'znews-bootstrap.js?v=6'), 'Latest reader bootstrap version is not activated.');
 
 reader_expect(str_contains($reader, "wrapApiMethod('comments'"), 'Reader does not capture comment pagination responses.');
 reader_expect(str_contains($reader, "wrapApiMethod('publicPost'"), 'Reader title is not connected to the opened post.');
@@ -59,6 +60,15 @@ reader_expect(str_contains($reader, "input.addEventListener('keydown'"), 'Mobile
 reader_expect(str_contains($reader, '!event.shiftKey && !event.isComposing'), 'Enter/newline composition safety is missing.');
 reader_expect(str_contains($reader, 'form.requestSubmit()'), 'Keyboard submit does not use the guarded form flow.');
 reader_expect(str_contains($reader, 'guestCta.hidden = authenticated'), 'Guest/creator composer visibility is not enforced.');
+reader_expect(str_contains($reader, 'window.visualViewport?.addEventListener'), 'Visual viewport resize tracking is missing.');
+reader_expect(str_contains($reader, "window.visualViewport?.addEventListener('scroll'"), 'Visual viewport pan tracking is missing.');
+reader_expect(str_contains($reader, '--znews-reader-vv-height'), 'Visual viewport height is not passed to CSS.');
+reader_expect(str_contains($reader, '--znews-reader-vv-top'), 'Visual viewport top offset is not passed to CSS.');
+reader_expect(str_contains($reader, '--znews-reader-vv-width'), 'Visual viewport width is not passed to CSS.');
+reader_expect(str_contains($reader, 'lockUnderlyingPage()'), 'Underlying feed page is not locked while commenting.');
+reader_expect(str_contains($reader, '--znews-reader-page-top'), 'Feed scroll lock offset is missing.');
+reader_expect(str_contains($reader, "input.addEventListener('focus'"), 'Composer focus viewport refresh is missing.');
+reader_expect(str_contains($reader, "input.addEventListener('blur'"), 'Composer blur viewport restore is missing.');
 reader_expect(!str_contains($reader, 'Reply'), 'UI must not expose a fake Reply action without backend support.');
 
 reader_expect(str_contains($instant, 'appendPublishedComment(comment)'), 'Published comments are not appended immediately.');
@@ -68,8 +78,15 @@ reader_expect(strpos($instant, "input.value = ''") > strpos($instant, 'await api
 reader_expect(str_contains($instant, "button.dataset.sending = sending ? 'true' : 'false'"), 'Duplicate-send busy state is missing.');
 reader_expect(str_contains($instant, 'updateCommentCount'), 'Instant comment count reconciliation is missing.');
 
-reader_expect(str_contains($readerCss, 'height:100dvh'), 'Mobile reader is not full viewport height.');
-reader_expect(str_contains($readerCss, 'width:100vw'), 'Mobile reader is not full viewport width.');
+reader_expect(str_contains($readerCss, 'body.znews-post-reader-open{position:fixed'), 'Body-level scroll lock is missing.');
+reader_expect(str_contains($readerCss, 'width:var(--znews-reader-vv-width,100%)'), 'Mobile reader width does not follow the visual viewport.');
+reader_expect(str_contains($readerCss, 'height:var(--znews-reader-vv-height,100dvh)'), 'Mobile reader height does not follow the visual viewport.');
+reader_expect(str_contains($readerCss, 'top:var(--znews-reader-vv-top,0px)'), 'Mobile reader top does not follow keyboard pan offset.');
+reader_expect(!str_contains($readerCss, 'width:100vw'), '100vw clipping regression remains in the mobile reader.');
+reader_expect(str_contains($readerCss, 'max-inline-size:none'), 'Browser dialog inline-size cap is not reset.');
+reader_expect(str_contains($readerCss, 'overflow-x:hidden'), 'Reader horizontal overflow is not blocked.');
+reader_expect(str_contains($readerCss, '-webkit-overflow-scrolling:touch'), 'Mobile momentum scrolling is missing.');
+reader_expect(str_contains($readerCss, 'touch-action:pan-y'), 'Reader vertical touch scrolling is not explicit.');
 reader_expect(str_contains($readerCss, '.post-reader-header'), 'Reader header styles are missing.');
 reader_expect(str_contains($readerCss, '.post-reader-scroll'), 'Independent reader scrolling is missing.');
 reader_expect(str_contains($readerCss, '.comment-bubble'), 'Facebook-style comment bubble styles are missing.');
@@ -81,14 +98,14 @@ reader_expect(str_contains($readerCss, '#postDetail>.ad-slot:empty{display:none}
 reader_expect(str_contains($readerCss, '#postDetail .post-media'), 'Full reader media style is missing.');
 reader_expect(str_contains($readerCss, 'object-fit:contain'), 'Reader media is still cropped.');
 
-reader_expect(str_contains($bootstrap, 'znews-reader.js?v=1'), 'Reader interaction module is not loaded.');
-reader_expect(strpos($bootstrap, 'znews-reader.js?v=1') < strpos($bootstrap, 'znews.js?v=3'), 'Reader API capture must load before the main app.');
+reader_expect(str_contains($bootstrap, 'znews-reader.js?v=2'), 'Latest reader interaction module is not loaded.');
+reader_expect(strpos($bootstrap, 'znews-reader.js?v=2') < strpos($bootstrap, 'znews.js?v=3'), 'Reader API capture must load before the main app.');
 reader_expect(str_contains($bootstrap, 'znews-instant-comments.js?v=3'), 'Updated instant-comment module is not loaded.');
 
-reader_expect(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v8'"), 'Reader PWA cache version is stale.');
-reader_expect(str_contains($serviceWorker, 'znews-reader.css?v=1'), 'Reader CSS is missing from the shell cache.');
-reader_expect(str_contains($serviceWorker, 'znews-reader.js?v=1'), 'Reader JS is missing from the shell cache.');
-reader_expect(str_contains($serviceWorker, 'znews-bootstrap.js?v=5'), 'Latest bootstrap is missing from the shell cache.');
+reader_expect(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v9'"), 'Mobile viewport PWA cache version is stale.');
+reader_expect(str_contains($serviceWorker, 'znews-reader.css?v=2'), 'Latest reader CSS is missing from the shell cache.');
+reader_expect(str_contains($serviceWorker, 'znews-reader.js?v=2'), 'Latest reader JS is missing from the shell cache.');
+reader_expect(str_contains($serviceWorker, 'znews-bootstrap.js?v=6'), 'Latest bootstrap is missing from the shell cache.');
 reader_expect(str_contains($serviceWorker, 'znews-instant-comments.js?v=3'), 'Latest comment module is missing from the shell cache.');
 
 $node = trim((string)shell_exec('command -v node 2>/dev/null'));
