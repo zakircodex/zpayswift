@@ -680,7 +680,10 @@
     const route = config.parseRoute();
     if (route.kind === 'post') openPost(route.id);
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register(config.standalone ? '/sw.js' : '/znews/sw.js').catch(() => {});
+      navigator.serviceWorker.register(
+        config.standalone ? '/sw.js' : '/znews/sw.js',
+        { updateViaCache: 'none' }
+      ).catch(() => {});
     }
   }
 

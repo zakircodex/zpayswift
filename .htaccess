@@ -75,6 +75,14 @@ DirectoryIndex index.html
   RewriteRule ^subadmin(?:/.*)?$ /api/subadmin/dashboard.php [L,QSA]
 </IfModule>
 
+<IfModule mod_headers.c>
+  <FilesMatch "^(?:sw|sw-root)\.js$">
+    Header always set Cache-Control "no-cache, no-store, must-revalidate, max-age=0"
+    Header always set Pragma "no-cache"
+    Header always set Expires "0"
+  </FilesMatch>
+</IfModule>
+
 <FilesMatch "^(error_log|composer\.(json|lock)|package(-lock)?\.json|yarn\.lock|pnpm-lock\.yaml|test_bundle_request\.php)$">
   <IfModule mod_authz_core.c>
     Require all denied
