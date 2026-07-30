@@ -43,6 +43,7 @@ $index = contents($root . '/znews/index.html');
 check(str_contains($index, '<strong>Z News</strong>'), 'Z News brand is missing');
 check(str_contains($index, 'Stories • Updates • Community'), 'Z News tagline is missing');
 check(str_contains($index, 'src="/assets/brand/zpay-icon.png"'), 'Original Z-Pay logo asset is not used');
+check(str_contains($index, 'interactive-widget=resizes-content'), 'Keyboard-resizing viewport mode is missing');
 check(str_contains($index, 'id="searchToggle"') && str_contains($index, 'id="menuToggle"'), 'Header tools are missing');
 check(strpos($index, 'id="searchToggle"') < strpos($index, 'id="menuToggle"'), 'Search must appear left of menu');
 check(str_contains($index, 'data-menu-route="create" data-auth-only hidden'), 'Drawer creator guard is missing');
@@ -59,8 +60,8 @@ check(str_contains($index, 'id="postReaderScroll"'), 'Reader scroll area is miss
 check(str_contains($index, 'class="comment-dock"'), 'Comment dock is missing');
 check(str_contains($index, '<textarea id="commentText"'), 'Comment textarea is missing');
 check(str_contains($index, 'id="commentGuestCta"'), 'Guest comment CTA is missing');
-check(str_contains($index, 'znews-reader.css?v=1'), 'Reader stylesheet is not activated');
-check(str_contains($index, 'znews-bootstrap.js?v=5'), 'Latest bootstrap is not activated');
+check(str_contains($index, 'znews-reader.css?v=2'), 'Latest reader stylesheet is not activated');
+check(str_contains($index, 'znews-bootstrap.js?v=6'), 'Latest bootstrap is not activated');
 check(!str_contains($index, 'znews-quick-login.js'), 'Removed standalone login remains loaded');
 check(!str_contains($index, '<div class="header-actions">'), 'Visible Sign in header remains');
 check(!preg_match('/\b(?:Earn|Income|Cash|Profit|Revenue|Job|Work)\b/i', strip_tags($index)), 'Forbidden public wording exists');
@@ -132,6 +133,9 @@ check(str_contains($reader, 'commentLoadMoreButton'), 'Comment pagination UI is 
 check(str_contains($reader, 'znewsFeedScrollY'), 'Feed scroll restore state is missing');
 check(str_contains($reader, 'window.history.back()'), 'Reader Back history behavior is missing');
 check(str_contains($reader, 'form.requestSubmit()'), 'Keyboard comment submit is missing');
+check(str_contains($reader, 'window.visualViewport?.addEventListener'), 'Visual viewport integration is missing');
+check(str_contains($reader, '--znews-reader-vv-height'), 'Visual viewport height bridge is missing');
+check(str_contains($reader, 'lockUnderlyingPage()'), 'Underlying page scroll lock is missing');
 check(!str_contains($reader, 'Reply'), 'Fake reply action exists without backend support');
 
 $instant = contents($root . '/znews/assets/znews-instant-comments.js');
@@ -170,7 +174,10 @@ check(str_contains($premium, '.see-more-button'), 'See more styling is missing')
 check(str_contains($premium, '.feed-scroll-sentinel'), 'Infinite-scroll sentinel styling is missing');
 
 $readerCss = contents($root . '/znews/assets/znews-reader.css');
-check(str_contains($readerCss, 'height:100dvh'), 'Mobile reader is not full-screen');
+check(str_contains($readerCss, 'height:var(--znews-reader-vv-height,100dvh)'), 'Mobile reader does not follow visual viewport height');
+check(str_contains($readerCss, 'width:var(--znews-reader-vv-width,100%)'), 'Mobile reader does not follow visual viewport width');
+check(!str_contains($readerCss, 'width:100vw'), 'Mobile reader still risks right-side clipping');
+check(str_contains($readerCss, 'overflow-x:hidden'), 'Horizontal reader overflow is not blocked');
 check(str_contains($readerCss, '.comment-bubble'), 'Comment bubble styling is missing');
 check(str_contains($readerCss, '.comment-dock'), 'Sticky composer dock styling is missing');
 check(str_contains($readerCss, 'object-fit:contain'), 'Reader image is still cropped');
@@ -178,15 +185,15 @@ check(str_contains($readerCss, '#postDetail>.ad-slot:empty{display:none}'), 'Emp
 
 $bootstrap = contents($root . '/znews/assets/znews-bootstrap.js');
 check(str_contains($bootstrap, 'znews-feed-ui.js?v=1'), 'Fair feed UI module is not loaded');
-check(str_contains($bootstrap, 'znews-reader.js?v=1'), 'Reader UI module is not loaded');
-check(strpos($bootstrap, 'znews-reader.js?v=1') < strpos($bootstrap, 'znews.js?v=3'), 'Reader capture must load before app');
+check(str_contains($bootstrap, 'znews-reader.js?v=2'), 'Latest reader UI module is not loaded');
+check(strpos($bootstrap, 'znews-reader.js?v=2') < strpos($bootstrap, 'znews.js?v=3'), 'Reader capture must load before app');
 check(str_contains($bootstrap, 'znews-instant-comments.js?v=3'), 'Latest comment module is not loaded');
 
 $serviceWorker = contents($root . '/znews/sw.js');
-check(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v8'"), 'Reader shell cache is stale');
-check(str_contains($serviceWorker, 'znews-bootstrap.js?v=5'), 'Latest bootstrap is missing from cache');
-check(str_contains($serviceWorker, 'znews-reader.css?v=1'), 'Reader CSS is missing from cache');
-check(str_contains($serviceWorker, 'znews-reader.js?v=1'), 'Reader JS is missing from cache');
+check(str_contains($serviceWorker, "const CACHE_NAME = 'znews-shell-v9'"), 'Reader shell cache is stale');
+check(str_contains($serviceWorker, 'znews-bootstrap.js?v=6'), 'Latest bootstrap is missing from cache');
+check(str_contains($serviceWorker, 'znews-reader.css?v=2'), 'Latest reader CSS is missing from cache');
+check(str_contains($serviceWorker, 'znews-reader.js?v=2'), 'Latest reader JS is missing from cache');
 check(str_contains($serviceWorker, 'znews-instant-comments.js?v=3'), 'Latest comments JS is missing from cache');
 check(str_contains($serviceWorker, "url.pathname.startsWith('/api/')"), 'Service worker API exclusion is missing');
 check(str_contains($serviceWorker, "request.method !== 'GET'"), 'Service worker mutation exclusion is missing');
