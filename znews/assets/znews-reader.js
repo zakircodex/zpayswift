@@ -6,6 +6,7 @@
   if (!config || !ApiClient) return;
 
   const api = new ApiClient(config);
+  const root = document.documentElement;
   const dialog = document.querySelector('#postDialog');
   const detail = document.querySelector('#postDetail');
   const commentList = document.querySelector('#commentList');
@@ -26,7 +27,11 @@
     hasMore: false,
     loadingMore: false,
     openedFromFeed: false,
-    feedScrollY: 0
+    feedScrollY: 0,
+    lockedPageScrollY: 0,
+    viewportFrame: 0,
+    active: false,
+    inputFocused: false
   };
 
   function text(value) {
@@ -143,6 +148,51 @@
     const hasText = text(input.value) !== '';
     sendButton.disabled = !hasText || sendButton.dataset.sending === 'true';
     sendButton.classList.toggle('is-ready', hasText);
+  }
+
+  function viewportMetrics() {
+    const viewport = window.visualViewport;
+    const width = Math.max(240, Math.round(viewport?.width || root.clientWidth || window.innerWidth));
+    const height = Math.max(240, Math.round(viewport?.height || window.innerHeight || root.clientHeight));
+    const top = Math.max(0, Math.round(viewport?.offsetTop || 0));
+    const left = Math.max(0, Math.round(viewport?.offsetLeft || 0));
+    const layoutHeight = Math.max(window.innerHeight || 0, root.clientHeight || 0);
+    const keyboardOpen = state.inputFocused || (layoutHeight - height > 120);
+    return { width, height, top, left, keyboardOpen };
+  }
+
+  function syncReaderViewport() {
+    state.viewportFrame = 0;
+    if (!dialog.open) return;
+    const metrics = viewportMetrics();
+    root.style.setProperty('--znews-reader-vv-width', `${metrics.width}px`);
+    root.style.setProperty('--znews-reader-vv-height', `${metrics.height}px`);
+    root.style.setProperty('--znews-reader-vv-top', `${metrics.top}px`);
+    root.style.setProperty('--znews-reader-vv-left', `${metrics.left}px`);
+    root.classList.toggle('znews-reader-keyboard-open', metrics.keyboardOpen);
+
+    if (readerScroll) {
+      const maximum = Math.max(0, readerScroll.scrollHeight - readerScroll.clientHeight);
+      if (readerScroll.scrollTop > maximum) readerScroll.scrollTop = maximum;
+    }
+  }
+
+  function scheduleReaderViewportSync() {
+    if (state.viewportFrame) return;
+    state.viewportFrame = window.requestAnimationFrame(syncReaderViewport);
+  }
+
+  function clearReaderViewport() {
+    if (state.viewportFrame) window.cancelAnimationFrame(state.viewportFrame);
+    state.viewportFrame = 0;
+    state.inputFocused = false;
+    root.classList.remove('znews-reader-keyboard-open');
+    [
+      '--znews-reader-vv-width',
+      '--znews-reader-vv-height',
+      '--znews-reader-vv-top',
+      '--znews-reader-vv-left'
+    ].forEach((property) => root.style.removeProperty(property));
   }
 
   function findCachedComment(index, row) {
@@ -263,11 +313,37 @@
     }
   }
 
-  function dialogOpened() {
-    document.documentElement.classList.add('znews-post-reader-open');
+  function lockUnderlyingPage() {
+    state.lockedPageScrollY = Math.max(0, window.scrollY || 0);
+    root.style.setProperty('--znews-reader-page-top', `-${state.lockedPageScrollY}px`);
+    root.classList.add('znews-post-reader-open');
     document.body.classList.add('znews-post-reader-open');
+  }
+
+  function unlockUnderlyingPage() {
+    root.classList.remove('znews-post-reader-open');
+    document.body.classList.remove('znews-post-reader-open');
+    root.style.removeProperty('--znews-reader-page-top');
+    clearReaderViewport();
+
+    const target = state.openedFromFeed
+      ? Number(window.history.state?.znewsFeedScrollY ?? state.feedScrollY ?? 0)
+      : state.lockedPageScrollY;
+    window.setTimeout(() => window.scrollTo({ top: Math.max(0, target), behavior: 'auto' }), 0);
+  }
+
+  function dialogOpened() {
+    if (state.active) {
+      scheduleReaderViewportSync();
+      return;
+    }
+    state.active = true;
+    lockUnderlyingPage();
     syncAccessUi();
     resizeComposer();
+    scheduleReaderViewportSync();
+    window.setTimeout(scheduleReaderViewportSync, 80);
+    window.setTimeout(scheduleReaderViewportSync, 260);
     window.setTimeout(() => {
       dedupeAndDecorateComments();
       readerScroll?.scrollTo({ top: 0, behavior: 'auto' });
@@ -283,12 +359,9 @@
   }
 
   function dialogClosed() {
-    document.documentElement.classList.remove('znews-post-reader-open');
-    document.body.classList.remove('znews-post-reader-open');
-    if (state.openedFromFeed) {
-      const target = Number(window.history.state?.znewsFeedScrollY ?? state.feedScrollY ?? 0);
-      window.setTimeout(() => window.scrollTo({ top: target, behavior: 'auto' }), 0);
-    }
+    if (!state.active) return;
+    state.active = false;
+    unlockUnderlyingPage();
     state.openedFromFeed = false;
   }
 
@@ -331,11 +404,31 @@
   });
 
   input.addEventListener('input', resizeComposer);
+  input.addEventListener('focus', () => {
+    state.inputFocused = true;
+    scheduleReaderViewportSync();
+    window.setTimeout(scheduleReaderViewportSync, 60);
+    window.setTimeout(scheduleReaderViewportSync, 220);
+    window.setTimeout(scheduleReaderViewportSync, 420);
+  });
+  input.addEventListener('blur', () => {
+    state.inputFocused = false;
+    window.setTimeout(scheduleReaderViewportSync, 80);
+    window.setTimeout(scheduleReaderViewportSync, 240);
+  });
   input.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       if (!sendButton.disabled) form.requestSubmit();
     }
+  });
+
+  window.visualViewport?.addEventListener('resize', scheduleReaderViewportSync, { passive: true });
+  window.visualViewport?.addEventListener('scroll', scheduleReaderViewportSync, { passive: true });
+  window.addEventListener('resize', scheduleReaderViewportSync, { passive: true });
+  window.addEventListener('orientationchange', () => {
+    scheduleReaderViewportSync();
+    window.setTimeout(scheduleReaderViewportSync, 300);
   });
 
   window.addEventListener('znews:comments-page', () => window.setTimeout(dedupeAndDecorateComments, 0));
