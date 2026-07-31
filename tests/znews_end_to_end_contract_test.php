@@ -174,7 +174,7 @@ znews_e2e_expect(str_contains($settlementService, 'SETTLED'), 'settlement termin
 znews_e2e_expect(str_contains($settlementService, 'NOT_CREDITED'), 'settlement directly credits main wallet');
 
 $transferCommon = znews_e2e_read($root, 'api/znews/lib/transfers_common.php');
-znews_e2e_expect(str_contains($transferCommon, '500 * 1000000'), 'BDT 500 transfer threshold missing');
+znews_e2e_expect(str_contains($transferCommon, '200 * 1000000'), 'BDT 200 transfer threshold missing');
 $transferWallet = znews_e2e_read($root, 'api/znews/lib/transfers_wallet.php');
 znews_e2e_expect(str_contains($transferWallet, 'wallet_financial_operation_begin('), 'wallet financial-operation claim missing');
 znews_e2e_expect(str_contains($transferWallet, 'wallet_credit_available('), 'official wallet credit helper missing');

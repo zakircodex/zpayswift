@@ -29,7 +29,7 @@ if (is_array($rows)) {
             'transferred' => znews_transfer_micros_to_decimal($transferred),
             'main_wallet_transfer_enabled' => true,
             'minimum_bdt_micros' => znews_transfer_threshold_bdt_micros(),
-            'minimum_bdt' => '500',
+            'minimum_bdt' => '200',
         ]);
     }
 }
@@ -48,7 +48,7 @@ api_response(
         'creator_ad_payout_policy' => znews_settlement_creator_ad_payout_policy(),
         'main_wallet_transfer_enabled' => true,
         'minimum_bdt_micros' => znews_transfer_threshold_bdt_micros(),
-        'minimum_bdt' => '500',
+        'minimum_bdt' => '200',
         'transfer_requires_admin_approval' => true,
         'balances' => $balances,
     ]

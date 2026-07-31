@@ -14,7 +14,7 @@
   <title>Z Sky 24</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link id="appManifest" rel="manifest" href="/znews/manifest.webmanifest">
-  <link rel="stylesheet" href="/znews/assets/znews.css?v=3">
+  <link rel="stylesheet" href="/znews/assets/znews.css?v=4">
   <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=8">
   <link rel="stylesheet" href="/znews/assets/znews-reader.css?v=2">
 </head>
@@ -58,6 +58,7 @@
       <button type="button" data-menu-route="create" data-auth-only hidden><span>＋</span><strong>Create post</strong></button>
       <button type="button" data-menu-route="mine" data-auth-only hidden><span>▤</span><strong>My posts</strong></button>
       <button type="button" data-menu-route="balance" data-auth-only hidden><span>◈</span><strong>Creator balance</strong></button>
+      <button type="button" data-menu-route="policy"><span>ⓘ</span><strong>Creator policy</strong></button>
       <a href="https://zpayswift.com/user/dashboard" data-zpay-dashboard><span>↗</span><strong>Z-Pay Dashboard</strong></a>
       <a href="https://zpayswift.com/user/register" data-guest-only data-zpay-register><span>＋</span><strong>Join Z-Pay</strong></a>
     </nav>
@@ -78,6 +79,7 @@
         <button class="side-nav-item" type="button" data-route="create"><span>＋</span>Create post</button>
         <button class="side-nav-item" type="button" data-route="mine"><span>▤</span>My posts</button>
         <button class="side-nav-item" type="button" data-route="balance"><span>◈</span>Creator balance</button>
+        <button class="side-nav-item" type="button" data-route="policy"><span>ⓘ</span>Creator policy</button>
       </nav>
       <p class="privacy-note">Public posts, comments and sponsored content can be viewed without a Z-Pay account. Creator access opens only from the Z-Pay dashboard.</p>
     </aside>
@@ -160,18 +162,39 @@
           <span class="eyebrow">Creator balance</span>
           <strong id="balanceAmount">৳0.00</strong>
           <p id="balanceStatus">Open Z Sky 24 from your Z-Pay dashboard to view your balance.</p>
-          <div class="balance-rate-card" aria-labelledby="creatorAdRateLabel">
-            <span id="creatorAdRateLabel">Creator credit per verified ad</span>
-            <strong id="creatorAdRate">Loading policy…</strong>
-            <small id="creatorAdRateNote">Calculated only from authenticated provider reports.</small>
-          </div>
           <button class="primary-button balance-transfer-button" id="transferButton" type="button" disabled>Transfer to Z-Pay balance</button>
-          <small>Minimum transfer: ৳500. Requests require review.</small>
+          <small>Minimum transfer: ৳200. Requests require review.</small>
+          <button class="balance-policy-link" type="button" data-route="policy">View creator policy</button>
         </div>
         <div class="page-card card balance-activity-card">
           <div class="section-heading no-border"><div><h2>Balance activity</h2><p>Verified creator credits and transfer records.</p></div></div>
           <div id="ledgerList" class="ledger-list"></div>
         </div>
+      </section>
+
+      <section id="policyView" class="view" data-view="policy">
+        <article class="page-card card creator-policy-page">
+          <header class="policy-header">
+            <button class="policy-back" type="button" data-route="feed" aria-label="Back to news feed">‹</button>
+            <div><span class="eyebrow">Z Sky 24</span><h1>Creator credit policy</h1><p>How verified ad credit, balance activity and transfer requests are handled.</p></div>
+          </header>
+
+          <section class="policy-highlight" aria-labelledby="creatorAdRateLabel">
+            <span id="creatorAdRateLabel">Current verified ad credit</span>
+            <strong id="creatorAdRate">৳0.01–৳0.03</strong>
+            <small id="creatorAdRateNote">Per eligible verified ad, calculated only from authenticated provider reports.</small>
+          </section>
+
+          <div class="policy-sections">
+            <section><h2>How credit is calculated</h2><ul><li>The creator base share is 50% of the provider-reported amount.</li><li>BDT credit is rounded down to a whole paisa and cannot exceed ৳0.03 for one verified ad.</li><li>The browser cannot calculate or submit any financial value; settlement is performed by the server.</li></ul></section>
+            <section><h2>What qualifies</h2><ul><li>Only an eligible impression confirmed by authenticated provider reporting can be considered.</li><li>Repeated, invalid, automated, fraudulent or unconfirmed activity does not qualify.</li><li>Test ads and test placement activity do not create payable credit.</li></ul></section>
+            <section><h2>Balance and adjustments</h2><ul><li>Creator credit is recorded in a separate Z Sky 24 ledger.</li><li>A provider correction, invalid-traffic finding, moderation decision or reconciliation may hold, correct or reverse an entry.</li><li>Historical entries remain visible according to their recorded status.</li></ul></section>
+            <section><h2>Transfer rules</h2><ul><li>The current minimum request is ৳200 BDT equivalent.</li><li>Requests move the available amount into review before it is added to the creator's Z-Pay balance.</li><li>Account status, available balance, currency conversion and security checks must pass.</li></ul></section>
+          </div>
+
+          <aside class="policy-notice"><strong>Important</strong><p>The displayed range is a maximum policy range, not a guaranteed amount for every ad. Actual credit depends on the provider's final authenticated report and may be lower or zero.</p></aside>
+          <p class="policy-footer-note">Z Sky 24 may update this policy for provider requirements, safety, fraud prevention or regulatory compliance. Material changes should be shown on this page.</p>
+        </article>
       </section>
     </section>
 
@@ -217,9 +240,9 @@
   <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="true"></div>
   <template id="postSkeletonTemplate"><article class="post-card card skeleton-card"><div class="skeleton line short"></div><div class="skeleton line"></div><div class="skeleton block"></div></article></template>
 
-  <script src="/znews/assets/znews-config.js?v=4"></script>
-  <script src="/znews/assets/znews-api.js?v=4"></script>
+  <script src="/znews/assets/znews-config.js?v=5"></script>
+  <script src="/znews/assets/znews-api.js?v=5"></script>
   <script src="/znews/assets/znews-ads.js?v=1"></script>
-  <script src="/znews/assets/znews-bootstrap.js?v=15"></script>
+  <script src="/znews/assets/znews-bootstrap.js?v=17"></script>
 </body>
 </html>

@@ -4,18 +4,18 @@ const CACHE_NAME = 'zsky24-standalone-shell-v10';
 const SHELL = [
   '/',
   '/znews/index.html',
-  '/znews/assets/znews.css?v=3',
+  '/znews/assets/znews.css?v=4',
   '/znews/assets/znews-premium.css?v=8',
   '/znews/assets/znews-reader.css?v=2',
-  '/znews/assets/znews-config.js?v=4',
-  '/znews/assets/znews-api.js?v=4',
+  '/znews/assets/znews-config.js?v=5',
+  '/znews/assets/znews-api.js?v=5',
   '/znews/assets/znews-ads.js?v=1',
-  '/znews/assets/znews-bootstrap.js?v=15',
+  '/znews/assets/znews-bootstrap.js?v=17',
   '/znews/assets/znews-access.js?v=1',
   '/znews/assets/znews-feed-ui.js?v=1',
   '/znews/assets/znews-profile.js?v=4',
   '/znews/assets/znews-reader.js?v=3',
-  '/znews/assets/znews.js?v=12',
+  '/znews/assets/znews.js?v=14',
   '/znews/assets/znews-header.js?v=2',
   '/znews/assets/znews-creator.js?v=7',
   '/znews/assets/znews-instant-comments.js?v=4',
@@ -46,7 +46,8 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate'
-    && (url.pathname === '/' || /^\/(?:post|creator)\/[A-Za-z0-9_-]+\/?$/.test(url.pathname))) {
+    && (url.pathname === '/' || url.pathname === '/policy' || url.pathname === '/policy/'
+      || /^\/(?:post|creator)\/[A-Za-z0-9_-]+\/?$/.test(url.pathname))) {
     event.respondWith(fetch(request).catch(() => caches.match('/znews/index.html')));
     return;
   }

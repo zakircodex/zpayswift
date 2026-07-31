@@ -26,7 +26,7 @@ api_response(
         'balance' => is_array($result['balance'] ?? null) ? array_merge((array)$result['balance'], [
             'main_wallet_transfer_enabled' => true,
             'minimum_bdt_micros' => znews_transfer_threshold_bdt_micros(),
-            'minimum_bdt' => '500',
+            'minimum_bdt' => '200',
         ]) : null,
         'idempotent_replay' => isset($result['idempotent_replay']) ? (bool)$result['idempotent_replay'] : null,
         'reconciliation_required' => isset($result['reconciliation_required']) ? (bool)$result['reconciliation_required'] : null,

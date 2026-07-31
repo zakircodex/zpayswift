@@ -56,7 +56,7 @@ foreach ($files as $relative) {
 }
 
 $common = znews_transfer_test_read($root . '/api/znews/lib/transfers_common.php');
-znews_transfer_test_expect(str_contains($common, 'return 500 * 1000000;'), 'BDT 500 threshold missing');
+znews_transfer_test_expect(str_contains($common, 'return 200 * 1000000;'), 'BDT 200 threshold missing');
 znews_transfer_test_expect(str_contains($common, 'ZNEWS_TRANSFER_REQUESTS/'), 'transfer request namespace missing');
 znews_transfer_test_expect(str_contains($common, 'ZNEWS_USER_TRANSFER_REQUESTS/'), 'user transfer index missing');
 znews_transfer_test_expect(str_contains($common, 'ZNEWS_TRANSFER_REVIEW_QUEUE/'), 'admin queue namespace missing');
@@ -137,7 +137,7 @@ znews_transfer_test_expect(str_contains($rateUpdate, 'expected_updated_at'), 'ra
 
 $summary = znews_transfer_test_read($root . '/api/znews/balance/summary.php');
 znews_transfer_test_expect(str_contains($summary, "'main_wallet_transfer_enabled' => true"), 'balance summary does not enable transfer');
-znews_transfer_test_expect(str_contains($summary, "'minimum_bdt' => '500'"), 'balance summary threshold missing');
+znews_transfer_test_expect(str_contains($summary, "'minimum_bdt' => '200'"), 'balance summary threshold missing');
 znews_transfer_test_expect(str_contains($summary, "'transfer_requires_admin_approval' => true"), 'approval requirement missing');
 
 echo "Z News main-wallet transfer tests passed ({$assertions} assertions).\n";
