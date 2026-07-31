@@ -38,12 +38,12 @@ balance_policy_expect(str_contains($app, 'function renderCreatorAdRate(summary)'
 balance_policy_expect(str_contains($app, 'summary?.data?.creator_ad_payout_policy'), 'Balance UI is not reading the authenticated summary policy.');
 balance_policy_expect(str_contains($css, '#balanceView.active { display: grid; gap: 20px; }'), 'Balance cards do not have explicit spacing.');
 balance_policy_expect(str_contains($index, 'znews.css?v=3'), 'Balance stylesheet is not activated.');
-balance_policy_expect(str_contains($index, 'znews-bootstrap.js?v=14'), 'Balance bootstrap is not activated.');
-balance_policy_expect(str_contains($bootstrap, 'znews.js?v=11'), 'Balance behavior is not activated.');
+balance_policy_expect(str_contains($index, 'znews-bootstrap.js?v=15'), 'Balance bootstrap is not activated.');
+balance_policy_expect(str_contains($bootstrap, 'znews.js?v=12'), 'Balance behavior is not activated.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
     balance_policy_expect(str_contains($worker, 'znews.css?v=3'), 'A PWA shell is missing the balance stylesheet.');
-    balance_policy_expect(str_contains($worker, 'znews.js?v=11'), 'A PWA shell is missing the balance behavior.');
+    balance_policy_expect(str_contains($worker, 'znews.js?v=12'), 'A PWA shell is missing the balance behavior.');
     balance_policy_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'A PWA shell may cache financial API responses.');
 }
 

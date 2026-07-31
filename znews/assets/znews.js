@@ -655,7 +655,7 @@
     const unitMicros = Math.max(0, Number(policy.payout_unit_micros || 0));
     const maximumMicros = Math.max(0, Number(policy.maximum_per_verified_ad_micros || 0));
     if (!unitMicros || maximumMicros < unitMicros) {
-      els.creatorAdRate.textContent = 'Provider verified revenue only';
+      els.creatorAdRate.textContent = 'Verified provider reports only';
       els.creatorAdRateNote.textContent = 'No client-calculated ad value is accepted.';
       return;
     }
@@ -663,7 +663,7 @@
       ? `${formatBdtMicros(maximumMicros)} per verified ad`
       : `${formatBdtMicros(unitMicros)}–${formatBdtMicros(maximumMicros)} per verified ad`;
     const sharePercent = Math.max(0, Number(policy.base_creator_share_percent || 0));
-    els.creatorAdRateNote.textContent = `${sharePercent}% of provider-reported revenue, rounded down to whole paisa and capped at ${formatBdtMicros(maximumMicros)}. Values are settled by the server only.`;
+    els.creatorAdRateNote.textContent = `${sharePercent}% of the provider-reported amount, rounded down to whole paisa and capped at ${formatBdtMicros(maximumMicros)}. Values are settled by the server only.`;
   }
 
   async function loadBalance() {

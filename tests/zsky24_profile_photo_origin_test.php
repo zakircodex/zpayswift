@@ -21,7 +21,7 @@ $index = $read('znews/index.html');
 $app = $read('znews/assets/znews.js');
 $rootRewrite = $read('.htaccess');
 $expect(str_contains($index, 'znews-config.js?v=4'), 'Profile-photo config cachebuster is missing.');
-$expect(str_contains($index, 'znews-bootstrap.js?v=14'), 'Bootstrap cachebuster is missing.');
+$expect(str_contains($index, 'znews-bootstrap.js?v=15'), 'Bootstrap cachebuster is missing.');
 $expect(str_contains($app, "updateViaCache: 'none'"), 'Service-worker update may reuse a stale HTTP cache.');
 $expect(str_contains($rootRewrite, 'no-cache, no-store, must-revalidate'), 'Service-worker no-cache response policy is missing.');
 
