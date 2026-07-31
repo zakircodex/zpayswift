@@ -71,7 +71,8 @@
     event.preventDefault();
     event.stopImmediatePropagation();
 
-    const submit = form.querySelector('button[type="submit"]');
+    const submits = [...form.querySelectorAll('button[type="submit"]')];
+    const submit = submits[0];
     const postText = text(document.querySelector('#postText')?.value).trim();
     const imageInput = document.querySelector('#postImage');
     const file = imageInput?.files?.[0] || null;
@@ -79,12 +80,12 @@
     if (!postText && !file) return toast('Add text or an image.', 'error');
     if (file && file.size > 5 * 1024 * 1024) return toast('Image must be 5 MB or smaller.', 'error');
 
-    setBusy(submit, true, file ? 'Uploading…' : 'Publishing…');
+    submits.forEach((button) => setBusy(button, true, file ? 'Uploading…' : 'Publishing…'));
     try {
       let mediaId = '';
       if (file) {
         mediaId = await uploadImage(api, file);
-        submit.textContent = 'Publishing…';
+        submits.forEach((button) => { button.textContent = 'Publishing…'; });
       }
 
       const result = await api.request('znews/posts/create.php', {
@@ -105,6 +106,7 @@
       }
       const counter = document.querySelector('#postTextCount');
       if (counter) counter.textContent = '0 / 5000';
+      document.querySelector('#postText')?.dispatchEvent(new Event('input'));
 
       toast(result.data?.published_immediately === true
         ? 'Post published.'
@@ -114,10 +116,10 @@
     } catch (error) {
       toast(errorMessage(error), 'error');
     } finally {
-      setBusy(submit, false);
+      submits.forEach((button) => setBusy(button, false));
       const currentText = text(document.querySelector('#postText')?.value).trim();
       const currentFile = document.querySelector('#postImage')?.files?.[0] || null;
-      submit.disabled = !currentText && !currentFile;
+      submits.forEach((button) => { button.disabled = !currentText && !currentFile; });
     }
   }, true);
 

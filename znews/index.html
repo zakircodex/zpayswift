@@ -15,7 +15,7 @@
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link id="appManifest" rel="manifest" href="/znews/manifest.webmanifest">
   <link rel="stylesheet" href="/znews/assets/znews.css?v=2">
-  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=5">
+  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=6">
   <link rel="stylesheet" href="/znews/assets/znews-reader.css?v=2">
 </head>
 <body>
@@ -119,22 +119,24 @@
               <div class="avatar composer-author-avatar" id="createComposerAvatar">Z</div>
               <div>
                 <strong id="createComposerName">Z-Pay creator</strong>
-                <span class="composer-audience" aria-label="Post audience: Public">◎ Public</span>
+                <span class="composer-audience" aria-label="Post audience: Public"><span aria-hidden="true">◉</span> Public <span aria-hidden="true">⌄</span></span>
               </div>
             </div>
             <label class="visually-hidden" for="postText">Post text</label>
             <textarea id="postText" name="text" maxlength="5000" rows="3" placeholder="What's on your mind?" aria-describedby="composerReviewNote postTextCount"></textarea>
             <div class="counter-row composer-counter"><span id="postTextCount">0 / 5000</span></div>
             <div id="imagePreview" class="image-preview" hidden></div>
-            <div class="composer-add-row">
-              <div><strong>Add to your post</strong><small>Optional photo, up to 5 MB</small></div>
+            <div class="composer-add-row" aria-label="Add to your post">
               <label class="composer-photo-action" for="postImage">
                 <input id="postImage" name="image" type="file" accept="image/jpeg,image/png,image/webp">
                 <span aria-hidden="true">▧</span>
-                <strong>Photo</strong>
+                <strong>Photos/videos</strong>
               </label>
             </div>
             <p class="composer-review-note" id="composerReviewNote">Clean posts publish immediately. Risky or duplicate content may be held for review.</p>
+            <div class="composer-bottom-action">
+              <button class="primary-button composer-bottom-submit" id="createPostSubmitBottom" type="submit" disabled>Post</button>
+            </div>
           </form>
         </div>
       </section>
@@ -195,6 +197,6 @@
   <script src="/znews/assets/znews-config.js?v=4"></script>
   <script src="/znews/assets/znews-api.js?v=3"></script>
   <script src="/znews/assets/znews-ads.js?v=1"></script>
-  <script src="/znews/assets/znews-bootstrap.js?v=8"></script>
+  <script src="/znews/assets/znews-bootstrap.js?v=9"></script>
 </body>
 </html>
