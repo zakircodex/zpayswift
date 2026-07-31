@@ -1,0 +1,29 @@
+name: cPanel Deployment Audit
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/cpanel-production-deploy.yml'
+      - '.github/workflows/cpanel-deployment-audit.yml'
+      - '.cpanel-deploy-exclude'
+      - 'tests/cpanel_push_deployment_test.php'
+      - 'docs/cpanel-push-deployment.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deployment-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate workflow YAML
+        run: |
+          ruby -e "require 'yaml'; YAML.safe_load_file('.github/workflows/cpanel-production-deploy.yml', aliases: true)"
+          ruby -e "require 'yaml'; YAML.safe_load_file('.github/workflows/cpanel-deployment-audit.yml', aliases: true)"
+      - name: Validate deployment contract
+        run: php tests/cpanel_push_deployment_test.php
