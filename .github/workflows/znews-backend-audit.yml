@@ -112,6 +112,8 @@ jobs:
             file: tests/zsky24_dual_domain_test.php
           - id: zsky24-profile-photo-origin
             file: tests/zsky24_profile_photo_origin_test.php
+          - id: zsky24-compact-composer
+            file: tests/zsky24_compact_composer_test.php
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -52,6 +52,8 @@ jobs:
         run: php tests/zsky24_dual_domain_test.php
       - name: Z Sky 24 profile-photo origin
         run: php tests/zsky24_profile_photo_origin_test.php
+      - name: Z Sky 24 compact composer
+        run: php tests/zsky24_compact_composer_test.php
       - name: JavaScript syntax
         run: |
           node --check znews/assets/znews-config.js
