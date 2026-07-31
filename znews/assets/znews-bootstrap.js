@@ -103,7 +103,7 @@
     await loadScript('/znews/assets/znews-reader.js?v=3');
     await loadScript('/znews/assets/znews.js?v=10');
     await loadScript('/znews/assets/znews-header.js?v=2');
-    await loadScript('/znews/assets/znews-creator.js?v=6');
+    await loadScript('/znews/assets/znews-creator.js?v=7');
     await loadScript('/znews/assets/znews-instant-comments.js?v=4');
     document.documentElement.classList.add('znews-ready');
   }

@@ -10,6 +10,34 @@
 
   const client = () => new window.ZNewsApiClient(config);
   const text = (value) => String(value ?? '');
+  let editPreviewUrl = '';
+
+  function safeUrl(value) {
+    const raw = text(value).trim();
+    if (!raw) return '';
+    try {
+      const url = new URL(config.resolveProfilePhotoUrl(raw), window.location.origin);
+      if (url.protocol !== 'https:' && url.origin !== window.location.origin) return '';
+      return url.toString();
+    } catch (_error) {
+      return '';
+    }
+  }
+
+  function setAvatar(element, name, photoUrl = '') {
+    if (!element) return;
+    element.textContent = '';
+    const photo = safeUrl(photoUrl);
+    if (photo) {
+      const image = document.createElement('img');
+      image.src = photo;
+      image.alt = '';
+      image.referrerPolicy = 'no-referrer';
+      element.appendChild(image);
+      return;
+    }
+    element.textContent = text(name).trim().charAt(0).toUpperCase() || 'Z';
+  }
 
   function toast(message, type = 'success') {
     const item = document.createElement('div');
@@ -146,34 +174,131 @@
 
     dialog = document.createElement('dialog');
     dialog.id = 'creatorEditDialog';
-    dialog.className = 'modal';
+    dialog.className = 'modal creator-edit-dialog';
     dialog.innerHTML = `
-      <form class="modal-shell stack-form" id="creatorEditForm">
-        <button class="modal-close" type="button" data-close aria-label="Close">×</button>
-        <span class="eyebrow">Creator</span>
-        <h2>Edit post</h2>
-        <label class="field-label" for="creatorEditTitle">News headline</label>
-        <input id="creatorEditTitle" maxlength="160" required>
-        <label class="field-label" for="creatorEditText">Post text</label>
-        <textarea id="creatorEditText" maxlength="5000" rows="7"></textarea>
-        <label class="upload-box" for="creatorEditImage">
-          <input id="creatorEditImage" type="file" accept="image/jpeg,image/png,image/webp">
-          <strong>Replace image</strong>
-          <small>Leave empty to keep the current image.</small>
-        </label>
-        <label class="creator-remove-row" id="creatorRemoveRow">
-          <input id="creatorRemoveImage" type="checkbox"> Remove current image
-        </label>
+      <form class="composer-form creator-edit-form" id="creatorEditForm">
+        <header class="composer-topbar creator-edit-topbar">
+          <button class="composer-back" type="button" data-close aria-label="Close editor">‹</button>
+          <h1>Edit post</h1>
+          <button class="primary-button compact composer-submit" id="creatorEditSubmitTop" type="submit">Save</button>
+        </header>
+        <div class="composer-author">
+          <div class="avatar composer-author-avatar" id="creatorEditAvatar">Z</div>
+          <div>
+            <strong id="creatorEditName">Z-Pay creator</strong>
+            <span class="composer-audience" aria-label="Post audience: Public"><span aria-hidden="true">◉</span> Public</span>
+          </div>
+        </div>
+        <div class="composer-writing-fields">
+          <div class="composer-field composer-title-field">
+            <label for="creatorEditTitle">News headline</label>
+            <input id="creatorEditTitle" type="text" maxlength="160" placeholder="Add a clear headline" required aria-describedby="creatorEditTitleCount">
+            <span class="composer-field-count" id="creatorEditTitleCount">0 / 160</span>
+          </div>
+          <div class="composer-field composer-body-field">
+            <label for="creatorEditText">Post details</label>
+            <textarea id="creatorEditText" maxlength="5000" rows="4" placeholder="Write the story or update…" aria-describedby="creatorEditNote creatorEditTextCount"></textarea>
+            <span class="composer-field-count" id="creatorEditTextCount">0 / 5000</span>
+          </div>
+        </div>
+        <div id="creatorEditPreview" class="image-preview" hidden></div>
+        <div class="composer-add-row" aria-label="Update your post photo">
+          <label class="composer-photo-action" for="creatorEditImage">
+            <input id="creatorEditImage" type="file" accept="image/jpeg,image/png,image/webp">
+            <span aria-hidden="true">▧</span>
+            <strong id="creatorEditPhotoLabel">Add photo</strong>
+          </label>
+        </div>
+        <input id="creatorRemoveImage" type="checkbox" hidden>
+        <p class="composer-review-note" id="creatorEditNote">Clean changes publish immediately. Risky or duplicate content may be held for review.</p>
         <p class="form-error" id="creatorEditError" hidden></p>
-        <button class="primary-button" type="submit">Save changes</button>
+        <div class="composer-bottom-action creator-edit-bottom-action">
+          <button class="primary-button composer-bottom-submit" id="creatorEditSubmitBottom" type="submit">Save changes</button>
+        </div>
       </form>`;
     document.body.appendChild(dialog);
-    dialog.querySelector('[data-close]')?.addEventListener('click', () => dialog.close());
+    dialog.querySelector('[data-close]')?.addEventListener('click', () => {
+      if (dialog.querySelector('#creatorEditForm')?.getAttribute('aria-busy') !== 'true') dialog.close();
+    });
     dialog.addEventListener('cancel', (event) => {
       event.preventDefault();
-      dialog.close();
+      if (dialog.querySelector('#creatorEditForm')?.getAttribute('aria-busy') !== 'true') dialog.close();
+    });
+    dialog.addEventListener('close', clearEditPreviewUrl);
+    dialog.querySelector('#creatorEditTitle')?.addEventListener('input', () => syncEditor(dialog));
+    dialog.querySelector('#creatorEditText')?.addEventListener('input', () => syncEditor(dialog));
+    dialog.querySelector('#creatorEditImage')?.addEventListener('change', () => {
+      dialog.querySelector('#creatorRemoveImage').checked = false;
+      renderEditPreview(dialog);
+      syncEditor(dialog);
     });
     return dialog;
+  }
+
+  function clearEditPreviewUrl() {
+    if (!editPreviewUrl) return;
+    URL.revokeObjectURL(editPreviewUrl);
+    editPreviewUrl = '';
+  }
+
+  function renderEditPreview(dialog) {
+    const editForm = dialog.querySelector('#creatorEditForm');
+    const preview = dialog.querySelector('#creatorEditPreview');
+    const input = dialog.querySelector('#creatorEditImage');
+    const remove = dialog.querySelector('#creatorRemoveImage');
+    const file = input.files?.[0] || null;
+    clearEditPreviewUrl();
+
+    let imageUrl = '';
+    if (file) {
+      editPreviewUrl = URL.createObjectURL(file);
+      imageUrl = editPreviewUrl;
+    } else if (!remove.checked) {
+      imageUrl = safeUrl(editForm.dataset.currentImageUrl);
+    }
+
+    preview.textContent = '';
+    preview.hidden = !imageUrl;
+    if (imageUrl) {
+      const backdrop = document.createElement('img');
+      backdrop.className = 'composer-image-backdrop';
+      backdrop.src = imageUrl;
+      backdrop.alt = '';
+      backdrop.setAttribute('aria-hidden', 'true');
+      const foreground = document.createElement('img');
+      foreground.className = 'composer-image-foreground';
+      foreground.src = imageUrl;
+      foreground.alt = 'Selected post photo';
+      const removeButton = document.createElement('button');
+      removeButton.className = 'composer-image-remove';
+      removeButton.type = 'button';
+      removeButton.setAttribute('aria-label', 'Remove photo');
+      removeButton.textContent = '×';
+      removeButton.addEventListener('click', () => {
+        input.value = '';
+        remove.checked = editForm.dataset.hasCurrentImage === 'true';
+        renderEditPreview(dialog);
+        syncEditor(dialog);
+      });
+      preview.append(backdrop, foreground, removeButton);
+    }
+
+    dialog.querySelector('#creatorEditPhotoLabel').textContent = imageUrl ? 'Replace photo' : 'Add photo';
+  }
+
+  function syncEditor(dialog) {
+    const title = dialog.querySelector('#creatorEditTitle');
+    const body = dialog.querySelector('#creatorEditText');
+    const formElement = dialog.querySelector('#creatorEditForm');
+    const replacement = dialog.querySelector('#creatorEditImage').files?.[0] || null;
+    const currentImageKept = formElement.dataset.hasCurrentImage === 'true'
+      && !dialog.querySelector('#creatorRemoveImage').checked;
+    dialog.querySelector('#creatorEditTitleCount').textContent = `${title.value.length} / 160`;
+    dialog.querySelector('#creatorEditTextCount').textContent = `${body.value.length} / 5000`;
+    body.style.height = 'auto';
+    body.style.height = `${Math.min(210, Math.max(112, body.scrollHeight))}px`;
+    const enabled = Boolean(title.value.trim() && (body.value.trim() || replacement || currentImageKept));
+    dialog.querySelectorAll('button[type="submit"]').forEach((button) => { button.disabled = !enabled; });
   }
 
   function ensureActionDialog() {
@@ -260,13 +385,23 @@
     try {
       const result = await postDetails(postId);
       const post = result.data?.post || {};
+      const api = client();
+      const creatorName = text(post.creator_name || api.profile.name || api.profile.NAME
+        || api.profile.display_name || api.profile.phone || 'Z-Pay creator').trim();
+      const creatorPhoto = text(post.creator_photo_url || api.profile.profile_photo_url
+        || api.profile.photo_url || api.profile.PROFILE);
       dialog.querySelector('#creatorEditTitle').value = text(post.title);
       dialog.querySelector('#creatorEditText').value = text(post.text);
       dialog.querySelector('#creatorEditImage').value = '';
       dialog.querySelector('#creatorRemoveImage').checked = false;
-      dialog.querySelector('#creatorRemoveRow').hidden = !text(post.image_media_id).trim();
+      dialog.querySelector('#creatorEditName').textContent = creatorName;
+      setAvatar(dialog.querySelector('#creatorEditAvatar'), creatorName, creatorPhoto);
+      editForm.dataset.hasCurrentImage = text(post.image_media_id).trim() ? 'true' : 'false';
+      editForm.dataset.currentImageUrl = safeUrl(post.image_url);
       editForm.dataset.postId = postId;
       editForm.dataset.updatedAt = text(post.updated_at);
+      renderEditPreview(dialog);
+      syncEditor(dialog);
       closeActionDialog();
       if (!dialog.open) dialog.showModal();
     } catch (requestError) {
@@ -280,7 +415,7 @@
     if (!editForm) return;
     event.preventDefault();
 
-    const submit = editForm.querySelector('button[type="submit"]');
+    const submits = [...editForm.querySelectorAll('button[type="submit"]')];
     const error = editForm.querySelector('#creatorEditError');
     const postId = text(editForm.dataset.postId);
     const expectedUpdatedAt = Number(editForm.dataset.updatedAt || 0);
@@ -291,6 +426,11 @@
 
     if (!postTitle) {
       error.textContent = 'Add a news headline.';
+      error.hidden = false;
+      return;
+    }
+    if (!postText && !replacement && (removeImage || editForm.dataset.hasCurrentImage !== 'true')) {
+      error.textContent = 'Add post details or a photo.';
       error.hidden = false;
       return;
     }
@@ -305,7 +445,9 @@
       return;
     }
 
-    setBusy(submit, true, replacement ? 'Uploading…' : 'Saving…');
+    error.hidden = true;
+    editForm.setAttribute('aria-busy', 'true');
+    submits.forEach((button) => setBusy(button, true, replacement ? 'Uploading…' : 'Saving…'));
     try {
       const api = client();
       const body = {
@@ -318,7 +460,7 @@
 
       if (replacement) {
         body.media_id = await uploadImage(api, replacement);
-        submit.textContent = 'Saving…';
+        submits.forEach((button) => { button.textContent = 'Saving…'; });
       } else if (removeImage) {
         body.media_id = '';
       }
@@ -338,7 +480,9 @@
       error.textContent = errorMessage(requestError);
       error.hidden = false;
     } finally {
-      setBusy(submit, false);
+      editForm.removeAttribute('aria-busy');
+      submits.forEach((button) => setBusy(button, false));
+      syncEditor(ensureEditor());
     }
   });
 
@@ -398,8 +542,15 @@
     .creator-management{display:flex;gap:10px;padding:0 16px 16px}
     .creator-management .ghost-button{flex:1}
     .creator-management .danger{border-color:rgba(255,107,107,.45);color:#ff9b9b}
-    .creator-remove-row{display:flex;align-items:center;gap:10px;color:#c7d3e8}
-    #creatorEditDialog textarea{resize:vertical}
+    .creator-edit-dialog{width:min(100%,680px);max-width:680px;max-height:min(94dvh,920px);padding:0;border:0;border-radius:24px;background:#0a203b;color:#f3f7fd;overflow:hidden}
+    .creator-edit-dialog::backdrop{background:rgba(0,10,24,.78);backdrop-filter:blur(6px)}
+    .creator-edit-form{max-height:min(94dvh,920px);overflow-x:hidden;overflow-y:auto;padding-bottom:18px;overscroll-behavior:contain}
+    .creator-edit-form .image-preview{position:relative;width:min(calc(100% - 32px),420px);height:260px;margin:4px 16px 12px;overflow:hidden;border:1px solid rgba(142,177,226,.2);border-radius:13px;background:#020915}
+    .creator-edit-form .image-preview img{display:block;width:100%;height:100%;object-fit:contain}
+    .creator-edit-form .composer-image-backdrop{position:absolute;inset:-14px;width:calc(100% + 28px);height:calc(100% + 28px);object-fit:cover;filter:blur(18px) brightness(.52);transform:scale(1.05)}
+    .creator-edit-form .composer-image-foreground{position:relative;z-index:1;object-fit:contain}
+    .creator-edit-form .form-error{margin:8px 16px 0}
+    .creator-edit-form[aria-busy="true"] [data-close]{opacity:.45;pointer-events:none}
     .creator-action-dialog{width:min(88vw,390px);padding:0;border:0;border-radius:24px;background:transparent;color:#f7fbff}
     .creator-action-dialog::backdrop{background:rgba(0,10,24,.72);backdrop-filter:blur(5px)}
     .creator-action-shell{display:grid;justify-items:center;gap:12px;padding:28px 24px;border:1px solid rgba(151,190,235,.25);border-radius:24px;background:#09213b;box-shadow:0 24px 70px rgba(0,0,0,.48);text-align:center}
@@ -411,6 +562,19 @@
     .creator-action-buttons .danger{background:linear-gradient(135deg,#e34d63,#ff7385);color:#fff}
     @keyframes creator-action-spin{to{transform:rotate(360deg)}}
     @media (prefers-reduced-motion:reduce){.creator-action-spinner{animation-duration:1.5s}}
+    @media(max-width:780px){
+      .creator-edit-dialog{inset:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border-radius:0;background:linear-gradient(180deg,#0c203b 0%,#07162a 100%)}
+      .creator-edit-form{height:100dvh;max-height:none;padding-top:64px;padding-bottom:calc(94px + env(safe-area-inset-bottom,0px))}
+      .creator-edit-topbar{position:fixed;inset:0 0 auto;z-index:90;width:100%;min-height:64px;background:rgba(8,25,47,.96);backdrop-filter:blur(16px)}
+      .creator-edit-form .composer-author{padding:12px 22px 5px}
+      .creator-edit-form .composer-writing-fields{padding:14px 22px}
+      .creator-edit-form .image-preview{width:calc(100% - 44px);height:clamp(220px,56vw,340px);margin:2px 22px 14px}
+      .creator-edit-form .composer-add-row{margin:0 22px;border-radius:18px}
+      .creator-edit-form .composer-photo-action{border-radius:18px}
+      .creator-edit-form .composer-review-note{margin:10px 24px 12px}
+      .creator-edit-bottom-action{position:fixed;inset:auto 0 0;z-index:90;display:block;padding:10px 22px calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,rgba(7,22,42,.2),#07162a 28%);backdrop-filter:blur(14px)}
+      .creator-edit-bottom-action .composer-bottom-submit{min-height:52px;border-radius:17px}
+    }
   `;
   document.head.appendChild(style);
 })();
