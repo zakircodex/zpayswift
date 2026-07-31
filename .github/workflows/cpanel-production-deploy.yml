@@ -78,6 +78,7 @@ jobs:
           php tests/znews_web_ui_foundation_test.php
           php tests/zsky24_dual_domain_test.php
           php tests/zsky24_my_posts_navigation_loading_test.php
+          php tests/zsky24_edit_post_composer_test.php
           find api/znews api/admin/znews -type f -name '*.php' -print0 \
             | sort -z \
             | xargs -0 -n1 php -l >/dev/null

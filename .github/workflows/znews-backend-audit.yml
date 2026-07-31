@@ -118,6 +118,8 @@ jobs:
             file: tests/zsky24_headline_photo_test.php
           - id: zsky24-back-navigation-guard
             file: tests/zsky24_back_navigation_guard_test.php
+          - id: zsky24-edit-post-composer
+            file: tests/zsky24_edit_post_composer_test.php
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
