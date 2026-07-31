@@ -14,6 +14,7 @@ $content = znews_post_validate_content(
     $body['text'] ?? '',
     $body['media_id'] ?? $body['image_media_id'] ?? ''
 );
+$title = znews_post_validate_title($body['title'] ?? '');
 $idempotencyKey = znews_idempotency_key(
     $body['idempotency_key']
     ?? $body['client_request_id']
@@ -22,6 +23,7 @@ $idempotencyKey = znews_idempotency_key(
 
 $result = znews_create_post_with_media(
     $auth,
+    $title,
     (string)$content['text'],
     (string)$content['media_id'],
     (string)$content['content_type'],

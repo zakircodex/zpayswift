@@ -83,14 +83,32 @@ function znews_post_validate_content($textValue, $mediaValue): array
     ];
 }
 
+function znews_post_validate_title($value): string
+{
+    $title = znews_normalize_text($value);
+    $title = trim((string)preg_replace('/\s+/u', ' ', $title));
+    if (znews_text_length($title) > 160) {
+        api_response(
+            false,
+            'ZNEWS_POST_TITLE_TOO_LONG',
+            'Post title must not exceed 160 characters.',
+            ['max_length' => 160],
+            422
+        );
+    }
+    return $title;
+}
+
 function znews_post_media_payload_hash(
     string $uid,
+    string $title,
     string $text,
     string $mediaId,
     string $contentType
 ): string {
     return hash('sha256', json_encode([
         'uid' => $uid,
+        'title' => $title,
         'text' => $text,
         'media_id' => $mediaId,
         'content_type' => $contentType,

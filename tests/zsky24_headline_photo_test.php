@@ -1,0 +1,69 @@
+<?php
+declare(strict_types=1);
+
+$root = dirname(__DIR__);
+
+function headline_source(string $relative): string
+{
+    $contents = file_get_contents(dirname(__DIR__) . '/' . $relative);
+    if ($contents === false) {
+        throw new RuntimeException("Unable to read {$relative}");
+    }
+    return $contents;
+}
+
+function headline_expect(bool $condition, string $message): void
+{
+    if (!$condition) {
+        fwrite(STDERR, "FAIL: {$message}\n");
+        exit(1);
+    }
+}
+
+$index = headline_source('znews/index.html');
+$app = headline_source('znews/assets/znews.js');
+$apiClient = headline_source('znews/assets/znews-api.js');
+$creator = headline_source('znews/assets/znews-creator.js');
+$profile = headline_source('znews/assets/znews-profile.js');
+$premium = headline_source('znews/assets/znews-premium.css');
+$createEndpoint = headline_source('api/znews/posts/create.php');
+$updateEndpoint = headline_source('api/znews/posts/update.php');
+$createService = headline_source('api/znews/lib/post_media_create.php');
+$updateService = headline_source('api/znews/lib/post_media_update.php');
+$common = headline_source('api/znews/lib/post_media_common.php');
+$posts = headline_source('api/znews/lib/posts.php');
+
+headline_expect(str_contains($index, 'id="postTitle"'), 'Headline input is missing.');
+headline_expect(str_contains($index, 'maxlength="160"'), 'Headline length limit is missing.');
+headline_expect(str_contains($index, 'placeholder="Add a clear headline" required'), 'Web headline must be required.');
+headline_expect(str_contains($index, 'class="composer-title-field"'), 'Headline and body are not visually separated.');
+headline_expect(str_contains($index, 'class="composer-body-field"'), 'Post details field is missing.');
+headline_expect(str_contains($index, '>Add photo</strong>'), 'Photo-only action label is missing.');
+headline_expect(!str_contains($index, 'Photos/videos'), 'Video wording remains in the composer.');
+headline_expect(!str_contains($index, ' multiple'), 'Composer must allow only one selected photo.');
+headline_expect(str_contains($index, 'accept="image/jpeg,image/png,image/webp"'), 'Image MIME allowlist is missing.');
+
+headline_expect(str_contains($common, 'function znews_post_validate_title'), 'Backend headline validation is missing.');
+headline_expect(str_contains($common, "'ZNEWS_POST_TITLE_TOO_LONG'"), 'Headline overflow error is missing.');
+headline_expect(str_contains($createEndpoint, "\$body['title'] ?? ''"), 'Create API is not backward-compatible with title-less clients.');
+headline_expect(str_contains($updateEndpoint, "array_key_exists('title', \$body)"), 'Update API title-presence handling is missing.');
+headline_expect(str_contains($createService, "'title' => \$title"), 'Headline is not stored on create.');
+headline_expect(str_contains($updateService, "\$updated['title'] = \$targetTitle"), 'Headline is not stored on update.');
+headline_expect(str_contains($posts, "'title' => trim((string)(\$post['title'] ?? ''))"), 'Existing title-less posts are not safely formatted.');
+headline_expect(str_contains($createService, 'trim($title . "\\n" . $text)'), 'Headline is not included in create moderation.');
+headline_expect(str_contains($updateService, 'trim($targetTitle . "\\n" . $text)'), 'Headline is not included in update moderation.');
+
+headline_expect(str_contains($apiClient, 'createPost({ title = \'\', text = \'\', mediaId = \'\' })'), 'Web API client does not send headlines.');
+headline_expect(str_contains($creator, 'title: postTitle'), 'Creator create request does not send the headline.');
+headline_expect(str_contains($creator, 'id="creatorEditTitle"'), 'Creator edit headline input is missing.');
+headline_expect(str_contains($creator, "['image/jpeg', 'image/png', 'image/webp'].includes(file.type)"), 'Create photo MIME validation is missing.');
+headline_expect(str_contains($creator, "['image/jpeg', 'image/png', 'image/webp'].includes(replacement.type)"), 'Edit photo MIME validation is missing.');
+headline_expect(str_contains($app, 'class="post-title"'), 'Feed and reader headline rendering is missing.');
+headline_expect(str_contains($profile, 'class="profile-post-open post-title"'), 'Creator profile headline rendering is missing.');
+
+headline_expect(str_contains($premium, '.composer-writing-fields{display:grid;gap:12px'), 'Headline/body field separation styles are missing.');
+headline_expect(str_contains($premium, '.composer-card .image-preview{position:relative;width:min(calc(100% - 32px),420px);height:260px'), 'Desktop preview does not have a fixed bounded size.');
+headline_expect(str_contains($premium, 'width:min(calc(100% - 44px),380px);height:250px'), 'Mobile preview does not have a fixed bounded size.');
+headline_expect(str_contains($premium, '.composer-card .image-preview img{display:block;width:100%;height:100%;object-fit:contain}'), 'Selected photo must preserve its aspect ratio.');
+
+fwrite(STDOUT, "Z Sky 24 headline and single-photo audit passed.\n");

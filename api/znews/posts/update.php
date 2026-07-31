@@ -26,6 +26,7 @@ if ($expectedUpdatedAt === false || $expectedUpdatedAt <= 0) {
 }
 
 $textProvided = array_key_exists('text', $body);
+$titleProvided = array_key_exists('title', $body);
 $mediaProvided = array_key_exists('media_id', $body)
     || array_key_exists('image_media_id', $body);
 $requestedMediaId = $mediaProvided
@@ -41,6 +42,8 @@ $idempotencyKey = znews_idempotency_key(
 $result = znews_update_post_with_media(
     $auth,
     $postId,
+    (string)($body['title'] ?? ''),
+    $titleProvided,
     (string)($body['text'] ?? ''),
     $textProvided,
     $mediaProvided,

@@ -73,11 +73,16 @@
 
     const submits = [...form.querySelectorAll('button[type="submit"]')];
     const submit = submits[0];
+    const postTitle = text(document.querySelector('#postTitle')?.value).trim();
     const postText = text(document.querySelector('#postText')?.value).trim();
     const imageInput = document.querySelector('#postImage');
     const file = imageInput?.files?.[0] || null;
 
-    if (!postText && !file) return toast('Add text or an image.', 'error');
+    if (!postTitle) return toast('Add a news headline.', 'error');
+    if (!postText && !file) return toast('Add post details or a photo.', 'error');
+    if (file && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      return toast('Choose a JPEG, PNG or WebP photo.', 'error');
+    }
     if (file && file.size > 5 * 1024 * 1024) return toast('Image must be 5 MB or smaller.', 'error');
 
     submits.forEach((button) => setBusy(button, true, file ? 'Uploading…' : 'Publishing…'));
@@ -92,6 +97,7 @@
         method: 'POST',
         authenticated: true,
         body: {
+          title: postTitle,
           text: postText,
           media_id: mediaId,
           idempotency_key: idempotency('post')
@@ -106,6 +112,9 @@
       }
       const counter = document.querySelector('#postTextCount');
       if (counter) counter.textContent = '0 / 5000';
+      const titleCounter = document.querySelector('#postTitleCount');
+      if (titleCounter) titleCounter.textContent = '0 / 160';
+      document.querySelector('#postTitle')?.dispatchEvent(new Event('input'));
       document.querySelector('#postText')?.dispatchEvent(new Event('input'));
 
       toast(result.data?.published_immediately === true
@@ -117,9 +126,10 @@
       toast(errorMessage(error), 'error');
     } finally {
       submits.forEach((button) => setBusy(button, false));
+      const currentTitle = text(document.querySelector('#postTitle')?.value).trim();
       const currentText = text(document.querySelector('#postText')?.value).trim();
       const currentFile = document.querySelector('#postImage')?.files?.[0] || null;
-      submits.forEach((button) => { button.disabled = !currentText && !currentFile; });
+      submits.forEach((button) => { button.disabled = !currentTitle || (!currentText && !currentFile); });
     }
   }, true);
 
@@ -142,6 +152,8 @@
         <button class="modal-close" type="button" data-close aria-label="Close">×</button>
         <span class="eyebrow">Creator</span>
         <h2>Edit post</h2>
+        <label class="field-label" for="creatorEditTitle">News headline</label>
+        <input id="creatorEditTitle" maxlength="160" required>
         <label class="field-label" for="creatorEditText">Post text</label>
         <textarea id="creatorEditText" maxlength="5000" rows="7"></textarea>
         <label class="upload-box" for="creatorEditImage">
@@ -173,6 +185,7 @@
     try {
       const result = await postDetails(postId);
       const post = result.data?.post || {};
+      dialog.querySelector('#creatorEditTitle').value = text(post.title);
       dialog.querySelector('#creatorEditText').value = text(post.text);
       dialog.querySelector('#creatorEditImage').value = '';
       dialog.querySelector('#creatorRemoveImage').checked = false;
@@ -194,10 +207,21 @@
     const error = editForm.querySelector('#creatorEditError');
     const postId = text(editForm.dataset.postId);
     const expectedUpdatedAt = Number(editForm.dataset.updatedAt || 0);
+    const postTitle = text(editForm.querySelector('#creatorEditTitle').value).trim();
     const postText = text(editForm.querySelector('#creatorEditText').value).trim();
     const replacement = editForm.querySelector('#creatorEditImage').files?.[0] || null;
     const removeImage = editForm.querySelector('#creatorRemoveImage').checked;
 
+    if (!postTitle) {
+      error.textContent = 'Add a news headline.';
+      error.hidden = false;
+      return;
+    }
+    if (replacement && !['image/jpeg', 'image/png', 'image/webp'].includes(replacement.type)) {
+      error.textContent = 'Choose a JPEG, PNG or WebP photo.';
+      error.hidden = false;
+      return;
+    }
     if (replacement && replacement.size > 5 * 1024 * 1024) {
       error.textContent = 'Image must be 5 MB or smaller.';
       error.hidden = false;
@@ -209,6 +233,7 @@
       const api = client();
       const body = {
         post_id: postId,
+        title: postTitle,
         text: postText,
         expected_updated_at: expectedUpdatedAt,
         idempotency_key: idempotency('post-edit')

@@ -108,9 +108,9 @@ foreach ([$createService, $updateService, $policySource, $createEndpoint, $updat
 instant_expect(str_contains($policySource, 'ZNEWS_TEXT_REVIEW_TERMS'), 'private-config text review terms are unsupported');
 instant_expect(str_contains($policySource, 'EXCESSIVE_LINKS'), 'link-spam review gate is missing');
 instant_expect(str_contains($policySource, 'REPETITIVE_SPAM'), 'repetitive-spam review gate is missing');
-instant_expect(str_contains($createService, 'znews_post_publication_decision($mediaRow, $text)'), 'create service does not check post text');
+instant_expect(str_contains($createService, 'znews_post_publication_decision($mediaRow, trim($title . "\n" . $text))'), 'create service does not check the headline and post text');
 instant_expect(str_contains($createService, 'znews_path_public_feed($postId)'), 'create service lacks public-feed write');
-instant_expect(str_contains($updateService, 'znews_post_publication_decision($newMediaRow, $text)'), 'edited text is not rechecked');
+instant_expect(str_contains($updateService, 'znews_post_publication_decision($newMediaRow, trim($targetTitle . "\n" . $text))'), 'edited headline and text are not rechecked');
 instant_expect(str_contains($updateService, 'znews_public_feed_index_for_post($updated)'), 'update service lacks dynamic feed decision');
 instant_expect(str_contains($updateService, 'expectedUpdatedAt'), 'edit version protection is missing');
 instant_expect(str_contains($mediaPolicy, "'AUTO_CLEARED'"), 'strict public media policy rejects auto-cleared media');
@@ -119,7 +119,7 @@ instant_expect(str_contains($updateEndpoint, 'requires_review'), 'update endpoin
 
 instant_expect(str_contains($webIndex, 'Clean posts publish immediately'), 'web UI does not explain instant publishing');
 instant_expect(str_contains($webIndex, '>Post</button>'), 'compact web publish action label is missing');
-instant_expect(str_contains($webBootstrap, 'znews-creator.js?v=4'), 'web creator management module is not loaded by bootstrap');
+instant_expect(str_contains($webBootstrap, 'znews-creator.js?v=5'), 'web creator management module is not loaded by bootstrap');
 instant_expect(!str_contains($webIndex, 'Submit for review'), 'web UI still presents every post as pre-moderated');
 instant_expect(str_contains($webCreator, 'znews/posts/update.php'), 'web edit endpoint is missing');
 instant_expect(str_contains($webCreator, 'znews/posts/delete.php'), 'web delete endpoint is missing');
