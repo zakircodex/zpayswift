@@ -316,6 +316,14 @@ img { display: block; max-width: 100%; }
 .balance-hero > strong { display: block; margin: 2px 0 5px; font-size: clamp(38px, 8vw, 58px); letter-spacing: -.06em; }
 .balance-hero p { margin: 0 0 18px; color: var(--muted); }
 .balance-hero small { display: block; margin-top: 10px; color: #7f94b1; }
+#balanceView.active { display: grid; gap: 20px; }
+.balance-rate-card { display: grid; gap: 4px; width: min(100%, 440px); margin: 0 auto 18px; padding: 14px 16px; border: 1px solid rgba(116, 231, 168, .2); border-radius: 18px; background: rgba(32, 216, 102, .065); text-align: left; }
+.balance-rate-card > span { color: #91a7c3; font-size: 10px; font-weight: 850; letter-spacing: .07em; text-transform: uppercase; }
+.balance-rate-card > strong { color: #ddfbea; font-size: 19px; letter-spacing: -.02em; }
+.balance-rate-card > small { margin: 0; color: #7f94b1; font-size: 10px; line-height: 1.45; }
+.balance-transfer-button { width: min(100%, 440px); border-radius: 18px; }
+.balance-activity-card { overflow: hidden; }
+.balance-activity-card .section-heading { padding-bottom: 16px; border-bottom: 1px solid rgba(142, 177, 226, .14); }
 .ledger-list { display: grid; }
 .ledger-item { display: flex; justify-content: space-between; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--line); }
 .ledger-item:last-child { border-bottom: 0; }

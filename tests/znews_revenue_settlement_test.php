@@ -25,6 +25,7 @@ function znews_settlement_test_read(string $path): string
 $files = [
     'api/znews/lib/settlements.php',
     'api/znews/lib/settlements_common.php',
+    'api/znews/lib/settlement_payout_policy.php',
     'api/znews/lib/settlements_balances.php',
     'api/znews/lib/settlements_service.php',
     'api/znews/lib/settlements_access.php',
@@ -53,9 +54,12 @@ foreach ($files as $relative) {
 }
 
 $common = znews_settlement_test_read($root . '/api/znews/lib/settlements_common.php');
-znews_settlement_test_expect(str_contains($common, 'return 5000;'), 'creator share is not fixed at 50 percent');
-znews_settlement_test_expect(str_contains($common, '10000 - znews_settlement_creator_share_bps()'), 'platform remainder split missing');
+$payoutPolicy = znews_settlement_test_read($root . '/api/znews/lib/settlement_payout_policy.php');
+znews_settlement_test_expect(str_contains($common, 'return 5000;'), 'creator base share is not fixed at 50 percent');
+znews_settlement_test_expect(str_contains($common, '10000 - znews_settlement_creator_share_bps()'), 'base platform share metadata is missing');
 znews_settlement_test_expect(str_contains($common, 'intdiv($grossMicros * znews_settlement_creator_share_bps(), 10000)'), 'integer-micros allocation missing');
+znews_settlement_test_expect(str_contains($payoutPolicy, 'min(30000, $configured)'), 'BDT creator payout can exceed 0.03 per verified ad');
+znews_settlement_test_expect(str_contains($payoutPolicy, 'return $creator - ($creator % $unit);'), 'BDT creator payout is not rounded down to whole paisa');
 znews_settlement_test_expect(str_contains($common, '$platform = $grossMicros - $creator'), 'rounding-safe platform remainder missing');
 znews_settlement_test_expect(str_contains($common, 'ZNEWS_SETTLEMENTS/'), 'settlement namespace missing');
 znews_settlement_test_expect(str_contains($common, 'ZNEWS_SETTLEMENT_ITEMS/'), 'settlement item namespace missing');

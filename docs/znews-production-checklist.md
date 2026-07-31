@@ -58,7 +58,7 @@ Use a dedicated test creator and admin account.
 4. Start a public view, send a heartbeat after the configured interval, wait at least the minimum read duration and complete it.
 5. Submit a correctly signed test ad impression bound to that valid view.
 6. Verify the impression is `VERIFIED`, but not credited before settlement.
-7. Settle the impression as admin; verify creator/platform allocation is 50/50 and the main wallet remains unchanged.
+7. Settle the impression as admin; verify the creator base share is 50%, the BDT creator credit is rounded down to whole paisa and never exceeds BDT 0.03 per verified ad, the platform receives the remainder, and the main wallet remains unchanged.
 8. Accumulate at least BDT 500 equivalent in the creator's Z News balance.
 9. Create a transfer request; verify the amount moves from available to reserved.
 10. Approve it as admin; verify one deterministic main-wallet credit and one source-balance consume.

@@ -61,7 +61,7 @@ interface ZNewsAdProvider {
 - The backend binds a provider event to an eligible completed Z News view.
 - Duplicate event, nonce, slot and view rules run before verification.
 - A verified impression remains `NOT_SETTLED` until an authorised settlement action.
-- Settlement uses integer micros and applies the configured 50% creator / 50% platform split.
+- Settlement uses integer micros. The creator base share is 50% of authenticated provider-reported revenue; BDT creator payout is rounded down to whole paisa and capped at the configured maximum of BDT 0.01–0.03 per verified ad. The platform receives the remainder.
 - Main Z-Pay wallet remains isolated until a valid Z News transfer request is approved.
 
 ## Launch gates

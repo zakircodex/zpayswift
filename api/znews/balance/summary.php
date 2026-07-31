@@ -45,6 +45,7 @@ api_response(
     [
         'creator_share_percent' => 50,
         'platform_share_percent' => 50,
+        'creator_ad_payout_policy' => znews_settlement_creator_ad_payout_policy(),
         'main_wallet_transfer_enabled' => true,
         'minimum_bdt_micros' => znews_transfer_threshold_bdt_micros(),
         'minimum_bdt' => '500',
