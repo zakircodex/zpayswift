@@ -16,6 +16,8 @@ DirectoryIndex index.html
   RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
   RewriteRule ^(?:admin|subadmin|user|wallet|worker|private)(?:/|$) - [F,L,NC]
   RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
+  RewriteRule ^deploy_version\.txt$ - [L,NC]
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
   RewriteRule ^(?:post|creator)/([A-Za-z0-9_-]+)/?$ /znews/index.html [L]
   RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
   RewriteRule ^$ /znews/index.html [L]

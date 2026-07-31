@@ -33,6 +33,7 @@ $index = zsky_source('znews/index.html');
 zsky_expect(str_contains($rootRewrite, 'zsky24\.com'), 'Standalone host routing is missing.');
 zsky_expect(str_contains($rootRewrite, 'RewriteRule ^(?:post|creator)/'), 'Standalone clean routes are missing.');
 zsky_expect(str_contains($rootRewrite, 'api/(?!znews'), 'Standalone host API restriction is missing.');
+zsky_expect(str_contains($rootRewrite, 'RewriteRule ^deploy_version\\.txt$ - [L,NC]'), 'Standalone deployment marker allowlist is missing.');
 zsky_expect(str_contains($rootRewrite, 'admin|subadmin|user|wallet|worker|private'), 'Sensitive route restriction is missing.');
 
 zsky_expect(str_contains($config, "standaloneHost = 'zsky24.com'"), 'Standalone hostname config is missing.');
