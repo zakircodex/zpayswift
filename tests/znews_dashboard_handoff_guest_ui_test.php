@@ -61,7 +61,7 @@ znews_contract_expect(str_contains($index, 'class="composer-card card" data-auth
 znews_contract_expect(str_contains($index, 'id="commentForm" class="comment-composer" data-auth-only hidden'), 'Guest readers must not see the comment composer.');
 znews_contract_expect(str_contains($index, 'id="commentGuestCta"'), 'Guest reader comment CTA is missing.');
 znews_contract_expect(str_contains($index, 'interactive-widget=resizes-content'), 'Android keyboard resize mode is missing.');
-znews_contract_expect(str_contains($index, 'znews-bootstrap.js?v=15'), 'Latest handoff bootstrap must be activated.');
+znews_contract_expect(str_contains($index, 'znews-bootstrap.js?v=17'), 'Latest handoff bootstrap must be activated.');
 znews_contract_expect(!str_contains($index, 'znews-quick-login.js'), 'Standalone Z News PIN login must not be loaded.');
 
 znews_contract_expect(str_contains($api, 'exchangeHandoff(code)'), 'API client must support one-time dashboard handoff exchange.');

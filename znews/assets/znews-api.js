@@ -172,6 +172,10 @@
       });
     }
 
+    publicCreatorPolicy() {
+      return this.request('znews/public/policy.php', { appKey: false });
+    }
+
     myPosts(cursor = '') {
       return this.request('znews/posts/mine.php', {
         params: { limit: this.config.creatorPostPageSize, cursor },

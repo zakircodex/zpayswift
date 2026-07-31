@@ -20,6 +20,8 @@ DirectoryIndex index.html
   RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
   RewriteRule ^(?:post|creator)/([A-Za-z0-9_-]+)/?$ /znews/index.html [L]
   RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
+  RewriteRule ^policy/?$ /znews/index.html [L]
+  RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
   RewriteRule ^$ /znews/index.html [L]
   RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
   RewriteRule ^(?!znews(?:/|$)|api/znews(?:/|$)|assets/brand/(?:zpay-icon|favicon|apple-touch-icon)\.png$|manifest\.webmanifest$|sw\.js$).+ - [F,L,NC]

@@ -45,7 +45,7 @@ function znews_transfer_quote(string $uid, string $currency, int $sourceAmountMi
         return [
             'ok' => false,
             'code' => 'ZNEWS_TRANSFER_MINIMUM_NOT_MET',
-            'message' => 'Minimum transfer amount is BDT 500.',
+            'message' => 'Minimum transfer amount is BDT 200.',
             'http_status' => 422,
             'bdt_equivalent_micros' => $bdtMicros,
             'threshold_bdt_micros' => znews_transfer_threshold_bdt_micros(),
@@ -101,7 +101,7 @@ function znews_transfer_quote(string $uid, string $currency, int $sourceAmountMi
             'bdt_equivalent_micros' => $bdtMicros,
             'bdt_equivalent' => znews_transfer_micros_to_decimal($bdtMicros),
             'threshold_bdt_micros' => znews_transfer_threshold_bdt_micros(),
-            'threshold_bdt' => '500',
+            'threshold_bdt' => '200',
             'destination_currency' => $destinationCurrency,
             'destination_amount_micros' => $destinationMicros,
             'destination_amount_minor' => $destinationMinor,

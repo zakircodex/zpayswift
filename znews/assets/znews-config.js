@@ -10,10 +10,14 @@
   const routeBase = standalone ? '' : '/znews';
   const zpayOrigin = 'https://zpayswift.com';
   const publicPath = (kind = '', id = '') => {
-    const suffix = kind ? `/${kind}/${encodeURIComponent(String(id || ''))}` : '/';
+    const suffix = kind === 'policy'
+      ? '/policy'
+      : (kind ? `/${kind}/${encodeURIComponent(String(id || ''))}` : '/');
     return `${routeBase}${suffix}`.replace(/\/+$/, kind ? '' : '/');
   };
   const parseRoute = (pathname = window.location.pathname) => {
+    const policyPattern = standalone ? /^\/policy\/?$/ : /^\/znews\/policy\/?$/;
+    if (policyPattern.test(String(pathname))) return { kind: 'policy', id: '' };
     const pattern = standalone
       ? /^\/(post|creator)\/([A-Za-z0-9_-]+)\/?$/
       : /^\/znews\/(post|creator)\/([A-Za-z0-9_-]+)\/?$/;

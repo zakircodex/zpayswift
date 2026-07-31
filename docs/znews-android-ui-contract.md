@@ -47,7 +47,7 @@ A public post link opens the post reader. Authentication is required for post cr
 ### Creator balance
 
 - Separate Z News balances and ledger.
-- Minimum BDT 500 transfer disclosure.
+- Minimum BDT 200 transfer disclosure.
 - Transfer button enabled only when the backend-reported available BDT equivalent meets the threshold.
 - Transfer request status; no client-side wallet mutation.
 

@@ -11,6 +11,7 @@
     currentPostId: '',
     viewSession: null,
     balanceMicros: 0,
+    transferMinimumMicros: 200_000_000,
     authStage: 'credentials',
     authContext: {},
     localLikes: new Set(),
@@ -121,7 +122,7 @@
       SESSION_EXPIRED: 'Your session has expired. Please sign in again.',
       ZNEWS_POST_NOT_FOUND: 'This post is no longer available.',
       ZNEWS_COMMENT_MESSAGE_REQUIRED: 'Write a comment first.',
-      ZNEWS_TRANSFER_MINIMUM_NOT_MET: 'Minimum transfer amount is ৳500.',
+      ZNEWS_TRANSFER_MINIMUM_NOT_MET: 'Minimum transfer amount is ৳200.',
       ZNEWS_TRANSFER_INSUFFICIENT_BALANCE: 'Your available Z Sky 24 balance is not enough.',
       NETWORK_FAILURE: 'Network connection failed. Please try again.',
       MALFORMED_RESPONSE: 'The server returned an invalid response.'
@@ -279,13 +280,26 @@
     return { znewsAppEntry: true, znewsView: view, ...extra };
   }
 
+  function syncViewMetadata(view) {
+    const policy = view === 'policy';
+    const canonical = policy ? config.canonicalUrl('policy') : config.canonicalUrl();
+    document.title = policy ? 'Creator credit policy | Z Sky 24' : 'Z Sky 24';
+    document.querySelector('link[rel="canonical"]')?.setAttribute('href', canonical);
+    document.querySelector('meta[property="og:url"]')?.setAttribute('content', canonical);
+    document.querySelector('meta[property="og:title"]')?.setAttribute('content', policy ? 'Creator credit policy | Z Sky 24' : 'Z Sky 24');
+    document.querySelector('meta[name="description"]')?.setAttribute('content', policy
+      ? 'Z Sky 24 verified ad credit, balance and transfer policy.'
+      : 'Z Sky 24 — News, stories and community updates.');
+  }
+
   function initializeAppHistory(route) {
     if (history.state?.znewsAppEntry === true || history.state?.znewsBoundary === true) return;
+    const initialView = route.kind === 'policy' ? 'policy' : 'feed';
     const initialPath = route.kind === 'post'
       ? config.publicPath('post', route.id)
-      : config.publicPath();
+      : (route.kind === 'policy' ? config.publicPath('policy') : config.publicPath());
     history.replaceState({ znewsBoundary: true, znewsView: 'feed' }, '', config.publicPath());
-    history.pushState(appHistoryState('feed', route.kind === 'post'
+    history.pushState(appHistoryState(initialView, route.kind === 'post'
       ? { postId: route.id, znewsPostOverlay: true }
       : {}), '', initialPath);
   }
@@ -304,23 +318,30 @@
   }
 
   function routeTo(route, { syncHistory = true } = {}) {
-    const allowed = ['feed', 'create', 'mine', 'balance'];
+    const allowed = ['feed', 'create', 'mine', 'balance', 'policy'];
     const next = allowed.includes(route) ? route : 'feed';
     if (['create', 'mine', 'balance'].includes(next) && !requireSession()) return;
     if (els.postDialog.open) closePost({ syncHistory: false });
     state.route = next;
+    syncViewMetadata(next);
     document.documentElement.dataset.znewsRoute = next;
     $$('.view').forEach((view) => view.classList.toggle('active', view.dataset.view === next));
     $$('[data-route]').forEach((button) => button.classList.toggle('active', button.dataset.route === next));
     window.scrollTo({ top: 0, behavior: next === 'create' ? 'auto' : 'smooth' });
     if (next === 'mine') loadMyPosts();
     if (next === 'balance') loadBalance();
+    if (next === 'policy') loadCreatorPolicy();
     if (syncHistory) {
       state.lastBoundaryBackAt = 0;
-      const alreadyCurrent = config.parseRoute().kind === 'feed'
+      const expectedKind = next === 'policy' ? 'policy' : 'feed';
+      const alreadyCurrent = config.parseRoute().kind === expectedKind
         && history.state?.znewsAppEntry === true
         && history.state?.znewsView === next;
-      if (!alreadyCurrent) history.pushState(appHistoryState(next), '', config.publicPath());
+      if (!alreadyCurrent) history.pushState(
+        appHistoryState(next),
+        '',
+        next === 'policy' ? config.publicPath('policy') : config.publicPath()
+      );
     }
   }
 
@@ -666,6 +687,16 @@
     els.creatorAdRateNote.textContent = `${sharePercent}% of the provider-reported amount, rounded down to whole paisa and capped at ${formatBdtMicros(maximumMicros)}. Values are settled by the server only.`;
   }
 
+  async function loadCreatorPolicy() {
+    try {
+      const policy = await api.publicCreatorPolicy();
+      renderCreatorAdRate(policy);
+    } catch (_error) {
+      els.creatorAdRate.textContent = '৳0.01–৳0.03';
+      els.creatorAdRateNote.textContent = 'Current maximum range. Reload to verify the latest server policy.';
+    }
+  }
+
   async function loadBalance() {
     if (!api.isAuthenticated()) return;
     els.balanceStatus.textContent = 'Loading balance…';
@@ -674,6 +705,7 @@
       const [summary, ledger] = await Promise.all([api.balanceSummary(), api.balanceLedger()]);
       const balance = readBdtBalance(summary);
       renderCreatorAdRate(summary);
+      state.transferMinimumMicros = Math.max(1, Number(summary.data?.minimum_bdt_micros || 200_000_000));
       state.balanceMicros = Number(balance.available_micros || 0);
       const formatted = formatBdtMicros(state.balanceMicros);
       els.balanceAmount.textContent = formatted;
@@ -681,7 +713,7 @@
       els.balanceStatus.textContent = Number(balance.reserved_micros || 0) > 0
         ? `${formatBdtMicros(balance.reserved_micros)} reserved for review.`
         : 'Available for an eligible transfer request.';
-      els.transferButton.disabled = state.balanceMicros < 500_000_000;
+      els.transferButton.disabled = state.balanceMicros < state.transferMinimumMicros;
       renderLedger(ledger.data?.items || []);
     } catch (error) {
       els.balanceStatus.textContent = errorMessage(error);
@@ -702,7 +734,9 @@
   }
 
   async function requestTransfer() {
-    if (state.balanceMicros < 500_000_000) return toast('Minimum transfer amount is ৳500.', 'error');
+    if (state.balanceMicros < state.transferMinimumMicros) {
+      return toast(`Minimum transfer amount is ${formatBdtMicros(state.transferMinimumMicros)}.`, 'error');
+    }
     if (!window.confirm(`Submit ${formatBdtMicros(state.balanceMicros)} for transfer review?`)) return;
     setBusy(els.transferButton, true, 'Submitting…');
     try {
@@ -811,7 +845,7 @@
       if (route.kind === 'post') openPost(route.id, { syncHistory: false });
       else {
         if (els.postDialog.open) closePost({ syncHistory: false });
-        const restoredView = ['feed', 'create', 'mine', 'balance'].includes(event.state?.znewsView)
+        const restoredView = ['feed', 'create', 'mine', 'balance', 'policy'].includes(event.state?.znewsView)
           ? event.state.znewsView
           : 'feed';
         routeTo(restoredView, { syncHistory: false });
@@ -827,8 +861,9 @@
     refreshSessionUi();
     bindEvents();
     window.ZNewsAds.mountAll();
-    await loadFeed();
+    if (route.kind !== 'policy') await loadFeed();
     if (route.kind === 'post') openPost(route.id, { syncHistory: false });
+    if (route.kind === 'policy') routeTo('policy', { syncHistory: false });
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register(
         config.standalone ? '/sw.js' : '/znews/sw.js',

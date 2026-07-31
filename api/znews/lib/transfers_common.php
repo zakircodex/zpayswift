@@ -12,7 +12,7 @@ require_once dirname(__DIR__, 2) . '/lib/rates.php';
 
 function znews_transfer_threshold_bdt_micros(): int
 {
-    return 500 * 1000000;
+    return 200 * 1000000;
 }
 
 function znews_transfer_lease_seconds(): int
