@@ -13,7 +13,8 @@
     balanceMicros: 0,
     authStage: 'credentials',
     authContext: {},
-    localLikes: new Set()
+    localLikes: new Set(),
+    lastBoundaryBackAt: 0
   };
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -272,6 +273,34 @@
     if (state.route === 'balance') loadBalance();
   }
 
+  function appHistoryState(view, extra = {}) {
+    return { znewsAppEntry: true, znewsView: view, ...extra };
+  }
+
+  function initializeAppHistory(route) {
+    if (history.state?.znewsAppEntry === true || history.state?.znewsBoundary === true) return;
+    const initialPath = route.kind === 'post'
+      ? config.publicPath('post', route.id)
+      : config.publicPath();
+    history.replaceState({ znewsBoundary: true, znewsView: 'feed' }, '', config.publicPath());
+    history.pushState(appHistoryState('feed', route.kind === 'post'
+      ? { postId: route.id, znewsPostOverlay: true }
+      : {}), '', initialPath);
+  }
+
+  function handleAppBoundaryBack() {
+    const now = Date.now();
+    if (now - state.lastBoundaryBackAt <= 2000) {
+      state.lastBoundaryBackAt = 0;
+      history.back();
+      return;
+    }
+    state.lastBoundaryBackAt = now;
+    history.pushState(appHistoryState('feed'), '', config.publicPath());
+    routeTo('feed', { syncHistory: false });
+    toast('Press Back again to return to Z-Pay.');
+  }
+
   function routeTo(route, { syncHistory = true } = {}) {
     const allowed = ['feed', 'create', 'mine', 'balance'];
     const next = allowed.includes(route) ? route : 'feed';
@@ -285,8 +314,11 @@
     if (next === 'mine') loadMyPosts();
     if (next === 'balance') loadBalance();
     if (syncHistory) {
-      const current = history.state && typeof history.state === 'object' ? history.state : {};
-      history.replaceState({ ...current, znewsView: next }, '', config.publicPath());
+      state.lastBoundaryBackAt = 0;
+      const alreadyCurrent = config.parseRoute().kind === 'feed'
+        && history.state?.znewsAppEntry === true
+        && history.state?.znewsView === next;
+      if (!alreadyCurrent) history.pushState(appHistoryState(next), '', config.publicPath());
     }
   }
 
@@ -450,10 +482,15 @@
     els.commentList.textContent = '';
     if (!els.postDialog.open) els.postDialog.showModal();
     if (syncHistory) {
+      state.lastBoundaryBackAt = 0;
       const currentRoute = config.parseRoute();
       const alreadyCurrent = currentRoute.kind === 'post' && currentRoute.id === postId;
       if (!alreadyCurrent) {
-        history.pushState({ postId, znewsPostOverlay: true }, '', config.publicPath('post', postId));
+        history.pushState(
+          appHistoryState(state.route, { postId, znewsPostOverlay: true }),
+          '',
+          config.publicPath('post', postId)
+        );
       }
     }
 
@@ -711,7 +748,10 @@
   }
 
   function bindEvents() {
-    $$('[data-route]').forEach((button) => button.addEventListener('click', () => routeTo(button.dataset.route)));
+    $$('[data-route]').forEach((button) => button.addEventListener('click', () => {
+      if (button.classList.contains('composer-back')) history.back();
+      else routeTo(button.dataset.route);
+    }));
     $('#refreshButton').addEventListener('click', () => loadFeed());
     $('#feedRefreshInline').addEventListener('click', () => loadFeed());
     els.loadMore.addEventListener('click', () => loadFeed({ append: true }));
@@ -742,6 +782,10 @@
     els.postDialog.addEventListener('click', (event) => { if (event.target === els.postDialog) closePost(); });
     els.transferButton.addEventListener('click', requestTransfer);
     window.addEventListener('popstate', (event) => {
+      if (event.state?.znewsBoundary === true) {
+        handleAppBoundaryBack();
+        return;
+      }
       const route = config.parseRoute();
       if (route.kind === 'post') openPost(route.id, { syncHistory: false });
       else {
@@ -757,11 +801,12 @@
   }
 
   async function boot() {
+    const route = config.parseRoute();
+    initializeAppHistory(route);
     refreshSessionUi();
     bindEvents();
     window.ZNewsAds.mountAll();
     await loadFeed();
-    const route = config.parseRoute();
     if (route.kind === 'post') openPost(route.id, { syncHistory: false });
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register(
