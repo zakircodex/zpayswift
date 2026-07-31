@@ -176,12 +176,87 @@
     return dialog;
   }
 
+  function ensureActionDialog() {
+    let dialog = document.querySelector('#creatorActionDialog');
+    if (dialog) return dialog;
+
+    dialog = document.createElement('dialog');
+    dialog.id = 'creatorActionDialog';
+    dialog.className = 'creator-action-dialog';
+    dialog.innerHTML = `
+      <div class="creator-action-shell" role="document">
+        <span class="creator-action-spinner" aria-hidden="true"></span>
+        <h2 id="creatorActionTitle">Please wait…</h2>
+        <p id="creatorActionMessage">Loading your post.</p>
+        <div class="creator-action-buttons" hidden>
+          <button class="ghost-button" type="button" data-action-cancel>Cancel</button>
+          <button class="primary-button danger" type="button" data-action-confirm>Delete</button>
+        </div>
+      </div>`;
+    dialog.setAttribute('aria-labelledby', 'creatorActionTitle');
+    dialog.setAttribute('aria-describedby', 'creatorActionMessage');
+    document.body.appendChild(dialog);
+    return dialog;
+  }
+
+  function showActionLoading(title, message) {
+    const dialog = ensureActionDialog();
+    dialog.dataset.mode = 'loading';
+    dialog.querySelector('#creatorActionTitle').textContent = title;
+    dialog.querySelector('#creatorActionMessage').textContent = message;
+    dialog.querySelector('.creator-action-spinner').hidden = false;
+    dialog.querySelector('.creator-action-buttons').hidden = true;
+    dialog.setAttribute('aria-busy', 'true');
+    if (!dialog.open) dialog.showModal();
+  }
+
+  function closeActionDialog() {
+    const dialog = document.querySelector('#creatorActionDialog');
+    if (dialog?.open) dialog.close();
+    dialog?.removeAttribute('aria-busy');
+  }
+
+  function confirmDelete() {
+    const dialog = ensureActionDialog();
+    const confirm = dialog.querySelector('[data-action-confirm]');
+    const cancel = dialog.querySelector('[data-action-cancel]');
+    const buttons = dialog.querySelector('.creator-action-buttons');
+    const spinner = dialog.querySelector('.creator-action-spinner');
+    dialog.dataset.mode = 'confirm';
+    dialog.querySelector('#creatorActionTitle').textContent = 'Delete this post?';
+    dialog.querySelector('#creatorActionMessage').textContent = 'This action cannot be undone.';
+    spinner.hidden = true;
+    buttons.hidden = false;
+    dialog.removeAttribute('aria-busy');
+    if (!dialog.open) dialog.showModal();
+
+    return new Promise((resolve) => {
+      const finish = (approved) => {
+        confirm.removeEventListener('click', approve);
+        cancel.removeEventListener('click', reject);
+        dialog.removeEventListener('cancel', rejectEvent);
+        closeActionDialog();
+        resolve(approved);
+      };
+      const approve = () => finish(true);
+      const reject = () => finish(false);
+      const rejectEvent = (event) => {
+        event.preventDefault();
+        finish(false);
+      };
+      confirm.addEventListener('click', approve);
+      cancel.addEventListener('click', reject);
+      dialog.addEventListener('cancel', rejectEvent);
+    });
+  }
+
   async function openEditor(postId) {
     const dialog = ensureEditor();
     const editForm = dialog.querySelector('#creatorEditForm');
     const error = dialog.querySelector('#creatorEditError');
     error.hidden = true;
 
+    showActionLoading('Loading post…', 'Preparing the editor.');
     try {
       const result = await postDetails(postId);
       const post = result.data?.post || {};
@@ -192,8 +267,10 @@
       dialog.querySelector('#creatorRemoveRow').hidden = !text(post.image_media_id).trim();
       editForm.dataset.postId = postId;
       editForm.dataset.updatedAt = text(post.updated_at);
+      closeActionDialog();
       if (!dialog.open) dialog.showModal();
     } catch (requestError) {
+      closeActionDialog();
       toast(errorMessage(requestError), 'error');
     }
   }
@@ -266,7 +343,8 @@
   });
 
   async function deletePost(postId) {
-    if (!window.confirm('Delete this post? This cannot be undone.')) return;
+    if (!await confirmDelete()) return;
+    showActionLoading('Deleting post…', 'Please wait while the post is removed.');
     try {
       const details = await postDetails(postId);
       const post = details.data?.post || {};
@@ -283,6 +361,8 @@
       document.querySelector('[data-route="mine"]')?.click();
     } catch (error) {
       toast(errorMessage(error), 'error');
+    } finally {
+      closeActionDialog();
     }
   }
 
@@ -320,6 +400,17 @@
     .creator-management .danger{border-color:rgba(255,107,107,.45);color:#ff9b9b}
     .creator-remove-row{display:flex;align-items:center;gap:10px;color:#c7d3e8}
     #creatorEditDialog textarea{resize:vertical}
+    .creator-action-dialog{width:min(88vw,390px);padding:0;border:0;border-radius:24px;background:transparent;color:#f7fbff}
+    .creator-action-dialog::backdrop{background:rgba(0,10,24,.72);backdrop-filter:blur(5px)}
+    .creator-action-shell{display:grid;justify-items:center;gap:12px;padding:28px 24px;border:1px solid rgba(151,190,235,.25);border-radius:24px;background:#09213b;box-shadow:0 24px 70px rgba(0,0,0,.48);text-align:center}
+    .creator-action-shell h2,.creator-action-shell p{margin:0}
+    .creator-action-shell p{color:#aebed4}
+    .creator-action-spinner{width:42px;height:42px;border:4px solid rgba(116,231,168,.2);border-top-color:#74e7a8;border-radius:50%;animation:creator-action-spin .75s linear infinite}
+    .creator-action-buttons{display:flex;width:100%;gap:10px;margin-top:8px}
+    .creator-action-buttons button{flex:1;border-radius:16px}
+    .creator-action-buttons .danger{background:linear-gradient(135deg,#e34d63,#ff7385);color:#fff}
+    @keyframes creator-action-spin{to{transform:rotate(360deg)}}
+    @media (prefers-reduced-motion:reduce){.creator-action-spinner{animation-duration:1.5s}}
   `;
   document.head.appendChild(style);
 })();
