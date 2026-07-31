@@ -52,6 +52,9 @@
     sidebarMeta: $('#sidebarMeta'),
     sidebarAvatar: $('#sidebarAvatar'),
     composerAvatar: $('#composerAvatar'),
+    createComposerAvatar: $('#createComposerAvatar'),
+    createComposerName: $('#createComposerName'),
+    createPostSubmit: $('#createPostSubmit'),
     toastRegion: $('#toastRegion'),
     announcement: $('#announcement')
   };
@@ -163,6 +166,8 @@
     els.sidebarMeta.textContent = signedIn ? 'Create posts and join conversations.' : 'Sign in to post and join conversations.';
     setAvatar(els.sidebarAvatar, name, signedIn ? profilePhoto() : '');
     setAvatar(els.composerAvatar, name, signedIn ? profilePhoto() : '');
+    setAvatar(els.createComposerAvatar, name, signedIn ? profilePhoto() : '');
+    if (els.createComposerName) els.createComposerName.textContent = name;
   }
 
   function requireSession() {
@@ -624,6 +629,7 @@
     const file = els.postImage.files?.[0];
     if (!file) {
       els.imagePreview.hidden = true;
+      syncComposerState();
       return;
     }
     const img = document.createElement('img');
@@ -631,7 +637,29 @@
     img.src = URL.createObjectURL(file);
     img.onload = () => URL.revokeObjectURL(img.src);
     els.imagePreview.appendChild(img);
+    const remove = document.createElement('button');
+    remove.className = 'composer-image-remove';
+    remove.type = 'button';
+    remove.setAttribute('aria-label', 'Remove selected photo');
+    remove.textContent = '×';
+    remove.addEventListener('click', () => {
+      els.postImage.value = '';
+      previewImage();
+    });
+    els.imagePreview.appendChild(remove);
     els.imagePreview.hidden = false;
+    syncComposerState();
+  }
+
+  function syncComposerState() {
+    const length = els.postText.value.length;
+    els.postTextCount.textContent = `${length} / 5000`;
+    els.postTextCount.parentElement?.classList.toggle('visible', length >= 4500);
+    els.postText.style.height = 'auto';
+    els.postText.style.height = `${Math.min(240, Math.max(96, els.postText.scrollHeight))}px`;
+    if (els.createPostSubmit) {
+      els.createPostSubmit.disabled = !els.postText.value.trim() && !els.postImage.files?.[0];
+    }
   }
 
   function bindEvents() {
@@ -657,7 +685,7 @@
     });
     els.authForm.addEventListener('submit', submitAuth);
     els.createPostForm.addEventListener('submit', submitPost);
-    els.postText.addEventListener('input', () => { els.postTextCount.textContent = `${els.postText.value.length} / 5000`; });
+    els.postText.addEventListener('input', syncComposerState);
     els.postImage.addEventListener('change', previewImage);
     els.commentForm.addEventListener('submit', submitComment);
     els.postDialogClose.addEventListener('click', closePost);
@@ -670,6 +698,7 @@
       else if (els.postDialog.open) closePost();
     });
     window.addEventListener('pagehide', () => completeView());
+    syncComposerState();
   }
 
   async function boot() {

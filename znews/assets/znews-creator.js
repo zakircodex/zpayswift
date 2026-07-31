@@ -115,6 +115,9 @@
       toast(errorMessage(error), 'error');
     } finally {
       setBusy(submit, false);
+      const currentText = text(document.querySelector('#postText')?.value).trim();
+      const currentFile = document.querySelector('#postImage')?.files?.[0] || null;
+      submit.disabled = !currentText && !currentFile;
     }
   }, true);
 
