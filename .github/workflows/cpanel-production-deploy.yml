@@ -1,0 +1,146 @@
+name: cPanel Production Deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cpanel-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Audit, upload and verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: production
+    env:
+      FTP_HOST: ${{ secrets.CPANEL_FTP_HOST }}
+      FTP_PORT: ${{ secrets.CPANEL_FTP_PORT }}
+      FTP_USER: ${{ secrets.CPANEL_FTP_USERNAME }}
+      FTP_PASSWORD: ${{ secrets.CPANEL_FTP_PASSWORD }}
+      FTP_REMOTE_PATH: ${{ secrets.CPANEL_FTP_REMOTE_PATH }}
+      PRIMARY_VERIFY_URL: ${{ secrets.CPANEL_PRIMARY_VERIFY_URL }}
+      SECONDARY_VERIFY_URL: ${{ secrets.CPANEL_SECONDARY_VERIFY_URL }}
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Validate deployment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for key in FTP_HOST FTP_USER FTP_PASSWORD FTP_REMOTE_PATH PRIMARY_VERIFY_URL; do
+            if [ -z "${!key:-}" ]; then
+              echo "Required production secret is missing: $key"
+              exit 1
+            fi
+          done
+          FTP_PORT="${FTP_PORT:-21}"
+          [[ "$FTP_HOST" =~ ^[A-Za-z0-9.-]+$ ]]
+          [[ "$FTP_PORT" =~ ^[0-9]{1,5}$ ]]
+          [[ "$FTP_REMOTE_PATH" =~ ^/[A-Za-z0-9_./-]+$ ]]
+          [[ "$FTP_REMOTE_PATH" != *".."* ]]
+          [[ "$PRIMARY_VERIFY_URL" == https://* ]]
+          if [ -n "$SECONDARY_VERIFY_URL" ]; then
+            [[ "$SECONDARY_VERIFY_URL" == https://* ]]
+          fi
+
+      - name: Run production preflight audits
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/znews_backend_foundation_test.php
+          php tests/znews_web_ui_foundation_test.php
+          php tests/zsky24_dual_domain_test.php
+          php tests/zsky24_my_posts_navigation_loading_test.php
+          find api/znews api/admin/znews -type f -name '*.php' -print0 \
+            | sort -z \
+            | xargs -0 -n1 php -l >/dev/null
+          for file in znews/assets/*.js znews/sw.js znews/sw-root.js; do
+            node --check "$file"
+          done
+
+      - name: Build public deployment package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p deployment/api
+          for path in .htaccess index.html download.php track.html privacy.html terms.html apply-subadmin.html assets docs images logo znews; do
+            if [ -e "$path" ]; then
+              cp -a "$path" deployment/
+            fi
+          done
+          rsync -a --exclude-from=.cpanel-deploy-exclude api/ deployment/api/
+          if [ -d document-ai ]; then
+            mkdir -p deployment/api/document-ai
+            rsync -a --exclude-from=.cpanel-deploy-exclude document-ai/ deployment/api/document-ai/
+          fi
+          printf '%s\n%s\n' "$GITHUB_SHA" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" > deployment/deploy_version.txt
+
+          if find deployment -type f \
+            ! -path 'deployment/api/support/config.php' \
+            ! -path 'deployment/api/admin/support/config.php' \( \
+            -name '.env' -o -name 'config.php' -o -name 'error_log' -o \
+            -name '*.log' -o -name '*.sql' -o -name '*.bak' -o \
+            -name '*.zip' -o -name '*.tar' -o -name '*.gz' \
+          \) -print -quit | grep -q .; then
+            echo 'Deployment package contains a forbidden private file.'
+            exit 1
+          fi
+          test ! -e deployment/private
+          test ! -e deployment/.git
+          test ! -e deployment/.github
+
+      - name: Install FTPS client
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq lftp
+
+      - name: Upload approved public files over FTPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          FTP_PORT="${FTP_PORT:-21}"
+          FTP_USER_URI="$(jq -rn --arg value "$FTP_USER" '$value|@uri')"
+          FTP_PASSWORD_URI="$(jq -rn --arg value "$FTP_PASSWORD" '$value|@uri')"
+          FTP_URL="ftp://${FTP_USER_URI}:${FTP_PASSWORD_URI}@${FTP_HOST}:${FTP_PORT}"
+          lftp "$FTP_URL" -e "
+            set cmd:fail-exit true;
+            set net:max-retries 2;
+            set net:timeout 20;
+            set ftp:ssl-force true;
+            set ftp:ssl-protect-data true;
+            set ssl:verify-certificate true;
+            mirror --reverse --verbose --parallel=2 deployment/ ${FTP_REMOTE_PATH};
+            bye
+          "
+
+      - name: Verify deployed commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          verify_url() {
+            local url="$1"
+            local body
+            body="$(curl --fail --silent --show-error --location \
+              --retry 3 --retry-delay 3 \
+              -H 'Cache-Control: no-cache' \
+              "${url}?v=${GITHUB_SHA}")"
+            if [ "$(printf '%s\n' "$body" | head -n1 | tr -d '\r')" != "$GITHUB_SHA" ]; then
+              echo "Live deployment marker does not match $GITHUB_SHA at $url"
+              exit 1
+            fi
+          }
+          verify_url "$PRIMARY_VERIFY_URL"
+          if [ -n "$SECONDARY_VERIFY_URL" ]; then
+            verify_url "$SECONDARY_VERIFY_URL"
+          fi
+          echo "Verified production commit: $GITHUB_SHA"
