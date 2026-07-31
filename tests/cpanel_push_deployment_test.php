@@ -4,6 +4,7 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $workflow = file_get_contents($root . '/.github/workflows/cpanel-production-deploy.yml');
 $guide = file_get_contents($root . '/docs/cpanel-push-deployment.md');
+$rootRewrite = file_get_contents($root . '/.htaccess');
 
 function deploy_expect(bool $condition, string $message): void
 {
@@ -24,6 +25,7 @@ deploy_expect(str_contains($workflow, 'mirror --reverse'), 'Push-based deploymen
 deploy_expect(!str_contains($workflow, 'mirror --delete'), 'Deployment must not delete server-only files.');
 deploy_expect(str_contains($workflow, 'deployment/deploy_version.txt'), 'Commit marker generation is missing.');
 deploy_expect(str_contains($workflow, 'Verify deployed commit'), 'Post-upload live verification is missing.');
+deploy_expect(str_contains($rootRewrite, 'RewriteRule ^deploy_version\\.txt$ - [L,NC]'), 'Standalone host does not allow the exact deployment marker.');
 deploy_expect(str_contains($workflow, "test ! -e deployment/private"), 'Private directory guard is missing.');
 deploy_expect(str_contains($workflow, "-name 'config.php'"), 'Private config guard is missing.');
 deploy_expect(!str_contains($workflow, 'secrets.GITHUB_TOKEN }}@'), 'Repository credentials must not be embedded in a URL.');
