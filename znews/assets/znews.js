@@ -50,6 +50,8 @@
     balanceAmount: $('#balanceAmount'),
     miniBalance: $('#miniBalance'),
     balanceStatus: $('#balanceStatus'),
+    creatorAdRate: $('#creatorAdRate'),
+    creatorAdRateNote: $('#creatorAdRateNote'),
     transferButton: $('#transferButton'),
     sidebarName: $('#sidebarName'),
     sidebarMeta: $('#sidebarMeta'),
@@ -648,6 +650,22 @@
     return balances.find((item) => text(item.currency).toUpperCase() === 'BDT') || {};
   }
 
+  function renderCreatorAdRate(summary) {
+    const policy = summary?.data?.creator_ad_payout_policy || {};
+    const unitMicros = Math.max(0, Number(policy.payout_unit_micros || 0));
+    const maximumMicros = Math.max(0, Number(policy.maximum_per_verified_ad_micros || 0));
+    if (!unitMicros || maximumMicros < unitMicros) {
+      els.creatorAdRate.textContent = 'Verified provider reports only';
+      els.creatorAdRateNote.textContent = 'No client-calculated ad value is accepted.';
+      return;
+    }
+    els.creatorAdRate.textContent = unitMicros === maximumMicros
+      ? `${formatBdtMicros(maximumMicros)} per verified ad`
+      : `${formatBdtMicros(unitMicros)}–${formatBdtMicros(maximumMicros)} per verified ad`;
+    const sharePercent = Math.max(0, Number(policy.base_creator_share_percent || 0));
+    els.creatorAdRateNote.textContent = `${sharePercent}% of the provider-reported amount, rounded down to whole paisa and capped at ${formatBdtMicros(maximumMicros)}. Values are settled by the server only.`;
+  }
+
   async function loadBalance() {
     if (!api.isAuthenticated()) return;
     els.balanceStatus.textContent = 'Loading balance…';
@@ -655,6 +673,7 @@
     try {
       const [summary, ledger] = await Promise.all([api.balanceSummary(), api.balanceLedger()]);
       const balance = readBdtBalance(summary);
+      renderCreatorAdRate(summary);
       state.balanceMicros = Number(balance.available_micros || 0);
       const formatted = formatBdtMicros(state.balanceMicros);
       els.balanceAmount.textContent = formatted;
@@ -666,6 +685,8 @@
       renderLedger(ledger.data?.items || []);
     } catch (error) {
       els.balanceStatus.textContent = errorMessage(error);
+      els.creatorAdRate.textContent = 'Policy unavailable';
+      els.creatorAdRateNote.textContent = 'Reload the page to try again.';
       els.ledgerList.innerHTML = '<div class="empty-state">Balance activity could not be loaded.</div>';
     }
   }

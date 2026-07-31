@@ -14,7 +14,7 @@
   <title>Z Sky 24</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link id="appManifest" rel="manifest" href="/znews/manifest.webmanifest">
-  <link rel="stylesheet" href="/znews/assets/znews.css?v=2">
+  <link rel="stylesheet" href="/znews/assets/znews.css?v=3">
   <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=8">
   <link rel="stylesheet" href="/znews/assets/znews-reader.css?v=2">
 </head>
@@ -156,8 +156,22 @@
       </section>
 
       <section id="balanceView" class="view" data-view="balance" data-auth-only hidden>
-        <div class="balance-hero card"><span class="eyebrow">Creator balance</span><strong id="balanceAmount">৳0.00</strong><p id="balanceStatus">Open Z Sky 24 from your Z-Pay dashboard to view your balance.</p><button class="primary-button" id="transferButton" type="button" disabled>Transfer to Z-Pay balance</button><small>Minimum transfer: ৳500. Requests require review.</small></div>
-        <div class="page-card card"><div class="section-heading no-border"><div><h2>Balance activity</h2><p>Credits and transfers recorded in Z Sky 24.</p></div></div><div id="ledgerList" class="ledger-list"></div></div>
+        <div class="balance-hero card">
+          <span class="eyebrow">Creator balance</span>
+          <strong id="balanceAmount">৳0.00</strong>
+          <p id="balanceStatus">Open Z Sky 24 from your Z-Pay dashboard to view your balance.</p>
+          <div class="balance-rate-card" aria-labelledby="creatorAdRateLabel">
+            <span id="creatorAdRateLabel">Creator credit per verified ad</span>
+            <strong id="creatorAdRate">Loading policy…</strong>
+            <small id="creatorAdRateNote">Calculated only from authenticated provider reports.</small>
+          </div>
+          <button class="primary-button balance-transfer-button" id="transferButton" type="button" disabled>Transfer to Z-Pay balance</button>
+          <small>Minimum transfer: ৳500. Requests require review.</small>
+        </div>
+        <div class="page-card card balance-activity-card">
+          <div class="section-heading no-border"><div><h2>Balance activity</h2><p>Verified creator credits and transfer records.</p></div></div>
+          <div id="ledgerList" class="ledger-list"></div>
+        </div>
       </section>
     </section>
 
@@ -206,6 +220,6 @@
   <script src="/znews/assets/znews-config.js?v=4"></script>
   <script src="/znews/assets/znews-api.js?v=4"></script>
   <script src="/znews/assets/znews-ads.js?v=1"></script>
-  <script src="/znews/assets/znews-bootstrap.js?v=13"></script>
+  <script src="/znews/assets/znews-bootstrap.js?v=15"></script>
 </body>
 </html>

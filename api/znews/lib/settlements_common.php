@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/ad_impressions.php';
+require_once __DIR__ . '/settlement_payout_policy.php';
 
 function znews_settlement_creator_share_bps(): int
 {
@@ -16,6 +17,24 @@ function znews_settlement_creator_share_bps(): int
 function znews_settlement_platform_share_bps(): int
 {
     return 10000 - znews_settlement_creator_share_bps();
+}
+
+function znews_settlement_creator_ad_payout_policy(): array
+{
+    $unit = znews_settlement_creator_ad_payout_unit_micros();
+    $maximum = znews_settlement_creator_ad_payout_cap_micros();
+
+    return [
+        'calculation_source' => 'PROVIDER_REPORTED_REVENUE',
+        'currency' => 'BDT',
+        'base_creator_share_bps' => znews_settlement_creator_share_bps(),
+        'base_creator_share_percent' => intdiv(znews_settlement_creator_share_bps(), 100),
+        'payout_unit_micros' => $unit,
+        'payout_unit' => znews_settlement_decimal($unit),
+        'maximum_per_verified_ad_micros' => $maximum,
+        'maximum_per_verified_ad' => znews_settlement_decimal($maximum),
+        'client_submitted_value_allowed' => false,
+    ];
 }
 
 function znews_settlement_lease_seconds(): int
@@ -36,19 +55,32 @@ function znews_settlement_scan_limit(): int
     return max(100, min(20000, $value));
 }
 
-function znews_settlement_allocation(int $grossMicros): array
+function znews_settlement_allocation(int $grossMicros, string $currency = ''): array
 {
     if ($grossMicros < 0) {
         api_response(false, 'ZNEWS_SETTLEMENT_AMOUNT_INVALID', 'Invalid settlement amount.', [], 422);
     }
 
-    $creator = intdiv($grossMicros * znews_settlement_creator_share_bps(), 10000);
+    $currency = znews_ad_currency($currency);
+    $creatorUncapped = intdiv($grossMicros * znews_settlement_creator_share_bps(), 10000);
+    $creator = $creatorUncapped;
+    $payoutUnit = 1;
+    $payoutCap = 0;
+    if ($currency === 'BDT') {
+        $payoutUnit = znews_settlement_creator_ad_payout_unit_micros();
+        $payoutCap = znews_settlement_creator_ad_payout_cap_micros();
+        $creator = znews_settlement_apply_bdt_creator_ad_policy($creator);
+    }
     $platform = $grossMicros - $creator;
 
     return [
         'gross_micros' => $grossMicros,
         'creator_share_bps' => znews_settlement_creator_share_bps(),
         'platform_share_bps' => znews_settlement_platform_share_bps(),
+        'creator_uncapped_micros' => $creatorUncapped,
+        'creator_payout_unit_micros' => $payoutUnit,
+        'creator_payout_cap_micros' => $payoutCap,
+        'creator_payout_capped' => $creator < $creatorUncapped,
         'creator_micros' => $creator,
         'platform_micros' => $platform,
     ];
@@ -160,6 +192,10 @@ function znews_settlement_public(array $row): array
         'gross_revenue_micros' => $gross,
         'gross_revenue' => znews_settlement_decimal($gross),
         'creator_share_bps' => (int)($row['creator_share_bps'] ?? 5000),
+        'creator_uncapped_micros' => max(0, (int)($row['creator_uncapped_micros'] ?? $creator)),
+        'creator_payout_unit_micros' => max(0, (int)($row['creator_payout_unit_micros'] ?? 0)),
+        'creator_payout_cap_micros' => max(0, (int)($row['creator_payout_cap_micros'] ?? 0)),
+        'creator_payout_capped' => !empty($row['creator_payout_capped']),
         'creator_amount_micros' => $creator,
         'creator_amount' => znews_settlement_decimal($creator),
         'platform_share_bps' => (int)($row['platform_share_bps'] ?? 5000),

@@ -49,6 +49,10 @@ function znews_settlement_record_payload(
         'gross_revenue_micros' => (int)$allocation['gross_micros'],
         'creator_share_bps' => (int)$allocation['creator_share_bps'],
         'platform_share_bps' => (int)$allocation['platform_share_bps'],
+        'creator_uncapped_micros' => (int)$allocation['creator_uncapped_micros'],
+        'creator_payout_unit_micros' => (int)$allocation['creator_payout_unit_micros'],
+        'creator_payout_cap_micros' => (int)$allocation['creator_payout_cap_micros'],
+        'creator_payout_capped' => !empty($allocation['creator_payout_capped']),
         'creator_amount_micros' => (int)$allocation['creator_micros'],
         'platform_amount_micros' => (int)$allocation['platform_micros'],
         'status' => 'SETTLING',
@@ -124,7 +128,7 @@ function znews_settle_impression(array $admin, string $impressionId, int $expect
         return ['ok' => false, 'code' => 'ZNEWS_SETTLEMENT_ZERO_REVENUE', 'http_status' => 409];
     }
 
-    $allocation = znews_settlement_allocation($grossMicros);
+    $allocation = znews_settlement_allocation($grossMicros, $currency);
     $now = znews_now();
     $user = is_array($admin['user'] ?? null) ? (array)$admin['user'] : [];
     $adminUid = znews_firebase_key((string)($user['uid'] ?? ''), 'admin_uid');
@@ -138,6 +142,10 @@ function znews_settle_impression(array $admin, string $impressionId, int $expect
         $claimed['settlement_reconciliation_code'] = 'BALANCE_AND_LEDGER_SYNC';
         $claimed['creator_share_bps'] = (int)$allocation['creator_share_bps'];
         $claimed['platform_share_bps'] = (int)$allocation['platform_share_bps'];
+        $claimed['creator_uncapped_micros'] = (int)$allocation['creator_uncapped_micros'];
+        $claimed['creator_payout_unit_micros'] = (int)$allocation['creator_payout_unit_micros'];
+        $claimed['creator_payout_cap_micros'] = (int)$allocation['creator_payout_cap_micros'];
+        $claimed['creator_payout_capped'] = !empty($allocation['creator_payout_capped']);
         $claimed['creator_amount_micros'] = (int)$allocation['creator_micros'];
         $claimed['platform_amount_micros'] = (int)$allocation['platform_micros'];
         $claimed['znews_balance_status'] = 'PENDING';
@@ -167,10 +175,14 @@ function znews_settle_impression(array $admin, string $impressionId, int $expect
             'gross_micros' => $grossMicros,
             'creator_share_bps' => (int)($impression['creator_share_bps'] ?? 0),
             'platform_share_bps' => (int)($impression['platform_share_bps'] ?? 0),
+            'creator_uncapped_micros' => (int)($impression['creator_uncapped_micros'] ?? -1),
+            'creator_payout_unit_micros' => (int)($impression['creator_payout_unit_micros'] ?? -1),
+            'creator_payout_cap_micros' => (int)($impression['creator_payout_cap_micros'] ?? -1),
+            'creator_payout_capped' => !empty($impression['creator_payout_capped']),
             'creator_micros' => (int)($impression['creator_amount_micros'] ?? -1),
             'platform_micros' => (int)($impression['platform_amount_micros'] ?? -1),
         ];
-        $expectedAllocation = znews_settlement_allocation($grossMicros);
+        $expectedAllocation = znews_settlement_allocation($grossMicros, $currency);
         if ($allocation !== $expectedAllocation) {
             return ['ok' => false, 'code' => 'ZNEWS_SETTLEMENT_ALLOCATION_CONFLICT', 'http_status' => 409];
         }
@@ -227,6 +239,9 @@ function znews_settle_impression(array $admin, string $impressionId, int $expect
         'currency' => $currency,
         'amount_micros' => (int)$allocation['creator_micros'],
         'amount' => znews_settlement_decimal((int)$allocation['creator_micros']),
+        'creator_uncapped_micros' => (int)$allocation['creator_uncapped_micros'],
+        'creator_payout_cap_micros' => (int)$allocation['creator_payout_cap_micros'],
+        'creator_payout_capped' => !empty($allocation['creator_payout_capped']),
         'status' => 'POSTED',
         'main_wallet_transfer_status' => 'NOT_TRANSFERRED',
         'created_at' => $settledAt,
