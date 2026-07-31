@@ -18,7 +18,7 @@ function back_guard_expect(bool $condition, string $message): void
 
 back_guard_expect(str_contains($app, 'function initializeAppHistory(route)'), 'The Z Sky 24 history boundary is missing.');
 back_guard_expect(str_contains($app, 'znewsBoundary: true'), 'The dashboard exit boundary is not seeded.');
-back_guard_expect(str_contains($app, 'history.pushState(appHistoryState(next)'), 'Internal views must create browser history entries.');
+back_guard_expect(str_contains($app, 'history.pushState(') && str_contains($app, 'appHistoryState(next),'), 'Internal views must create browser history entries.');
 back_guard_expect(!str_contains($app, 'history.replaceState({ ...current, znewsView: next }'), 'Internal views must not replace their history entry.');
 back_guard_expect(str_contains($app, "toast('Press Back again to return to Z-Pay.')"), 'The guarded exit notice is missing.');
 back_guard_expect(str_contains($app, "button.classList.contains('composer-back')"), 'The composer Back button must use browser history.');
