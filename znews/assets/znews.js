@@ -55,6 +55,7 @@
     createComposerAvatar: $('#createComposerAvatar'),
     createComposerName: $('#createComposerName'),
     createPostSubmit: $('#createPostSubmit'),
+    createPostSubmitBottom: $('#createPostSubmitBottom'),
     toastRegion: $('#toastRegion'),
     announcement: $('#announcement')
   };
@@ -274,6 +275,7 @@
     const next = allowed.includes(route) ? route : 'feed';
     if (['create', 'mine', 'balance'].includes(next) && !requireSession()) return;
     state.route = next;
+    document.documentElement.dataset.znewsRoute = next;
     $$('.view').forEach((view) => view.classList.toggle('active', view.dataset.view === next));
     $$('[data-route]').forEach((button) => button.classList.toggle('active', button.dataset.route === next));
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -657,9 +659,11 @@
     els.postTextCount.parentElement?.classList.toggle('visible', length >= 4500);
     els.postText.style.height = 'auto';
     els.postText.style.height = `${Math.min(240, Math.max(96, els.postText.scrollHeight))}px`;
-    if (els.createPostSubmit) {
-      els.createPostSubmit.disabled = !els.postText.value.trim() && !els.postImage.files?.[0];
-    }
+    const hasContent = Boolean(els.postText.value.trim() || els.postImage.files?.[0]);
+    els.createPostForm.classList.toggle('has-media', Boolean(els.postImage.files?.[0]));
+    [els.createPostSubmit, els.createPostSubmitBottom].forEach((button) => {
+      if (button) button.disabled = !hasContent;
+    });
   }
 
   function bindEvents() {
