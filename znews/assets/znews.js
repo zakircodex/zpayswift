@@ -40,6 +40,8 @@
     commentText: $('#commentText'),
     commentList: $('#commentList'),
     createPostForm: $('#createPostForm'),
+    postTitle: $('#postTitle'),
+    postTitleCount: $('#postTitleCount'),
     postText: $('#postText'),
     postTextCount: $('#postTextCount'),
     postImage: $('#postImage'),
@@ -297,6 +299,7 @@
     const id = text(post.post_id);
     const name = text(post.creator_name || 'Z Sky 24 creator');
     const image = postImage(post);
+    const title = text(post.title).trim();
     const body = text(post.text);
     const status = text(post.status || 'ACTIVE').toUpperCase();
     const moderation = text(post.moderation_status || '').toUpperCase();
@@ -312,6 +315,7 @@
           <div class="post-author"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(formatTime(post.created_at))}</span></div>
           ${chip}
         </header>
+        ${title ? `<button class="post-title" type="button" data-action="open">${escapeHtml(title)}</button>` : ''}
         ${body ? `<div class="post-copy ${!detail && body.length > 700 ? 'truncated' : ''}" data-action="open">${escapeHtml(body)}</div>` : ''}
         ${image ? `<img class="post-media" data-action="open" src="${escapeHtml(image)}" alt="Image shared by ${escapeHtml(name)}" loading="lazy">` : ''}
         <div class="post-meta"><span>${Number(post.like_count || 0)} likes</span><span>${Number(post.comment_count || 0)} comments • ${Number(post.share_count || 0)} shares</span></div>
@@ -331,7 +335,10 @@
         if (!action) return;
         if (action === 'open' || action === 'comment') return openPost(postId);
         if (action === 'like') return toggleLike(card, postId, event.target.closest('button'));
-        if (action === 'share') return sharePost(postId, event.target.closest('button'));
+        if (action === 'share') {
+          const headline = text($('.post-title', card)?.textContent).trim();
+          return sharePost(postId, event.target.closest('button'), headline);
+        }
       });
     });
   }
@@ -405,13 +412,17 @@
     }
   }
 
-  async function sharePost(postId, button) {
+  async function sharePost(postId, button, headline = '') {
     const url = config.canonicalUrl('post', postId);
     setBusy(button, true, 'Sharing…');
     try {
       let channel = 'COPY_LINK';
       if (navigator.share) {
-        await navigator.share({ title: 'Z Sky 24', text: 'Read this story on Z Sky 24', url });
+        await navigator.share({
+          title: headline || 'Z Sky 24',
+          text: headline || 'Read this story on Z Sky 24',
+          url
+        });
         channel = 'NATIVE_SHARE';
       } else {
         await navigator.clipboard.writeText(url);
@@ -531,9 +542,11 @@
     event.preventDefault();
     if (!requireSession()) return;
     const submit = $('button[type="submit"]', els.createPostForm);
+    const postTitle = els.postTitle.value.trim();
     const postText = els.postText.value.trim();
     const file = els.postImage.files?.[0] || null;
-    if (!postText && !file) return toast('Add text or an image.', 'error');
+    if (!postTitle) return toast('Add a news headline.', 'error');
+    if (!postText && !file) return toast('Add post details or a photo.', 'error');
     if (file && file.size > 5 * 1024 * 1024) return toast('Image must be 5 MB or smaller.', 'error');
 
     setBusy(submit, true, file ? 'Uploading…' : 'Submitting…');
@@ -545,10 +558,11 @@
         if (!mediaId) throw new window.ZNewsApiError('Image upload did not return a media ID.');
         submit.textContent = 'Submitting…';
       }
-      await api.createPost({ text: postText, mediaId });
+      await api.createPost({ title: postTitle, text: postText, mediaId });
       els.createPostForm.reset();
       els.imagePreview.hidden = true;
       els.imagePreview.textContent = '';
+      els.postTitleCount.textContent = '0 / 160';
       els.postTextCount.textContent = '0 / 5000';
       toast('Post submitted for review.');
       routeTo('mine');
@@ -654,12 +668,16 @@
   }
 
   function syncComposerState() {
+    const titleLength = els.postTitle.value.length;
     const length = els.postText.value.length;
+    els.postTitleCount.textContent = `${titleLength} / 160`;
     els.postTextCount.textContent = `${length} / 5000`;
-    els.postTextCount.parentElement?.classList.toggle('visible', length >= 4500);
     els.postText.style.height = 'auto';
-    els.postText.style.height = `${Math.min(240, Math.max(96, els.postText.scrollHeight))}px`;
-    const hasContent = Boolean(els.postText.value.trim() || els.postImage.files?.[0]);
+    els.postText.style.height = `${Math.min(210, Math.max(112, els.postText.scrollHeight))}px`;
+    const hasContent = Boolean(
+      els.postTitle.value.trim()
+      && (els.postText.value.trim() || els.postImage.files?.[0])
+    );
     els.createPostForm.classList.toggle('has-media', Boolean(els.postImage.files?.[0]));
     [els.createPostSubmit, els.createPostSubmitBottom].forEach((button) => {
       if (button) button.disabled = !hasContent;
@@ -689,6 +707,7 @@
     });
     els.authForm.addEventListener('submit', submitAuth);
     els.createPostForm.addEventListener('submit', submitPost);
+    els.postTitle.addEventListener('input', syncComposerState);
     els.postText.addEventListener('input', syncComposerState);
     els.postImage.addEventListener('change', previewImage);
     els.commentForm.addEventListener('submit', submitComment);

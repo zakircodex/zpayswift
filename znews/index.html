@@ -15,7 +15,7 @@
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link id="appManifest" rel="manifest" href="/znews/manifest.webmanifest">
   <link rel="stylesheet" href="/znews/assets/znews.css?v=2">
-  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=6">
+  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=7">
   <link rel="stylesheet" href="/znews/assets/znews-reader.css?v=2">
 </head>
 <body>
@@ -122,15 +122,24 @@
                 <span class="composer-audience" aria-label="Post audience: Public"><span aria-hidden="true">◉</span> Public <span aria-hidden="true">⌄</span></span>
               </div>
             </div>
-            <label class="visually-hidden" for="postText">Post text</label>
-            <textarea id="postText" name="text" maxlength="5000" rows="3" placeholder="What's on your mind?" aria-describedby="composerReviewNote postTextCount"></textarea>
-            <div class="counter-row composer-counter"><span id="postTextCount">0 / 5000</span></div>
+            <div class="composer-writing-fields">
+              <div class="composer-field composer-title-field">
+                <label for="postTitle">News headline</label>
+                <input id="postTitle" name="title" type="text" maxlength="160" placeholder="Add a clear headline" required aria-describedby="postTitleCount">
+                <span class="composer-field-count" id="postTitleCount">0 / 160</span>
+              </div>
+              <div class="composer-field composer-body-field">
+                <label for="postText">Post details</label>
+                <textarea id="postText" name="text" maxlength="5000" rows="4" placeholder="Write the story or update…" aria-describedby="composerReviewNote postTextCount"></textarea>
+                <span class="composer-field-count" id="postTextCount">0 / 5000</span>
+              </div>
+            </div>
             <div id="imagePreview" class="image-preview" hidden></div>
             <div class="composer-add-row" aria-label="Add to your post">
               <label class="composer-photo-action" for="postImage">
                 <input id="postImage" name="image" type="file" accept="image/jpeg,image/png,image/webp">
                 <span aria-hidden="true">▧</span>
-                <strong>Photos/videos</strong>
+                <strong>Add photo</strong>
               </label>
             </div>
             <p class="composer-review-note" id="composerReviewNote">Clean posts publish immediately. Risky or duplicate content may be held for review.</p>
@@ -195,8 +204,8 @@
   <template id="postSkeletonTemplate"><article class="post-card card skeleton-card"><div class="skeleton line short"></div><div class="skeleton line"></div><div class="skeleton block"></div></article></template>
 
   <script src="/znews/assets/znews-config.js?v=4"></script>
-  <script src="/znews/assets/znews-api.js?v=3"></script>
+  <script src="/znews/assets/znews-api.js?v=4"></script>
   <script src="/znews/assets/znews-ads.js?v=1"></script>
-  <script src="/znews/assets/znews-bootstrap.js?v=9"></script>
+  <script src="/znews/assets/znews-bootstrap.js?v=10"></script>
 </body>
 </html>

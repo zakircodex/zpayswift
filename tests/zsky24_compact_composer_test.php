@@ -33,25 +33,26 @@ composer_expect(str_contains($index, 'class="composer-topbar"'), 'Compact compos
 composer_expect(str_contains($index, 'id="createComposerAvatar"'), 'Creator identity is missing from the composer.');
 composer_expect(str_contains($index, 'id="createComposerName"'), 'Creator name is missing from the composer.');
 composer_expect(str_contains($index, 'aria-label="Post audience: Public"'), 'Public audience context is missing.');
-composer_expect(str_contains($index, 'rows="3"'), 'Composer text area must start compact.');
+composer_expect(str_contains($index, 'rows="4"'), 'Composer text area must start compact.');
 composer_expect(str_contains($index, 'class="composer-add-row"'), 'Compact media action row is missing.');
 composer_expect(str_contains($index, 'id="createPostSubmit" type="submit" disabled'), 'Post action must start disabled.');
 composer_expect(str_contains($index, 'id="createPostSubmitBottom" type="submit" disabled'), 'Mobile bottom Post action is missing.');
-composer_expect(str_contains($index, '>Photos/videos</strong>'), 'Photo action does not use the familiar composer label.');
+composer_expect(str_contains($index, '>Add photo</strong>'), 'Single-photo composer label is missing.');
+composer_expect(!str_contains($index, 'Photos/videos'), 'Video wording must not appear in the photo-only composer.');
 composer_expect(!str_contains($index, '<span class="eyebrow">Creator</span><h1>Create a post</h1>'), 'Legacy oversized heading remains.');
 composer_expect(!str_contains($index, 'class="upload-box" for="postImage"'), 'Legacy oversized upload box remains.');
 
 composer_expect(str_contains($app, 'function syncComposerState()'), 'Composer state synchronizer is missing.');
-composer_expect(str_contains($app, 'Math.min(240, Math.max(96, els.postText.scrollHeight))'), 'Auto-growing composer bounds are missing.');
-composer_expect(str_contains($app, 'const hasContent = Boolean(els.postText.value.trim() || els.postImage.files?.[0])'), 'Content-aware Post action is missing.');
+composer_expect(str_contains($app, 'Math.min(210, Math.max(112, els.postText.scrollHeight))'), 'Auto-growing composer bounds are missing.');
+composer_expect(str_contains($app, 'els.postTitle.value.trim()'), 'Headline-aware Post action is missing.');
 composer_expect(str_contains($app, 'document.documentElement.dataset.znewsRoute = next'), 'Route-aware mobile composer mode is missing.');
 composer_expect(str_contains($app, "remove.setAttribute('aria-label', 'Remove selected photo')"), 'Selected-photo removal is missing.');
 composer_expect(str_contains($app, 'setAvatar(els.createComposerAvatar'), 'Authenticated profile photo is not connected to the composer.');
-composer_expect(str_contains($creator, 'submits.forEach((button) => { button.disabled = !currentText && !currentFile; })'), 'Submit states are not restored safely after a request.');
+composer_expect(str_contains($creator, 'button.disabled = !currentTitle || (!currentText && !currentFile)'), 'Submit states are not restored safely after a request.');
 
 foreach ([
     '.composer-card{max-width:680px',
-    '.composer-form>textarea{width:100%;min-height:96px;max-height:240px',
+    '.composer-body-field textarea{min-height:112px;max-height:210px',
     '.composer-add-row{display:grid',
     '.composer-image-remove{position:absolute',
     'html[data-znews-route="create"] .app-header{display:none}',
@@ -61,16 +62,16 @@ foreach ([
     composer_expect(str_contains($premium, $contract), "Compact composer style is missing: {$contract}");
 }
 
-composer_expect(str_contains($index, 'znews-premium.css?v=6'), 'Composer stylesheet cachebuster is missing.');
-composer_expect(str_contains($index, 'znews-bootstrap.js?v=9'), 'Composer bootstrap cachebuster is missing.');
-composer_expect(str_contains($bootstrap, 'znews.js?v=6'), 'Latest composer behavior is not loaded.');
-composer_expect(str_contains($bootstrap, 'znews-creator.js?v=4'), 'Latest creator behavior is not loaded.');
+composer_expect(str_contains($index, 'znews-premium.css?v=7'), 'Composer stylesheet cachebuster is missing.');
+composer_expect(str_contains($index, 'znews-bootstrap.js?v=10'), 'Composer bootstrap cachebuster is missing.');
+composer_expect(str_contains($bootstrap, 'znews.js?v=7'), 'Latest composer behavior is not loaded.');
+composer_expect(str_contains($bootstrap, 'znews-creator.js?v=5'), 'Latest creator behavior is not loaded.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    composer_expect(str_contains($worker, 'znews-premium.css?v=6'), 'Latest composer stylesheet is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=9'), 'Latest bootstrap is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews.js?v=6'), 'Latest app behavior is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-creator.js?v=4'), 'Latest creator behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-premium.css?v=7'), 'Latest composer stylesheet is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=10'), 'Latest bootstrap is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews.js?v=7'), 'Latest app behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-creator.js?v=5'), 'Latest creator behavior is missing from a PWA shell.');
     composer_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'PWA shell must continue excluding API responses.');
 }
 

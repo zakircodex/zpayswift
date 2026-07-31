@@ -188,11 +188,12 @@
       });
     }
 
-    createPost({ text = '', mediaId = '' }) {
+    createPost({ title = '', text = '', mediaId = '' }) {
       return this.request('znews/posts/create.php', {
         method: 'POST',
         authenticated: true,
         body: {
+          title,
           text,
           media_id: mediaId,
           idempotency_key: this.idempotencyKey('post')

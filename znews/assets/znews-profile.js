@@ -143,6 +143,7 @@
     const name = text(post.creator_name || 'Z Sky 24 creator');
     const photo = safeUrl(post.creator_photo_url);
     const image = safeUrl(post.image_url);
+    const title = text(post.title).trim();
     const body = text(post.text);
     const avatar = photo
       ? `<span class="avatar"><img src="${escapeHtml(photo)}" alt="" referrerpolicy="no-referrer"></span>`
@@ -150,6 +151,7 @@
 
     return `<article class="post-card card creator-public-post" data-profile-post-id="${escapeHtml(id)}">
       <header class="post-head">${avatar}<div class="post-author"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(formatTime(post.created_at))}</span></div></header>
+      ${title ? `<button class="profile-post-open post-title" type="button" data-profile-action="open">${escapeHtml(title)}</button>` : ''}
       ${body ? `<button class="profile-post-open post-copy" type="button" data-profile-action="open">${escapeHtml(body)}</button>` : ''}
       ${image ? `<button class="profile-post-media-button" type="button" data-profile-action="open"><img class="post-media" src="${escapeHtml(image)}" alt="Image shared by ${escapeHtml(name)}" loading="lazy"></button>` : ''}
       <div class="post-meta"><span>${Number(post.like_count || 0)} likes</span><span>${Number(post.comment_count || 0)} comments • ${Number(post.share_count || 0)} shares</span></div>
@@ -233,9 +235,14 @@
 
   async function sharePost(postId) {
     const url = config.canonicalUrl('post', postId);
+    const headline = text(registry.get(postId)?.title).trim();
     try {
       if (navigator.share) {
-        await navigator.share({ title: 'Z Sky 24', text: 'Read this story on Z Sky 24', url });
+        await navigator.share({
+          title: headline || 'Z Sky 24',
+          text: headline || 'Read this story on Z Sky 24',
+          url
+        });
       } else {
         await navigator.clipboard.writeText(url);
       }

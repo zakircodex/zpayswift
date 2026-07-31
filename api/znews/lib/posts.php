@@ -28,6 +28,7 @@ function znews_format_post(array $post): array
         'creator_uid' => trim((string)($post['creator_uid'] ?? '')),
         'creator_name' => trim((string)($post['creator_name'] ?? 'Z-Pay User')),
         'creator_photo_url' => trim((string)($post['creator_photo_url'] ?? '')),
+        'title' => trim((string)($post['title'] ?? '')),
         'text' => (string)($post['text'] ?? ''),
         'image_url' => trim((string)($post['image_url'] ?? '')),
         'content_type' => strtoupper(trim((string)($post['content_type'] ?? 'TEXT'))),

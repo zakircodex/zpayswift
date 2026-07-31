@@ -12,6 +12,8 @@ require_once __DIR__ . '/instant_publish.php';
 function znews_update_post_with_media(
     array $auth,
     string $postId,
+    string $title,
+    bool $titleProvided,
     string $text,
     bool $textProvided,
     bool $mediaProvided,
@@ -49,6 +51,8 @@ function znews_update_post_with_media(
 
     $currentText = (string)($post['text'] ?? '');
     $targetText = $textProvided ? $text : $currentText;
+    $currentTitle = (string)($post['title'] ?? '');
+    $targetTitle = $titleProvided ? znews_post_validate_title($title) : $currentTitle;
     $currentMediaId = trim((string)($post['image_media_id'] ?? ''));
     $targetMediaId = $mediaProvided ? trim($requestedMediaId) : $currentMediaId;
     if ($targetMediaId !== '') {
@@ -67,6 +71,8 @@ function znews_update_post_with_media(
 
     $payloadHash = znews_mutation_payload_hash($uid, $postId, 'UPDATE_CONTENT', [
         'text' => $text,
+        'title' => $targetTitle,
+        'title_provided' => $titleProvided,
         'text_provided' => $textProvided,
         'media_provided' => $mediaProvided,
         'target_media_id' => $targetMediaId,
@@ -102,9 +108,10 @@ function znews_update_post_with_media(
     }
 
     $now = znews_now();
-    $decision = znews_post_publication_decision($newMediaRow, $text);
+    $decision = znews_post_publication_decision($newMediaRow, trim($targetTitle . "\n" . $text));
     $updated = $post;
-    $updated['schema_version'] = max(3, (int)($post['schema_version'] ?? 1));
+    $updated['schema_version'] = max(4, (int)($post['schema_version'] ?? 1));
+    $updated['title'] = $targetTitle;
     $updated['text'] = $text;
     $updated['image_media_id'] = $targetMediaId;
     $updated['image_url'] = znews_post_media_public_url($targetMediaId);
