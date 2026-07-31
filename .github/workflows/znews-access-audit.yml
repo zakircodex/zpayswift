@@ -56,6 +56,8 @@ jobs:
         run: php tests/zsky24_compact_composer_test.php
       - name: Z Sky 24 headline and photo
         run: php tests/zsky24_headline_photo_test.php
+      - name: Z Sky 24 Back navigation guard
+        run: php tests/zsky24_back_navigation_guard_test.php
       - name: JavaScript syntax
         run: |
           node --check znews/assets/znews-config.js
