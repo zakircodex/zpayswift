@@ -40,6 +40,7 @@ headline_expect(str_contains($index, 'composer-title-field'), 'Headline and body
 headline_expect(str_contains($index, 'composer-body-field'), 'Post details field is missing.');
 headline_expect(str_contains($index, '>Add photo</strong>'), 'Photo-only action label is missing.');
 headline_expect(!str_contains($index, 'Photos/videos'), 'Video wording remains in the composer.');
+headline_expect(!str_contains($index, 'Public <span aria-hidden="true">⌄</span>'), 'Inactive Public dropdown indicator remains.');
 headline_expect(!str_contains($index, ' multiple'), 'Composer must allow only one selected photo.');
 headline_expect(str_contains($index, 'accept="image/jpeg,image/png,image/webp"'), 'Image MIME allowlist is missing.');
 
@@ -63,7 +64,17 @@ headline_expect(str_contains($profile, 'class="profile-post-open post-title"'), 
 
 headline_expect(str_contains($premium, '.composer-writing-fields{display:grid;gap:12px'), 'Headline/body field separation styles are missing.');
 headline_expect(str_contains($premium, '.composer-card .image-preview{position:relative;width:min(calc(100% - 32px),420px);height:260px'), 'Desktop preview does not have a fixed bounded size.');
-headline_expect(str_contains($premium, 'width:min(calc(100% - 44px),380px);height:250px'), 'Mobile preview does not have a fixed bounded size.');
+headline_expect(str_contains($premium, 'width:calc(100% - 44px);height:clamp(220px,56vw,340px)'), 'Mobile preview is not full-width and bounded.');
 headline_expect(str_contains($premium, '.composer-card .image-preview img{display:block;width:100%;height:100%;object-fit:contain}'), 'Selected photo must preserve its aspect ratio.');
+headline_expect(str_contains($premium, '.composer-image-backdrop'), 'Selected portrait photos need a gap-free preview backdrop.');
+headline_expect(str_contains($premium, '.post-media-frame .post-media{position:relative;z-index:1;width:100%;height:auto;max-height:none;object-fit:contain'), 'Published photos must remain full-width and uncropped.');
+headline_expect(str_contains($premium, '.composer-topbar{position:fixed'), 'Mobile composer header must remain fixed.');
+headline_expect(str_contains($premium, '.composer-bottom-action{position:fixed'), 'Mobile Post action must remain fixed.');
+headline_expect(str_contains($premium, '.composer-bottom-submit{min-height:52px;border-radius:17px'), 'Mobile Post button polish is missing.');
+headline_expect(str_contains($premium, '.composer-add-row{border-radius:18px'), 'Add photo control polish is missing.');
+headline_expect(str_contains($app, "behavior: next === 'create' ? 'auto' : 'smooth'"), 'Create route must align immediately without a smooth-scroll gap.');
+headline_expect(str_contains($app, "backdrop.className = 'composer-image-backdrop'"), 'Composer preview backdrop is missing.');
+headline_expect(str_contains($app, 'class="post-media-frame"'), 'Feed photo frame is missing.');
+headline_expect(str_contains($profile, 'post-media-button post-media-frame'), 'Creator profile photo frame is missing.');
 
 fwrite(STDOUT, "Z Sky 24 headline and single-photo audit passed.\n");

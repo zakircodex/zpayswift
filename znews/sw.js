@@ -1,22 +1,22 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-embedded-shell-v5';
-const SHELL_REVISION = 'headline-photo-layout-1';
+const CACHE_NAME = 'zsky24-embedded-shell-v6';
+const SHELL_REVISION = 'fixed-composer-media-1';
 const SHELL = [
   '/znews/',
   '/znews/index.html',
   '/znews/assets/znews.css?v=2',
-  '/znews/assets/znews-premium.css?v=7',
+  '/znews/assets/znews-premium.css?v=8',
   '/znews/assets/znews-reader.css?v=2',
   '/znews/assets/znews-config.js?v=4',
   '/znews/assets/znews-api.js?v=4',
   '/znews/assets/znews-ads.js?v=1',
-  '/znews/assets/znews-bootstrap.js?v=10',
+  '/znews/assets/znews-bootstrap.js?v=11',
   '/znews/assets/znews-access.js?v=1',
   '/znews/assets/znews-feed-ui.js?v=1',
-  '/znews/assets/znews-profile.js?v=3',
+  '/znews/assets/znews-profile.js?v=4',
   '/znews/assets/znews-reader.js?v=3',
-  '/znews/assets/znews.js?v=7',
+  '/znews/assets/znews.js?v=8',
   '/znews/assets/znews-header.js?v=2',
   '/znews/assets/znews-creator.js?v=5',
   '/znews/assets/znews-instant-comments.js?v=4',

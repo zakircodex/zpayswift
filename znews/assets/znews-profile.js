@@ -153,7 +153,7 @@
       <header class="post-head">${avatar}<div class="post-author"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(formatTime(post.created_at))}</span></div></header>
       ${title ? `<button class="profile-post-open post-title" type="button" data-profile-action="open">${escapeHtml(title)}</button>` : ''}
       ${body ? `<button class="profile-post-open post-copy" type="button" data-profile-action="open">${escapeHtml(body)}</button>` : ''}
-      ${image ? `<button class="profile-post-media-button" type="button" data-profile-action="open"><img class="post-media" src="${escapeHtml(image)}" alt="Image shared by ${escapeHtml(name)}" loading="lazy"></button>` : ''}
+      ${image ? `<button class="profile-post-media-button post-media-frame" type="button" data-profile-action="open"><img class="post-media-backdrop" src="${escapeHtml(image)}" alt="" aria-hidden="true" loading="lazy"><img class="post-media" src="${escapeHtml(image)}" alt="Image shared by ${escapeHtml(name)}" loading="lazy"></button>` : ''}
       <div class="post-meta"><span>${Number(post.like_count || 0)} likes</span><span>${Number(post.comment_count || 0)} comments • ${Number(post.share_count || 0)} shares</span></div>
       <div class="profile-post-actions"><button type="button" data-profile-action="open">Read post</button><button type="button" data-profile-action="share">↗ Share</button></div>
     </article>`;

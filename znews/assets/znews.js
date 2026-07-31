@@ -280,7 +280,7 @@
     document.documentElement.dataset.znewsRoute = next;
     $$('.view').forEach((view) => view.classList.toggle('active', view.dataset.view === next));
     $$('[data-route]').forEach((button) => button.classList.toggle('active', button.dataset.route === next));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: next === 'create' ? 'auto' : 'smooth' });
     if (next === 'mine') loadMyPosts();
     if (next === 'balance') loadBalance();
   }
@@ -317,7 +317,7 @@
         </header>
         ${title ? `<button class="post-title" type="button" data-action="open">${escapeHtml(title)}</button>` : ''}
         ${body ? `<div class="post-copy ${!detail && body.length > 700 ? 'truncated' : ''}" data-action="open">${escapeHtml(body)}</div>` : ''}
-        ${image ? `<img class="post-media" data-action="open" src="${escapeHtml(image)}" alt="Image shared by ${escapeHtml(name)}" loading="lazy">` : ''}
+        ${image ? `<div class="post-media-frame" data-action="open"><img class="post-media-backdrop" src="${escapeHtml(image)}" alt="" aria-hidden="true" loading="lazy"><img class="post-media" src="${escapeHtml(image)}" alt="Image shared by ${escapeHtml(name)}" loading="lazy"></div>` : ''}
         <div class="post-meta"><span>${Number(post.like_count || 0)} likes</span><span>${Number(post.comment_count || 0)} comments • ${Number(post.share_count || 0)} shares</span></div>
         <div class="post-actions">
           <button class="post-action ${liked ? 'active' : ''}" type="button" data-action="like">♡ Like</button>
@@ -648,10 +648,18 @@
       syncComposerState();
       return;
     }
+    const imageUrl = URL.createObjectURL(file);
+    const backdrop = document.createElement('img');
+    backdrop.className = 'composer-image-backdrop';
+    backdrop.alt = '';
+    backdrop.setAttribute('aria-hidden', 'true');
+    backdrop.src = imageUrl;
+    els.imagePreview.appendChild(backdrop);
     const img = document.createElement('img');
+    img.className = 'composer-image-foreground';
     img.alt = 'Selected image preview';
-    img.src = URL.createObjectURL(file);
-    img.onload = () => URL.revokeObjectURL(img.src);
+    img.src = imageUrl;
+    img.onload = () => URL.revokeObjectURL(imageUrl);
     els.imagePreview.appendChild(img);
     const remove = document.createElement('button');
     remove.className = 'composer-image-remove';
