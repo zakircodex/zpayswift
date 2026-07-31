@@ -187,11 +187,11 @@ check(str_contains($readerCss, '#postDetail>.ad-slot:empty{display:none}'), 'Emp
 $bootstrap = contents($root . '/znews/assets/znews-bootstrap.js');
 check(str_contains($bootstrap, 'znews-feed-ui.js?v=1'), 'Fair feed UI module is not loaded');
 check(str_contains($bootstrap, 'znews-reader.js?v=3'), 'Latest reader UI module is not loaded');
-check(strpos($bootstrap, 'znews-reader.js?v=3') < strpos($bootstrap, 'znews.js?v=8'), 'Reader capture must load before app');
+check(strpos($bootstrap, 'znews-reader.js?v=3') < strpos($bootstrap, 'znews.js?v=9'), 'Reader capture must load before app');
 check(str_contains($bootstrap, 'znews-instant-comments.js?v=4'), 'Latest comment module is not loaded');
 
 $serviceWorker = contents($root . '/znews/sw.js');
-check(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v6'"), 'Embedded reader shell cache is stale');
+check(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v7'"), 'Embedded reader shell cache is stale');
 check(str_contains($serviceWorker, 'znews-bootstrap.js?v=11'), 'Latest bootstrap is missing from cache');
 check(str_contains($serviceWorker, 'znews-reader.css?v=2'), 'Latest reader CSS is missing from cache');
 check(str_contains($serviceWorker, 'znews-reader.js?v=3'), 'Latest reader JS is missing from cache');

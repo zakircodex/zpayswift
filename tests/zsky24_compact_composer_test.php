@@ -64,14 +64,14 @@ foreach ([
 
 composer_expect(str_contains($index, 'znews-premium.css?v=8'), 'Composer stylesheet cachebuster is missing.');
 composer_expect(str_contains($index, 'znews-bootstrap.js?v=11'), 'Composer bootstrap cachebuster is missing.');
-composer_expect(str_contains($bootstrap, 'znews.js?v=8'), 'Latest composer behavior is not loaded.');
-composer_expect(str_contains($bootstrap, 'znews-creator.js?v=5'), 'Latest creator behavior is not loaded.');
+composer_expect(str_contains($bootstrap, 'znews.js?v=9'), 'Latest composer behavior is not loaded.');
+composer_expect(str_contains($bootstrap, 'znews-creator.js?v=6'), 'Latest creator behavior is not loaded.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
     composer_expect(str_contains($worker, 'znews-premium.css?v=8'), 'Latest composer stylesheet is missing from a PWA shell.');
     composer_expect(str_contains($worker, 'znews-bootstrap.js?v=11'), 'Latest bootstrap is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews.js?v=8'), 'Latest app behavior is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-creator.js?v=5'), 'Latest creator behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews.js?v=9'), 'Latest app behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-creator.js?v=6'), 'Latest creator behavior is missing from a PWA shell.');
     composer_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'PWA shell must continue excluding API responses.');
 }
 

@@ -272,10 +272,11 @@
     if (state.route === 'balance') loadBalance();
   }
 
-  function routeTo(route) {
+  function routeTo(route, { syncHistory = true } = {}) {
     const allowed = ['feed', 'create', 'mine', 'balance'];
     const next = allowed.includes(route) ? route : 'feed';
     if (['create', 'mine', 'balance'].includes(next) && !requireSession()) return;
+    if (els.postDialog.open) closePost({ syncHistory: false });
     state.route = next;
     document.documentElement.dataset.znewsRoute = next;
     $$('.view').forEach((view) => view.classList.toggle('active', view.dataset.view === next));
@@ -283,6 +284,10 @@
     window.scrollTo({ top: 0, behavior: next === 'create' ? 'auto' : 'smooth' });
     if (next === 'mine') loadMyPosts();
     if (next === 'balance') loadBalance();
+    if (syncHistory) {
+      const current = history.state && typeof history.state === 'object' ? history.state : {};
+      history.replaceState({ ...current, znewsView: next }, '', config.publicPath());
+    }
   }
 
   function postImage(post) {
@@ -439,12 +444,18 @@
     }
   }
 
-  async function openPost(postId) {
+  async function openPost(postId, { syncHistory = true } = {}) {
     state.currentPostId = postId;
     els.postDetail.innerHTML = '<div class="skeleton-card"><div class="skeleton line short"></div><div class="skeleton block"></div></div>';
     els.commentList.textContent = '';
     if (!els.postDialog.open) els.postDialog.showModal();
-    history.pushState({ postId }, '', config.publicPath('post', postId));
+    if (syncHistory) {
+      const currentRoute = config.parseRoute();
+      const alreadyCurrent = currentRoute.kind === 'post' && currentRoute.id === postId;
+      if (!alreadyCurrent) {
+        history.pushState({ postId, znewsPostOverlay: true }, '', config.publicPath('post', postId));
+      }
+    }
 
     try {
       const [postResult, commentResult] = await Promise.all([
@@ -531,11 +542,18 @@
     try { await api.completeView(session.id, session.token); } catch (_error) { /* non-blocking */ }
   }
 
-  function closePost() {
+  function closePost({ syncHistory = true } = {}) {
     completeView();
     if (els.postDialog.open) els.postDialog.close();
     state.currentPostId = '';
-    if (config.parseRoute().kind === 'post') history.pushState({}, '', config.publicPath());
+    if (syncHistory && config.parseRoute().kind === 'post') {
+      if (history.state?.znewsPostOverlay === true) {
+        history.back();
+      } else {
+        history.replaceState({ znewsView: 'feed' }, '', config.publicPath());
+        routeTo('feed', { syncHistory: false });
+      }
+    }
   }
 
   async function submitPost(event) {
@@ -723,10 +741,16 @@
     els.postDialog.addEventListener('cancel', (event) => { event.preventDefault(); closePost(); });
     els.postDialog.addEventListener('click', (event) => { if (event.target === els.postDialog) closePost(); });
     els.transferButton.addEventListener('click', requestTransfer);
-    window.addEventListener('popstate', () => {
+    window.addEventListener('popstate', (event) => {
       const route = config.parseRoute();
-      if (route.kind === 'post') openPost(route.id);
-      else if (els.postDialog.open) closePost();
+      if (route.kind === 'post') openPost(route.id, { syncHistory: false });
+      else {
+        if (els.postDialog.open) closePost({ syncHistory: false });
+        const restoredView = ['feed', 'create', 'mine', 'balance'].includes(event.state?.znewsView)
+          ? event.state.znewsView
+          : 'feed';
+        routeTo(restoredView, { syncHistory: false });
+      }
     });
     window.addEventListener('pagehide', () => completeView());
     syncComposerState();
@@ -738,7 +762,7 @@
     window.ZNewsAds.mountAll();
     await loadFeed();
     const route = config.parseRoute();
-    if (route.kind === 'post') openPost(route.id);
+    if (route.kind === 'post') openPost(route.id, { syncHistory: false });
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register(
         config.standalone ? '/sw.js' : '/znews/sw.js',
