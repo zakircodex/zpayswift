@@ -17,7 +17,7 @@ function my_posts_expect(bool $condition, string $message): void
 }
 
 my_posts_expect(str_contains($app, "openPost(route.id, { syncHistory: false })"), 'Popstate/deep-link post opening must not create another history entry.');
-my_posts_expect(str_contains($app, "history.pushState({ postId, znewsPostOverlay: true }"), 'Feed-opened posts must carry an overlay history marker.');
+my_posts_expect(str_contains($app, "appHistoryState(state.route, { postId, znewsPostOverlay: true })"), 'Feed-opened posts must carry an overlay history marker.');
 my_posts_expect(str_contains($app, "history.state?.znewsPostOverlay === true"), 'Reader close must distinguish an overlay from a direct post URL.');
 my_posts_expect(!str_contains($app, "history.pushState({}, '', config.publicPath())"), 'Closing a post must not append a stale feed history entry.');
 my_posts_expect(str_contains($app, "routeTo(restoredView, { syncHistory: false })"), 'Back navigation must restore the internal view without mutating history.');
