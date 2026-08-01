@@ -62,8 +62,11 @@ jobs:
         run: php tests/zsky24_edit_post_composer_test.php
       - name: Z Sky 24 balance policy and UI
         run: php tests/zsky24_balance_policy_ui_test.php
+      - name: Z Sky 24 admin creator credit panel
+        run: php tests/znews_admin_creator_credit_panel_test.php
       - name: JavaScript syntax
         run: |
+          node --check api/admin/assets/zsky24-admin.js
           node --check znews/assets/znews-config.js
           node --check znews/assets/znews-api.js
           node --check znews/assets/znews-bootstrap.js

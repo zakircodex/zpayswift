@@ -1188,6 +1188,11 @@ async function loadSectionData(sectionId, force = false){
     if (force || !state.loaded.operators) {
       await loadOperators({ busyText:'Loading operators...' });
     }
+    return;
+  }
+
+  if (sectionId === 'zsky24Section' && typeof window.loadZSky24Admin === 'function') {
+    await window.loadZSky24Admin(force);
   }
 }
 

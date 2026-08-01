@@ -80,6 +80,10 @@ jobs:
           php tests/zsky24_my_posts_navigation_loading_test.php
           php tests/zsky24_edit_post_composer_test.php
           php tests/zsky24_balance_policy_ui_test.php
+          php tests/znews_admin_creator_credit_panel_test.php
+          php -l api/admin/proxy.php >/dev/null
+          php -l api/admin/dashboard.php >/dev/null
+          node --check api/admin/assets/zsky24-admin.js
           find api/znews api/admin/znews -type f -name '*.php' -print0 \
             | sort -z \
             | xargs -0 -n1 php -l >/dev/null

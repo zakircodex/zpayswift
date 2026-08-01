@@ -15,6 +15,7 @@ header('Pragma: no-cache');
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=23">
   <link rel="stylesheet" href="/api/admin/assets/admin-ux.css?v=2">
+  <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=1">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body class="admin-premium-body">
@@ -75,6 +76,7 @@ header('Pragma: no-cache');
         
         <button class="nav-btn" data-section="usersSection">Users <span>›</span></button>
         <button class="nav-btn" data-section="operatorsSection">Operators <span>›</span></button>
+        <button class="nav-btn" data-section="zsky24Section">Z Sky 24 <span>›</span></button>
       </div>
 
       <div class="sidebar-box">
@@ -810,6 +812,41 @@ header('Pragma: no-cache');
           </div>
         </div>
       </section>
+
+      <section class="section" id="zsky24Section" aria-labelledby="zsky24AdminTitle">
+        <div class="zsky-admin-shell">
+          <div class="zsky-admin-hero">
+            <div>
+              <span class="zsky-admin-kicker">Z SKY 24 OPERATIONS</span>
+              <h3 id="zsky24AdminTitle">Creator credit control</h3>
+              <p>Review verified ad revenue and creator transfer requests without changing settlement values in the browser.</p>
+            </div>
+            <button class="btn blue" id="zsky24RefreshBtn" type="button">Refresh</button>
+          </div>
+
+          <div class="zsky-admin-metrics" aria-label="Z Sky 24 queue summary">
+            <div class="zsky-admin-metric"><span>Ready to settle</span><strong id="zskySettlementCount">0</strong></div>
+            <div class="zsky-admin-metric"><span>Transfer review</span><strong id="zskyTransferCount">0</strong></div>
+            <div class="zsky-admin-metric warning"><span>Ad review</span><strong id="zskyImpressionCount">0</strong></div>
+            <div class="zsky-admin-metric danger"><span>Reconciliation flags</span><strong id="zskyReconciliationCount">0</strong></div>
+          </div>
+
+          <div class="zsky-admin-tabs" role="tablist" aria-label="Creator credit queues">
+            <button class="zsky-admin-tab active" type="button" data-zsky-tab="settlements" role="tab" aria-selected="true">Creator credits</button>
+            <button class="zsky-admin-tab" type="button" data-zsky-tab="transfers" role="tab" aria-selected="false">Transfer requests</button>
+            <button class="zsky-admin-tab" type="button" data-zsky-tab="impressions" role="tab" aria-selected="false">Ad verification</button>
+          </div>
+
+          <div class="card zsky-admin-panel">
+            <div class="panel-head">
+              <div><h3 id="zskyQueueTitle">Verified revenue</h3><p id="zskyQueueSubtitle">Only provider-verified impressions can be settled.</p></div>
+            </div>
+            <div id="zskyQueueBody" class="zsky-admin-list" aria-live="polite">
+              <div class="empty">Open Z Sky 24 to load creator credit data.</div>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -851,7 +888,8 @@ header('Pragma: no-cache');
 <script>
 window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
-<script src="/api/admin/assets/dashboard.js?v=40"></script>
+<script src="/api/admin/assets/dashboard.js?v=41"></script>
+<script src="/api/admin/assets/zsky24-admin.js?v=1"></script>
 <script src="/api/admin/assets/admin-dashboard-ux.js?v=2"></script>
 
 </body>

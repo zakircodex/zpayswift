@@ -1838,6 +1838,64 @@ switch ($action) {
         ]);
         break;
 
+    case 'zsky24_impressions_queue':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('znews/ads/impressions/queue.php', [
+            'limit' => (int)($_GET['limit'] ?? 20),
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
+        ]);
+        break;
+
+    case 'zsky24_impression_details':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('znews/ads/impressions/details.php', [
+            'impression_id' => trim((string)($_GET['impression_id'] ?? '')),
+        ]);
+        break;
+
+    case 'zsky24_impression_recheck':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('znews/ads/impressions/recheck.php', proxy_read_json_body());
+        break;
+
+    case 'zsky24_settlements_queue':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('znews/ads/settlements/queue.php', [
+            'limit' => (int)($_GET['limit'] ?? 20),
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
+        ]);
+        break;
+
+    case 'zsky24_settlement_settle':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('znews/ads/settlements/settle.php', proxy_read_json_body());
+        break;
+
+    case 'zsky24_transfers_queue':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('znews/transfers/queue.php', [
+            'limit' => (int)($_GET['limit'] ?? 20),
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
+        ]);
+        break;
+
+    case 'zsky24_transfer_details':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('znews/transfers/details.php', [
+            'request_id' => trim((string)($_GET['request_id'] ?? '')),
+        ]);
+        break;
+
+    case 'zsky24_transfer_approve':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('znews/transfers/approve.php', proxy_read_json_body());
+        break;
+
+    case 'zsky24_transfer_reject':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('znews/transfers/reject.php', proxy_read_json_body());
+        break;
+
     case 'subapi_create_key':
         proxy_require_method('POST');
         proxy_forward_admin_post('subadmin_api/create_key.php', proxy_read_json_body());
