@@ -58,11 +58,14 @@ jobs:
           set -euo pipefail
           mapfile -d '' files < <(find api/znews api/admin/znews tests -type f -name '*.php' -print0 | sort -z)
           files+=(api/lib/firebase.php)
+          files+=(api/admin/proxy.php api/admin/dashboard.php)
           [ "${#files[@]}" -gt 0 ]
           for file in "${files[@]}"; do
             php -l "$file" >/dev/null
           done
           echo "Syntax passed for ${#files[@]} PHP files."
+      - name: Syntax-check Z Sky admin JavaScript
+        run: node --check api/admin/assets/zsky24-admin.js
 
   regression:
     name: ${{ matrix.file }}
@@ -102,6 +105,8 @@ jobs:
             file: tests/znews_post_reader_ui_test.php
           - id: revenue-settlement
             file: tests/znews_revenue_settlement_test.php
+          - id: admin-creator-credit-panel
+            file: tests/znews_admin_creator_credit_panel_test.php
           - id: social-engagement
             file: tests/znews_social_engagement_test.php
           - id: view-antifraud
