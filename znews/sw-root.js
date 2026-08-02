@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-standalone-shell-v10';
+const CACHE_NAME = 'zsky24-standalone-shell-v11';
 const SHELL = [
   '/',
   '/znews/index.html',
@@ -15,7 +15,7 @@ const SHELL = [
   '/znews/assets/znews-feed-ui.js?v=1',
   '/znews/assets/znews-profile.js?v=4',
   '/znews/assets/znews-reader.js?v=3',
-  '/znews/assets/znews.js?v=14',
+  '/znews/assets/znews.js?v=15',
   '/znews/assets/znews-header.js?v=2',
   '/znews/assets/znews-creator.js?v=7',
   '/znews/assets/znews-instant-comments.js?v=4',

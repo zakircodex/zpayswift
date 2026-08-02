@@ -26,8 +26,8 @@ $expect(str_contains($css, 'width:var(--znews-reader-vv-width,100%)'), 'Reader m
 $expect(str_contains($css, 'left:var(--znews-reader-vv-left,0px)'), 'Reader must preserve the visual viewport horizontal offset.');
 $expect(str_contains($css, 'max-width:none;max-inline-size:none'), 'Browser dialog maximum width must be reset.');
 $expect(!str_contains($css, '@media(max-width:780px){\n  .post-modal{position:fixed'), 'Low-specificity mobile selector can reintroduce the right-side gap.');
-$expect(str_contains($sw, "const SHELL_REVISION = 'creator-policy-page-1'"), 'Service worker revision must refresh the Back navigation behavior.');
-$expect(str_contains($sw, "const CACHE_NAME = 'zsky24-embedded-shell-v10'"), 'Embedded shell cache namespace is incorrect.');
+$expect(str_contains($sw, "const SHELL_REVISION = 'view-heartbeat-lifecycle-1'"), 'Service worker revision must refresh the view heartbeat behavior.');
+$expect(str_contains($sw, "const CACHE_NAME = 'zsky24-embedded-shell-v11'"), 'Embedded shell cache namespace is incorrect.');
 
 if ($failures) {
     fwrite(STDERR, "Z News reader full-width regression failed:\n- " . implode("\n- ", $failures) . "\n");

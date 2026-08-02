@@ -162,8 +162,9 @@ check(!preg_match('/\b(?:wallet|ledger|transfer)\b/i', $ranking), 'Feed ranking 
 
 $app = contents($root . '/znews/assets/znews.js');
 check(str_contains($app, 'beginView(postId)'), 'Reader view lifecycle does not start');
-check(str_contains($app, 'window.setTimeout(() => heartbeatView(), 5000)'), 'First view heartbeat is missing');
-check(str_contains($app, 'window.setTimeout(() => heartbeatView(), 15000)'), 'Second view heartbeat is missing');
+check(str_contains($app, 'window.setInterval(() => heartbeatView(), 10000)'), 'Periodic view heartbeat is missing');
+check(str_contains($app, "document.addEventListener('visibilitychange'"), 'Visible-reader heartbeat recovery is missing');
+check(str_contains($app, 'await heartbeatView(session);'), 'Final visible heartbeat flush is missing');
 check(str_contains($app, 'await completeView()'), 'View completion guard is missing');
 check(str_contains($app, 'Minimum transfer amount is ৳200.'), 'Transfer minimum disclosure is missing');
 check(str_contains($app, 'state.balanceMicros < state.transferMinimumMicros'), 'Transfer threshold guard is missing');
@@ -187,11 +188,11 @@ check(str_contains($readerCss, '#postDetail>.ad-slot:empty{display:none}'), 'Emp
 $bootstrap = contents($root . '/znews/assets/znews-bootstrap.js');
 check(str_contains($bootstrap, 'znews-feed-ui.js?v=1'), 'Fair feed UI module is not loaded');
 check(str_contains($bootstrap, 'znews-reader.js?v=3'), 'Latest reader UI module is not loaded');
-check(strpos($bootstrap, 'znews-reader.js?v=3') < strpos($bootstrap, 'znews.js?v=14'), 'Reader capture must load before app');
+check(strpos($bootstrap, 'znews-reader.js?v=3') < strpos($bootstrap, 'znews.js?v=15'), 'Reader capture must load before app');
 check(str_contains($bootstrap, 'znews-instant-comments.js?v=4'), 'Latest comment module is not loaded');
 
 $serviceWorker = contents($root . '/znews/sw.js');
-check(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v10'"), 'Embedded reader shell cache is stale');
+check(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v11'"), 'Embedded reader shell cache is stale');
 check(str_contains($serviceWorker, 'znews-bootstrap.js?v=17'), 'Latest bootstrap is missing from cache');
 check(str_contains($serviceWorker, 'znews-reader.css?v=2'), 'Latest reader CSS is missing from cache');
 check(str_contains($serviceWorker, 'znews-reader.js?v=3'), 'Latest reader JS is missing from cache');
