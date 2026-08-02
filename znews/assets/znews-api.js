@@ -271,11 +271,14 @@
       });
     }
 
-    startView(postId) {
+    startView(postId, idempotencyKey = '') {
       return this.request('znews/views/start.php', {
         method: 'POST',
         appKey: false,
-        body: { post_id: postId, idempotency_key: this.idempotencyKey('view') }
+        body: {
+          post_id: postId,
+          idempotency_key: idempotencyKey || this.idempotencyKey('view')
+        }
       });
     }
 

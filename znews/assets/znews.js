@@ -9,6 +9,8 @@
     feedHasMore: false,
     feedLoading: false,
     currentPostId: '',
+    openingPostId: '',
+    viewStartingPostId: '',
     viewSession: null,
     balanceMicros: 0,
     transferMinimumMicros: 200_000_000,
@@ -500,6 +502,9 @@
   }
 
   async function openPost(postId, { syncHistory = true } = {}) {
+    if (state.openingPostId === postId) return;
+    if (state.currentPostId === postId && els.postDialog.open && state.viewSession?.postId === postId) return;
+    state.openingPostId = postId;
     state.currentPostId = postId;
     els.postDetail.innerHTML = '<div class="skeleton-card"><div class="skeleton line short"></div><div class="skeleton block"></div></div>';
     els.commentList.textContent = '';
@@ -535,6 +540,8 @@
       beginView(postId);
     } catch (error) {
       els.postDetail.innerHTML = `<div class="empty-state"><strong>Post could not be loaded</strong>${escapeHtml(errorMessage(error))}</div>`;
+    } finally {
+      if (state.openingPostId === postId) state.openingPostId = '';
     }
   }
 
@@ -570,14 +577,18 @@
   }
 
   async function beginView(postId) {
-    await completeView();
+    if (state.viewSession?.postId === postId || state.viewStartingPostId === postId) return;
+    state.viewStartingPostId = postId;
+    const idempotencyKey = api.idempotencyKey(`view-${postId}`);
     try {
-      const result = await api.startView(postId);
+      await completeView();
+      const result = await api.startView(postId, idempotencyKey);
       const session = result.data?.session || {};
       if (!session.view_id || !session.view_token) return;
       const heartbeatDelay = Math.max(3000, Number(session.heartbeat_after_seconds || 5) * 1000);
       state.viewSession = {
         id: session.view_id,
+        postId,
         token: session.view_token,
         closing: false,
         heartbeatPending: null,
@@ -592,6 +603,8 @@
       };
     } catch (_error) {
       state.viewSession = null;
+    } finally {
+      if (state.viewStartingPostId === postId) state.viewStartingPostId = '';
     }
   }
 
