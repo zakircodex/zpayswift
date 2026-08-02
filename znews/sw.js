@@ -1,7 +1,7 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-embedded-shell-v10';
-const SHELL_REVISION = 'creator-policy-page-1';
+const CACHE_NAME = 'zsky24-embedded-shell-v11';
+const SHELL_REVISION = 'view-heartbeat-lifecycle-1';
 const SHELL = [
   '/znews/',
   '/znews/index.html',
@@ -16,7 +16,7 @@ const SHELL = [
   '/znews/assets/znews-feed-ui.js?v=1',
   '/znews/assets/znews-profile.js?v=4',
   '/znews/assets/znews-reader.js?v=3',
-  '/znews/assets/znews.js?v=14',
+  '/znews/assets/znews.js?v=15',
   '/znews/assets/znews-header.js?v=2',
   '/znews/assets/znews-creator.js?v=7',
   '/znews/assets/znews-instant-comments.js?v=4',
