@@ -575,31 +575,53 @@
       const result = await api.startView(postId);
       const session = result.data?.session || {};
       if (!session.view_id || !session.view_token) return;
+      const heartbeatDelay = Math.max(3000, Number(session.heartbeat_after_seconds || 5) * 1000);
       state.viewSession = {
         id: session.view_id,
         token: session.view_token,
-        timers: [
-          window.setTimeout(() => heartbeatView(), 5000),
-          window.setTimeout(() => heartbeatView(), 15000)
-        ]
+        closing: false,
+        heartbeatPending: null,
+        completionPending: null,
+        timer: window.setTimeout(() => {
+          heartbeatView();
+          const current = state.viewSession;
+          if (!current || current.id !== session.view_id || current.closing) return;
+          current.interval = window.setInterval(() => heartbeatView(), 10000);
+        }, heartbeatDelay),
+        interval: 0
       };
     } catch (_error) {
       state.viewSession = null;
     }
   }
 
-  async function heartbeatView() {
-    const session = state.viewSession;
-    if (!session || document.visibilityState !== 'visible') return;
-    try { await api.heartbeatView(session.id, session.token); } catch (_error) { /* non-blocking */ }
+  async function heartbeatView(session = state.viewSession) {
+    if (!session || session.closing || document.visibilityState !== 'visible') return null;
+    if (session.heartbeatPending) return session.heartbeatPending;
+    session.heartbeatPending = api.heartbeatView(session.id, session.token)
+      .catch(() => null)
+      .finally(() => { session.heartbeatPending = null; });
+    return session.heartbeatPending;
   }
 
   async function completeView() {
     const session = state.viewSession;
-    state.viewSession = null;
     if (!session) return;
-    session.timers.forEach((timer) => window.clearTimeout(timer));
-    try { await api.completeView(session.id, session.token); } catch (_error) { /* non-blocking */ }
+    if (session.completionPending) return session.completionPending;
+    session.completionPending = (async () => {
+      session.closing = true;
+      window.clearTimeout(session.timer);
+      window.clearInterval(session.interval);
+      if (session.heartbeatPending) await session.heartbeatPending;
+      if (document.visibilityState === 'visible') {
+        session.closing = false;
+        await heartbeatView(session);
+        session.closing = true;
+      }
+      if (state.viewSession === session) state.viewSession = null;
+      try { await api.completeView(session.id, session.token); } catch (_error) { /* non-blocking */ }
+    })();
+    return session.completionPending;
   }
 
   function closePost({ syncHistory = true } = {}) {
@@ -835,6 +857,9 @@
     els.postDialogClose.addEventListener('click', closePost);
     els.postDialog.addEventListener('cancel', (event) => { event.preventDefault(); closePost(); });
     els.postDialog.addEventListener('click', (event) => { if (event.target === els.postDialog) closePost(); });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') heartbeatView();
+    });
     els.transferButton.addEventListener('click', requestTransfer);
     window.addEventListener('popstate', (event) => {
       if (event.state?.znewsBoundary === true) {
