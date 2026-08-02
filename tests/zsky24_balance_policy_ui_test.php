@@ -50,11 +50,11 @@ balance_policy_expect(str_contains($index, 'The current minimum request is ৳20
 balance_policy_expect(str_contains($css, '#balanceView.active { display: grid; gap: 20px; }'), 'Balance cards do not have explicit spacing.');
 balance_policy_expect(str_contains($index, 'znews.css?v=4'), 'Balance stylesheet is not activated.');
 balance_policy_expect(str_contains($index, 'znews-bootstrap.js?v=17'), 'Balance bootstrap is not activated.');
-balance_policy_expect(str_contains($bootstrap, 'znews.js?v=14'), 'Balance behavior is not activated.');
+balance_policy_expect(str_contains($bootstrap, 'znews.js?v=15'), 'Balance behavior is not activated.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
     balance_policy_expect(str_contains($worker, 'znews.css?v=4'), 'A PWA shell is missing the balance stylesheet.');
-    balance_policy_expect(str_contains($worker, 'znews.js?v=14'), 'A PWA shell is missing the balance behavior.');
+    balance_policy_expect(str_contains($worker, 'znews.js?v=15'), 'A PWA shell is missing the balance behavior.');
     balance_policy_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'A PWA shell may cache financial API responses.');
 }
 balance_policy_expect(str_contains($standaloneWorker, "url.pathname === '/policy'"), 'Standalone PWA policy navigation fallback is missing.');
