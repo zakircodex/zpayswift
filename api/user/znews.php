@@ -36,6 +36,12 @@ if (!is_array($user)) {
 
 auth_app_guard_user_login($user);
 
+$previousGrantPath = trim((string)($_SESSION['znews_handoff_grant_path'] ?? ''));
+if ($previousGrantPath !== '' && str_starts_with($previousGrantPath, 'ZNEWS_HANDOFF_GRANTS/')) {
+    fb_delete($previousGrantPath);
+}
+unset($_SESSION['znews_handoff_grant_path']);
+
 $code = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=');
 $now = now_ts();
 $context = znews_handoff_context();
@@ -59,6 +65,8 @@ if (!fb_put(znews_handoff_path($code), $grant)) {
     http_response_code(503);
     exit('Z Sky 24 access is temporarily unavailable.');
 }
+
+$_SESSION['znews_handoff_grant_path'] = znews_handoff_path($code);
 
 session_write_close();
 header('Location: https://' . znews_handoff_target_host() . '/#handoff=' . rawurlencode($code), true, 302);

@@ -25,6 +25,9 @@ if (!is_array($handoff) || $etag === '') {
 $expiresAt = (int)($handoff['expires_at'] ?? 0);
 $storedHash = trim((string)($handoff['code_hash'] ?? ''));
 if (!empty($handoff['used']) || $expiresAt <= now_ts() || $storedHash === '') {
+    if ($expiresAt <= now_ts() && empty($handoff['used'])) {
+        fb_delete_if_match($path, $etag);
+    }
     api_response(false, 'ZNEWS_HANDOFF_EXPIRED', 'Z Sky 24 access link expired. Open it again from Z-Pay.', [], 401);
 }
 

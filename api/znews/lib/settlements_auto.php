@@ -23,6 +23,63 @@ function znews_auto_settlement_actor(): array
     ];
 }
 
+function znews_auto_settlement_retry_path(string $impressionId): string
+{
+    return 'ZNEWS_AUTO_SETTLEMENT_RETRIES/'
+        . znews_firebase_key($impressionId, 'impression_id');
+}
+
+function znews_auto_settlement_retry_delay(int $attempt): int
+{
+    return min(3600, 30 * (2 ** min(7, max(0, $attempt - 1))));
+}
+
+function znews_auto_settlement_retryable(array $result): bool
+{
+    $status = (int)($result['http_status'] ?? 500);
+    $code = strtoupper(trim((string)($result['code'] ?? '')));
+    if ($status >= 500 || $status === 429) {
+        return true;
+    }
+
+    return in_array($code, [
+        'ZNEWS_SETTLEMENT_VERSION_CONFLICT',
+        'ZNEWS_SETTLEMENT_IN_PROGRESS',
+        'ZNEWS_SETTLEMENT_FINALIZE_CONFLICT',
+    ], true);
+}
+
+function znews_auto_settlement_queue_retry(string $impressionId, array $result): bool
+{
+    $impressionId = znews_firebase_key($impressionId, 'impression_id');
+    $path = znews_auto_settlement_retry_path($impressionId);
+    $existing = fb_get($path);
+    $attempt = max(0, (int)(is_array($existing) ? ($existing['attempt_count'] ?? 0) : 0)) + 1;
+    $now = now_ts();
+
+    return fb_put($path, [
+        'impression_id' => $impressionId,
+        'status' => $attempt >= 12 ? 'FAILED' : 'PENDING',
+        'attempt_count' => $attempt,
+        'last_error_code' => substr(trim((string)($result['code'] ?? 'ZNEWS_AUTO_SETTLEMENT_FAILED')), 0, 120),
+        'created_at' => max(1, (int)(is_array($existing) ? ($existing['created_at'] ?? $now) : $now)),
+        'updated_at' => $now,
+        'next_attempt_at' => $attempt >= 12 ? 0 : $now + znews_auto_settlement_retry_delay($attempt),
+    ]);
+}
+
+function znews_auto_settle_impression_with_retry(string $impressionId): array
+{
+    $result = znews_auto_settle_impression($impressionId);
+    if (!empty($result['ok']) || !znews_auto_settlement_retryable($result)) {
+        fb_delete(znews_auto_settlement_retry_path($impressionId));
+    } else {
+        $result['retry_queued'] = znews_auto_settlement_queue_retry($impressionId, $result);
+    }
+
+    return $result;
+}
+
 function znews_auto_settle_impression(string $impressionId): array
 {
     $impressionId = znews_firebase_key($impressionId, 'impression_id');
@@ -77,7 +134,7 @@ function znews_auto_settle_view_impressions(string $viewId): array
                 continue;
             }
         }
-        $settled = znews_auto_settle_impression($impressionId);
+        $settled = znews_auto_settle_impression_with_retry($impressionId);
         if (empty($settled['ok'])) {
             $retryRequired = true;
         } elseif (empty($settled['skipped'])) {
