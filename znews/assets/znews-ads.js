@@ -31,8 +31,24 @@
     slot.hidden = true;
   }
 
-  async function mount(slot) {
+  function currentViewerUid() {
+    try {
+      const profile = JSON.parse(sessionStorage.getItem(window.ZNEWS_CONFIG?.profileStorageKey) || '{}');
+      return String(profile?.uid || '').trim();
+    } catch (_error) {
+      return '';
+    }
+  }
+
+  async function mount(slot, context = {}) {
     if (!(slot instanceof HTMLElement)) return;
+
+    const creatorUid = String(context.creatorUid || slot.dataset.creatorUid || '').trim();
+    const viewerUid = currentViewerUid();
+    if (creatorUid && viewerUid && creatorUid === viewerUid) {
+      hideSlot(slot);
+      return;
+    }
 
     const slotName = String(slot.dataset.znewsAdSlot || '').trim();
     const placementId = String(config.placements?.[slotName] || '').trim();
