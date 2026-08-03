@@ -23,8 +23,8 @@
     document.querySelectorAll('[data-zpay-dashboard]').forEach((link) => {
       link.setAttribute('href', config.zpayDashboardUrl);
     });
-    document.querySelectorAll('[data-zpay-register], #commentGuestCta').forEach((link) => {
-      link.setAttribute('href', config.zpayRegisterUrl);
+    document.querySelectorAll('[data-zpay-login], #commentGuestCta').forEach((link) => {
+      link.setAttribute('href', config.zpayLoginUrl);
     });
   }
 
@@ -97,7 +97,7 @@
     const exchanged = await exchangeHandoff(api);
     if (!exchanged) await validateStoredSession(api);
 
-    await loadScript('/znews/assets/znews-access.js?v=1');
+    await loadScript('/znews/assets/znews-access.js?v=2');
     await loadScript('/znews/assets/znews-feed-ui.js?v=1');
     await loadScript('/znews/assets/znews-profile.js?v=4');
     await loadScript('/znews/assets/znews-reader.js?v=3');

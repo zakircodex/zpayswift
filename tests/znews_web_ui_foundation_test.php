@@ -62,7 +62,7 @@ check(str_contains($index, 'class="comment-dock"'), 'Comment dock is missing');
 check(str_contains($index, '<textarea id="commentText"'), 'Comment textarea is missing');
 check(str_contains($index, 'id="commentGuestCta"'), 'Guest comment CTA is missing');
 check(str_contains($index, 'znews-reader.css?v=2'), 'Latest reader stylesheet is not activated');
-check(str_contains($index, 'znews-bootstrap.js?v=18'), 'Latest bootstrap is not activated');
+check(str_contains($index, 'znews-bootstrap.js?v=19'), 'Latest bootstrap is not activated');
 check(!str_contains($index, 'znews-quick-login.js'), 'Removed standalone login remains loaded');
 check(!str_contains($index, '<div class="header-actions">'), 'Visible Sign in header remains');
 check(!preg_match('/\b(?:Earn|Income|Cash|Profit|Revenue|Job|Work)\b/i', strip_tags($index)), 'Forbidden public wording exists');
@@ -100,7 +100,7 @@ check(str_contains($creator, 'stopImmediatePropagation'), 'Duplicate creator sub
 
 $access = contents($root . '/znews/assets/znews-access.js');
 check(str_contains($access, "['create', 'mine', 'balance']"), 'Guest creator-route guard is missing');
-check(str_contains($access, 'config.zpayRegisterUrl'), 'Guest registration route is missing');
+check(str_contains($access, 'config.zpayLoginUrl'), 'Guest login route is missing');
 check(str_contains($access, '[data-action="like"]'), 'Guest like cleanup is missing');
 
 $header = contents($root . '/znews/assets/znews-header.js');
@@ -196,7 +196,7 @@ check(str_contains($bootstrap, 'znews-instant-comments.js?v=4'), 'Latest comment
 
 $serviceWorker = contents($root . '/znews/sw.js');
 check(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v13'"), 'Embedded reader shell cache is stale');
-check(str_contains($serviceWorker, 'znews-bootstrap.js?v=18'), 'Latest bootstrap is missing from cache');
+check(str_contains($serviceWorker, 'znews-bootstrap.js?v=19'), 'Latest bootstrap is missing from cache');
 check(str_contains($serviceWorker, 'znews-reader.css?v=2'), 'Latest reader CSS is missing from cache');
 check(str_contains($serviceWorker, 'znews-reader.js?v=3'), 'Latest reader JS is missing from cache');
 check(str_contains($serviceWorker, 'znews-instant-comments.js?v=4'), 'Latest comments JS is missing from cache');
