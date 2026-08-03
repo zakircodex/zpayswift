@@ -27,6 +27,7 @@ $session = znews_contract_read($root . '/api/znews/auth/session.php');
 $dashboard = znews_contract_read($root . '/api/user/dashboard.php');
 $rewrite = znews_contract_read($root . '/.htaccess');
 $index = znews_contract_read($root . '/znews/index.html');
+$config = znews_contract_read($root . '/znews/assets/znews-config.js');
 $api = znews_contract_read($root . '/znews/assets/znews-api.js');
 $bootstrap = znews_contract_read($root . '/znews/assets/znews-bootstrap.js');
 $access = znews_contract_read($root . '/znews/assets/znews-access.js');
@@ -60,8 +61,10 @@ znews_contract_expect(str_contains($index, 'id="refreshButton" type="button" hid
 znews_contract_expect(str_contains($index, 'class="composer-card card" data-auth-only hidden'), 'Composer must be hidden until dashboard creator access is granted.');
 znews_contract_expect(str_contains($index, 'id="commentForm" class="comment-composer" data-auth-only hidden'), 'Guest readers must not see the comment composer.');
 znews_contract_expect(str_contains($index, 'id="commentGuestCta"'), 'Guest reader comment CTA is missing.');
+znews_contract_expect(str_contains($index, 'href="https://zpayswift.com/user" data-guest-only data-zpay-login'), 'Join Z-Pay must link directly to the Z-Pay login page.');
+znews_contract_expect(!str_contains($index, 'data-zpay-register'), 'The retired Join Z-Pay registration target must not remain in the page.');
 znews_contract_expect(str_contains($index, 'interactive-widget=resizes-content'), 'Android keyboard resize mode is missing.');
-znews_contract_expect(str_contains($index, 'znews-bootstrap.js?v=18'), 'Latest handoff bootstrap must be activated.');
+znews_contract_expect(str_contains($index, 'znews-bootstrap.js?v=19'), 'Latest handoff bootstrap must be activated.');
 znews_contract_expect(!str_contains($index, 'znews-quick-login.js'), 'Standalone Z News PIN login must not be loaded.');
 
 znews_contract_expect(str_contains($api, 'exchangeHandoff(code)'), 'API client must support one-time dashboard handoff exchange.');
@@ -75,8 +78,10 @@ znews_contract_expect(str_contains($bootstrap, 'await exchangeHandoff(api)'), 'A
 znews_contract_expect(str_contains($bootstrap, 'await validateStoredSession(api)'), 'Stored creator access must be verified before rendering.');
 znews_contract_expect(str_contains($bootstrap, 'clearHandoffFragment()'), 'One-time handoff fragment must be removed after exchange.');
 znews_contract_expect(str_contains($bootstrap, 'znews-reader.js?v=3'), 'Latest post reader module must load after creator access is resolved.');
+znews_contract_expect(str_contains($config, 'zpayLoginUrl: `${zpayOrigin}/user`'), 'Canonical Z-Pay login URL is missing from frontend configuration.');
+znews_contract_expect(!str_contains($config, 'zpayRegisterUrl'), 'Guest navigation must not retain the registration URL.');
 znews_contract_expect(str_contains($access, "['create', 'mine', 'balance']"), 'Guest-only route guard must cover creator sections.');
-znews_contract_expect(str_contains($access, 'config.zpayRegisterUrl'), 'Guest join action must open the existing Z-Pay registration page.');
+znews_contract_expect(str_contains($access, 'config.zpayLoginUrl'), 'Guest join action must open the existing Z-Pay login page.');
 znews_contract_expect(str_contains($access, '[data-action="like"]'), 'Guest readers must not receive authenticated like controls.');
 znews_contract_expect(str_contains($serviceWorker, 'zsky24-embedded-shell-v13'), 'Embedded PWA cache namespace is missing.');
 znews_contract_expect(str_contains($serviceWorker, 'znews-reader.js?v=3'), 'Latest reader module must be cached.');

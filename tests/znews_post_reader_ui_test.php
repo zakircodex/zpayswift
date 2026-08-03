@@ -45,7 +45,7 @@ reader_expect(str_contains($index, 'class="comment-send-button"'), 'Compact send
 reader_expect(str_contains($index, 'id="commentGuestCta"'), 'Guest comment CTA is missing.');
 reader_expect(str_contains($index, 'Join Z-Pay to comment'), 'Guest comment CTA wording is missing.');
 reader_expect(!str_contains($index, '<button class="primary-button compact" type="submit">Send</button>'), 'Legacy oversized Send button remains.');
-reader_expect(str_contains($index, 'znews-bootstrap.js?v=18'), 'Latest reader bootstrap version is not activated.');
+reader_expect(str_contains($index, 'znews-bootstrap.js?v=19'), 'Latest reader bootstrap version is not activated.');
 
 reader_expect(str_contains($reader, "wrapApiMethod('comments'"), 'Reader does not capture comment pagination responses.');
 reader_expect(str_contains($reader, "wrapApiMethod('publicPost'"), 'Reader title is not connected to the opened post.');
@@ -105,7 +105,7 @@ reader_expect(str_contains($bootstrap, 'znews-instant-comments.js?v=4'), 'Update
 reader_expect(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v13'"), 'Mobile viewport PWA cache version is stale.');
 reader_expect(str_contains($serviceWorker, 'znews-reader.css?v=2'), 'Latest reader CSS is missing from the shell cache.');
 reader_expect(str_contains($serviceWorker, 'znews-reader.js?v=3'), 'Latest reader JS is missing from the shell cache.');
-reader_expect(str_contains($serviceWorker, 'znews-bootstrap.js?v=18'), 'Latest bootstrap is missing from the shell cache.');
+reader_expect(str_contains($serviceWorker, 'znews-bootstrap.js?v=19'), 'Latest bootstrap is missing from the shell cache.');
 reader_expect(str_contains($serviceWorker, 'znews-instant-comments.js?v=4'), 'Latest comment module is missing from the shell cache.');
 
 $node = trim((string)shell_exec('command -v node 2>/dev/null'));
