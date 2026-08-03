@@ -323,6 +323,37 @@ assert_true(!empty($processingClaim['ok']) && !empty($processingClaim['resume'])
 $processingReplay = zpay_transfer_replay_preview_result((string)$processingClaim['transfer_id'], (array)$processingClaim['preview']);
 assert_true(!empty($processingReplay['ok']) && ($processingReplay['transfer']['transfer_id'] ?? '') === 'TR_FINAL', 'PROCESSING preview with committed evidence must replay success');
 
+put_wallet('S8', 55.00, 'MYR');
+put_wallet('R8', 5.00, 'MYR');
+$lostResponse = execute_transfer('TR_LOST_RESPONSE', 'S8', 'R8', 10.00, 'MYR');
+assert_true(!empty($lostResponse['ok']), 'lost-response fixture must commit successfully');
+$lostResponseSenderWrites = wallet_writes('S8');
+$lostResponseReceiverWrites = wallet_writes('R8');
+$lostResponsePreview = [
+    'sender_uid' => 'S8',
+    'receiver_uid' => 'R8',
+    'transfer_id' => 'TR_LOST_RESPONSE',
+    'sender_phone' => '60133333333',
+    'receiver_phone' => '60144444444',
+    'sender_name' => 'Lost Response Sender',
+    'receiver_name' => 'Lost Response Receiver',
+    'amount' => 10.00,
+    'currency' => 'MYR',
+    'expires_at' => now_ts() + 300,
+    'status' => 'PROCESSING',
+    'used' => false,
+];
+test_store_set('TRANSFER_PREVIEWS/LOST_RESPONSE_PREVIEW', $lostResponsePreview);
+$lostResponseClaim = zpay_transfer_claim_preview_token('LOST_RESPONSE_PREVIEW', 'S8');
+$lostResponseReplay = zpay_transfer_replay_preview_result(
+    (string)($lostResponseClaim['transfer_id'] ?? ''),
+    (array)($lostResponseClaim['preview'] ?? [])
+);
+assert_true(!empty($lostResponseClaim['resume']), 'lost first response must resume the bound preview token');
+assert_true(!empty($lostResponseReplay['ok']), 'same-token recovery must replay committed success');
+assert_true(($lostResponseReplay['transfer']['transfer_id'] ?? '') === 'TR_LOST_RESPONSE', 'same-token recovery must preserve transfer ID');
+assert_true(wallet_writes('S8') === $lostResponseSenderWrites && wallet_writes('R8') === $lostResponseReceiverWrites, 'response recovery must not mutate either wallet again');
+
 put_wallet('S5', 80.00, 'MYR');
 put_wallet('R5', 20.00, 'MYR');
 $GLOBALS['fail_put_if_match_status_once'][wallet_financial_operation_scope_path('TR_MARK', 'REQUEST_FINAL')]['COMPLETED'] = true;

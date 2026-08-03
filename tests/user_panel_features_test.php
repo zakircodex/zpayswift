@@ -56,10 +56,19 @@ expect_true(
 );
 expect_true(
     str_contains($transferCreate, 'zpay_transfer_schedule_post_response_tasks')
+    && str_contains($transferCreate, "!empty(\$claim['resume'])")
     && str_contains($mobileTransfer, 'function zpay_transfer_run_post_response_tasks')
     && str_contains($mobileTransfer, "function_exists('fastcgi_finish_request')")
     && str_contains($mobileTransfer, 'zpay_transfer_operation_financially_committed'),
     'Transfer committed response or authoritative replay handling is incomplete'
+);
+expect_true(
+    str_contains($proxy, "'max_attempts' => 1")
+    && str_contains($proxy, "'timeout' => 15")
+    && str_contains($transferJs, 'function submitTransferWithRecovery')
+    && substr_count($transferJs, "shell.post('transfer_create', payload") === 2
+    && str_contains($transferJs, "openTransferLoading('Confirming transfer status...')"),
+    'Transfer proxy isolation or one-shot same-token response recovery is missing'
 );
 expect_true(
     str_contains($transferPage, 'transfer-page-header')

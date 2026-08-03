@@ -30,7 +30,7 @@ if ($previewToken !== '') {
     }
 
     $duplicateTransferId = trim((string)($claim['transfer_id'] ?? ''));
-    if (!empty($claim['duplicate']) && $duplicateTransferId !== '') {
+    if ((!empty($claim['duplicate']) || !empty($claim['resume'])) && $duplicateTransferId !== '') {
         $existing = zpay_transfer_replay_preview_result($duplicateTransferId, (array)($claim['preview'] ?? []));
         if (empty($existing['ok'])) {
             api_response(
@@ -49,7 +49,12 @@ if ($previewToken !== '') {
     }
 
     $reference = zpay_transfer_clean_reference($body['reference'] ?? $body['note'] ?? '');
-    $result = zpay_transfer_execute_preview((array)($claim['preview'] ?? []), $tokenHash, $reference);
+    $result = zpay_transfer_execute_preview(
+        (array)($claim['preview'] ?? []),
+        $tokenHash,
+        $reference,
+        $senderUser
+    );
     if (empty($result['ok'])) {
         api_response(
             false,

@@ -50,14 +50,25 @@
     const code = String(error?.code || '').toUpperCase();
     const status = Number(error?.status || 0);
     return status === 0 || status >= 500 || [
-      'REQUEST_FAILED',
-      'TRANSFER_FAILED',
       'TRANSFER_PROCESSING',
       'TRANSFER_STORE_FAILED',
       'TRANSFER_INDEX_FAILED',
       'TRANSFER_RETRYABLE',
+      'FINANCIAL_OPERATION_IN_PROGRESS',
       'FINANCIAL_OPERATION_UNAVAILABLE'
     ].includes(code);
+  }
+
+  async function submitTransferWithRecovery(token, reference) {
+    const payload = { preview_token: token, reference };
+    try {
+      return await shell.post('transfer_create', payload, 'Completing transfer...', { busy: false });
+    } catch (error) {
+      if (!transferStatusUnknown(error)) throw error;
+      openTransferLoading('Confirming transfer status...');
+      await new Promise((resolve) => window.setTimeout(resolve, 900));
+      return shell.post('transfer_create', payload, 'Confirming transfer status...', { busy: false });
+    }
   }
 
   function formatMoney(value, currency) {
@@ -773,10 +784,7 @@
     };
     openTransferLoading('Submitting transfer...');
     try {
-      const data = await shell.post('transfer_create', {
-        preview_token: token,
-        reference: app.transfer.reference
-      }, 'Completing transfer...', { busy: false });
+      const data = await submitTransferWithRecovery(token, app.transfer.reference);
       const transfer = data.transfer || {};
       const context = Object.assign({}, successBase, transfer, {
         receiver_name: transfer.receiver_name || successBase.receiver_name,
@@ -798,7 +806,6 @@
       finishTransferModalClose({ replaceHistory: true });
       resetTransfer();
       app.transfer.favoritesLoaded = false;
-      loadTransferFavorites(true).catch(() => {});
       showTransferSuccess(context);
     } catch (error) {
       finishTransferModalClose({ replaceHistory: true });

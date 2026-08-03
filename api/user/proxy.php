@@ -244,12 +244,21 @@ function user_proxy_internal_api_attempts(string $url): array
     return $attempts;
 }
 
-function user_proxy_internal_api_request(string $method, string $relativePath, ?array $body = null, array $headers = []): array
+function user_proxy_internal_api_request(
+    string $method,
+    string $relativePath,
+    ?array $body = null,
+    array $headers = [],
+    array $requestPolicy = []
+): array
 {
     $url = user_proxy_api_base_url() . '/' . ltrim($relativePath, '/');
     $lastResult = null;
+    $attempts = user_proxy_internal_api_attempts($url);
+    $maxAttempts = max(1, (int)($requestPolicy['max_attempts'] ?? count($attempts)));
+    $timeout = max(0, (int)($requestPolicy['timeout'] ?? 0));
 
-    foreach (user_proxy_internal_api_attempts($url) as $attempt) {
+    foreach (array_slice($attempts, 0, $maxAttempts) as $attempt) {
         $ch = curl_init();
         $finalHeaders = ['Accept: application/json'];
 
@@ -277,6 +286,9 @@ function user_proxy_internal_api_request(string $method, string $relativePath, ?
 
         foreach ((array)($attempt['options'] ?? []) as $option => $value) {
             $curlOptions[(int)$option] = $value;
+        }
+        if ($timeout > 0) {
+            $curlOptions[CURLOPT_TIMEOUT] = $timeout;
         }
 
         curl_setopt_array($ch, $curlOptions);
@@ -1538,9 +1550,16 @@ function user_proxy_forward_authenticated_json(
     string $relativePath,
     ?array $body,
     string $fallbackCode,
-    string $fallbackMessage
+    string $fallbackMessage,
+    array $requestPolicy = []
 ): void {
-    $res = user_proxy_internal_api_request($method, $relativePath, $body, user_proxy_authenticated_headers());
+    $res = user_proxy_internal_api_request(
+        $method,
+        $relativePath,
+        $body,
+        user_proxy_authenticated_headers(),
+        $requestPolicy
+    );
     $json = is_array($res['json'] ?? null) ? $res['json'] : [];
 
     user_proxy_response(
@@ -4614,7 +4633,11 @@ switch ($action) {
                 'reference' => trim((string)($body['reference'] ?? $body['note'] ?? '')),
             ],
             'TRANSFER_FAILED',
-            'Transfer could not be completed.'
+            'Transfer could not be completed.',
+            [
+                'max_attempts' => 1,
+                'timeout' => 15,
+            ]
         );
         break;
 

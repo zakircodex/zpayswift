@@ -1385,7 +1385,12 @@ function zpay_transfer_execute_financial(array $ctx): array
     return zpay_transfer_success_result($transfer, !$operationCompleted);
 }
 
-function zpay_transfer_execute_preview(array $preview, string $tokenHash, string $reference = ''): array
+function zpay_transfer_execute_preview(
+    array $preview,
+    string $tokenHash,
+    string $reference = '',
+    array $authenticatedSenderUser = []
+): array
 {
     $senderUid = trim((string)($preview['sender_uid'] ?? $preview['uid'] ?? ''));
     $receiverUid = trim((string)($preview['receiver_uid'] ?? ''));
@@ -1397,7 +1402,10 @@ function zpay_transfer_execute_preview(array $preview, string $tokenHash, string
         return zpay_transfer_validation_error('TRANSFER_PREVIEW_INVALID', 'This transfer preview is invalid. Please review again.');
     }
 
-    $senderUser = fb_get('USERS/' . $senderUid);
+    $senderUser = $authenticatedSenderUser;
+    if (trim((string)($senderUser['uid'] ?? '')) !== $senderUid) {
+        $senderUser = fb_get('USERS/' . $senderUid);
+    }
     $receiverUser = fb_get('USERS/' . $receiverUid);
     $senderUser = is_array($senderUser) ? $senderUser : [];
     $receiverUser = is_array($receiverUser) ? $receiverUser : [];
