@@ -177,6 +177,23 @@ function znews_require_creator(bool $touchSession = true): array
     return $auth;
 }
 
+function znews_optional_creator_uid(): string
+{
+    if (auth_get_session_token_from_request() === '') {
+        return '';
+    }
+
+    $auth = auth_require_user(false);
+    $user = is_array($auth['user'] ?? null) ? (array)$auth['user'] : [];
+    $uid = trim((string)($user['uid'] ?? ''));
+    $role = strtoupper(trim((string)($user['role'] ?? '')));
+    if ($uid === '' || !in_array($role, ['USER', 'RETAILER'], true)) {
+        return '';
+    }
+
+    return znews_firebase_key($uid, 'viewer_uid');
+}
+
 function znews_idempotency_key($value, bool $required = true): string
 {
     $key = trim((string)$value);
