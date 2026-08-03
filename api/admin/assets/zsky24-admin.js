@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const zskyState = { loaded:false, active:'settlements', settlements:[], transfers:[], impressions:[] };
+  const zskyState = { loaded:false, loading:false, loadPromise:null, active:'settlements', settlements:[], transfers:[], impressions:[] };
   const $ = id => document.getElementById(id);
   const safe = value => esc(String(value ?? ''));
   const idempotencyKey = prefix => `${prefix}-${Date.now()}-${crypto.getRandomValues(new Uint32Array(2)).join('-')}`;
@@ -67,16 +67,26 @@
 
   async function load(force = false){
     if (zskyState.loaded && !force) return;
-    const [settlements, transfers, impressions] = await Promise.all([
-      proxyGet('zsky24_settlements_queue', {limit:50}, {busy:false}),
-      proxyGet('zsky24_transfers_queue', {limit:50}, {busy:false}),
-      proxyGet('zsky24_impressions_queue', {limit:50}, {busy:false})
-    ]);
-    zskyState.settlements = Array.isArray(settlements.items) ? settlements.items : [];
-    zskyState.transfers = Array.isArray(transfers.items) ? transfers.items : [];
-    zskyState.impressions = Array.isArray(impressions.items) ? impressions.items : [];
-    zskyState.loaded = true;
-    updateMetrics(); render();
+    if (zskyState.loading && zskyState.loadPromise) return zskyState.loadPromise;
+    const body = $('zskyQueueBody');
+    if (body && !zskyState.loaded) body.innerHTML = empty('Loading Z Sky 24 data…');
+    zskyState.loading = true;
+    zskyState.loadPromise = (async () => {
+      const [settlements, transfers, impressions] = await Promise.all([
+        proxyGet('zsky24_settlements_queue', {limit:50}, {busy:false}),
+        proxyGet('zsky24_transfers_queue', {limit:50}, {busy:false}),
+        proxyGet('zsky24_impressions_queue', {limit:50}, {busy:false})
+      ]);
+      zskyState.settlements = Array.isArray(settlements.items) ? settlements.items : [];
+      zskyState.transfers = Array.isArray(transfers.items) ? transfers.items : [];
+      zskyState.impressions = Array.isArray(impressions.items) ? impressions.items : [];
+      zskyState.loaded = true;
+      updateMetrics(); render();
+    })().finally(() => {
+      zskyState.loading = false;
+      zskyState.loadPromise = null;
+    });
+    return zskyState.loadPromise;
   }
 
   async function showImpression(id){
@@ -108,7 +118,7 @@
 
   document.addEventListener('click', async event => {
     const tab = event.target.closest('[data-zsky-tab]');
-    if (tab) { zskyState.active = tab.dataset.zskyTab; document.querySelectorAll('[data-zsky-tab]').forEach(node => { const active=node===tab; node.classList.toggle('active',active); node.setAttribute('aria-selected', String(active)); }); render(); return; }
+    if (tab) { zskyState.active = tab.dataset.zskyTab; document.querySelectorAll('[data-zsky-tab]').forEach(node => { const active=node===tab; node.classList.toggle('active',active); node.setAttribute('aria-selected', String(active)); }); if (!zskyState.loaded) await load(); else render(); return; }
     const details = event.target.closest('[data-zsky-impression]'); if (details) { await showImpression(details.dataset.zskyImpression); return; }
     const transfer = event.target.closest('[data-zsky-transfer]'); if (transfer) { await showTransfer(transfer.dataset.zskyTransfer); return; }
     const settle = event.target.closest('[data-zsky-settle]'); if (settle) confirmAction('Settle creator credit','Settle this verified provider impression using the server-calculated creator share?', async()=>{ closeModal(); await proxyPost('zsky24_settlement_settle',{impression_id:settle.dataset.zskySettle,expected_updated_at:Number(settle.dataset.updatedAt),idempotency_key:idempotencyKey('settle')},true,{busyText:'Settling verified revenue...'}); closeDrawer(); await load(true); showToast('Creator credit settled.','success'); },'Settle credit');
@@ -119,4 +129,8 @@
 
   $('zsky24RefreshBtn')?.addEventListener('click', () => load(true).catch(error => showToast(error.message || 'Refresh failed.','error')));
   window.loadZSky24Admin = load;
+  window.dispatchEvent(new CustomEvent('zsky24:admin-ready'));
+  if ($('zsky24Section')?.classList.contains('active')) {
+    load().catch(error => showToast(error.message || 'Z Sky 24 data could not be loaded.','error'));
+  }
 })();
