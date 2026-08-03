@@ -13,8 +13,9 @@ $idempotencyKey = znews_idempotency_key(
     ?? $body['client_request_id']
     ?? ''
 );
+$viewerUid = znews_optional_creator_uid();
 
-$result = znews_view_start_v2($postId, $idempotencyKey);
+$result = znews_view_start_v2($postId, $idempotencyKey, $viewerUid);
 api_response(
     !empty($result['ok']),
     (string)($result['code'] ?? 'ZNEWS_VIEW_START_FAILED'),

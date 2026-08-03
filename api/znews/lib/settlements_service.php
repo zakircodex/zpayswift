@@ -116,6 +116,10 @@ function znews_settle_impression(array $admin, string $impressionId, int $expect
     if (!empty($impression['reconciliation_required'])) {
         return ['ok' => false, 'code' => 'ZNEWS_SETTLEMENT_IMPRESSION_RECONCILIATION_REQUIRED', 'http_status' => 409];
     }
+    $riskReasons = array_map('strval', (array)($impression['risk_reasons'] ?? []));
+    if (!empty($impression['self_view']) || in_array('SELF_VIEW', $riskReasons, true)) {
+        return ['ok' => false, 'code' => 'ZNEWS_SETTLEMENT_SELF_VIEW_NOT_ELIGIBLE', 'http_status' => 409];
+    }
 
     $creatorUid = trim((string)($impression['creator_uid'] ?? ''));
     if ($creatorUid === '') {

@@ -55,6 +55,7 @@ function znews_ad_recheck_impression(
     $risk = max(0, min(100, (int)$evaluation['risk_score']));
     $reasons = array_values(array_unique(array_map('strval', (array)$evaluation['reasons'])));
     $post = is_array($evaluation['post'] ?? null) ? (array)$evaluation['post'] : [];
+    $view = is_array($evaluation['view'] ?? null) ? (array)$evaluation['view'] : [];
     $creatorUid = trim((string)($post['creator_uid'] ?? $row['creator_uid'] ?? ''));
 
     if ($creatorUid === '') {
@@ -96,6 +97,8 @@ function znews_ad_recheck_impression(
 
     $now = znews_now();
     $row['creator_uid'] = $creatorUid;
+    $row['viewer_uid'] = trim((string)($view['viewer_uid'] ?? $row['viewer_uid'] ?? ''));
+    $row['self_view'] = !empty($evaluation['self_view']) || !empty($view['self_view']);
     $row['status'] = $newStatus;
     $row['verification_status'] = match ($newStatus) {
         'VERIFIED' => 'VERIFIED',

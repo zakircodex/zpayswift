@@ -89,6 +89,7 @@ function znews_ad_ingest(): array
     $risk = max(0, min(100, (int)$evaluation['risk_score']));
     $reasons = array_values(array_unique(array_map('strval', (array)$evaluation['reasons'])));
     $post = is_array($evaluation['post'] ?? null) ? (array)$evaluation['post'] : [];
+    $view = is_array($evaluation['view'] ?? null) ? (array)$evaluation['view'] : [];
     $creatorUid = trim((string)($post['creator_uid'] ?? ''));
     if ($creatorUid === '') {
         $status = 'REVIEW';
@@ -144,6 +145,8 @@ function znews_ad_ingest(): array
         'post_id' => (string)$payload['post_id'],
         'view_id' => (string)$payload['view_id'],
         'creator_uid' => $creatorUid,
+        'viewer_uid' => trim((string)($view['viewer_uid'] ?? '')),
+        'self_view' => !empty($evaluation['self_view']) || !empty($view['self_view']),
         'ad_unit_id' => (string)$payload['ad_unit_id'],
         'currency' => (string)$payload['currency'],
         'reported_revenue_micros' => (int)$payload['revenue_micros'],

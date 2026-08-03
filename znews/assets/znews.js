@@ -536,7 +536,7 @@
       ad.dataset.znewsAdSlot = 'post_reader';
       ad.dataset.format = 'mobile_banner';
       els.postDetail.appendChild(ad);
-      window.ZNewsAds.mount(ad);
+      window.ZNewsAds.mount(ad, { creatorUid: text(post.creator_uid).trim() });
       beginView(postId);
     } catch (error) {
       els.postDetail.innerHTML = `<div class="empty-state"><strong>Post could not be loaded</strong>${escapeHtml(errorMessage(error))}</div>`;
