@@ -49,7 +49,7 @@
     resolveProfilePhotoUrl,
     canonicalUrl: (kind = '', id = '') => `https://${standaloneHost}${kind ? `/${kind}/${encodeURIComponent(String(id || ''))}` : '/'}`,
     zpayDashboardUrl: `${zpayOrigin}/user/dashboard`,
-    zpayRegisterUrl: `${zpayOrigin}/user/register`,
+    zpayLoginUrl: `${zpayOrigin}/user`,
     ads: Object.freeze({
       provider: 'INMOBI',
       mode: existing.ads?.mode || 'TEST',

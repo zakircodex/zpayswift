@@ -7,10 +7,10 @@
 
   const api = new ApiClient(config);
   const authenticated = api.isAuthenticated();
-  const registerUrl = config.zpayRegisterUrl;
+  const loginUrl = config.zpayLoginUrl;
 
-  function goToRegister() {
-    window.location.assign(registerUrl);
+  function goToLogin() {
+    window.location.assign(loginUrl);
   }
 
   function isGuestLockedRoute(target) {
@@ -26,7 +26,7 @@
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
-      goToRegister();
+      goToLogin();
       return;
     }
 
@@ -104,6 +104,6 @@
   window.ZNewsAccess = Object.freeze({
     authenticated,
     mode: authenticated ? 'CREATOR' : 'GUEST',
-    registerUrl
+    loginUrl
   });
 })();

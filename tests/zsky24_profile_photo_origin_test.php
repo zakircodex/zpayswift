@@ -20,8 +20,8 @@ $expect(str_contains($config, 'resolveProfilePhotoUrl'), 'Shared profile-photo r
 $index = $read('znews/index.html');
 $app = $read('znews/assets/znews.js');
 $rootRewrite = $read('.htaccess');
-$expect(str_contains($index, 'znews-config.js?v=5'), 'Profile-photo config cachebuster is missing.');
-$expect(str_contains($index, 'znews-bootstrap.js?v=17'), 'Bootstrap cachebuster is missing.');
+$expect(str_contains($index, 'znews-config.js?v=6'), 'Profile-photo config cachebuster is missing.');
+$expect(str_contains($index, 'znews-bootstrap.js?v=19'), 'Bootstrap cachebuster is missing.');
 $expect(str_contains($app, "updateViaCache: 'none'"), 'Service-worker update may reuse a stale HTTP cache.');
 $expect(str_contains($rootRewrite, 'no-cache, no-store, must-revalidate'), 'Service-worker no-cache response policy is missing.');
 

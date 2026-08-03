@@ -16,7 +16,19 @@ function new_tab_balance_expect(bool $condition, string $message): void
 
 $dashboard = file_get_contents($root . '/api/user/dashboard.php');
 $app = file_get_contents($root . '/znews/assets/znews.js');
-new_tab_balance_expect(is_string($dashboard) && is_string($app), 'Required source files could not be read.');
+$index = file_get_contents($root . '/znews/index.html');
+$bootstrap = file_get_contents($root . '/znews/assets/znews-bootstrap.js');
+$embeddedWorker = file_get_contents($root . '/znews/sw.js');
+$standaloneWorker = file_get_contents($root . '/znews/sw-root.js');
+new_tab_balance_expect(
+    is_string($dashboard)
+    && is_string($app)
+    && is_string($index)
+    && is_string($bootstrap)
+    && is_string($embeddedWorker)
+    && is_string($standaloneWorker),
+    'Required source files could not be read.'
+);
 
 new_tab_balance_expect(
     preg_match('/zpay-service-btn-znews[^>]+href="\/user\/znews"[^>]+target="_blank"[^>]+rel="noopener"/', $dashboard) === 1,
@@ -26,5 +38,11 @@ new_tab_balance_expect(str_contains($app, 'async function loadMiniBalance()'), '
 new_tab_balance_expect(str_contains($app, 'const summary = await api.balanceSummary()'), 'Feed mini-balance does not use the authenticated balance summary.');
 new_tab_balance_expect(str_contains($app, 'els.miniBalance.textContent = formatBdtMicros(state.balanceMicros)'), 'Feed mini-balance is not rendered from the server balance.');
 new_tab_balance_expect(str_contains($app, "if (api.isAuthenticated() && route.kind !== 'balance') await loadMiniBalance();"), 'Authenticated feed boot does not refresh mini-balance.');
+new_tab_balance_expect(str_contains($index, 'znews-bootstrap.js?v=19'), 'Feed document does not bypass the stale bootstrap cache.');
+new_tab_balance_expect(str_contains($bootstrap, 'znews.js?v=17'), 'Bootstrap does not bypass the stale feed app cache.');
+foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
+    new_tab_balance_expect(str_contains($worker, 'znews-bootstrap.js?v=19'), 'A PWA shell is missing the refreshed bootstrap URL.');
+    new_tab_balance_expect(str_contains($worker, 'znews.js?v=17'), 'A PWA shell is missing the refreshed feed app URL.');
+}
 
 echo "Z Sky 24 new-tab and balance sync tests passed ({$assertions} assertions).\n";
