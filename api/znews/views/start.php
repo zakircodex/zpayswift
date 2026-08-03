@@ -13,11 +13,7 @@ $idempotencyKey = znews_idempotency_key(
     ?? $body['client_request_id']
     ?? ''
 );
-$viewerUid = '';
-if (auth_get_session_token_from_request() !== '') {
-    $viewerAuth = znews_require_creator(false);
-    $viewerUid = trim((string)($viewerAuth['user']['uid'] ?? ''));
-}
+$viewerUid = znews_optional_creator_uid();
 
 $result = znews_view_start_v2($postId, $idempotencyKey, $viewerUid);
 api_response(
