@@ -22,9 +22,14 @@ function self_view_read(string $root, string $path): string
 }
 
 $start = self_view_read($root, 'api/znews/views/start.php');
-self_view_expect(str_contains($start, 'auth_get_session_token_from_request()'), 'View start does not detect an authenticated creator.');
-self_view_expect(str_contains($start, 'znews_require_creator(false)'), 'View start does not validate the optional creator session.');
+self_view_expect(str_contains($start, 'znews_optional_creator_uid()'), 'View start does not resolve an optional authenticated creator.');
+self_view_expect(!str_contains($start, 'znews_require_creator('), 'Public view start incorrectly requires creator login.');
 self_view_expect(str_contains($start, 'znews_view_start_v2($postId, $idempotencyKey, $viewerUid)'), 'Validated viewer UID is not bound to the view session.');
+
+$common = self_view_read($root, 'api/znews/lib/common.php');
+self_view_expect(str_contains($common, 'function znews_optional_creator_uid()'), 'Optional creator resolver is missing.');
+self_view_expect(str_contains($common, 'auth_get_session_token_from_request()'), 'Optional creator resolver does not inspect the signed session header.');
+self_view_expect(str_contains($common, 'auth_require_user(false)'), 'Optional creator resolver does not validate the supplied session.');
 
 $views = self_view_read($root, 'api/znews/lib/views_v2.php');
 self_view_expect(str_contains($views, "'viewer_uid' => \$viewerUid"), 'View session does not persist the server-validated viewer UID.');
