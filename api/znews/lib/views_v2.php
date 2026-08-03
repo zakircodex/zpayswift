@@ -112,10 +112,16 @@ function znews_view_open_sync(array $row): array
     ];
 }
 
-function znews_view_start_v2(string $postId, string $idempotencyKey): array
+function znews_view_start_v2(string $postId, string $idempotencyKey, string $viewerUid = ''): array
 {
     $postId = znews_firebase_key($postId, 'post_id');
-    znews_view_require_public_post($postId);
+    $post = znews_view_require_public_post($postId);
+    $viewerUid = trim($viewerUid);
+    if ($viewerUid !== '') {
+        $viewerUid = znews_firebase_key($viewerUid, 'viewer_uid');
+    }
+    $creatorUid = trim((string)($post['creator_uid'] ?? ''));
+    $selfView = $viewerUid !== '' && $creatorUid !== '' && hash_equals($creatorUid, $viewerUid);
     $idempotencyKey = znews_idempotency_key($idempotencyKey);
     $ctx = znews_view_context();
     $fingerprint = (string)$ctx['fingerprint'];
@@ -189,6 +195,8 @@ function znews_view_start_v2(string $postId, string $idempotencyKey): array
         'status' => $blocked ? 'BLOCKED' : 'STARTED',
         'result' => $blocked ? 'INVALID' : 'PENDING',
         'viewer_type' => (string)$ctx['viewer_type'],
+        'viewer_uid' => $viewerUid,
+        'self_view' => $selfView,
         'fingerprint_hash' => $fingerprint,
         'session_hash' => (string)$ctx['session_hash'],
         'visitor_hash' => (string)$ctx['visitor_hash'],
