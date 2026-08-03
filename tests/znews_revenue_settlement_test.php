@@ -81,6 +81,8 @@ znews_settlement_test_expect(str_contains($service, "'VERIFIED'") && str_contain
 znews_settlement_test_expect(str_contains($service, 'expectedUpdatedAt'), 'settlement version check missing');
 znews_settlement_test_expect(str_contains($service, 'ZNEWS_SETTLEMENT_CREATOR_MISSING'), 'missing creator guard missing');
 znews_settlement_test_expect(str_contains($service, 'ZNEWS_SETTLEMENT_ALLOCATION_CONFLICT'), 'stored allocation conflict protection missing');
+znews_settlement_test_expect(substr_count($service, 'ZNEWS_SETTLEMENT_ALREADY_COMPLETED') >= 2, 'settled-impression replay protection missing');
+znews_settlement_test_expect(substr_count($service, "'idempotent_replay' => true") >= 2, 'settlement replay is not idempotent');
 znews_settlement_test_expect(str_contains($service, "'settlement_status'] = 'SETTLING'"), 'settlement claim state missing');
 znews_settlement_test_expect(str_contains($service, "'settlement_status'] = 'SETTLED'"), 'settlement final state missing');
 znews_settlement_test_expect(str_contains($service, "'znews_balance_status'] = 'CREDITED'"), 'separate Z News balance credit marker missing');
