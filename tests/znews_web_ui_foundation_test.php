@@ -195,7 +195,7 @@ check(strpos($bootstrap, 'znews-reader.js?v=3') < strpos($bootstrap, 'znews.js?v
 check(str_contains($bootstrap, 'znews-instant-comments.js?v=4'), 'Latest comment module is not loaded');
 
 $serviceWorker = contents($root . '/znews/sw.js');
-check(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v12'"), 'Embedded reader shell cache is stale');
+check(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v13'"), 'Embedded reader shell cache is stale');
 check(str_contains($serviceWorker, 'znews-bootstrap.js?v=17'), 'Latest bootstrap is missing from cache');
 check(str_contains($serviceWorker, 'znews-reader.css?v=2'), 'Latest reader CSS is missing from cache');
 check(str_contains($serviceWorker, 'znews-reader.js?v=3'), 'Latest reader JS is missing from cache');

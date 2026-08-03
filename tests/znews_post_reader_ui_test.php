@@ -102,7 +102,7 @@ reader_expect(str_contains($bootstrap, 'znews-reader.js?v=3'), 'Latest reader in
 reader_expect(strpos($bootstrap, 'znews-reader.js?v=3') < strpos($bootstrap, 'znews.js?v=16'), 'Reader API capture must load before the main app.');
 reader_expect(str_contains($bootstrap, 'znews-instant-comments.js?v=4'), 'Updated instant-comment module is not loaded.');
 
-reader_expect(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v12'"), 'Mobile viewport PWA cache version is stale.');
+reader_expect(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v13'"), 'Mobile viewport PWA cache version is stale.');
 reader_expect(str_contains($serviceWorker, 'znews-reader.css?v=2'), 'Latest reader CSS is missing from the shell cache.');
 reader_expect(str_contains($serviceWorker, 'znews-reader.js?v=3'), 'Latest reader JS is missing from the shell cache.');
 reader_expect(str_contains($serviceWorker, 'znews-bootstrap.js?v=17'), 'Latest bootstrap is missing from the shell cache.');

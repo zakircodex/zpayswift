@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-embedded-shell-v12';
+const CACHE_NAME = 'zsky24-embedded-shell-v13';
 const SHELL_REVISION = 'single-view-session-1';
 const SHELL = [
   '/znews/',

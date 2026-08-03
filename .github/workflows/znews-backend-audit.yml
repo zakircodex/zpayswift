@@ -135,6 +135,8 @@ jobs:
             file: tests/zsky24_edit_post_composer_test.php
           - id: zsky24-balance-policy-ui
             file: tests/zsky24_balance_policy_ui_test.php
+          - id: zsky24-new-tab-balance-sync
+            file: tests/zsky24_new_tab_balance_sync_test.php
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
