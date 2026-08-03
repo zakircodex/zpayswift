@@ -262,6 +262,10 @@ function znews_ad_require_view_and_post(array $payload): array
     $status = strtoupper(trim((string)($view['status'] ?? '')));
     $result = strtoupper(trim((string)($view['result'] ?? '')));
     $viewPostId = trim((string)($view['post_id'] ?? ''));
+    $viewerUid = trim((string)($view['viewer_uid'] ?? ''));
+    $creatorUid = trim((string)($post['creator_uid'] ?? ''));
+    $selfView = !empty($view['self_view'])
+        || ($viewerUid !== '' && $creatorUid !== '' && hash_equals($creatorUid, $viewerUid));
 
     if ($viewPostId === '' || !hash_equals($viewPostId, $postId)) {
         $risk = 100;
@@ -280,6 +284,18 @@ function znews_ad_require_view_and_post(array $payload): array
     if (!empty($view['bot_detected'])) {
         $risk = 100;
         $reasons[] = 'VIEW_BOT_DETECTED';
+    }
+    if ($selfView) {
+        $risk = 100;
+        $reasons[] = 'SELF_VIEW';
+        return [
+            'status' => 'REJECTED',
+            'risk_score' => 100,
+            'reasons' => array_values(array_unique($reasons)),
+            'self_view' => true,
+            'view' => $view,
+            'post' => $post,
+        ];
     }
 
     $occurredAt = (int)$payload['occurred_at'];
