@@ -10,7 +10,7 @@ $result = znews_ad_ingest();
 $autoCredit = null;
 $impressionId = trim((string)($result['impression']['impression_id'] ?? ''));
 if (!empty($result['ok']) && $impressionId !== '') {
-    $autoCredit = znews_auto_settle_impression($impressionId);
+    $autoCredit = znews_auto_settle_impression_with_retry($impressionId);
 }
 api_response(
     !empty($result['ok']),
@@ -30,6 +30,7 @@ api_response(
             'status' => (string)($autoCredit['code'] ?? ''),
             'credited' => !empty($autoCredit['ok']) && empty($autoCredit['skipped']),
             'retry_required' => empty($autoCredit['ok']),
+            'retry_queued' => !empty($autoCredit['retry_queued']),
         ] : null,
     ], static fn($value) => $value !== null),
     (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 500))

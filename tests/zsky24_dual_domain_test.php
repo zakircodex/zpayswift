@@ -29,6 +29,7 @@ $domain = zsky_source('api/znews/lib/domain.php');
 $embeddedWorker = zsky_source('znews/sw.js');
 $standaloneWorker = zsky_source('znews/sw-root.js');
 $index = zsky_source('znews/index.html');
+$znewsRewrite = zsky_source('znews/.htaccess');
 
 zsky_expect(str_contains($rootRewrite, 'zsky24\.com'), 'Standalone host routing is missing.');
 zsky_expect(str_contains($rootRewrite, 'RewriteRule ^(?:post|creator)/'), 'Standalone clean routes are missing.');
@@ -58,9 +59,17 @@ zsky_expect(str_contains($handoff, 'auth_session_epoch') && str_contains($handof
 zsky_expect(str_contains($handoff, 'znews_request_host()'), 'Intended-host validation is missing.');
 
 zsky_expect(str_contains($embeddedWorker, 'zsky24-embedded-shell-v12'), 'Embedded PWA namespace is missing.');
+zsky_expect(str_contains($embeddedWorker, "key.startsWith('zsky24-embedded-')"), 'Embedded worker may delete unrelated origin caches.');
 zsky_expect(str_contains($standaloneWorker, 'zsky24-standalone-shell-v12'), 'Standalone PWA namespace is missing.');
 zsky_expect(str_contains($embeddedWorker, "url.pathname.startsWith('/api/')"), 'Embedded worker may cache API responses.');
 zsky_expect(str_contains($standaloneWorker, "url.pathname.startsWith('/api/')"), 'Standalone worker may cache API responses.');
+zsky_expect(str_contains($znewsRewrite, 'Content-Security-Policy'), 'Z Sky 24 browser content policy is missing.');
+zsky_expect(str_contains($znewsRewrite, "object-src 'none'"), 'Z Sky 24 content policy allows unsafe plugins.');
+
+zsky_expect(str_contains($domain, 'ZNEWS_HANDOFF_ENCRYPTION_KEY'), 'Dedicated private handoff key is missing.');
+zsky_expect(!str_contains($domain, "'zsky24-handoff|' . APP_KEY"), 'Public APP_KEY must not protect handoff tokens.');
+zsky_expect(str_contains($launcher, 'znews_handoff_grant_path') && str_contains($launcher, 'fb_delete('), 'Superseded handoff grants are not cleaned up.');
+zsky_expect(str_contains($handoff, 'fb_delete_if_match($path, $etag)'), 'Expired handoff grants are not cleaned up atomically.');
 
 if ($failures) {
     fwrite(STDERR, "Z Sky 24 dual-domain contract failed:\n- " . implode("\n- ", $failures) . "\n");

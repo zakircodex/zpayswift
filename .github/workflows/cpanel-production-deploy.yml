@@ -82,7 +82,10 @@ jobs:
           php tests/zsky24_balance_policy_ui_test.php
           php tests/znews_admin_creator_credit_panel_test.php
           php tests/znews_controlled_ad_test_utility_test.php
+          php tests/znews_auto_credit_test.php
+          php tests/znews_self_view_ad_protection_test.php
           php -l tools/zsky24_controlled_ad_test.php >/dev/null
+          php -l tools/zsky24_auto_settlement_retry.php >/dev/null
           php -l api/admin/proxy.php >/dev/null
           php -l api/admin/dashboard.php >/dev/null
           node --check api/admin/assets/zsky24-admin.js

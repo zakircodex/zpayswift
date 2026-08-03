@@ -60,6 +60,7 @@ jobs:
           files+=(api/lib/firebase.php)
           files+=(api/admin/proxy.php api/admin/dashboard.php)
           files+=(tools/zsky24_controlled_ad_test.php)
+          files+=(tools/zsky24_auto_settlement_retry.php)
           [ "${#files[@]}" -gt 0 ]
           for file in "${files[@]}"; do
             php -l "$file" >/dev/null
@@ -108,6 +109,10 @@ jobs:
             file: tests/znews_revenue_settlement_test.php
           - id: admin-creator-credit-panel
             file: tests/znews_admin_creator_credit_panel_test.php
+          - id: automatic-creator-credit
+            file: tests/znews_auto_credit_test.php
+          - id: self-view-ad-protection
+            file: tests/znews_self_view_ad_protection_test.php
           - id: controlled-ad-test-utility
             file: tests/znews_controlled_ad_test_utility_test.php
           - id: social-engagement

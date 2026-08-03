@@ -68,6 +68,8 @@ define('NOTIFICATION_TELEGRAM_ADMIN_IDS', '');
 /* Security / IP risk layer */
 define('SECURITY_ENABLED', true);
 define('SECURITY_HASH_SECRET', '');
+/* Dedicated private key for Z Sky 24 cross-domain handoff (minimum 32 characters). */
+define('ZNEWS_HANDOFF_ENCRYPTION_KEY', '');
 define('SECURITY_IP_WHITELIST', []);
 define('SECURITY_IP_BLOCKLIST', []);
 define('SECURITY_IP_CACHE_TTL_SECONDS', 86400);

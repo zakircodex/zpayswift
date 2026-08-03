@@ -47,10 +47,33 @@ function znews_handoff_context(): array
     ];
 }
 
+function znews_handoff_encryption_key(): string
+{
+    $secret = defined('ZNEWS_HANDOFF_ENCRYPTION_KEY')
+        ? trim((string)constant('ZNEWS_HANDOFF_ENCRYPTION_KEY'))
+        : '';
+    if ($secret === '') {
+        foreach (['SECURITY_HASH_SECRET', 'WORKER_KEY', 'ADMIN_KEY'] as $privateConstant) {
+            if (defined($privateConstant)) {
+                $candidate = trim((string)constant($privateConstant));
+                if (strlen($candidate) >= 32) {
+                    $secret = $candidate;
+                    break;
+                }
+            }
+        }
+    }
+    if (strlen($secret) < 32) {
+        throw new RuntimeException('Z Sky 24 handoff encryption key is not configured securely.');
+    }
+
+    return hash_hmac('sha256', 'zsky24-handoff-encryption-v1', $secret, true);
+}
+
 function znews_handoff_encrypt_token(string $token): array
 {
     $cipher = 'aes-256-gcm';
-    $key = hash('sha256', 'zsky24-handoff|' . APP_KEY, true);
+    $key = znews_handoff_encryption_key();
     $iv = random_bytes(12);
     $tag = '';
     $encrypted = openssl_encrypt($token, $cipher, $key, OPENSSL_RAW_DATA, $iv, $tag, znews_standalone_host());
@@ -74,7 +97,7 @@ function znews_handoff_decrypt_token(array $grant): string
         return '';
     }
 
-    $key = hash('sha256', 'zsky24-handoff|' . APP_KEY, true);
+    $key = znews_handoff_encryption_key();
     $token = openssl_decrypt(
         $encrypted,
         'aes-256-gcm',
