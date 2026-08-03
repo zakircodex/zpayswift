@@ -14,6 +14,7 @@ $supportCss = (string)file_get_contents($root . '/api/user/assets/pages/support-
 $shellJs = (string)file_get_contents($root . '/api/user/assets/user-shell.js');
 $profileUpdate = (string)file_get_contents($root . '/api/user/profile_update.php');
 $transferCreate = (string)file_get_contents($root . '/api/transfer/create.php');
+$mobileTransfer = (string)file_get_contents($root . '/api/lib/mobile_transfer.php');
 $supportBackend = (string)file_get_contents($root . '/api/lib/support.php');
 $htaccess = (string)file_get_contents($root . '/.htaccess');
 $tests = 0;
@@ -54,6 +55,13 @@ expect_true(
     'Transfer execution is not bound to preview tokens'
 );
 expect_true(
+    str_contains($transferCreate, 'zpay_transfer_schedule_post_response_tasks')
+    && str_contains($mobileTransfer, 'function zpay_transfer_run_post_response_tasks')
+    && str_contains($mobileTransfer, "function_exists('fastcgi_finish_request')")
+    && str_contains($mobileTransfer, 'zpay_transfer_operation_financially_committed'),
+    'Transfer committed response or authoritative replay handling is incomplete'
+);
+expect_true(
     str_contains($transferPage, 'transfer-page-header')
     && str_contains($transferPage, 'Receiver Account')
     && str_contains($transferPage, 'transferFavoriteList')
@@ -61,6 +69,15 @@ expect_true(
     && str_contains($transferPage, 'transferReferenceInput')
     && !str_contains($transferPage, 'transferReceiverResult'),
     'Isolated Transfer page markup is incomplete'
+);
+expect_true(
+    str_contains($transferPage, 'data-tracking-base=')
+    && str_contains($transferPage, "app_api_url('transfer/receipt.php')")
+    && str_contains($transferJs, "toast('Tracking link copied', 'ok')")
+    && str_contains($transferJs, "url.origin !== base.origin")
+    && str_contains($transferJs, "queryKeys[0] !== 't'")
+    && !str_contains($transferJs, '`Z-Pay Transfer ${transferId'),
+    'Transfer Open/Copy does not enforce the canonical public tracking URL'
 );
 expect_true(
     str_contains($transferJs, 'submitting: false')

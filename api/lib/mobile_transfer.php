@@ -742,6 +742,69 @@ function zpay_transfer_notify_sender(array $transfer): void
     );
 }
 
+function zpay_transfer_run_post_response_tasks(array $transfer): void
+{
+    $transferId = trim((string)($transfer['transfer_id'] ?? ''));
+    if ($transferId === '') {
+        return;
+    }
+
+    try {
+        system_log('TRANSFER_SUCCESS', $transferId, 'Z-Pay transfer completed', [
+            'sender_uid' => (string)($transfer['sender_uid'] ?? ''),
+            'receiver_uid' => (string)($transfer['receiver_uid'] ?? ''),
+            'amount' => zpay_transfer_money($transfer['amount'] ?? $transfer['transfer_amount'] ?? 0),
+            'currency' => (string)($transfer['wallet_currency'] ?? $transfer['currency'] ?? ''),
+        ]);
+    } catch (Throwable $e) {
+        // Financial success is already final; operational logging is best-effort.
+    }
+
+    try {
+        zpay_transfer_notify_sender($transfer);
+    } catch (Throwable $e) {
+        // Sender notification cannot change a committed transfer result.
+    }
+
+    try {
+        zpay_transfer_notify_receiver($transfer);
+    } catch (Throwable $e) {
+        // Receiver notification/FCM cannot change a committed transfer result.
+    }
+}
+
+function zpay_transfer_schedule_post_response_tasks(array $transfer): void
+{
+    $transferId = trim((string)($transfer['transfer_id'] ?? ''));
+    if ($transferId === '') {
+        return;
+    }
+
+    static $scheduled = [];
+    if (isset($scheduled[$transferId])) {
+        return;
+    }
+    $scheduled[$transferId] = true;
+
+    register_shutdown_function(static function () use ($transfer): void {
+        $responseFinished = false;
+        if (function_exists('fastcgi_finish_request')) {
+            @fastcgi_finish_request();
+            $responseFinished = true;
+        } elseif (function_exists('litespeed_finish_request')) {
+            @litespeed_finish_request();
+            $responseFinished = true;
+        }
+
+        // Never hold the financial HTTP response open for optional notifications.
+        if (!$responseFinished) {
+            return;
+        }
+
+        zpay_transfer_run_post_response_tasks($transfer);
+    });
+}
+
 function zpay_transfer_idempotency_key(string $raw): string
 {
     $key = trim($raw);
@@ -950,13 +1013,21 @@ function zpay_transfer_completed_operation_result(string $transferId, array $ope
         }
     }
 
+    $operationStatus = strtoupper(trim((string)($operation['status'] ?? '')));
+    $committed = zpay_transfer_operation_financially_committed($operation);
     $data = is_array($operation['result_data'] ?? null) ? $operation['result_data'] : [];
     $transfer = is_array($data['transfer'] ?? null) ? $data['transfer'] : [];
-    if (!empty($transfer)) {
+    if (!empty($transfer) && ($committed || $operationStatus === 'COMPLETED')) {
         return zpay_transfer_success_result($transfer, !empty($operation['finalization_pending']) || !empty($transfer['finalization_pending']));
     }
 
     return zpay_transfer_validation_error('TRANSFER_PROCESSING', 'This transfer is still being finalized. Please check status.', [], 409);
+}
+
+function zpay_transfer_operation_financially_committed(array $operation): bool
+{
+    return !empty($operation['sender_debited'])
+        && !empty($operation['receiver_credited']);
 }
 
 function zpay_transfer_success_result(array $transfer, bool $finalizationPending = false): array
@@ -1027,14 +1098,17 @@ function zpay_transfer_replay_preview_result(string $transferId, array $preview 
     }
 
     $operation = fb_get(wallet_financial_operation_scope_path($transferId, 'REQUEST_FINAL'));
-    $completed = zpay_transfer_completed_operation_result($transferId, is_array($operation) ? $operation : []);
+    $operation = is_array($operation) ? $operation : [];
+    $completed = zpay_transfer_completed_operation_result($transferId, $operation);
     if (!empty($completed['ok'])) {
         return $completed;
     }
 
-    $fallback = zpay_transfer_transfer_from_preview($transferId, $preview, true);
-    if ($fallback !== []) {
-        return zpay_transfer_success_result($fallback, true);
+    if (zpay_transfer_operation_financially_committed($operation)) {
+        $fallback = zpay_transfer_transfer_from_preview($transferId, $preview, true);
+        if ($fallback !== []) {
+            return zpay_transfer_success_result($fallback, true);
+        }
     }
 
     return $completed;
@@ -1307,15 +1381,6 @@ function zpay_transfer_execute_financial(array $ctx): array
             'transfer' => $transfer,
         ],
     ]);
-
-    system_log('TRANSFER_SUCCESS', $transferId, 'Z-Pay transfer completed', [
-        'sender_uid' => $senderUid,
-        'receiver_uid' => $receiverUid,
-        'amount' => $amount,
-        'currency' => $currency,
-    ]);
-    zpay_transfer_notify_sender($transfer);
-    zpay_transfer_notify_receiver($transfer);
 
     return zpay_transfer_success_result($transfer, !$operationCompleted);
 }

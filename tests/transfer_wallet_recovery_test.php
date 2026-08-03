@@ -8,6 +8,7 @@ $GLOBALS['fail_put_once'] = [];
 $GLOBALS['fail_put_if_match_status_once'] = [];
 $GLOBALS['fcm_fail_once'] = false;
 $GLOBALS['fcm_calls'] = 0;
+$GLOBALS['fcm_sleep_microseconds'] = 0;
 $GLOBALS['test_now'] = 1800000000;
 
 function test_path_parts(string $path): array
@@ -113,9 +114,16 @@ function zpay_dash_mask_name(string $name): string { return $name; }
 function zpay_dash_allowed_mobile_role(string $role): bool { return true; }
 function auth_status_value($value): string { return strtoupper(trim((string)$value)); }
 function system_log(string $type, string $ref, string $message, array $context = []): void {}
+function app_api_url(string $path = ''): string
+{
+    return 'https://zpayswift.com/api' . ($path !== '' ? '/' . ltrim($path, '/') : '');
+}
 function fcm_send_to_user(...$args): array
 {
     $GLOBALS['fcm_calls'] = (int)($GLOBALS['fcm_calls'] ?? 0) + 1;
+    if ((int)($GLOBALS['fcm_sleep_microseconds'] ?? 0) > 0) {
+        usleep((int)$GLOBALS['fcm_sleep_microseconds']);
+    }
     if (!empty($GLOBALS['fcm_fail_once'])) {
         $GLOBALS['fcm_fail_once'] = false;
         return ['ok' => false, 'code' => 'FCM_TIMEOUT', 'sent' => 0, 'failed' => 1];
@@ -174,7 +182,7 @@ function notification_count(string $uid): int
     return is_array($rows) ? count($rows) : 0;
 }
 
-function execute_transfer(string $transferId, string $sender, string $receiver, float $amount, string $currency): array
+function execute_transfer_financial(string $transferId, string $sender, string $receiver, float $amount, string $currency): array
 {
     return zpay_transfer_execute_financial([
         'transfer_id' => $transferId,
@@ -194,6 +202,21 @@ function execute_transfer(string $transferId, string $sender, string $receiver, 
         'created_at' => now_ts(),
     ]);
 }
+
+function execute_transfer(string $transferId, string $sender, string $receiver, float $amount, string $currency): array
+{
+    $result = execute_transfer_financial($transferId, $sender, $receiver, $amount, $currency);
+    if (!empty($result['ok']) && is_array($result['transfer'] ?? null)) {
+        zpay_transfer_run_post_response_tasks((array)$result['transfer']);
+    }
+    return $result;
+}
+
+$trackingUrl = zpay_transfer_receipt_url('PUBLIC_TRACKING_TOKEN');
+assert_true($trackingUrl === 'https://zpayswift.com/api/transfer/receipt.php?t=PUBLIC_TRACKING_TOKEN', 'tracking URL must use the canonical public API origin');
+$trackingParts = parse_url($trackingUrl);
+parse_str((string)($trackingParts['query'] ?? ''), $trackingQuery);
+assert_true(($trackingParts['host'] ?? '') === 'zpayswift.com' && array_keys($trackingQuery) === ['t'], 'tracking URL must contain only the public receipt token');
 
 put_wallet('S1', 100.00, 'MYR');
 put_wallet('R1', 10.00, 'MYR');
@@ -243,12 +266,62 @@ $pendingReplay = zpay_transfer_replay_preview_result('TR_FINAL', [
     'currency' => 'MYR',
 ]);
 assert_true(!empty($pendingReplay['ok']) && ($pendingReplay['code'] ?? '') === 'TRANSFER_SUCCESS', 'committed preview replay should return safe success');
+
+test_store_set(wallet_financial_operation_scope_path('TR_PRECOMMIT', 'REQUEST_FINAL'), [
+    'request_id' => 'TR_PRECOMMIT',
+    'status' => 'CLAIMED',
+    'sender_debited' => false,
+    'receiver_credited' => false,
+]);
+$preCommitReplay = zpay_transfer_replay_preview_result('TR_PRECOMMIT', [
+    'sender_uid' => 'S3',
+    'receiver_uid' => 'R3',
+    'amount' => 30.00,
+    'currency' => 'MYR',
+]);
+assert_true(empty($preCommitReplay['ok']) && ($preCommitReplay['code'] ?? '') === 'TRANSFER_PROCESSING', 'pre-commit processing state must not be replayed as success');
+
+test_store_set(wallet_financial_operation_scope_path('TR_WALLETS_COMMITTED', 'REQUEST_FINAL'), [
+    'request_id' => 'TR_WALLETS_COMMITTED',
+    'status' => 'FAILED_RETRYABLE',
+    'sender_debited' => true,
+    'receiver_credited' => true,
+    'sender_ledger_written' => false,
+    'receiver_ledger_written' => false,
+]);
+$walletCommittedReplay = zpay_transfer_replay_preview_result('TR_WALLETS_COMMITTED', [
+    'sender_uid' => 'S3',
+    'receiver_uid' => 'R3',
+    'amount' => 30.00,
+    'currency' => 'MYR',
+]);
+assert_true(!empty($walletCommittedReplay['ok']) && !empty($walletCommittedReplay['finalization_pending']), 'both wallet mutations must replay as safe success while ledger/finalization repair remains pending');
 $writesS3 = wallet_writes('S3');
 $writesR3 = wallet_writes('R3');
 $finalRetry = execute_transfer('TR_FINAL', 'S3', 'R3', 30.00, 'MYR');
 assert_true(!empty($finalRetry['ok']), 'finalization retry should succeed');
 assert_true(wallet_writes('S3') === $writesS3 && wallet_writes('R3') === $writesR3, 'finalization retry must not repeat wallet mutations');
 assert_true(is_array(fb_get('TRANSFERS/TR_FINAL')), 'finalization retry stores transfer row');
+
+$previewReplayRow = [
+    'sender_uid' => 'S3',
+    'receiver_uid' => 'R3',
+    'transfer_id' => 'TR_FINAL',
+    'amount' => 30.00,
+    'currency' => 'MYR',
+    'expires_at' => now_ts() + 300,
+];
+test_store_set('TRANSFER_PREVIEWS/USED_PREVIEW', array_merge($previewReplayRow, ['status' => 'USED', 'used' => true]));
+$usedClaim = zpay_transfer_claim_preview_token('USED_PREVIEW', 'S3');
+assert_true(!empty($usedClaim['ok']) && !empty($usedClaim['duplicate']) && ($usedClaim['transfer_id'] ?? '') === 'TR_FINAL', 'USED preview must bind replay to the original transfer ID');
+$usedReplay = zpay_transfer_replay_preview_result((string)$usedClaim['transfer_id'], (array)$usedClaim['preview']);
+assert_true(!empty($usedReplay['ok']) && ($usedReplay['transfer']['transfer_id'] ?? '') === 'TR_FINAL', 'USED preview must replay the original successful transfer');
+
+test_store_set('TRANSFER_PREVIEWS/PROCESSING_PREVIEW', array_merge($previewReplayRow, ['status' => 'PROCESSING', 'used' => false]));
+$processingClaim = zpay_transfer_claim_preview_token('PROCESSING_PREVIEW', 'S3');
+assert_true(!empty($processingClaim['ok']) && !empty($processingClaim['resume']) && ($processingClaim['transfer_id'] ?? '') === 'TR_FINAL', 'PROCESSING preview must resume the original transfer ID');
+$processingReplay = zpay_transfer_replay_preview_result((string)$processingClaim['transfer_id'], (array)$processingClaim['preview']);
+assert_true(!empty($processingReplay['ok']) && ($processingReplay['transfer']['transfer_id'] ?? '') === 'TR_FINAL', 'PROCESSING preview with committed evidence must replay success');
 
 put_wallet('S5', 80.00, 'MYR');
 put_wallet('R5', 20.00, 'MYR');
@@ -267,6 +340,20 @@ assert_true(!empty($fcmFail['ok']) && ($fcmFail['code'] ?? '') === 'TRANSFER_SUC
 assert_true((float)fb_get('USER_WALLETS/S6')['available_balance'] === 58.00, 'FCM failure debits sender once');
 assert_true((float)fb_get('USER_WALLETS/R6')['available_balance'] === 15.00, 'FCM failure credits receiver once');
 assert_true(notification_count('S6') === 1 && notification_count('R6') === 1, 'FCM failure still records in-app notifications');
+
+put_wallet('S7', 75.00, 'MYR');
+put_wallet('R7', 5.00, 'MYR');
+$fcmCallsBeforeDeferredTransfer = (int)$GLOBALS['fcm_calls'];
+$GLOBALS['fcm_sleep_microseconds'] = 250000;
+$deferredStartedAt = microtime(true);
+$deferredResult = execute_transfer_financial('TR_DEFERRED_NOTIFY', 'S7', 'R7', 10.00, 'MYR');
+$deferredElapsed = microtime(true) - $deferredStartedAt;
+assert_true(!empty($deferredResult['ok']), 'financial result must succeed before deferred notification work');
+assert_true($deferredElapsed < 0.20, 'financial result must not wait for slow FCM delivery');
+assert_true((int)$GLOBALS['fcm_calls'] === $fcmCallsBeforeDeferredTransfer, 'FCM must not run inside the financial response path');
+zpay_transfer_run_post_response_tasks((array)$deferredResult['transfer']);
+$GLOBALS['fcm_sleep_microseconds'] = 0;
+assert_true((int)$GLOBALS['fcm_calls'] === $fcmCallsBeforeDeferredTransfer + 1, 'deferred notification phase should perform the receiver push attempt');
 
 put_wallet('S4', 50.00, 'BDT');
 put_wallet('R4', 0.00, 'BDT');

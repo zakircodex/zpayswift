@@ -315,32 +315,61 @@
     return status.replace(/\b\w/g, (character) => character.toUpperCase());
   }
 
+  function transferTrackingBaseUrl() {
+    const raw = String($('transferSection')?.dataset.trackingBase || '').trim();
+    if (!raw) return null;
+    try {
+      const base = new URL(raw);
+      if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) {
+        return null;
+      }
+      return base;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function transferTrackingUrl(details) {
     const raw = String(details?.tracking_url || details?.receipt_url || '').trim();
-    if (!raw) return '/user/history';
+    const base = transferTrackingBaseUrl();
+    if (!raw || !base) return '';
     try {
-      const url = new URL(raw, window.location.origin);
-      return ['http:', 'https:'].includes(url.protocol) && url.origin === window.location.origin
-        ? url.href
-        : '/user/history';
+      const url = new URL(raw, base.origin);
+      const token = String(url.searchParams.get('t') || '').trim();
+      const queryKeys = Array.from(url.searchParams.keys());
+      if (
+        !['http:', 'https:'].includes(url.protocol)
+        || url.username
+        || url.password
+        || url.hash
+        || url.origin !== base.origin
+        || url.pathname !== base.pathname
+        || token === ''
+        || token.length > 200
+        || queryKeys.length !== 1
+        || queryKeys[0] !== 't'
+      ) {
+        return '';
+      }
+      return url.href;
     } catch (_) {
-      return '/user/history';
+      return '';
     }
   }
 
   async function copyTransferResult(details) {
     const link = transferTrackingUrl(details);
-    const transferId = String(details?.transfer_id || details?.request_id || '').trim();
-    const text = link !== '/user/history'
-      ? link
-      : `Z-Pay Transfer ${transferId || ''}`.trim();
+    if (!link) {
+      toast('Tracking link is unavailable.', 'error');
+      return;
+    }
     let fallbackField = null;
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.writeText(link);
       } else {
         fallbackField = document.createElement('textarea');
-        fallbackField.value = text;
+        fallbackField.value = link;
         fallbackField.setAttribute('readonly', '');
         fallbackField.style.position = 'fixed';
         fallbackField.style.opacity = '0';
@@ -348,7 +377,7 @@
         fallbackField.select();
         if (!document.execCommand('copy')) throw new Error('Copy failed');
       }
-      toast('Transfer tracking information copied.', 'ok');
+      toast('Tracking link copied', 'ok');
     } catch (_) {
       toast('Transfer tracking information could not be copied.', 'error');
     } finally {
@@ -396,15 +425,22 @@
       trackingCopy.textContent = 'This is your transfer tracking link.';
       const actions = document.createElement('div');
       actions.className = 'transfer-action-buttons is-compact';
-      const open = document.createElement('a');
+      const trackingUrl = transferTrackingUrl(details);
+      const open = document.createElement(trackingUrl ? 'a' : 'button');
       open.className = 'transfer-modal-button primary';
-      open.href = transferTrackingUrl(details);
       open.textContent = 'Open';
-      open.addEventListener('click', () => finishTransferModalClose({ replaceHistory: true }));
+      if (trackingUrl) {
+        open.href = trackingUrl;
+        open.addEventListener('click', () => finishTransferModalClose({ replaceHistory: true }));
+      } else {
+        open.type = 'button';
+        open.disabled = true;
+      }
       const copy = document.createElement('button');
       copy.type = 'button';
       copy.className = 'transfer-modal-button';
       copy.textContent = 'Copy';
+      copy.disabled = !trackingUrl;
       copy.addEventListener('click', () => copyTransferResult(details));
       actions.append(open, copy);
       if (!isTransferFavoriteSaved(details)) {

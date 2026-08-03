@@ -41,8 +41,10 @@ if ($previewToken !== '') {
                 (int)($existing['status'] ?? 409)
             );
         }
+        $existingTransfer = (array)($existing['transfer'] ?? []);
+        zpay_transfer_schedule_post_response_tasks($existingTransfer);
         api_response(true, 'TRANSFER_SUCCESS', 'Transfer completed successfully.', [
-            'transfer' => zpay_transfer_public_row((array)($existing['transfer'] ?? [])),
+            'transfer' => zpay_transfer_public_row($existingTransfer),
         ]);
     }
 
@@ -58,8 +60,10 @@ if ($previewToken !== '') {
         );
     }
 
+    $completedTransfer = (array)($result['transfer'] ?? []);
+    zpay_transfer_schedule_post_response_tasks($completedTransfer);
     api_response(true, 'TRANSFER_SUCCESS', 'Transfer completed successfully.', [
-        'transfer' => zpay_transfer_public_row((array)($result['transfer'] ?? [])),
+        'transfer' => zpay_transfer_public_row($completedTransfer),
     ]);
 }
 
@@ -153,6 +157,8 @@ if (empty($result['ok'])) {
     );
 }
 
+$completedTransfer = (array)($result['transfer'] ?? []);
+zpay_transfer_schedule_post_response_tasks($completedTransfer);
 api_response(true, 'TRANSFER_SUCCESS', 'Transfer completed successfully.', [
-    'transfer' => zpay_transfer_public_row((array)($result['transfer'] ?? [])),
+    'transfer' => zpay_transfer_public_row($completedTransfer),
 ]);

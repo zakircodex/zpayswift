@@ -14,10 +14,13 @@ $page = user_page_config([
     'show_header' => false,
     'show_global_loader' => false,
 ]);
+$transferTrackingBase = function_exists('app_api_url')
+    ? app_api_url('transfer/receipt.php')
+    : 'https://zpayswift.com/api/transfer/receipt.php';
 
 user_page_begin($page);
 ?>
-<section id="transferSection" class="page-section transfer-page-section active" aria-labelledby="transferPageTitle">
+<section id="transferSection" class="page-section transfer-page-section active" aria-labelledby="transferPageTitle" data-tracking-base="<?= htmlspecialchars($transferTrackingBase, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
   <div class="transfer-page-shell">
     <header class="transfer-page-header">
       <a id="transferBackButton" class="transfer-header-button" href="/user/dashboard" aria-label="Go back">
