@@ -63,8 +63,10 @@ expect_true(
     'Transfer committed response or authoritative replay handling is incomplete'
 );
 expect_true(
-    str_contains($proxy, "'max_attempts' => 1")
-    && str_contains($proxy, "'timeout' => 15")
+    str_contains($proxy, "'canonical_only' => true")
+    && str_contains($proxy, "'max_attempts' => 1")
+    && str_contains($proxy, "'connect_timeout' => 15")
+    && str_contains($proxy, "'timeout' => 60")
     && str_contains($transferJs, 'function submitTransferWithRecovery')
     && substr_count($transferJs, "shell.post('transfer_create', payload") === 2
     && str_contains($transferJs, "openTransferLoading('Confirming transfer status...')"),

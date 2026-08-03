@@ -255,8 +255,13 @@ function user_proxy_internal_api_request(
     $url = user_proxy_api_base_url() . '/' . ltrim($relativePath, '/');
     $lastResult = null;
     $attempts = user_proxy_internal_api_attempts($url);
+    if (!empty($requestPolicy['canonical_only']) && $attempts) {
+        $canonicalAttempt = end($attempts);
+        $attempts = is_array($canonicalAttempt) ? [$canonicalAttempt] : [];
+    }
     $maxAttempts = max(1, (int)($requestPolicy['max_attempts'] ?? count($attempts)));
     $timeout = max(0, (int)($requestPolicy['timeout'] ?? 0));
+    $connectTimeout = max(0, (int)($requestPolicy['connect_timeout'] ?? 0));
 
     foreach (array_slice($attempts, 0, $maxAttempts) as $attempt) {
         $ch = curl_init();
@@ -289,6 +294,9 @@ function user_proxy_internal_api_request(
         }
         if ($timeout > 0) {
             $curlOptions[CURLOPT_TIMEOUT] = $timeout;
+        }
+        if ($connectTimeout > 0) {
+            $curlOptions[CURLOPT_CONNECTTIMEOUT] = $connectTimeout;
         }
 
         curl_setopt_array($ch, $curlOptions);
@@ -4635,8 +4643,10 @@ switch ($action) {
             'TRANSFER_FAILED',
             'Transfer could not be completed.',
             [
+                'canonical_only' => true,
                 'max_attempts' => 1,
-                'timeout' => 15,
+                'connect_timeout' => 15,
+                'timeout' => 60,
             ]
         );
         break;
