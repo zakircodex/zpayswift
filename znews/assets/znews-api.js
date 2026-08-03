@@ -275,6 +275,7 @@
       return this.request('znews/views/start.php', {
         method: 'POST',
         appKey: false,
+        authenticated: this.isAuthenticated(),
         body: {
           post_id: postId,
           idempotency_key: idempotencyKey || this.idempotencyKey('view')
