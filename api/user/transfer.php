@@ -12,6 +12,7 @@ $page = user_page_config([
     'page_js' => 'transfer-page.js',
     'active_nav' => 'transfer',
     'show_header' => false,
+    'show_global_loader' => false,
 ]);
 
 user_page_begin($page);
@@ -19,7 +20,7 @@ user_page_begin($page);
 <section id="transferSection" class="page-section transfer-page-section active" aria-labelledby="transferPageTitle">
   <div class="transfer-page-shell">
     <header class="transfer-page-header">
-      <a class="transfer-header-button" href="/user/dashboard" aria-label="Back to dashboard">
+      <a id="transferBackButton" class="transfer-header-button" href="/user/dashboard" aria-label="Go back">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.7 5.3-1.4-1.4L5.2 12l8.1 8.1 1.4-1.4L9 13h11v-2H9l5.7-5.7Z"/></svg>
       </a>
       <h2 id="transferPageTitle">Z-Pay Transfer</h2>
@@ -29,14 +30,7 @@ user_page_begin($page);
       </a>
     </header>
 
-    <div class="feature-card transfer-card">
-      <div class="android-stepper transfer-progress" aria-label="Transfer progress">
-        <span id="transferPill1" class="active">Receiver</span>
-        <span id="transferPill2">Amount</span>
-        <span id="transferPill3">PIN</span>
-        <span id="transferPill4">Review</span>
-      </div>
-
+    <div class="transfer-scroll-body" aria-live="polite">
       <div id="transferStepReceiver" class="transfer-step active">
         <div class="transfer-step-card transfer-receiver-card">
           <div class="step-copy transfer-step-title"><h3>Receiver Account</h3></div>
@@ -62,34 +56,45 @@ user_page_begin($page);
       </div>
 
       <div id="transferStepAmount" class="transfer-step">
-        <div id="transferReceiverCard" class="recipient-card transfer-verified-card"></div>
-        <label class="feature-field transfer-field" for="transferAmountInput">
-          <span>Amount</span>
-          <div class="transfer-money-wrap"><b id="transferCurrencyPrefix">BDT</b><input id="transferAmountInput" type="number" inputmode="decimal" min="1" step="0.01" placeholder="0.00"></div>
-        </label>
-        <div class="feature-actions transfer-actions transfer-single-action"><button id="transferAmountNextBtn" class="android-primary-button" type="button">Continue</button></div>
+        <div class="transfer-step-card transfer-amount-card">
+          <div class="step-copy transfer-step-title"><h3>Transfer Amount</h3></div>
+          <div id="transferReceiverCard" class="transfer-verified-card"></div>
+          <label class="transfer-field" for="transferAmountInput">
+            <span>Amount</span>
+            <div class="transfer-money-wrap"><b id="transferCurrencyPrefix">BDT</b><input id="transferAmountInput" type="number" inputmode="decimal" min="1" step="0.01" autocomplete="off" placeholder="0.00"></div>
+          </label>
+          <p id="transferMinimumHint" class="transfer-minimum-hint">Minimum transfer amount is 1.00 BDT.</p>
+          <button id="transferAmountNextBtn" class="transfer-primary-button" type="button">Continue</button>
+        </div>
       </div>
 
       <div id="transferStepPin" class="transfer-step">
-        <div class="transfer-step-card">
-          <div class="step-copy transfer-step-title"><h3>Transaction PIN</h3><p>Enter your PIN to prepare a secure preview.</p></div>
-          <label class="feature-field transfer-field" for="transferPinInput"><span>4-digit PIN</span><input id="transferPinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="4" placeholder="...."></label>
-          <div class="feature-actions transfer-actions transfer-single-action"><button id="transferPreviewBtn" class="android-primary-button" type="button">Review Transfer</button></div>
+        <div class="transfer-step-card transfer-verify-card">
+          <div class="step-copy transfer-step-title"><h3>Verify to Continue</h3></div>
+          <div id="transferVerifySummary" class="transfer-verify-summary"></div>
+          <div class="transfer-verification-area">
+            <p>Secure verification</p>
+            <span>Confirm this transfer with your transaction PIN.</span>
+          </div>
+          <label class="transfer-field" for="transferPinInput"><span>Enter PIN</span><input id="transferPinInput" type="password" inputmode="numeric" autocomplete="off" maxlength="4" placeholder="PIN"></label>
+          <button id="transferPreviewBtn" class="transfer-primary-button" type="button">Continue</button>
         </div>
       </div>
 
       <div id="transferStepReview" class="transfer-step">
-        <div class="review-panel transfer-review-panel">
-          <h3>Review Transfer</h3>
+        <div class="transfer-step-card transfer-preview-card">
+          <div class="step-copy transfer-step-title"><h3>Z-Pay Transfer Preview</h3></div>
           <div id="transferReviewRows" class="review-rows"></div>
-          <label class="feature-field transfer-field transfer-review-reference" for="transferReferenceInput"><span>Reference <small>Optional</small></span><input id="transferReferenceInput" maxlength="80" placeholder="Enter reference (optional)"></label>
+          <label class="transfer-field transfer-review-reference" for="transferReferenceInput"><span>Reference <small>Optional</small></span><input id="transferReferenceInput" maxlength="80" autocomplete="off" placeholder="Enter reference (optional)"></label>
+          <button id="transferHoldConfirmBtn" class="transfer-hold-control transfer-hold-button" type="button" aria-label="Tap and hold to confirm transfer">
+            <span class="transfer-hold-progress" aria-hidden="true"></span>
+            <span class="transfer-hold-progress-dot" aria-hidden="true"></span>
+            <span class="transfer-hold-bubble transfer-hold-bubble-one" aria-hidden="true"></span>
+            <span class="transfer-hold-bubble transfer-hold-bubble-two" aria-hidden="true"></span>
+            <img class="transfer-hold-logo" src="/assets/brand/zpay-icon.png" alt="" draggable="false">
+            <span class="transfer-hold-label">Tap and hold to confirm transfer</span>
+          </button>
         </div>
-        <p class="hold-hint">Tap and hold to confirm transfer</p>
-        <button id="transferHoldConfirmBtn" class="hold-confirm-button transfer-hold-button" type="button" aria-label="Tap and hold to confirm transfer">
-          <span class="hold-confirm-progress" aria-hidden="true"></span>
-          <span class="hold-confirm-label">Tap and hold to confirm transfer</span>
-        </button>
-        <button class="android-secondary-button full-width" type="button" data-transfer-back="3">Edit Transfer</button>
       </div>
     </div>
   </div>
