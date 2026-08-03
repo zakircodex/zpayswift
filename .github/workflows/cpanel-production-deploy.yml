@@ -80,6 +80,7 @@ jobs:
           php tests/zsky24_my_posts_navigation_loading_test.php
           php tests/zsky24_edit_post_composer_test.php
           php tests/zsky24_balance_policy_ui_test.php
+          php tests/zsky24_new_tab_balance_sync_test.php
           php tests/znews_admin_creator_credit_panel_test.php
           php tests/znews_controlled_ad_test_utility_test.php
           php tests/znews_auto_credit_test.php

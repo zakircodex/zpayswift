@@ -758,6 +758,19 @@
     }
   }
 
+  async function loadMiniBalance() {
+    if (!api.isAuthenticated() || !els.miniBalance) return;
+    els.miniBalance.textContent = 'Loading…';
+    try {
+      const summary = await api.balanceSummary();
+      const balance = readBdtBalance(summary);
+      state.balanceMicros = Number(balance.available_micros || 0);
+      els.miniBalance.textContent = formatBdtMicros(state.balanceMicros);
+    } catch (_error) {
+      els.miniBalance.textContent = 'Unavailable';
+    }
+  }
+
   function renderLedger(items) {
     const rows = Array.isArray(items) ? items : [];
     els.ledgerList.innerHTML = rows.length ? rows.map((entry) => {
@@ -899,6 +912,7 @@
     refreshSessionUi();
     bindEvents();
     window.ZNewsAds.mountAll();
+    if (api.isAuthenticated() && route.kind !== 'balance') await loadMiniBalance();
     if (route.kind !== 'policy') await loadFeed();
     if (route.kind === 'post') openPost(route.id, { syncHistory: false });
     if (route.kind === 'policy') routeTo('policy', { syncHistory: false });
