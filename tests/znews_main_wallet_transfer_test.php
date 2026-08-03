@@ -83,6 +83,7 @@ znews_transfer_test_expect(str_contains($balances, 'fb_get_with_etag') && str_co
 $service = znews_transfer_test_read($root . '/api/znews/lib/transfers_service.php');
 znews_transfer_test_expect(str_contains($service, 'wallet_account_currency($user, $wallet)'), 'destination currency is not server-resolved');
 znews_transfer_test_expect(str_contains($service, 'ZNEWS_TRANSFER_MINIMUM_NOT_MET'), 'minimum threshold enforcement missing');
+znews_transfer_test_expect(str_contains($service, "'threshold_bdt' => '200'"), 'BDT 200 minimum transfer contract missing');
 znews_transfer_test_expect(str_contains($service, 'znews_transfer_reserve_balance'), 'request does not reserve source balance');
 znews_transfer_test_expect(str_contains($service, 'source_to_bdt_rate_micros'), 'source rate snapshot missing');
 znews_transfer_test_expect(str_contains($service, 'myr_to_bdt_rate_micros'), 'MYR rate snapshot missing');

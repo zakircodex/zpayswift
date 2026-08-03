@@ -4979,6 +4979,11 @@ document.querySelectorAll('.nav-btn[data-section]').forEach(btn => {
   btn.addEventListener('click', () => openSection(btn.dataset.section));
 });
 
+window.addEventListener('zsky24:admin-ready', () => {
+  if (activeSectionId() !== 'zsky24Section' || typeof window.loadZSky24Admin !== 'function') return;
+  window.loadZSky24Admin(false).catch(err => showToast(err.message || 'Z Sky 24 data could not be loaded.', 'error'));
+});
+
 document.querySelectorAll('[data-topup-tab]').forEach(btn => {
   btn.addEventListener('click', async () => {
     document.querySelectorAll('[data-topup-tab]').forEach(x => x.classList.remove('active'));

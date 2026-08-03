@@ -888,8 +888,8 @@ header('Pragma: no-cache');
 <script>
 window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
-<script src="/api/admin/assets/dashboard.js?v=41"></script>
-<script src="/api/admin/assets/zsky24-admin.js?v=1"></script>
+<script src="/api/admin/assets/dashboard.js?v=42"></script>
+<script src="/api/admin/assets/zsky24-admin.js?v=2"></script>
 <script src="/api/admin/assets/admin-dashboard-ux.js?v=2"></script>
 
 </body>
