@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/views_v2.php';
+require_once dirname(__DIR__) . '/lib/settlements_auto.php';
 
 api_require_method('POST');
 $body = api_read_json_body();
@@ -18,6 +19,10 @@ if ($viewToken === '' || strlen($viewToken) > 160) {
 }
 
 $result = znews_view_complete_v2($viewId, $viewToken);
+$autoCredit = null;
+if (!empty($result['ok']) && !empty($result['valid_view'])) {
+    $autoCredit = znews_auto_settle_view_impressions($viewId);
+}
 api_response(
     !empty($result['ok']),
     (string)($result['code'] ?? 'ZNEWS_VIEW_COMPLETE_FAILED'),
@@ -31,6 +36,11 @@ api_response(
         'analytics' => is_array($result['analytics'] ?? null) ? (array)$result['analytics'] : null,
         'idempotent_replay' => isset($result['idempotent_replay']) ? (bool)$result['idempotent_replay'] : null,
         'reconciliation_required' => isset($result['reconciliation_required']) ? (bool)$result['reconciliation_required'] : null,
+        'auto_credit' => is_array($autoCredit) ? [
+            'processed' => (int)($autoCredit['processed'] ?? 0),
+            'credited' => (int)($autoCredit['credited'] ?? 0),
+            'retry_required' => !empty($autoCredit['retry_required']),
+        ] : null,
     ], static fn($value) => $value !== null),
     (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 500))
 );
