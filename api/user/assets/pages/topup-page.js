@@ -77,6 +77,14 @@
       hasHistory: false,
       opener: null
     },
+    keyboard: {
+      activeInput: null,
+      baselineHeight: Math.max(window.innerHeight || 0, window.visualViewport?.height || 0),
+      restoreScrollTop: 0,
+      restoreStep: 'number',
+      layoutTimer: 0,
+      restoreTimer: 0
+    },
     hold: {
       active: false,
       completed: false,
@@ -209,6 +217,147 @@
     });
   }
 
+  function isTopupKeyboardInput(node) {
+    return node instanceof HTMLInputElement
+      && (node.id === 'topupAmountInput' || node.id === 'topupPinInput');
+  }
+
+  function prefersReducedMotion() {
+    return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+  }
+
+  function clearKeyboardTimers() {
+    if (state.keyboard.layoutTimer) window.clearTimeout(state.keyboard.layoutTimer);
+    if (state.keyboard.restoreTimer) window.clearTimeout(state.keyboard.restoreTimer);
+    state.keyboard.layoutTimer = 0;
+    state.keyboard.restoreTimer = 0;
+  }
+
+  function keyboardFocusRegion(input) {
+    if (!isTopupKeyboardInput(input)) return null;
+    const field = input.closest('.topup-field-group') || input;
+    const button = byId(input.id === 'topupAmountInput'
+      ? 'topupAmountContinueButton'
+      : 'topupPinContinueButton');
+    return { field, button };
+  }
+
+  function ensureKeyboardControlsVisible(input = state.keyboard.activeInput) {
+    if (!isTopupKeyboardInput(input) || document.activeElement !== input) return;
+    const scrollBody = byId('topupScrollBody');
+    const region = keyboardFocusRegion(input);
+    if (!scrollBody || !region) return;
+
+    region.field.scrollIntoView({
+      behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+      block: 'center',
+      inline: 'nearest'
+    });
+
+    window.setTimeout(() => {
+      if (document.activeElement !== input) return;
+      const viewport = window.visualViewport;
+      const scrollRect = scrollBody.getBoundingClientRect();
+      const fieldRect = region.field.getBoundingClientRect();
+      const buttonRect = region.button?.getBoundingClientRect() || fieldRect;
+      const viewportTop = viewport ? viewport.offsetTop : 0;
+      const viewportBottom = viewport
+        ? viewport.offsetTop + viewport.height
+        : window.innerHeight;
+      const navRect = document.querySelector('.bottom-nav')?.getBoundingClientRect();
+      const visibleTop = Math.max(scrollRect.top, viewportTop) + 12;
+      let visibleBottom = Math.min(scrollRect.bottom, viewportBottom) - 14;
+      if (navRect && navRect.top > visibleTop && navRect.top < visibleBottom) {
+        visibleBottom = navRect.top - 12;
+      }
+
+      let delta = 0;
+      if (buttonRect.bottom > visibleBottom) {
+        delta = buttonRect.bottom - visibleBottom;
+      } else if (fieldRect.top < visibleTop) {
+        delta = fieldRect.top - visibleTop;
+      }
+      if (Math.abs(delta) < 1) return;
+      scrollBody.scrollTo({
+        top: Math.max(0, scrollBody.scrollTop + delta),
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth'
+      });
+    }, 90);
+  }
+
+  function updateKeyboardLayout() {
+    const input = isTopupKeyboardInput(document.activeElement)
+      ? document.activeElement
+      : state.keyboard.activeInput;
+    if (!isTopupKeyboardInput(input)) return;
+
+    const viewport = window.visualViewport;
+    const visibleHeight = viewport
+      ? viewport.height + viewport.offsetTop
+      : window.innerHeight;
+    const currentLayoutHeight = Math.max(window.innerHeight || 0, visibleHeight || 0);
+    state.keyboard.baselineHeight = Math.max(state.keyboard.baselineHeight, currentLayoutHeight);
+    const occludedHeight = Math.max(0, state.keyboard.baselineHeight - visibleHeight);
+    const keyboardOpen = occludedHeight > 96;
+    const keyboardInset = keyboardOpen ? Math.ceil(occludedHeight + 72) : 0;
+
+    document.body.classList.toggle('topup-keyboard-open', keyboardOpen);
+    document.body.style.setProperty('--topup-keyboard-inset', `${keyboardInset}px`);
+    if (keyboardOpen) ensureKeyboardControlsVisible(input);
+  }
+
+  function scheduleKeyboardLayout(delay = 0) {
+    if (state.keyboard.layoutTimer) window.clearTimeout(state.keyboard.layoutTimer);
+    state.keyboard.layoutTimer = window.setTimeout(() => {
+      state.keyboard.layoutTimer = 0;
+      updateKeyboardLayout();
+    }, delay);
+  }
+
+  function resetKeyboardLayout({ restoreScroll = false } = {}) {
+    clearKeyboardTimers();
+    document.body.classList.remove('topup-keyboard-open');
+    document.body.style.removeProperty('--topup-keyboard-inset');
+    const scrollBody = byId('topupScrollBody');
+    if (restoreScroll && scrollBody && state.keyboard.restoreStep === state.step) {
+      const restoreTop = Math.min(state.keyboard.restoreScrollTop, scrollBody.scrollHeight - scrollBody.clientHeight);
+      scrollBody.scrollTo({
+        top: Math.max(0, restoreTop),
+        behavior: prefersReducedMotion() ? 'auto' : 'smooth'
+      });
+    }
+    state.keyboard.activeInput = null;
+    state.keyboard.restoreScrollTop = 0;
+    state.keyboard.restoreStep = state.step;
+    state.keyboard.baselineHeight = Math.max(window.innerHeight || 0, window.visualViewport?.height || 0);
+  }
+
+  function handleKeyboardFocusIn(event) {
+    const input = event.target;
+    if (!isTopupKeyboardInput(input)) return;
+    const scrollBody = byId('topupScrollBody');
+    clearKeyboardTimers();
+    state.keyboard.activeInput = input;
+    state.keyboard.restoreScrollTop = scrollBody?.scrollTop || 0;
+    state.keyboard.restoreStep = state.step;
+    state.keyboard.baselineHeight = Math.max(
+      state.keyboard.baselineHeight,
+      window.innerHeight || 0,
+      window.visualViewport?.height || 0
+    );
+    scheduleKeyboardLayout(0);
+    window.setTimeout(() => scheduleKeyboardLayout(0), 220);
+  }
+
+  function handleKeyboardFocusOut() {
+    if (state.keyboard.restoreTimer) window.clearTimeout(state.keyboard.restoreTimer);
+    state.keyboard.restoreTimer = window.setTimeout(() => {
+      state.keyboard.restoreTimer = 0;
+      if (isTopupKeyboardInput(document.activeElement)) return;
+      resetKeyboardLayout({ restoreScroll: true });
+    }, 180);
+  }
+
   function hideModalImmediate({ restoreFocus = true } = {}) {
     const modal = byId('topupActionModal');
     const opener = state.modal.opener;
@@ -243,6 +392,9 @@
     const modal = byId('topupActionModal');
     const wasOpen = state.modal.open;
     if (!modal) return;
+
+    if (isTopupKeyboardInput(document.activeElement)) document.activeElement.blur();
+    resetKeyboardLayout({ restoreScroll: false });
 
     if (!wasOpen && pushHistory) {
       history.pushState(historyPayload(state.step, kind), '', window.location.href);
@@ -473,6 +625,8 @@
   function applyStep(nextStep, { focus = true } = {}) {
     if (!STEP_ORDER.includes(nextStep)) return;
     const previousStep = state.step;
+    if (isTopupKeyboardInput(document.activeElement)) document.activeElement.blur();
+    resetKeyboardLayout({ restoreScroll: false });
     state.step = nextStep;
 
     if (previousStep === 'pin' && nextStep !== 'preview') {
@@ -748,7 +902,10 @@
     setHoldProgress(0);
     setHoldLabel('Tap and hold to confirm top-up');
     const button = byId('topupHoldConfirmButton');
-    if (button) button.disabled = Boolean(state.submitting || state.completed);
+    if (button) {
+      button.classList.remove('is-holding');
+      button.disabled = Boolean(state.submitting || state.completed);
+    }
   }
 
   function updateHoldAnimation() {
@@ -772,14 +929,19 @@
     submitTopup();
   }
 
-  function beginHold({ pointerId = null, clientX = 0, clientY = 0 } = {}) {
+  function beginHold({ pointerId = null, clientX = 0, clientY = 0, target = null } = {}) {
     if (state.hold.active || state.submitting || state.completed || !state.preview?.preview_token) return;
+    const button = target || byId('topupHoldConfirmButton');
     state.hold.active = true;
     state.hold.completed = false;
     state.hold.pointerId = pointerId;
     state.hold.startX = Number(clientX || 0);
     state.hold.startY = Number(clientY || 0);
     state.hold.startedAt = performance.now();
+    button?.classList.add('is-holding');
+    if (pointerId !== null && button?.setPointerCapture) {
+      try { button.setPointerCapture(pointerId); } catch (_) {}
+    }
     setHoldProgress(0);
     setHoldLabel('Keep holding...');
     state.hold.animationFrame = window.requestAnimationFrame(updateHoldAnimation);
@@ -788,7 +950,13 @@
 
   function handleHoldPointerDown(event) {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    beginHold({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY });
+    event.preventDefault();
+    beginHold({
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      target: event.currentTarget
+    });
   }
 
   function handleHoldPointerMove(event) {
@@ -1157,6 +1325,8 @@
     byId('topupPinInput')?.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') continueFromPin();
     });
+    root.addEventListener('focusin', handleKeyboardFocusIn);
+    root.addEventListener('focusout', handleKeyboardFocusOut);
 
     byId('topupModalCloseButton')?.addEventListener('click', requestCloseModal);
     byId('topupActionModal')?.addEventListener('click', (event) => {
@@ -1189,13 +1359,24 @@
     hold?.addEventListener('dragstart', (event) => event.preventDefault());
 
     window.addEventListener('popstate', handlePopState);
+    window.visualViewport?.addEventListener('resize', () => scheduleKeyboardLayout(0));
+    window.visualViewport?.addEventListener('scroll', () => scheduleKeyboardLayout(0));
+    window.addEventListener('resize', () => {
+      if (isTopupKeyboardInput(document.activeElement)) {
+        scheduleKeyboardLayout(0);
+      } else {
+        state.keyboard.baselineHeight = Math.max(window.innerHeight || 0, window.visualViewport?.height || 0);
+      }
+    });
     window.addEventListener('pagehide', () => {
       stopHoldTimers();
+      resetKeyboardLayout({ restoreScroll: false });
       if (state.modal.kind === 'loading') hideModalImmediate({ restoreFocus: false });
     });
     window.addEventListener('pageshow', (event) => {
       if (!event.persisted) return;
       closeLoading();
+      resetKeyboardLayout({ restoreScroll: false });
       resetHoldControl();
     });
     document.addEventListener('keydown', (event) => {
