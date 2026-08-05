@@ -65,6 +65,7 @@ znews_contract_expect(str_contains($index, 'href="https://zpayswift.com/user" da
 znews_contract_expect(!str_contains($index, 'data-zpay-register'), 'The retired Join Z-Pay registration target must not remain in the page.');
 znews_contract_expect(str_contains($index, 'interactive-widget=resizes-content'), 'Android keyboard resize mode is missing.');
 znews_contract_expect(str_contains($index, 'znews-bootstrap.js?v=20'), 'Reload-safe handoff bootstrap must be activated.');
+znews_contract_expect(str_contains($index, 'znews-weekly-review.js?v=1'), 'Creator weekly report module must be loaded before the app shell.');
 znews_contract_expect(!str_contains($index, 'znews-quick-login.js'), 'Standalone Z News PIN login must not be loaded.');
 
 znews_contract_expect(str_contains($api, 'exchangeHandoff(code, options = {})'), 'API client must support one-time dashboard handoff exchange.');
@@ -86,8 +87,9 @@ znews_contract_expect(!str_contains($config, 'zpayRegisterUrl'), 'Guest navigati
 znews_contract_expect(str_contains($access, "['create', 'mine', 'balance']"), 'Guest-only route guard must cover creator sections.');
 znews_contract_expect(str_contains($access, 'config.zpayLoginUrl'), 'Guest join action must open the existing Z-Pay login page.');
 znews_contract_expect(str_contains($access, '[data-action="like"]'), 'Guest readers must not receive authenticated like controls.');
-znews_contract_expect(str_contains($serviceWorker, 'zsky24-embedded-shell-v14'), 'Reload-safe embedded PWA cache namespace is missing.');
+znews_contract_expect(str_contains($serviceWorker, 'zsky24-embedded-shell-v15'), 'Weekly-report embedded PWA cache namespace is missing.');
 znews_contract_expect(str_contains($serviceWorker, 'znews-reader.js?v=3'), 'Latest reader module must be cached.');
+znews_contract_expect(str_contains($serviceWorker, 'znews-weekly-review.js?v=1'), 'Creator weekly report module must be cached.');
 znews_contract_expect(str_contains($serviceWorker, "url.pathname.startsWith('/api/')"), 'Service worker must not cache API responses.');
 znews_contract_expect(!str_contains($serviceWorker, 'znews-quick-login.js'), 'Removed login module must not remain in the PWA cache.');
 
