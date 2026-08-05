@@ -1,31 +1,61 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-embedded-shell-v13';
-const SHELL_REVISION = 'single-view-session-1';
+const CACHE_NAME = 'zsky24-embedded-shell-v14';
+const SHELL_REVISION = 'reload-guest-bootstrap-1';
 const SHELL = [
   '/znews/',
   '/znews/index.html',
   '/znews/assets/znews.css?v=4',
   '/znews/assets/znews-premium.css?v=8',
   '/znews/assets/znews-reader.css?v=2',
-  '/znews/assets/znews-config.js?v=6',
-  '/znews/assets/znews-api.js?v=6',
-  '/znews/assets/znews-ads.js?v=1',
-  '/znews/assets/znews-bootstrap.js?v=19',
+  '/znews/assets/znews-config.js?v=7',
+  '/znews/assets/znews-api.js?v=7',
+  '/znews/assets/znews-ads.js?v=2',
+  '/znews/assets/znews-bootstrap.js?v=20',
   '/znews/assets/znews-access.js?v=2',
   '/znews/assets/znews-feed-ui.js?v=1',
   '/znews/assets/znews-profile.js?v=4',
   '/znews/assets/znews-reader.js?v=3',
-  '/znews/assets/znews.js?v=17',
+  '/znews/assets/znews.js?v=18',
   '/znews/assets/znews-header.js?v=2',
   '/znews/assets/znews-creator.js?v=7',
   '/znews/assets/znews-instant-comments.js?v=4',
   '/znews/manifest.webmanifest'
 ];
 
+async function cacheFresh(request) {
+  const response = await fetch(request, { cache: 'no-store' });
+  if (response.ok) {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.put(request, response.clone());
+  }
+  return response;
+}
+
+async function networkFirst(request, fallbackUrl = '') {
+  try {
+    return await cacheFresh(request);
+  } catch (_error) {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    if (fallbackUrl) {
+      const fallback = await caches.match(fallbackUrl);
+      if (fallback) return fallback;
+    }
+    return Response.error();
+  }
+}
+
 self.addEventListener('install', (event) => {
   void SHELL_REVISION;
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)));
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await Promise.allSettled(SHELL.map(async (url) => {
+      const request = new Request(url, { cache: 'reload' });
+      const response = await fetch(request);
+      if (response.ok) await cache.put(request, response);
+    }));
+  })());
   self.skipWaiting();
 });
 
@@ -49,19 +79,10 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
 
   if (request.mode === 'navigate' && url.pathname.startsWith('/znews/')) {
-    event.respondWith(fetch(request).catch(() => caches.match('/znews/index.html')));
+    event.respondWith(networkFirst(request, '/znews/index.html'));
     return;
   }
 
   if (!url.pathname.startsWith('/znews/')) return;
-
-  event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request).then((response) => {
-      if (response.ok) {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
-      }
-      return response;
-    }))
-  );
+  event.respondWith(networkFirst(request));
 });
