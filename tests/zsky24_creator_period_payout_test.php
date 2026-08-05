@@ -33,6 +33,9 @@ $payout = zsky_creator_read('api/znews/lib/creator_payout_batches.php');
 $activeList = zsky_creator_read('api/admin/znews/creators/list.php');
 $statusEndpoint = zsky_creator_read('api/admin/znews/creators/status.php');
 $preflight = zsky_creator_read('api/admin/znews/creators/payout_preflight.php');
+$adminGateway = zsky_creator_read('api/admin/zsky24_creator_admin.php');
+$adminJs = zsky_creator_read('api/admin/assets/zsky24-admin.js');
+$adminCss = zsky_creator_read('api/admin/assets/zsky24-admin.css');
 $ingest = zsky_creator_read('api/znews/ads/impressions/ingest.php');
 $summary = zsky_creator_read('api/znews/balance/summary.php');
 $ledger = zsky_creator_read('api/znews/balance/ledger.php');
@@ -40,7 +43,7 @@ $transfer = zsky_creator_read('api/znews/transfers/create.php');
 $policy = zsky_creator_read('api/znews/public/policy.php');
 $config = zsky_creator_read('znews/assets/znews-config.js');
 
-foreach ([$registry, $viewPolicy, $payout, $activeList, $statusEndpoint, $preflight] as $source) {
+foreach ([$registry, $viewPolicy, $payout, $activeList, $statusEndpoint, $preflight, $adminGateway] as $source) {
     zsky_creator_expect(str_contains($source, 'declare(strict_types=1);'), 'creator system file missing strict types');
 }
 
@@ -74,7 +77,7 @@ zsky_creator_expect(str_contains($payout, 'ZNEWS_PAYOUT_BATCH_LIMIT_EXCEEDED'), 
 zsky_creator_expect(str_contains($payout, "\$creatorStatus !== 'ACTIVE'"), 'blocked creator payout rejection missing');
 zsky_creator_expect(str_contains($payout, "\$accountStatus !== 'ACTIVE'"), 'live inactive Z-Pay account rejection missing');
 zsky_creator_expect(str_contains($payout, "['BDT', 'MYR']"), 'BDT/MYR payout currency support missing');
-zsky_creator_expect(!str_contains($payout, 'wallet_credit_available') && !str_contains($payout, 'fb_patch(\'USER_WALLETS/'), 'preflight performs a wallet credit');
+zsky_creator_expect(!str_contains($payout, 'wallet_credit_available') && !str_contains($payout, "fb_patch('USER_WALLETS/"), 'preflight performs a wallet credit');
 
 zsky_creator_expect(str_contains($activeList, "api_require_method('GET')") && str_contains($activeList, 'auth_require_admin_session(true)'), 'creator list is not admin GET-only');
 zsky_creator_expect(str_contains($activeList, "['ACTIVE', 'BLOCKED']"), 'active/blocked list filter missing');
@@ -82,6 +85,30 @@ zsky_creator_expect(str_contains($statusEndpoint, "api_require_method('POST')") 
 zsky_creator_expect(str_contains($statusEndpoint, 'ZNEWS_CREATOR_BLOCK_REASON_REQUIRED'), 'creator block reason is not required');
 zsky_creator_expect(str_contains($preflight, "api_require_method('POST')") && str_contains($preflight, 'auth_require_admin_session(true)'), 'payout preflight is not admin POST-only');
 zsky_creator_expect(str_contains($preflight, 'znews_creator_payout_batch_preflight'), 'payout endpoint bypasses preflight helper');
+
+zsky_creator_expect(str_contains($adminGateway, "session_name('zawtopup_admin_v3')"), 'creator admin gateway does not reuse the protected dashboard session');
+zsky_creator_expect(str_contains($adminGateway, "\$_SESSION['admin_session_token']"), 'creator admin gateway does not read the server-side admin token');
+zsky_creator_expect(str_contains($adminGateway, "\$_SESSION['admin_csrf']"), 'creator admin gateway does not read the dashboard CSRF token');
+zsky_creator_expect(str_contains($adminGateway, 'hash_equals($storedCsrf, $providedCsrf)'), 'creator admin gateway lacks timing-safe CSRF validation');
+zsky_creator_expect(str_contains($adminGateway, "\$_SERVER['HTTP_X_SESSION_TOKEN'] = \$sessionToken"), 'creator admin gateway does not hand the token to the server auth layer');
+zsky_creator_expect(str_contains($adminGateway, 'auth_require_admin_session(true)'), 'creator admin gateway lacks live admin authorization');
+zsky_creator_expect(str_contains($adminGateway, "\$action === 'creators_list'"), 'creator list gateway action missing');
+zsky_creator_expect(str_contains($adminGateway, "\$action === 'creator_status'"), 'creator status gateway action missing');
+zsky_creator_expect(str_contains($adminGateway, "\$action === 'payout_preflight'"), 'payout preflight gateway action missing');
+zsky_creator_expect(str_contains($adminGateway, 'ZNEWS_CREATOR_BLOCK_REASON_REQUIRED'), 'gateway does not require a block reason');
+zsky_creator_expect(!str_contains($adminGateway, 'wallet_credit_available') && !str_contains($adminGateway, 'wallet_debit_available'), 'creator admin gateway can mutate a wallet');
+
+zsky_creator_expect(str_contains($adminJs, "const BATCH_LIMIT = 5"), 'admin UI batch limit is not five');
+zsky_creator_expect(str_contains($adminJs, "activeStatus: 'ACTIVE'"), 'admin UI active creator tab missing');
+zsky_creator_expect(str_contains($adminJs, 'blockedCreators: []'), 'admin UI blocked creator list missing');
+zsky_creator_expect(str_contains($adminJs, 'selected: new Set()'), 'admin UI duplicate-safe selection missing');
+zsky_creator_expect(str_contains($adminJs, 'data-zsky-creator-tab="ACTIVE"') && str_contains($adminJs, 'data-zsky-creator-tab="BLOCKED"'), 'active/blocked creator tabs missing');
+zsky_creator_expect(str_contains($adminJs, 'data-zsky-block-creator') && str_contains($adminJs, 'data-zsky-unblock-creator'), 'creator block/unblock controls missing');
+zsky_creator_expect(str_contains($adminJs, 'A block reason is required.'), 'admin UI block reason validation missing');
+zsky_creator_expect(str_contains($adminJs, "request('payout_preflight'"), 'admin UI payout preflight call missing');
+zsky_creator_expect(str_contains($adminJs, 'Preview only') && str_contains($adminJs, 'No wallet balance will be changed.'), 'admin UI does not clearly mark payout as preview-only');
+zsky_creator_expect(!str_contains($adminJs, 'wallet_credit_available') && !str_contains($adminJs, 'Approve transfer'), 'admin UI exposes legacy payout execution');
+zsky_creator_expect(str_contains($adminCss, '.zsky-payout-dock') && str_contains($adminCss, '.zsky-preflight-list'), 'creator payout preview styles missing');
 
 zsky_creator_expect(!str_contains($ingest, 'settlements_auto.php'), 'per-impression auto settlement is still loaded');
 zsky_creator_expect(str_contains($ingest, 'DISABLED_PERIOD_REVENUE_PAYOUT'), 'auto-credit disabled status missing');
