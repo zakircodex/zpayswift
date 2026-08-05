@@ -22,9 +22,11 @@ back_guard_expect(str_contains($app, 'history.pushState(') && str_contains($app,
 back_guard_expect(!str_contains($app, 'history.replaceState({ ...current, znewsView: next }'), 'Internal views must not replace their history entry.');
 back_guard_expect(str_contains($app, "toast('Press Back again to return to Z-Pay.')"), 'The guarded exit notice is missing.');
 back_guard_expect(str_contains($app, "button.classList.contains('composer-back')"), 'The composer Back button must use browser history.');
-back_guard_expect(str_contains($bootstrap, 'znews.js?v=17'), 'The guarded app script is not activated.');
-back_guard_expect(str_contains($index, 'znews-bootstrap.js?v=19'), 'The guarded bootstrap is not activated.');
-back_guard_expect(str_contains($embeddedWorker, "zsky24-embedded-shell-v13"), 'The embedded cache namespace is stale.');
-back_guard_expect(str_contains($standaloneWorker, "zsky24-standalone-shell-v13"), 'The standalone cache namespace is stale.');
+back_guard_expect(str_contains($bootstrap, 'znews.js?v=18'), 'The guarded app script is not activated.');
+back_guard_expect(str_contains($index, 'znews-bootstrap.js?v=20'), 'The reload-safe guarded bootstrap is not activated.');
+back_guard_expect(str_contains($embeddedWorker, "zsky24-embedded-shell-v14"), 'The embedded cache namespace is stale.');
+back_guard_expect(str_contains($standaloneWorker, "zsky24-standalone-shell-v14"), 'The standalone cache namespace is stale.');
+back_guard_expect(str_contains($embeddedWorker, 'networkFirst(request'), 'Embedded reload navigation is not network-first.');
+back_guard_expect(str_contains($standaloneWorker, 'networkFirst(request'), 'Standalone reload navigation is not network-first.');
 
 echo "Z Sky 24 back navigation guard checks passed.\n";
