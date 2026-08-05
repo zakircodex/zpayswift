@@ -87,6 +87,7 @@ jobs:
           php tests/zsky24_edit_post_composer_test.php
           php tests/zsky24_creator_period_payout_test.php
           php tests/zsky24_page_responsiveness_test.php
+          php tests/zsky24_reload_guest_boot_test.php
           php -l api/admin/proxy.php >/dev/null
           php -l api/admin/dashboard.php >/dev/null
           php -l api/admin/zsky24_creator_admin.php >/dev/null
