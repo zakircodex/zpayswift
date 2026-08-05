@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $failures = [];
+$weeklyFakeDb = [];
 
 function weekly_expect(bool $condition, string $message): void
 {
@@ -19,12 +20,18 @@ function weekly_source(string $relative): string
     return is_string($value) ? $value : '';
 }
 
-// Minimal stubs for side-effect-free period/share unit tests.
+// Minimal stubs for side-effect-free period/share/counting unit tests.
 function znews_now(): int { return 1786320000; }
 function znews_firebase_key($value, string $field = 'id', int $maxLength = 160): string { return trim((string)$value); }
 function znews_creator_normalize_status($value): string {
     $status = strtoupper(trim((string)$value));
     return in_array($status, ['ACTIVE', 'BLOCKED'], true) ? $status : 'ACTIVE';
+}
+function znews_view_path(string $viewId): string { return 'ZNEWS_VIEW_SESSIONS/' . trim($viewId); }
+function znews_view_risk_threshold(): int { return 70; }
+function fb_get(string $path) {
+    global $weeklyFakeDb;
+    return $weeklyFakeDb[$path] ?? null;
 }
 
 require_once $root . '/api/znews/lib/creator_weekly_reviews.php';
@@ -36,6 +43,14 @@ weekly_expect(($period['period_end_at'] ?? 0) === strtotime('2026-08-10 00:00:00
 weekly_expect(!empty($period['completed']), 'The completed week must be marked completed.');
 weekly_expect(empty(znews_weekly_review_period('2026-08-04')['ok']), 'A non-Monday period ID must be rejected.');
 
+$liveAnchor = strtotime('2026-08-05 16:15:00 UTC');
+$currentPeriod = znews_weekly_review_period('', $liveAnchor, false);
+$previousPeriod = znews_weekly_review_period('', $liveAnchor, true);
+weekly_expect(($currentPeriod['period_id'] ?? '') === '2026-08-03', 'Current UTC week boundary is incorrect.');
+weekly_expect(empty($currentPeriod['completed']), 'The open current week must not be marked completed.');
+weekly_expect(($previousPeriod['period_id'] ?? '') === '2026-07-27', 'Previous completed UTC week boundary is incorrect.');
+weekly_expect(!empty($previousPeriod['completed']), 'Previous week must be completed at the live audit anchor.');
+
 $shareRows = [
     ['creator_uid' => 'A', 'eligible_views' => 100],
     ['creator_uid' => 'B', 'eligible_views' => 50],
@@ -45,10 +60,83 @@ weekly_expect(array_sum(array_column($shareRows, 'traffic_share_ppm')) === 10000
 weekly_expect(($shareRows[0]['traffic_share_ppm'] ?? 0) === 666667, 'Largest-remainder allocation for creator A is incorrect.');
 weekly_expect(($shareRows[1]['traffic_share_ppm'] ?? 0) === 333333, 'Largest-remainder allocation for creator B is incorrect.');
 
+$start = (int)$period['period_start_at'];
+$end = (int)$period['period_end_at'];
+$weeklyFakeDb = [
+    'ZNEWS_USER_POSTS/creator-a' => [
+        'post-1' => ['post_id' => 'post-1', 'created_at' => $start + 60],
+    ],
+    'ZNEWS_POST_VIEWS/post-1' => [
+        'valid-guest' => ['view_id' => 'valid-guest', 'created_at' => $start + 100],
+        'creator-self' => ['view_id' => 'creator-self', 'created_at' => $start + 200],
+        'duplicate-guest' => ['view_id' => 'duplicate-guest', 'created_at' => $start + 300],
+        'spam-guest' => ['view_id' => 'spam-guest', 'created_at' => $start + 400],
+        'pending-guest' => ['view_id' => 'pending-guest', 'created_at' => $start + 500],
+        'future-guest' => ['view_id' => 'future-guest', 'created_at' => $end + 100],
+    ],
+    'ZNEWS_VIEW_SESSIONS/valid-guest' => [
+        'view_id' => 'valid-guest', 'status' => 'COMPLETED', 'result' => 'VALID',
+        'viewer_uid' => '', 'self_view' => false, 'duplicate' => false,
+        'bot_detected' => false, 'guest_spam' => false, 'revenue_share_eligible' => true,
+        'risk_score' => 10, 'active_seconds' => 25,
+        'created_at' => $start + 100, 'completed_at' => $start + 130,
+    ],
+    'ZNEWS_VIEW_SESSIONS/creator-self' => [
+        'view_id' => 'creator-self', 'status' => 'COMPLETED', 'result' => 'VALID',
+        'viewer_uid' => 'creator-a', 'viewer_class' => 'CREATOR', 'self_view' => true,
+        'duplicate' => false, 'bot_detected' => false, 'guest_spam' => false,
+        'revenue_share_eligible' => false, 'risk_score' => 0, 'active_seconds' => 30,
+        'created_at' => $start + 200, 'completed_at' => $start + 240,
+    ],
+    'ZNEWS_VIEW_SESSIONS/duplicate-guest' => [
+        'view_id' => 'duplicate-guest', 'status' => 'COMPLETED', 'result' => 'SUSPICIOUS',
+        'viewer_uid' => '', 'self_view' => false, 'duplicate' => true,
+        'bot_detected' => false, 'guest_spam' => false, 'revenue_share_eligible' => true,
+        'risk_score' => 60, 'active_seconds' => 20,
+        'created_at' => $start + 300, 'completed_at' => $start + 330,
+    ],
+    'ZNEWS_VIEW_SESSIONS/spam-guest' => [
+        'view_id' => 'spam-guest', 'status' => 'BLOCKED', 'result' => 'INVALID',
+        'viewer_uid' => '', 'self_view' => false, 'duplicate' => false,
+        'bot_detected' => false, 'guest_spam' => true, 'revenue_share_eligible' => false,
+        'risk_score' => 100, 'risk_reasons' => ['GUEST_VIEW_WINDOW_LIMIT_EXCEEDED'],
+        'active_seconds' => 0, 'created_at' => $start + 400, 'completed_at' => $start + 401,
+    ],
+    'ZNEWS_VIEW_SESSIONS/pending-guest' => [
+        'view_id' => 'pending-guest', 'status' => 'STARTED', 'result' => 'PENDING',
+        'viewer_uid' => '', 'self_view' => false, 'duplicate' => false,
+        'bot_detected' => false, 'guest_spam' => false, 'revenue_share_eligible' => true,
+        'risk_score' => 5, 'active_seconds' => 5,
+        'created_at' => $start + 500, 'completed_at' => 0,
+    ],
+    'ZNEWS_VIEW_SESSIONS/future-guest' => [
+        'view_id' => 'future-guest', 'status' => 'COMPLETED', 'result' => 'VALID',
+        'viewer_uid' => '', 'self_view' => false, 'duplicate' => false,
+        'bot_detected' => false, 'guest_spam' => false, 'revenue_share_eligible' => true,
+        'risk_score' => 0, 'active_seconds' => 30,
+        'created_at' => $end + 100, 'completed_at' => $end + 140,
+    ],
+];
+
+$metricsResult = znews_weekly_review_creator_metrics('creator-a', $period);
+$metrics = (array)($metricsResult['metrics'] ?? []);
+weekly_expect(!empty($metricsResult['ok']), 'Weekly view metrics fixture failed to calculate.');
+weekly_expect(($metrics['post_count'] ?? -1) === 1, 'Post count must include posts created inside the selected UTC week.');
+weekly_expect(($metrics['raw_views'] ?? -1) === 5, 'Raw views must include only view sessions inside the selected UTC week.');
+weekly_expect(($metrics['eligible_views'] ?? -1) === 1, 'One valid guest view must be eligible.');
+weekly_expect(($metrics['invalid_views'] ?? -1) === 2, 'Duplicate and spam guest views must be invalid.');
+weekly_expect(($metrics['spam_views'] ?? -1) === 1, 'Guest window spam must be counted separately.');
+weekly_expect(($metrics['duplicate_views'] ?? -1) === 1, 'Duplicate views must be counted separately.');
+weekly_expect(($metrics['creator_views_excluded'] ?? -1) === 1, 'Authenticated creator views must be excluded.');
+weekly_expect(($metrics['self_views_excluded'] ?? -1) === 1, 'Creator self-view must be excluded.');
+weekly_expect(($metrics['pending_views'] ?? -1) === 1, 'Incomplete view sessions must remain pending.');
+weekly_expect(($metricsResult['source_view_count'] ?? -1) === 6, 'Source audit count must include the future record before period filtering.');
+
 $engine = weekly_source('api/znews/lib/creator_weekly_reviews.php');
 $mine = weekly_source('api/znews/reviews/mine.php');
 $gateway = weekly_source('api/admin/zsky24_creator_admin.php');
 $adminJs = weekly_source('api/admin/assets/zsky24-admin.js');
+$adminCss = weekly_source('api/admin/assets/zsky24-admin.css');
 $index = weekly_source('znews/index.html');
 $weeklyJs = weekly_source('znews/assets/znews-weekly-review.js');
 $embeddedWorker = weekly_source('znews/sw.js');
@@ -97,6 +185,11 @@ foreach (['Weekly reviews', 'Generate review', 'Raw / eligible', 'Invalid / spam
 }
 weekly_expect(str_contains($adminJs, 'BATCH_LIMIT = 5'), 'Five-creator payout preview limit changed.');
 weekly_expect(str_contains($adminJs, 'No revenue, balance or payout amount is calculated here.'), 'Admin UI must state that weekly review has no money calculation.');
+weekly_expect(str_contains($adminCss, '.zsky-weekly-stat,.zsky-weekly-status{display:grid;gap:5px'), 'Weekly labels and values are not separated into readable blocks.');
+weekly_expect(str_contains($adminCss, '.zsky-status-review::after{content:"Under review"'), 'Machine review status is not humanized on the mobile card.');
+weekly_expect(str_contains($adminCss, 'Current-week activity appears after that UTC week closes.'), 'Completed-week scope note is missing from the admin UI.');
+weekly_expect(str_contains($adminCss, '.zsky-admin-hero{flex-direction:column;align-items:stretch'), 'Mobile creator-control hero does not stack cleanly.');
+weekly_expect(str_contains($adminCss, '.zsky-weekly-row .zsky-admin-actions{display:grid;grid-template-columns:1fr 1fr'), 'Mobile review actions are not aligned equally.');
 
 weekly_expect(str_contains($index, '>Weekly performance<'), 'Creator menu does not expose weekly performance.');
 weekly_expect(str_contains($index, 'Creator review policy'), 'Creator review policy page is missing.');
