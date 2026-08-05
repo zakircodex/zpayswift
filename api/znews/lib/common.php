@@ -174,6 +174,10 @@ function znews_require_creator(bool $touchSession = true): array
         api_response(false, 'ZNEWS_ROLE_NOT_ALLOWED', 'This account cannot publish Z Sky 24 posts.', [], 403);
     }
 
+    if (function_exists('znews_creator_registry_require_active')) {
+        znews_creator_registry_require_active($auth);
+    }
+
     return $auth;
 }
 
