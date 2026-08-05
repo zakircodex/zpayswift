@@ -15,10 +15,24 @@ $idempotencyKey = znews_idempotency_key(
     ?? ''
 );
 $viewerUid = znews_optional_creator_uid();
-$viewGate = znews_creator_view_gate($viewerUid);
 
 $result = znews_view_start_v2($postId, $idempotencyKey, $viewerUid);
-$result = znews_creator_view_policy_apply($result, $viewGate);
+$viewGate = [
+    'viewer_class' => $viewerUid !== '' ? 'CREATOR' : 'GUEST',
+    'ad_eligible' => false,
+    'revenue_share_eligible' => false,
+    'spam' => false,
+    'count' => 0,
+    'limit' => znews_guest_view_window_limit(),
+    'window_seconds' => znews_guest_view_window_seconds(),
+    'next_allowed_at' => 0,
+    'reason' => 'VIEW_SESSION_NOT_STARTED',
+    'idempotent_replay' => false,
+];
+if (is_array($result['session'] ?? null)) {
+    $viewGate = znews_creator_view_gate($viewerUid, $postId, $idempotencyKey);
+    $result = znews_creator_view_policy_apply($result, $viewGate);
+}
 
 api_response(
     !empty($result['ok']),
@@ -37,6 +51,7 @@ api_response(
             'window_seconds' => max(1, (int)($viewGate['window_seconds'] ?? 300)),
             'next_allowed_at' => max(0, (int)($viewGate['next_allowed_at'] ?? 0)),
             'reason' => trim((string)($viewGate['reason'] ?? '')),
+            'idempotent_replay' => !empty($viewGate['idempotent_replay']),
         ],
     ], static fn($value) => $value !== null),
     (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 500))
