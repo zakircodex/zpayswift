@@ -88,10 +88,14 @@ jobs:
           php tests/zsky24_creator_period_payout_test.php
           php tests/zsky24_page_responsiveness_test.php
           php tests/zsky24_reload_guest_boot_test.php
+          php tests/zsky24_weekly_creator_review_test.php
           php -l api/admin/proxy.php >/dev/null
           php -l api/admin/dashboard.php >/dev/null
           php -l api/admin/zsky24_creator_admin.php >/dev/null
+          php -l api/znews/lib/creator_weekly_reviews.php >/dev/null
+          php -l api/znews/reviews/mine.php >/dev/null
           node --check api/admin/assets/zsky24-admin.js
+          node --check znews/assets/znews-weekly-review.js
           find api/znews api/admin/znews -type f -name '*.php' -print0 \
             | sort -z \
             | xargs -0 -n1 php -l >/dev/null
@@ -122,6 +126,10 @@ jobs:
           test -f deployment/api/znews/lib/creator_registry.php
           test -f deployment/api/znews/lib/creator_view_policy.php
           test -f deployment/api/znews/lib/creator_payout_batches.php
+          test -f deployment/api/znews/lib/creator_weekly_reviews.php
+          test -f deployment/api/znews/reviews/mine.php
+          test -f deployment/znews/assets/znews-weekly-review.js
+          test -f deployment/znews/assets/znews-weekly-review.css
 
           if find deployment -type f \
             ! -path 'deployment/api/support/config.php' \
