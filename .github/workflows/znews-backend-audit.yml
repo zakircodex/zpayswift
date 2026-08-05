@@ -21,6 +21,7 @@ on:
       - 'tests/zsky24_*_test.php'
       - '.cpanel.yml'
       - '.github/workflows/znews-backend-audit.yml'
+      - '.github/workflows/cpanel-production-deploy.yml'
   pull_request:
     branches:
       - main
@@ -37,6 +38,7 @@ on:
       - 'tests/zsky24_*_test.php'
       - '.cpanel.yml'
       - '.github/workflows/znews-backend-audit.yml'
+      - '.github/workflows/cpanel-production-deploy.yml'
   workflow_dispatch:
 
 permissions:
@@ -117,6 +119,8 @@ jobs:
             file: tests/znews_web_ui_foundation_test.php
           - id: creator-period-payout
             file: tests/zsky24_creator_period_payout_test.php
+          - id: production-deploy-contract
+            file: tests/zsky24_production_deploy_contract_test.php
           - id: zsky24-dual-domain
             file: tests/zsky24_dual_domain_test.php
           - id: zsky24-profile-photo-origin
