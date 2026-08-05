@@ -11,6 +11,8 @@ on:
     paths:
       - 'api/znews/**'
       - 'api/admin/znews/**'
+      - 'api/admin/zsky24_creator_admin.php'
+      - 'api/admin/assets/zsky24-admin.*'
       - 'api/lib/firebase.php'
       - 'znews/**'
       - 'docs/znews-*.md'
@@ -25,6 +27,8 @@ on:
     paths:
       - 'api/znews/**'
       - 'api/admin/znews/**'
+      - 'api/admin/zsky24_creator_admin.php'
+      - 'api/admin/assets/zsky24-admin.*'
       - 'api/lib/firebase.php'
       - 'znews/**'
       - 'docs/znews-*.md'
@@ -60,7 +64,7 @@ jobs:
           set -euo pipefail
           mapfile -d '' files < <(find api/znews api/admin/znews tests -type f -name '*.php' -print0 | sort -z)
           files+=(api/lib/firebase.php)
-          files+=(api/admin/proxy.php api/admin/dashboard.php)
+          files+=(api/admin/proxy.php api/admin/dashboard.php api/admin/zsky24_creator_admin.php)
           files+=(tools/zsky24_controlled_ad_test.php)
           files+=(tools/zsky24_auto_settlement_retry.php)
           [ "${#files[@]}" -gt 0 ]
