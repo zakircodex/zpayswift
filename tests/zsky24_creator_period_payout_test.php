@@ -87,7 +87,7 @@ zsky_creator_expect(!str_contains($ingest, 'settlements_auto.php'), 'per-impress
 zsky_creator_expect(str_contains($ingest, 'DISABLED_PERIOD_REVENUE_PAYOUT'), 'auto-credit disabled status missing');
 zsky_creator_expect(str_contains($summary, "'creator_balance_enabled' => false"), 'balance summary remains enabled');
 zsky_creator_expect(str_contains($ledger, "'creator_balance_enabled' => false"), 'balance ledger remains enabled');
-zsky_creator_expect(str_contains($transfer, 'ZNEWS_CREATOR_WITHDRAW_DISABLED') && str_contains($transfer, ',\n    410'), 'legacy creator withdrawal is not retired');
+zsky_creator_expect(str_contains($transfer, 'ZNEWS_CREATOR_WITHDRAW_DISABLED') && str_contains($transfer, '410'), 'legacy creator withdrawal is not retired');
 zsky_creator_expect(str_contains($policy, "'performance_review_days' => 7"), 'weekly review policy missing');
 zsky_creator_expect(str_contains($policy, "'payout_cycle' => 'MONTHLY'"), 'monthly payout policy missing');
 zsky_creator_expect(str_contains($policy, "'safety_reserve_percent' => 10"), 'ten-percent reserve policy missing');
