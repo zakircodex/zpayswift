@@ -19,10 +19,13 @@ $expect(str_contains($config, "raw.startsWith('/uploads/profile/photos/')"), 'Le
 $expect(str_contains($config, 'resolveProfilePhotoUrl'), 'Shared profile-photo resolver is missing.');
 $index = $read('znews/index.html');
 $app = $read('znews/assets/znews.js');
+$bootstrap = $read('znews/assets/znews-bootstrap.js');
 $rootRewrite = $read('.htaccess');
-$expect(str_contains($index, 'znews-config.js?v=6'), 'Profile-photo config cachebuster is missing.');
-$expect(str_contains($index, 'znews-bootstrap.js?v=19'), 'Bootstrap cachebuster is missing.');
-$expect(str_contains($app, "updateViaCache: 'none'"), 'Service-worker update may reuse a stale HTTP cache.');
+$expect(str_contains($index, 'znews-config.js?v=7'), 'Profile-photo config cachebuster is missing.');
+$expect(str_contains($index, 'znews-bootstrap.js?v=20'), 'Reload-safe bootstrap cachebuster is missing.');
+$expect(str_contains($bootstrap, "updateViaCache: 'none'"), 'Early service-worker update may reuse a stale HTTP cache.');
+$expect(str_contains($bootstrap, 'await registration.update()'), 'Service-worker update is not requested during bootstrap.');
+$expect(str_contains($app, "updateViaCache: 'none'"), 'Late service-worker fallback may reuse a stale HTTP cache.');
 $expect(str_contains($rootRewrite, 'no-cache, no-store, must-revalidate'), 'Service-worker no-cache response policy is missing.');
 
 foreach ([

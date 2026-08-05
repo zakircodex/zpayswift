@@ -16,6 +16,7 @@
       this.config = config;
       this.sessionToken = sessionStorage.getItem(config.sessionStorageKey) || '';
       this.profile = this.readStoredProfile();
+      this.defaultTimeoutMs = Math.max(3000, Number(config.requestTimeoutMs || 12000));
     }
 
     readStoredProfile() {
@@ -68,7 +69,8 @@
       params = null,
       authenticated = false,
       appKey = true,
-      signal = undefined
+      signal = undefined,
+      timeoutMs = this.defaultTimeoutMs
     } = {}) {
       const headers = new Headers({ Accept: 'application/json' });
       let requestBody = body;
@@ -91,6 +93,25 @@
         requestBody = JSON.stringify(body);
       }
 
+      const controller = new AbortController();
+      const boundedTimeout = Math.max(1000, Number(timeoutMs || this.defaultTimeoutMs));
+      let timedOut = false;
+      let detachExternalAbort = () => {};
+      const timeoutId = window.setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, boundedTimeout);
+
+      if (signal) {
+        if (signal.aborted) {
+          controller.abort();
+        } else {
+          const forwardAbort = () => controller.abort();
+          signal.addEventListener('abort', forwardAbort, { once: true });
+          detachExternalAbort = () => signal.removeEventListener('abort', forwardAbort);
+        }
+      }
+
       let response;
       try {
         response = await fetch(this.url(path, params), {
@@ -99,12 +120,25 @@
           body: requestBody,
           credentials: 'same-origin',
           cache: method === 'GET' ? 'no-store' : 'default',
-          signal
+          signal: controller.signal
         });
-      } catch (_error) {
+      } catch (error) {
+        if (timedOut) {
+          throw new ZNewsApiError('The request timed out. Please try again.', {
+            code: 'REQUEST_TIMEOUT'
+          });
+        }
+        if (error?.name === 'AbortError') {
+          throw new ZNewsApiError('The request was cancelled.', {
+            code: 'REQUEST_CANCELLED'
+          });
+        }
         throw new ZNewsApiError('Network connection failed.', {
           code: 'NETWORK_FAILURE'
         });
+      } finally {
+        window.clearTimeout(timeoutId);
+        detachExternalAbort();
       }
 
       const contentType = response.headers.get('content-type') || '';
@@ -143,18 +177,22 @@
       return payload;
     }
 
-    exchangeHandoff(code) {
+    exchangeHandoff(code, options = {}) {
       return this.request('znews/auth/handoff.php', {
         method: 'POST',
         body: { code },
-        appKey: true
+        appKey: true,
+        timeoutMs: 15000,
+        ...options
       });
     }
 
-    validateCreatorSession() {
+    validateCreatorSession(options = {}) {
       return this.request('znews/auth/session.php', {
         authenticated: true,
-        appKey: true
+        appKey: true,
+        timeoutMs: 6000,
+        ...options
       });
     }
 
@@ -188,7 +226,7 @@
       body.append('image', file);
       body.append('idempotency_key', this.idempotencyKey('media'));
       return this.request('znews/media/upload.php', {
-        method: 'POST', body, authenticated: true
+        method: 'POST', body, authenticated: true, timeoutMs: 30000
       });
     }
 
