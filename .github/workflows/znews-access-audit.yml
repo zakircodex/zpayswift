@@ -56,6 +56,8 @@ jobs:
         run: php tests/znews_web_ui_foundation_test.php
       - name: Creator period payout and eligibility
         run: php tests/zsky24_creator_period_payout_test.php
+      - name: Production deploy contract
+        run: php tests/zsky24_production_deploy_contract_test.php
       - name: Social engagement regression
         run: php tests/znews_social_engagement_test.php
       - name: Z Sky 24 dual-domain security
