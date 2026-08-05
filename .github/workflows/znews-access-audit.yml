@@ -32,6 +32,7 @@ jobs:
           php -l api/znews/lib/creator_view_policy.php
           php -l api/znews/lib/creator_payout_batches.php
           php -l api/znews/views/start.php
+          php -l api/admin/zsky24_creator_admin.php
           php -l api/admin/znews/creators/list.php
           php -l api/admin/znews/creators/status.php
           php -l api/admin/znews/creators/payout_preflight.php
