@@ -59,13 +59,15 @@ if ($method === 'POST') {
     }
 }
 
-// The dashboard token remains HttpOnly. Expose it only to the server-side auth layer.
+// Keep the protected dashboard token server-side; never expose it to browser JavaScript.
 $_SERVER['HTTP_X_SESSION_TOKEN'] = $sessionToken;
 @session_write_close();
 
 require_once dirname(__DIR__) . '/znews/bootstrap.php';
+require_once dirname(__DIR__) . '/znews/lib/views.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_registry.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_payout_batches.php';
+require_once dirname(__DIR__) . '/znews/lib/creator_weekly_reviews.php';
 
 $auth = auth_require_admin_session(true);
 $admin = is_array($auth['user'] ?? null) ? (array)$auth['user'] : [];
@@ -86,6 +88,36 @@ if ($action === 'creators_list') {
         'ZNEWS_CREATOR_LIST_OK',
         'Creator list loaded.',
         znews_creator_registry_list($status, $limit)
+    );
+}
+
+if ($action === 'weekly_periods') {
+    if ($method !== 'GET') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Weekly period list is GET-only.', [], 405);
+    }
+    $previous = znews_weekly_review_period('', null, true);
+    zsky24_admin_gateway_response(true, 'ZNEWS_WEEKLY_PERIODS_OK', 'Weekly review periods loaded.', [
+        'default_period' => $previous,
+        'items' => znews_weekly_review_list_periods(max(1, min(52, (int)($_GET['limit'] ?? 12)))),
+    ]);
+}
+
+if ($action === 'weekly_review') {
+    if ($method !== 'GET') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Weekly review is GET-only.', [], 405);
+    }
+    $periodId = trim((string)($_GET['period_id'] ?? ''));
+    if ($periodId === '') {
+        $default = znews_weekly_review_period('', null, true);
+        $periodId = (string)($default['period_id'] ?? '');
+    }
+    $result = znews_weekly_review_get_period($periodId);
+    zsky24_admin_gateway_response(
+        !empty($result['ok']),
+        (string)($result['code'] ?? (!empty($result['ok']) ? 'ZNEWS_WEEKLY_REVIEW_OK' : 'ZNEWS_WEEKLY_REVIEW_FAILED')),
+        !empty($result['ok']) ? 'Weekly review loaded.' : 'Weekly review was not found.',
+        $result,
+        (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 404))
     );
 }
 
@@ -136,6 +168,46 @@ if ($action === 'payout_preflight') {
         (string)($result['message'] ?? 'Payout preflight failed.'),
         $result,
         (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 422))
+    );
+}
+
+if ($action === 'weekly_generate') {
+    if ($method !== 'POST') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Weekly review generation is POST-only.', [], 405);
+    }
+    $periodId = trim((string)($body['period_id'] ?? ''));
+    if ($periodId === '') {
+        $default = znews_weekly_review_period('', null, true);
+        $periodId = (string)($default['period_id'] ?? '');
+    }
+    $result = znews_weekly_review_generate($periodId, $adminUid);
+    zsky24_admin_gateway_response(
+        !empty($result['ok']),
+        (string)($result['code'] ?? 'ZNEWS_WEEKLY_REVIEW_GENERATE_FAILED'),
+        !empty($result['ok']) ? 'Weekly creator review generated.' : 'Weekly creator review could not be generated.',
+        $result,
+        (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 500))
+    );
+}
+
+if ($action === 'weekly_status') {
+    if ($method !== 'POST') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Weekly review status is POST-only.', [], 405);
+    }
+    $periodId = trim((string)($body['period_id'] ?? ''));
+    $creatorUid = trim((string)($body['creator_uid'] ?? ''));
+    $status = strtoupper(trim((string)($body['status'] ?? '')));
+    $reason = trim((string)($body['reason'] ?? ''));
+    if ($periodId === '' || $creatorUid === '') {
+        zsky24_admin_gateway_response(false, 'ZNEWS_WEEKLY_REVIEW_TARGET_REQUIRED', 'Period and creator are required.', [], 422);
+    }
+    $result = znews_weekly_review_set_status($periodId, $creatorUid, $status, $reason, $adminUid);
+    zsky24_admin_gateway_response(
+        !empty($result['ok']),
+        (string)($result['code'] ?? (!empty($result['ok']) ? 'ZNEWS_WEEKLY_REVIEW_UPDATED' : 'ZNEWS_WEEKLY_REVIEW_UPDATE_FAILED')),
+        !empty($result['ok']) ? 'Weekly creator review updated.' : 'Weekly creator review could not be updated.',
+        $result,
+        (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 500))
     );
 }
 
