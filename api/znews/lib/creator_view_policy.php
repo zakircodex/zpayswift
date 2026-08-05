@@ -27,9 +27,49 @@ function znews_guest_view_window_path(string $fingerprint): string
     return 'ZNEWS_GUEST_VIEW_WINDOWS/' . znews_firebase_key($fingerprint, 'fingerprint');
 }
 
-function znews_guest_view_window_claim(string $fingerprint, int $now): array
-{
+function znews_guest_view_window_result(
+    bool $ok,
+    bool $allowed,
+    int $count,
+    int $limit,
+    int $window,
+    int $nextAllowedAt,
+    string $reason,
+    bool $idempotentReplay = false
+): array {
+    return [
+        'ok' => $ok,
+        'allowed' => $allowed,
+        'spam' => !$allowed,
+        'count' => max(0, $count),
+        'limit' => max(1, $limit),
+        'window_seconds' => max(1, $window),
+        'next_allowed_at' => max(0, $nextAllowedAt),
+        'reason' => $reason,
+        'idempotent_replay' => $idempotentReplay,
+    ];
+}
+
+function znews_guest_view_window_claim(
+    string $fingerprint,
+    int $now,
+    string $eventKey
+): array {
     $fingerprint = znews_firebase_key($fingerprint, 'fingerprint');
+    $eventKey = trim($eventKey);
+    if ($eventKey === '') {
+        return znews_guest_view_window_result(
+            false,
+            false,
+            0,
+            znews_guest_view_window_limit(),
+            znews_guest_view_window_seconds(),
+            0,
+            'GUEST_VIEW_EVENT_KEY_REQUIRED'
+        );
+    }
+
+    $eventHash = hash('sha256', $eventKey);
     $window = znews_guest_view_window_seconds();
     $limit = znews_guest_view_window_limit();
     $cutoff = $now - $window;
@@ -38,40 +78,85 @@ function znews_guest_view_window_claim(string $fingerprint, int $now): array
     for ($attempt = 0; $attempt < 8; $attempt++) {
         $read = fb_get_with_etag($path);
         if (empty($read['ok']) || !is_string($read['etag'] ?? null)) {
-            return [
-                'ok' => false,
-                'allowed' => false,
-                'spam' => true,
-                'count' => 0,
-                'limit' => $limit,
-                'window_seconds' => $window,
-                'reason' => 'GUEST_VIEW_WINDOW_UNAVAILABLE',
-            ];
+            return znews_guest_view_window_result(
+                false,
+                false,
+                0,
+                $limit,
+                $window,
+                0,
+                'GUEST_VIEW_WINDOW_UNAVAILABLE'
+            );
         }
 
         $row = is_array($read['value'] ?? null) ? (array)$read['value'] : [];
-        $timestamps = [];
-        foreach ((array)($row['timestamps'] ?? []) as $timestamp) {
-            $timestamp = (int)$timestamp;
-            if ($timestamp > $cutoff && $timestamp <= $now) {
-                $timestamps[] = $timestamp;
+        $events = [];
+        foreach ((array)($row['events'] ?? []) as $savedHash => $savedEvent) {
+            if (!is_array($savedEvent)) {
+                continue;
             }
-        }
-        $timestamps[] = $now;
-        sort($timestamps, SORT_NUMERIC);
-        if (count($timestamps) > 20) {
-            $timestamps = array_slice($timestamps, -20);
+            $createdAt = (int)($savedEvent['created_at'] ?? 0);
+            if ($createdAt <= $cutoff || $createdAt > $now) {
+                continue;
+            }
+            $events[(string)$savedHash] = [
+                'created_at' => $createdAt,
+                'allowed' => !empty($savedEvent['allowed']),
+                'sequence' => max(1, (int)($savedEvent['sequence'] ?? 1)),
+            ];
         }
 
-        $count = count($timestamps);
-        $allowed = $count <= $limit;
+        if (isset($events[$eventHash])) {
+            $saved = (array)$events[$eventHash];
+            $timestamps = array_map(
+                static fn(array $event): int => (int)$event['created_at'],
+                array_values($events)
+            );
+            sort($timestamps, SORT_NUMERIC);
+            $nextAllowedAt = empty($saved['allowed']) && isset($timestamps[0])
+                ? ((int)$timestamps[0] + $window)
+                : 0;
+
+            return znews_guest_view_window_result(
+                true,
+                !empty($saved['allowed']),
+                max(1, (int)($saved['sequence'] ?? count($events))),
+                $limit,
+                $window,
+                $nextAllowedAt,
+                !empty($saved['allowed']) ? '' : 'GUEST_VIEW_WINDOW_LIMIT_EXCEEDED',
+                true
+            );
+        }
+
+        $sequence = count($events) + 1;
+        $allowed = $sequence <= $limit;
+        $events[$eventHash] = [
+            'created_at' => $now,
+            'allowed' => $allowed,
+            'sequence' => $sequence,
+        ];
+
+        uasort($events, static fn(array $a, array $b): int =>
+            ((int)$a['created_at']) <=> ((int)$b['created_at'])
+        );
+        if (count($events) > 20) {
+            $events = array_slice($events, -20, null, true);
+        }
+
+        $timestamps = array_map(
+            static fn(array $event): int => (int)$event['created_at'],
+            array_values($events)
+        );
+        sort($timestamps, SORT_NUMERIC);
         $nextAllowedAt = !$allowed && isset($timestamps[0])
             ? ((int)$timestamps[0] + $window)
             : 0;
         $next = [
             'fingerprint_hash' => $fingerprint,
+            'events' => $events,
             'timestamps' => array_values($timestamps),
-            'count' => $count,
+            'count' => count($events),
             'limit' => $limit,
             'window_seconds' => $window,
             'spam_count' => max(0, (int)($row['spam_count'] ?? 0)) + ($allowed ? 0 : 1),
@@ -87,42 +172,44 @@ function znews_guest_view_window_claim(string $fingerprint, int $now): array
             continue;
         }
         if (empty($write['ok'])) {
-            return [
-                'ok' => false,
-                'allowed' => false,
-                'spam' => true,
-                'count' => $count,
-                'limit' => $limit,
-                'window_seconds' => $window,
-                'reason' => 'GUEST_VIEW_WINDOW_WRITE_FAILED',
-            ];
+            return znews_guest_view_window_result(
+                false,
+                false,
+                $sequence,
+                $limit,
+                $window,
+                0,
+                'GUEST_VIEW_WINDOW_WRITE_FAILED'
+            );
         }
 
-        return [
-            'ok' => true,
-            'allowed' => $allowed,
-            'spam' => !$allowed,
-            'count' => $count,
-            'limit' => $limit,
-            'window_seconds' => $window,
-            'next_allowed_at' => $nextAllowedAt,
-            'reason' => $allowed ? '' : 'GUEST_VIEW_WINDOW_LIMIT_EXCEEDED',
-        ];
+        return znews_guest_view_window_result(
+            true,
+            $allowed,
+            $sequence,
+            $limit,
+            $window,
+            $nextAllowedAt,
+            $allowed ? '' : 'GUEST_VIEW_WINDOW_LIMIT_EXCEEDED'
+        );
     }
 
-    return [
-        'ok' => false,
-        'allowed' => false,
-        'spam' => true,
-        'count' => 0,
-        'limit' => $limit,
-        'window_seconds' => $window,
-        'reason' => 'GUEST_VIEW_WINDOW_BUSY',
-    ];
+    return znews_guest_view_window_result(
+        false,
+        false,
+        0,
+        $limit,
+        $window,
+        0,
+        'GUEST_VIEW_WINDOW_BUSY'
+    );
 }
 
-function znews_creator_view_gate(string $viewerUid): array
-{
+function znews_creator_view_gate(
+    string $viewerUid,
+    string $postId,
+    string $idempotencyKey
+): array {
     $viewerUid = trim($viewerUid);
     if ($viewerUid !== '') {
         return [
@@ -133,12 +220,21 @@ function znews_creator_view_gate(string $viewerUid): array
             'count' => 0,
             'limit' => znews_guest_view_window_limit(),
             'window_seconds' => znews_guest_view_window_seconds(),
+            'next_allowed_at' => 0,
             'reason' => 'AUTHENTICATED_CREATOR_NO_ADS',
+            'idempotent_replay' => false,
         ];
     }
 
+    $postId = znews_firebase_key($postId, 'post_id');
+    $idempotencyKey = znews_idempotency_key($idempotencyKey);
     $context = znews_view_context();
-    $claim = znews_guest_view_window_claim((string)$context['fingerprint'], znews_now());
+    $eventKey = $postId . '|' . $idempotencyKey;
+    $claim = znews_guest_view_window_claim(
+        (string)$context['fingerprint'],
+        znews_now(),
+        $eventKey
+    );
     $allowed = !empty($claim['ok']) && !empty($claim['allowed']);
 
     return array_merge($claim, [
@@ -164,6 +260,7 @@ function znews_creator_view_policy_apply(array $result, array $gate): array
         'guest_spam' => !empty($gate['spam']),
         'ad_block_reason' => trim((string)($gate['reason'] ?? '')),
         'next_ad_allowed_at' => max(0, (int)($gate['next_allowed_at'] ?? 0)),
+        'ad_policy_idempotent_replay' => !empty($gate['idempotent_replay']),
     ];
 
     if ($viewId !== '') {
