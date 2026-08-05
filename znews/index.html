@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="/znews/assets/znews.css?v=4">
   <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=8">
   <link rel="stylesheet" href="/znews/assets/znews-reader.css?v=2">
+  <link rel="stylesheet" href="/znews/assets/znews-weekly-review.css?v=1">
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -57,7 +58,7 @@
       <button type="button" data-menu-route="feed"><span>⌂</span><strong>News feed</strong></button>
       <button type="button" data-menu-route="create" data-auth-only hidden><span>＋</span><strong>Create post</strong></button>
       <button type="button" data-menu-route="mine" data-auth-only hidden><span>▤</span><strong>My posts</strong></button>
-      <button type="button" data-menu-route="balance" data-auth-only hidden><span>◈</span><strong>Creator balance</strong></button>
+      <button type="button" data-menu-route="balance" data-auth-only hidden><span>◈</span><strong>Weekly performance</strong></button>
       <button type="button" data-menu-route="policy"><span>ⓘ</span><strong>Creator policy</strong></button>
       <a href="https://zpayswift.com/user/dashboard" data-zpay-dashboard><span>↗</span><strong>Z-Pay Dashboard</strong></a>
       <a href="https://zpayswift.com/user" data-guest-only data-zpay-login><span>＋</span><strong>Join Z-Pay</strong></a>
@@ -78,10 +79,10 @@
         <button class="side-nav-item active" type="button" data-route="feed"><span>⌂</span>News feed</button>
         <button class="side-nav-item" type="button" data-route="create"><span>＋</span>Create post</button>
         <button class="side-nav-item" type="button" data-route="mine"><span>▤</span>My posts</button>
-        <button class="side-nav-item" type="button" data-route="balance"><span>◈</span>Creator balance</button>
+        <button class="side-nav-item" type="button" data-route="balance"><span>◈</span>Weekly performance</button>
         <button class="side-nav-item" type="button" data-route="policy"><span>ⓘ</span>Creator policy</button>
       </nav>
-      <p class="privacy-note">Public posts, comments and sponsored content can be viewed without a Z-Pay account. Creator access opens only from the Z-Pay dashboard.</p>
+      <p class="privacy-note">Public posts and comments can be viewed without a Z-Pay account. Creator access opens only from the Z-Pay dashboard.</p>
     </aside>
 
     <section class="content-column">
@@ -158,17 +159,22 @@
       </section>
 
       <section id="balanceView" class="view" data-view="balance" data-auth-only hidden>
-        <div class="balance-hero card">
-          <span class="eyebrow">Creator balance</span>
-          <strong id="balanceAmount">৳0.00</strong>
-          <p id="balanceStatus">Open Z Sky 24 from your Z-Pay dashboard to view your balance.</p>
-          <button class="primary-button balance-transfer-button" id="transferButton" type="button" disabled>Transfer to Z-Pay balance</button>
-          <small>Minimum transfer: ৳200. Requests require review.</small>
-          <button class="balance-policy-link" type="button" data-route="policy">View creator policy</button>
+        <div class="weekly-performance-hero card" id="weeklyCurrentReview">
+          <div class="weekly-performance-heading">
+            <div><span class="eyebrow">Creator performance</span><h1>Weekly report</h1><span class="weekly-period-label" id="weeklyCurrentPeriod">Current week</span></div>
+            <span class="weekly-status live" id="weeklyCurrentStatus">LIVE PREVIEW</span>
+          </div>
+          <div id="weeklyCurrentMetrics" class="weekly-performance-metrics"></div>
+          <p class="weekly-performance-note" id="weeklyCurrentNote">Loading verified creator engagement…</p>
+          <button class="balance-policy-link" type="button" data-route="policy">View creator review policy</button>
+          <div class="weekly-performance-compat" aria-hidden="true">
+            <strong id="balanceAmount">0</strong><p id="balanceStatus"></p><button id="transferButton" type="button" disabled></button>
+          </div>
         </div>
-        <div class="page-card card balance-activity-card">
-          <div class="section-heading no-border"><div><h2>Balance activity</h2><p>Verified creator credits and transfer records.</p></div></div>
-          <div id="ledgerList" class="ledger-list"></div>
+        <div class="page-card card weekly-history-card">
+          <div class="weekly-history-head"><div><h2>Previous weekly reviews</h2><p>Admin-reviewed performance snapshots. No balance or withdrawal is created here.</p></div><button class="ghost-button" id="weeklyReviewRefresh" type="button">Refresh report</button></div>
+          <div id="weeklyReviewHistory" class="weekly-history-list"></div>
+          <div id="ledgerList" class="weekly-performance-compat" aria-hidden="true"></div>
         </div>
       </section>
 
@@ -176,24 +182,25 @@
         <article class="page-card card creator-policy-page">
           <header class="policy-header">
             <button class="policy-back" type="button" data-route="feed" aria-label="Back to news feed">‹</button>
-            <div><span class="eyebrow">Z Sky 24</span><h1>Creator credit policy</h1><p>How verified ad credit, balance activity and transfer requests are handled.</p></div>
+            <div><span class="eyebrow">Z Sky 24</span><h1>Creator review policy</h1><p>How weekly engagement is verified before any later revenue settlement.</p></div>
           </header>
 
-          <section class="policy-highlight" aria-labelledby="creatorAdRateLabel">
-            <span id="creatorAdRateLabel">Current verified ad credit</span>
-            <strong id="creatorAdRate">৳0.01–৳0.03</strong>
-            <small id="creatorAdRateNote">Per eligible verified ad, calculated only from authenticated provider reports.</small>
+          <section class="policy-highlight" aria-labelledby="creatorReviewLabel">
+            <span id="creatorReviewLabel">Weekly review basis</span>
+            <strong>Verified guest engagement</strong>
+            <small>Creator logins, self-views, duplicate activity, bots and spam are excluded.</small>
+            <strong id="creatorAdRate" class="weekly-performance-compat"></strong><small id="creatorAdRateNote" class="weekly-performance-compat"></small>
           </section>
 
           <div class="policy-sections">
-            <section><h2>How credit is calculated</h2><ul><li>The creator base share is 50% of the provider-reported amount.</li><li>BDT credit is rounded down to a whole paisa and cannot exceed ৳0.03 for one verified ad.</li><li>The browser cannot calculate or submit any financial value; settlement is performed by the server.</li></ul></section>
-            <section><h2>What qualifies</h2><ul><li>Only an eligible impression confirmed by authenticated provider reporting can be considered.</li><li>Repeated, invalid, automated, fraudulent or unconfirmed activity does not qualify.</li><li>Test ads and test placement activity do not create payable credit.</li></ul></section>
-            <section><h2>Balance and adjustments</h2><ul><li>Creator credit is recorded in a separate Z Sky 24 ledger.</li><li>A provider correction, invalid-traffic finding, moderation decision or reconciliation may hold, correct or reverse an entry.</li><li>Historical entries remain visible according to their recorded status.</li></ul></section>
-            <section><h2>Transfer rules</h2><ul><li>The current minimum request is ৳200 BDT equivalent.</li><li>Requests move the available amount into review before it is added to the creator's Z-Pay balance.</li><li>Account status, available balance, currency conversion and security checks must pass.</li></ul></section>
+            <section><h2>What the weekly report shows</h2><ul><li>Raw views, eligible views, invalid views and spam views.</li><li>Creator views and self-views are shown separately as excluded activity.</li><li>Traffic share is calculated only after a completed week is generated.</li></ul></section>
+            <section><h2>What can qualify</h2><ul><li>The reader must be a guest, not a logged-in creator.</li><li>The view must pass minimum reading activity, heartbeat, duplicate, bot and risk checks.</li><li>Repeated guest activity beyond the allowed window is invalid and cannot load ads.</li></ul></section>
+            <section><h2>Review statuses</h2><ul><li>UNDER REVIEW means the snapshot is waiting for an admin decision.</li><li>APPROVED means the engagement record passed review.</li><li>HELD means suspicious traffic or an account issue requires investigation.</li></ul></section>
+            <section><h2>No Z Sky balance</h2><ul><li>Z Sky 24 does not maintain a creator wallet, credit balance or withdrawal request.</li><li>This page never calculates or promises a payment amount.</li><li>Any later revenue settlement will be a separate audited process paid to an eligible Z-Pay account.</li></ul></section>
           </div>
 
-          <aside class="policy-notice"><strong>Important</strong><p>The displayed range is a maximum policy range, not a guaranteed amount for every ad. Actual credit depends on the provider's final authenticated report and may be lower or zero.</p></aside>
-          <p class="policy-footer-note">Z Sky 24 may update this policy for provider requirements, safety, fraud prevention or regulatory compliance. Material changes should be shown on this page.</p>
+          <aside class="policy-notice"><strong>Important</strong><p>Views do not guarantee payment. Only verified advertising revenue and approved legitimate engagement may be used in a later settlement.</p></aside>
+          <p class="policy-footer-note">Z Sky 24 may hold or reject suspicious traffic and update review rules for fraud prevention, provider requirements or legal compliance.</p>
         </article>
       </section>
     </section>
@@ -201,7 +208,7 @@
     <aside class="right-rail">
       <section class="card compact-card"><span class="eyebrow">Z Sky 24</span><h2>Community guidelines</h2><p>Share original, respectful content. Posts and comments may be hidden later when they violate safety or copyright rules.</p></section>
       <div class="ad-slot" data-znews-ad-slot="feed_sidebar" data-format="mobile_banner" aria-label="Sponsored content"></div>
-      <section class="card compact-card balance-mini" data-auth-only hidden><span>Creator balance</span><strong id="miniBalance">৳0.00</strong><button class="ghost-button full" type="button" data-route="balance">View activity</button></section>
+      <section class="card compact-card performance-mini" data-auth-only hidden><span>Creator report</span><strong>Weekly performance</strong><button class="ghost-button full" type="button" data-route="balance">View report</button><strong id="miniBalance" class="weekly-performance-compat">0</strong></section>
     </aside>
   </main>
 
@@ -242,6 +249,7 @@
 
   <script src="/znews/assets/znews-config.js?v=7"></script>
   <script src="/znews/assets/znews-api.js?v=7"></script>
+  <script src="/znews/assets/znews-weekly-review.js?v=1"></script>
   <script src="/znews/assets/znews-ads.js?v=2"></script>
   <script src="/znews/assets/znews-bootstrap.js?v=20"></script>
 </body>

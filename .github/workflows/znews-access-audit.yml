@@ -31,6 +31,8 @@ jobs:
           php -l api/znews/lib/creator_registry.php
           php -l api/znews/lib/creator_view_policy.php
           php -l api/znews/lib/creator_payout_batches.php
+          php -l api/znews/lib/creator_weekly_reviews.php
+          php -l api/znews/reviews/mine.php
           php -l api/znews/views/start.php
           php -l api/admin/zsky24_creator_admin.php
           php -l api/admin/znews/creators/list.php
@@ -56,6 +58,8 @@ jobs:
         run: php tests/znews_web_ui_foundation_test.php
       - name: Creator period payout and eligibility
         run: php tests/zsky24_creator_period_payout_test.php
+      - name: Weekly creator review
+        run: php tests/zsky24_weekly_creator_review_test.php
       - name: Page responsiveness regression
         run: php tests/zsky24_page_responsiveness_test.php
       - name: Reload and guest bootstrap regression
@@ -81,6 +85,7 @@ jobs:
           node --check api/admin/assets/zsky24-admin.js
           node --check znews/assets/znews-config.js
           node --check znews/assets/znews-api.js
+          node --check znews/assets/znews-weekly-review.js
           node --check znews/assets/znews-bootstrap.js
           node --check znews/assets/znews-access.js
           node --check znews/assets/znews-feed-ui.js

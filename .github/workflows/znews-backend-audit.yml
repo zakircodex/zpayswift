@@ -74,8 +74,10 @@ jobs:
             php -l "$file" >/dev/null
           done
           echo "Syntax passed for ${#files[@]} PHP files."
-      - name: Syntax-check Z Sky admin JavaScript
-        run: node --check api/admin/assets/zsky24-admin.js
+      - name: Syntax-check Z Sky JavaScript
+        run: |
+          node --check api/admin/assets/zsky24-admin.js
+          node --check znews/assets/znews-weekly-review.js
 
   regression:
     name: ${{ matrix.file }}
@@ -119,6 +121,8 @@ jobs:
             file: tests/znews_web_ui_foundation_test.php
           - id: creator-period-payout
             file: tests/zsky24_creator_period_payout_test.php
+          - id: weekly-creator-review
+            file: tests/zsky24_weekly_creator_review_test.php
           - id: page-responsiveness
             file: tests/zsky24_page_responsiveness_test.php
           - id: reload-guest-bootstrap
