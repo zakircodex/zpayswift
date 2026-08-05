@@ -11,26 +11,34 @@ on:
     paths:
       - 'api/znews/**'
       - 'api/admin/znews/**'
+      - 'api/admin/zsky24_creator_admin.php'
+      - 'api/admin/assets/zsky24-admin.*'
       - 'api/lib/firebase.php'
       - 'znews/**'
       - 'docs/znews-*.md'
+      - 'docs/zsky24-*.md'
       - 'tests/znews_*_test.php'
       - 'tests/zsky24_*_test.php'
       - '.cpanel.yml'
       - '.github/workflows/znews-backend-audit.yml'
+      - '.github/workflows/cpanel-production-deploy.yml'
   pull_request:
     branches:
       - main
     paths:
       - 'api/znews/**'
       - 'api/admin/znews/**'
+      - 'api/admin/zsky24_creator_admin.php'
+      - 'api/admin/assets/zsky24-admin.*'
       - 'api/lib/firebase.php'
       - 'znews/**'
       - 'docs/znews-*.md'
+      - 'docs/zsky24-*.md'
       - 'tests/znews_*_test.php'
       - 'tests/zsky24_*_test.php'
       - '.cpanel.yml'
       - '.github/workflows/znews-backend-audit.yml'
+      - '.github/workflows/cpanel-production-deploy.yml'
   workflow_dispatch:
 
 permissions:
@@ -58,7 +66,7 @@ jobs:
           set -euo pipefail
           mapfile -d '' files < <(find api/znews api/admin/znews tests -type f -name '*.php' -print0 | sort -z)
           files+=(api/lib/firebase.php)
-          files+=(api/admin/proxy.php api/admin/dashboard.php)
+          files+=(api/admin/proxy.php api/admin/dashboard.php api/admin/zsky24_creator_admin.php)
           files+=(tools/zsky24_controlled_ad_test.php)
           files+=(tools/zsky24_auto_settlement_retry.php)
           [ "${#files[@]}" -gt 0 ]
@@ -91,8 +99,6 @@ jobs:
             file: tests/znews_http_smoke_test.php
           - id: instant-publish-creator-ui
             file: tests/znews_instant_publish_creator_ui_test.php
-          - id: main-wallet-transfer
-            file: tests/znews_main_wallet_transfer_test.php
           - id: media-backend
             file: tests/znews_media_backend_test.php
           - id: moderation-backend
@@ -105,22 +111,16 @@ jobs:
             file: tests/znews_post_publication_moderation_test.php
           - id: post-reader-ui
             file: tests/znews_post_reader_ui_test.php
-          - id: revenue-settlement
-            file: tests/znews_revenue_settlement_test.php
-          - id: admin-creator-credit-panel
-            file: tests/znews_admin_creator_credit_panel_test.php
-          - id: automatic-creator-credit
-            file: tests/znews_auto_credit_test.php
-          - id: self-view-ad-protection
-            file: tests/znews_self_view_ad_protection_test.php
-          - id: controlled-ad-test-utility
-            file: tests/znews_controlled_ad_test_utility_test.php
           - id: social-engagement
             file: tests/znews_social_engagement_test.php
           - id: view-antifraud
             file: tests/znews_view_antifraud_test.php
           - id: web-ui-foundation
             file: tests/znews_web_ui_foundation_test.php
+          - id: creator-period-payout
+            file: tests/zsky24_creator_period_payout_test.php
+          - id: production-deploy-contract
+            file: tests/zsky24_production_deploy_contract_test.php
           - id: zsky24-dual-domain
             file: tests/zsky24_dual_domain_test.php
           - id: zsky24-profile-photo-origin
@@ -133,10 +133,6 @@ jobs:
             file: tests/zsky24_back_navigation_guard_test.php
           - id: zsky24-edit-post-composer
             file: tests/zsky24_edit_post_composer_test.php
-          - id: zsky24-balance-policy-ui
-            file: tests/zsky24_balance_policy_ui_test.php
-          - id: zsky24-new-tab-balance-sync
-            file: tests/zsky24_new_tab_balance_sync_test.php
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

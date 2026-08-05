@@ -28,6 +28,14 @@ jobs:
           php -l api/znews/auth/handoff.php
           php -l api/znews/auth/session.php
           php -l api/znews/lib/domain.php
+          php -l api/znews/lib/creator_registry.php
+          php -l api/znews/lib/creator_view_policy.php
+          php -l api/znews/lib/creator_payout_batches.php
+          php -l api/znews/views/start.php
+          php -l api/admin/zsky24_creator_admin.php
+          php -l api/admin/znews/creators/list.php
+          php -l api/admin/znews/creators/status.php
+          php -l api/admin/znews/creators/payout_preflight.php
           php -l api/znews/public/creator.php
           php -l api/znews/public/feed.php
           php -l api/znews/public/impression.php
@@ -46,6 +54,10 @@ jobs:
         run: php tests/znews_post_reader_ui_test.php
       - name: Web UI regression
         run: php tests/znews_web_ui_foundation_test.php
+      - name: Creator period payout and eligibility
+        run: php tests/zsky24_creator_period_payout_test.php
+      - name: Production deploy contract
+        run: php tests/zsky24_production_deploy_contract_test.php
       - name: Social engagement regression
         run: php tests/znews_social_engagement_test.php
       - name: Z Sky 24 dual-domain security
@@ -60,16 +72,6 @@ jobs:
         run: php tests/zsky24_back_navigation_guard_test.php
       - name: Z Sky 24 edit composer
         run: php tests/zsky24_edit_post_composer_test.php
-      - name: Z Sky 24 balance policy and UI
-        run: php tests/zsky24_balance_policy_ui_test.php
-      - name: Z Sky 24 new-tab and balance sync
-        run: php tests/zsky24_new_tab_balance_sync_test.php
-      - name: Z Sky 24 admin creator credit panel
-        run: php tests/znews_admin_creator_credit_panel_test.php
-      - name: Z Sky 24 automatic creator credit
-        run: php tests/znews_auto_credit_test.php
-      - name: Z Sky 24 self-view ad protection
-        run: php tests/znews_self_view_ad_protection_test.php
       - name: JavaScript syntax
         run: |
           node --check api/admin/assets/zsky24-admin.js

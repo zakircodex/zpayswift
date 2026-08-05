@@ -76,19 +76,19 @@ jobs:
           set -euo pipefail
           php tests/znews_backend_foundation_test.php
           php tests/znews_web_ui_foundation_test.php
+          php tests/znews_end_to_end_contract_test.php
+          php tests/znews_view_antifraud_test.php
           php tests/zsky24_dual_domain_test.php
+          php tests/zsky24_profile_photo_origin_test.php
           php tests/zsky24_my_posts_navigation_loading_test.php
+          php tests/zsky24_compact_composer_test.php
+          php tests/zsky24_headline_photo_test.php
+          php tests/zsky24_back_navigation_guard_test.php
           php tests/zsky24_edit_post_composer_test.php
-          php tests/zsky24_balance_policy_ui_test.php
-          php tests/zsky24_new_tab_balance_sync_test.php
-          php tests/znews_admin_creator_credit_panel_test.php
-          php tests/znews_controlled_ad_test_utility_test.php
-          php tests/znews_auto_credit_test.php
-          php tests/znews_self_view_ad_protection_test.php
-          php -l tools/zsky24_controlled_ad_test.php >/dev/null
-          php -l tools/zsky24_auto_settlement_retry.php >/dev/null
+          php tests/zsky24_creator_period_payout_test.php
           php -l api/admin/proxy.php >/dev/null
           php -l api/admin/dashboard.php >/dev/null
+          php -l api/admin/zsky24_creator_admin.php >/dev/null
           node --check api/admin/assets/zsky24-admin.js
           find api/znews api/admin/znews -type f -name '*.php' -print0 \
             | sort -z \
@@ -113,6 +113,13 @@ jobs:
             rsync -a --exclude-from=.cpanel-deploy-exclude document-ai/ deployment/api/document-ai/
           fi
           printf '%s\n%s\n' "$GITHUB_SHA" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" > deployment/deploy_version.txt
+
+          test -f deployment/api/admin/zsky24_creator_admin.php
+          test -f deployment/api/admin/assets/zsky24-admin.js
+          test -f deployment/api/admin/assets/zsky24-admin.css
+          test -f deployment/api/znews/lib/creator_registry.php
+          test -f deployment/api/znews/lib/creator_view_policy.php
+          test -f deployment/api/znews/lib/creator_payout_batches.php
 
           if find deployment -type f \
             ! -path 'deployment/api/support/config.php' \

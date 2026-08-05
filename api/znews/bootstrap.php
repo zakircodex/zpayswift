@@ -13,3 +13,4 @@ header('Pragma: no-cache');
 header('X-Content-Type-Options: nosniff');
 
 require_once __DIR__ . '/lib/common.php';
+require_once __DIR__ . '/lib/creator_registry.php';
