@@ -58,11 +58,14 @@ zsky_expect(str_contains($handoff, 'ZNEWS_HANDOFF_REPLAYED'), 'Replay response i
 zsky_expect(str_contains($handoff, 'auth_session_epoch') && str_contains($handoff, 'device_id'), 'Session/device binding is missing.');
 zsky_expect(str_contains($handoff, 'znews_request_host()'), 'Intended-host validation is missing.');
 
-zsky_expect(str_contains($embeddedWorker, 'zsky24-embedded-shell-v13'), 'Embedded PWA namespace is missing.');
+zsky_expect(str_contains($embeddedWorker, 'zsky24-embedded-shell-v14'), 'Embedded PWA namespace is missing.');
 zsky_expect(str_contains($embeddedWorker, "key.startsWith('zsky24-embedded-')"), 'Embedded worker may delete unrelated origin caches.');
-zsky_expect(str_contains($standaloneWorker, 'zsky24-standalone-shell-v13'), 'Standalone PWA namespace is missing.');
+zsky_expect(str_contains($standaloneWorker, 'zsky24-standalone-shell-v14'), 'Standalone PWA namespace is missing.');
+zsky_expect(str_contains($standaloneWorker, "key.startsWith('zsky24-standalone-')"), 'Standalone worker may delete unrelated origin caches.');
 zsky_expect(str_contains($embeddedWorker, "url.pathname.startsWith('/api/')"), 'Embedded worker may cache API responses.');
 zsky_expect(str_contains($standaloneWorker, "url.pathname.startsWith('/api/')"), 'Standalone worker may cache API responses.');
+zsky_expect(str_contains($embeddedWorker, 'networkFirst(request'), 'Embedded shell must refresh from the network when online.');
+zsky_expect(str_contains($standaloneWorker, 'networkFirst(request'), 'Standalone shell must refresh from the network when online.');
 zsky_expect(str_contains($znewsRewrite, 'Content-Security-Policy'), 'Z Sky 24 browser content policy is missing.');
 zsky_expect(str_contains($znewsRewrite, "object-src 'none'"), 'Z Sky 24 content policy allows unsafe plugins.');
 
