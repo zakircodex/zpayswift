@@ -79,7 +79,7 @@
           <div>
             <span class="zsky-admin-kicker">Z SKY 24 • CREATOR CONTROL</span>
             <h3>Creator management</h3>
-            <p>Manage creator access, review verified weekly engagement and preview payout eligibility. This screen never credits a wallet.</p>
+            <p>Manage creator access, review verified engagement and preview payout eligibility. This screen never credits a wallet.</p>
           </div>
           <button class="btn blue" id="zsky24RefreshBtn" type="button">Refresh</button>
         </div>
@@ -117,17 +117,22 @@
 
         <section id="zskyWeeklyReviewView" hidden>
           <div class="card zsky-weekly-toolbar">
-            <div><span class="zsky-admin-kicker">WEEKLY PERFORMANCE</span><h3>Verified creator engagement</h3><p>Completed UTC weeks only. No revenue, balance or payout amount is calculated here.</p></div>
+            <div class="zsky-weekly-heading">
+              <span class="zsky-admin-kicker">WEEKLY PERFORMANCE</span>
+              <h3>Verified creator engagement</h3>
+              <p>Fixed calendar periods: 01–07, 08–14, 15–21 and 22–month end. Current periods are live and read-only.</p>
+            </div>
             <div class="zsky-weekly-controls">
               <label for="zskyWeeklyPeriodSelect">Review period</label>
               <select class="input" id="zskyWeeklyPeriodSelect"></select>
-              <button class="btn brand" id="zskyGenerateWeeklyReview" type="button">Generate review</button>
+              <button class="btn brand zsky-period-action" id="zskyGenerateWeeklyReview" type="button">Generate review</button>
             </div>
           </div>
+          <div class="zsky-period-notice" id="zskyWeeklyPeriodNotice" aria-live="polite"></div>
           <div id="zskyWeeklyMetrics" class="zsky-admin-metrics" aria-label="Weekly review summary"></div>
           <div class="card zsky-admin-panel">
-            <div class="panel-head"><div><h3 id="zskyWeeklyTitle">Weekly creator review</h3><p id="zskyWeeklySubtitle">Generate the completed week to create an auditable snapshot.</p></div></div>
-            <div id="zskyWeeklyList" class="zsky-admin-list" aria-live="polite"><div class="empty">Select a completed week.</div></div>
+            <div class="panel-head"><div><h3 id="zskyWeeklyTitle">Calendar creator review</h3><p id="zskyWeeklySubtitle">Select a period to view live or completed creator performance.</p></div></div>
+            <div id="zskyWeeklyList" class="zsky-admin-list" aria-live="polite"><div class="empty">Select a review period.</div></div>
           </div>
         </section>
       </div>`;
@@ -315,10 +320,51 @@
     }
   }
 
+  function parsePeriodDate(value){
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return null;
+    return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  }
+
+  function shortDate(value){
+    const date = parsePeriodDate(value);
+    if (!date) return String(value || '');
+    return new Intl.DateTimeFormat('en-GB', {day:'2-digit', month:'short', year:'numeric', timeZone:'UTC'}).format(date);
+  }
+
   function periodLabel(period){
     const start = String(period?.period_start_date || period?.period_id || '');
     const end = String(period?.period_end_date || '');
-    return end ? `${start} to ${end}` : start;
+    return end ? `${shortDate(start)} – ${shortDate(end)}` : shortDate(start);
+  }
+
+  function periodMeta(periodId = zskyState.selectedPeriodId){
+    const match = zskyState.weeklyPeriods.find(row => String(row?.period_id || '') === String(periodId || ''));
+    if (match) return match;
+    if (String(zskyState.defaultWeeklyPeriod?.period_id || '') === String(periodId || '')) return zskyState.defaultWeeklyPeriod;
+    return null;
+  }
+
+  function humanStatus(status){
+    status = String(status || '').toUpperCase();
+    const labels = {
+      LIVE:'Live now',
+      UPCOMING:'Upcoming',
+      COMPLETED:'Ready to generate',
+      UNDER_REVIEW:'Under review',
+      APPROVED:'Approved',
+      HELD:'Held',
+      NOT_GENERATED:'Ready to generate',
+    };
+    return labels[status] || status.replaceAll('_', ' ').toLowerCase().replace(/^./, char => char.toUpperCase());
+  }
+
+  function periodOptionStatus(period){
+    const lifecycle = String(period?.lifecycle_status || '').toUpperCase();
+    if (lifecycle === 'LIVE') return 'LIVE';
+    if (lifecycle === 'UPCOMING') return 'UPCOMING';
+    if (period?.generated && period?.review_status) return String(period.review_status).toUpperCase();
+    return 'NOT_GENERATED';
   }
 
   function renderPeriodOptions(){
@@ -329,57 +375,135 @@
     zskyState.weeklyPeriods.forEach(period => {
       if (period?.period_id) map.set(period.period_id, period);
     });
-    select.innerHTML = [...map.values()].map(period => `<option value="${safe(period.period_id)}">${safe(periodLabel(period))}${period.status ? ` • ${safe(period.status)}` : ' • Not generated'}</option>`).join('');
-    if (!zskyState.selectedPeriodId) zskyState.selectedPeriodId = zskyState.defaultWeeklyPeriod?.period_id || [...map.keys()][0] || '';
+    const periods = [...map.values()];
+    select.innerHTML = periods.map(period => {
+      const status = periodOptionStatus(period);
+      return `<option value="${safe(period.period_id)}">${safe(periodLabel(period))} • ${safe(humanStatus(status))}</option>`;
+    }).join('');
+    if (!zskyState.selectedPeriodId) zskyState.selectedPeriodId = zskyState.defaultWeeklyPeriod?.period_id || periods[0]?.period_id || '';
     select.value = zskyState.selectedPeriodId;
   }
 
   function weeklyStatusClass(status){
     status = String(status || 'UNDER_REVIEW').toUpperCase();
-    return status === 'APPROVED' ? 'zsky-status-active' : status === 'HELD' ? 'zsky-flag' : 'zsky-status-review';
+    if (status === 'APPROVED' || status === 'LIVE') return 'zsky-status-active';
+    return status === 'HELD' ? 'zsky-flag' : 'zsky-status-review';
   }
 
-  function weeklyRow(row){
-    const status = String(row.review_status || 'UNDER_REVIEW').toUpperCase();
+  function weeklyRow(row, {readOnly=false} = {}){
+    const status = String(row.review_status || (readOnly ? 'LIVE' : 'UNDER_REVIEW')).toUpperCase();
     const creatorStatus = String(row.creator_status || 'ACTIVE').toUpperCase();
-    const canApprove = creatorStatus === 'ACTIVE' && status !== 'APPROVED';
+    const canApprove = !readOnly && creatorStatus === 'ACTIVE' && status !== 'APPROVED';
+    const canHold = !readOnly && status !== 'HELD';
+    const actions = readOnly
+      ? `<div class="zsky-live-chip">Live preview</div>`
+      : `<button class="btn brand" type="button" data-zsky-weekly-approve="${safe(row.creator_uid)}" ${canApprove ? '' : 'disabled'}>${status === 'APPROVED' ? 'Approved' : 'Approve'}</button><button class="btn danger" type="button" data-zsky-weekly-hold="${safe(row.creator_uid)}" data-creator-name="${safe(row.creator_name || 'Creator')}" ${canHold ? '' : 'disabled'}>${status === 'HELD' ? 'Held' : 'Hold'}</button>`;
     return `
-      <article class="zsky-weekly-row">
+      <article class="zsky-weekly-row ${readOnly ? 'is-live' : ''}">
         <div class="zsky-admin-row-main"><strong>${safe(row.creator_name || 'Z-Pay creator')}</strong><span>${safe(row.creator_uid || '')}</span><small>${safe(row.review_reason || `${row.post_count || 0} posts in period`)}</small></div>
         <div class="zsky-weekly-stat"><small>Raw / eligible</small><strong>${safe(row.raw_views || 0)} / ${safe(row.eligible_views || 0)}</strong></div>
         <div class="zsky-weekly-stat"><small>Invalid / spam</small><strong>${safe(row.invalid_views || 0)} / ${safe(row.spam_views || 0)}</strong></div>
+        <div class="zsky-weekly-stat"><small>Duplicate / pending</small><strong>${safe(row.duplicate_views || 0)} / ${safe(row.pending_views || 0)}</strong></div>
         <div class="zsky-weekly-stat"><small>Creator / self excluded</small><strong>${safe(row.creator_views_excluded || 0)} / ${safe(row.self_views_excluded || 0)}</strong></div>
         <div class="zsky-weekly-stat"><small>Traffic share</small><strong>${safe(Number(row.traffic_share_percent || 0).toFixed(4))}%</strong></div>
-        <div class="zsky-weekly-status"><small>Review status</small><strong class="${weeklyStatusClass(status)}">${safe(status)}</strong></div>
-        <div class="zsky-admin-actions">
-          ${canApprove ? `<button class="btn brand" type="button" data-zsky-weekly-approve="${safe(row.creator_uid)}">Approve</button>` : ''}
-          ${status !== 'HELD' ? `<button class="btn danger" type="button" data-zsky-weekly-hold="${safe(row.creator_uid)}" data-creator-name="${safe(row.creator_name || 'Creator')}">Hold</button>` : ''}
-        </div>
+        <div class="zsky-weekly-status"><small>${readOnly ? 'Period status' : 'Review status'}</small><strong class="${weeklyStatusClass(status)}">${safe(humanStatus(status))}</strong></div>
+        <div class="zsky-admin-actions zsky-weekly-actions">${actions}</div>
       </article>`;
+  }
+
+  function configurePeriodAction(period, data){
+    const button = $('zskyGenerateWeeklyReview');
+    const notice = $('zskyWeeklyPeriodNotice');
+    if (!button || !notice) return;
+    const lifecycle = String(period?.lifecycle_status || '').toUpperCase();
+    const generated = Boolean(period?.generated || data?.period?.generated || data?.period?.generated_at);
+
+    if (lifecycle === 'LIVE' || data?.read_only && data?.period?.live_preview) {
+      button.disabled = true;
+      button.textContent = 'Live period';
+      notice.className = 'zsky-period-notice live';
+      notice.innerHTML = `<strong>Live preview</strong><span>${safe(periodLabel(period))} is still running. Metrics update from current activity, but Generate, Approve and Hold stay disabled until the period closes.</span>`;
+      return;
+    }
+    if (lifecycle === 'UPCOMING') {
+      button.disabled = true;
+      button.textContent = 'Upcoming';
+      notice.className = 'zsky-period-notice upcoming';
+      notice.innerHTML = `<strong>Upcoming period</strong><span>${safe(periodLabel(period))} has not started yet.</span>`;
+      return;
+    }
+
+    button.disabled = false;
+    button.textContent = generated ? 'Regenerate review' : 'Generate review';
+    notice.className = 'zsky-period-notice completed';
+    notice.innerHTML = generated
+      ? `<strong>Completed period</strong><span>This snapshot is reviewable. Regenerate only when you intentionally want to refresh the verified metrics.</span>`
+      : `<strong>Ready to review</strong><span>This period is complete. Generate the verified snapshot before approving or holding creators.</span>`;
   }
 
   function renderWeekly(){
     renderPeriodOptions();
     const data = zskyState.weeklyReview;
-    const period = data?.period || zskyState.defaultWeeklyPeriod || {};
+    const selected = periodMeta();
+    const period = data?.period || selected || zskyState.defaultWeeklyPeriod || {};
+    const lifecycle = String(period.lifecycle_status || selected?.lifecycle_status || '').toUpperCase();
+    const readOnly = Boolean(data?.read_only || period.live_preview || lifecycle === 'LIVE' || lifecycle === 'UPCOMING');
     const rows = Array.isArray(data?.items) ? data.items : [];
-    if ($('zskyWeeklyTitle')) $('zskyWeeklyTitle').textContent = period.period_id ? `Weekly review • ${periodLabel(period)}` : 'Weekly creator review';
-    if ($('zskyWeeklySubtitle')) $('zskyWeeklySubtitle').textContent = data
-      ? 'Eligible traffic share is calculated only from verified guest engagement.'
-      : 'This completed week has not been generated yet.';
-    if ($('zskyWeeklyMetrics')) $('zskyWeeklyMetrics').innerHTML = `
-      <div class="zsky-admin-metric"><span>Raw views</span><strong>${safe(period.total_raw_views || 0)}</strong></div>
-      <div class="zsky-admin-metric"><span>Eligible views</span><strong>${safe(period.total_eligible_views || 0)}</strong></div>
-      <div class="zsky-admin-metric warning"><span>Under review</span><strong>${safe(period.under_review_count || 0)}</strong></div>
-      <div class="zsky-admin-metric danger"><span>Held</span><strong>${safe(period.held_count || 0)}</strong></div>`;
-    if ($('zskyWeeklyList')) $('zskyWeeklyList').innerHTML = rows.length
-      ? rows.map(weeklyRow).join('')
-      : empty(data ? 'No registered creators were found for this period.' : 'Generate this completed week to create review snapshots.');
+
+    configurePeriodAction({...selected, ...period}, data);
+
+    if ($('zskyWeeklyTitle')) {
+      const prefix = lifecycle === 'LIVE' ? 'Live performance' : lifecycle === 'UPCOMING' ? 'Upcoming period' : 'Calendar review';
+      $('zskyWeeklyTitle').textContent = period.period_id ? `${prefix} • ${periodLabel(period)}` : 'Calendar creator review';
+    }
+    if ($('zskyWeeklySubtitle')) {
+      $('zskyWeeklySubtitle').textContent = lifecycle === 'LIVE'
+        ? 'Read-only live metrics from the current calendar period. No money or payout is calculated.'
+        : lifecycle === 'UPCOMING'
+          ? 'This period has not started yet.'
+          : data
+            ? 'Eligible traffic share is calculated only from verified guest engagement.'
+            : 'This completed period has not been generated yet.';
+    }
+
+    if ($('zskyWeeklyMetrics')) {
+      if (lifecycle === 'LIVE') {
+        $('zskyWeeklyMetrics').innerHTML = `
+          <div class="zsky-admin-metric"><span>Raw views</span><strong>${safe(period.total_raw_views || 0)}</strong></div>
+          <div class="zsky-admin-metric"><span>Eligible views</span><strong>${safe(period.total_eligible_views || 0)}</strong></div>
+          <div class="zsky-admin-metric warning"><span>Invalid / spam</span><strong>${safe(period.total_invalid_views || 0)} / ${safe(period.total_spam_views || 0)}</strong></div>
+          <div class="zsky-admin-metric"><span>Pending views</span><strong>${safe(period.total_pending_views || 0)}</strong></div>`;
+      } else if (lifecycle === 'UPCOMING') {
+        $('zskyWeeklyMetrics').innerHTML = `
+          <div class="zsky-admin-metric"><span>Raw views</span><strong>0</strong></div>
+          <div class="zsky-admin-metric"><span>Eligible views</span><strong>0</strong></div>
+          <div class="zsky-admin-metric warning"><span>Under review</span><strong>0</strong></div>
+          <div class="zsky-admin-metric danger"><span>Held</span><strong>0</strong></div>`;
+      } else {
+        $('zskyWeeklyMetrics').innerHTML = `
+          <div class="zsky-admin-metric"><span>Raw views</span><strong>${safe(period.total_raw_views || 0)}</strong></div>
+          <div class="zsky-admin-metric"><span>Eligible views</span><strong>${safe(period.total_eligible_views || 0)}</strong></div>
+          <div class="zsky-admin-metric warning"><span>Under review</span><strong>${safe(period.under_review_count || 0)}</strong></div>
+          <div class="zsky-admin-metric danger"><span>Held</span><strong>${safe(period.held_count || 0)}</strong></div>`;
+      }
+    }
+
+    if ($('zskyWeeklyList')) {
+      if (rows.length) {
+        $('zskyWeeklyList').innerHTML = rows.map(row => weeklyRow(row, {readOnly})).join('');
+      } else if (lifecycle === 'UPCOMING') {
+        $('zskyWeeklyList').innerHTML = empty('This period has not started yet. Live metrics will appear automatically when it begins.');
+      } else if (lifecycle === 'LIVE') {
+        $('zskyWeeklyList').innerHTML = empty('No registered creator activity has been recorded in this live period yet.');
+      } else {
+        $('zskyWeeklyList').innerHTML = empty(data ? 'No registered creators were found for this period.' : 'Generate this completed period to create review snapshots.');
+      }
+    }
   }
 
   async function loadWeeklyPeriods(force=false){
     if (zskyState.weeklyPeriodsLoaded && !force) return;
-    const data = await request('weekly_periods', {params:{limit:12}, busy:false});
+    const data = await request('weekly_periods', {params:{limit:16}, busy:false});
     zskyState.defaultWeeklyPeriod = data.default_period || null;
     zskyState.weeklyPeriods = Array.isArray(data.items) ? data.items : [];
     if (!zskyState.selectedPeriodId) zskyState.selectedPeriodId = zskyState.defaultWeeklyPeriod?.period_id || '';
@@ -389,12 +513,21 @@
 
   async function loadWeeklyReview(periodId){
     if (!periodId) { zskyState.weeklyReview = null; renderWeekly(); return; }
+    const meta = periodMeta(periodId);
+    if (String(meta?.lifecycle_status || '').toUpperCase() === 'UPCOMING') {
+      zskyState.weeklyReview = {period:meta, items:[], read_only:true};
+      renderWeekly();
+      return;
+    }
     try {
       const data = await request('weekly_review', {params:{period_id:periodId}, busy:false});
       zskyState.weeklyReview = data;
     } catch (error) {
-      if (error.status === 404 || error.code === 'ZNEWS_WEEKLY_REVIEW_NOT_FOUND') zskyState.weeklyReview = null;
-      else throw error;
+      if (error.status === 404 || error.code === 'ZNEWS_CALENDAR_REVIEW_NOT_GENERATED' || error.code === 'ZNEWS_WEEKLY_REVIEW_NOT_FOUND') {
+        zskyState.weeklyReview = null;
+      } else {
+        throw error;
+      }
     }
     renderWeekly();
   }
@@ -412,25 +545,33 @@
 
   async function generateWeekly(){
     const periodId = $('zskyWeeklyPeriodSelect')?.value || zskyState.selectedPeriodId;
-    if (!periodId) return showToast('Select a completed week.', 'error');
+    const meta = periodMeta(periodId);
+    if (!periodId) return showToast('Select a completed period.', 'error');
+    if (String(meta?.lifecycle_status || '').toUpperCase() !== 'COMPLETED') {
+      return showToast('Only completed calendar periods can be generated.', 'error');
+    }
     try {
       const data = await request('weekly_generate', {
-        method:'POST', body:{period_id:periodId}, busyText:'Generating verified weekly reviews…',
+        method:'POST', body:{period_id:periodId}, busyText:'Generating verified calendar review…',
       });
       zskyState.weeklyReview = data;
       zskyState.selectedPeriodId = periodId;
       zskyState.weeklyPeriodsLoaded = false;
       await loadWeeklyPeriods(true);
       renderWeekly();
-      showToast('Weekly creator review generated.', 'success');
+      showToast('Calendar creator review generated.', 'success');
     } catch (error) {
-      showToast(error.message || 'Weekly review generation failed.', 'error');
+      showToast(error.message || 'Calendar review generation failed.', 'error');
     }
   }
 
   async function updateWeeklyStatus(creatorUid, status, reason=''){
     const periodId = zskyState.selectedPeriodId;
+    const meta = periodMeta(periodId);
     if (!periodId) return;
+    if (String(meta?.lifecycle_status || '').toUpperCase() !== 'COMPLETED') {
+      return showToast('Live and upcoming periods are read-only.', 'error');
+    }
     await request('weekly_status', {
       method:'POST', body:{period_id:periodId, creator_uid:creatorUid, status, reason},
       busyText: status === 'HELD' ? 'Holding creator review…' : 'Approving creator review…',
@@ -441,7 +582,7 @@
 
   function holdWeeklyReview(uid, name){
     openModal(
-      'Hold weekly creator review',
+      'Hold creator review',
       `<p>Hold <strong>${safe(name)}</strong> for manual investigation?</p><label for="zskyWeeklyHoldReason">Reason</label><textarea id="zskyWeeklyHoldReason" class="input zsky-admin-reason" maxlength="300" placeholder="Required reason"></textarea>`,
       '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn danger" id="zskyConfirmWeeklyHold">Hold review</button>'
     );
@@ -475,12 +616,12 @@
     const unblock = event.target.closest('[data-zsky-unblock-creator]');
     if (unblock) { unblockCreator(unblock.dataset.zskyUnblockCreator, unblock.dataset.creatorName || 'Creator'); return; }
     const approve = event.target.closest('[data-zsky-weekly-approve]');
-    if (approve) {
+    if (approve && !approve.disabled) {
       updateWeeklyStatus(approve.dataset.zskyWeeklyApprove, 'APPROVED').catch(error => showToast(error.message || 'Review could not be approved.', 'error'));
       return;
     }
     const hold = event.target.closest('[data-zsky-weekly-hold]');
-    if (hold) { holdWeeklyReview(hold.dataset.zskyWeeklyHold, hold.dataset.creatorName || 'Creator'); return; }
+    if (hold && !hold.disabled) { holdWeeklyReview(hold.dataset.zskyWeeklyHold, hold.dataset.creatorName || 'Creator'); return; }
 
     if (event.target.closest('#zsky24RefreshBtn')) {
       if (zskyState.mode === 'WEEKLY') loadWeekly(true).catch(error => showToast(error.message || 'Weekly refresh failed.', 'error'));
@@ -491,7 +632,7 @@
       zskyState.selected.clear(); renderCreators(); return;
     }
     if (event.target.closest('#zskyPayoutPreflightBtn')) { previewPayout(); return; }
-    if (event.target.closest('#zskyGenerateWeeklyReview')) generateWeekly();
+    if (event.target.closest('#zskyGenerateWeeklyReview') && !event.target.closest('#zskyGenerateWeeklyReview').disabled) generateWeekly();
   });
 
   document.addEventListener('change', event => {
@@ -499,7 +640,7 @@
     if (checkbox) { selectCreator(checkbox.dataset.zskySelectCreator, checkbox.checked); return; }
     if (event.target.closest('#zskyWeeklyPeriodSelect')) {
       zskyState.selectedPeriodId = event.target.value;
-      loadWeeklyReview(zskyState.selectedPeriodId).catch(error => showToast(error.message || 'Weekly review could not be loaded.', 'error'));
+      loadWeeklyReview(zskyState.selectedPeriodId).catch(error => showToast(error.message || 'Calendar review could not be loaded.', 'error'));
     }
   });
 
