@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $workflowPath = $root . '/.github/workflows/cpanel-production-deploy.yml';
+$dashboardPath = $root . '/api/admin/dashboard.php';
 $assertions = 0;
 
 function deploy_expect(bool $condition, string $message): void
@@ -63,6 +64,15 @@ foreach ([
 ] as $packaged) {
     deploy_expect(str_contains($workflow, $packaged), 'deployment package assertion is missing: ' . $packaged);
 }
+
+// Z Sky Admin CSS/JS must automatically get a fresh URL when their deployed files change.
+deploy_expect(is_file($dashboardPath), 'admin dashboard is missing');
+$dashboard = file_get_contents($dashboardPath);
+deploy_expect(is_string($dashboard), 'admin dashboard could not be read');
+deploy_expect(str_contains($dashboard, "filemtime(__DIR__ . '/assets/zsky24-admin.css')"), 'Z Sky admin CSS is not content-deploy cache-busted');
+deploy_expect(str_contains($dashboard, "filemtime(__DIR__ . '/assets/zsky24-admin.js')"), 'Z Sky admin JavaScript is not content-deploy cache-busted');
+deploy_expect(!str_contains($dashboard, 'zsky24-admin.css?v=1'), 'fixed Z Sky admin CSS cache version remains');
+deploy_expect(!str_contains($dashboard, 'zsky24-admin.js?v=2'), 'fixed Z Sky admin JavaScript cache version remains');
 
 deploy_expect(str_contains($workflow, 'mirror --reverse --verbose --parallel=2 deployment/ ${FTP_REMOTE_PATH}'), 'approved deployment directory is not the FTPS source');
 deploy_expect(str_contains($workflow, 'Verified production commit: $GITHUB_SHA'), 'live commit verification is missing');
