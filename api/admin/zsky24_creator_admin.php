@@ -69,6 +69,7 @@ require_once dirname(__DIR__) . '/znews/lib/creator_registry.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_payout_batches.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_weekly_reviews.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_calendar_reviews.php';
+require_once dirname(__DIR__) . '/znews/lib/creator_monthly_performance.php';
 
 $auth = auth_require_admin_session(true);
 $admin = is_array($auth['user'] ?? null) ? (array)$auth['user'] : [];
@@ -127,6 +128,35 @@ if ($action === 'weekly_review') {
         $message,
         $result,
         (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 404))
+    );
+}
+
+if ($action === 'monthly_periods') {
+    if ($method !== 'GET') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Monthly period list is GET-only.', [], 405);
+    }
+    $limit = max(1, min(24, (int)($_GET['limit'] ?? 12)));
+    zsky24_admin_gateway_response(true, 'ZNEWS_MONTHLY_PERIODS_OK', 'Monthly performance periods loaded.', [
+        'scheme' => znews_monthly_performance_scheme(),
+        'calendar_review_scheme' => znews_calendar_review_scheme(),
+        'default_month' => znews_monthly_performance_month(),
+        'items' => znews_monthly_performance_catalog($limit),
+        'read_only' => true,
+    ]);
+}
+
+if ($action === 'monthly_preview') {
+    if ($method !== 'GET') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Monthly performance preview is GET-only.', [], 405);
+    }
+    $monthId = trim((string)($_GET['month_id'] ?? ''));
+    $result = znews_monthly_performance_preview($monthId);
+    zsky24_admin_gateway_response(
+        !empty($result['ok']),
+        (string)($result['code'] ?? 'ZNEWS_MONTHLY_PERFORMANCE_PREVIEW_FAILED'),
+        !empty($result['ok']) ? 'Monthly creator performance preview loaded.' : 'Monthly creator performance preview could not be loaded.',
+        $result,
+        (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 422))
     );
 }
 
