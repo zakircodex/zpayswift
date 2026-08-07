@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/creator_view_diagnostics.php';
+
 function znews_calendar_review_scheme(): string
 {
     return 'CALENDAR_01_07_08_14_15_21_22_EOM_V1';
@@ -207,6 +209,14 @@ function znews_calendar_review_build_rows(array $period, bool $livePreview): arr
         }
 
         $metrics = (array)$metricsResult['metrics'];
+        $diagnostics = znews_view_diagnostics_creator_period($creatorUid, $period);
+        $diagnosticsOk = !empty($diagnostics['ok'])
+            && (int)($diagnostics['invalid_total'] ?? -1) === (int)($metrics['invalid_views'] ?? 0);
+        $diagnosticItems = $diagnosticsOk && is_array($diagnostics['items'] ?? null)
+            ? array_values((array)$diagnostics['items'])
+            : [];
+        $diagnosticSummary = $diagnosticsOk ? trim((string)($diagnostics['summary'] ?? '')) : '';
+
         $creatorStatus = znews_creator_normalize_status($creator['status'] ?? 'ACTIVE');
         $saved = $livePreview
             ? []
@@ -217,7 +227,10 @@ function znews_calendar_review_build_rows(array $period, bool $livePreview): arr
             : znews_weekly_review_status(
                 $saved['review_status'] ?? ($creatorStatus === 'BLOCKED' ? 'HELD' : 'UNDER_REVIEW')
             );
-        $reviewReason = $livePreview ? '' : trim((string)($saved['review_reason'] ?? ''));
+        $reviewReason = $livePreview ? $diagnosticSummary : trim((string)($saved['review_reason'] ?? ''));
+        if (!$livePreview && $reviewReason === '' && $diagnosticSummary !== '') {
+            $reviewReason = $diagnosticSummary;
+        }
         if (!$livePreview && $creatorStatus === 'BLOCKED') {
             $reviewStatus = 'HELD';
             $reviewReason = trim((string)($creator['block_reason'] ?? 'Creator account is blocked.'));
@@ -231,6 +244,9 @@ function znews_calendar_review_build_rows(array $period, bool $livePreview): arr
             'creator_status' => $creatorStatus,
             'review_status' => $reviewStatus,
             'review_reason' => $reviewReason,
+            'invalid_reason_summary' => $diagnosticSummary,
+            'invalid_reason_counts' => $diagnosticItems,
+            'diagnostics_available' => $diagnosticsOk,
             'traffic_share_ppm' => 0,
             'traffic_share_percent' => 0.0,
             'traffic_share_pending' => false,
@@ -259,6 +275,7 @@ function znews_calendar_review_summary(array $period, array $rows, bool $livePre
     $creatorExcluded = 0;
     $selfExcluded = 0;
     $readSeconds = 0;
+    $invalidReasons = [];
 
     foreach ($rows as $row) {
         $status = strtoupper(trim((string)($row['review_status'] ?? 'UNDER_REVIEW')));
@@ -274,7 +291,27 @@ function znews_calendar_review_summary(array $period, array $rows, bool $livePre
         $creatorExcluded += max(0, (int)($row['creator_views_excluded'] ?? 0));
         $selfExcluded += max(0, (int)($row['self_views_excluded'] ?? 0));
         $readSeconds += max(0, (int)($row['eligible_read_seconds'] ?? 0));
+        foreach ((array)($row['invalid_reason_counts'] ?? []) as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $code = trim((string)($item['code'] ?? 'OTHER'));
+            $label = trim((string)($item['label'] ?? 'View validation failed'));
+            $count = max(0, (int)($item['count'] ?? 0));
+            if ($count <= 0) {
+                continue;
+            }
+            if (!isset($invalidReasons[$code])) {
+                $invalidReasons[$code] = ['code' => $code, 'label' => $label, 'count' => 0];
+            }
+            $invalidReasons[$code]['count'] += $count;
+        }
     }
+
+    uasort($invalidReasons, static function (array $a, array $b): int {
+        $count = ((int)$b['count']) <=> ((int)$a['count']);
+        return $count !== 0 ? $count : strcmp((string)$a['label'], (string)$b['label']);
+    });
 
     return array_merge($period, [
         'schema_version' => 2,
@@ -290,6 +327,7 @@ function znews_calendar_review_summary(array $period, array $rows, bool $livePre
         'creator_views_excluded' => $creatorExcluded,
         'self_views_excluded' => $selfExcluded,
         'eligible_read_seconds' => $readSeconds,
+        'invalid_reason_counts' => array_values($invalidReasons),
         'under_review_count' => $livePreview ? 0 : $counts['UNDER_REVIEW'],
         'approved_count' => $livePreview ? 0 : $counts['APPROVED'],
         'held_count' => $livePreview ? 0 : $counts['HELD'],
