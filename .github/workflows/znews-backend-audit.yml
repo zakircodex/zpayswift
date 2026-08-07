@@ -123,6 +123,8 @@ jobs:
             file: tests/zsky24_creator_period_payout_test.php
           - id: weekly-creator-review
             file: tests/zsky24_weekly_creator_review_test.php
+          - id: calendar-review-periods
+            file: tests/zsky24_calendar_review_periods_test.php
           - id: page-responsiveness
             file: tests/zsky24_page_responsiveness_test.php
           - id: reload-guest-bootstrap
