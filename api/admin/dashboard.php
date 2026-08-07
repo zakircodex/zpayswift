@@ -15,7 +15,7 @@ header('Pragma: no-cache');
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=23">
   <link rel="stylesheet" href="/api/admin/assets/admin-ux.css?v=2">
-  <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=1">
+  <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body class="admin-premium-body">
@@ -889,7 +889,7 @@ header('Pragma: no-cache');
 window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
 <script src="/api/admin/assets/dashboard.js?v=42"></script>
-<script src="/api/admin/assets/zsky24-admin.js?v=2"></script>
+<script src="/api/admin/assets/zsky24-admin.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.js') ?: 1)) ?>"></script>
 <script src="/api/admin/assets/admin-dashboard-ux.js?v=2"></script>
 
 </body>
