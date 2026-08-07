@@ -33,7 +33,9 @@ foreach ([
     'php tests/znews_view_antifraud_test.php',
     'php tests/zsky24_dual_domain_test.php',
     'php tests/zsky24_creator_period_payout_test.php',
+    'php tests/zsky24_monthly_performance_preview_test.php',
     'php -l api/admin/zsky24_creator_admin.php',
+    'php -l api/znews/lib/creator_monthly_performance.php',
     'node --check api/admin/assets/zsky24-admin.js',
 ] as $required) {
     deploy_expect(str_contains($workflow, $required), 'production preflight is missing: ' . $required);
@@ -61,6 +63,7 @@ foreach ([
     'test -f deployment/api/znews/lib/creator_registry.php',
     'test -f deployment/api/znews/lib/creator_view_policy.php',
     'test -f deployment/api/znews/lib/creator_payout_batches.php',
+    'test -f deployment/api/znews/lib/creator_monthly_performance.php',
 ] as $packaged) {
     deploy_expect(str_contains($workflow, $packaged), 'deployment package assertion is missing: ' . $packaged);
 }
