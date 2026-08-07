@@ -92,6 +92,7 @@ jobs:
           php tests/zsky24_calendar_review_periods_test.php
           php tests/zsky24_invalid_view_diagnostics_test.php
           php tests/zsky24_monthly_performance_preview_test.php
+          php tests/zsky24_monthly_admin_ui_test.php
           php -l api/admin/proxy.php >/dev/null
           php -l api/admin/dashboard.php >/dev/null
           php -l api/admin/zsky24_creator_admin.php >/dev/null
