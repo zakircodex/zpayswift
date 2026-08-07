@@ -97,7 +97,11 @@ function znews_calendar_review_period(
         }
         if ($mode === 'PREVIOUS_COMPLETED') {
             $previousAnchor = $bounds['start']->getTimestamp() - 1;
-            return znews_calendar_review_period('', $previousAnchor, 'CURRENT');
+            $previousDate = (new DateTimeImmutable('@' . $previousAnchor))->setTimezone($timezone);
+            $bounds = znews_calendar_review_bounds($previousDate);
+            if (empty($bounds['ok'])) {
+                return $bounds;
+            }
         }
     }
 
