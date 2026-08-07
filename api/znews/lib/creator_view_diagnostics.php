@@ -24,7 +24,6 @@ function znews_view_diagnostic_label(string $code): string
         'GUEST_RATE_LIMIT' => 'Too many guest views in a short time',
         'BOT_TRAFFIC' => 'Automated or bot traffic',
         'DUPLICATE_VIEW' => 'Duplicate view',
-        'SESSION_EXPIRED' => 'View session expired',
         'READ_TIME_TOO_SHORT' => 'Reading time under ' . znews_view_min_read() . ' seconds',
         'ACTIVE_TIME_TOO_SHORT' => 'Active reading under ' . znews_view_min_active() . ' seconds',
         'HEARTBEAT_REQUIRED' => 'Reading activity was not confirmed',
@@ -56,10 +55,6 @@ function znews_view_diagnostic_primary_reason(array $view): string
         || isset($reasons['DUPLICATE_VIEW'])
         || isset($reasons['DEDUPLICATE_WINDOW_MATCH'])) {
         return 'DUPLICATE_VIEW';
-    }
-    if (isset($reasons['SESSION_EXPIRED'])
-        || strtoupper(trim((string)($view['status'] ?? ''))) === 'EXPIRED') {
-        return 'SESSION_EXPIRED';
     }
     if (isset($reasons['READ_TIME_TOO_SHORT'])) {
         return 'READ_TIME_TOO_SHORT';
@@ -104,7 +99,7 @@ function znews_view_diagnostic_is_creator_view(array $view, string $creatorUid):
 function znews_view_diagnostic_is_invalid_guest(array $view): bool
 {
     $status = strtoupper(trim((string)($view['status'] ?? '')));
-    if ($status !== 'COMPLETED' && $status !== 'BLOCKED' && $status !== 'EXPIRED') {
+    if ($status !== 'COMPLETED' && $status !== 'BLOCKED') {
         return false;
     }
 
