@@ -34,6 +34,7 @@ jobs:
           php -l api/znews/lib/creator_weekly_reviews.php
           php -l api/znews/lib/creator_calendar_reviews.php
           php -l api/znews/lib/creator_view_diagnostics.php
+          php -l api/znews/lib/creator_monthly_performance.php
           php -l api/znews/reviews/mine.php
           php -l api/znews/views/start.php
           php -l api/admin/zsky24_creator_admin.php
@@ -64,6 +65,8 @@ jobs:
         run: php tests/zsky24_weekly_creator_review_test.php
       - name: Invalid view diagnostics
         run: php tests/zsky24_invalid_view_diagnostics_test.php
+      - name: Monthly performance preview
+        run: php tests/zsky24_monthly_performance_preview_test.php
       - name: Page responsiveness regression
         run: php tests/zsky24_page_responsiveness_test.php
       - name: Reload and guest bootstrap regression
