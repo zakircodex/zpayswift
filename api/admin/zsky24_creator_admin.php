@@ -68,6 +68,7 @@ require_once dirname(__DIR__) . '/znews/lib/views.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_registry.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_payout_batches.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_weekly_reviews.php';
+require_once dirname(__DIR__) . '/znews/lib/creator_calendar_reviews.php';
 
 $auth = auth_require_admin_session(true);
 $admin = is_array($auth['user'] ?? null) ? (array)$auth['user'] : [];
@@ -95,10 +96,13 @@ if ($action === 'weekly_periods') {
     if ($method !== 'GET') {
         zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Weekly period list is GET-only.', [], 405);
     }
-    $previous = znews_weekly_review_period('', null, true);
-    zsky24_admin_gateway_response(true, 'ZNEWS_WEEKLY_PERIODS_OK', 'Weekly review periods loaded.', [
-        'default_period' => $previous,
-        'items' => znews_weekly_review_list_periods(max(1, min(52, (int)($_GET['limit'] ?? 12)))),
+    $limit = max(4, min(36, (int)($_GET['limit'] ?? 16)));
+    $current = znews_calendar_review_period();
+    zsky24_admin_gateway_response(true, 'ZNEWS_CALENDAR_PERIODS_OK', 'Calendar review periods loaded.', [
+        'scheme' => znews_calendar_review_scheme(),
+        'rule' => '01-07, 08-14, 15-21, 22-end of month',
+        'default_period' => $current,
+        'items' => znews_calendar_review_catalog($limit),
     ]);
 }
 
@@ -108,14 +112,19 @@ if ($action === 'weekly_review') {
     }
     $periodId = trim((string)($_GET['period_id'] ?? ''));
     if ($periodId === '') {
-        $default = znews_weekly_review_period('', null, true);
+        $default = znews_calendar_review_period();
         $periodId = (string)($default['period_id'] ?? '');
     }
-    $result = znews_weekly_review_get_period($periodId);
+    $result = znews_calendar_review_get_period($periodId);
+    $live = !empty($result['period']['live_preview']) || strtoupper((string)($result['period']['lifecycle_status'] ?? '')) === 'LIVE';
+    $upcoming = strtoupper((string)($result['period']['lifecycle_status'] ?? '')) === 'UPCOMING';
+    $message = $live
+        ? 'Current calendar period preview loaded.'
+        : ($upcoming ? 'Upcoming calendar period loaded.' : (!empty($result['ok']) ? 'Calendar review loaded.' : 'Calendar review has not been generated.'));
     zsky24_admin_gateway_response(
         !empty($result['ok']),
-        (string)($result['code'] ?? (!empty($result['ok']) ? 'ZNEWS_WEEKLY_REVIEW_OK' : 'ZNEWS_WEEKLY_REVIEW_FAILED')),
-        !empty($result['ok']) ? 'Weekly review loaded.' : 'Weekly review was not found.',
+        (string)($result['code'] ?? (!empty($result['ok']) ? 'ZNEWS_CALENDAR_REVIEW_OK' : 'ZNEWS_CALENDAR_REVIEW_FAILED')),
+        $message,
         $result,
         (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 404))
     );
@@ -177,14 +186,14 @@ if ($action === 'weekly_generate') {
     }
     $periodId = trim((string)($body['period_id'] ?? ''));
     if ($periodId === '') {
-        $default = znews_weekly_review_period('', null, true);
+        $default = znews_calendar_review_period('', null, 'PREVIOUS_COMPLETED');
         $periodId = (string)($default['period_id'] ?? '');
     }
-    $result = znews_weekly_review_generate($periodId, $adminUid);
+    $result = znews_calendar_review_generate($periodId, $adminUid);
     zsky24_admin_gateway_response(
         !empty($result['ok']),
-        (string)($result['code'] ?? 'ZNEWS_WEEKLY_REVIEW_GENERATE_FAILED'),
-        !empty($result['ok']) ? 'Weekly creator review generated.' : 'Weekly creator review could not be generated.',
+        (string)($result['code'] ?? 'ZNEWS_CALENDAR_REVIEW_GENERATE_FAILED'),
+        !empty($result['ok']) ? 'Calendar creator review generated.' : 'Calendar creator review could not be generated.',
         $result,
         (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 500))
     );
@@ -201,11 +210,11 @@ if ($action === 'weekly_status') {
     if ($periodId === '' || $creatorUid === '') {
         zsky24_admin_gateway_response(false, 'ZNEWS_WEEKLY_REVIEW_TARGET_REQUIRED', 'Period and creator are required.', [], 422);
     }
-    $result = znews_weekly_review_set_status($periodId, $creatorUid, $status, $reason, $adminUid);
+    $result = znews_calendar_review_set_status($periodId, $creatorUid, $status, $reason, $adminUid);
     zsky24_admin_gateway_response(
         !empty($result['ok']),
-        (string)($result['code'] ?? (!empty($result['ok']) ? 'ZNEWS_WEEKLY_REVIEW_UPDATED' : 'ZNEWS_WEEKLY_REVIEW_UPDATE_FAILED')),
-        !empty($result['ok']) ? 'Weekly creator review updated.' : 'Weekly creator review could not be updated.',
+        (string)($result['code'] ?? (!empty($result['ok']) ? 'ZNEWS_CALENDAR_REVIEW_UPDATED' : 'ZNEWS_CALENDAR_REVIEW_UPDATE_FAILED')),
+        !empty($result['ok']) ? 'Calendar creator review updated.' : 'Calendar creator review could not be updated.',
         $result,
         (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 500))
     );
