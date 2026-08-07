@@ -120,7 +120,7 @@
             <div class="zsky-weekly-heading">
               <span class="zsky-admin-kicker">WEEKLY PERFORMANCE</span>
               <h3>Verified creator engagement</h3>
-              <p>Fixed calendar periods: 01–07, 08–14, 15–21 and 22–month end. Current periods are live and read-only.</p>
+              <p>Fixed calendar periods: 01–07, 08–14, 15–21 and 22–month end. Current periods are live and read-only. No revenue, balance or payout amount is calculated here.</p>
             </div>
             <div class="zsky-weekly-controls">
               <label for="zskyWeeklyPeriodSelect">Review period</label>
