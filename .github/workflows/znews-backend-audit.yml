@@ -127,6 +127,8 @@ jobs:
             file: tests/zsky24_calendar_review_periods_test.php
           - id: invalid-view-diagnostics
             file: tests/zsky24_invalid_view_diagnostics_test.php
+          - id: monthly-performance-preview
+            file: tests/zsky24_monthly_performance_preview_test.php
           - id: page-responsiveness
             file: tests/zsky24_page_responsiveness_test.php
           - id: reload-guest-bootstrap
