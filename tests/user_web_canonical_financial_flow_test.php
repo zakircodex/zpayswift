@@ -58,9 +58,9 @@ canonical_flow_expect(
     'Top-Up review must not duplicate backend financial calculations.'
 );
 canonical_flow_expect(
-    str_contains($dashboardJs, "proxyPost('bundle_preview'")
-    && str_contains($dashboardJs, "proxyPost('bundle_submit'")
-    && str_contains($dashboardJs, 'idempotency_key: state.bundleBuy.idempotencyKey'),
+    str_contains($dashboardJs, "shell.post('bundle_preview'")
+    && str_contains($dashboardJs, "shell.post('bundle_submit'")
+    && str_contains($dashboardJs, 'idempotency_key: state.idempotencyKey'),
     'Bundle Web flow must use preview-token and idempotent submit actions.'
 );
 canonical_flow_expect(

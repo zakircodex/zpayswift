@@ -8,6 +8,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 
 require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/topup_config.php';
 
 function bundle_now(): int
 {
@@ -1541,6 +1542,25 @@ function bundle_preview_for_user(string $uid, string $offerId, string $bundleNum
     $operator = strtoupper(trim((string)($offer['operator'] ?? '')));
     if ($operator === '') {
         return ['ok' => false, 'code' => 'BUNDLE_OFFER_NOT_FOUND', 'message' => 'Bundle operator is unavailable', 'data' => ['offer_id' => $offerId]];
+    }
+
+    $numberSuggestion = function_exists('topup_suggest_operator_by_number')
+        ? topup_suggest_operator_by_number('BD', $bundleNumber)
+        : [];
+    $normalizedOperator = function_exists('normalize_operator') ? normalize_operator($operator) : $operator;
+    $normalizedNumberOperators = array_values(array_filter(array_map(
+        static fn($value): string => function_exists('normalize_operator')
+            ? normalize_operator((string)$value)
+            : strtoupper(trim((string)$value)),
+        is_array($numberSuggestion['candidates'] ?? null) ? $numberSuggestion['candidates'] : []
+    )));
+    if ($normalizedNumberOperators && !in_array($normalizedOperator, $normalizedNumberOperators, true)) {
+        return [
+            'ok' => false,
+            'code' => 'BUNDLE_OPERATOR_MISMATCH',
+            'message' => 'Mobile number does not match the selected bundle operator',
+            'data' => ['field' => 'bundle_number'],
+        ];
     }
 
     if (function_exists('require_active_operator')) {

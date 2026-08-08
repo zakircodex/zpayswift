@@ -4315,6 +4315,44 @@ switch ($action) {
         );
         break;
 
+    case 'bundle_favorites':
+        user_proxy_require_method('GET');
+        user_proxy_require_login(true, false);
+        user_proxy_forward_authenticated_json(
+            'GET',
+            'favorites/list.php',
+            null,
+            'FAVORITES_LOAD_FAILED',
+            'Favorite numbers could not be loaded.'
+        );
+        break;
+
+    case 'bundle_favorite_update':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'favorites/update.php',
+            user_proxy_read_json_body(),
+            'FAVORITE_UPDATE_FAILED',
+            'Favorite number could not be updated.'
+        );
+        break;
+
+    case 'bundle_favorite_remove':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'favorites/delete.php',
+            user_proxy_read_json_body(),
+            'FAVORITE_REMOVE_FAILED',
+            'Favorite number could not be removed.'
+        );
+        break;
+
     case 'topup_preview':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();

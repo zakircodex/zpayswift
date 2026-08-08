@@ -1,664 +1,910 @@
-﻿(() => {
+(() => {
   'use strict';
-  const shell=window.UserShell;
-  const el=(id)=>document.getElementById(id);
-  const esc=shell.escapeHtml;
-  const money=(value)=>{const n=Number(value||0);return Number.isFinite(n)?n.toFixed(2):'0.00';};
-  const fmtMoney=(value,prefix='BDT')=>`${prefix} ${money(value)}`;
-  const fmtTs=(value)=>{const n=Number(value||0);return n?new Date(n<1000000000000?n*1000:n).toLocaleString():'-';};
-  const operatorName=(value)=>String(value||'-');
-  const userStatusLabel=(value)=>String(value||'PENDING').replaceAll('_',' ');
-  const state={walletSummary:null,requestLogs:[],bundleOffers:[],bundleBuy:{offerId:'',row:null,preview:null,idempotencyKey:''}};
-  let bundleLazyTimer=null; let bundleRenderToken=0;
-  const BUNDLE_FIRST_RENDER_COUNT=1,BUNDLE_RENDER_CHUNK_SIZE=1,BUNDLE_RENDER_DELAY_MS=120;
-  const showToast=shell.toast,proxyGet=shell.get,proxyPost=shell.post;
-  const showModalById=(id)=>el(id)?.classList.add('show');
-  const hideModalById=(id)=>el(id)?.classList.remove('show');
-  const renderHero=()=>{}; const renderSummary=()=>{}; const renderHistory=()=>{};
-  async function safeRefreshAll(){state.walletSummary=await shell.get('wallet_summary',{},'Refreshing wallet...',{busy:false});}
-function getBundleOfferItems(data){
-  const out = [];
-  const seen = new Set();
 
-  function looksLikeOffer(row){
-    if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  if (window.__zpayBundlePageInitialized) return;
+  window.__zpayBundlePageInitialized = true;
 
-    return !!(
-      row.offer_id ||
-      row.bundle_name ||
-      row.name ||
-      row.operator ||
-      row.amount ||
-      row.price_amount ||
-      row.offer_price ||
-      row.user_commission
-    );
+  const shell = window.UserShell;
+  const pageRoot = document.querySelector('.user-bundle-page #bundleSection');
+  if (!shell || !pageRoot) return;
+
+  const HOLD_DURATION_MS = 1200;
+  const STEP_ORDER = ['offers', 'number', 'pin', 'preview'];
+  const byId = (id) => document.getElementById(id);
+  const scrollBody = byId('bundleScrollBody');
+
+  const state = {
+    initialized: false,
+    offers: [],
+    operator: '',
+    selectedOffer: null,
+    numberFull: '',
+    numberValidated: null,
+    preview: null,
+    favorites: [],
+    step: 'offers',
+    busy: false,
+    submitting: false,
+    completed: false,
+    idempotencyKey: '',
+    modal: { open: false, loading: false, history: false, opener: null },
+    hold: {
+      active: false,
+      completed: false,
+      pointerId: null,
+      timer: 0,
+      frame: 0,
+      startedAt: 0,
+      startX: 0,
+      startY: 0
+    },
+    keyboard: {
+      baselineHeight: Math.max(window.innerHeight || 0, window.visualViewport?.height || 0),
+      timer: 0
+    }
+  };
+
+  function text(value, fallback = '') {
+    const output = String(value ?? '').trim();
+    return output || fallback;
   }
 
-  function addRow(row, key = ''){
-    if (!row || typeof row !== 'object' || Array.isArray(row)) return;
-
-    const item = { ...row };
-
-    if (!item.offer_id && key) {
-      item.offer_id = String(key);
-    }
-
-    if (!looksLikeOffer(item)) return;
-
-    const id = String(item.offer_id || item.id || item.bundle_id || '').trim();
-    const uniqueKey = id || JSON.stringify(item);
-
-    if (seen.has(uniqueKey)) return;
-    seen.add(uniqueKey);
-
-    out.push(item);
+  function number(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
-  function scan(value){
-    if (!value) return;
+  function money(value, currency = 'BDT') {
+    return `${text(currency, 'BDT')} ${number(value).toFixed(2)}`;
+  }
 
-    if (Array.isArray(value)) {
-      value.forEach((row, index) => addRow(row, String(index)));
-      return;
-    }
+  function normalizeOperator(value) {
+    const clean = text(value).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const aliases = {
+      GRAMEENPHONE: 'GP', ROBIAXIATA: 'ROBI', AIRTELBD: 'AIRTEL',
+      BANGLALINK: 'BL', BANGLALINKDIGITAL: 'BL', TELETALKBD: 'TELETALK'
+    };
+    return aliases[clean] || clean;
+  }
 
-    if (typeof value === 'object') {
-      if (looksLikeOffer(value)) {
-        addRow(value);
+  function operatorLabel(value) {
+    const labels = { GP: 'Grameenphone', ROBI: 'Robi', AIRTEL: 'Airtel', BL: 'Banglalink', TELETALK: 'Teletalk', SKITTO: 'Skitto' };
+    const normalized = normalizeOperator(value);
+    return labels[normalized] || text(value, 'Operator');
+  }
+
+  function countryLabel(value) {
+    const country = text(value, 'BD').toUpperCase();
+    if (country === 'BD' || country === 'BANGLADESH') return 'Bangladesh';
+    if (country === 'MY' || country === 'MALAYSIA') return 'Malaysia';
+    return text(value, 'Bangladesh');
+  }
+
+  function normalizeBdNumber(value) {
+    let digits = text(value).replace(/\D+/g, '');
+    if (digits.startsWith('00880')) digits = digits.slice(5);
+    else if (digits.startsWith('880')) digits = digits.slice(3);
+    if (digits.length === 10 && digits.startsWith('1')) digits = `0${digits}`;
+    return digits;
+  }
+
+  function maskNumber(value) {
+    const digits = normalizeBdNumber(value);
+    if (digits.length < 7) return digits || '-';
+    return `${digits.slice(0, 4)}****${digits.slice(-3)}`;
+  }
+
+  function suggestedOperators(value) {
+    const prefix = normalizeBdNumber(value).slice(0, 3);
+    const map = {
+      '013': ['GP', 'SKITTO'], '014': ['BL'], '015': ['TELETALK'],
+      '016': ['AIRTEL'], '017': ['GP'], '018': ['ROBI'], '019': ['BL']
+    };
+    return map[prefix] || [];
+  }
+
+  function validNumberForOffer(value, offer = state.selectedOffer) {
+    const digits = normalizeBdNumber(value);
+    if (!/^01[3-9]\d{8}$/.test(digits)) return false;
+    const expected = normalizeOperator(offer?.operator || offer?.operator_name);
+    const suggestions = suggestedOperators(digits);
+    return !expected || suggestions.includes(expected);
+  }
+
+  function offerId(offer) {
+    return text(offer?.offer_id || offer?.id || offer?.bundle_id);
+  }
+
+  function offerName(offer) {
+    return text(offer?.bundle_name || offer?.name || offer?.description, 'Bundle Offer');
+  }
+
+  function offerPrice(offer) {
+    return number(offer?.price_amount ?? offer?.amount ?? offer?.offer_price);
+  }
+
+  function offerCommission(offer) {
+    return number(offer?.user_commission ?? offer?.bundle_commission);
+  }
+
+  function offerValidity(offer) {
+    const direct = text(offer?.validity_text || offer?.package_validity || offer?.bundle_validity);
+    if (direct) return direct;
+    const value = number(offer?.validity_value || offer?.duration_value);
+    const unit = text(offer?.validity_unit || offer?.duration_unit);
+    return value > 0 && unit ? `${value} ${unit}` : 'Bundle';
+  }
+
+  function collectOffers(data) {
+    const output = [];
+    const seen = new Set();
+    const scan = (value, key = '') => {
+      if (!value) return;
+      if (Array.isArray(value)) {
+        value.forEach((item, index) => scan(item, String(index)));
         return;
       }
-
-      Object.keys(value).forEach(key => {
-        const child = value[key];
-
-        if (Array.isArray(child)) {
-          scan(child);
-          return;
+      if (typeof value !== 'object') return;
+      const looksLikeOffer = value.offer_id || value.bundle_name || value.price_amount || value.offer_price;
+      if (looksLikeOffer) {
+        const item = { ...value };
+        if (!item.offer_id && key) item.offer_id = key;
+        const id = offerId(item);
+        if (id && !seen.has(id)) {
+          seen.add(id);
+          output.push(item);
         }
+        return;
+      }
+      Object.entries(value).forEach(([childKey, child]) => scan(child, childKey));
+    };
+    scan(data);
+    return output.filter((offer) => offerId(offer));
+  }
 
-        if (child && typeof child === 'object') {
-          if (looksLikeOffer(child)) {
-            addRow(child, key);
-          } else {
-            scan(child);
-          }
-        }
+  function createElement(tag, className, content = '') {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (content !== '') node.textContent = String(content);
+    return node;
+  }
+
+  function clear(node) {
+    if (node) node.replaceChildren();
+  }
+
+  function makeIdempotencyKey() {
+    if (window.crypto?.randomUUID) return `WEB-BUNDLE-${window.crypto.randomUUID()}`;
+    const random = window.crypto?.getRandomValues ? window.crypto.getRandomValues(new Uint32Array(2)).join('') : Math.random().toString(36).slice(2);
+    return `WEB-BUNDLE-${Date.now()}-${random}`;
+  }
+
+  function modalElements() {
+    return {
+      wrap: byId('bundleActionModal'), close: byId('bundleModalCloseButton'),
+      icon: byId('bundleModalIcon'), spinner: byId('bundleModalSpinner'),
+      title: byId('bundleModalTitle'), message: byId('bundleModalMessage'),
+      body: byId('bundleModalBody'), actions: byId('bundleModalActions')
+    };
+  }
+
+  function hideModalImmediate({ restoreFocus = true } = {}) {
+    const modal = modalElements();
+    if (!modal.wrap) return;
+    modal.wrap.classList.remove('show', 'loading', 'error', 'success', 'dismissible');
+    modal.wrap.setAttribute('aria-hidden', 'true');
+    modal.wrap.inert = true;
+    document.body.classList.remove('bundle-modal-open');
+    pageRoot.inert = false;
+    const opener = state.modal.opener;
+    state.modal = { open: false, loading: false, history: false, opener: null };
+    if (restoreFocus) opener?.focus?.({ preventScroll: true });
+  }
+
+  function setModal({ kind = 'info', title = 'Bundle', message = '', loading = false, body = null, actions = [], pushHistory = false }) {
+    hideModalImmediate({ restoreFocus: false });
+    const modal = modalElements();
+    state.modal = {
+      open: true,
+      loading,
+      history: Boolean(pushHistory),
+      opener: document.activeElement instanceof HTMLElement ? document.activeElement : null
+    };
+    modal.title.textContent = title;
+    modal.message.textContent = message;
+    modal.message.hidden = !message;
+    modal.icon.textContent = kind === 'success' ? '✓' : kind === 'error' ? '!' : '';
+    modal.icon.hidden = loading || kind === 'info';
+    modal.spinner.hidden = !loading;
+    modal.close.hidden = loading;
+    clear(modal.body);
+    clear(modal.actions);
+    if (body instanceof Node) modal.body.appendChild(body);
+    modal.body.hidden = !body;
+    actions.forEach((action) => {
+      const button = createElement('button', `bundle-modal-action ${action.primary ? '' : 'secondary'}`, action.label);
+      button.type = 'button';
+      button.addEventListener('click', action.handler, { once: Boolean(action.once) });
+      modal.actions.appendChild(button);
+    });
+    modal.actions.hidden = actions.length === 0;
+    modal.wrap.classList.add('show');
+    if (loading) modal.wrap.classList.add('loading');
+    else if (kind === 'error') modal.wrap.classList.add('error', 'dismissible');
+    else if (kind === 'success') modal.wrap.classList.add('success');
+    else modal.wrap.classList.add('dismissible');
+    modal.wrap.setAttribute('aria-hidden', 'false');
+    modal.wrap.inert = false;
+    document.body.classList.add('bundle-modal-open');
+    pageRoot.inert = true;
+    if (pushHistory) {
+      window.history.pushState(historyState(state.step, true), '', window.location.href);
+    }
+    window.setTimeout(() => (actions.length ? modal.actions.querySelector('button') : modal.wrap)?.focus?.({ preventScroll: true }), 0);
+  }
+
+  function openLoading(message) {
+    setModal({ loading: true, title: 'Please wait', message });
+  }
+
+  function closeLoading() {
+    if (state.modal.loading) hideModalImmediate({ restoreFocus: false });
+  }
+
+  function safeMessage(error, fallback) {
+    const message = text(error?.message);
+    if (!message || /firebase|exception|stack|\/api\/|token|credential/i.test(message)) return fallback;
+    return message;
+  }
+
+  function openError(title, error, fallback, pushHistory = true) {
+    setModal({
+      kind: 'error', title, message: safeMessage(error, fallback), pushHistory,
+      actions: [{ label: 'OK', primary: true, handler: closeModalFromAction }]
+    });
+  }
+
+  function closeModalFromAction() {
+    if (!state.modal.open) return;
+    if (window.history.state?.zpayBundleModal) {
+      window.history.back();
+      return;
+    }
+    hideModalImmediate();
+  }
+
+  function closeCompletedModalState() {
+    const hasModalHistory = Boolean(window.history.state?.zpayBundleModal);
+    hideModalImmediate({ restoreFocus: false });
+    if (hasModalHistory) window.history.back();
+  }
+
+  function resultRow(label, value) {
+    const row = createElement('div', 'bundle-result-row');
+    row.append(createElement('span', '', label), createElement('strong', '', value));
+    return row;
+  }
+
+  function historyState(step = state.step, modal = false) {
+    return { ...(window.history.state || {}), zpayBundlePage: true, zpayBundleStep: step, zpayBundleModal: modal };
+  }
+
+  function setStep(nextStep, mode = 'push') {
+    if (!STEP_ORDER.includes(nextStep)) return;
+    if (nextStep !== 'offers' && !state.selectedOffer) return;
+    if (['pin', 'preview'].includes(nextStep) && !state.numberValidated) return;
+    if (nextStep === 'preview' && !state.preview?.preview_token) return;
+    state.step = nextStep;
+    document.querySelectorAll('[data-bundle-step]').forEach((section) => {
+      const active = section.dataset.bundleStep === nextStep;
+      section.classList.toggle('active', active);
+      section.hidden = !active;
+    });
+    pageRoot.dataset.bundleCurrentStep = nextStep;
+    byId('bundlePinInput').value = nextStep === 'pin' ? byId('bundlePinInput').value : '';
+    resetKeyboardLayout();
+    scrollBody?.scrollTo({ top: 0, behavior: mode === 'replace' ? 'auto' : 'smooth' });
+    const nextState = historyState(nextStep, false);
+    if (mode === 'replace') window.history.replaceState(nextState, '', window.location.href);
+    else if (mode === 'push') window.history.pushState(nextState, '', window.location.href);
+  }
+
+  function resetTransferState() {
+    state.selectedOffer = null;
+    state.numberFull = '';
+    state.numberValidated = null;
+    state.preview = null;
+    state.completed = false;
+    state.idempotencyKey = '';
+    byId('bundleNumberInput').value = '';
+    byId('bundlePinInput').value = '';
+    resetHold();
+  }
+
+  function renderOperatorPills() {
+    const wrap = byId('bundleOperatorPills');
+    clear(wrap);
+    const operators = [];
+    state.offers.forEach((offer) => {
+      const value = normalizeOperator(offer.operator || offer.operator_name);
+      if (value && !operators.includes(value)) operators.push(value);
+    });
+    if (!operators.includes(state.operator)) state.operator = operators[0] || '';
+    operators.forEach((operator) => {
+      const button = createElement('button', 'bundle-operator-pill', `${operatorLabel(operator)} • PREPAID`);
+      button.type = 'button';
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-selected', operator === state.operator ? 'true' : 'false');
+      button.classList.toggle('active', operator === state.operator);
+      button.addEventListener('click', () => {
+        if (state.busy || operator === state.operator) return;
+        state.operator = operator;
+        renderOperatorPills();
+        renderOffers();
       });
-    }
-  }
-
-  scan(data);
-
-  return out;
-}
-
-function mergeBundleResponseIntoWalletSummary(data){
-  if (!data || typeof data !== 'object') return;
-
-  if (!state.walletSummary) {
-    state.walletSummary = {};
-  }
-
-  if (data.wallet && typeof data.wallet === 'object') {
-    state.walletSummary.wallet = {
-      ...(state.walletSummary.wallet || {}),
-      ...data.wallet
-    };
-  }
-
-  if (data.role_settings && typeof data.role_settings === 'object') {
-    state.walletSummary.role_settings = {
-      ...(state.walletSummary.role_settings || {}),
-      ...data.role_settings
-    };
-  }
-}
-
-
-function applyBundleCreateSuccessToLocalState(data){
-  if (!data || typeof data !== 'object') return;
-
-  if (!state.walletSummary) {
-    state.walletSummary = {};
-  }
-
-  if (!state.walletSummary.wallet) {
-    state.walletSummary.wallet = {};
-  }
-
-  if (data.wallet && typeof data.wallet === 'object') {
-    state.walletSummary.wallet = {
-      ...(state.walletSummary.wallet || {}),
-      available_balance: Number(data.wallet.available_balance || 0),
-      hold_balance: Number(data.wallet.hold_balance || 0),
-      updated_at: Number(data.updated_at || data.created_at || Math.floor(Date.now() / 1000))
-    };
-  }
-
-  const requestId = String(data.request_id || '').trim();
-
-  if (requestId) {
-    state.requestLogs = (state.requestLogs || []).filter(row => {
-      return String(row.request_id || '') !== requestId;
-    });
-
-    state.requestLogs.unshift({
-      request_id: requestId,
-      uid: data.uid || '',
-      key_id: 'PANEL',
-      action: 'BUNDLE',
-      request_type: 'BUNDLE',
-      source: data.source || 'USER_PANEL',
-      request_source: data.request_source || 'USER_PANEL',
-      status: data.status || 'WAITING_ADMIN',
-
-      operator: data.operator || '',
-      operator_name: data.operator_name || operatorName(data.operator || ''),
-
-      topup_number: data.bundle_number || data.topup_number || data.number || '',
-      bundle_number: data.bundle_number || data.topup_number || data.number || '',
-      number: data.bundle_number || data.topup_number || data.number || '',
-
-      offer_id: data.offer_id || '',
-      bundle_name: data.bundle_name || '',
-
-      amount: Number(data.you_pay || data.payable_amount || data.amount || 0),
-      price_amount: Number(data.price_amount || data.offer_price || 0),
-      offer_price: Number(data.offer_price || data.price_amount || 0),
-      user_commission: Number(data.user_commission || data.customer_commission || data.user_discount || 0),
-      you_pay: Number(data.you_pay || data.payable_amount || data.amount || 0),
-      payable_amount: Number(data.payable_amount || data.you_pay || data.amount || 0),
-
-      message: data.message || 'Bundle request created from user panel',
-      created_at: Number(data.created_at || Math.floor(Date.now() / 1000)),
-      updated_at: Number(data.updated_at || data.created_at || Math.floor(Date.now() / 1000)),
-      completed_at: Number(data.completed_at || 0)
+      wrap.appendChild(button);
     });
   }
 
-  renderHero();
-  renderSummary();
-  renderHistory();
-}
-
-
-/* =========================
-   Render
-========================= */
-
-function bundleCardHtml(item){
-  const offerId = String(item.offer_id || '');
-  const name = String(item.bundle_name || item.name || 'Bundle Offer');
-  const opName = operatorName(item.operator_name || item.operator || '-');
-  const desc = String(item.description || 'Ready bundle offer for your customer.');
-
-  const price = getBundlePrice(item);
-  const userCommission = getBundleUserCommission(item);
-  const youPay = getBundleYouPay(item);
-  const validity = getBundleValidity(item);
-  const expiry = getBundleExpiry(item);
-
-  return `
-    <div class="bundle-card bundle-card-lazy">
-      <div class="bundle-card-top">
-        <div>
-          <div class="bundle-name">${esc(name)}</div>
-          <div class="bundle-id">Offer ID: ${esc(offerId || '-')}</div>
-        </div>
-        <span class="pill info">${esc(opName)}</span>
-      </div>
-
-      <div class="bundle-desc">${esc(desc)}</div>
-
-      <div class="bundle-price-grid">
-        <div class="bundle-mini">
-          <label>Price</label>
-          <strong>${fmtMoney(price)}</strong>
-        </div>
-
-        <div class="bundle-mini">
-          <label>User Commission</label>
-          <strong>${fmtMoney(userCommission)}</strong>
-        </div>
-
-        <div class="bundle-mini">
-          <label>You Pay</label>
-          <strong>${fmtMoney(youPay)}</strong>
-        </div>
-
-        <div class="bundle-mini">
-          <label>Validity</label>
-          <strong>${esc(validity)}</strong>
-        </div>
-      </div>
-
-      <div class="bundle-footer">
-        <div class="bundle-expiry">Expires: ${esc(expiry)}</div>
-
-        <button class="btn green bundle-buy-btn" type="button" data-offer-id="${esc(offerId)}">
-          Buy Bundle
-        </button>
-      </div>
-    </div>
-  `;
-}
-
-function renderBundleOffers(options = {}){
-  const wrap = el('bundleOffersGrid') || el('bundleOfferCards');
-
-  const closeBusyAfterFirst = !!options.closeBusyAfterFirst;
-  let closedBusy = false;
-
-  function closeFirstBusy(){
-    if (!closeBusyAfterFirst || closedBusy) return;
-
-    closedBusy = true;
-    setBusy(false);
-  }
-
-  if (!wrap) {
-    closeFirstBusy();
-    return;
-  }
-
-  clearBundleLazyTimer();
-  hideBundleSummaryBoxes();
-
-  const rows = Array.isArray(state.bundleOffers) ? state.bundleOffers : [];
-
-  if (!rows.length) {
-    wrap.innerHTML = `
-      <div class="bundle-empty">
-        <strong>No bundle offers found</strong>
-        <span>Please refresh again or contact support.</span>
-      </div>
-    `;
-
-    closeFirstBusy();
-    return;
-  }
-
-  wrap.innerHTML = '';
-
-  const currentToken = bundleRenderToken;
-  let index = 0;
-
-  function renderOneCard(){
-    if (currentToken !== bundleRenderToken) {
-      closeFirstBusy();
+  function renderOffers() {
+    const grid = byId('bundleOffersGrid');
+    clear(grid);
+    grid.setAttribute('aria-busy', 'false');
+    const offers = state.offers.filter((offer) => normalizeOperator(offer.operator || offer.operator_name) === state.operator);
+    if (!offers.length) {
+      grid.appendChild(createElement('div', 'bundle-empty-state', 'No bundles are available for this operator.'));
       return;
     }
-
-    if (index >= rows.length) {
-      bundleLazyTimer = null;
-      closeFirstBusy();
-      return;
-    }
-
-    const item = rows[index];
-    index++;
-
-    wrap.insertAdjacentHTML('beforeend', bundleCardHtml(item));
-
-    if (index === 1) {
-      hideBundleStatus();
-      closeFirstBusy();
-    }
-
-    bundleLazyTimer = setTimeout(renderOneCard, BUNDLE_RENDER_DELAY_MS);
-  }
-
-  renderOneCard();
-}
-
-async function loadBundleOffers(){
-  let manualBusy = false;
-
-  try{
-    clearBundleLazyTimer();
-
-    const wrap = el('bundleOffersGrid') || el('bundleOfferCards');
-
-    if (wrap) {
-      wrap.innerHTML = `
-        <div class="bundle-empty">
-          <strong>Loading first bundle offer...</strong>
-          <span>Offers will appear one by one.</span>
-        </div>
-      `;
-    }
-
-    setBundleStatus('info', 'Loading bundle offers...');
-    setBusy(true, 'Loading bundle offers...');
-    manualBusy = true;
-
-    let data = {};
-
-    try{
-      data = await proxyGet(
-        'bundle_offers_panel',
-        {},
-        'Loading bundle offers...',
-        { busy: false }
-      );
-    }catch(firstErr){
-      if (isSessionError(firstErr)) {
-        throw firstErr;
-      }
-
-      data = await proxyGet(
-        'bundle_offers',
-        {},
-        'Loading bundle offers...',
-        { busy: false }
-      );
-    }
-
-    const items = getBundleOfferItems(data);
-
-    mergeBundleResponseIntoWalletSummary(data);
-
-    state.bundleOffers = Array.isArray(items) ? items : [];
-
-    renderHero();
-    renderSummary();
-    hideBundleSummaryBoxes();
-
-    if (state.bundleOffers.length > 0) {
-      renderBundleOffers({ closeBusyAfterFirst: true });
-      manualBusy = false;
-      return state.bundleOffers;
-    }
-
-    renderBundleOffers();
-
-    if (manualBusy) {
-      setBusy(false);
-      manualBusy = false;
-    }
-
-    setBundleStatus('warning', 'No active bundle offer returned from server.');
-
-    return state.bundleOffers;
-  }catch(err){
-    if (manualBusy) {
-      setBusy(false);
-      manualBusy = false;
-    }
-
-    state.bundleOffers = [];
-
-    hideBundleSummaryBoxes();
-    renderBundleOffers();
-
-    if (isSessionError(err)) {
-      throw err;
-    }
-
-    setBundleStatus('error', err.message || 'Failed to load bundle offers.');
-    showToast(err.message || 'Failed to load bundle offers', 'error');
-
-    throw err;
-  }
-}
-
-function openBundleBuyModal(offerId){
-  const modal = el('bundleBuyModal');
-
-  if (!modal) {
-    showToast('Bundle modal missing in dashboard.php', 'error');
-    return;
-  }
-
-  const row = (state.bundleOffers || []).find(item => String(item.offer_id || '') === String(offerId || ''));
-
-  if (!row) {
-    showToast('Bundle offer not found', 'error');
-    return;
-  }
-
-  state.bundleBuy = {
-    offerId: String(row.offer_id || ''),
-    row,
-    preview: null,
-    idempotencyKey: ''
-  };
-
-  const price = getBundlePrice(row);
-  const userCommission = getBundleUserCommission(row);
-  const youPay = getBundleYouPay(row);
-
-  if (el('bundleBuyName')) el('bundleBuyName').textContent = String(row.bundle_name || row.name || '-');
-  if (el('bundleBuyOfferId')) el('bundleBuyOfferId').textContent = String(row.offer_id || '-');
-  if (el('bundleBuyOperator')) el('bundleBuyOperator').textContent = operatorName(row.operator_name || row.operator || '-');
-  if (el('bundleBuyAmount')) el('bundleBuyAmount').textContent = fmtMoney(price);
-
-  const commissionEl = firstExistingEl(['bundleBuyCommission', 'bundleBuyUserCommission']);
-  if (commissionEl) commissionEl.textContent = fmtMoney(userCommission);
-
-  if (el('bundleBuyNetCost')) el('bundleBuyNetCost').textContent = fmtMoney(youPay);
-  if (el('bundleBuyValidity')) el('bundleBuyValidity').textContent = getBundleValidity(row);
-  if (el('bundleBuyExpires')) el('bundleBuyExpires').textContent = getBundleExpiry(row);
-
-  const numberInput = firstExistingEl(['bundleBuyNumberInput', 'bundleBuyNumber']);
-  const pinInput = firstExistingEl(['bundleBuyPinInput', 'bundleBuyPin']);
-  const noteInput = firstExistingEl(['bundleBuyNoteInput', 'bundleBuyNote']);
-
-  if (numberInput) numberInput.value = '';
-  if (pinInput) pinInput.value = '';
-  if (noteInput) noteInput.value = 'Bundle request from user panel';
-  if (numberInput) numberInput.disabled = false;
-  if (pinInput) pinInput.disabled = false;
-
-  const confirmButton = firstExistingEl(['confirmBundleBuyBtn', 'submitBundleBuyBtn']);
-  if (confirmButton) confirmButton.textContent = 'Review Bundle';
-
-  const out = firstExistingEl(['bundleBuyOutput', 'bundleBuyResult']);
-  if (out) {
-    out.className = 'bundle-result-box';
-    out.textContent = 'Enter bundle number and PIN to create request.';
-  }
-
-  modal.classList.add('show');
-
-  setTimeout(() => {
-    numberInput?.focus();
-  }, 150);
-}
-
-function closeBundleBuyModal(){
-  el('bundleBuyModal')?.classList.remove('show');
-
-  state.bundleBuy = {
-    offerId: '',
-    row: null,
-    preview: null,
-    idempotencyKey: ''
-  };
-}
-
-function showBundleMainResult(){
-  const box = el('bundleResult');
-  const wrap = box ? box.closest('.result-box') : null;
-
-  if (wrap) {
-    wrap.classList.remove('hidden');
-  }
-
-  return box;
-}
-
-function renderBundleResultSuccess(data){
-  const box = showBundleMainResult();
-  if (!box) return;
-
-  box.className = '';
-  box.innerHTML = `
-    <div class="result-card good">
-      <div class="result-title">Bundle request created successfully</div>
-      <div class="result-text">
-Request ID: ${esc(data.request_id || '-')}
-Status: ${esc(userStatusLabel(data.status || 'WAITING_ADMIN'))}
-Number: ${esc(data.bundle_number || '-')}
-Operator: ${esc(operatorName(data.operator || '-'))}
-Bundle: ${esc(data.bundle_name || '-')}
-You Pay: BDT ${money(data.you_pay || data.payable_amount || data.amount || 0)}
-User Commission: BDT ${money(data.user_commission || data.customer_commission || data.user_discount || 0)}
-Created: ${esc(fmtTs(data.created_at || 0))}
-      </div>
-    </div>
-  `;
-}
-
-function renderBundleBuyOutputSuccess(data){
-  const box = firstExistingEl(['bundleBuyOutput', 'bundleBuyResult']);
-  if (!box) return;
-
-  box.className = 'bundle-result-box success';
-  box.textContent =
-`Request ID: ${data.request_id || '-'}
-Status: ${userStatusLabel(data.status || 'WAITING_ADMIN')}
-You Pay: BDT ${money(data.you_pay || data.payable_amount || data.amount || 0)}`;
-}
-
-function renderBundleBuyOutputError(message){
-  const box = firstExistingEl(['bundleBuyOutput', 'bundleBuyResult']);
-  if (!box) return;
-
-  box.className = 'bundle-result-box error';
-  box.textContent = message || 'Unknown error';
-}
-
-async function submitBundleBuy(){
-  const row = state.bundleBuy.row;
-  const offerId = state.bundleBuy.offerId;
-  const bundleNumber = (firstExistingEl(['bundleBuyNumberInput', 'bundleBuyNumber'])?.value || '').trim();
-  const pin = (firstExistingEl(['bundleBuyPinInput', 'bundleBuyPin'])?.value || '').trim();
-  const note = (firstExistingEl(['bundleBuyNoteInput', 'bundleBuyNote'])?.value || '').trim();
-
-  if (!row || !offerId) {
-    renderBundleBuyOutputError('Bundle offer missing. Please select offer again.');
-    return;
-  }
-
-  if (!bundleNumber || bundleNumber.replace(/\D+/g, '').length < 10) {
-    renderBundleBuyOutputError('Valid bundle number is required.');
-    showToast('Valid bundle number is required', 'error');
-    return;
-  }
-
-  if (!pin) {
-    renderBundleBuyOutputError('Transaction PIN is required.');
-    showToast('PIN is required', 'error');
-    return;
-  }
-
-  try{
-    const confirmButton = firstExistingEl(['confirmBundleBuyBtn', 'submitBundleBuyBtn']);
-
-    if (!state.bundleBuy.preview?.preview_token) {
-      if (confirmButton) {
-        confirmButton.disabled = true;
-        confirmButton.textContent = 'Reviewing...';
-      }
-
-      await validateTransactionPin(pin);
-      const preview = await proxyPost('bundle_preview', {
-        offer_id: offerId,
-        bundle_number: bundleNumber,
-        verified_by: 'USER_WEB'
-      }, 'Loading bundle preview...');
-
-      if (!preview?.preview_token) {
-        throw new Error('Bundle preview could not be created.');
-      }
-
-      state.bundleBuy.preview = preview;
-      if (!state.bundleBuy.idempotencyKey) {
-        state.bundleBuy.idempotencyKey = window.crypto?.randomUUID?.()
-          || `BUNDLE-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      }
-
-      if (el('bundleBuyAmount')) el('bundleBuyAmount').textContent = fmtMoney(preview.service_amount || preview.amount || 0);
-      const commissionEl = firstExistingEl(['bundleBuyCommission', 'bundleBuyUserCommission']);
-      if (commissionEl) commissionEl.textContent = fmtMoney(preview.user_commission || preview.bundle_commission || 0);
-      if (el('bundleBuyNetCost')) {
-        const prefix = String(preview.wallet_currency || preview.wallet_debit_currency || 'BDT').toUpperCase() === 'MYR' ? 'RM ' : 'BDT ';
-        el('bundleBuyNetCost').textContent = prefix + money(preview.wallet_debit_amount || preview.wallet_hold_amount || 0);
-      }
-
-      const out = firstExistingEl(['bundleBuyOutput', 'bundleBuyResult']);
-      if (out) {
-        const walletCurrency = String(preview.wallet_currency || preview.wallet_debit_currency || 'BDT').toUpperCase();
-        const walletPrefix = walletCurrency === 'MYR' ? 'RM' : 'BDT';
-        out.className = 'bundle-result-box success';
-        out.textContent =
-`Review ready
-Number: ${preview.bundle_number || bundleNumber}
-Bundle: ${preview.bundle_name || row.bundle_name || row.name || '-'}
-Service amount: BDT ${money(preview.service_amount || preview.amount || 0)}
-Wallet debit: ${walletPrefix} ${money(preview.wallet_debit_amount || preview.wallet_hold_amount || 0)}
-Balance after: ${walletPrefix} ${money(preview.balance_after || 0)}`;
-      }
-
-      const numberInput = firstExistingEl(['bundleBuyNumberInput', 'bundleBuyNumber']);
-      const pinInput = firstExistingEl(['bundleBuyPinInput', 'bundleBuyPin']);
-      if (numberInput) numberInput.disabled = true;
-      if (pinInput) pinInput.disabled = true;
-      if (confirmButton) {
-        confirmButton.disabled = false;
-        confirmButton.textContent = 'Confirm Bundle';
-      }
-      return;
-    }
-
-    if (confirmButton) {
-      confirmButton.disabled = true;
-      confirmButton.textContent = 'Submitting...';
-    }
-
-    const data = await proxyPost('bundle_submit', {
-      preview_token: state.bundleBuy.preview.preview_token,
-      offer_id: offerId,
-      bundle_number: bundleNumber,
-      pin,
-      note: note || 'Bundle request from user panel',
-      idempotency_key: state.bundleBuy.idempotencyKey
-    }, 'Creating bundle request...');
-
-    renderBundleBuyOutputSuccess(data);
-    renderBundleResultSuccess(data);
-    applyBundleCreateSuccessToLocalState(data);
-    showToast('Bundle request created successfully', 'ok');
-    
-    setTimeout(() => {
-        closeBundleBuyModal();
-        window.location.assign('/user/history');
-    }, 500);
-  }catch(err){
-    renderBundleBuyOutputError(err.message || 'Failed to create bundle request');
-    showToast(err.message || 'Failed to create bundle request', 'error');
-  }finally{
-    const confirmButton = firstExistingEl(['confirmBundleBuyBtn', 'submitBundleBuyBtn']);
-    if (confirmButton && el('bundleBuyModal')?.classList.contains('show')) {
-      confirmButton.disabled = false;
-      confirmButton.textContent = state.bundleBuy.preview?.preview_token ? 'Confirm Bundle' : 'Review Bundle';
-    }
-  }
-}
-
-  function bindBundlePage(){
-    document.addEventListener('click',(event)=>{
-      const buy=event.target.closest('.bundle-buy-btn'); if(buy){event.preventDefault();openBundleBuyModal(buy.dataset.offerId||buy.dataset.bundleOfferId||'');return;}
-      if(event.target.closest('#confirmBundleBuyBtn')){event.preventDefault();submitBundleBuy();return;}
-      if(event.target.closest('#cancelBundleBuyBtn,#closeBundleBuyModalBtn')){event.preventDefault();closeBundleBuyModal();return;}
-      if(event.target===el('bundleBuyModal'))closeBundleBuyModal();
+    offers.forEach((offer) => {
+      const card = createElement('article', 'bundle-offer-card');
+      const heading = createElement('div', 'bundle-offer-top');
+      const copy = createElement('div', 'bundle-offer-copy');
+      copy.append(createElement('h3', '', offerName(offer)), createElement('p', '', text(offer.description, `${operatorLabel(state.operator)} prepaid bundle`)));
+      heading.append(copy, createElement('span', 'bundle-validity-pill', offerValidity(offer)));
+      const details = createElement('div', 'bundle-offer-details');
+      const price = resultRow('Price', money(offerPrice(offer), 'BDT'));
+      price.className = 'bundle-offer-row';
+      const commission = resultRow('Bundle Commission', money(offerCommission(offer), 'BDT'));
+      commission.className = 'bundle-offer-row commission';
+      details.append(price, commission);
+      const select = createElement('button', 'bundle-primary-button', 'Select Bundle');
+      select.type = 'button';
+      select.addEventListener('click', () => selectOffer(offer));
+      card.append(heading, details, select);
+      grid.appendChild(card);
     });
-    el('refreshBundleOffersBtn')?.addEventListener('click',()=>loadBundleOffers().catch((error)=>showToast(error.message,'error')));
-    el('bundleBuyPin')?.addEventListener('keydown',(event)=>{if(event.key==='Enter')submitBundleBuy();});
-    document.addEventListener('keydown',(event)=>{if(event.key==='Escape')closeBundleBuyModal();});
   }
-  async function init(){await shell.ready;state.walletSummary=await shell.get('wallet_summary',{},'Loading wallet...',{busy:false});bindBundlePage();await loadBundleOffers();}
-  init().catch((error)=>showToast(error.message||'Bundle offers could not be loaded.','error'));
+
+  function selectedSummary(offer, includeNumber = false) {
+    const card = createElement('div', 'bundle-summary-content');
+    card.append(createElement('div', 'bundle-summary-title', offerName(offer)));
+    const meta = createElement('div', 'bundle-summary-meta');
+    meta.append(createElement('span', '', offerValidity(offer)), createElement('span', '', `Price: ${money(offerPrice(offer), 'BDT')}`));
+    if (includeNumber) meta.append(createElement('span', '', maskNumber(state.numberFull)));
+    card.append(meta);
+    return card;
+  }
+
+  function selectOffer(offer) {
+    if (state.busy) return;
+    resetTransferState();
+    state.selectedOffer = offer;
+    state.operator = normalizeOperator(offer.operator || offer.operator_name);
+    byId('bundleNumberSummary').replaceChildren(selectedSummary(offer));
+    renderPinSummary();
+    setStep('number');
+    loadFavorites();
+  }
+
+  function renderPinSummary() {
+    const wrap = byId('bundlePinSummary');
+    if (!wrap || !state.selectedOffer) return;
+    wrap.replaceChildren(selectedSummary(state.selectedOffer, true));
+  }
+
+  async function loadOffers() {
+    const grid = byId('bundleOffersGrid');
+    grid?.setAttribute('aria-busy', 'true');
+    try {
+      const data = await shell.get('bundle_offers_panel', {}, '', { busy: false });
+      state.offers = collectOffers(data);
+      renderOperatorPills();
+      renderOffers();
+    } catch (error) {
+      if (grid) {
+        clear(grid);
+        grid.setAttribute('aria-busy', 'false');
+        grid.appendChild(createElement('div', 'bundle-empty-state', safeMessage(error, 'Bundle list is unavailable. Please try again.')));
+      }
+      openError('Bundle Unavailable', error, 'Bundle list is unavailable. Please try again.');
+    }
+  }
+
+  async function validateNumber() {
+    if (state.busy || !state.selectedOffer) return;
+    const fullNumber = normalizeBdNumber(byId('bundleNumberInput').value);
+    if (!validNumberForOffer(fullNumber)) {
+      openError('Invalid Number', new Error(`Enter a valid ${operatorLabel(state.operator)} mobile number.`), 'Enter a valid mobile number.');
+      return;
+    }
+    state.busy = true;
+    byId('bundleNumberContinueButton').disabled = true;
+    openLoading('Validating mobile number...');
+    try {
+      const data = await shell.post('bundle_preview', {
+        offer_id: offerId(state.selectedOffer), bundle_number: fullNumber, check_only: true
+      }, '', { busy: false });
+      state.numberFull = fullNumber;
+      state.numberValidated = data;
+      state.preview = null;
+      state.idempotencyKey = '';
+      byId('bundleNumberInput').value = fullNumber;
+      renderPinSummary();
+      closeLoading();
+      setStep('pin');
+    } catch (error) {
+      closeLoading();
+      openError('Number Not Valid', error, 'This mobile number could not be validated.');
+    } finally {
+      state.busy = false;
+      byId('bundleNumberContinueButton').disabled = false;
+    }
+  }
+
+  async function preparePreview() {
+    if (state.busy || !state.numberValidated || !state.selectedOffer) return;
+    const pinInput = byId('bundlePinInput');
+    const pin = text(pinInput.value);
+    if (!/^\d{4,6}$/.test(pin)) {
+      openError('PIN Required', new Error('Enter your transaction PIN.'), 'Enter your transaction PIN.');
+      return;
+    }
+    state.busy = true;
+    byId('bundlePinContinueButton').disabled = true;
+    openLoading('Preparing bundle preview...');
+    try {
+      await shell.post('validate_pin', { pin, purpose: 'BUNDLE' }, '', { busy: false });
+      const data = await shell.post('bundle_preview', {
+        offer_id: offerId(state.selectedOffer), bundle_number: state.numberFull, verified_by: 'PIN'
+      }, '', { busy: false });
+      if (!text(data.preview_token)) throw new Error('Secure bundle preview was not returned.');
+      state.preview = data;
+      state.idempotencyKey = makeIdempotencyKey();
+      renderPreview();
+      closeLoading();
+      setStep('preview');
+    } catch (error) {
+      closeLoading();
+      openError('Verification Failed', error, 'Bundle verification could not be completed.');
+    } finally {
+      pinInput.value = '';
+      state.busy = false;
+      byId('bundlePinContinueButton').disabled = false;
+    }
+  }
+
+  function renderPreview() {
+    const wrap = byId('bundlePreviewRows');
+    clear(wrap);
+    const preview = state.preview || {};
+    const walletCurrency = text(preview.wallet_debit_currency || preview.wallet_currency, 'BDT').toUpperCase();
+    const rows = [
+      ['Operator', text(preview.operator_name || preview.operator, operatorLabel(state.operator))],
+      ['Mobile Number', maskNumber(preview.bundle_number || state.numberFull)],
+      ['Bundle', text(preview.bundle_name, offerName(state.selectedOffer))],
+      ['Amount', money(preview.service_amount_bdt ?? preview.service_amount ?? preview.amount, 'BDT')],
+      ['Commission', money(preview.bundle_commission ?? preview.user_commission, 'BDT')]
+    ];
+    if (walletCurrency === 'MYR' && number(preview.rate_used) > 0) rows.push(['Rate', `RM 1 = ${number(preview.rate_used).toFixed(2)} BDT`]);
+    rows.push(
+      ['Wallet Debit', money(preview.wallet_debit_amount ?? preview.wallet_hold_amount, walletCurrency)],
+      ['Balance After', money(preview.balance_after, walletCurrency)]
+    );
+    rows.forEach(([label, value]) => {
+      const row = resultRow(label, value);
+      row.className = 'bundle-preview-row';
+      wrap.appendChild(row);
+    });
+    resetHold();
+  }
+
+  function setHoldProgress(progress) {
+    byId('bundleHoldConfirmButton')?.style.setProperty('--hold-progress', `${Math.max(0, Math.min(100, progress))}%`);
+  }
+
+  function setHoldLabel(label) {
+    const node = byId('bundleHoldConfirmButton')?.querySelector('.bundle-hold-label');
+    if (node) node.textContent = label;
+  }
+
+  function stopHoldTimers() {
+    if (state.hold.timer) window.clearTimeout(state.hold.timer);
+    if (state.hold.frame) window.cancelAnimationFrame(state.hold.frame);
+    state.hold.timer = 0;
+    state.hold.frame = 0;
+  }
+
+  function resetHold() {
+    stopHoldTimers();
+    Object.assign(state.hold, { active: false, completed: false, pointerId: null, startedAt: 0, startX: 0, startY: 0 });
+    byId('bundleHoldConfirmButton')?.classList.remove('is-holding');
+    setHoldProgress(0);
+    setHoldLabel('Tap and hold to confirm bundle');
+  }
+
+  function animateHold() {
+    if (!state.hold.active || state.hold.completed) return;
+    setHoldProgress(((performance.now() - state.hold.startedAt) / HOLD_DURATION_MS) * 100);
+    state.hold.frame = window.requestAnimationFrame(animateHold);
+  }
+
+  function completeHold() {
+    if (!state.hold.active || state.hold.completed || state.submitting) return;
+    state.hold.completed = true;
+    stopHoldTimers();
+    setHoldProgress(100);
+    navigator.vibrate?.(40);
+    submitBundle();
+  }
+
+  function beginHold(pointerId, clientX = 0, clientY = 0) {
+    if (state.hold.active || state.submitting || state.completed || !state.preview?.preview_token) return;
+    state.hold.active = true;
+    state.hold.completed = false;
+    state.hold.pointerId = pointerId;
+    state.hold.startX = Number(clientX);
+    state.hold.startY = Number(clientY);
+    state.hold.startedAt = performance.now();
+    byId('bundleHoldConfirmButton')?.classList.add('is-holding');
+    setHoldLabel('Keep holding...');
+    setHoldProgress(0);
+    state.hold.frame = window.requestAnimationFrame(animateHold);
+    state.hold.timer = window.setTimeout(completeHold, HOLD_DURATION_MS);
+  }
+
+  function handleHoldPointerDown(event) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch (_) {
+      // Pointer capture is optional; the hold still works on browsers that reject it.
+    }
+    beginHold(event.pointerId, event.clientX, event.clientY);
+  }
+
+  function handleHoldPointerMove(event) {
+    if (!state.hold.active || state.hold.pointerId !== event.pointerId) return;
+    if (Math.abs(event.clientX - state.hold.startX) > 16 || Math.abs(event.clientY - state.hold.startY) > 16) resetHold();
+  }
+
+  function handleHoldPointerEnd(event) {
+    if (!state.hold.active || state.hold.pointerId !== event.pointerId) return;
+    if (!state.hold.completed) resetHold();
+  }
+
+  function statusLabel(value) {
+    const status = text(value, 'WAITING_ADMIN').toUpperCase();
+    return status === 'WAITING_ADMIN' ? 'Pending' : status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  function showSuccess(result) {
+    const preview = state.preview || {};
+    const body = createElement('div', 'bundle-result-rows');
+    [
+      ['Number', maskNumber(result.bundle_number || state.numberFull)],
+      ['Operator', text(result.operator_name || result.operator, operatorLabel(state.operator))],
+      ['Bundle', text(result.bundle_name, offerName(state.selectedOffer))],
+      ['Amount', money(result.service_amount_bdt ?? result.amount ?? preview.service_amount_bdt, 'BDT')],
+      ['Commission', money(result.bundle_commission ?? preview.bundle_commission, 'BDT')],
+      ['Status', statusLabel(result.status || preview.status)],
+      ['Request ID', text(result.request_id, '-')]
+    ].forEach(([label, value]) => body.appendChild(resultRow(label, value)));
+    setModal({
+      kind: 'success', title: 'Success', message: 'Your bundle request has been submitted.', body, pushHistory: true,
+      actions: [{ label: 'Done', primary: true, handler: finishSuccess }]
+    });
+  }
+
+  function finishSuccess() {
+    const modalEntry = state.modal.history && window.history.state?.zpayBundleModal ? 1 : 0;
+    const stepEntries = STEP_ORDER.indexOf(state.step);
+    hideModalImmediate({ restoreFocus: false });
+    resetTransferState();
+    state.step = 'offers';
+    const distance = modalEntry + Math.max(0, stepEntries);
+    if (distance > 0 && window.history.length > distance) {
+      window.history.go(-distance);
+    } else {
+      window.history.replaceState(historyState('offers', false), '', window.location.href);
+      setStep('offers', 'replace');
+    }
+    shell.get('wallet_summary', {}, '', { busy: false }).catch(() => {});
+  }
+
+  async function submitBundle() {
+    if (state.submitting || state.completed || !state.preview?.preview_token) return;
+    state.submitting = true;
+    const holdButton = byId('bundleHoldConfirmButton');
+    holdButton.disabled = true;
+    openLoading('Submitting bundle request...');
+    try {
+      const result = await shell.post('bundle_submit', {
+        offer_id: offerId(state.selectedOffer),
+        bundle_number: state.numberFull,
+        preview_token: state.preview.preview_token,
+        verified_by: 'PIN',
+        auth_method: 'PIN',
+        idempotency_key: state.idempotencyKey
+      }, '', { busy: false });
+      state.completed = true;
+      closeLoading();
+      showSuccess(result);
+    } catch (error) {
+      closeLoading();
+      resetHold();
+      openError('Bundle Not Submitted', error, 'The bundle request could not be submitted.');
+    } finally {
+      state.submitting = false;
+      holdButton.disabled = state.completed;
+    }
+  }
+
+  function favoriteItems(data) {
+    const rows = data?.favorites || data?.items || [];
+    if (Array.isArray(rows)) return rows;
+    return rows && typeof rows === 'object' ? Object.values(rows) : [];
+  }
+
+  async function loadFavorites() {
+    const wrap = byId('bundleFavoriteList');
+    if (!wrap) return;
+    wrap.replaceChildren(createElement('div', 'bundle-empty-state', 'Loading favorite numbers...'));
+    try {
+      const data = await shell.get('bundle_favorites', {}, '', { busy: false });
+      state.favorites = favoriteItems(data).filter((item) => /^01[3-9]\d{8}$/.test(normalizeBdNumber(item.number || item.phone)));
+      renderFavorites();
+    } catch (error) {
+      wrap.replaceChildren(createElement('div', 'bundle-empty-state', safeMessage(error, 'Favorite numbers could not be loaded.')));
+    }
+  }
+
+  function renderFavorites() {
+    const wrap = byId('bundleFavoriteList');
+    clear(wrap);
+    const favorites = state.favorites.filter((favorite) => {
+      const favoriteOperator = normalizeOperator(favorite.operator || favorite.operator_name);
+      return favoriteOperator ? favoriteOperator === state.operator : suggestedOperators(favorite.number || favorite.phone).includes(state.operator);
+    });
+    if (!favorites.length) {
+      wrap.appendChild(createElement('div', 'bundle-empty-state', 'No favorite numbers yet.'));
+      return;
+    }
+    favorites.forEach((favorite) => {
+      const full = normalizeBdNumber(favorite.number || favorite.phone);
+      const row = createElement('div', 'bundle-favorite-row');
+      const select = createElement('button', 'bundle-favorite-select');
+      select.type = 'button';
+      const details = createElement('span', 'bundle-favorite-details');
+      details.append(createElement('strong', '', text(favorite.name || favorite.nickname, 'Favorite Number')),
+        createElement('span', '', maskNumber(full)),
+        createElement('small', '', `${countryLabel(favorite.country_name || favorite.country)} • ${operatorLabel(favorite.operator)}`));
+      select.append(details);
+      select.addEventListener('click', () => {
+        byId('bundleNumberInput').value = full;
+        state.numberValidated = null;
+        state.preview = null;
+        byId('bundleNumberInput').focus({ preventScroll: true });
+      });
+      const menu = createElement('button', 'bundle-favorite-more', '⋮');
+      menu.type = 'button';
+      menu.setAttribute('aria-label', `View ${text(favorite.name, 'favorite')} details`);
+      menu.addEventListener('click', () => openFavoriteDetails(favorite));
+      row.append(select, menu);
+      wrap.appendChild(row);
+    });
+  }
+
+  function openFavoriteDetails(favorite) {
+    const body = createElement('div', 'bundle-result-rows');
+    body.append(
+      resultRow('Name', text(favorite.name || favorite.nickname, 'Favorite Number')),
+      resultRow('Number', maskNumber(favorite.number || favorite.phone)),
+      resultRow('Country', countryLabel(favorite.country_name || favorite.country)),
+      resultRow('Operator', operatorLabel(favorite.operator))
+    );
+    setModal({
+      title: 'Favorite Number', body, pushHistory: true,
+      actions: [
+        { label: 'Edit', primary: true, handler: () => openFavoriteEdit(favorite) },
+        { label: 'Remove', handler: () => removeFavorite(favorite) }
+      ]
+    });
+  }
+
+  function openFavoriteEdit(favorite) {
+    hideModalImmediate({ restoreFocus: false });
+    const body = createElement('label', 'bundle-favorite-name-field');
+    body.appendChild(createElement('span', '', 'Name'));
+    const input = createElement('input', 'bundle-favorite-name-input');
+    input.type = 'text';
+    input.maxLength = 40;
+    input.value = text(favorite.name || favorite.nickname);
+    body.appendChild(input);
+    setModal({
+      title: 'Edit Favorite', body, pushHistory: false,
+      actions: [
+        { label: 'Cancel', handler: closeModalFromAction },
+        { label: 'Save', primary: true, handler: async () => {
+          try {
+            await shell.post('bundle_favorite_update', { favorite_id: favorite.favorite_id || favorite.id, name: text(input.value) }, '', { busy: false });
+            closeCompletedModalState();
+            await loadFavorites();
+          } catch (error) {
+            openError('Favorite Not Updated', error, 'Favorite number could not be updated.', false);
+          }
+        } }
+      ]
+    });
+    window.setTimeout(() => input.focus(), 0);
+  }
+
+  async function removeFavorite(favorite) {
+    try {
+      await shell.post('bundle_favorite_remove', { favorite_id: favorite.favorite_id || favorite.id }, '', { busy: false });
+      closeCompletedModalState();
+      await loadFavorites();
+    } catch (error) {
+      openError('Favorite Not Removed', error, 'Favorite number could not be removed.', false);
+    }
+  }
+
+  function resetKeyboardLayout() {
+    if (state.keyboard.timer) window.clearTimeout(state.keyboard.timer);
+    state.keyboard.timer = 0;
+    pageRoot.style.removeProperty('--bundle-keyboard-inset');
+  }
+
+  function updateKeyboardLayout() {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    state.keyboard.baselineHeight = Math.max(state.keyboard.baselineHeight, window.innerHeight || 0);
+    const inset = Math.max(0, state.keyboard.baselineHeight - viewport.height - viewport.offsetTop);
+    pageRoot.style.setProperty('--bundle-keyboard-inset', `${inset}px`);
+    const active = document.activeElement;
+    if (inset > 80 && active && pageRoot.contains(active)) {
+      state.keyboard.timer = window.setTimeout(() => {
+        active.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+      }, 80);
+    }
+  }
+
+  function handleFocusIn(event) {
+    if (!event.target.matches('input, textarea, select')) return;
+    state.keyboard.timer = window.setTimeout(updateKeyboardLayout, 80);
+  }
+
+  function handleFocusOut() {
+    state.keyboard.timer = window.setTimeout(() => {
+      if (!pageRoot.contains(document.activeElement) || !document.activeElement.matches('input, textarea, select')) resetKeyboardLayout();
+    }, 180);
+  }
+
+  function previousStep() {
+    const index = STEP_ORDER.indexOf(state.step);
+    return index > 0 ? STEP_ORDER[index - 1] : '';
+  }
+
+  function handleHeaderBack(event) {
+    if (state.modal.open) {
+      event.preventDefault();
+      if (!state.modal.loading) closeModalFromAction();
+      return;
+    }
+    if (state.busy || state.submitting) {
+      event.preventDefault();
+      return;
+    }
+    if (state.step !== 'offers') {
+      event.preventDefault();
+      window.history.back();
+    }
+  }
+
+  function handlePopState(event) {
+    if (state.modal.open) {
+      event.stopImmediatePropagation();
+      if (state.modal.loading || state.busy || state.submitting) {
+        window.history.pushState(historyState(state.step, false), '', window.location.href);
+      } else {
+        hideModalImmediate();
+      }
+      return;
+    }
+    if (state.busy || state.submitting) {
+      event.stopImmediatePropagation();
+      window.history.pushState(historyState(state.step, false), '', window.location.href);
+      return;
+    }
+    const requested = text(event.state?.zpayBundleStep);
+    if (STEP_ORDER.includes(requested)) {
+      if (state.step === 'pin' || requested !== 'pin') byId('bundlePinInput').value = '';
+      setStep(requested, 'none');
+      return;
+    }
+    const previous = previousStep();
+    if (previous) setStep(previous, 'replace');
+  }
+
+  function bindEvents() {
+    byId('bundleBackButton')?.addEventListener('click', handleHeaderBack);
+    byId('bundleNumberContinueButton')?.addEventListener('click', validateNumber);
+    byId('bundlePinContinueButton')?.addEventListener('click', preparePreview);
+    byId('bundleNumberInput')?.addEventListener('input', () => {
+      state.numberValidated = null;
+      state.preview = null;
+      state.idempotencyKey = '';
+    });
+    byId('bundlePinInput')?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') preparePreview();
+    });
+    byId('bundleModalCloseButton')?.addEventListener('click', closeModalFromAction);
+    document.querySelector('[data-bundle-modal-close]')?.addEventListener('click', () => {
+      if (!state.modal.loading) closeModalFromAction();
+    });
+
+    const hold = byId('bundleHoldConfirmButton');
+    hold?.addEventListener('pointerdown', handleHoldPointerDown);
+    hold?.addEventListener('pointermove', handleHoldPointerMove);
+    hold?.addEventListener('pointerup', handleHoldPointerEnd);
+    hold?.addEventListener('pointercancel', handleHoldPointerEnd);
+    hold?.addEventListener('pointerleave', (event) => {
+      if (event.pointerType === 'mouse') handleHoldPointerEnd(event);
+    });
+    hold?.addEventListener('keydown', (event) => {
+      if ((event.key === ' ' || event.key === 'Enter') && !event.repeat) {
+        event.preventDefault();
+        beginHold('keyboard');
+      }
+    });
+    hold?.addEventListener('keyup', (event) => {
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault();
+        if (!state.hold.completed) resetHold();
+      }
+    });
+    hold?.addEventListener('contextmenu', (event) => event.preventDefault());
+    hold?.addEventListener('dragstart', (event) => event.preventDefault());
+
+    pageRoot.addEventListener('focusin', handleFocusIn);
+    pageRoot.addEventListener('focusout', handleFocusOut);
+    window.visualViewport?.addEventListener('resize', updateKeyboardLayout);
+    window.visualViewport?.addEventListener('scroll', updateKeyboardLayout);
+    window.addEventListener('resize', () => {
+      if (!document.activeElement?.matches?.('input, textarea, select')) {
+        state.keyboard.baselineHeight = Math.max(window.innerHeight || 0, window.visualViewport?.height || 0);
+        resetKeyboardLayout();
+      }
+    });
+    window.addEventListener('popstate', handlePopState);
+  }
+
+  async function boot() {
+    if (state.initialized) return;
+    state.initialized = true;
+    bindEvents();
+    STEP_ORDER.forEach((step) => {
+      const node = document.querySelector(`[data-bundle-step="${step}"]`);
+      if (node) node.hidden = step !== 'offers';
+    });
+    window.history.replaceState(historyState('offers', false), '', window.location.href);
+    try {
+      await shell.ready;
+      await loadOffers();
+    } catch (_) {
+      // UserShell handles expired sessions and bootstrap errors.
+    }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot, { once: true });
+  else boot();
 })();
