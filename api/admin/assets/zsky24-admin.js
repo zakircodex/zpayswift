@@ -18,6 +18,12 @@
     selectedPeriodId: '',
     weeklyReview: null,
     weeklyLoading: false,
+    monthlyPeriodsLoaded: false,
+    monthlyPeriods: [],
+    defaultMonth: null,
+    selectedMonthId: '',
+    monthlyPreview: null,
+    monthlyLoading: false,
   };
 
   const $ = id => document.getElementById(id);
@@ -84,9 +90,10 @@
           <button class="btn blue" id="zsky24RefreshBtn" type="button">Refresh</button>
         </div>
 
-        <div class="zsky-admin-tabs zsky-primary-tabs" role="tablist" aria-label="Z Sky creator administration">
+        <div class="zsky-admin-tabs zsky-primary-tabs" role="tablist" aria-label="Z Sky creator administration" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr))">
           <button class="zsky-admin-tab active" type="button" role="tab" aria-selected="true" data-zsky-mode="CREATORS">Creator accounts</button>
           <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="WEEKLY">Weekly reviews</button>
+          <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="MONTHLY">Monthly summary</button>
         </div>
 
         <section id="zskyCreatorAdminView">
@@ -133,6 +140,27 @@
           <div class="card zsky-admin-panel">
             <div class="panel-head"><div><h3 id="zskyWeeklyTitle">Calendar creator review</h3><p id="zskyWeeklySubtitle">Select a period to view live or completed creator performance.</p></div></div>
             <div id="zskyWeeklyList" class="zsky-admin-list" aria-live="polite"><div class="empty">Select a review period.</div></div>
+          </div>
+        </section>
+
+        <section id="zskyMonthlyView" hidden>
+          <div class="card zsky-weekly-toolbar">
+            <div class="zsky-weekly-heading">
+              <span class="zsky-admin-kicker">MONTHLY PERFORMANCE</span>
+              <h3>Creator settlement preview</h3>
+              <p>Approved fixed-calendar reviews are aggregated here. This is read-only: no revenue amount, FX conversion, wallet credit or payout is performed.</p>
+            </div>
+            <div class="zsky-weekly-controls">
+              <label for="zskyMonthlySelect">Month</label>
+              <select class="input" id="zskyMonthlySelect"></select>
+              <button class="btn brand zsky-period-action" id="zskyMonthlyReadOnly" type="button" disabled>Read-only preview</button>
+            </div>
+          </div>
+          <div class="zsky-period-notice" id="zskyMonthlyNotice" aria-live="polite"></div>
+          <div id="zskyMonthlyMetrics" class="zsky-admin-metrics" aria-label="Monthly performance summary"></div>
+          <div class="card zsky-admin-panel">
+            <div class="panel-head"><div><h3 id="zskyMonthlyTitle">Monthly creator performance</h3><p id="zskyMonthlySubtitle">Select a month to inspect approved review aggregation.</p></div></div>
+            <div id="zskyMonthlyList" class="zsky-admin-list" aria-live="polite"><div class="empty">Select a month.</div></div>
           </div>
         </section>
       </div>`;
@@ -192,7 +220,7 @@
   }
 
   function setMode(mode){
-    zskyState.mode = mode === 'WEEKLY' ? 'WEEKLY' : 'CREATORS';
+    zskyState.mode = mode === 'WEEKLY' ? 'WEEKLY' : mode === 'MONTHLY' ? 'MONTHLY' : 'CREATORS';
     document.querySelectorAll('[data-zsky-mode]').forEach(node => {
       const active = node.dataset.zskyMode === zskyState.mode;
       node.classList.toggle('active', active);
@@ -200,8 +228,11 @@
     });
     if ($('zskyCreatorAdminView')) $('zskyCreatorAdminView').hidden = zskyState.mode !== 'CREATORS';
     if ($('zskyWeeklyReviewView')) $('zskyWeeklyReviewView').hidden = zskyState.mode !== 'WEEKLY';
+    if ($('zskyMonthlyView')) $('zskyMonthlyView').hidden = zskyState.mode !== 'MONTHLY';
     if (zskyState.mode === 'WEEKLY') {
       loadWeekly().catch(error => showToast(error.message || 'Weekly reviews could not be loaded.', 'error'));
+    } else if (zskyState.mode === 'MONTHLY') {
+      loadMonthly().catch(error => showToast(error.message || 'Monthly performance could not be loaded.', 'error'));
     } else {
       renderCreators();
     }
@@ -595,6 +626,156 @@
     }, {once:true});
   }
 
+  function monthLabel(value){
+    const monthId = typeof value === 'string' ? value : String(value?.month_id || '');
+    const match = monthId.match(/^(\d{4})-(\d{2})$/);
+    if (!match) return monthId;
+    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1));
+    return new Intl.DateTimeFormat('en-GB', {month:'long', year:'numeric', timeZone:'UTC'}).format(date);
+  }
+
+  function monthlyMeta(monthId = zskyState.selectedMonthId){
+    const match = zskyState.monthlyPeriods.find(row => String(row?.month_id || '') === String(monthId || ''));
+    if (match) return match;
+    if (String(zskyState.defaultMonth?.month_id || '') === String(monthId || '')) return zskyState.defaultMonth;
+    return null;
+  }
+
+  function monthlyOptionLabel(month){
+    const lifecycle = String(month?.lifecycle_status || '').toUpperCase();
+    const status = lifecycle === 'LIVE' ? 'Live month' : lifecycle === 'UPCOMING' ? 'Upcoming' : 'Completed';
+    return `${monthLabel(month)} • ${status}`;
+  }
+
+  function renderMonthlyOptions(){
+    const select = $('zskyMonthlySelect');
+    if (!select) return;
+    const map = new Map();
+    if (zskyState.defaultMonth?.month_id) map.set(zskyState.defaultMonth.month_id, zskyState.defaultMonth);
+    zskyState.monthlyPeriods.forEach(month => {
+      if (month?.month_id) map.set(month.month_id, month);
+    });
+    const months = [...map.values()];
+    select.innerHTML = months.map(month => `<option value="${safe(month.month_id)}">${safe(monthlyOptionLabel(month))}</option>`).join('');
+    if (!zskyState.selectedMonthId) zskyState.selectedMonthId = zskyState.defaultMonth?.month_id || months[0]?.month_id || '';
+    select.value = zskyState.selectedMonthId;
+  }
+
+  function monthlyReadinessLabel(row){
+    if (row.payout_candidate) return 'Review ready';
+    if (String(row.creator_status || '').toUpperCase() === 'BLOCKED') return 'Blocked';
+    return 'Not ready';
+  }
+
+  function monthlyRow(row){
+    const expected = Number(row.expected_period_count || 4);
+    const approved = Number(row.approved_period_count || 0);
+    const currency = String(row.wallet_currency_snapshot || '-').toUpperCase() || '-';
+    const reason = row.payout_block_reason || 'Approved review data is ready for later live payout validation.';
+    const statusClass = row.payout_candidate ? 'zsky-status-active' : 'zsky-status-review';
+    return `
+      <article class="zsky-weekly-row">
+        <div class="zsky-admin-row-main"><strong>${safe(row.creator_name || 'Z-Pay creator')}</strong><span>${safe(row.creator_uid || '')}</span><small>${safe(reason)}</small></div>
+        <div class="zsky-weekly-stat"><small>Raw / eligible</small><strong>${safe(row.raw_views || 0)} / ${safe(row.eligible_views || 0)}</strong></div>
+        <div class="zsky-weekly-stat"><small>Approved eligible</small><strong>${safe(row.settlement_eligible_views || 0)}</strong></div>
+        <div class="zsky-weekly-stat"><small>Reviews approved</small><strong>${safe(approved)} / ${safe(expected)}</strong></div>
+        <div class="zsky-weekly-stat"><small>Traffic share</small><strong>${safe(Number(row.settlement_traffic_share_percent || 0).toFixed(4))}%</strong></div>
+        <div class="zsky-weekly-stat"><small>Currency snapshot</small><strong>${safe(currency)}</strong></div>
+        <div class="zsky-weekly-status"><small>Review readiness</small><strong class="${statusClass}">${safe(monthlyReadinessLabel(row))}</strong></div>
+        <div class="zsky-admin-actions zsky-weekly-actions"><div class="zsky-live-chip">Read only</div></div>
+      </article>`;
+  }
+
+  function configureMonthlyNotice(data){
+    const notice = $('zskyMonthlyNotice');
+    if (!notice) return;
+    const month = data?.month || monthlyMeta() || {};
+    const summary = data?.summary || {};
+    const lifecycle = String(month.lifecycle_status || '').toUpperCase();
+    const generated = Number(summary.generated_period_count || 0);
+    const expected = Number(summary.expected_period_count || month.expected_period_count || 4);
+
+    if (lifecycle === 'LIVE') {
+      notice.className = 'zsky-period-notice live';
+      notice.innerHTML = `<strong>Month in progress</strong><span>${safe(monthLabel(month))} is still open. Approved completed periods accumulate here, but settlement readiness remains locked until the month closes.</span>`;
+      return;
+    }
+    if (lifecycle === 'UPCOMING') {
+      notice.className = 'zsky-period-notice upcoming';
+      notice.innerHTML = `<strong>Upcoming month</strong><span>${safe(monthLabel(month))} has not started yet.</span>`;
+      return;
+    }
+    if (summary.settlement_ready) {
+      notice.className = 'zsky-period-notice completed';
+      notice.innerHTML = `<strong>Performance review complete</strong><span>All ${safe(expected)} calendar periods are complete and approved eligible traffic is ready for a later revenue-allocation phase. No money is calculated here.</span>`;
+      return;
+    }
+    notice.className = 'zsky-period-notice completed';
+    notice.innerHTML = `<strong>Review incomplete</strong><span>${safe(generated)} of ${safe(expected)} calendar periods are generated, or one or more creator reviews still need approval/hold resolution. This preview cannot execute a payout.</span>`;
+  }
+
+  function renderMonthly(){
+    renderMonthlyOptions();
+    const data = zskyState.monthlyPreview;
+    const month = data?.month || monthlyMeta() || zskyState.defaultMonth || {};
+    const summary = data?.summary || {};
+    const rows = Array.isArray(data?.items) ? data.items : [];
+    const expected = Number(summary.expected_period_count || month.expected_period_count || 4);
+    const generated = Number(summary.generated_period_count || 0);
+
+    configureMonthlyNotice(data);
+
+    if ($('zskyMonthlyTitle')) $('zskyMonthlyTitle').textContent = month.month_id ? `Monthly performance • ${monthLabel(month)}` : 'Monthly creator performance';
+    if ($('zskyMonthlySubtitle')) {
+      const bdt = Number(summary.currency_snapshot_counts?.BDT || 0);
+      const myr = Number(summary.currency_snapshot_counts?.MYR || 0);
+      $('zskyMonthlySubtitle').textContent = `Read-only approved-review aggregation. Later payout candidates by snapshot: BDT ${bdt}, MYR ${myr}. Live account preflight is still required before any future payout.`;
+    }
+
+    if ($('zskyMonthlyMetrics')) {
+      $('zskyMonthlyMetrics').innerHTML = `
+        <div class="zsky-admin-metric"><span>Creators</span><strong>${safe(summary.creator_count || rows.length || 0)}</strong></div>
+        <div class="zsky-admin-metric"><span>Approved eligible views</span><strong>${safe(summary.settlement_eligible_views || 0)}</strong></div>
+        <div class="zsky-admin-metric warning"><span>Calendar periods</span><strong>${safe(generated)} / ${safe(expected)}</strong></div>
+        <div class="zsky-admin-metric"><span>Review-ready creators</span><strong>${safe(summary.payout_candidate_count || 0)}</strong></div>`;
+    }
+
+    if ($('zskyMonthlyList')) {
+      $('zskyMonthlyList').innerHTML = rows.length
+        ? rows.map(monthlyRow).join('')
+        : empty(String(month.lifecycle_status || '').toUpperCase() === 'UPCOMING'
+          ? 'This month has not started yet.'
+          : 'No registered creator performance is available for this month.');
+    }
+  }
+
+  async function loadMonthlyPeriods(force=false){
+    if (zskyState.monthlyPeriodsLoaded && !force) return;
+    const data = await request('monthly_periods', {params:{limit:12}, busy:false});
+    zskyState.defaultMonth = data.default_month || null;
+    zskyState.monthlyPeriods = Array.isArray(data.items) ? data.items : [];
+    if (!zskyState.selectedMonthId) zskyState.selectedMonthId = zskyState.defaultMonth?.month_id || '';
+    zskyState.monthlyPeriodsLoaded = true;
+    renderMonthlyOptions();
+  }
+
+  async function loadMonthlyPreview(monthId){
+    if (!monthId) { zskyState.monthlyPreview = null; renderMonthly(); return; }
+    zskyState.monthlyPreview = await request('monthly_preview', {params:{month_id:monthId}, busy:false});
+    renderMonthly();
+  }
+
+  async function loadMonthly(force=false){
+    if (zskyState.monthlyLoading) return;
+    zskyState.monthlyLoading = true;
+    try {
+      await loadMonthlyPeriods(force);
+      await loadMonthlyPreview(zskyState.selectedMonthId);
+    } finally {
+      zskyState.monthlyLoading = false;
+    }
+  }
+
   document.addEventListener('click', event => {
     const mode = event.target.closest('[data-zsky-mode]');
     if (mode) { setMode(mode.dataset.zskyMode); return; }
@@ -625,6 +806,7 @@
 
     if (event.target.closest('#zsky24RefreshBtn')) {
       if (zskyState.mode === 'WEEKLY') loadWeekly(true).catch(error => showToast(error.message || 'Weekly refresh failed.', 'error'));
+      else if (zskyState.mode === 'MONTHLY') loadMonthly(true).catch(error => showToast(error.message || 'Monthly refresh failed.', 'error'));
       else load(true).catch(error => showToast(error.message || 'Creator refresh failed.', 'error'));
       return;
     }
@@ -641,6 +823,11 @@
     if (event.target.closest('#zskyWeeklyPeriodSelect')) {
       zskyState.selectedPeriodId = event.target.value;
       loadWeeklyReview(zskyState.selectedPeriodId).catch(error => showToast(error.message || 'Calendar review could not be loaded.', 'error'));
+      return;
+    }
+    if (event.target.closest('#zskyMonthlySelect')) {
+      zskyState.selectedMonthId = event.target.value;
+      loadMonthlyPreview(zskyState.selectedMonthId).catch(error => showToast(error.message || 'Monthly performance could not be loaded.', 'error'));
     }
   });
 

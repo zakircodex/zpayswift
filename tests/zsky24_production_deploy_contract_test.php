@@ -34,6 +34,7 @@ foreach ([
     'php tests/zsky24_dual_domain_test.php',
     'php tests/zsky24_creator_period_payout_test.php',
     'php tests/zsky24_monthly_performance_preview_test.php',
+    'php tests/zsky24_monthly_admin_ui_test.php',
     'php -l api/admin/zsky24_creator_admin.php',
     'php -l api/znews/lib/creator_monthly_performance.php',
     'node --check api/admin/assets/zsky24-admin.js',
