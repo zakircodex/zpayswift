@@ -70,9 +70,15 @@ window.USER_MFS_CONFIG = <?= json_encode([
           <h2>Amount</h2>
           <div id="mfsAmountSummary" class="mfs-selection-summary"></div>
           <div id="mfsRateCard" class="mfs-rate-card hidden" aria-hidden="true">
-            <span>Current Rate</span>
             <strong id="mfsRateText">-</strong>
           </div>
+          <label id="mfsAmountMyrField" class="mfs-field hidden" for="mfsAmountMyr" aria-hidden="true">
+            <span>MYR Amount</span>
+            <span class="mfs-money-shell">
+              <b>MYR</b>
+              <input id="mfsAmountMyr" type="number" inputmode="decimal" autocomplete="off" min="0" step="0.01" placeholder="0.00">
+            </span>
+          </label>
           <label class="mfs-field" for="mfsAmountBdt">
             <span>BDT Amount</span>
             <span class="mfs-money-shell">
@@ -81,10 +87,6 @@ window.USER_MFS_CONFIG = <?= json_encode([
             </span>
           </label>
           <p class="mfs-minimum-hint">Minimum send money amount is 500 BDT.</p>
-          <div id="mfsMyrEstimate" class="mfs-payable-hint hidden" aria-hidden="true">
-            <span>MYR payable</span>
-            <strong>Confirmed securely in preview</strong>
-          </div>
           <button id="mfsAmountContinue" class="mfs-primary-button" type="button">Continue</button>
         </div>
       </div>

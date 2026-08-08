@@ -21,6 +21,8 @@
     step: 'receiver',
     receiverFull: '',
     amountBdt: 0,
+    amountMyr: 0,
+    syncingAmount: false,
     pin: '',
     reference: '',
     walletSummary: null,
@@ -84,6 +86,13 @@
     return numberValue(value).toFixed(2);
   }
 
+  function linkedAmountText(value) {
+    const amount = numberValue(value);
+    if (amount <= 0) return '';
+    const rounded = Math.round((amount + Number.EPSILON) * 100) / 100;
+    return rounded.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+  }
+
   function normalizeCurrency(value) {
     const currency = String(value || '').trim().toUpperCase();
     return ['MYR', 'RM', 'MY'].includes(currency) ? 'MYR' : 'BDT';
@@ -143,19 +152,55 @@
     const summary = byId('mfsAmountSummary');
     if (summary) {
       clearNode(summary);
-      summary.appendChild(summaryMarkup(state.receiverFull, 'Personal'));
+      summary.classList.add('mfs-amount-selection-summary');
+      const text = document.createElement('strong');
+      text.textContent = `${providerLabel} \u2022 ${state.receiverFull}`;
+      summary.appendChild(text);
     }
 
     const wallet = walletDetails();
     const rateCard = byId('mfsRateCard');
     const rateText = byId('mfsRateText');
-    const payableHint = byId('mfsMyrEstimate');
-    const showRate = wallet.isMyr && wallet.rate > 0;
-    rateCard?.classList.toggle('hidden', !showRate);
-    rateCard?.setAttribute('aria-hidden', showRate ? 'false' : 'true');
-    if (rateText) rateText.textContent = showRate ? `RM 1 = ${money(wallet.rate)} BDT` : '-';
-    payableHint?.classList.toggle('hidden', !wallet.isMyr);
-    payableHint?.setAttribute('aria-hidden', wallet.isMyr ? 'false' : 'true');
+    const myrField = byId('mfsAmountMyrField');
+    const myrInput = byId('mfsAmountMyr');
+    rateCard?.classList.toggle('hidden', !wallet.isMyr);
+    rateCard?.setAttribute('aria-hidden', wallet.isMyr ? 'false' : 'true');
+    myrField?.classList.toggle('hidden', !wallet.isMyr);
+    myrField?.setAttribute('aria-hidden', wallet.isMyr ? 'false' : 'true');
+    if (myrInput) myrInput.disabled = !wallet.isMyr || wallet.rate <= 0;
+    if (rateText) {
+      rateText.textContent = wallet.isMyr && wallet.rate > 0
+        ? `Rate: RM 1 = ${linkedAmountText(wallet.rate)} BDT`
+        : wallet.isMyr ? 'Rate is currently unavailable' : '';
+    }
+    if (!wallet.isMyr && myrInput) {
+      myrInput.value = '';
+      state.amountMyr = 0;
+    }
+  }
+
+  function syncAmountInputs(source) {
+    if (state.syncingAmount) return;
+    const bdtInput = byId('mfsAmountBdt');
+    const myrInput = byId('mfsAmountMyr');
+    const wallet = walletDetails();
+    state.syncingAmount = true;
+    try {
+      if (source === 'MYR') {
+        const amountMyr = numberValue(myrInput?.value);
+        state.amountMyr = amountMyr;
+        state.amountBdt = wallet.isMyr && wallet.rate > 0 ? amountMyr * wallet.rate : 0;
+        if (bdtInput) bdtInput.value = linkedAmountText(state.amountBdt);
+      } else {
+        const amountBdt = numberValue(bdtInput?.value);
+        state.amountBdt = amountBdt;
+        state.amountMyr = wallet.isMyr && wallet.rate > 0 ? amountBdt / wallet.rate : 0;
+        if (myrInput) myrInput.value = wallet.isMyr ? linkedAmountText(state.amountMyr) : '';
+      }
+    } finally {
+      state.syncingAmount = false;
+    }
+    invalidatePreview();
   }
 
   function renderPinSummary() {
@@ -212,7 +257,7 @@
       addDataRow(rows, 'MYR Amount', `RM ${money(preview.amount_rm || preview.amount_myr)}`);
       addDataRow(rows, 'Rate', `RM 1 = ${money(preview.exchange_rate)} BDT`);
     } else {
-      addDataRow(rows, 'Amount', `BDT ${money(preview.amount_bdt)}`);
+      addDataRow(rows, 'BDT Amount', `BDT ${money(preview.amount_bdt)}`);
     }
     addDataRow(rows, 'Fee', previewFeeText(preview));
     addDataRow(rows, 'Total Pay', previewTotalText(preview), true);
@@ -248,10 +293,10 @@
     const targets = {
       receiver: 'mfsReceiverNumber',
       amount: 'mfsAmountBdt',
-      pin: 'mfsPin',
-      preview: 'mfsReference'
+      pin: 'mfsPin'
     };
-    window.setTimeout(() => byId(targets[nextStep])?.focus({ preventScroll: true }), 50);
+    const targetId = targets[nextStep];
+    if (targetId) window.setTimeout(() => byId(targetId)?.focus({ preventScroll: true }), 50);
   }
 
   function navigateStep(nextStep, mode = 'push') {
@@ -301,7 +346,16 @@
     }
   }
 
-  function openModal({ kind, title, message, rows = [], actions = [], opener = document.activeElement, pushHistory = true }) {
+  function openModal({
+    kind,
+    title,
+    message,
+    rows = [],
+    actions = [],
+    opener = document.activeElement,
+    pushHistory = true,
+    dismissible = kind !== 'loading'
+  }) {
     const modal = modalElement();
     if (!modal) return;
     const wasOpen = state.modal.open;
@@ -316,7 +370,7 @@
     state.modal.busy = kind === 'loading';
     state.modal.kind = kind;
     state.modal.opener = opener instanceof HTMLElement ? opener : null;
-    modal.className = `mfs-action-modal show is-${kind}${kind === 'loading' ? '' : ' is-dismissible'}`;
+    modal.className = `mfs-action-modal show is-${kind}${dismissible ? ' is-dismissible' : ''}`;
     modal.setAttribute('aria-hidden', 'false');
     if ('inert' in modal) modal.inert = false;
     document.querySelector('.user-mfs-page .mfs-modal-feedback')?.remove();
@@ -325,7 +379,7 @@
     byId('mfsModalTitle').textContent = String(title || pageTitle());
     byId('mfsModalMessage').textContent = String(message || '');
     const icon = byId('mfsModalIcon');
-    if (icon) icon.textContent = kind === 'success' ? '✓' : kind === 'error' ? '!' : '';
+    if (icon) icon.textContent = kind === 'success' ? '\u2713' : kind === 'error' ? '!' : '';
 
     const body = byId('mfsModalBody');
     clearNode(body);
@@ -562,12 +616,18 @@
   }
 
   function validAmount() {
+    const wallet = walletDetails();
+    if (wallet.isMyr && wallet.rate <= 0) {
+      openError('Rate Unavailable', 'The current MYR to BDT rate could not be loaded. Please try again.', byId('mfsAmountContinue'));
+      return false;
+    }
     const value = numberValue(byId('mfsAmountBdt')?.value);
     if (value < 500 || value > 50000) {
       openError('Invalid Amount', 'Amount must be between BDT 500 and BDT 50,000.', byId('mfsAmountContinue'));
       return false;
     }
     state.amountBdt = value;
+    state.amountMyr = wallet.isMyr ? numberValue(byId('mfsAmountMyr')?.value) : 0;
     return true;
   }
 
@@ -601,6 +661,11 @@
       }
       state.preview = preview;
       state.amountBdt = numberValue(preview.amount_bdt || state.amountBdt);
+      state.amountMyr = numberValue(preview.amount_rm || preview.amount_myr || state.amountMyr);
+      const bdtInput = byId('mfsAmountBdt');
+      const myrInput = byId('mfsAmountMyr');
+      if (bdtInput) bdtInput.value = linkedAmountText(state.amountBdt);
+      if (myrInput && walletDetails().isMyr) myrInput.value = linkedAmountText(state.amountMyr);
       renderPinSummary();
       navigateStep('pin');
     } catch (error) {
@@ -721,13 +786,14 @@
   function resetFlow() {
     state.receiverFull = '';
     state.amountBdt = 0;
+    state.amountMyr = 0;
     state.reference = '';
     state.preview = null;
     state.result = null;
     state.completed = false;
     clearPin();
     cancelHold();
-    ['mfsReceiverNumber', 'mfsAmountBdt', 'mfsReference'].forEach((id) => {
+    ['mfsReceiverNumber', 'mfsAmountMyr', 'mfsAmountBdt', 'mfsReference'].forEach((id) => {
       const node = byId(id);
       if (node) node.value = '';
     });
@@ -760,6 +826,7 @@
       message: 'This is your tracking link. You can open it or copy it for later.',
       rows,
       opener: byId('mfsHoldConfirm'),
+      dismissible: false,
       actions: [
         {
           label: 'Open',
@@ -784,6 +851,7 @@
         {
           id: 'mfsFavoriteResultAction',
           label: alreadyFavorite ? 'Saved' : 'Favorite',
+          primary: true,
           disabled: alreadyFavorite,
           handler: () => {
             const saved = addFavorite(fullNumber);
@@ -914,7 +982,7 @@
   }
 
   function isKeyboardInput(node) {
-    return node instanceof HTMLInputElement && ['mfsReceiverNumber', 'mfsAmountBdt', 'mfsPin', 'mfsReference'].includes(node.id);
+    return node instanceof HTMLInputElement && ['mfsReceiverNumber', 'mfsAmountMyr', 'mfsAmountBdt', 'mfsPin', 'mfsReference'].includes(node.id);
   }
 
   function keyboardInset() {
@@ -928,7 +996,7 @@
   function keepFocusedControlsVisible(input) {
     const body = byId('mfsScrollBody');
     if (!body || !input) return;
-    const button = input.id === 'mfsAmountBdt'
+    const button = ['mfsAmountMyr', 'mfsAmountBdt'].includes(input.id)
       ? byId('mfsAmountContinue')
       : input.id === 'mfsPin'
         ? byId('mfsPinContinue')
@@ -1033,10 +1101,8 @@
       const current = normalizeNumber(byId('mfsReceiverNumber')?.value);
       if (state.receiverFull && current !== state.receiverFull) invalidatePreview();
     });
-    byId('mfsAmountBdt')?.addEventListener('input', () => {
-      state.amountBdt = numberValue(byId('mfsAmountBdt')?.value);
-      invalidatePreview();
-    });
+    byId('mfsAmountMyr')?.addEventListener('input', () => syncAmountInputs('MYR'));
+    byId('mfsAmountBdt')?.addEventListener('input', () => syncAmountInputs('BDT'));
     byId('mfsReference')?.addEventListener('input', () => {
       state.reference = String(byId('mfsReference')?.value || '').slice(0, 80);
     });
@@ -1050,6 +1116,12 @@
       if (event.key === 'Enter') {
         event.preventDefault();
         continueFromAmount(byId('mfsAmountContinue'));
+      }
+    });
+    byId('mfsAmountMyr')?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        byId('mfsAmountBdt')?.focus();
       }
     });
     byId('mfsPin')?.addEventListener('keydown', (event) => {

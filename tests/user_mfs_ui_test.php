@@ -62,6 +62,12 @@ mfs_ui_expect(
     && !preg_match('/<button[^>]*>\s*Back\s*<\/button>/i', $flow),
     'Preview reference or Android-style no-visible-back layout is incorrect'
 );
+mfs_ui_expect(
+    str_contains($flow, 'id="mfsAmountMyrField"')
+    && str_contains($flow, 'id="mfsAmountMyr"')
+    && str_contains($flow, 'id="mfsAmountBdt"'),
+    'MYR/BDT dual amount controls are missing from the shared flow'
+);
 
 mfs_ui_expect(
     str_contains($script, "window.proxyPost('mfs_preview'")
@@ -73,6 +79,20 @@ mfs_ui_expect(
     str_contains($script, 'preview_token: serverPreview.preview_token')
     && !preg_match('/(?:fee|total_debit|balance_after)\s*:\s*[^,]*(?:\+|\-|\*)/i', $script),
     'preview-token binding or backend-authoritative finance rendering regressed'
+);
+mfs_ui_expect(
+    str_contains($script, 'function syncAmountInputs(source)')
+    && str_contains($script, 'state.syncingAmount')
+    && str_contains($script, 'amountMyr * wallet.rate')
+    && str_contains($script, 'amountBdt / wallet.rate'),
+    'guarded bidirectional MYR/BDT convenience conversion is missing'
+);
+mfs_ui_expect(
+    str_contains($script, "currency: 'BDT'")
+    && str_contains($script, 'amount_bdt: state.amountBdt')
+    && str_contains($script, 'amount_rm: 0')
+    && str_contains($script, 'amount_myr: 0'),
+    'client-side conversion became authoritative in the preview payload'
 );
 mfs_ui_expect(
     str_contains($script, "purpose: 'TOPUP'")
@@ -101,13 +121,20 @@ mfs_ui_expect(
 );
 mfs_ui_expect(
     str_contains($script, 'canonicalTrackingUrl(result)')
-    && str_contains($script, "modalFeedback('Tracking link copied')"),
+    && str_contains($script, "modalFeedback('Tracking link copied')")
+    && str_contains($script, "label: alreadyFavorite ? 'Saved' : 'Favorite'")
+    && str_contains($script, 'dismissible: false'),
     'canonical tracking Open/Copy integration is missing'
 );
 mfs_ui_expect(
     str_contains($script, "window.addEventListener('popstate'")
     && str_contains($script, 'clearPin();'),
     'step back handling does not clear sensitive PIN state'
+);
+mfs_ui_expect(
+    !str_contains($script, "preview: 'mfsReference'")
+    && str_contains($script, 'if (targetId) window.setTimeout'),
+    'Preview still auto-focuses Reference and shifts the card under the fixed header'
 );
 
 mfs_ui_expect(
@@ -131,6 +158,12 @@ mfs_ui_expect(
     str_contains($style, '.user-mfs-page .mfs-action-modal')
     && str_contains($style, '@media (max-width: 359px)'),
     'page-local modal or narrow-mobile responsive rules are missing'
+);
+mfs_ui_expect(
+    str_contains($style, 'width: min(calc(100% - 24px), 560px)')
+    && str_contains($style, 'grid-template-columns: repeat(var(--mfs-action-count, 1), minmax(0, 1fr))')
+    && str_contains($style, '.user-mfs-page .mfs-action-modal.is-success .mfs-modal-close'),
+    'centred shell or compact Android-style success action layout is missing'
 );
 
 echo "User MFS UI tests passed ({$assertions} assertions).\n";
