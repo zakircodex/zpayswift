@@ -1,850 +1,1138 @@
-// Z-Pay Swift user dashboard UX helper.
-// Quick services + bKash/Nagad frontend flow.
-// MFS create uses the public API path so it works from the clean /user/ URL.
-(function(){
+(() => {
   'use strict';
 
-  function byId(id){ return document.getElementById(id); }
-  function money(v){ var n = Number(v || 0); return Number.isFinite(n) ? n.toFixed(2) : '0.00'; }
-  function esc(v){
-    return String(v == null ? '' : v).replace(/[&<>"']/g, function(s){
-      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s];
-    });
-  }
+  const root = document.getElementById('mfsSection');
+  const shell = window.UserShell;
+  if (!root || !shell || root.dataset.mfsBound === 'true') return;
+  root.dataset.mfsBound = 'true';
 
-  var serverPreview = null;
-  var amountSyncing = false;
-  var previewCanContinue = true;
+  const byId = (id) => document.getElementById(id);
+  const config = window.USER_MFS_CONFIG && typeof window.USER_MFS_CONFIG === 'object'
+    ? window.USER_MFS_CONFIG
+    : {};
+  const provider = String(config.provider || root.dataset.provider || 'BKASH').toUpperCase() === 'NAGAD'
+    ? 'NAGAD'
+    : 'BKASH';
+  const providerLabel = provider === 'NAGAD' ? 'Nagad' : 'bKash';
+  const STEP_ORDER = ['receiver', 'amount', 'pin', 'preview'];
+  const HOLD_DURATION_MS = 2300;
 
-  function selectedProvider(){
-    var active = document.querySelector('.mfs-provider-choice.active');
-    return String(active ? active.getAttribute('data-provider') || '' : (window.USER_MFS_PROVIDER || 'BKASH')).toUpperCase();
-  }
-
-  function providerName(p){
-    p = String(p || '').toUpperCase();
-    if (p === 'NAGAD') return 'Nagad';
-    if (p === 'BKASH') return 'bKash';
-    return p || 'bKash';
-  }
-
-  function setProvider(provider){
-    provider = String(provider || 'BKASH').toUpperCase();
-    document.querySelectorAll('.mfs-provider-choice').forEach(function(btn){
-      btn.classList.toggle('active', String(btn.getAttribute('data-provider') || '').toUpperCase() === provider);
-    });
-    var title = document.querySelector('#mfsSection .section-title');
-    var sub = document.querySelector('#mfsSection .section-sub');
-    if (title) title.textContent = providerName(provider) + ' Send Money';
-    if (sub) sub.textContent = 'Personal ' + providerName(provider) + ' request. Review, PIN confirm and secure processing.';
-    renderPreview();
-  }
-
-  function data(){
-    return {
-      provider: selectedProvider(),
-      receiver_number: String(byId('mfsReceiverNumber') ? byId('mfsReceiverNumber').value : '').trim(),
-      amount_bdt: Number(byId('mfsAmountBdt') ? byId('mfsAmountBdt').value || 0 : 0),
-      amount_rm: isMyrMfsAccount() ? Number(byId('mfsAmountRm') ? byId('mfsAmountRm').value || 0 : 0) : 0,
-      reference: String(byId('mfsReference') ? byId('mfsReference').value : '').trim(),
-      pin: String(byId('mfsPin') ? byId('mfsPin').value : '').trim()
-    };
-  }
-
-  function walletMeta(){
-    var appState = window.userState || {};
-    var summary = appState.walletSummary || {};
-    var wallet = summary.wallet || {};
-    var me = appState.me || {};
-    var currency = normalizeCurrency(wallet.display_currency || wallet.wallet_currency || wallet.currency || summary.wallet_currency || '');
-    var country = normalizeCountry(
-      summary.pricing_country ||
-      summary.market_country ||
-      summary.service_country ||
-      wallet.pricing_country ||
-      wallet.market_country ||
-      wallet.service_country ||
-      me.pricing_country ||
-      me.market_country ||
-      me.service_country ||
-      summary.country_code ||
-      summary.country ||
-      wallet.country_code ||
-      wallet.country ||
-      me.country_code ||
-      me.country ||
-      ''
-    );
-    var preview = serverPreview || {};
-    var rate = Number(preview.rate_myr_to_bdt || preview.exchange_rate || wallet.rate_myr_bdt || wallet.rate_myr_to_bdt || summary.rate_myr_bdt || 0);
-
-    return {
-      currency: currency,
-      country: country,
-      rate: Number.isFinite(rate) ? rate : 0,
-      isMyr: country === 'MY' || (currency === 'MYR' && country !== 'BD')
-    };
-  }
-
-  function normalizeCountry(value){
-    var country = String(value || '').toUpperCase().trim();
-    if (country === 'BANGLADESH') return 'BD';
-    if (country === 'MALAYSIA') return 'MY';
-    if (['BD','MY'].indexOf(country) >= 0) return country;
-    return '';
-  }
-
-  function countryLabel(country){
-    country = normalizeCountry(country);
-    if (country === 'BD') return 'Bangladesh';
-    if (country === 'MY') return 'Malaysia';
-    return '-';
-  }
-
-  function modeLabel(mode){
-    mode = String(mode || '').toUpperCase().trim();
-    if (mode === 'LOCAL') return 'Local';
-    if (mode === 'REMITTANCE') return 'Remittance';
-    return '-';
-  }
-
-  function normalizeCurrency(value){
-    var currency = String(value || '').toUpperCase().trim();
-    if (['MYR','RM','MY'].indexOf(currency) >= 0) return 'MYR';
-    if (['BDT','BD','TK'].indexOf(currency) >= 0) return 'BDT';
-    return '';
-  }
-
-  function currencyPrefix(currency){
-    return normalizeCurrency(currency) === 'MYR' ? 'RM' : 'BDT';
-  }
-
-  function firstNumber(){
-    for (var i = 0; i < arguments.length; i++) {
-      var value = arguments[i];
-      if (value === undefined || value === null || value === '') continue;
-      var n = Number(value);
-      if (Number.isFinite(n)) return n;
+  const state = {
+    step: 'receiver',
+    receiverFull: '',
+    amountBdt: 0,
+    pin: '',
+    reference: '',
+    walletSummary: null,
+    preview: null,
+    requestBusy: false,
+    submitting: false,
+    completed: false,
+    result: null,
+    uid: '',
+    favorites: [],
+    favoriteStorageKey: '',
+    afterModalClose: null,
+    modal: {
+      open: false,
+      busy: false,
+      kind: '',
+      opener: null,
+      hasHistory: false,
+      closeResolver: null
+    },
+    hold: {
+      startedAt: 0,
+      frame: 0,
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      completed: false
+    },
+    keyboard: {
+      activeInput: null,
+      restoreScrollTop: 0,
+      baselineHeight: Math.max(window.innerHeight || 0, window.visualViewport?.height || 0),
+      timer: 0,
+      restoreTimer: 0
     }
-    return NaN;
+  };
+
+  function normalizeNumber(value) {
+    let digits = String(value || '').replace(/\D+/g, '');
+    if (digits.startsWith('880')) digits = `0${digits.slice(3)}`;
+    if (digits.length === 10 && digits.startsWith('1')) digits = `0${digits}`;
+    return digits;
   }
 
-  function walletCurrencyForPreview(p, remittance){
-    var appState = window.userState || {};
-    var summary = appState.walletSummary || {};
-    var wallet = summary.wallet || {};
-    var candidates = [
-      p.display_currency,
-      p.wallet_currency,
-      p.currency,
-      wallet.display_currency,
-      wallet.wallet_currency,
-      wallet.currency,
-      summary.wallet_currency
-    ];
+  function validBdNumber(value) {
+    return /^01\d{9}$/.test(normalizeNumber(value));
+  }
 
-    for (var i = 0; i < candidates.length; i++) {
-      var normalized = normalizeCurrency(candidates[i]);
-      if (normalized) return normalized;
+  function maskNumber(value) {
+    const number = normalizeNumber(value);
+    if (number.length < 8) return number || '-';
+    return `${number.slice(0, 4)}***${number.slice(-3)}`;
+  }
+
+  function numberValue(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function money(value) {
+    return numberValue(value).toFixed(2);
+  }
+
+  function normalizeCurrency(value) {
+    const currency = String(value || '').trim().toUpperCase();
+    return ['MYR', 'RM', 'MY'].includes(currency) ? 'MYR' : 'BDT';
+  }
+
+  function walletDetails() {
+    const summary = state.walletSummary || {};
+    const wallet = summary.wallet || {};
+    const currency = normalizeCurrency(wallet.display_currency || wallet.wallet_currency || wallet.currency || 'BDT');
+    const rate = numberValue(wallet.rate_myr_bdt || wallet.rate_myr_to_bdt || 0);
+    return { currency, rate, isMyr: currency === 'MYR' };
+  }
+
+  function safeMessage(error, fallback = 'Request could not be completed. Please try again.') {
+    const code = String(error?.code || '').trim().toUpperCase();
+    const message = String(error?.message || '').trim();
+    if (['WRONG_PIN', 'INVALID_PIN'].includes(code)) return 'Incorrect PIN. Please try again.';
+    if (code === 'INSUFFICIENT_BALANCE') {
+      return walletDetails().isMyr ? 'Insufficient MYR balance.' : 'Insufficient BDT balance.';
+    }
+    if (code === 'MFS_PREVIEW_EXPIRED') return 'This preview has expired. Please review again.';
+    if (['MFS_PREVIEW_INVALID', 'MFS_PREVIEW_MISMATCH'].includes(code)) {
+      return 'This preview is no longer valid. Please review again.';
+    }
+    if (code === 'PROVIDER_DISABLED') return `${providerLabel} is currently unavailable.`;
+    if (code === 'MFS_DISABLED') return 'bKash/Nagad service is currently unavailable.';
+    if (!message || /firebase|exception|stack|session[_ -]?token|csrf|\/api\//i.test(message)) return fallback;
+    return message;
+  }
+
+  function isPinError(error) {
+    const code = String(error?.code || '').toUpperCase();
+    return ['WRONG_PIN', 'INVALID_PIN'].includes(code) || /\bpin\b/i.test(String(error?.message || ''));
+  }
+
+  function clearNode(node) {
+    if (node) node.replaceChildren();
+  }
+
+  function summaryMarkup(number, detail) {
+    const wrapper = document.createDocumentFragment();
+    const icon = document.createElement('span');
+    icon.className = 'mfs-summary-icon';
+    icon.textContent = provider === 'NAGAD' ? 'N' : 'bK';
+    const copy = document.createElement('span');
+    copy.className = 'mfs-summary-copy';
+    const title = document.createElement('strong');
+    title.textContent = providerLabel;
+    const subtitle = document.createElement('span');
+    subtitle.textContent = `${maskNumber(number)}${detail ? ` - ${detail}` : ''}`;
+    copy.append(title, subtitle);
+    wrapper.append(icon, copy);
+    return wrapper;
+  }
+
+  function renderAmountContext() {
+    const summary = byId('mfsAmountSummary');
+    if (summary) {
+      clearNode(summary);
+      summary.appendChild(summaryMarkup(state.receiverFull, 'Personal'));
     }
 
-    var country = String(
-      p.pricing_country ||
-      p.market_country ||
-      p.service_country ||
-      p.country_code ||
-      p.country ||
-      summary.pricing_country ||
-      summary.market_country ||
-      summary.service_country ||
-      wallet.pricing_country ||
-      wallet.market_country ||
-      wallet.service_country ||
-      summary.country_code ||
-      wallet.country_code ||
-      ''
-    ).toUpperCase();
-    if (country === 'MY' || remittance) return 'MYR';
-    return 'BDT';
+    const wallet = walletDetails();
+    const rateCard = byId('mfsRateCard');
+    const rateText = byId('mfsRateText');
+    const payableHint = byId('mfsMyrEstimate');
+    const showRate = wallet.isMyr && wallet.rate > 0;
+    rateCard?.classList.toggle('hidden', !showRate);
+    rateCard?.setAttribute('aria-hidden', showRate ? 'false' : 'true');
+    if (rateText) rateText.textContent = showRate ? `RM 1 = ${money(wallet.rate)} BDT` : '-';
+    payableHint?.classList.toggle('hidden', !wallet.isMyr);
+    payableHint?.setAttribute('aria-hidden', wallet.isMyr ? 'false' : 'true');
   }
 
-  function availableForPreview(p, currency){
-    var appState = window.userState || {};
-    var summary = appState.walletSummary || {};
-    var wallet = summary.wallet || {};
-    if (currency === 'MYR') {
-      return firstNumber(
-        normalizeCurrency(p.display_currency) === 'MYR' ? p.display_available_balance : undefined,
-        p.available_balance_myr,
-        normalizeCurrency(wallet.display_currency) === 'MYR' ? wallet.display_available_balance : undefined,
-        wallet.available_balance_myr,
-        p.available_balance,
-        p.wallet_balance,
-        wallet.available_balance
-      );
+  function renderPinSummary() {
+    const summary = byId('mfsPinSummary');
+    if (!summary) return;
+    const preview = state.preview || {};
+    const walletCurrency = normalizeCurrency(preview.wallet_currency || walletDetails().currency);
+    const detail = walletCurrency === 'MYR'
+      ? `BDT ${money(preview.amount_bdt)} - ${String(preview.total_debit_text || `RM ${money(preview.total_pay_myr || preview.total_debit)}`)}`
+      : `BDT ${money(preview.amount_bdt)}`;
+    clearNode(summary);
+    summary.appendChild(summaryMarkup(state.receiverFull, detail));
+  }
+
+  function displayMoney(value, currency) {
+    return normalizeCurrency(currency) === 'MYR' ? `RM ${money(value)}` : `BDT ${money(value)}`;
+  }
+
+  function previewFeeText(preview) {
+    if (preview.fee_currency || preview.fee_amount !== undefined) {
+      return displayMoney(preview.fee_amount, preview.fee_currency || preview.wallet_currency);
     }
-    return firstNumber(
-      normalizeCurrency(p.display_currency) === 'BDT' ? p.display_available_balance : undefined,
-      p.available_balance_bdt,
-      normalizeCurrency(wallet.display_currency) === 'BDT' ? wallet.display_available_balance : undefined,
-      wallet.available_balance_bdt,
-      p.available_balance,
-      p.wallet_balance,
-      wallet.available_balance
-    );
+    return normalizeCurrency(preview.wallet_currency) === 'MYR'
+      ? `RM ${money(preview.fee_rm)}`
+      : `BDT ${money(preview.fee_bdt)}`;
   }
 
-  function debitForPreview(p, currency, d){
-    if (currency === 'MYR') {
-      return firstNumber(
-        normalizeCurrency(p.display_currency) === 'MYR' ? p.display_total_pay : undefined,
-        p.total_pay_myr,
-        p.total_debit_rm,
-        normalizeCurrency(p.wallet_currency) === 'MYR' ? p.wallet_hold_amount : undefined,
-        normalizeCurrency(p.wallet_currency) === 'MYR' ? p.total_pay : undefined,
-        d.amount_rm
-      );
-    }
-    return firstNumber(
-      normalizeCurrency(p.display_currency) === 'BDT' ? p.display_total_pay : undefined,
-      p.total_pay_bdt,
-      p.total_debit_bdt,
-      normalizeCurrency(p.wallet_currency) === 'BDT' ? p.wallet_hold_amount : undefined,
-      normalizeCurrency(p.wallet_currency) === 'BDT' ? p.total_pay : undefined,
-      d.amount_bdt
-    );
+  function previewTotalText(preview) {
+    const text = String(preview.total_debit_text || preview.total_pay_text || '').trim();
+    if (text) return text;
+    return displayMoney(preview.total_pay ?? preview.total_debit, preview.wallet_currency);
   }
 
-  function isMyrMfsAccount(){
-    return walletMeta().isMyr;
+  function addDataRow(parent, label, value, total = false, result = false) {
+    const row = document.createElement('div');
+    row.className = `${result ? 'mfs-result-row' : 'mfs-preview-row'}${total ? ' total' : ''}`;
+    const labelNode = document.createElement('span');
+    labelNode.textContent = label;
+    const valueNode = document.createElement('strong');
+    valueNode.textContent = String(value || '-');
+    row.append(labelNode, valueNode);
+    parent.appendChild(row);
   }
 
-  function previewFacts(d){
-    var p = serverPreview || {};
-    var meta = walletMeta();
-    var country = normalizeCountry(
-      p.pricing_country ||
-      p.market_country ||
-      p.service_country ||
-      p.country_code ||
-      p.country ||
-      p.display_country ||
-      meta.country
-    );
-    var mode = String(p.service_mode || p.mode || '').toUpperCase().trim();
-    var reviewCurrency = walletCurrencyForPreview(p, false);
-    var localBd = country === 'BD' && (mode === '' || mode === 'LOCAL');
-    var remittance = !localBd && (
-      country === 'MY' ||
-      mode === 'REMITTANCE' ||
-      reviewCurrency === 'MYR' ||
-      meta.isMyr ||
-      Number(p.amount_myr || p.amount_rm || d.amount_rm || 0) > 0
-    );
-
-    if (remittance) {
-      reviewCurrency = 'MYR';
-      if (!mode) mode = 'REMITTANCE';
-      if (!country) country = 'MY';
+  function renderPreview() {
+    const rows = byId('mfsPreviewRows');
+    const preview = state.preview || {};
+    if (!rows) return;
+    clearNode(rows);
+    const isMyr = normalizeCurrency(preview.wallet_currency) === 'MYR'
+      || String(preview.service_mode || '').toUpperCase() === 'REMITTANCE';
+    if (isMyr) {
+      addDataRow(rows, 'BDT Amount', `BDT ${money(preview.amount_bdt)}`);
+      addDataRow(rows, 'MYR Amount', `RM ${money(preview.amount_rm || preview.amount_myr)}`);
+      addDataRow(rows, 'Rate', `RM 1 = ${money(preview.exchange_rate)} BDT`);
     } else {
-      reviewCurrency = 'BDT';
-      if (!mode) mode = 'LOCAL';
-      if (!country) country = 'BD';
+      addDataRow(rows, 'Amount', `BDT ${money(preview.amount_bdt)}`);
     }
-
-    return { p: p, meta: meta, country: country, mode: mode, reviewCurrency: reviewCurrency, remittance: remittance };
+    addDataRow(rows, 'Fee', previewFeeText(preview));
+    addDataRow(rows, 'Total Pay', previewTotalText(preview), true);
+    addDataRow(rows, 'Balance After', String(preview.balance_after_debit_text || displayMoney(preview.balance_after_debit, preview.wallet_currency)));
   }
 
-  function updateCurrencyUi(){
-    var meta = walletMeta();
-    var field = byId('mfsAmountRmField') || (byId('mfsAmountRm') ? byId('mfsAmountRm').closest('.field') : null);
-    if (field) field.classList.toggle('hidden', !meta.isMyr);
-    if (!meta.isMyr && byId('mfsAmountRm')) byId('mfsAmountRm').value = '';
-    var rateHint = byId('mfsRateHint');
-    if (rateHint) {
-      rateHint.textContent = meta.isMyr && meta.rate > 0 ? 'Rate: RM 1 = BDT ' + money(meta.rate) : '';
-      rateHint.classList.toggle('active', meta.isMyr && meta.rate > 0);
-    }
-    return meta;
+  function historyPayload(step = state.step, modal = '') {
+    return {
+      ...(history.state && typeof history.state === 'object' ? history.state : {}),
+      zpayMfs: { provider, step, modal }
+    };
   }
 
-  function syncAmounts(source){
-    var meta = updateCurrencyUi();
-    if (!meta.isMyr || meta.rate <= 0 || amountSyncing) return;
+  function applyStep(nextStep, { focus = true } = {}) {
+    if (!STEP_ORDER.includes(nextStep)) return;
+    const previous = state.step;
+    state.step = nextStep;
+    document.querySelectorAll('.user-mfs-page [data-mfs-step]').forEach((node) => {
+      const active = node.getAttribute('data-mfs-step') === nextStep;
+      node.classList.toggle('active', active);
+      node.setAttribute('aria-hidden', active ? 'false' : 'true');
+    });
+    byId('mfsScrollBody')?.scrollTo({ top: 0, behavior: 'auto' });
 
-    var bdt = byId('mfsAmountBdt');
-    var rm = byId('mfsAmountRm');
-    if (!bdt || !rm) return;
+    if (nextStep === 'amount') renderAmountContext();
+    if (nextStep === 'pin') renderPinSummary();
+    if (nextStep === 'preview') renderPreview();
 
-    amountSyncing = true;
+    if (previous === 'preview' && nextStep === 'pin') clearPin();
+    if ((previous === 'pin' || previous === 'preview') && STEP_ORDER.indexOf(nextStep) < 2) clearPin();
 
+    if (!focus) return;
+    const targets = {
+      receiver: 'mfsReceiverNumber',
+      amount: 'mfsAmountBdt',
+      pin: 'mfsPin',
+      preview: 'mfsReference'
+    };
+    window.setTimeout(() => byId(targets[nextStep])?.focus({ preventScroll: true }), 50);
+  }
+
+  function navigateStep(nextStep, mode = 'push') {
+    if (!STEP_ORDER.includes(nextStep)) return;
+    if (mode === 'replace') {
+      history.replaceState(historyPayload(nextStep), '', window.location.href);
+    } else if (nextStep !== state.step) {
+      history.pushState(historyPayload(nextStep), '', window.location.href);
+    }
+    applyStep(nextStep);
+  }
+
+  function clearPin() {
+    state.pin = '';
+    const pin = byId('mfsPin');
+    if (pin) pin.value = '';
+  }
+
+  function invalidatePreview() {
+    state.preview = null;
+    state.completed = false;
+    state.result = null;
+    clearPin();
+    cancelHold();
+  }
+
+  function modalElement() {
+    return byId('mfsActionModal');
+  }
+
+  function hideModalImmediate({ restoreFocus = true } = {}) {
+    const modal = modalElement();
+    const opener = state.modal.opener;
+    state.modal.open = false;
+    state.modal.busy = false;
+    state.modal.kind = '';
+    state.modal.opener = null;
+    state.modal.hasHistory = false;
+    modal?.classList.remove('show', 'is-loading', 'is-error', 'is-success', 'is-dismissible');
+    modal?.setAttribute('aria-hidden', 'true');
+    if (modal && 'inert' in modal) modal.inert = true;
+    document.querySelector('.user-mfs-page .mfs-modal-feedback')?.remove();
+    document.body.classList.remove('mfs-modal-open');
+    root.setAttribute('aria-busy', 'false');
+    if (restoreFocus && opener instanceof HTMLElement) {
+      window.setTimeout(() => opener.focus({ preventScroll: true }), 0);
+    }
+  }
+
+  function openModal({ kind, title, message, rows = [], actions = [], opener = document.activeElement, pushHistory = true }) {
+    const modal = modalElement();
+    if (!modal) return;
+    const wasOpen = state.modal.open;
+    if (wasOpen) hideModalImmediate({ restoreFocus: false });
+    if (!wasOpen && pushHistory) {
+      history.pushState(historyPayload(state.step, kind), '', window.location.href);
+      state.modal.hasHistory = true;
+    } else {
+      state.modal.hasHistory = false;
+    }
+    state.modal.open = true;
+    state.modal.busy = kind === 'loading';
+    state.modal.kind = kind;
+    state.modal.opener = opener instanceof HTMLElement ? opener : null;
+    modal.className = `mfs-action-modal show is-${kind}${kind === 'loading' ? '' : ' is-dismissible'}`;
+    modal.setAttribute('aria-hidden', 'false');
+    if ('inert' in modal) modal.inert = false;
+    document.querySelector('.user-mfs-page .mfs-modal-feedback')?.remove();
+    document.body.classList.add('mfs-modal-open');
+    root.setAttribute('aria-busy', kind === 'loading' ? 'true' : 'false');
+    byId('mfsModalTitle').textContent = String(title || pageTitle());
+    byId('mfsModalMessage').textContent = String(message || '');
+    const icon = byId('mfsModalIcon');
+    if (icon) icon.textContent = kind === 'success' ? '✓' : kind === 'error' ? '!' : '';
+
+    const body = byId('mfsModalBody');
+    clearNode(body);
+    rows.forEach((row) => addDataRow(body, row.label, row.value, Boolean(row.total), true));
+
+    const actionWrap = byId('mfsModalActions');
+    clearNode(actionWrap);
+    actionWrap?.style.setProperty('--mfs-action-count', String(Math.max(1, actions.length)));
+    actions.forEach((action) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `mfs-modal-action${action.primary ? ' primary' : ''}`;
+      button.textContent = action.label;
+      button.disabled = Boolean(action.disabled);
+      if (action.id) button.id = action.id;
+      button.addEventListener('click', action.handler);
+      actionWrap?.appendChild(button);
+    });
+
+    window.setTimeout(() => {
+      const focusTarget = actionWrap?.querySelector('button:not(:disabled)') || byId('mfsModalClose');
+      focusTarget?.focus({ preventScroll: true });
+    }, 0);
+  }
+
+  function pageTitle() {
+    return `${providerLabel} Send Money`;
+  }
+
+  function requestModalClose(callback = null) {
+    if (!state.modal.open || state.modal.busy) return;
+    if (typeof callback === 'function') state.afterModalClose = callback;
+    if (state.modal.hasHistory) {
+      history.back();
+    } else {
+      hideModalImmediate();
+      const after = state.afterModalClose;
+      state.afterModalClose = null;
+      if (typeof after === 'function') after();
+    }
+  }
+
+  function openLoading(message, opener) {
+    openModal({
+      kind: 'loading',
+      title: pageTitle(),
+      message,
+      opener,
+      pushHistory: true
+    });
+  }
+
+  function closeLoading() {
+    if (!state.modal.open || state.modal.kind !== 'loading') return Promise.resolve();
+    if (!state.modal.hasHistory) {
+      hideModalImmediate({ restoreFocus: false });
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      state.modal.busy = false;
+      state.modal.closeResolver = resolve;
+      history.back();
+    });
+  }
+
+  function openError(title, message, opener = document.activeElement) {
+    openModal({
+      kind: 'error',
+      title,
+      message,
+      opener,
+      actions: [{ label: 'OK', primary: true, handler: () => requestModalClose() }]
+    });
+  }
+
+  async function runWithLoading(message, opener, task) {
+    openLoading(message, opener);
     try {
-      if (source === 'bdt') {
-        var bdtValue = Number(bdt.value || 0);
-        rm.value = bdtValue > 0 ? money(bdtValue / meta.rate) : '';
-      } else if (source === 'rm') {
-        var rmValue = Number(rm.value || 0);
-        bdt.value = rmValue > 0 ? money(rmValue * meta.rate) : '';
-      }
-    } finally {
-      amountSyncing = false;
+      const result = await task();
+      await closeLoading();
+      return result;
+    } catch (error) {
+      await closeLoading();
+      throw error;
     }
   }
 
-  function syncPreviewAmountsToInputs(){
-    var p = serverPreview || {};
-    if (!isMyrMfsAccount()) return;
+  async function ensureWalletSummary() {
+    if (state.walletSummary) return state.walletSummary;
+    state.walletSummary = await shell.get('wallet_summary', {}, 'Loading wallet...', { busy: false });
+    return state.walletSummary;
+  }
 
-    var bdt = byId('mfsAmountBdt');
-    var rm = byId('mfsAmountRm');
-    var amountBdt = firstNumber(p.amount_bdt);
-    var amountRm = firstNumber(p.amount_myr, p.amount_rm);
+  function favoriteFallbackName(number) {
+    const clean = normalizeNumber(number);
+    return `${providerLabel} ${clean.slice(-4) || 'Number'}`;
+  }
 
-    amountSyncing = true;
+  function loadFavorites() {
+    state.favorites = [];
+    if (!state.favoriteStorageKey) return;
     try {
-      if (bdt && Number.isFinite(amountBdt) && amountBdt > 0) bdt.value = money(amountBdt);
-      if (rm && Number.isFinite(amountRm) && amountRm > 0) rm.value = money(amountRm);
-    } finally {
-      amountSyncing = false;
+      const parsed = JSON.parse(window.localStorage.getItem(state.favoriteStorageKey) || '[]');
+      if (!Array.isArray(parsed)) return;
+      const seen = new Set();
+      state.favorites = parsed.filter((item) => {
+        const number = normalizeNumber(item?.number);
+        if (!validBdNumber(number) || seen.has(number)) return false;
+        seen.add(number);
+        item.number = number;
+        item.name = String(item.name || favoriteFallbackName(number)).slice(0, 60);
+        return true;
+      }).slice(0, 10);
+    } catch (_) {
+      state.favorites = [];
     }
   }
 
-  function previewHtml(d){
-    var facts = previewFacts(d);
-    var p = facts.p;
-    var meta = facts.meta;
-    var country = facts.country;
-    var mode = facts.mode;
-    var remittance = facts.remittance;
-    var reviewCurrency = facts.reviewCurrency;
-    var feeText = remittance
-      ? 'RM ' + money(p.fee_myr || p.fee_rm || 0)
-      : 'BDT ' + money(p.fee_bdt || 0);
-    var totalText = remittance
-      ? 'RM ' + money(p.total_pay_myr || p.total_debit_rm || ((Number(p.amount_myr || p.amount_rm || d.amount_rm || 0)) + Number(p.fee_myr || p.fee_rm || 0)))
-      : 'BDT ' + money(p.total_pay_bdt || p.total_debit_bdt || p.wallet_hold_amount || 0);
-    var rate = Number(p.rate_myr_to_bdt || p.exchange_rate || meta.rate || 0);
-    var available = availableForPreview(p, reviewCurrency);
-    var debit = debitForPreview(p, reviewCurrency, d);
-    var responseAfter = firstNumber(normalizeCurrency(p.display_currency) === reviewCurrency ? p.display_balance_after : undefined);
-    var after = Number.isFinite(responseAfter) ? responseAfter : (Number.isFinite(available) && Number.isFinite(debit) ? available - debit : NaN);
-    var explicitCanPay = p.can_pay;
-    var canPayFlag = !(explicitCanPay === false || explicitCanPay === 0 || String(explicitCanPay).toLowerCase() === 'false');
-    var hasPreview = !!serverPreview;
-    previewCanContinue = !hasPreview || (
-      canPayFlag &&
-      (!Number.isFinite(after) || after >= 0) &&
-      (!Number.isFinite(available) || !Number.isFinite(debit) || available >= debit)
-    );
-    var balanceAfterText = Number.isFinite(after)
-      ? currencyPrefix(reviewCurrency) + ' ' + money(Math.max(after, 0))
-      : '';
-    return '<div class="mfs-review-grid">' +
-      '<div class="zpay-mfs-preview-row"><span>Provider</span><b>' + esc(providerName(d.provider)) + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Receiver</span><b>' + esc(d.receiver_number || '-') + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Country</span><b>' + esc(countryLabel(country)) + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Mode</span><b>' + esc(modeLabel(mode)) + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Received Amount</span><b>BDT ' + money(p.amount_bdt || d.amount_bdt) + '</b></div>' +
-      (remittance ? '<div class="zpay-mfs-preview-row"><span>Send Amount</span><b>RM ' + money(p.amount_myr || p.amount_rm || d.amount_rm) + '</b></div>' : '') +
-      (remittance && rate > 0 ? '<div class="zpay-mfs-preview-row"><span>Rate</span><b>RM 1 = BDT ' + money(rate) + '</b></div>' : '') +
-      '<div class="zpay-mfs-preview-row"><span>Fee</span><b>' + esc(feeText) + '</b></div>' +
-      '<div class="zpay-mfs-preview-row"><span>Total Pay</span><b>' + esc(totalText) + '</b></div>' +
-      (Number.isFinite(available) ? '<div class="zpay-mfs-preview-row"><span>Available Balance</span><b>' + currencyPrefix(reviewCurrency) + ' ' + money(available) + '</b></div>' : '') +
-      (balanceAfterText ? '<div class="zpay-mfs-preview-row"><span>Balance After</span><b>' + esc(balanceAfterText) + '</b></div>' : '') +
-      '<div class="zpay-mfs-preview-row"><span>Reference</span><b>' + esc(d.reference || '-') + '</b></div>' +
-      '</div>';
-  }
-
-  function updateContinueButton(){
-    var btn = byId('mfsSendBtn');
-    if (!btn) return;
-    btn.disabled = serverPreview ? !previewCanContinue : false;
-    btn.title = btn.disabled ? 'Insufficient available balance' : '';
-  }
-
-  function setMfsPinError(message){
-    var pin = byId('mfsPin');
-    if (!pin || !pin.parentNode) return;
-    var node = byId('mfsPinError');
-    if (!node) {
-      node = document.createElement('div');
-      node.id = 'mfsPinError';
-      node.className = 'mfs-pin-error';
-      pin.insertAdjacentElement('afterend', node);
-    }
-    node.textContent = message || '';
-    node.classList.toggle('active', !!message);
-  }
-
-  function setMfsAmountNotice(message){
-    var node = byId('mfsAmountNotice');
-    if (!node) return;
-    node.textContent = message || '';
-    node.classList.toggle('active', !!message);
-  }
-
-  function isAuthError(err){
-    var code = String(err && err.code || '').toUpperCase();
-    var status = Number(err && err.status || 0);
-    var msg = String(err && err.message || '').toLowerCase();
-    if (['INVALID_PIN','VALIDATION_ERROR','INSUFFICIENT_BALANCE'].indexOf(code) >= 0) {
+  function saveFavorites() {
+    if (!state.favoriteStorageKey) return false;
+    try {
+      window.localStorage.setItem(state.favoriteStorageKey, JSON.stringify(state.favorites.slice(0, 10)));
+      return true;
+    } catch (_) {
       return false;
     }
-    return status === 401 ||
-      ['AUTH_ERROR','UNAUTHORIZED','SESSION_EXPIRED','USER_SESSION_EXPIRED'].indexOf(code) >= 0 ||
-      (code === 'FORBIDDEN' && msg.indexOf('session') >= 0) ||
-      (msg.indexOf('session') >= 0 && (msg.indexOf('expired') >= 0 || msg.indexOf('not found') >= 0));
   }
 
-  function isPinError(err){
-    var msg = String(err && err.message || '').toLowerCase();
-    var code = String(err && err.code || '').toUpperCase();
-    return code.indexOf('PIN') >= 0 || msg.indexOf('pin') >= 0;
+  function favoriteExists(number) {
+    const normalized = normalizeNumber(number);
+    return state.favorites.some((item) => normalizeNumber(item.number) === normalized);
   }
 
-  function renderPreview(){
-    updateCurrencyUi();
-    var d = data();
-    var live = byId('mfsLivePreview') || byId('mfsPreviewBox');
-    var details = byId('mfsPreviewDetails');
-    if (live) { live.className = 'bundle-result-box'; live.innerHTML = previewHtml(d); }
-    if (details) details.innerHTML = previewHtml(d);
-    updateContinueButton();
-  }
-
-  async function loadServerPreview(){
-    var d = data();
-    if (typeof window.proxyPost !== 'function') {
-      serverPreview = null;
-      renderPreview();
+  function renderFavorites() {
+    const list = byId('mfsFavoriteList');
+    if (!list) return;
+    clearNode(list);
+    if (!state.favorites.length) {
+      const empty = document.createElement('div');
+      empty.className = 'mfs-empty-state';
+      empty.textContent = 'No favorite numbers yet.';
+      list.appendChild(empty);
       return;
     }
+    state.favorites.forEach((favorite) => {
+      const item = document.createElement('div');
+      item.className = 'mfs-favorite-item';
+      const select = document.createElement('button');
+      select.type = 'button';
+      select.className = 'mfs-favorite-select';
+      const name = document.createElement('strong');
+      name.textContent = favorite.name || favoriteFallbackName(favorite.number);
+      const details = document.createElement('span');
+      details.textContent = `${maskNumber(favorite.number)} - ${providerLabel}`;
+      select.append(name, details);
+      select.addEventListener('click', () => {
+        const input = byId('mfsReceiverNumber');
+        if (input) input.value = favorite.number;
+        state.receiverFull = favorite.number;
+        invalidatePreview();
+        continueFromReceiver(select);
+      });
 
-    serverPreview = await window.proxyPost('mfs_preview', {
-      provider: d.provider,
-      service_type: 'SEND_MONEY',
-      account_type: 'PERSONAL',
-      receiver_number: d.receiver_number,
-      currency: isMyrMfsAccount() && d.amount_rm > 0 ? 'MYR' : 'BDT',
-      amount: isMyrMfsAccount() && d.amount_rm > 0 ? d.amount_rm : d.amount_bdt,
-      amount_bdt: d.amount_bdt,
-      amount_rm: isMyrMfsAccount() ? d.amount_rm : 0,
-      amount_myr: isMyrMfsAccount() ? d.amount_rm : 0,
-      reference: d.reference
-    }, 'Loading send money preview...', { busy: false });
-    syncPreviewAmountsToInputs();
-    renderPreview();
-  }
-
-  async function validatePinBeforeReview(pin){
-    if (typeof window.proxyPost !== 'function') return;
-    await window.proxyPost('validate_pin', { pin: pin }, 'Checking PIN...', { busy: false });
-  }
-
-  function mfsStepHistoryName(id){
-    if (id === 'mfsStepAmount') return 'amount';
-    if (id === 'mfsStepPin') return 'pin';
-    if (id === 'mfsStepPreview') return 'review';
-    return 'form';
-  }
-
-  function mfsStepIdFromName(name){
-    name = String(name || '').toLowerCase();
-    if (name === 'amount') return 'mfsStepAmount';
-    if (name === 'pin') return 'mfsStepPin';
-    if (name === 'review' || name === 'preview') return 'mfsStepPreview';
-    return 'mfsStepForm';
-  }
-
-  function showStep(id, options){
-    options = options || {};
-    ['mfsStepForm','mfsStepAmount','mfsStepPreview','mfsStepPin'].forEach(function(stepId){
-      var n = byId(stepId);
-      if (n) n.classList.remove('active');
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'mfs-favorite-remove';
+      remove.setAttribute('aria-label', `Remove ${favorite.name || 'favorite number'}`);
+      remove.textContent = '×';
+      remove.addEventListener('click', () => {
+        openModal({
+          kind: 'error',
+          title: 'Remove Favorite?',
+          message: `Remove ${favorite.name || maskNumber(favorite.number)} from your favorites?`,
+          opener: remove,
+          actions: [
+            { label: 'Cancel', handler: () => requestModalClose() },
+            {
+              label: 'Remove',
+              primary: true,
+              handler: () => requestModalClose(() => {
+                state.favorites = state.favorites.filter((row) => normalizeNumber(row.number) !== normalizeNumber(favorite.number));
+                saveFavorites();
+                renderFavorites();
+              })
+            }
+          ]
+        });
+      });
+      item.append(select, remove);
+      list.appendChild(item);
     });
-    var target = byId(id);
-    if (target) target.classList.add('active');
-    if (id === 'mfsStepPin') setMfsPinError('');
-    if (id === 'mfsStepAmount') setMfsAmountNotice('');
-    if (typeof window.syncUserModalLock === 'function') {
-      window.syncUserModalLock();
-    } else {
-      document.body.classList.toggle('flow-modal-open', id === 'mfsStepAmount' || id === 'mfsStepPreview' || id === 'mfsStepPin');
-    }
+  }
 
-    if (!options.fromHistory) {
-      if (id === 'mfsStepForm') {
-        if (typeof window.replaceUserFlowHistory === 'function') window.replaceUserFlowHistory('dashboard', 'guard');
-      } else if (typeof window.pushUserFlowHistory === 'function') {
-        window.pushUserFlowHistory('mfs', mfsStepHistoryName(id));
-      }
+  function addFavorite(number) {
+    const normalized = normalizeNumber(number);
+    if (!validBdNumber(normalized)) return { ok: false, message: 'A valid receiver number is required.' };
+    if (favoriteExists(normalized)) return { ok: true, duplicate: true };
+    if (state.favorites.length >= 10) return { ok: false, message: 'You can save up to 10 favorite numbers.' };
+    state.favorites.unshift({
+      name: favoriteFallbackName(normalized),
+      number: normalized,
+      provider,
+      created_at: Date.now()
+    });
+    if (!saveFavorites()) {
+      state.favorites.shift();
+      return { ok: false, message: 'Favorite number could not be saved in this browser.' };
+    }
+    renderFavorites();
+    return { ok: true, duplicate: false };
+  }
+
+  async function continueFromReceiver(opener = byId('mfsReceiverContinue')) {
+    if (state.requestBusy) return;
+    const input = byId('mfsReceiverNumber');
+    const normalized = normalizeNumber(input?.value);
+    if (!validBdNumber(normalized)) {
+      openError('Invalid Receiver', 'Receiver number must be a valid 11 digit Bangladesh mobile number.', opener);
+      return;
+    }
+    if (state.receiverFull && state.receiverFull !== normalized) invalidatePreview();
+    state.receiverFull = normalized;
+    if (input) input.value = normalized;
+    state.requestBusy = true;
+    try {
+      await runWithLoading('Checking receiver...', opener, async () => ensureWalletSummary());
+      renderAmountContext();
+      navigateStep('amount');
+    } catch (error) {
+      openError('Receiver Check Failed', safeMessage(error, 'Receiver could not be checked. Please try again.'), opener);
+    } finally {
+      state.requestBusy = false;
     }
   }
 
-  function validNumberStep(){
-    var d = data();
-    var num = d.receiver_number.replace(/\D+/g, '');
-    if (!/^01\d{9}$/.test(num)) {
-      if (typeof showToast === 'function') showToast('Receiver number must be 11 digit BD number', 'error');
-      if (typeof showMfsErrorModal === 'function') showMfsErrorModal('Validation Error', 'Receiver number must be 11 digit BD number');
+  function validAmount() {
+    const value = numberValue(byId('mfsAmountBdt')?.value);
+    if (value < 500 || value > 50000) {
+      openError('Invalid Amount', 'Amount must be between BDT 500 and BDT 50,000.', byId('mfsAmountContinue'));
       return false;
     }
+    state.amountBdt = value;
     return true;
   }
 
-  function validAmountStep(){
-    var d = data();
-    if (d.amount_bdt <= 0 && d.amount_rm <= 0) {
-      if (typeof showToast === 'function') showToast('Amount is required', 'error');
-      setMfsAmountNotice('Amount is required');
-      return false;
-    }
-    if (d.amount_bdt > 0 && (d.amount_bdt < 500 || d.amount_bdt > 50000)) {
-      if (typeof showToast === 'function') showToast('Amount must be between BDT 500 and BDT 50,000', 'error');
-      setMfsAmountNotice('Amount must be between BDT 500 and BDT 50,000');
-      return false;
-    }
-    setMfsAmountNotice('');
-    return true;
-  }
-
-  function validBase(){
-    if (!validNumberStep()) return false;
-    if (!validAmountStep()) return false;
-    return true;
-  }
-
-  async function createWithTelegramButtons(d){
-    if (typeof window.proxyPost !== 'function') {
-      throw new Error('Secure request service is unavailable');
-    }
-    if (!serverPreview || !serverPreview.preview_token) {
-      throw new Error('Preview expired. Please review the request again.');
-    }
-
-    var payload = {
-      provider: d.provider,
+  function previewPayload() {
+    return {
+      provider,
       service_type: 'SEND_MONEY',
       account_type: 'PERSONAL',
-      receiver_number: d.receiver_number,
+      receiver_number: state.receiverFull,
+      currency: 'BDT',
+      amount: state.amountBdt,
+      amount_bdt: state.amountBdt,
+      amount_rm: 0,
+      amount_myr: 0,
+      reference: state.reference
+    };
+  }
+
+  async function continueFromAmount(opener = byId('mfsAmountContinue')) {
+    if (state.requestBusy || !validAmount()) return;
+    state.requestBusy = true;
+    try {
+      const preview = await runWithLoading('Checking balance...', opener, async () => (
+        window.proxyPost('mfs_preview', previewPayload(), 'Checking balance...', { busy: false })
+      ));
+      if (!preview || !String(preview.preview_token || '').trim()) {
+        throw Object.assign(new Error(`${providerLabel} preview could not be secured. Please try again.`), { code: 'MFS_PREVIEW_FAILED' });
+      }
+      if (preview.can_submit === false || String(preview.validation_code || '').toUpperCase() === 'INSUFFICIENT_BALANCE') {
+        throw Object.assign(new Error(String(preview.validation_message || 'Insufficient available balance.')), { code: 'INSUFFICIENT_BALANCE' });
+      }
+      state.preview = preview;
+      state.amountBdt = numberValue(preview.amount_bdt || state.amountBdt);
+      renderPinSummary();
+      navigateStep('pin');
+    } catch (error) {
+      openError('Balance Check Failed', safeMessage(error, 'Balance could not be checked. Please try again.'), opener);
+    } finally {
+      state.requestBusy = false;
+    }
+  }
+
+  async function continueFromPin(opener = byId('mfsPinContinue')) {
+    if (state.requestBusy) return;
+    const pin = String(byId('mfsPin')?.value || '').trim();
+    if (!/^\d{4,6}$/.test(pin)) {
+      clearPin();
+      openError('Invalid PIN', 'Please enter a valid transaction PIN.', opener);
+      return;
+    }
+    if (!state.preview?.preview_token) {
+      clearPin();
+      openError('Preview Expired', 'This preview has expired. Please review the amount again.', opener);
+      return;
+    }
+    state.requestBusy = true;
+    state.pin = pin;
+    try {
+      await runWithLoading('Preparing preview...', opener, async () => (
+        window.proxyPost('validate_pin', { purpose: 'TOPUP', pin }, 'Preparing preview...', { busy: false })
+      ));
+      renderPreview();
+      navigateStep('preview');
+      const pinInput = byId('mfsPin');
+      if (pinInput) pinInput.value = '';
+    } catch (error) {
+      clearPin();
+      const title = isPinError(error) ? 'Incorrect PIN' : 'Verification Failed';
+      openError(title, safeMessage(error, 'PIN could not be verified. Please try again.'), opener);
+    } finally {
+      state.requestBusy = false;
+    }
+  }
+
+  function createPayload() {
+    const serverPreview = state.preview || {};
+    return {
+      provider,
+      service_type: 'SEND_MONEY',
+      account_type: 'PERSONAL',
+      receiver_number: state.receiverFull,
       preview_token: serverPreview.preview_token,
       source: 'USER_API',
-      amount_bdt: d.amount_bdt,
-      amount_rm: isMyrMfsAccount() ? d.amount_rm : 0,
-      amount_myr: isMyrMfsAccount() ? d.amount_rm : 0,
-      reference: d.reference,
-      pin: d.pin,
-      note: providerName(d.provider) + ' request from user panel'
+      amount_bdt: state.amountBdt,
+      reference: state.reference,
+      pin: state.pin
     };
-    return window.proxyPost('mfs_create', payload, 'Creating request...', { busy: false });
   }
 
-  async function confirmMfs(){
-    var d = data();
-    if (!validBase()) return;
-    if (!d.pin) {
-      if (typeof showToast === 'function') showToast('PIN is required', 'error');
-      setMfsPinError('PIN is required');
-      showStep('mfsStepPin');
-      return;
-    }
-    if (serverPreview && !previewCanContinue) {
-      showStep('mfsStepAmount');
-      setMfsAmountNotice('Insufficient available balance');
-      if (typeof showMfsErrorModal === 'function') {
-        showMfsErrorModal(
-          'Insufficient Balance',
-          'Your available balance is not enough for this send money request.',
-          { retryStep: 'amount', editStep: 'amount' }
-        );
-      } else if (typeof showToast === 'function') {
-        showToast('Insufficient available balance', 'error');
-      }
-      return;
-    }
+  function statusLabel(status) {
+    const value = String(status || 'PENDING').trim().toUpperCase();
+    if (['PENDING', 'WAITING_ADMIN', 'QUEUED', 'SUBMITTED'].includes(value)) return 'Pending';
+    if (value === 'SUCCESSFUL') return 'Successful';
+    if (value === 'PROCESSING') return 'Processing';
+    if (value === 'FAILED') return 'Failed';
+    return value.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+
+  function canonicalTrackingUrl(result) {
+    const configuredBase = String(root.dataset.trackingBase || '').trim();
+    if (!configuredBase) return '';
     try {
-      if (typeof setBusy === 'function') setBusy(true, 'Creating request...');
-      var confirmBtn = byId('mfsSendBtn');
-      var confirmText = confirmBtn ? confirmBtn.textContent : '';
-      if (confirmBtn) {
-        confirmBtn.disabled = true;
-        confirmBtn.textContent = 'Submitting...';
+      const base = new URL(configuredBase, window.location.origin);
+      const token = String(result?.receipt_token || '').trim();
+      if (/^[A-Za-z0-9_-]{24,128}$/.test(token)) {
+        base.search = '';
+        base.searchParams.set('t', token);
+        return base.toString();
       }
-      var result = await createWithTelegramButtons(d);
-      if (typeof renderMfsResultSuccess === 'function') renderMfsResultSuccess(result);
-      if (typeof applyMfsCreateSuccessToLocalState === 'function') applyMfsCreateSuccessToLocalState(result);
-      clearMfsCreateFieldsAfterSuccess();
-      if (typeof showToast === 'function') showToast('Request created successfully', 'ok');
-    } catch(e) {
-      var message = e.message || 'Failed to create request';
-      if (isPinError(e)) {
-        message = 'Please enter your correct transaction PIN.';
-        showStep('mfsStepPin');
-        setMfsPinError(message);
-      } else if (typeof renderMfsResultError === 'function') {
-        renderMfsResultError(message);
-      }
-      if (typeof showToast === 'function') showToast(message, 'error');
-      if (isAuthError(e) && typeof window.userSessionExpired === 'function') {
-        setTimeout(function(){ window.userSessionExpired(); }, 900);
-      }
-    } finally {
-      var finalConfirmBtn = byId('mfsSendBtn');
-      if (finalConfirmBtn) {
-        finalConfirmBtn.disabled = false;
-        finalConfirmBtn.textContent = confirmText || 'Confirm & Send Money';
-      }
-      if (typeof setBusy === 'function') setBusy(false);
+      const supplied = String(result?.tracking_url || result?.receipt_url || '').trim();
+      if (!supplied) return '';
+      const candidate = new URL(supplied, base.origin);
+      const candidateToken = String(candidate.searchParams.get('t') || '').trim();
+      if (candidate.origin !== base.origin || candidate.pathname !== base.pathname || !/^[A-Za-z0-9_-]{24,128}$/.test(candidateToken)) return '';
+      base.search = '';
+      base.searchParams.set('t', candidateToken);
+      return base.toString();
+    } catch (_) {
+      return '';
     }
   }
 
-  function bindMfs(){
-    if (window.__zpayMfsFlowFixBound) return;
-    window.__zpayMfsFlowFixBound = true;
-    document.querySelectorAll('.mfs-provider-choice').forEach(function(btn){ btn.addEventListener('click', function(){ setProvider(btn.getAttribute('data-provider') || 'BKASH'); }); });
-    var receiver = byId('mfsReceiverNumber'); if (receiver) receiver.addEventListener('input', function(){ serverPreview = null; renderPreview(); });
-    var reference = byId('mfsReference'); if (reference) reference.addEventListener('input', function(){ renderPreview(); });
-    var bdt = byId('mfsAmountBdt'); if (bdt) bdt.addEventListener('input', function(){ serverPreview = null; setMfsAmountNotice(''); syncAmounts('bdt'); renderPreview(); });
-    var rm = byId('mfsAmountRm'); if (rm) rm.addEventListener('input', function(){ serverPreview = null; setMfsAmountNotice(''); syncAmounts('rm'); renderPreview(); });
-    var preview = byId('mfsPreviewBtn'); if (preview) preview.addEventListener('click', function(e){
-      e.preventDefault();
-      if (!validNumberStep()) return;
-      updateCurrencyUi();
-      showStep('mfsStepAmount');
-      setTimeout(function(){ var amount = byId('mfsAmountBdt'); if (amount) amount.focus(); }, 50);
-    });
-    var amountBack = byId('mfsAmountBackBtn'); if (amountBack) amountBack.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepForm'); });
-    var amountNext = byId('mfsAmountNextBtn'); if (amountNext) amountNext.addEventListener('click', async function(e){
-      e.preventDefault();
-      if (!validNumberStep() || !validAmountStep()) return;
-      var originalText = amountNext.textContent;
-      try {
-        amountNext.disabled = true;
-        amountNext.textContent = 'Checking...';
-        await loadServerPreview();
-        if (!previewCanContinue) {
-          setMfsAmountNotice('Insufficient available balance');
-          if (typeof showMfsErrorModal === 'function') {
-            showMfsErrorModal(
-              'Insufficient Balance',
-              'Your available balance is not enough for this send money request.',
-              { retryStep: 'amount', editStep: 'amount' }
-            );
-          } else if (typeof showToast === 'function') {
-            showToast('Insufficient available balance', 'error');
-          }
-          return;
-        }
-        setMfsAmountNotice('');
-        showStep('mfsStepPin');
-      } catch(err) {
-        if (typeof showToast === 'function') showToast(err.message || 'Failed to load send money preview', 'error');
-        if (isAuthError(err) && typeof window.userSessionExpired === 'function') {
-          setTimeout(function(){ window.userSessionExpired(); }, 900);
-        }
-      } finally {
-        amountNext.disabled = false;
-        amountNext.textContent = originalText || 'Next';
-      }
-    });
-    var back = byId('mfsBackBtn'); if (back) back.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepAmount'); });
-    var send = byId('mfsSendBtn'); if (send) send.addEventListener('click', function(e){
-      e.preventDefault();
-      renderPreview();
-      if (!validBase()) return;
-      if (!previewCanContinue) {
-        showStep('mfsStepAmount');
-        setMfsAmountNotice('Insufficient available balance');
-        if (typeof showMfsErrorModal === 'function') {
-          showMfsErrorModal(
-            'Insufficient Balance',
-            'Your available balance is not enough for this send money request.',
-            { retryStep: 'amount', editStep: 'amount' }
-          );
-        } else if (typeof showToast === 'function') {
-          showToast('Insufficient available balance', 'error');
-        }
-        return;
-      }
-      confirmMfs();
-    });
-    var pinBack = byId('mfsPinBackBtn'); if (pinBack) pinBack.addEventListener('click', function(e){ e.preventDefault(); showStep('mfsStepAmount'); });
-    var confirm = byId('mfsConfirmBtn'); if (confirm) confirm.addEventListener('click', async function(e){
-      e.preventDefault();
-      var d = data();
-      if (!d.pin) {
-        setMfsPinError('PIN is required');
-        if (typeof showToast === 'function') showToast('PIN is required', 'error');
-        return;
-      }
-      var originalText = confirm.textContent;
-      try {
-        confirm.disabled = true;
-        confirm.textContent = 'Checking...';
-        await validatePinBeforeReview(d.pin);
-        setMfsPinError('');
-        renderPreview();
-        showStep('mfsStepPreview');
-      } catch (err) {
-        var invalidPin = String(err && err.code || '').toUpperCase() === 'INVALID_PIN' || isPinError(err);
-        var message = invalidPin ? 'Please enter your correct transaction PIN.' : (err.message || 'Invalid transaction PIN');
-        setMfsPinError(message);
-        var pinInput = byId('mfsPin');
-        if (invalidPin && pinInput) setTimeout(function(){ pinInput.focus(); pinInput.select(); }, 50);
-        if (!invalidPin && typeof showToast === 'function') {
-          showToast(message, 'error');
-        }
-        if (isAuthError(err) && typeof window.userSessionExpired === 'function') {
-          setTimeout(function(){ window.userSessionExpired(); }, 900);
-        }
-      } finally {
-        confirm.disabled = false;
-        confirm.textContent = originalText || 'Next';
-      }
-    });
-    var pin = byId('mfsPin'); if (pin) pin.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); var next = byId('mfsConfirmBtn'); if (next) next.click(); } });
-    setProvider(selectedProvider());
-    updateCurrencyUi();
-    renderPreview();
+  async function copyText(text) {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    if (!copied) throw new Error('Tracking link could not be copied.');
   }
 
-  function clearMfsCreateFieldsAfterSuccess(){
-    ['mfsReceiverNumber','mfsAmountBdt','mfsAmountRm','mfsPin','mfsReference'].forEach(function(id){
-      var node = byId(id);
+  function modalFeedback(message, error = false) {
+    const existing = document.querySelector('.user-mfs-page .mfs-modal-feedback');
+    existing?.remove();
+    const node = document.createElement('div');
+    node.className = 'mfs-modal-feedback';
+    node.textContent = message;
+    if (error) node.style.color = '#ff9aaa';
+    byId('mfsModalActions')?.insertAdjacentElement('afterend', node);
+    window.setTimeout(() => node.remove(), 2600);
+  }
+
+  function resetFlow() {
+    state.receiverFull = '';
+    state.amountBdt = 0;
+    state.reference = '';
+    state.preview = null;
+    state.result = null;
+    state.completed = false;
+    clearPin();
+    cancelHold();
+    ['mfsReceiverNumber', 'mfsAmountBdt', 'mfsReference'].forEach((id) => {
+      const node = byId(id);
       if (node) node.value = '';
     });
-    serverPreview = null;
-    updateCurrencyUi();
-    renderPreview();
-    showStep('mfsStepForm');
+    history.replaceState(historyPayload('receiver'), '', window.location.href);
+    applyStep('receiver', { focus: false });
   }
 
-  window.zpayMfsRefreshCurrencyUi = function(){
-    updateCurrencyUi();
-    renderPreview();
-  };
-
-  window.zpayOpenMfsPinStep = function(){
-    showStep('mfsStepPin');
-  };
-
-  window.zpayOpenMfsAmountStep = function(){
-    showStep('mfsStepAmount');
-  };
-
-  window.zpayOpenMfsStep = function(step){
-    showStep(mfsStepIdFromName(step));
-  };
-
-  window.zpayShowMfsHistoryStep = function(step){
-    showStep(mfsStepIdFromName(step), { fromHistory: true });
-  };
-
-  window.zpayCloseMfsFlow = function(options){
-    showStep('mfsStepForm', options || {});
-  };
-
-  function showResultModal(title, message, rows, type){
-    var existing = byId('mfsCreateResultModal');
-    if (existing) existing.remove();
-
-    var modal = document.createElement('div');
-    modal.id = 'mfsCreateResultModal';
-    modal.className = 'modal show';
-    modal.setAttribute('role', 'dialog');
-    modal.setAttribute('aria-modal', 'true');
-    modal.setAttribute('aria-labelledby', 'mfsCreateResultTitle');
-
-    var card = document.createElement('div');
-    card.className = 'modal-card mfs-result-modal-card';
-
-    var heading = document.createElement('h3');
-    heading.id = 'mfsCreateResultTitle';
-    heading.className = 'modal-title';
-    heading.textContent = title;
-
-    var copy = document.createElement('p');
-    copy.className = 'modal-sub';
-    copy.textContent = message;
-
-    var grid = document.createElement('div');
-    grid.className = 'mfs-review-grid ' + (type === 'error' ? 'bad' : 'good');
-    (rows || []).forEach(function(row){
-      var item = document.createElement('div');
-      item.className = 'mfs-review-item';
-      var label = document.createElement('span');
-      label.className = 'mfs-review-label';
-      label.textContent = row[0];
-      var value = document.createElement('strong');
-      value.className = 'mfs-review-value';
-      value.textContent = row[1] || '-';
-      item.append(label, value);
-      grid.appendChild(item);
-    });
-
-    var action = document.createElement('button');
-    action.type = 'button';
-    action.className = 'btn ' + (type === 'error' ? 'ghost' : 'green');
-    action.textContent = 'Done';
-    action.addEventListener('click', function(){ modal.remove(); });
-
-    var actions = document.createElement('div');
-    actions.className = 'wizard-actions';
-    actions.appendChild(action);
-    card.append(heading, copy, grid, actions);
-    modal.appendChild(card);
-    document.body.appendChild(modal);
-    action.focus();
-  }
-
-  function renderMfsResultSuccess(result){
-    var provider = result.provider_name || providerName(result.provider);
-    var mode = String(result.service_mode || '').toUpperCase();
-    var isRemittance = mode === 'REMITTANCE' || Number(result.amount_rm || result.amount_myr || 0) > 0;
-    var rows = [
-      ['Request ID', result.request_id || '-'],
-      ['Provider', provider],
-      ['Receiver', result.receiver_number || result.number || '-'],
-      ['Amount', 'BDT ' + money(result.amount_bdt || 0)],
-      ['Fee', (isRemittance ? 'RM ' + money(result.fee_rm || result.fee_myr || 0) : 'BDT ' + money(result.fee_bdt || 0))],
-      ['Status', String(result.status || 'PENDING').replace(/_/g, ' ')]
+  function openSuccess(result) {
+    state.result = result;
+    const isMyr = normalizeCurrency(result.wallet_currency) === 'MYR'
+      || String(result.service_mode || '').toUpperCase() === 'REMITTANCE';
+    const rows = [
+      { label: 'Provider', value: result.provider_name || providerLabel },
+      { label: 'Request ID', value: result.request_id || '-' },
+      { label: 'Number', value: maskNumber(result.receiver_number || state.receiverFull) },
+      { label: 'Amount in BDT', value: `BDT ${money(result.amount_bdt || state.amountBdt)}` }
     ];
-    showResultModal('Request Created Successfully', 'Your send money request has been submitted securely.', rows, 'success');
+    if (isMyr) rows.push({ label: 'MYR Amount', value: `RM ${money(result.amount_rm || result.amount_myr)}` });
+    rows.push(
+      { label: 'Fee', value: previewFeeText(result) },
+      { label: 'Total Pay', value: String(result.total_debit_text || result.total_pay_text || displayMoney(result.total_pay ?? result.total_debit, result.wallet_currency)), total: true },
+      { label: 'Status', value: statusLabel(result.status) }
+    );
+    const trackingUrl = canonicalTrackingUrl(result);
+    const fullNumber = normalizeNumber(result.receiver_number || state.receiverFull);
+    const alreadyFavorite = favoriteExists(fullNumber);
+    openModal({
+      kind: 'success',
+      title: `${providerLabel} Request Submitted`,
+      message: 'This is your tracking link. You can open it or copy it for later.',
+      rows,
+      opener: byId('mfsHoldConfirm'),
+      actions: [
+        {
+          label: 'Open',
+          primary: true,
+          disabled: !trackingUrl,
+          handler: () => {
+            if (trackingUrl) window.open(trackingUrl, '_blank', 'noopener,noreferrer');
+          }
+        },
+        {
+          label: 'Copy',
+          disabled: !trackingUrl,
+          handler: async () => {
+            try {
+              await copyText(trackingUrl);
+              modalFeedback('Tracking link copied');
+            } catch (error) {
+              modalFeedback(safeMessage(error, 'Tracking link could not be copied.'), true);
+            }
+          }
+        },
+        {
+          id: 'mfsFavoriteResultAction',
+          label: alreadyFavorite ? 'Saved' : 'Favorite',
+          disabled: alreadyFavorite,
+          handler: () => {
+            const saved = addFavorite(fullNumber);
+            if (!saved.ok) {
+              modalFeedback(saved.message || 'Favorite could not be saved.', true);
+              return;
+            }
+            const button = byId('mfsFavoriteResultAction');
+            if (button) {
+              button.textContent = 'Saved';
+              button.disabled = true;
+            }
+            modalFeedback(saved.duplicate ? 'Already saved' : 'Favorite saved');
+          }
+        },
+        { label: 'Done', handler: () => requestModalClose(resetFlow) }
+      ]
+    });
   }
 
-  function renderMfsResultError(message){
-    showResultModal('Request Failed', message || 'The request could not be created.', [['Message', message || 'Request failed']], 'error');
-  }
-
-  function applyMfsCreateSuccessToLocalState(result){
-    if (!result || !result.wallet || !window.userState) return;
-    window.userState.walletSummary = window.userState.walletSummary || {};
-    window.userState.walletSummary.wallet = Object.assign({}, window.userState.walletSummary.wallet || {}, result.wallet);
-  }
-
-  function showMfsErrorModal(title, message){
-    showResultModal(title || 'Send Money Error', message || 'Something went wrong.', [['Message', message || 'Something went wrong.']], 'error');
-  }
-
-  window.renderMfsResultSuccess = renderMfsResultSuccess;
-  window.renderMfsResultError = renderMfsResultError;
-  window.applyMfsCreateSuccessToLocalState = applyMfsCreateSuccessToLocalState;
-  window.showMfsErrorModal = showMfsErrorModal;
-
-  async function init(){
-    if (!window.UserShell) return;
+  async function submitRequest() {
+    if (state.submitting || state.completed) return;
+    if (!state.preview?.preview_token || !state.pin) {
+      clearPin();
+      openError('Verification Required', 'Please verify this request again before submitting.', byId('mfsHoldConfirm'));
+      return;
+    }
+    state.submitting = true;
+    const button = byId('mfsHoldConfirm');
+    if (button) button.disabled = true;
+    setHoldLabel('Submitting...');
+    state.reference = String(byId('mfsReference')?.value || '').trim().slice(0, 80);
     try {
-      await window.UserShell.ready;
-      window.userState.me = window.userState.user || {};
-      window.userState.walletSummary = await window.UserShell.get('wallet_summary', {}, 'Loading wallet...', { busy: false });
-      bindMfs();
-      updateCurrencyUi();
-      renderPreview();
-    } catch (error) {
-      if (!window.UserShell.isSessionError(error)) {
-        window.UserShell.toast(error.message || 'Unable to load send money.', 'error');
+      const result = await runWithLoading(`Submitting ${providerLabel} request...`, button, async () => (
+        window.proxyPost('mfs_create', createPayload(), `Submitting ${providerLabel} request...`, { busy: false })
+      ));
+      state.completed = true;
+      clearPin();
+      if (result?.wallet) {
+        state.walletSummary = state.walletSummary || {};
+        state.walletSummary.wallet = { ...(state.walletSummary.wallet || {}), ...result.wallet };
       }
+      openSuccess(result || {});
+    } catch (error) {
+      clearPin();
+      cancelHold();
+      if (isPinError(error)) {
+        navigateStep('pin');
+        openError('Incorrect PIN', safeMessage(error, 'Incorrect PIN. Please try again.'), button);
+      } else {
+        openError(`${providerLabel} Request Failed`, safeMessage(error, 'Request could not be submitted. Please try again.'), button);
+      }
+    } finally {
+      state.submitting = false;
+      if (button && !state.completed) button.disabled = false;
+      if (!state.completed) resetHoldVisual();
     }
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, { once: true }); else init();
+
+  function setHoldLabel(label) {
+    const node = byId('mfsHoldConfirm')?.querySelector('.mfs-hold-label');
+    if (node) node.textContent = label;
+  }
+
+  function setHoldProgress(value) {
+    const button = byId('mfsHoldConfirm');
+    if (!button) return;
+    const progress = Math.max(0, Math.min(100, numberValue(value)));
+    button.style.setProperty('--hold-progress', `${progress}%`);
+  }
+
+  function stopHoldTimers() {
+    if (state.hold.frame) cancelAnimationFrame(state.hold.frame);
+    state.hold.frame = 0;
+  }
+
+  function resetHoldVisual() {
+    const button = byId('mfsHoldConfirm');
+    button?.classList.remove('is-holding');
+    setHoldProgress(0);
+    setHoldLabel(`Tap and hold to confirm ${providerLabel}`);
+  }
+
+  function cancelHold() {
+    stopHoldTimers();
+    state.hold.startedAt = 0;
+    state.hold.pointerId = null;
+    state.hold.completed = false;
+    if (!state.submitting && !state.completed) resetHoldVisual();
+  }
+
+  function startHold(event) {
+    if (state.submitting || state.completed || !state.preview?.preview_token || state.hold.startedAt) return;
+    if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
+    event.preventDefault();
+    if (event.pointerId !== undefined && event.currentTarget?.setPointerCapture) {
+      try { event.currentTarget.setPointerCapture(event.pointerId); } catch (_) {}
+    }
+    state.hold.pointerId = event.pointerId ?? null;
+    state.hold.startX = numberValue(event.clientX);
+    state.hold.startY = numberValue(event.clientY);
+    state.hold.startedAt = performance.now();
+    state.hold.completed = false;
+    event.currentTarget?.classList.add('is-holding');
+    setHoldLabel('Keep holding...');
+    const tick = (now) => {
+      if (!state.hold.startedAt) return;
+      const progress = Math.min(1, (now - state.hold.startedAt) / HOLD_DURATION_MS);
+      setHoldProgress(progress * 100);
+      if (progress >= 1) {
+        state.hold.startedAt = 0;
+        state.hold.frame = 0;
+        state.hold.completed = true;
+        if (navigator.vibrate) navigator.vibrate(35);
+        submitRequest();
+        return;
+      }
+      state.hold.frame = requestAnimationFrame(tick);
+    };
+    state.hold.frame = requestAnimationFrame(tick);
+  }
+
+  function moveHold(event) {
+    if (!state.hold.startedAt) return;
+    const movedX = Math.abs(numberValue(event.clientX) - state.hold.startX);
+    const movedY = Math.abs(numberValue(event.clientY) - state.hold.startY);
+    if (movedX > 12 || movedY > 12) cancelHold();
+  }
+
+  function isKeyboardInput(node) {
+    return node instanceof HTMLInputElement && ['mfsReceiverNumber', 'mfsAmountBdt', 'mfsPin', 'mfsReference'].includes(node.id);
+  }
+
+  function keyboardInset() {
+    const viewport = window.visualViewport;
+    if (!viewport) return 0;
+    state.keyboard.baselineHeight = Math.max(state.keyboard.baselineHeight, window.innerHeight || 0);
+    const covered = state.keyboard.baselineHeight - viewport.height - viewport.offsetTop;
+    return covered > 90 ? Math.max(0, Math.round(covered)) : 0;
+  }
+
+  function keepFocusedControlsVisible(input) {
+    const body = byId('mfsScrollBody');
+    if (!body || !input) return;
+    const button = input.id === 'mfsAmountBdt'
+      ? byId('mfsAmountContinue')
+      : input.id === 'mfsPin'
+        ? byId('mfsPinContinue')
+        : null;
+    const first = input.closest('.mfs-field') || input;
+    const last = button || input;
+    const bodyRect = body.getBoundingClientRect();
+    const firstRect = first.getBoundingClientRect();
+    const lastRect = last.getBoundingClientRect();
+    const padding = 10;
+    const visibleTop = bodyRect.top + padding;
+    const visibleBottom = bodyRect.bottom - padding;
+    const contentSpan = lastRect.bottom - firstRect.top;
+    const availableSpan = visibleBottom - visibleTop;
+    let nextScrollTop = body.scrollTop;
+
+    if (contentSpan <= availableSpan) {
+      nextScrollTop += firstRect.top - visibleTop;
+    } else if (firstRect.top < visibleTop) {
+      nextScrollTop += firstRect.top - visibleTop;
+    } else if (lastRect.bottom > visibleBottom) {
+      nextScrollTop += lastRect.bottom - visibleBottom;
+    }
+
+    body.scrollTo({ top: Math.max(0, nextScrollTop), behavior: 'smooth' });
+  }
+
+  function applyKeyboardLayout() {
+    state.keyboard.timer = 0;
+    const input = state.keyboard.activeInput;
+    if (!isKeyboardInput(input) || document.activeElement !== input) return;
+    const inset = keyboardInset();
+    document.body.style.setProperty('--mfs-keyboard-inset', `${inset ? inset + 34 : 0}px`);
+    document.body.classList.toggle('mfs-keyboard-open', inset > 0);
+    keepFocusedControlsVisible(input);
+  }
+
+  function scheduleKeyboardLayout(delay = 50) {
+    if (state.keyboard.timer) window.clearTimeout(state.keyboard.timer);
+    state.keyboard.timer = window.setTimeout(applyKeyboardLayout, delay);
+  }
+
+  function resetKeyboardLayout({ restoreScroll = false } = {}) {
+    if (state.keyboard.timer) window.clearTimeout(state.keyboard.timer);
+    if (state.keyboard.restoreTimer) window.clearTimeout(state.keyboard.restoreTimer);
+    state.keyboard.timer = 0;
+    state.keyboard.restoreTimer = 0;
+    document.body.classList.remove('mfs-keyboard-open');
+    document.body.style.setProperty('--mfs-keyboard-inset', '0px');
+    if (restoreScroll) {
+      const body = byId('mfsScrollBody');
+      body?.scrollTo({ top: state.keyboard.restoreScrollTop, behavior: 'smooth' });
+    }
+    state.keyboard.activeInput = null;
+  }
+
+  function handleFocusIn(event) {
+    if (!isKeyboardInput(event.target)) return;
+    state.keyboard.activeInput = event.target;
+    state.keyboard.restoreScrollTop = byId('mfsScrollBody')?.scrollTop || 0;
+    state.keyboard.baselineHeight = Math.max(
+      state.keyboard.baselineHeight,
+      window.innerHeight || 0,
+      window.visualViewport?.height || 0
+    );
+    scheduleKeyboardLayout(0);
+    window.setTimeout(() => scheduleKeyboardLayout(0), 220);
+  }
+
+  function handleFocusOut() {
+    if (state.keyboard.restoreTimer) window.clearTimeout(state.keyboard.restoreTimer);
+    state.keyboard.restoreTimer = window.setTimeout(() => {
+      state.keyboard.restoreTimer = 0;
+      if (isKeyboardInput(document.activeElement)) return;
+      resetKeyboardLayout({ restoreScroll: false });
+    }, 180);
+  }
+
+  function handlePopState(event) {
+    if (state.modal.open && state.modal.busy) {
+      history.pushState(historyPayload(state.step, state.modal.kind), '', window.location.href);
+      return;
+    }
+
+    if (state.modal.open) hideModalImmediate({ restoreFocus: false });
+    const resolver = state.modal.closeResolver;
+    state.modal.closeResolver = null;
+    if (typeof resolver === 'function') resolver();
+
+    const after = state.afterModalClose;
+    state.afterModalClose = null;
+    const targetStep = String(event.state?.zpayMfs?.step || '');
+    if (STEP_ORDER.includes(targetStep)) applyStep(targetStep, { focus: false });
+    if (typeof after === 'function') window.setTimeout(after, 0);
+  }
+
+  function bindEvents() {
+    byId('mfsReceiverContinue')?.addEventListener('click', (event) => continueFromReceiver(event.currentTarget));
+    byId('mfsAmountContinue')?.addEventListener('click', (event) => continueFromAmount(event.currentTarget));
+    byId('mfsPinContinue')?.addEventListener('click', (event) => continueFromPin(event.currentTarget));
+    byId('mfsReceiverNumber')?.addEventListener('input', () => {
+      const current = normalizeNumber(byId('mfsReceiverNumber')?.value);
+      if (state.receiverFull && current !== state.receiverFull) invalidatePreview();
+    });
+    byId('mfsAmountBdt')?.addEventListener('input', () => {
+      state.amountBdt = numberValue(byId('mfsAmountBdt')?.value);
+      invalidatePreview();
+    });
+    byId('mfsReference')?.addEventListener('input', () => {
+      state.reference = String(byId('mfsReference')?.value || '').slice(0, 80);
+    });
+    byId('mfsReceiverNumber')?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        continueFromReceiver(byId('mfsReceiverContinue'));
+      }
+    });
+    byId('mfsAmountBdt')?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        continueFromAmount(byId('mfsAmountContinue'));
+      }
+    });
+    byId('mfsPin')?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        continueFromPin(byId('mfsPinContinue'));
+      }
+    });
+
+    const hold = byId('mfsHoldConfirm');
+    hold?.addEventListener('pointerdown', startHold);
+    hold?.addEventListener('pointermove', moveHold);
+    hold?.addEventListener('pointerup', () => { if (!state.hold.completed) cancelHold(); });
+    hold?.addEventListener('pointercancel', cancelHold);
+    hold?.addEventListener('lostpointercapture', () => { if (!state.hold.completed) cancelHold(); });
+    hold?.addEventListener('keydown', startHold);
+    hold?.addEventListener('keyup', (event) => {
+      if (['Enter', ' '].includes(event.key)) {
+        event.preventDefault();
+        if (!state.hold.completed) cancelHold();
+      }
+    });
+    hold?.addEventListener('contextmenu', (event) => event.preventDefault());
+    hold?.addEventListener('dragstart', (event) => event.preventDefault());
+
+    byId('mfsModalClose')?.addEventListener('click', () => requestModalClose());
+    document.querySelector('[data-mfs-modal-close]')?.addEventListener('click', () => requestModalClose());
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', handleFocusOut);
+    window.addEventListener('popstate', handlePopState);
+    window.visualViewport?.addEventListener('resize', () => scheduleKeyboardLayout(0));
+    window.visualViewport?.addEventListener('scroll', () => scheduleKeyboardLayout(0));
+    window.addEventListener('resize', () => {
+      if (isKeyboardInput(document.activeElement)) scheduleKeyboardLayout(0);
+      else state.keyboard.baselineHeight = Math.max(window.innerHeight || 0, window.visualViewport?.height || 0);
+    });
+    window.addEventListener('pagehide', () => {
+      stopHoldTimers();
+      resetKeyboardLayout({ restoreScroll: false });
+      if (state.modal.kind === 'loading') hideModalImmediate({ restoreFocus: false });
+    });
+    window.addEventListener('pageshow', (event) => {
+      if (!event.persisted) return;
+      if (state.modal.kind === 'loading') hideModalImmediate({ restoreFocus: false });
+      state.requestBusy = false;
+      state.submitting = false;
+      resetHoldVisual();
+    });
+
+    byId('mfsBackButton')?.addEventListener('click', (event) => {
+      if (state.modal.open) {
+        event.preventDefault();
+        requestModalClose();
+        return;
+      }
+      if (state.step !== 'receiver') {
+        event.preventDefault();
+        history.back();
+      }
+    });
+  }
+
+  async function init() {
+    root.setAttribute('aria-busy', 'true');
+    try {
+      await shell.ready;
+      state.uid = String(shell.state.user?.uid || shell.state.bootstrapData?.user?.uid || '').trim();
+      state.favoriteStorageKey = state.uid
+        ? `zpay_mfs_favorites_v1_${state.uid}_${provider}`
+        : `zpay_mfs_favorites_v1_session_${provider}`;
+      loadFavorites();
+      renderFavorites();
+      bindEvents();
+      history.replaceState(historyPayload('receiver'), '', window.location.href);
+      applyStep('receiver', { focus: false });
+    } catch (error) {
+      if (!shell.isSessionError(error)) {
+        openError(`${providerLabel} Unavailable`, safeMessage(error, 'Send Money could not be loaded.'));
+      }
+    } finally {
+      root.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  init();
 })();

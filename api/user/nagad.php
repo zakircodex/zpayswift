@@ -9,6 +9,8 @@ $page = user_page_config([
     'page_css' => 'mfs-page.css',
     'page_js' => 'mfs-page.js',
     'active_nav' => '',
+    'show_header' => false,
+    'show_global_loader' => false,
 ]);
 user_page_begin($page);
 $mfsProvider = 'NAGAD';
