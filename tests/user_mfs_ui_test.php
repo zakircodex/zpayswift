@@ -136,6 +136,13 @@ mfs_ui_expect(
     && str_contains($script, 'if (targetId) window.setTimeout'),
     'Preview still auto-focuses Reference and shifts the card under the fixed header'
 );
+mfs_ui_expect(
+    str_contains($script, 'function finishSuccessFlow()')
+    && str_contains($script, 'history.go(-historyDistance)')
+    && str_contains($script, "{ label: 'Done', handler: finishSuccessFlow }")
+    && !str_contains($script, "{ label: 'Done', handler: () => requestModalClose(resetFlow) }"),
+    'Done does not collapse stale Amount/PIN/Preview history entries'
+);
 
 mfs_ui_expect(
     str_contains($style, '.user-mfs-page')
@@ -164,6 +171,14 @@ mfs_ui_expect(
     && str_contains($style, 'grid-template-columns: repeat(var(--mfs-action-count, 1), minmax(0, 1fr))')
     && str_contains($style, '.user-mfs-page .mfs-action-modal.is-success .mfs-modal-close'),
     'centred shell or compact Android-style success action layout is missing'
+);
+mfs_ui_expect(
+    preg_match('/\.user-mfs-page #mfsSection,\s*\.user-mfs-page \.mfs-page-shell\s*\{[^}]*width:\s*100%;[^}]*margin:\s*0;/s', $style) === 1,
+    'Inherited page-section margin still shifts MFS content to the right'
+);
+mfs_ui_expect(
+    preg_match('/\.user-mfs-page \.user-page-content\s*\{[^}]*width:\s*min\(calc\(100% - 24px\),\s*560px\);[^}]*flex:\s*0 1 auto;/s', $style) === 1,
+    'MFS responsive content width is still overridden by a fixed flex basis'
 );
 
 echo "User MFS UI tests passed ({$assertions} assertions).\n";

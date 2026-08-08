@@ -30,6 +30,7 @@
     requestBusy: false,
     submitting: false,
     completed: false,
+    finishingFlow: false,
     result: null,
     uid: '',
     favorites: [],
@@ -791,6 +792,7 @@
     state.preview = null;
     state.result = null;
     state.completed = false;
+    state.finishingFlow = false;
     clearPin();
     cancelHold();
     ['mfsReceiverNumber', 'mfsAmountMyr', 'mfsAmountBdt', 'mfsReference'].forEach((id) => {
@@ -799,6 +801,24 @@
     });
     history.replaceState(historyPayload('receiver'), '', window.location.href);
     applyStep('receiver', { focus: false });
+  }
+
+  function finishSuccessFlow() {
+    if (state.finishingFlow || !state.modal.open || state.modal.kind !== 'success') return;
+    state.finishingFlow = true;
+    const stepDepth = Math.max(0, STEP_ORDER.indexOf(state.step));
+    const historyDistance = stepDepth + (state.modal.hasHistory ? 1 : 0);
+    state.afterModalClose = resetFlow;
+
+    if (historyDistance > 0) {
+      history.go(-historyDistance);
+      return;
+    }
+
+    hideModalImmediate({ restoreFocus: false });
+    const after = state.afterModalClose;
+    state.afterModalClose = null;
+    if (typeof after === 'function') after();
   }
 
   function openSuccess(result) {
@@ -867,7 +887,7 @@
             modalFeedback(saved.duplicate ? 'Already saved' : 'Favorite saved');
           }
         },
-        { label: 'Done', handler: () => requestModalClose(resetFlow) }
+        { label: 'Done', handler: finishSuccessFlow }
       ]
     });
   }
