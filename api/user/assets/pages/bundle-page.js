@@ -9,7 +9,14 @@
   if (!shell || !pageRoot) return;
 
   const HOLD_DURATION_MS = 1200;
-  const STEP_ORDER = ['offers', 'number', 'pin', 'preview'];
+  const STEP_ORDER = ['operator', 'offers', 'number', 'pin', 'preview'];
+  const OPERATORS = Object.freeze([
+    { code: 'GP', label: 'Grameenphone' },
+    { code: 'ROBI', label: 'Robi' },
+    { code: 'AIRTEL', label: 'Airtel' },
+    { code: 'BANGLALINK', label: 'Banglalink' },
+    { code: 'TELETALK', label: 'Teletalk' }
+  ]);
   const byId = (id) => document.getElementById(id);
   const scrollBody = byId('bundleScrollBody');
 
@@ -17,12 +24,13 @@
     initialized: false,
     offers: [],
     operator: '',
+    offerLoadSerial: 0,
     selectedOffer: null,
     numberFull: '',
     numberValidated: null,
     preview: null,
     favorites: [],
-    step: 'offers',
+    step: 'operator',
     busy: false,
     submitting: false,
     completed: false,
@@ -62,13 +70,14 @@
     const clean = text(value).toUpperCase().replace(/[^A-Z0-9]/g, '');
     const aliases = {
       GRAMEENPHONE: 'GP', ROBIAXIATA: 'ROBI', AIRTELBD: 'AIRTEL',
-      BANGLALINK: 'BL', BANGLALINKDIGITAL: 'BL', TELETALKBD: 'TELETALK'
+      BL: 'BANGLALINK', BANGLALINKDIGITAL: 'BANGLALINK',
+      TT: 'TELETALK', TELETALKBD: 'TELETALK'
     };
     return aliases[clean] || clean;
   }
 
   function operatorLabel(value) {
-    const labels = { GP: 'Grameenphone', ROBI: 'Robi', AIRTEL: 'Airtel', BL: 'Banglalink', TELETALK: 'Teletalk', SKITTO: 'Skitto' };
+    const labels = { GP: 'Grameenphone', ROBI: 'Robi', AIRTEL: 'Airtel', BANGLALINK: 'Banglalink', TELETALK: 'Teletalk', SKITTO: 'Skitto' };
     const normalized = normalizeOperator(value);
     return labels[normalized] || text(value, 'Operator');
   }
@@ -97,8 +106,8 @@
   function suggestedOperators(value) {
     const prefix = normalizeBdNumber(value).slice(0, 3);
     const map = {
-      '013': ['GP', 'SKITTO'], '014': ['BL'], '015': ['TELETALK'],
-      '016': ['AIRTEL'], '017': ['GP'], '018': ['ROBI'], '019': ['BL']
+      '013': ['GP', 'SKITTO'], '014': ['BANGLALINK'], '015': ['TELETALK'],
+      '016': ['AIRTEL'], '017': ['GP'], '018': ['ROBI'], '019': ['BANGLALINK']
     };
     return map[prefix] || [];
   }
@@ -116,7 +125,23 @@
   }
 
   function offerName(offer) {
-    return text(offer?.bundle_name || offer?.name || offer?.description, 'Bundle Offer');
+    const benefits = [];
+    const internet = text(offer?.internet || offer?.data || offer?.data_text || offer?.internet_text);
+    const minutes = text(offer?.minutes || offer?.minute);
+    const sms = text(offer?.sms);
+    if (internet) benefits.push(internet);
+    if (minutes && minutes !== '0') benefits.push(/min/i.test(minutes) ? minutes : `${minutes} Minutes`);
+    if (!benefits.length && sms && sms !== '0') benefits.push(/sms/i.test(sms) ? sms : `${sms} SMS`);
+    if (benefits.length) return benefits.join(' + ');
+
+    const original = text(offer?.bundle_name || offer?.name || offer?.description, 'Bundle Offer');
+    const cleaned = original
+      .replace(/\b\d+(?:\.\d+)?\s*(?:BDT|TK)\b/gi, ' ')
+      .replace(/\b(?:BDT|TK)\s*\d+(?:\.\d+)?\b/gi, ' ')
+      .replace(/\b\d+(?:\.\d+)?\s*(?:DAY|DAYS|D|HOUR|HOURS|HR|HRS|WEEK|WEEKS|MONTH|MONTHS|MIN|MINS|MINUTE|MINUTES)\b/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return cleaned || original;
   }
 
   function offerPrice(offer) {
@@ -127,12 +152,72 @@
     return number(offer?.user_commission ?? offer?.bundle_commission);
   }
 
+  function validityUnit(value) {
+    const unit = text(value).toUpperCase().replaceAll('.', '');
+    if (['MIN', 'MINS', 'MINUTE', 'MINUTES'].includes(unit)) return 'MINUTE';
+    if (['H', 'HR', 'HRS', 'HOUR', 'HOURS'].includes(unit)) return 'HOUR';
+    if (['D', 'DAY', 'DAYS'].includes(unit)) return 'DAY';
+    if (['WK', 'WKS', 'WEEK', 'WEEKS'].includes(unit)) return 'WEEK';
+    if (['MO', 'MOS', 'MONTH', 'MONTHS'].includes(unit)) return 'MONTH';
+    return '';
+  }
+
+  function formatValidity(value, rawUnit) {
+    const amount = Number(value);
+    const unit = validityUnit(rawUnit);
+    if (!Number.isFinite(amount) || amount <= 0 || !unit) return '';
+    const days = unit === 'MINUTE' ? amount / 1440
+      : unit === 'HOUR' ? amount / 24
+        : unit === 'WEEK' ? amount * 7
+          : unit === 'MONTH' ? amount * 30
+            : amount;
+    if (days > 120) return '';
+    const displayAmount = Number.isInteger(amount) ? String(amount) : amount.toFixed(1);
+    const label = `${unit[0]}${unit.slice(1).toLowerCase()}${Math.abs(amount - 1) > 0.0001 ? 's' : ''}`;
+    return `${displayAmount} ${label}`;
+  }
+
+  function validityFromText(value) {
+    const input = text(value).replaceAll('_', ' ');
+    const pattern = /\b(\d+(?:\.\d+)?)\s*(DAY|DAYS|D|HOUR|HOURS|HR|HRS|WEEK|WEEKS|MONTH|MONTHS|MIN|MINS|MINUTE|MINUTES)\b/gi;
+    let match;
+    let result = '';
+    while ((match = pattern.exec(input)) !== null) {
+      const formatted = formatValidity(match[1], match[2]);
+      if (formatted) result = formatted;
+    }
+    return result;
+  }
+
+  function validityFromSeconds(value) {
+    const seconds = Number(value);
+    if (!Number.isInteger(seconds) || seconds <= 0) return '';
+    if (seconds % 86400 === 0) return formatValidity(seconds / 86400, 'DAY');
+    if (seconds % 3600 === 0) return formatValidity(seconds / 3600, 'HOUR');
+    if (seconds % 60 === 0) return formatValidity(seconds / 60, 'MINUTE');
+    return '';
+  }
+
   function offerValidity(offer) {
-    const direct = text(offer?.validity_text || offer?.package_validity || offer?.bundle_validity);
-    if (direct) return direct;
-    const value = number(offer?.validity_value || offer?.duration_value);
-    const unit = text(offer?.validity_unit || offer?.duration_unit);
-    return value > 0 && unit ? `${value} ${unit}` : 'Bundle';
+    const label = validityFromText(offer?.validity_text || offer?.package_validity || offer?.bundle_validity || offer?.validity || offer?.duration_text);
+    if (label) return label;
+    const validityValue = [offer?.validity_value, offer?.package_validity_value, offer?.bundle_validity_value]
+      .map(Number)
+      .find((value) => Number.isFinite(value) && value > 0);
+    const validityUnitValue = [offer?.validity_unit, offer?.package_validity_unit, offer?.bundle_validity_unit]
+      .map((value) => text(value))
+      .find(Boolean);
+    const pair = formatValidity(
+      validityValue,
+      validityUnitValue
+    );
+    if (pair) return pair;
+    const validitySeconds = [offer?.validity_seconds, offer?.package_validity_seconds, offer?.bundle_validity_seconds]
+      .map(Number)
+      .find((value) => Number.isInteger(value) && value > 0);
+    const seconds = validityFromSeconds(validitySeconds);
+    if (seconds) return seconds;
+    return validityFromText(offer?.bundle_name || offer?.name) || 'Bundle';
   }
 
   function collectOffers(data) {
@@ -291,9 +376,27 @@
 
   function setStep(nextStep, mode = 'push') {
     if (!STEP_ORDER.includes(nextStep)) return;
-    if (nextStep !== 'offers' && !state.selectedOffer) return;
+    if (nextStep === 'offers' && !state.operator) return;
+    if (!['operator', 'offers'].includes(nextStep) && !state.selectedOffer) return;
     if (['pin', 'preview'].includes(nextStep) && !state.numberValidated) return;
     if (nextStep === 'preview' && !state.preview?.preview_token) return;
+    if (nextStep === 'operator' && state.step !== 'operator') resetOperatorState();
+    if (state.step === 'preview' && nextStep === 'pin') {
+      state.preview = null;
+      state.idempotencyKey = '';
+      resetHold();
+    }
+    if (state.step === 'pin' && nextStep === 'number') {
+      state.preview = null;
+      state.idempotencyKey = '';
+    }
+    if (state.step === 'number' && nextStep === 'offers') {
+      state.numberFull = '';
+      state.numberValidated = null;
+      state.preview = null;
+      state.idempotencyKey = '';
+      byId('bundleNumberInput').value = '';
+    }
     state.step = nextStep;
     document.querySelectorAll('[data-bundle-step]').forEach((section) => {
       const active = section.dataset.bundleStep === nextStep;
@@ -321,36 +424,71 @@
     resetHold();
   }
 
-  function renderOperatorPills() {
-    const wrap = byId('bundleOperatorPills');
+  function resetOperatorState() {
+    state.offerLoadSerial++;
+    state.offers = [];
+    state.operator = '';
+    resetTransferState();
+    renderOperators();
+    renderSelectedOperator();
+    renderOfferSkeletons();
+  }
+
+  function operatorIcon() {
+    const wrap = createElement('span', 'bundle-operator-icon');
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', 'M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm0 2v14h10V5H7Zm3 12h4v1h-4v-1Z');
+    svg.appendChild(path);
+    wrap.appendChild(svg);
+    return wrap;
+  }
+
+  function renderOperators() {
+    const wrap = byId('bundleOperatorGrid');
     clear(wrap);
-    const operators = [];
-    state.offers.forEach((offer) => {
-      const value = normalizeOperator(offer.operator || offer.operator_name);
-      if (value && !operators.includes(value)) operators.push(value);
-    });
-    if (!operators.includes(state.operator)) state.operator = operators[0] || '';
-    operators.forEach((operator) => {
-      const button = createElement('button', 'bundle-operator-pill', `${operatorLabel(operator)} • PREPAID`);
+    OPERATORS.forEach((operator) => {
+      const button = createElement('button', 'bundle-operator-option');
       button.type = 'button';
-      button.setAttribute('role', 'tab');
-      button.setAttribute('aria-selected', operator === state.operator ? 'true' : 'false');
-      button.classList.toggle('active', operator === state.operator);
-      button.addEventListener('click', () => {
-        if (state.busy || operator === state.operator) return;
-        state.operator = operator;
-        renderOperatorPills();
-        renderOffers();
-      });
+      button.setAttribute('role', 'listitem');
+      button.setAttribute('aria-label', `${operator.label}, prepaid`);
+      button.append(operatorIcon(), createElement('strong', '', operator.label), createElement('small', '', 'PREPAID'));
+      button.addEventListener('click', () => selectOperator(operator));
       wrap.appendChild(button);
     });
+  }
+
+  function renderSelectedOperator() {
+    const wrap = byId('bundleSelectedOperator');
+    if (wrap) wrap.textContent = state.operator ? `${operatorLabel(state.operator)} \u2022 PREPAID` : '';
+  }
+
+  function renderOfferSkeletons() {
+    const grid = byId('bundleOffersGrid');
+    if (!grid) return;
+    clear(grid);
+    grid.setAttribute('aria-busy', 'true');
+    for (let index = 0; index < 3; index++) {
+      const card = createElement('div', 'bundle-offer-card bundle-skeleton-card');
+      card.setAttribute('aria-hidden', 'true');
+      card.append(
+        createElement('span', 'bundle-skeleton bundle-skeleton-title'),
+        createElement('span', 'bundle-skeleton bundle-skeleton-pill'),
+        createElement('span', 'bundle-skeleton bundle-skeleton-line'),
+        createElement('span', 'bundle-skeleton bundle-skeleton-line short'),
+        createElement('span', 'bundle-skeleton bundle-skeleton-button')
+      );
+      grid.appendChild(card);
+    }
   }
 
   function renderOffers() {
     const grid = byId('bundleOffersGrid');
     clear(grid);
     grid.setAttribute('aria-busy', 'false');
-    const offers = state.offers.filter((offer) => normalizeOperator(offer.operator || offer.operator_name) === state.operator);
+    const offers = state.offers.filter((offer) => normalizeOperator(offer.operator || offer.operator_name) === normalizeOperator(state.operator));
     if (!offers.length) {
       grid.appendChild(createElement('div', 'bundle-empty-state', 'No bundles are available for this operator.'));
       return;
@@ -359,7 +497,11 @@
       const card = createElement('article', 'bundle-offer-card');
       const heading = createElement('div', 'bundle-offer-top');
       const copy = createElement('div', 'bundle-offer-copy');
-      copy.append(createElement('h3', '', offerName(offer)), createElement('p', '', text(offer.description, `${operatorLabel(state.operator)} prepaid bundle`)));
+      const description = text(offer.category || offer.type || offer.bundle_type || offer.offer_type || offer.description);
+      copy.append(createElement('h3', '', offerName(offer)));
+      if (description && description.toLowerCase() !== offerName(offer).toLowerCase()) {
+        copy.append(createElement('p', '', description));
+      }
       heading.append(copy, createElement('span', 'bundle-validity-pill', offerValidity(offer)));
       const details = createElement('div', 'bundle-offer-details');
       const price = resultRow('Price', money(offerPrice(offer), 'BDT'));
@@ -396,21 +538,36 @@
     loadFavorites();
   }
 
+  async function selectOperator(operator) {
+    if (state.busy || state.submitting) return;
+    const code = normalizeOperator(operator?.code);
+    if (!code) return;
+    state.offerLoadSerial++;
+    const serial = state.offerLoadSerial;
+    state.operator = code;
+    state.offers = [];
+    resetTransferState();
+    renderSelectedOperator();
+    renderOfferSkeletons();
+    setStep('offers');
+    await loadOffersForOperator(operator, serial);
+  }
+
   function renderPinSummary() {
     const wrap = byId('bundlePinSummary');
     if (!wrap || !state.selectedOffer) return;
     wrap.replaceChildren(selectedSummary(state.selectedOffer, true));
   }
 
-  async function loadOffers() {
+  async function loadOffersForOperator(operator, serial) {
     const grid = byId('bundleOffersGrid');
-    grid?.setAttribute('aria-busy', 'true');
     try {
-      const data = await shell.get('bundle_offers_panel', {}, '', { busy: false });
-      state.offers = collectOffers(data);
-      renderOperatorPills();
+      const data = await shell.get('bundle_offers_panel', { operator: operator.code }, '', { busy: false });
+      if (serial !== state.offerLoadSerial || normalizeOperator(operator.code) !== state.operator) return;
+      state.offers = collectOffers(data).filter((offer) => normalizeOperator(offer.operator || offer.operator_name) === state.operator);
       renderOffers();
     } catch (error) {
+      if (serial !== state.offerLoadSerial || normalizeOperator(operator.code) !== state.operator) return;
       if (grid) {
         clear(grid);
         grid.setAttribute('aria-busy', 'false');
@@ -609,14 +766,14 @@
     const modalEntry = state.modal.history && window.history.state?.zpayBundleModal ? 1 : 0;
     const stepEntries = STEP_ORDER.indexOf(state.step);
     hideModalImmediate({ restoreFocus: false });
-    resetTransferState();
-    state.step = 'offers';
+    resetOperatorState();
+    state.step = 'operator';
     const distance = modalEntry + Math.max(0, stepEntries);
     if (distance > 0 && window.history.length > distance) {
       window.history.go(-distance);
     } else {
-      window.history.replaceState(historyState('offers', false), '', window.location.href);
-      setStep('offers', 'replace');
+      window.history.replaceState(historyState('operator', false), '', window.location.href);
+      setStep('operator', 'replace');
     }
     shell.get('wallet_summary', {}, '', { busy: false }).catch(() => {});
   }
@@ -804,7 +961,7 @@
       event.preventDefault();
       return;
     }
-    if (state.step !== 'offers') {
+    if (state.step !== 'operator') {
       event.preventDefault();
       window.history.back();
     }
@@ -892,14 +1049,15 @@
     if (state.initialized) return;
     state.initialized = true;
     bindEvents();
+    renderOperators();
+    renderSelectedOperator();
     STEP_ORDER.forEach((step) => {
       const node = document.querySelector(`[data-bundle-step="${step}"]`);
-      if (node) node.hidden = step !== 'offers';
+      if (node) node.hidden = step !== 'operator';
     });
-    window.history.replaceState(historyState('offers', false), '', window.location.href);
+    window.history.replaceState(historyState('operator', false), '', window.location.href);
     try {
       await shell.ready;
-      await loadOffers();
     } catch (_) {
       // UserShell handles expired sessions and bootstrap errors.
     }

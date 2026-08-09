@@ -137,35 +137,89 @@ body.user-bundle-page {
 
 .user-bundle-page .bundle-offers-heading h2 { margin-top: 13px; font-size: 21px; }
 
-.user-bundle-page .bundle-operator-pills {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 1px;
-  scrollbar-width: none;
+.user-bundle-page .bundle-operator-card { padding-bottom: 7px; }
+
+.user-bundle-page .bundle-operator-card > h2 {
+  margin-bottom: 15px;
+  text-align: left;
 }
 
-.user-bundle-page .bundle-operator-pills::-webkit-scrollbar { display: none; }
+.user-bundle-page .bundle-operator-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 12px;
+}
 
-.user-bundle-page .bundle-operator-pill {
-  flex: 0 0 auto;
-  min-height: 38px;
-  padding: 8px 13px;
-  border: 1px solid var(--bundle-line);
+.user-bundle-page .bundle-operator-option {
+  position: relative;
+  min-width: 0;
+  min-height: 118px;
+  display: grid;
+  grid-template-rows: 48px auto auto;
+  place-items: center;
+  align-content: center;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
   border-radius: 18px;
-  color: var(--bundle-muted);
-  background: rgba(17, 48, 88, 0.92);
+  color: #fff;
+  background: rgba(31, 62, 105, 0.5);
   font: inherit;
-  font-size: 12px;
-  font-weight: 800;
+  text-align: center;
   cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
 }
 
-.user-bundle-page .bundle-operator-pill.active {
-  border-color: rgba(50, 230, 134, 0.7);
-  color: #07172f;
-  background: var(--bundle-green);
-  box-shadow: 0 8px 20px rgba(50, 230, 134, 0.18);
+.user-bundle-page .bundle-operator-option:active {
+  transform: scale(0.98);
+  border-color: var(--bundle-green);
+  background: rgba(50, 230, 134, 0.11);
+}
+
+.user-bundle-page .bundle-operator-icon {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--bundle-green);
+  background: rgba(50, 230, 134, 0.1);
+}
+
+.user-bundle-page .bundle-operator-icon svg {
+  width: 29px;
+  height: 29px;
+  fill: currentColor;
+}
+
+.user-bundle-page .bundle-operator-option strong {
+  max-width: 100%;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.user-bundle-page .bundle-operator-option small {
+  color: var(--bundle-muted);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.user-bundle-page .bundle-selected-operator {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 14px;
+  border: 1px solid rgba(50, 230, 134, 0.38);
+  border-radius: 18px;
+  color: #fff;
+  background: rgba(23, 58, 104, 0.9);
+  font-size: 13px;
+  font-weight: 900;
+  text-align: center;
 }
 
 .user-bundle-page .bundle-offers-grid { display: grid; gap: 10px; }
@@ -365,17 +419,17 @@ body.user-bundle-page {
   width: 100%;
   min-height: 132px;
   display: grid;
-  grid-template-rows: 60px auto;
+  grid-template-rows: 1fr auto;
   place-items: center;
   gap: 6px;
   margin-top: 14px;
   padding: 14px 16px 16px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.38);
-  border-radius: 34px 34px 25px 25px;
-  color: #07172f;
-  background: linear-gradient(135deg, #32e686, #20cbb0);
-  box-shadow: 0 14px 28px rgba(16, 190, 125, 0.24);
+  border-radius: 46% 46% 28px 28px / 32px 32px 28px 28px;
+  color: #fff;
+  background: linear-gradient(135deg, #0a315f 0%, #047e73 58%, #0cbf8d 100%);
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.3);
   font: inherit;
   cursor: pointer;
   touch-action: pan-y;
@@ -385,14 +439,15 @@ body.user-bundle-page {
 }
 
 .user-bundle-page .bundle-hold-control:disabled { opacity: 0.68; }
-.user-bundle-page .bundle-hold-progress { position: absolute; z-index: -1; inset: 0 auto 0 0; width: var(--hold-progress); background: rgba(4, 84, 72, 0.18); transition: width 35ms linear; }
+.user-bundle-page .bundle-hold-control:focus-visible { outline: 3px solid rgba(50, 230, 134, 0.78); outline-offset: 3px; }
+.user-bundle-page .bundle-hold-progress { position: absolute; z-index: -1; inset: 0 auto 0 0; width: var(--hold-progress); background: linear-gradient(120deg, rgba(47, 232, 139, 0.94), rgba(0, 198, 167, 0.9)); transition: width 70ms linear; }
 .user-bundle-page .bundle-hold-dot { position: absolute; z-index: 4; bottom: 10px; left: clamp(9px, calc(var(--hold-progress) - 8px), calc(100% - 18px)); width: 12px; height: 12px; border: 3px solid rgba(255, 255, 255, 0.86); border-radius: 50%; background: #1f9e79; box-shadow: 0 0 0 3px rgba(7, 23, 47, 0.15); opacity: 0; }
 .user-bundle-page .bundle-hold-control.is-holding .bundle-hold-dot { opacity: 1; }
 .user-bundle-page .bundle-hold-bubble { position: absolute; z-index: -1; border-radius: 50%; background: rgba(255, 255, 255, 0.09); }
 .user-bundle-page .bundle-hold-bubble-one { width: 115px; height: 115px; top: -42px; right: -15px; }
 .user-bundle-page .bundle-hold-bubble-two { width: 90px; height: 90px; bottom: -50px; left: 25%; }
-.user-bundle-page .bundle-hold-logo { width: 58px; height: 58px; object-fit: contain; border-radius: 15px; pointer-events: none; }
-.user-bundle-page .bundle-hold-label { position: relative; z-index: 2; font-size: 15px; font-weight: 900; line-height: 1.25; text-align: center; }
+.user-bundle-page .bundle-hold-logo { z-index: 2; width: 50px; height: 50px; object-fit: cover; border: 1px solid rgba(255, 255, 255, 0.76); border-radius: 50%; box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24); pointer-events: none; -webkit-user-drag: none; }
+.user-bundle-page .bundle-hold-label { position: relative; z-index: 2; color: #fff; font-size: 15px; font-weight: 900; line-height: 1.25; text-align: center; }
 .user-bundle-page .bundle-hold-control * { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; pointer-events: none; }
 
 .user-bundle-page .bundle-action-modal {
@@ -453,7 +508,7 @@ body.user-bundle-page.bundle-modal-open { overflow: hidden; }
   .user-bundle-page .bundle-favorite-panel { padding: 15px; border-radius: 22px; }
   .user-bundle-page .bundle-offer-copy h3 { font-size: 18px; }
   .user-bundle-page .bundle-step-card > h2 { font-size: 21px; }
-  .user-bundle-page .bundle-hold-control { min-height: 124px; border-radius: 30px 30px 23px 23px; }
+  .user-bundle-page .bundle-hold-control { min-height: 124px; border-radius: 46% 46% 25px 25px / 29px 29px 25px 25px; }
 }
 
 @media (max-width: 340px) {

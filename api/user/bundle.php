@@ -31,9 +31,16 @@ user_page_begin($page);
     </header>
 
     <div id="bundleScrollBody" class="bundle-scroll-body" aria-live="polite">
-      <div id="bundleStepOffers" class="bundle-step active" data-bundle-step="offers">
+      <div id="bundleStepOperator" class="bundle-step active" data-bundle-step="operator">
+        <div class="bundle-step-card bundle-operator-card">
+          <h2>Select Operator</h2>
+          <div id="bundleOperatorGrid" class="bundle-operator-grid" role="list" aria-label="Supported prepaid operators"></div>
+        </div>
+      </div>
+
+      <div id="bundleStepOffers" class="bundle-step" data-bundle-step="offers">
         <div class="bundle-offers-heading">
-          <div id="bundleOperatorPills" class="bundle-operator-pills" role="tablist" aria-label="Bundle operator"></div>
+          <div id="bundleSelectedOperator" class="bundle-selected-operator" aria-live="polite"></div>
           <h2>Available Bundles</h2>
         </div>
         <div id="bundleOffersGrid" class="bundle-offers-grid" aria-busy="true">

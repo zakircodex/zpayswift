@@ -1444,6 +1444,38 @@ function bundle_list_visible_offers_for_user(string $uid): array
 
 function bundle_public_offer(array $item): array
 {
+    $validityValue = (float)($item['validity_value'] ?? 0);
+    if ($validityValue <= 0) {
+        $validityValue = (float)($item['package_validity_value'] ?? 0);
+    }
+    if ($validityValue <= 0) {
+        $validityValue = (float)($item['bundle_validity_value'] ?? 0);
+    }
+
+    $validityUnit = trim((string)($item['validity_unit'] ?? ''));
+    if ($validityUnit === '') {
+        $validityUnit = trim((string)($item['package_validity_unit'] ?? ''));
+    }
+    if ($validityUnit === '') {
+        $validityUnit = (string)($item['bundle_validity_unit'] ?? '');
+    }
+
+    $validitySeconds = (int)($item['validity_seconds'] ?? 0);
+    if ($validitySeconds <= 0) {
+        $validitySeconds = (int)($item['package_validity_seconds'] ?? 0);
+    }
+    if ($validitySeconds <= 0) {
+        $validitySeconds = (int)($item['bundle_validity_seconds'] ?? 0);
+    }
+
+    $validityText = trim((string)($item['validity_text'] ?? ''));
+    foreach (['package_validity', 'bundle_validity', 'validity', 'duration_text'] as $validityKey) {
+        if ($validityText !== '') {
+            break;
+        }
+        $validityText = trim((string)($item[$validityKey] ?? ''));
+    }
+
     return [
         'offer_id' => (string)($item['offer_id'] ?? ''),
         'operator' => (string)($item['operator'] ?? ''),
@@ -1451,6 +1483,17 @@ function bundle_public_offer(array $item): array
         'bundle_name' => (string)($item['bundle_name'] ?? $item['name'] ?? ''),
         'name' => (string)($item['name'] ?? $item['bundle_name'] ?? ''),
         'description' => (string)($item['description'] ?? ''),
+        'internet' => (string)($item['internet'] ?? $item['data'] ?? $item['data_text'] ?? $item['internet_text'] ?? ''),
+        'data' => (string)($item['data'] ?? ''),
+        'data_text' => (string)($item['data_text'] ?? ''),
+        'internet_text' => (string)($item['internet_text'] ?? ''),
+        'minutes' => (string)($item['minutes'] ?? $item['minute'] ?? ''),
+        'minute' => (string)($item['minute'] ?? ''),
+        'sms' => (string)($item['sms'] ?? ''),
+        'category' => (string)($item['category'] ?? $item['type'] ?? $item['bundle_type'] ?? $item['offer_type'] ?? ''),
+        'type' => (string)($item['type'] ?? ''),
+        'bundle_type' => (string)($item['bundle_type'] ?? ''),
+        'offer_type' => (string)($item['offer_type'] ?? ''),
         'amount' => (float)($item['amount'] ?? $item['price_amount'] ?? $item['offer_price'] ?? 0),
         'price_amount' => (float)($item['price_amount'] ?? $item['amount'] ?? $item['offer_price'] ?? 0),
         'offer_price' => (float)($item['offer_price'] ?? $item['price_amount'] ?? $item['amount'] ?? 0),
@@ -1462,10 +1505,12 @@ function bundle_public_offer(array $item): array
         'duration_value' => (float)($item['duration_value'] ?? 0),
         'duration_unit' => (string)($item['duration_unit'] ?? ''),
         'duration_seconds' => (int)($item['duration_seconds'] ?? 0),
-        'validity_value' => (float)($item['package_validity_value'] ?? $item['bundle_validity_value'] ?? 0),
-        'validity_unit' => (string)($item['package_validity_unit'] ?? $item['bundle_validity_unit'] ?? ''),
-        'validity_seconds' => (int)($item['package_validity_seconds'] ?? $item['bundle_validity_seconds'] ?? 0),
-        'validity_text' => (string)($item['validity_text'] ?? $item['package_validity'] ?? $item['bundle_validity'] ?? ''),
+        'validity_value' => $validityValue,
+        'validity_unit' => $validityUnit,
+        'validity_seconds' => $validitySeconds,
+        'validity_text' => $validityText,
+        'validity' => (string)($item['validity'] ?? ''),
+        'duration_text' => (string)($item['duration_text'] ?? ''),
         'expires_at' => (int)($item['expires_at'] ?? 0),
         'expired' => (bool)($item['expired'] ?? false),
         'status' => (string)($item['status'] ?? 'ACTIVE'),

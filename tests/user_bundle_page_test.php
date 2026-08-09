@@ -20,7 +20,7 @@ function bundle_page_expect(bool $condition, string $message): void
     }
 }
 
-foreach (['bundleStepOffers', 'bundleStepNumber', 'bundleStepPin', 'bundleStepPreview', 'bundleActionModal'] as $id) {
+foreach (['bundleStepOperator', 'bundleStepOffers', 'bundleStepNumber', 'bundleStepPin', 'bundleStepPreview', 'bundleActionModal'] as $id) {
     bundle_page_expect(str_contains($page, 'id="' . $id . '"'), "Bundle page must contain {$id}.");
 }
 
@@ -70,9 +70,44 @@ bundle_page_expect(
 
 bundle_page_expect(
     str_contains($js, "window.addEventListener('popstate'")
-    && str_contains($js, "const STEP_ORDER = ['offers', 'number', 'pin', 'preview']")
+    && str_contains($js, "const STEP_ORDER = ['operator', 'offers', 'number', 'pin', 'preview']")
     && str_contains($js, "window.history.go(-distance)"),
     'Bundle must support step Back and collapse completed flow history after Done.'
+);
+
+bundle_page_expect(
+    str_contains($page, 'id="bundleOperatorGrid"')
+    && str_contains($js, "{ code: 'GP', label: 'Grameenphone' }")
+    && str_contains($js, "{ code: 'ROBI', label: 'Robi' }")
+    && str_contains($js, "{ code: 'AIRTEL', label: 'Airtel' }")
+    && str_contains($js, "{ code: 'BANGLALINK', label: 'Banglalink' }")
+    && str_contains($js, "{ code: 'TELETALK', label: 'Teletalk' }")
+    && !str_contains($js, 'operators[0]'),
+    'Bundle must start with the five Android operators and must not auto-select GP.'
+);
+
+bundle_page_expect(
+    str_contains($js, "shell.get('bundle_offers_panel', { operator: operator.code }")
+    && str_contains($js, 'serial !== state.offerLoadSerial')
+    && str_contains($proxy, "\$operator = trim((string)(\$_GET['operator'] ?? ''))")
+    && str_contains($proxy, 'user_proxy_bundle_offers_for_user($uid, $operator)'),
+    'Bundle offer requests must be operator-scoped and ignore stale operator responses.'
+);
+
+bundle_page_expect(
+    str_contains($js, 'function offerValidity(offer)')
+    && str_contains($js, 'if (days > 120) return')
+    && !str_contains($js, 'offer?.validity_value || offer?.duration_value')
+    && str_contains($bundle, "'validity_value' => \$validityValue")
+    && str_contains($proxy, "'validity_text' => \$validityText"),
+    'Bundle validity must use canonical package-validity fields and never offer expiry duration as the badge.'
+);
+
+bundle_page_expect(
+    str_contains($css, '.user-bundle-page .bundle-operator-grid')
+    && str_contains($css, 'grid-template-columns: repeat(2, minmax(0, 1fr))')
+    && str_contains($css, 'border-radius: 46% 46% 28px 28px / 32px 32px 28px 28px'),
+    'Bundle must use the Android operator grid and the finished Transfer arched hold control.'
 );
 
 bundle_page_expect(

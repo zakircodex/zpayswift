@@ -1185,6 +1185,34 @@ function user_proxy_build_bundle_offer_internal(array $row, array $user, string 
 
     $expiresAt = (int)($row['expires_at'] ?? 0);
     $now = function_exists('bundle_now') ? (int)bundle_now() : user_proxy_now();
+    $validityValue = (float)($row['validity_value'] ?? 0);
+    if ($validityValue <= 0) {
+        $validityValue = (float)($row['package_validity_value'] ?? 0);
+    }
+    if ($validityValue <= 0) {
+        $validityValue = (float)($row['bundle_validity_value'] ?? 0);
+    }
+    $validityUnit = trim((string)($row['validity_unit'] ?? ''));
+    if ($validityUnit === '') {
+        $validityUnit = trim((string)($row['package_validity_unit'] ?? ''));
+    }
+    if ($validityUnit === '') {
+        $validityUnit = (string)($row['bundle_validity_unit'] ?? '');
+    }
+    $validitySeconds = (int)($row['validity_seconds'] ?? 0);
+    if ($validitySeconds <= 0) {
+        $validitySeconds = (int)($row['package_validity_seconds'] ?? 0);
+    }
+    if ($validitySeconds <= 0) {
+        $validitySeconds = (int)($row['bundle_validity_seconds'] ?? 0);
+    }
+    $validityText = trim((string)($row['validity_text'] ?? ''));
+    foreach (['package_validity', 'bundle_validity', 'validity', 'duration_text'] as $validityKey) {
+        if ($validityText !== '') {
+            break;
+        }
+        $validityText = trim((string)($row[$validityKey] ?? ''));
+    }
 
     return [
         'offer_id' => $offerId,
@@ -1193,6 +1221,17 @@ function user_proxy_build_bundle_offer_internal(array $row, array $user, string 
         'bundle_name' => (string)($row['bundle_name'] ?? $row['name'] ?? ''),
         'name' => (string)($row['name'] ?? $row['bundle_name'] ?? ''),
         'description' => (string)($row['description'] ?? ''),
+        'internet' => (string)($row['internet'] ?? $row['data'] ?? $row['data_text'] ?? $row['internet_text'] ?? ''),
+        'data' => (string)($row['data'] ?? ''),
+        'data_text' => (string)($row['data_text'] ?? ''),
+        'internet_text' => (string)($row['internet_text'] ?? ''),
+        'minutes' => (string)($row['minutes'] ?? $row['minute'] ?? ''),
+        'minute' => (string)($row['minute'] ?? ''),
+        'sms' => (string)($row['sms'] ?? ''),
+        'category' => (string)($row['category'] ?? $row['type'] ?? $row['bundle_type'] ?? $row['offer_type'] ?? ''),
+        'type' => (string)($row['type'] ?? ''),
+        'bundle_type' => (string)($row['bundle_type'] ?? ''),
+        'offer_type' => (string)($row['offer_type'] ?? ''),
 
         'amount' => $priceAmount,
         'price_amount' => $priceAmount,
@@ -1210,6 +1249,12 @@ function user_proxy_build_bundle_offer_internal(array $row, array $user, string 
         'duration_value' => (float)($row['duration_value'] ?? 0),
         'duration_unit' => (string)($row['duration_unit'] ?? ''),
         'duration_seconds' => (int)($row['duration_seconds'] ?? 0),
+        'validity_value' => $validityValue,
+        'validity_unit' => $validityUnit,
+        'validity_seconds' => $validitySeconds,
+        'validity_text' => $validityText,
+        'validity' => (string)($row['validity'] ?? ''),
+        'duration_text' => (string)($row['duration_text'] ?? ''),
         'expires_at' => $expiresAt,
         'expired' => $expiresAt > 0 && $expiresAt <= $now,
         'status' => strtoupper(trim((string)($row['status'] ?? 'ACTIVE'))),
@@ -1231,6 +1276,17 @@ function user_proxy_public_bundle_offer(array $item): array
         'bundle_name' => (string)($item['bundle_name'] ?? $item['name'] ?? ''),
         'name' => (string)($item['name'] ?? $item['bundle_name'] ?? ''),
         'description' => (string)($item['description'] ?? ''),
+        'internet' => (string)($item['internet'] ?? ''),
+        'data' => (string)($item['data'] ?? ''),
+        'data_text' => (string)($item['data_text'] ?? ''),
+        'internet_text' => (string)($item['internet_text'] ?? ''),
+        'minutes' => (string)($item['minutes'] ?? ''),
+        'minute' => (string)($item['minute'] ?? ''),
+        'sms' => (string)($item['sms'] ?? ''),
+        'category' => (string)($item['category'] ?? ''),
+        'type' => (string)($item['type'] ?? ''),
+        'bundle_type' => (string)($item['bundle_type'] ?? ''),
+        'offer_type' => (string)($item['offer_type'] ?? ''),
 
         'amount' => (float)($item['amount'] ?? 0),
         'price_amount' => (float)($item['price_amount'] ?? $item['amount'] ?? 0),
@@ -1246,6 +1302,12 @@ function user_proxy_public_bundle_offer(array $item): array
         'duration_value' => (float)($item['duration_value'] ?? 0),
         'duration_unit' => (string)($item['duration_unit'] ?? ''),
         'duration_seconds' => (int)($item['duration_seconds'] ?? 0),
+        'validity_value' => (float)($item['validity_value'] ?? 0),
+        'validity_unit' => (string)($item['validity_unit'] ?? ''),
+        'validity_seconds' => (int)($item['validity_seconds'] ?? 0),
+        'validity_text' => (string)($item['validity_text'] ?? ''),
+        'validity' => (string)($item['validity'] ?? ''),
+        'duration_text' => (string)($item['duration_text'] ?? ''),
         'expires_at' => (int)($item['expires_at'] ?? 0),
         'expired' => (bool)($item['expired'] ?? false),
         'status' => (string)($item['status'] ?? 'ACTIVE'),
@@ -1256,9 +1318,10 @@ function user_proxy_public_bundle_offer(array $item): array
     ];
 }
 
-function user_proxy_bundle_offers_for_user(string $uid): array
+function user_proxy_bundle_offers_for_user(string $uid, string $operatorFilter = ''): array
 {
     $uid = trim($uid);
+    $operatorFilter = user_proxy_operator_code($operatorFilter);
 
     if ($uid === '') {
         return [
@@ -1339,6 +1402,10 @@ function user_proxy_bundle_offers_for_user(string $uid): array
             continue;
         }
 
+        if ($operatorFilter !== '' && user_proxy_operator_code((string)($internal['operator'] ?? '')) !== $operatorFilter) {
+            continue;
+        }
+
         $out[] = user_proxy_public_bundle_offer($internal);
     }
 
@@ -1354,6 +1421,7 @@ function user_proxy_bundle_offers_for_user(string $uid): array
         'message' => 'Bundle offers loaded successfully',
         'data' => [
             'uid' => $uid,
+            'operator' => $operatorFilter,
             'total' => count($out),
             'items' => array_values($out),
             'wallet' => [
@@ -4205,8 +4273,9 @@ switch ($action) {
 
         $sessionUser = user_proxy_require_login(true, false);
         $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $operator = trim((string)($_GET['operator'] ?? ''));
 
-        $res = user_proxy_bundle_offers_for_user($uid);
+        $res = user_proxy_bundle_offers_for_user($uid, $operator);
 
         if (!($res['ok'] ?? false)) {
             $code = (string)($res['code'] ?? 'SERVER_ERROR');
