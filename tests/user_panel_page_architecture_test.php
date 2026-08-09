@@ -60,6 +60,14 @@ foreach ($routes as $route => $file) {
     );
 
     $source = architecture_read($path);
+    if ($route === 'contact-us') {
+        architecture_expect(
+            str_contains($source, "header('Cache-Control: no-store')")
+            && str_contains($source, "header('Location: /user/support', true, 302)"),
+            'contact-us.php is not a safe canonical alias for the Support experience'
+        );
+        continue;
+    }
     architecture_expect(
         str_contains($source, "require_once __DIR__ . '/includes/page-bootstrap.php'"),
         "{$file} does not use the shared authenticated bootstrap"

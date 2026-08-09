@@ -138,12 +138,11 @@ expect_true(
     'Private support attachment bridge is missing or cacheable'
 );
 expect_true(
-    str_contains($contactPage, 'support-contact-hero-panel')
-    && str_contains($contactPage, 'Get In Touch')
-    && str_contains($contactPage, 'supportOpenRequestsButton')
+    str_contains($contactPage, "header('Cache-Control: no-store')")
+    && str_contains($contactPage, "header('Location: /user/support', true, 302)")
     && str_contains($supportPage, 'supportMainView')
     && str_contains($supportPage, 'supportStartChatButton'),
-    'Contact landing or Support workspace page is incomplete'
+    'Contact Us canonical redirect or Support workspace page is incomplete'
 );
 expect_true(
     str_contains($supportCss, '#supportSection .support-ticket-scroll')

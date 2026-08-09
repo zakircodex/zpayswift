@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $page = (string)file_get_contents($root . '/api/user/support.php');
+$contactPage = (string)file_get_contents($root . '/api/user/contact-us.php');
 $js = (string)file_get_contents($root . '/api/user/assets/pages/support-page.js');
 $css = (string)file_get_contents($root . '/api/user/assets/pages/support-page.css');
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
@@ -25,6 +26,12 @@ support_ui_expect(
     && str_contains($page, 'class="page-section user-support-experience active"')
     && !str_contains($page, 'id="loadingWrap"'),
     'Support must own its loader, activate its page root and retain the shared bottom navigation'
+);
+
+support_ui_expect(
+    str_contains($contactPage, "header('Cache-Control: no-store')")
+    && str_contains($contactPage, "header('Location: /user/support', true, 302)"),
+    'The Contact Us menu route must open the canonical Support experience'
 );
 
 foreach ([
