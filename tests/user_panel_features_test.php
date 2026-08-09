@@ -141,17 +141,18 @@ expect_true(
     str_contains($contactPage, 'support-contact-hero-panel')
     && str_contains($contactPage, 'Get In Touch')
     && str_contains($contactPage, 'supportOpenRequestsButton')
-    && str_contains($supportPage, 'supportRequestWorkspace')
+    && str_contains($supportPage, 'supportMainView')
     && str_contains($supportPage, 'supportStartChatButton'),
     'Contact landing or Support workspace page is incomplete'
 );
 expect_true(
-    str_contains($supportCss, '#supportSection .support-scroll-body')
-    && str_contains($supportCss, '#supportSection #supportListPanel.active')
-    && str_contains($supportCss, '#supportSection .support-ticket-card .status-pill')
-    && str_contains($supportCss, '#supportSection .conversation-header')
+    str_contains($supportCss, '#supportSection .support-ticket-scroll')
+    && str_contains($supportCss, '#supportSection .support-category-grid')
+    && str_contains($supportCss, '#supportSection .support-status-pill')
+    && str_contains($supportCss, '#supportSection .support-chat-header')
     && str_contains($supportCss, '#supportSection .support-composer textarea')
-    && str_contains($supportCss, 'height: 100dvh'),
+    && str_contains($supportCss, 'height: 100dvh')
+    && str_contains($supportCss, '#supportSection .support-action-modal'),
     'Support fixed/scroll conversation CSS is incomplete'
 );
 expect_true(

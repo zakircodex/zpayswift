@@ -1,124 +1,44 @@
-﻿(function () {
+(function () {
   'use strict';
 
   const $ = (id) => document.getElementById(id);
   const allowedImages = new Set(['image/jpeg', 'image/png', 'image/webp']);
-  let lastModalFocus = null;
-  const profileModal = {
-    open: false,
-    kind: '',
-    opener: null,
-    historyOpen: false,
-    closing: false,
-    crop: null
+  const viewIds = {
+    main: 'supportMainView',
+    category: 'supportCategoryView',
+    create: 'supportCreateView',
+    chat: 'supportConversationView'
   };
-  const sectionPaths = {
-    overviewSection: '/user/',
-    servicesSection: '/user/services',
-    transferSection: '/user/transfer',
-    historySection: '/user/history',
-    supportSection: '/user/support',
-    profileSection: '/user/profile'
-  };
-
-  const app = {
-    profile: null,
-    profileLoading: false,
-    transfer: {
-      step: 1,
-      recipient: null,
-      preview: null,
-      reference: '',
-      submitting: false,
-      resolving: false,
-      amountChecking: false,
-      favorites: [],
-      favoritesLoaded: false,
-      favoritesLoading: false,
-      verifiedInput: '',
-      holdFrame: 0,
-      holdStartedAt: 0,
-      modalOpen: false,
-      modalBusy: false,
-      modalHistoryOpen: false,
-      modalClosing: false,
-      successContext: null
-    },
-    support: {
-      config: null,
-      categories: [],
-      tickets: [],
-      ticket: null,
-      messages: [],
-      attachments: [],
-      pollTimer: 0,
-      createKey: '',
-      replyKey: ''
-    },
-    notifications: {
-      filter: 'ALL',
-      items: [],
-      loading: false,
-      loaded: false,
-      unreadCount: 0,
-      returnSection: 'overviewSection',
-      editing: false,
-      selected: new Set(),
-      activeDetail: null,
-      detailOpener: null,
-      detailHistory: false
+  const state = {
+    view: 'main',
+    config: {},
+    categories: [],
+    tickets: [],
+    ticket: null,
+    messages: [],
+    attachments: [],
+    selectedCategory: null,
+    requestLogs: [],
+    createFiles: [],
+    replyFiles: [],
+    createKey: '',
+    replyKey: '',
+    loadingTickets: false,
+    loadingConversation: false,
+    creating: false,
+    replying: false,
+    pollTimer: 0,
+    initialized: false,
+    modal: {
+      open: false,
+      busy: false,
+      history: false,
+      opener: null
     }
   };
 
-  function escapeHtml(value) {
-    return String(value == null ? '' : value).replace(/[&<>"']/g, (char) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;'
-    })[char]);
-  }
-
-  function safeMessage(error, fallback) {
-    const message = String(error && error.message ? error.message : fallback || 'Please try again.').trim();
-    return message && message.length <= 220 ? message : String(fallback || 'Please try again.');
-  }
-
-  function transferStatusUnknown(error) {
-    const code = String(error && error.code || '').toUpperCase();
-    const status = Number(error && error.status || 0);
-    return status === 0
-      || status >= 500
-      || [
-        'REQUEST_FAILED',
-        'TRANSFER_FAILED',
-        'TRANSFER_PROCESSING',
-        'TRANSFER_STORE_FAILED',
-        'TRANSFER_INDEX_FAILED',
-        'TRANSFER_RETRYABLE',
-        'FINANCIAL_OPERATION_UNAVAILABLE'
-      ].includes(code);
-  }
-
-  function profileSafeMessage(error, fallback) {
-    const code = String(error && error.code || '').toUpperCase();
-    const known = {
-      WRONG_PASSWORD: 'Current password is incorrect.',
-      WRONG_PIN: 'Current PIN is incorrect.',
-      PASSWORD_MISMATCH: 'Confirm password does not match.',
-      PIN_MISMATCH: 'Confirm PIN does not match.',
-      INVALID_PASSWORD: 'Choose a stronger password.',
-      INVALID_PIN: 'PIN must be exactly 4 digits.',
-      IMAGE_TOO_LARGE: 'Profile photo must be 5 MB or smaller.',
-      UNSUPPORTED_IMAGE: 'Choose a supported JPG, PNG or WebP image.',
-      SESSION_EXPIRED: 'Your session expired. Please login again.'
-    };
-    if (known[code]) return known[code];
-    const message = safeMessage(error, fallback);
-    return /firebase|exception|stack trace|user_wallets|session[_ -]?token|csrf[_ -]?token|\/api\//i.test(message)
-      ? String(fallback || 'Please try again.')
-      : message;
+  function csrf() {
+    return String((window.userState && window.userState.csrf) || '');
   }
 
   function toast(message, type) {
@@ -127,100 +47,13 @@
     }
   }
 
-  function setBusy(on, label) {
-    if (typeof window.setBusy === 'function') {
-      window.setBusy(on, label || 'Loading...');
+  function safeMessage(error, fallback) {
+    const fallbackText = String(fallback || 'Please try again.');
+    const message = String(error && error.message ? error.message : fallbackText).trim();
+    if (!message || message.length > 220 || /firebase|exception|stack trace|support_(tickets|messages|attachments)|session[_ -]?token|csrf[_ -]?token|app[_ -]?key|\/api\//i.test(message)) {
+      return fallbackText;
     }
-  }
-
-  function csrf() {
-    return String((window.userState && window.userState.csrf) || '');
-  }
-
-  function makeIdempotencyKey(prefix) {
-    const random = window.crypto && typeof window.crypto.randomUUID === 'function'
-      ? window.crypto.randomUUID()
-      : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
-    return String(prefix || 'WEB') + '-' + random;
-  }
-
-  function formatMoney(value, currency) {
-    const amount = Number(value || 0);
-    const code = String(currency || 'BDT').toUpperCase();
-    const prefix = code === 'MYR' ? 'RM' : code;
-    return prefix + ' ' + (Number.isFinite(amount) ? amount.toFixed(2) : '0.00');
-  }
-
-  function formatDate(value) {
-    let timestamp = Number(value || 0);
-    if (!timestamp) return '-';
-    if (timestamp < 100000000000) timestamp *= 1000;
-    const date = new Date(timestamp);
-    return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString([], {
-      year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit'
-    });
-  }
-
-  function maskPhone(value) {
-    const phone = String(value || '').trim();
-    if (phone.length < 7) return phone || '-';
-    return phone.slice(0, 4) + '***' + phone.slice(-3);
-  }
-
-  function maskEmail(value) {
-    const email = String(value || '').trim();
-    if (!email) return '-';
-    const at = email.indexOf('@');
-    if (at <= 0 || at === email.length - 1) {
-      return email.length <= 20 ? email : email.slice(0, 17) + '...';
-    }
-    const local = email.slice(0, at);
-    let domain = email.slice(at + 1);
-    if (domain.length > 16) domain = domain.slice(0, 13) + '...';
-    return local.slice(0, Math.min(5, local.length)) + '***@' + domain;
-  }
-
-  function profileCountryLabel(value) {
-    const country = String(value || '').toUpperCase();
-    if (country === 'MY') return 'Malaysia';
-    if (country === 'BD') return 'Bangladesh';
-    return country || '-';
-  }
-
-  function profileSessionStatus(value) {
-    const status = String(value || '').trim();
-    if (!status || status.toUpperCase() === 'ACTIVE') return 'Active';
-    return status.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
-  }
-
-  function profileVersionLabel() {
-    return 'Version 1.0.0';
-  }
-
-  function initials(name) {
-    const parts = String(name || 'Z P').trim().split(/\s+/).filter(Boolean);
-    return ((parts[0] || 'Z')[0] + (parts[1] || parts[0] || 'P')[0]).toUpperCase();
-  }
-
-  function safeProfileImage(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-    try {
-      const url = new URL(raw, window.location.origin);
-      return url.origin === window.location.origin ? url.href : '';
-    } catch (_) {
-      return '';
-    }
-  }
-
-  async function get(action, params, label, options) {
-    if (typeof window.proxyGet !== 'function') throw new Error('User API is unavailable.');
-    return window.proxyGet(action, params || {}, label || 'Loading...', options || {});
-  }
-
-  async function post(action, payload, label, options) {
-    if (typeof window.proxyPost !== 'function') throw new Error('User API is unavailable.');
-    return window.proxyPost(action, payload || {}, label || 'Processing...', options || {});
+    return message;
   }
 
   function isSessionError(error) {
@@ -236,82 +69,94 @@
       && (code === 'FORBIDDEN' || code === 'CSRF_INVALID' || message.includes('csrf'));
   }
 
+  function handleSessionError(error) {
+    if (isSessionError(error) && typeof window.userSessionExpired === 'function') {
+      window.userSessionExpired();
+      return true;
+    }
+    return false;
+  }
+
+  async function get(action, params) {
+    if (typeof window.proxyGet !== 'function') {
+      throw new Error('Support service is unavailable.');
+    }
+    return window.proxyGet(action, params || {}, '', { busy: false });
+  }
+
   async function refreshCsrfToken() {
-    const data = await get('me', {}, 'Refreshing session...', { busy: false });
+    const data = await get('me', {});
     if (data && data.csrf && window.userState) {
       window.userState.csrf = String(data.csrf);
     }
     return csrf();
   }
 
-  async function postWithFreshCsrf(action, payload, label) {
-    if (!csrf()) {
-      await refreshCsrfToken();
-    }
+  async function postForm(action, formData) {
+    const send = async () => {
+      const response = await fetch((window.USER_PROXY_URL || '/api/user/proxy.php') + '?action=' + encodeURIComponent(action), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'X-CSRF-Token': csrf(),
+          'Accept': 'application/json'
+        },
+        body: formData
+      });
+      const responseText = await response.text();
+      let json = null;
+      try {
+        json = JSON.parse(responseText);
+      } catch (_) {
+        json = null;
+      }
+      if (!response.ok || !json || !json.ok) {
+        const error = new Error(String((json && json.message) || 'The request could not be completed.'));
+        error.code = String((json && json.code) || 'REQUEST_FAILED');
+        error.status = response.status;
+        if (handleSessionError(error)) throw error;
+        throw error;
+      }
+      return json.data || {};
+    };
+
+    if (!csrf()) await refreshCsrfToken();
     try {
-      return await post(action, payload || {}, label || 'Processing...', { busy: false });
+      return await send();
     } catch (error) {
       if (!isCsrfError(error)) throw error;
       await refreshCsrfToken();
-      return post(action, payload || {}, label || 'Processing...', { busy: false });
+      return send();
     }
   }
 
-  function handleNotificationSessionExpired() {
-    renderNotificationMessage('Session expired', 'Please login again to view your notifications.');
-    if (typeof window.userSessionExpired === 'function') {
-      window.userSessionExpired();
-    }
+  function makeIdempotencyKey(prefix) {
+    const random = window.crypto && typeof window.crypto.randomUUID === 'function'
+      ? window.crypto.randomUUID()
+      : String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+    return String(prefix || 'SUPPORT') + '-' + random;
   }
 
-  async function postForm(action, formData, label) {
-    setBusy(true, label || 'Uploading...');
-    try {
-      const send = async () => {
-        const response = await fetch((window.USER_PROXY_URL || '/api/user/proxy.php') + '?action=' + encodeURIComponent(action), {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'X-CSRF-Token': csrf(), 'Accept': 'application/json' },
-          body: formData
-        });
-        const responseText = await response.text();
-        let json = null;
-        try { json = JSON.parse(responseText); } catch (_) { json = null; }
-        if (!response.ok || !json || !json.ok) {
-          const error = new Error(String((json && json.message) || 'The request could not be completed.'));
-          error.code = String((json && json.code) || 'REQUEST_FAILED');
-          error.status = response.status;
-          if (isSessionError(error) && typeof window.userSessionExpired === 'function') {
-            window.userSessionExpired();
-          }
-          throw error;
-        }
-        return json.data || {};
-      };
-      if (!csrf()) await refreshCsrfToken();
-      try {
-        return await send();
-      } catch (error) {
-        if (!isCsrfError(error)) throw error;
-        await refreshCsrfToken();
-        return send();
-      }
-    } finally {
-      setBusy(false);
+  function formatDate(value, dateOnly) {
+    let timestamp = Number(value || 0);
+    if (!timestamp) return '-';
+    if (timestamp < 100000000000) timestamp *= 1000;
+    const date = new Date(timestamp);
+    if (Number.isNaN(date.getTime())) return '-';
+    if (dateOnly) {
+      return date.toLocaleDateString([], { year: 'numeric', month: 'short', day: '2-digit' });
     }
+    return date.toLocaleString([], {
+      year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit'
+    });
   }
 
-  function setButtonBusy(button, busy, busyText) {
-    if (!button) return;
-    if (busy) {
-      button.dataset.originalText = button.textContent;
-      button.disabled = true;
-      button.textContent = busyText || 'Please wait...';
-    } else {
-      button.disabled = false;
-      button.textContent = button.dataset.originalText || button.textContent;
-      delete button.dataset.originalText;
-    }
+  function formatTime(value) {
+    let timestamp = Number(value || 0);
+    if (!timestamp) return '-';
+    if (timestamp < 100000000000) timestamp *= 1000;
+    const date = new Date(timestamp);
+    return Number.isNaN(date.getTime()) ? '-' : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
   function supportStatus(status) {
@@ -323,102 +168,228 @@
     return ['CLOSED', 'RESOLVED'].includes(String(status || '').toUpperCase());
   }
 
-  async function loadSupportConfig(force) {
-    if (app.support.config && !force) {
-      renderSupportConfig();
+  function supportStatusClass(status) {
+    return 'status-' + String(status || 'OPEN').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  }
+
+  function setPageBusy(busy) {
+    $('supportSection')?.setAttribute('aria-busy', String(Boolean(busy)));
+  }
+
+  function setButtonBusy(button, busy, busyText) {
+    if (!button) return;
+    if (busy) {
+      if (!button.dataset.originalHtml) button.dataset.originalHtml = button.innerHTML;
+      button.disabled = true;
+      button.textContent = busyText || 'Please wait...';
+    } else {
+      button.disabled = false;
+      if (button.dataset.originalHtml) button.innerHTML = button.dataset.originalHtml;
+      delete button.dataset.originalHtml;
+    }
+  }
+
+  function setView(view) {
+    const next = viewIds[view] ? view : 'main';
+    state.view = next;
+    document.body.classList.toggle('support-subview-open', next !== 'main');
+    Object.entries(viewIds).forEach(([key, id]) => {
+      $(id)?.classList.toggle('hidden', key !== next);
+    });
+    if (next !== 'chat') stopPolling();
+    if (next === 'main') $('supportTicketList')?.scrollTo({ top: 0, behavior: 'auto' });
+    if (next === 'category') $('supportCategoryGrid')?.scrollTo({ top: 0, behavior: 'auto' });
+    if (next === 'create') $('supportCreateScroll')?.scrollTo({ top: 0, behavior: 'auto' });
+  }
+
+  function historyState(view, extra) {
+    return Object.assign({ zpaySupport: true, view: view || state.view }, extra || {});
+  }
+
+  function navigate(view, options) {
+    const opts = options || {};
+    setView(view);
+    const nextState = historyState(view, opts.ticketId ? { ticket_id: opts.ticketId } : {});
+    if (opts.replace) {
+      window.history.replaceState(nextState, '', '/user/support');
+    } else {
+      window.history.pushState(nextState, '', '/user/support');
+    }
+  }
+
+  function requestStepBack() {
+    if (state.modal.open) {
+      closeSupportModal();
       return;
     }
-    try {
-      const data = await get('support_config', {}, 'Loading support...');
-      app.support.config = data.config || {};
-      app.support.categories = Array.isArray(data.categories) ? data.categories : [];
-      renderSupportConfig();
-    } catch (error) {
-      toast(safeMessage(error, 'Support is unavailable.'), 'error');
+    if (state.view === 'main') {
+      window.location.assign('/user/dashboard');
+      return;
     }
+    window.history.back();
   }
 
-  function renderSupportConfig() {
-    const config = app.support.config || {};
-    if ($('supportNotice')) $('supportNotice').textContent = config.support_notice || 'Never share your password, PIN or OTP with anyone.';
-    if ($('supportHoursText')) $('supportHoursText').textContent = config.support_hours || 'Every day, 10:00 AM - 10:00 PM';
-    if ($('supportAverageReplyText')) $('supportAverageReplyText').textContent = config.average_response_text || 'Average response time: within 24 hours.';
-    const category = $('supportCategory');
-    if (category) {
-      const selected = category.value;
-      category.replaceChildren(new Option('Select a category', ''));
-      app.support.categories.forEach((item) => category.add(new Option(String(item.name || item.code || ''), String(item.code || ''))));
-      category.value = selected;
+  function setModalView(kind, title, message, rows) {
+    const spinner = $('supportModalSpinner');
+    const icon = $('supportModalIcon');
+    const infoRows = $('supportTicketInfoRows');
+    const action = $('supportModalAction');
+    const isLoading = kind === 'loading';
+    const isInfo = kind === 'info';
+    spinner?.classList.toggle('hidden', !isLoading);
+    icon?.classList.toggle('hidden', isLoading || isInfo);
+    if (icon) icon.textContent = '!';
+    if ($('supportModalTitle')) $('supportModalTitle').textContent = String(title || 'Support');
+    if ($('supportModalMessage')) {
+      $('supportModalMessage').textContent = String(message || '');
+      $('supportModalMessage').classList.toggle('hidden', !message);
     }
-    const actions = $('supportContactActions');
-    if (actions) {
-      actions.replaceChildren();
-      const links = [];
-      if (config.email_enabled && config.support_email) {
-        links.push({
-          type: 'email',
-          label: 'Email',
-          detail: String(config.support_email),
-          href: 'mailto:' + String(config.support_email).trim()
-        });
-      }
-      if (config.whatsapp_enabled && config.whatsapp_number) {
-        links.push({
-          type: 'chat',
-          label: 'WhatsApp',
-          detail: String(config.whatsapp_number),
-          href: 'https://wa.me/' + String(config.whatsapp_number).replace(/\D/g, '')
-        });
-      }
-      if (config.call_enabled && config.support_phone) {
-        links.push({
-          type: 'phone',
-          label: 'Call',
-          detail: String(config.support_phone),
-          href: 'tel:' + String(config.support_phone).replace(/[^+\d]/g, '')
-        });
-      }
-      links.forEach((item) => {
-        const link = document.createElement('a');
-        link.className = 'support-contact-action';
-        link.href = item.href;
-        if (item.href.startsWith('https:')) {
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-        }
-        const icon = document.createElement('span');
-        icon.className = 'support-contact-action-icon ' + item.type;
-        icon.setAttribute('aria-hidden', 'true');
-        icon.innerHTML = supportContactIcon(item.type);
-        const title = document.createElement('strong');
-        title.textContent = item.label;
-        const detail = document.createElement('small');
-        detail.textContent = item.detail;
-        link.append(icon, title, detail);
-        actions.appendChild(link);
+    if (infoRows) {
+      infoRows.replaceChildren();
+      (rows || []).forEach((row) => {
+        const item = document.createElement('div');
+        item.className = 'support-ticket-info-row';
+        const label = document.createElement('span');
+        label.textContent = String(row.label || '');
+        const value = document.createElement('strong');
+        value.textContent = String(row.value || '-');
+        item.append(label, value);
+        infoRows.appendChild(item);
       });
-      actions.classList.toggle('hidden', !links.length);
+      infoRows.classList.toggle('hidden', !isInfo);
     }
-    renderRelatedRequests();
+    if (action) {
+      action.textContent = isInfo ? 'Close' : 'OK';
+      action.classList.toggle('hidden', isLoading);
+    }
   }
 
-  function supportContactIcon(type) {
-    if (type === 'email') {
-      return '<svg viewBox="0 0 24 24"><path d="M4 6h16a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Zm8 7.1L4.9 8H4v.8l8 5.7 8-5.7V8h-.9L12 13.1Z"/></svg>';
+  function openSupportModal(kind, title, message, rows, options) {
+    const modal = $('supportActionModal');
+    if (!modal) return;
+    if (state.modal.open) closeSupportModal({ force: true, fromHistory: true, restoreFocus: false });
+    state.modal.open = true;
+    state.modal.busy = kind === 'loading';
+    state.modal.opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    state.modal.history = Boolean(options && options.history && kind !== 'loading');
+    setModalView(kind, title, message, rows);
+    modal.classList.remove('hidden');
+    modal.removeAttribute('inert');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('support-modal-open');
+    Object.values(viewIds).forEach((id) => $(id)?.setAttribute('inert', ''));
+    if (state.modal.history) {
+      window.history.pushState(historyState(state.view, { supportModal: true, ticket_id: state.ticket && state.ticket.ticket_id }), '', '/user/support');
     }
-    if (type === 'phone') {
-      return '<svg viewBox="0 0 24 24"><path d="M6.6 10.8a15 15 0 0 0 6.6 6.6l2.2-2.2a1.4 1.4 0 0 1 1.4-.3c1.5.5 3 .8 4.6.8a1.4 1.4 0 0 1 1.4 1.4v3.5a1.4 1.4 0 0 1-1.4 1.4A19.9 19.9 0 0 1 1.5 2.6a1.4 1.4 0 0 1 1.4-1.4h3.5a1.4 1.4 0 0 1 1.4 1.4c0 1.6.3 3.1.8 4.6.2.5.1 1-.3 1.4l-1.7 2.2Z"/></svg>';
+    if (!state.modal.busy) window.setTimeout(() => $('supportModalAction')?.focus(), 30);
+  }
+
+  function openSupportLoading(message) {
+    setPageBusy(true);
+    openSupportModal('loading', String(message || 'Loading support...'), '', [], { history: false });
+  }
+
+  function openSupportError(message) {
+    openSupportModal('error', 'Unable to Continue', String(message || 'Please try again.'), [], { history: true });
+  }
+
+  function openTicketInfo() {
+    const ticket = state.ticket || {};
+    if (!ticket.ticket_id) return;
+    openSupportModal('info', 'Ticket Info', '', [
+      { label: 'Ticket ID', value: ticket.ticket_id },
+      { label: 'Status', value: ticket.status_label || supportStatus(ticket.status) },
+      { label: 'Subject', value: ticket.subject || '-' },
+      { label: 'Category', value: ticket.category_name || ticket.category_code || '-' },
+      { label: 'Created', value: formatDate(ticket.created_at) }
+    ], { history: true });
+  }
+
+  function closeSupportModal(options) {
+    const opts = options || {};
+    if (!state.modal.open) return;
+    if (state.modal.busy && !opts.force) return;
+    if (state.modal.history && !opts.fromHistory) {
+      window.history.back();
+      return;
     }
-    return '<svg viewBox="0 0 24 24"><path d="M12 3C6.5 3 2 6.8 2 11.5c0 2.7 1.5 5.2 4 6.7V22l3.7-2.1c.7.1 1.5.2 2.3.2 5.5 0 10-3.8 10-8.5S17.5 3 12 3Zm-4 9.5a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm4 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"/></svg>';
+    const modal = $('supportActionModal');
+    modal?.classList.add('hidden');
+    modal?.setAttribute('aria-hidden', 'true');
+    modal?.setAttribute('inert', '');
+    document.body.classList.remove('support-modal-open');
+    Object.values(viewIds).forEach((id) => $(id)?.removeAttribute('inert'));
+    const opener = state.modal.opener;
+    state.modal.open = false;
+    state.modal.busy = false;
+    state.modal.history = false;
+    state.modal.opener = null;
+    setPageBusy(false);
+    if (opts.restoreFocus !== false && opener && opener.isConnected) opener.focus();
+  }
+
+  function closeSupportLoading() {
+    if (state.modal.open && state.modal.busy) closeSupportModal({ force: true, fromHistory: true, restoreFocus: false });
+  }
+
+  function categoryIcon(category) {
+    const source = (String(category.code || '') + ' ' + String(category.name || '')).toUpperCase();
+    if (source.includes('ACCOUNT') || source.includes('LOGIN')) return 'A';
+    if (source.includes('ADD')) return '+';
+    if (source.includes('TOPUP') || source.includes('TOP-UP') || source.includes('MOBILE')) return 'M';
+    if (source.includes('BKASH')) return 'bK';
+    if (source.includes('NAGAD')) return 'N';
+    if (source.includes('ZPAY') || source.includes('Z-PAY') || source.includes('TRANSFER')) return 'Z';
+    if (source.includes('BUNDLE')) return 'B';
+    if (source.includes('WALLET') || source.includes('BALANCE')) return '$';
+    if (source.includes('TRANSACTION')) return '!';
+    return '?';
+  }
+
+  function renderCategories() {
+    const grid = $('supportCategoryGrid');
+    if (!grid) return;
+    grid.replaceChildren();
+    if (!state.categories.length) {
+      const empty = document.createElement('div');
+      empty.className = 'support-empty-state';
+      empty.textContent = 'No active support categories are available.';
+      grid.appendChild(empty);
+      return;
+    }
+    state.categories.forEach((category) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'support-category-card';
+      const icon = document.createElement('span');
+      icon.className = 'support-category-icon';
+      icon.textContent = categoryIcon(category);
+      const label = document.createElement('span');
+      label.textContent = String(category.name || category.code || 'Other');
+      button.append(icon, label);
+      button.addEventListener('click', () => selectCategory(category));
+      grid.appendChild(button);
+    });
+  }
+
+  function selectCategory(category) {
+    state.selectedCategory = category || null;
+    if ($('supportSelectedCategory')) {
+      $('supportSelectedCategory').textContent = String(category && (category.name || category.code) || 'Support');
+    }
+    const related = Boolean(category && category.related_request_enabled);
+    $('supportRelatedWrap')?.classList.toggle('hidden', !related || !state.requestLogs.length);
+    const attachmentsAllowed = Boolean(state.config.attachments_enabled !== false && (!category || category.attachment_enabled !== false));
+    if ($('supportAddScreenshot')) $('supportAddScreenshot').disabled = !attachmentsAllowed;
+    navigate('create');
   }
 
   function renderRelatedRequests() {
     const select = $('supportRelatedRequest');
-    const wrap = $('supportRelatedWrap');
-    if (!select || !wrap) return;
-    const rows = Array.isArray(window.userState && window.userState.requestLogs) ? window.userState.requestLogs : [];
+    if (!select) return;
+    const current = select.value;
     select.replaceChildren(new Option('No related request', ''));
-    rows.slice(0, 40).forEach((row) => {
+    state.requestLogs.slice(0, 40).forEach((row) => {
       const id = String(row.request_id || row.transfer_id || row.id || '');
       if (!id) return;
       const label = [id, row.type || row.request_type || '', row.amount_text || ''].filter(Boolean).join(' - ');
@@ -426,351 +397,560 @@
       option.dataset.relatedType = String(row.type || row.request_type || '');
       select.add(option);
     });
-    wrap.classList.toggle('hidden', !rows.length);
+    select.value = current;
+  }
+
+  async function loadSupportConfig() {
+    const data = await get('support_config', {});
+    state.config = data.config || {};
+    state.categories = Array.isArray(data.categories) ? data.categories : [];
+    renderCategories();
+  }
+
+  async function loadRequestLogs() {
+    try {
+      const data = await get('request_logs', { limit: 40 });
+      state.requestLogs = Array.isArray(data.rows) ? data.rows : (Array.isArray(data.logs) ? data.logs : []);
+      renderRelatedRequests();
+    } catch (error) {
+      if (handleSessionError(error)) return;
+      state.requestLogs = [];
+    }
   }
 
   async function loadSupportTickets(force) {
-    if (app.support.tickets.length && !force) {
-      renderSupportTickets();
-      return app.support.tickets;
+    if (state.loadingTickets) return state.tickets;
+    if (state.tickets.length && !force) {
+      renderTickets();
+      return state.tickets;
     }
+    state.loadingTickets = true;
+    const refresh = $('supportRefreshButton');
+    if (refresh) refresh.disabled = true;
     try {
-      const data = await get('support_list', { limit: 50 }, 'Loading support requests...', { busy: false });
-      app.support.tickets = Array.isArray(data.tickets) ? data.tickets : [];
-      renderSupportTickets();
-      return app.support.tickets;
+      const data = await get('support_list', { limit: 50 });
+      state.tickets = (Array.isArray(data.tickets) ? data.tickets : []).slice().sort((a, b) =>
+        Number(b.last_message_at || b.updated_at || b.created_at || 0) - Number(a.last_message_at || a.updated_at || a.created_at || 0)
+      );
+      renderTickets();
+      return state.tickets;
     } catch (error) {
-      if ($('supportTicketList')) $('supportTicketList').innerHTML = '<div class="feature-empty-state">Support requests could not be loaded.</div>';
-      toast(safeMessage(error, 'Support requests could not be loaded.'), 'error');
-      return [];
+      if (handleSessionError(error)) return [];
+      const list = $('supportTicketList');
+      if (list) {
+        list.replaceChildren();
+        const empty = document.createElement('div');
+        empty.className = 'support-empty-state';
+        empty.textContent = 'Support conversations could not be loaded.';
+        list.appendChild(empty);
+      }
+      throw error;
+    } finally {
+      state.loadingTickets = false;
+      if (refresh) refresh.disabled = false;
     }
   }
 
-  function renderSupportTickets() {
+  function renderTickets() {
     const list = $('supportTicketList');
     if (!list) return;
     list.replaceChildren();
-    if (!app.support.tickets.length) {
+    if (!state.tickets.length) {
       const empty = document.createElement('div');
-      empty.className = 'feature-empty-state';
-      empty.textContent = 'No support requests yet.';
+      empty.className = 'support-empty-state';
+      empty.textContent = 'No conversations yet.';
       list.appendChild(empty);
-    } else {
-      app.support.tickets.forEach((ticket) => {
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'support-ticket-card' + (ticket.user_unread ? ' unread' : '');
-        button.innerHTML = '<div><h4>' + escapeHtml(ticket.subject || ticket.ticket_id || 'Support Request') + '</h4>' +
-          '<p>' + escapeHtml(ticket.category_name || ticket.category_code || 'Support') + ' - ' + escapeHtml(formatDate(ticket.updated_at || ticket.created_at)) + '</p>' +
-          '<p>' + escapeHtml(ticket.last_message_preview || '') + '</p></div>' +
-          '<span class="status-pill">' + escapeHtml(ticket.status_label || supportStatus(ticket.status)) + '</span>';
-        button.addEventListener('click', () => openSupportConversation(ticket.ticket_id));
-        list.appendChild(button);
-      });
+      return;
     }
-    const unread = app.support.tickets.filter((ticket) => ticket.user_unread).length;
-    if ($('supportUnreadBadge')) {
-      $('supportUnreadBadge').textContent = String(unread);
-      $('supportUnreadBadge').classList.toggle('hidden', unread < 1);
-    }
+    state.tickets.forEach((ticket) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'support-ticket-card' + (ticket.user_unread ? ' unread' : '');
+      const copy = document.createElement('div');
+      copy.className = 'support-ticket-copy';
+      const title = document.createElement('h3');
+      title.textContent = String(ticket.subject || 'Support Request');
+      const ticketId = document.createElement('small');
+      ticketId.className = 'support-ticket-id';
+      ticketId.textContent = String(ticket.ticket_id || '-');
+      const meta = document.createElement('span');
+      meta.className = 'support-ticket-meta';
+      meta.textContent = [ticket.category_name || ticket.category_code || 'Support', formatDate(ticket.last_message_at || ticket.updated_at || ticket.created_at)].join(' - ');
+      const preview = document.createElement('p');
+      preview.className = 'support-ticket-preview';
+      preview.textContent = String(ticket.last_message_preview || 'Open this conversation to view messages.');
+      copy.append(title, ticketId, meta, preview);
+      const status = document.createElement('span');
+      status.className = 'support-status-pill ' + supportStatusClass(ticket.status);
+      status.textContent = String(ticket.status_label || supportStatus(ticket.status));
+      button.append(copy, status);
+      button.addEventListener('click', () => openSupportConversation(ticket.ticket_id));
+      list.appendChild(button);
+    });
   }
 
-  function switchSupportTab(tab) {
-    $('supportRequestWorkspace')?.classList.remove('hidden');
-    const list = tab === 'list';
-    $('supportNewTab')?.classList.toggle('active', !list);
-    $('supportListTab')?.classList.toggle('active', list);
-    $('supportNewTab')?.setAttribute('aria-selected', String(!list));
-    $('supportListTab')?.setAttribute('aria-selected', String(list));
-    $('supportCreatePanel')?.classList.toggle('active', !list);
-    $('supportListPanel')?.classList.toggle('active', list);
-    if (list) loadSupportTickets(false);
-  }
-
-  function openSupportTicketCandidate() {
-    return app.support.tickets.find((ticket) => ticket && ticket.ticket_id && !supportIsClosed(ticket.status)) || null;
-  }
-
-  function showSupportHome() {
-    stopSupportPolling();
-    app.support.ticket = null;
-    $('supportConversationView')?.classList.add('hidden');
-    $('supportHomeView')?.classList.remove('hidden');
-    $('supportRequestWorkspace')?.classList.add('hidden');
-    $('supportContactBody')?.scrollTo?.({ top: 0, behavior: 'auto' });
-  }
-
-  function showSupportWorkspace(tab) {
-    $('supportHomeView')?.classList.add('hidden');
-    $('supportConversationView')?.classList.add('hidden');
-    switchSupportTab(tab === 'new' ? 'new' : 'list');
-    $('supportRequestWorkspace')?.scrollTo?.({ top: 0, behavior: 'auto' });
-  }
-
-  async function openSupportEntry() {
-    const button = $('supportOpenRequestsButton');
-    if (button) button.disabled = true;
-    try {
-      await loadSupportTickets(false);
-      const activeTicket = openSupportTicketCandidate();
-      if (activeTicket) {
-        await openSupportConversation(activeTicket.ticket_id);
-        return;
-      }
-      showSupportWorkspace('list');
-    } finally {
-      if (button) button.disabled = false;
-    }
-  }
-
-  async function startSupportChat() {
-    const button = $('supportStartChatButton');
-    if (button) button.disabled = true;
-    try {
-      await loadSupportTickets(false);
-      const activeTicket = openSupportTicketCandidate();
-      if (activeTicket) {
-        await openSupportConversation(activeTicket.ticket_id);
-        return;
-      }
-      showSupportWorkspace('new');
-    } finally {
-      if (button) button.disabled = false;
-    }
-  }
-
-  function selectedCategory() {
-    return app.support.categories.find((item) => String(item.code || '') === String($('supportCategory')?.value || '')) || null;
-  }
-
-  function validateFiles(files, maxFiles, maxSize) {
+  function validateFiles(files) {
     const rows = Array.from(files || []);
+    const maxFiles = Math.max(0, Number(state.config.max_attachments == null ? 3 : state.config.max_attachments));
+    const maxSize = Math.max(1, Number(state.config.max_file_size || 5 * 1024 * 1024));
     if (rows.length > maxFiles) throw new Error('You can attach up to ' + maxFiles + ' screenshots.');
     rows.forEach((file) => {
-      if (!allowedImages.has(String(file.type || '').toLowerCase())) throw new Error('Only JPG, PNG and WebP screenshots are allowed.');
-      if (file.size <= 0 || file.size > maxSize) throw new Error('Each screenshot must be within the allowed file size.');
+      if (!allowedImages.has(String(file.type || '').toLowerCase())) {
+        throw new Error('Only JPG, PNG and WebP screenshots are allowed.');
+      }
+      if (file.size <= 0 || file.size > maxSize) {
+        throw new Error('Each screenshot must be within the allowed file size.');
+      }
     });
     return rows;
   }
 
-  function updateAttachmentSummary(input, output) {
-    const files = Array.from(input && input.files ? input.files : []);
-    if (output) output.textContent = files.length ? files.map((file) => file.name).join(', ') : '';
+  function mergeFiles(existing, incoming) {
+    const maxFiles = Math.max(0, Number(state.config.max_attachments == null ? 3 : state.config.max_attachments));
+    const merged = existing.slice();
+    validateFiles(incoming).forEach((file) => {
+      const duplicate = merged.some((row) => row.name === file.name && row.size === file.size && row.lastModified === file.lastModified);
+      if (!duplicate) merged.push(file);
+    });
+    if (merged.length > maxFiles) throw new Error('You can attach up to ' + maxFiles + ' screenshots.');
+    validateFiles(merged);
+    return merged;
+  }
+
+  function renderFilePreviews(files, container, removeFile) {
+    if (!container) return;
+    container.replaceChildren();
+    files.forEach((file, index) => {
+      const frame = document.createElement('div');
+      frame.className = 'support-file-preview';
+      const image = document.createElement('img');
+      const source = URL.createObjectURL(file);
+      image.src = source;
+      image.alt = file.name || 'Selected screenshot';
+      image.onload = () => URL.revokeObjectURL(source);
+      image.onerror = () => URL.revokeObjectURL(source);
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'support-file-remove';
+      remove.setAttribute('aria-label', 'Remove ' + (file.name || 'screenshot'));
+      remove.textContent = 'x';
+      remove.addEventListener('click', () => removeFile(index));
+      frame.append(image, remove);
+      container.appendChild(frame);
+    });
+  }
+
+  function renderCreateFiles() {
+    renderFilePreviews(state.createFiles, $('supportAttachmentPreview'), (index) => {
+      state.createFiles.splice(index, 1);
+      renderCreateFiles();
+    });
+    if ($('supportAttachmentCount')) {
+      $('supportAttachmentCount').textContent = state.createFiles.length + '/' + Number(state.config.max_attachments || 3) + ' selected';
+    }
+  }
+
+  function renderReplyFiles() {
+    renderFilePreviews(state.replyFiles, $('supportReplyAttachmentPreview'), (index) => {
+      state.replyFiles.splice(index, 1);
+      renderReplyFiles();
+    });
   }
 
   async function createSupportTicket(event) {
     event.preventDefault();
-    const button = $('supportCreateButton');
-    const config = app.support.config || {};
+    if (state.creating) return;
+    const category = state.selectedCategory;
+    const subject = String($('supportSubject')?.value || '').trim();
+    const message = String($('supportMessage')?.value || '').trim();
+    if (!category || !category.code) {
+      openSupportError('Please choose a support topic.');
+      return;
+    }
+    if (!subject) {
+      openSupportError('Please enter a subject.');
+      $('supportSubject')?.focus();
+      return;
+    }
+    if (message.length < 4) {
+      openSupportError('Please describe your issue.');
+      $('supportMessage')?.focus();
+      return;
+    }
     try {
-      const files = validateFiles($('supportAttachments')?.files, Number(config.max_attachments || 3), Number(config.max_file_size || 5 * 1024 * 1024));
-      if (!app.support.createKey) app.support.createKey = makeIdempotencyKey('SUPPORT-CREATE');
-      const data = new FormData();
-      data.append('category_code', String($('supportCategory')?.value || ''));
-      data.append('subject', String($('supportSubject')?.value || '').trim());
-      data.append('message', String($('supportMessage')?.value || '').trim());
-      data.append('related_request_id', String($('supportRelatedRequest')?.value || ''));
-      data.append('related_type', String($('supportRelatedRequest')?.selectedOptions?.[0]?.dataset.relatedType || ''));
-      data.append('idempotency_key', app.support.createKey);
-      files.forEach((file) => data.append('attachments[]', file, file.name));
-      setButtonBusy(button, true, 'Submitting...');
-      const result = await postForm('support_create', data, 'Submitting support request...');
-      const ticket = result.ticket || {};
-      app.support.createKey = '';
-      $('supportCreateForm')?.reset();
-      if ($('supportAttachmentSummary')) $('supportAttachmentSummary').textContent = '';
-      await loadSupportTickets(true);
-      switchSupportTab('list');
-      toast('Support request submitted.', 'ok');
-      if (ticket.ticket_id) await openSupportConversation(ticket.ticket_id);
+      validateFiles(state.createFiles);
     } catch (error) {
-      toast(safeMessage(error, 'Support request could not be submitted.'), 'error');
+      openSupportError(safeMessage(error, 'The selected screenshot is not supported.'));
+      return;
+    }
+
+    const button = $('supportCreateButton');
+    state.creating = true;
+    if (!state.createKey) state.createKey = makeIdempotencyKey('SUPPORT-CREATE');
+    const data = new FormData();
+    data.append('category_code', String(category.code));
+    data.append('subject', subject);
+    data.append('message', message);
+    data.append('idempotency_key', state.createKey);
+    data.append('related_request_id', String($('supportRelatedRequest')?.value || ''));
+    data.append('related_type', String($('supportRelatedRequest')?.selectedOptions?.[0]?.dataset.relatedType || ''));
+    state.createFiles.forEach((file) => data.append('attachments[]', file, file.name));
+    setButtonBusy(button, true, 'Creating...');
+    openSupportLoading('Creating chat, please wait...');
+    try {
+      const result = await postForm('support_create', data);
+      const ticket = result.ticket || {};
+      state.createKey = '';
+      state.createFiles = [];
+      $('supportCreateForm')?.reset();
+      renderCreateFiles();
+      await loadSupportTickets(true).catch(() => state.tickets);
+      closeSupportLoading();
+      if (ticket.ticket_id) {
+        window.history.replaceState(historyState('main'), '', '/user/support');
+        await openSupportConversation(ticket.ticket_id, { replace: false });
+      } else {
+        navigate('main', { replace: true });
+        toast('Support chat created.', 'success');
+      }
+    } catch (error) {
+      closeSupportLoading();
+      if (!handleSessionError(error)) openSupportError(safeMessage(error, 'Support request could not be submitted.'));
     } finally {
+      state.creating = false;
       setButtonBusy(button, false);
     }
   }
 
   async function openSupportConversation(ticketId, options) {
     const id = String(ticketId || '').trim();
-    if (!id) return;
+    const opts = options || {};
+    if (!id || state.loadingConversation) return;
+    state.loadingConversation = true;
+    if (!opts.silent) openSupportLoading('Loading conversation...');
     try {
-      const data = await get('support_details', { ticket_id: id }, 'Loading conversation...', { busy: !(options && options.silent) });
-      app.support.ticket = data.ticket || null;
-      app.support.messages = Array.isArray(data.messages) ? data.messages : [];
-      app.support.attachments = Array.isArray(data.attachments) ? data.attachments : [];
-      $('supportHomeView')?.classList.add('hidden');
-      $('supportRequestWorkspace')?.classList.add('hidden');
-      $('supportConversationView')?.classList.remove('hidden');
-      renderSupportConversation();
-      window.scrollTo({ top: 0, behavior: 'auto' });
-      if (!(options && options.fromHistory) && window.history && window.history.pushState) {
-        window.history.pushState(Object.assign({}, window.history.state || {}, {
-          zpayUserApp: { view: 'supportConversation', ticket_id: id }
-        }), '', sectionPaths.supportSection);
-      }
-      startSupportPolling();
+      const data = await get('support_details', { ticket_id: id });
+      state.ticket = data.ticket || null;
+      state.messages = Array.isArray(data.messages) ? data.messages : [];
+      state.attachments = Array.isArray(data.attachments) ? data.attachments : [];
+      renderConversation(Boolean(opts.keepScroll));
+      if (!opts.fromHistory) navigate('chat', { replace: Boolean(opts.replace), ticketId: id });
+      else setView('chat');
+      startPolling();
     } catch (error) {
-      toast(safeMessage(error, 'Support conversation could not be opened.'), 'error');
+      if (!opts.silent && !handleSessionError(error)) openSupportError(safeMessage(error, 'Support conversation could not be opened.'));
+    } finally {
+      state.loadingConversation = false;
+      if (!opts.silent) closeSupportLoading();
     }
   }
 
-  function renderSupportConversation() {
-    const ticket = app.support.ticket || {};
-    if ($('supportConversationTitle')) $('supportConversationTitle').textContent = ticket.subject || 'Support Request';
-    if ($('supportConversationMeta')) $('supportConversationMeta').textContent = [ticket.ticket_id, ticket.category_name || ticket.category_code].filter(Boolean).join(' - ');
-    if ($('supportConversationStatus')) $('supportConversationStatus').textContent = ticket.status_label || supportStatus(ticket.status);
+  function attachmentUrl(ticketId, attachmentId) {
+    return (window.USER_PROXY_URL || '/api/user/proxy.php')
+      + '?action=support_attachment&ticket_id=' + encodeURIComponent(String(ticketId || ''))
+      + '&attachment_id=' + encodeURIComponent(String(attachmentId || ''));
+  }
+
+  function renderConversation(keepScroll) {
+    const ticket = state.ticket || {};
+    const messages = $('supportMessages');
+    const wasNearBottom = !keepScroll || !messages || messages.scrollHeight - messages.scrollTop - messages.clientHeight < 90;
+    if ($('supportConversationStatus')) $('supportConversationStatus').textContent = String(ticket.status_label || supportStatus(ticket.status));
+    if ($('supportConversationTicketId')) $('supportConversationTicketId').textContent = String(ticket.ticket_id || '-');
+    if ($('supportConversationSubject')) $('supportConversationSubject').textContent = String(ticket.subject || 'Support Request');
+    renderMessages();
     const closed = supportIsClosed(ticket.status);
     $('supportReplyForm')?.classList.toggle('hidden', closed);
+    $('supportReplyAttachmentPreview')?.classList.toggle('hidden', closed);
     if ($('supportClosedNotice')) {
       $('supportClosedNotice').classList.toggle('hidden', !closed);
-      $('supportClosedNotice').textContent = closed ? 'This request is ' + supportStatus(ticket.status).toLowerCase() + '. New replies are disabled.' : '';
+      $('supportClosedNotice').textContent = closed
+        ? (String(ticket.status || '').toUpperCase() === 'RESOLVED' ? 'This ticket has been resolved.' : 'This ticket is closed. You can no longer reply.')
+        : '';
     }
-    renderSupportMessages();
+    if (wasNearBottom && messages) requestAnimationFrame(() => { messages.scrollTop = messages.scrollHeight; });
   }
 
-  function renderSupportMessages() {
+  function renderMessages() {
     const container = $('supportMessages');
     if (!container) return;
     const byId = new Map();
-    app.support.messages.forEach((message, index) => {
-      const id = String(message.message_id || 'message-' + index);
+    state.messages.forEach((message, index) => {
+      const id = String(message.message_id || message.idempotency_key || 'message-' + index);
       byId.set(id, message);
     });
     const rows = Array.from(byId.values()).sort((a, b) => Number(a.created_at || 0) - Number(b.created_at || 0));
     const attachmentsByMessage = new Map();
-    app.support.attachments.forEach((attachment) => {
+    state.attachments.forEach((attachment) => {
       const id = String(attachment.message_id || '');
       if (!attachmentsByMessage.has(id)) attachmentsByMessage.set(id, []);
       attachmentsByMessage.get(id).push(attachment);
     });
     container.replaceChildren();
+    let lastDate = '';
     rows.forEach((message) => {
+      const date = formatDate(message.created_at, true);
+      if (date !== lastDate) {
+        const chip = document.createElement('div');
+        chip.className = 'support-date-chip';
+        chip.textContent = date;
+        container.appendChild(chip);
+        lastDate = date;
+      }
       const sender = String(message.sender_type || '').toUpperCase();
-      const type = sender === 'USER' ? 'user' : (sender === 'SYSTEM' ? 'system' : 'support');
+      if (sender === 'SYSTEM') {
+        const system = document.createElement('article');
+        system.className = 'support-message system';
+        system.textContent = String(message.message || '');
+        container.appendChild(system);
+        return;
+      }
+      const isUser = sender === 'USER';
+      const row = document.createElement('div');
+      row.className = 'support-message-row ' + (isUser ? 'user' : 'support');
+      if (!isUser) {
+        const avatar = document.createElement('span');
+        avatar.className = 'support-avatar';
+        avatar.textContent = 'Z';
+        avatar.setAttribute('aria-label', 'Z-Pay Swift Support');
+        row.appendChild(avatar);
+      }
       const bubble = document.createElement('article');
-      bubble.className = 'support-message ' + type;
+      bubble.className = 'support-message ' + (isUser ? 'user' : 'support');
       const text = document.createElement('p');
       text.textContent = String(message.message || '');
-      const meta = document.createElement('small');
-      meta.textContent = [message.sender_name || (type === 'user' ? 'You' : 'Z-Pay Support'), formatDate(message.created_at)].filter(Boolean).join(' - ');
-      bubble.append(text, meta);
+      if (text.textContent) bubble.appendChild(text);
       const files = attachmentsByMessage.get(String(message.message_id || '')) || [];
       if (files.length) {
         const wrap = document.createElement('div');
-        wrap.className = 'message-attachments';
+        wrap.className = 'support-message-attachments';
         files.forEach((attachment, index) => {
           const link = document.createElement('a');
-          link.textContent = attachment.original_name || 'Screenshot ' + (index + 1);
-          link.href = (window.USER_PROXY_URL || '/api/user/proxy.php') + '?action=support_attachment&ticket_id=' + encodeURIComponent(String(app.support.ticket.ticket_id || '')) + '&attachment_id=' + encodeURIComponent(String(attachment.attachment_id || ''));
+          link.className = 'support-message-attachment';
+          link.href = attachmentUrl(state.ticket && state.ticket.ticket_id, attachment.attachment_id);
           link.target = '_blank';
-          link.rel = 'noopener';
+          link.rel = 'noopener noreferrer';
+          const image = document.createElement('img');
+          image.src = link.href;
+          image.alt = String(attachment.original_name || 'Support screenshot ' + (index + 1));
+          image.loading = 'lazy';
+          const name = document.createElement('span');
+          name.textContent = String(attachment.original_name || 'Screenshot ' + (index + 1));
+          link.append(image, name);
           wrap.appendChild(link);
         });
         bubble.appendChild(wrap);
       }
-      container.appendChild(bubble);
+      const meta = document.createElement('small');
+      const senderName = isUser ? 'You' : String(message.sender_name || 'Z-Pay Swift Support');
+      meta.textContent = senderName + ' - ' + formatTime(message.created_at);
+      bubble.appendChild(meta);
+      row.appendChild(bubble);
+      container.appendChild(row);
     });
-    requestAnimationFrame(() => { container.scrollTop = container.scrollHeight; });
-  }
-
-  function closeSupportConversation(options) {
-    stopSupportPolling();
-    app.support.ticket = null;
-    app.support.messages = [];
-    app.support.attachments = [];
-    $('supportConversationView')?.classList.add('hidden');
-    showSupportWorkspace('list');
-    if (!(options && options.fromHistory) && window.history?.back) window.history.back();
+    if (!rows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'support-empty-state';
+      empty.textContent = 'No messages yet.';
+      container.appendChild(empty);
+    }
   }
 
   async function replySupport(event) {
     event.preventDefault();
-    const ticket = app.support.ticket || {};
-    const messageInput = $('supportReplyMessage');
-    const message = String(messageInput?.value || '').trim();
-    if (supportIsClosed(ticket.status)) return;
-    if (!message) {
-      toast('Write a reply before sending.', 'error');
+    if (state.replying || !state.ticket || supportIsClosed(state.ticket.status)) return;
+    const input = $('supportReplyMessage');
+    const message = String(input && input.value || '').trim();
+    if (!message && !state.replyFiles.length) {
+      openSupportError('Please write a reply or attach a screenshot.');
+      return;
+    }
+    try {
+      validateFiles(state.replyFiles);
+    } catch (error) {
+      openSupportError(safeMessage(error, 'The selected screenshot is not supported.'));
       return;
     }
     const button = $('supportReplyButton');
+    state.replying = true;
+    if (!state.replyKey) state.replyKey = makeIdempotencyKey('SUPPORT-REPLY');
+    const data = new FormData();
+    data.append('ticket_id', String(state.ticket.ticket_id || ''));
+    data.append('message', message);
+    data.append('idempotency_key', state.replyKey);
+    state.replyFiles.forEach((file) => data.append('attachments[]', file, file.name));
+    setButtonBusy(button, true, 'Sending...');
+    openSupportLoading('Sending message...');
     try {
-      const config = app.support.config || {};
-      const files = validateFiles($('supportReplyAttachment')?.files, Number(config.max_attachments || 3), Number(config.max_file_size || 5 * 1024 * 1024));
-      if (!app.support.replyKey) app.support.replyKey = makeIdempotencyKey('SUPPORT-REPLY');
-      const data = new FormData();
-      data.append('ticket_id', String(ticket.ticket_id || ''));
-      data.append('message', message);
-      data.append('idempotency_key', app.support.replyKey);
-      files.forEach((file) => data.append('attachments[]', file, file.name));
-      setButtonBusy(button, true, 'Sending...');
-      const result = await postForm('support_reply', data, 'Sending reply...');
-      app.support.replyKey = '';
-      app.support.ticket = result.ticket || ticket;
-      app.support.messages = Array.isArray(result.messages) ? result.messages : app.support.messages;
-      app.support.attachments = Array.isArray(result.attachments) ? result.attachments : app.support.attachments;
-      if (messageInput) messageInput.value = '';
-      if ($('supportReplyAttachment')) $('supportReplyAttachment').value = '';
-      if ($('supportReplyAttachmentSummary')) $('supportReplyAttachmentSummary').textContent = '';
-      renderSupportConversation();
+      const result = await postForm('support_reply', data);
+      state.replyKey = '';
+      state.replyFiles = [];
+      if (input) {
+        input.value = '';
+        input.style.height = 'auto';
+      }
+      renderReplyFiles();
+      state.ticket = result.ticket || state.ticket;
+      state.messages = Array.isArray(result.messages) ? result.messages : state.messages;
+      state.attachments = Array.isArray(result.attachments) ? result.attachments : state.attachments;
+      renderConversation(false);
+      loadSupportTickets(true).catch(() => state.tickets);
     } catch (error) {
-      toast(safeMessage(error, 'Reply could not be sent.'), 'error');
+      if (!handleSessionError(error)) {
+        openSupportError(safeMessage(error, 'Reply could not be sent. Your message is still here.'));
+      }
     } finally {
+      closeSupportLoading();
+      state.replying = false;
       setButtonBusy(button, false);
     }
   }
 
-  function startSupportPolling() {
-    stopSupportPolling();
-    app.support.pollTimer = window.setInterval(() => {
-      if (document.visibilityState === 'visible' && app.support.ticket && document.body.getAttribute('data-active-section') === 'supportSection') {
-        openSupportConversation(app.support.ticket.ticket_id, { silent: true, fromHistory: true });
+  function startPolling() {
+    stopPolling();
+    state.pollTimer = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && state.view === 'chat' && state.ticket && !state.replying && !state.modal.open) {
+        openSupportConversation(state.ticket.ticket_id, { silent: true, fromHistory: true, keepScroll: true });
       }
     }, 30000);
   }
 
-  function stopSupportPolling() {
-    if (app.support.pollTimer) clearInterval(app.support.pollTimer);
-    app.support.pollTimer = 0;
+  function stopPolling() {
+    if (state.pollTimer) window.clearInterval(state.pollTimer);
+    state.pollTimer = 0;
   }
 
+  function handleAttachmentSelection(input, target) {
+    try {
+      if (target === 'create') {
+        state.createFiles = mergeFiles(state.createFiles, input.files);
+        renderCreateFiles();
+      } else {
+        state.replyFiles = mergeFiles(state.replyFiles, input.files);
+        renderReplyFiles();
+      }
+    } catch (error) {
+      openSupportError(safeMessage(error, 'The selected screenshot is not supported.'));
+    } finally {
+      input.value = '';
+    }
+  }
 
-  function bindSupportPage() {
-    $("supportNewTab")?.addEventListener("click", () => switchSupportTab("new"));
-    $("supportListTab")?.addEventListener("click", () => switchSupportTab("list"));
-    $("supportStartChatButton")?.addEventListener("click", startSupportChat);
-    $("supportRefreshTopButton")?.addEventListener("click", () => loadSupportTickets(true));
-    $("supportCreateForm")?.addEventListener("submit", createSupportTicket);
-    $("supportAttachments")?.addEventListener("change", () => updateAttachmentSummary($("supportAttachments"), $("supportAttachmentSummary")));
-    $("supportConversationBack")?.addEventListener("click", () => closeSupportConversation());
-    $("supportReplyForm")?.addEventListener("submit", replySupport);
-    $("supportReplyAttachment")?.addEventListener("change", () => updateAttachmentSummary($("supportReplyAttachment"), $("supportReplyAttachmentSummary")));
-    $("supportReplyMessage")?.addEventListener("input", (event) => {
-      event.target.style.height = "auto";
-      event.target.style.height = Math.min(130, event.target.scrollHeight) + "px";
+  function ensureFocusedVisible(target) {
+    if (!(target instanceof HTMLElement) || !target.matches('input, textarea, select')) return;
+    window.setTimeout(() => {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+    }, 180);
+  }
+
+  function updateKeyboardState() {
+    const viewport = window.visualViewport;
+    const keyboardOpen = Boolean(viewport && window.innerHeight - viewport.height > 140);
+    document.body.classList.toggle('support-keyboard-open', keyboardOpen);
+    document.body.style.setProperty('--support-keyboard-space', keyboardOpen ? Math.max(0, window.innerHeight - viewport.height) + 'px' : '0px');
+    if (keyboardOpen) ensureFocusedVisible(document.activeElement);
+  }
+
+  function handlePopState(event) {
+    if (state.modal.open) {
+      if (state.modal.busy) {
+        window.history.pushState(historyState(state.view, { ticket_id: state.ticket && state.ticket.ticket_id }), '', '/user/support');
+        return;
+      }
+      closeSupportModal({ fromHistory: true });
+      return;
+    }
+    const target = event.state && event.state.zpaySupport ? String(event.state.view || 'main') : 'main';
+    if (state.view === 'chat' && target !== 'main') {
+      state.ticket = null;
+      state.messages = [];
+      state.attachments = [];
+      setView('main');
+      window.history.replaceState(historyState('main'), '', '/user/support');
+      loadSupportTickets(true).catch(() => state.tickets);
+      return;
+    }
+    if (target === 'chat' && event.state.ticket_id) {
+      openSupportConversation(event.state.ticket_id, { fromHistory: true });
+      return;
+    }
+    if (target === 'create' && !state.selectedCategory) {
+      setView('category');
+      window.history.replaceState(historyState('category'), '', '/user/support');
+      return;
+    }
+    setView(target);
+  }
+
+  function bindEvents() {
+    $('supportStartChatButton')?.addEventListener('click', () => navigate('category'));
+    $('supportRefreshButton')?.addEventListener('click', async () => {
+      if (state.loadingTickets) return;
+      openSupportLoading('Loading support...');
+      try {
+        await loadSupportTickets(true);
+      } catch (error) {
+        if (!handleSessionError(error)) openSupportError(safeMessage(error, 'Support conversations could not be loaded.'));
+      } finally {
+        closeSupportLoading();
+      }
     });
-    window.addEventListener("popstate", () => { if (app.support.ticket) closeSupportConversation({ fromHistory: true }); });
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible" && app.support.ticket) startSupportPolling();
-      else if (document.visibilityState !== "visible") stopSupportPolling();
+    $('supportCategoryBack')?.addEventListener('click', requestStepBack);
+    $('supportCreateBack')?.addEventListener('click', requestStepBack);
+    $('supportConversationBack')?.addEventListener('click', requestStepBack);
+    $('supportInfoButton')?.addEventListener('click', openTicketInfo);
+    $('supportTicketStrip')?.addEventListener('click', openTicketInfo);
+    $('supportModalAction')?.addEventListener('click', () => closeSupportModal());
+    $('supportCreateForm')?.addEventListener('submit', createSupportTicket);
+    $('supportAddScreenshot')?.addEventListener('click', () => $('supportAttachments')?.click());
+    $('supportAttachments')?.addEventListener('change', (event) => handleAttachmentSelection(event.currentTarget, 'create'));
+    $('supportReplyForm')?.addEventListener('submit', replySupport);
+    $('supportReplyAttachmentButton')?.addEventListener('click', () => $('supportReplyAttachment')?.click());
+    $('supportReplyAttachment')?.addEventListener('change', (event) => handleAttachmentSelection(event.currentTarget, 'reply'));
+    $('supportReplyMessage')?.addEventListener('input', (event) => {
+      event.currentTarget.style.height = 'auto';
+      event.currentTarget.style.height = Math.min(112, event.currentTarget.scrollHeight) + 'px';
+    });
+    document.addEventListener('focusin', (event) => ensureFocusedVisible(event.target));
+    window.visualViewport?.addEventListener('resize', updateKeyboardState);
+    window.visualViewport?.addEventListener('scroll', updateKeyboardState);
+    window.addEventListener('popstate', handlePopState);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && state.view === 'chat') startPolling();
+      else if (document.visibilityState !== 'visible') stopPolling();
+    });
+    window.addEventListener('pagehide', () => {
+      stopPolling();
+      closeSupportLoading();
+      document.body.classList.remove('support-keyboard-open');
     });
   }
 
   async function initSupportPage() {
     await window.UserShell.ready;
-    bindSupportPage();
+    if (state.initialized) return;
+    state.initialized = true;
+    bindEvents();
+    const requestedTicket = new URLSearchParams(window.location.search).get('ticket_id');
+    window.history.replaceState(historyState('main'), '', '/user/support');
+    openSupportLoading('Loading support...');
     const results = await Promise.allSettled([
-      loadSupportConfig(false),
-      loadSupportTickets(false),
-      get("request_logs", { limit: 40 }, "Loading related requests...", { busy: false })
+      loadSupportConfig(),
+      loadSupportTickets(true),
+      loadRequestLogs()
     ]);
-    if (results[2].status === "fulfilled") {
-      const data = results[2].value || {};
-      window.userState.requestLogs = Array.isArray(data.rows) ? data.rows : (Array.isArray(data.logs) ? data.logs : []);
-      renderRelatedRequests();
+    closeSupportLoading();
+    setPageBusy(false);
+    const failed = results.find((result) => result.status === 'rejected');
+    if (failed && !handleSessionError(failed.reason)) {
+      openSupportError(safeMessage(failed.reason, 'Some support information could not be loaded.'));
     }
-    switchSupportTab("list");
+    if (requestedTicket) await openSupportConversation(requestedTicket, { replace: true });
   }
 
-  initSupportPage().catch((error) => toast(safeMessage(error, "Support could not be loaded."), "error"));
+  initSupportPage().catch((error) => {
+    closeSupportLoading();
+    setPageBusy(false);
+    if (!handleSessionError(error)) openSupportError(safeMessage(error, 'Support could not be loaded.'));
+  });
 })();
