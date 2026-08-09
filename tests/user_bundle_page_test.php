@@ -112,10 +112,36 @@ bundle_page_expect(
 
 bundle_page_expect(
     str_contains($proxy, "case 'bundle_favorites':")
+    && str_contains($proxy, "case 'bundle_favorite_add':")
+    && str_contains($proxy, "'favorites/save.php'")
     && str_contains($proxy, "'favorites/list.php'")
     && str_contains($proxy, "'favorites/update.php'")
     && str_contains($proxy, "'favorites/delete.php'"),
-    'Bundle favourites must reuse the existing authenticated favorite-number endpoints.'
+    'Bundle favourites must reuse the existing authenticated favorite-number save/list/update/delete endpoints.'
+);
+
+bundle_page_expect(
+    str_contains($js, "shell.post('bundle_favorite_add', {")
+    && str_contains($js, 'number: fullNumber')
+    && str_contains($js, "service_type: 'bundle'")
+    && str_contains($js, 'if (state.favoriteSaving || isBundleFavoriteSaved())')
+    && str_contains($js, "label: alreadySaved ? 'Saved' : 'Favorite'")
+    && str_contains($js, "{ label: 'Done', handler: finishSuccess }")
+    && str_contains($js, "error?.code || '').toUpperCase() === 'FAVORITE_ALREADY_EXISTS'"),
+    'Bundle success must save the original full number once while preserving Done and duplicate handling.'
+);
+
+bundle_page_expect(
+    str_contains($js, "shell.toast(safeMessage(error, 'Favorite number could not be saved.'), 'error')")
+    && str_contains($js, "button.textContent = 'Favorite'"),
+    'Favorite-save failure must remain a local toast and leave the successful Bundle result available.'
+);
+
+bundle_page_expect(
+    str_contains($css, '.bundle-modal-actions.bundle-success-actions')
+    && str_contains($css, 'grid-template-columns: repeat(2, minmax(0, 1fr))')
+    && str_contains($css, '.bundle-success-actions .bundle-modal-action'),
+    'Bundle success Favorite and Done actions must share one responsive equal-width row.'
 );
 
 bundle_page_expect(

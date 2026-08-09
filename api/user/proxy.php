@@ -4396,6 +4396,19 @@ switch ($action) {
         );
         break;
 
+    case 'bundle_favorite_add':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+        user_proxy_require_login(true, false);
+        user_proxy_forward_authenticated_json(
+            'POST',
+            'favorites/save.php',
+            user_proxy_read_json_body(),
+            'FAVORITE_SAVE_FAILED',
+            'Favorite number could not be saved.'
+        );
+        break;
+
     case 'bundle_favorite_update':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();

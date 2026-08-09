@@ -33,6 +33,7 @@
     step: 'operator',
     busy: false,
     submitting: false,
+    favoriteSaving: false,
     completed: false,
     idempotencyKey: '',
     modal: { open: false, loading: false, history: false, opener: null },
@@ -304,11 +305,14 @@
     modal.close.hidden = loading;
     clear(modal.body);
     clear(modal.actions);
+    modal.actions.classList.remove('bundle-success-actions');
     if (body instanceof Node) modal.body.appendChild(body);
     modal.body.hidden = !body;
     actions.forEach((action) => {
       const button = createElement('button', `bundle-modal-action ${action.primary ? '' : 'secondary'}`, action.label);
       button.type = 'button';
+      if (action.id) button.id = action.id;
+      button.disabled = Boolean(action.disabled);
       button.addEventListener('click', action.handler, { once: Boolean(action.once) });
       modal.actions.appendChild(button);
     });
@@ -744,6 +748,85 @@
     return status === 'WAITING_ADMIN' ? 'Pending' : status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
   }
 
+  function isBundleFavoriteSaved() {
+    const currentNumber = normalizeBdNumber(state.numberFull);
+    if (!currentNumber) return false;
+    return state.favorites.some((favorite) => (
+      normalizeBdNumber(favorite.number || favorite.phone) === currentNumber
+      && text(favorite.country || favorite.country_code, 'BD').toUpperCase() === 'BD'
+    ));
+  }
+
+  function setFavoriteButtonSaved(button) {
+    if (!button) return;
+    button.textContent = 'Saved';
+    button.disabled = true;
+    button.setAttribute('aria-label', 'Favorite number saved');
+  }
+
+  async function saveBundleSuccessFavorite(button) {
+    if (state.favoriteSaving || isBundleFavoriteSaved()) {
+      setFavoriteButtonSaved(button);
+      return;
+    }
+
+    const fullNumber = normalizeBdNumber(state.numberFull);
+    if (!/^01[3-9]\d{8}$/.test(fullNumber)) {
+      shell.toast('Favorite number could not be saved.', 'error');
+      return;
+    }
+    const operatorCode = state.operator;
+    const operatorName = operatorLabel(operatorCode);
+
+    state.favoriteSaving = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Saving...';
+    }
+
+    try {
+      const data = await shell.post('bundle_favorite_add', {
+        name: `${operatorName} Bundle`,
+        number: fullNumber,
+        country: 'BD',
+        country_code: 'BD',
+        operator: operatorCode,
+        operator_name: operatorName,
+        service_type: 'bundle'
+      }, '', { busy: false });
+
+      if (Array.isArray(data.favorites)) {
+        state.favorites = data.favorites;
+      } else if (data.favorite && typeof data.favorite === 'object') {
+        state.favorites.push(data.favorite);
+      } else {
+        state.favorites.push({
+          name: `${operatorName} Bundle`,
+          number: fullNumber,
+          country: 'BD',
+          operator: operatorCode
+        });
+      }
+      setFavoriteButtonSaved(button);
+      renderFavorites();
+      shell.toast('Favorite number saved.', 'ok');
+    } catch (error) {
+      if (String(error?.code || '').toUpperCase() === 'FAVORITE_ALREADY_EXISTS') {
+        state.favorites.push({ number: fullNumber, country: 'BD', operator: operatorCode });
+        setFavoriteButtonSaved(button);
+        shell.toast('Favorite number already saved.', 'ok');
+      } else {
+        if (button) {
+          button.disabled = false;
+          button.textContent = 'Favorite';
+        }
+        shell.toast(safeMessage(error, 'Favorite number could not be saved.'), 'error');
+      }
+    } finally {
+      state.favoriteSaving = false;
+    }
+  }
+
   function showSuccess(result) {
     const preview = state.preview || {};
     const body = createElement('div', 'bundle-result-rows');
@@ -756,10 +839,21 @@
       ['Status', statusLabel(result.status || preview.status)],
       ['Request ID', text(result.request_id, '-')]
     ].forEach(([label, value]) => body.appendChild(resultRow(label, value)));
+    const alreadySaved = isBundleFavoriteSaved();
     setModal({
       kind: 'success', title: 'Success', message: 'Your bundle request has been submitted.', body, pushHistory: true,
-      actions: [{ label: 'Done', primary: true, handler: finishSuccess }]
+      actions: [
+        {
+          id: 'bundleSuccessFavoriteButton',
+          label: alreadySaved ? 'Saved' : 'Favorite',
+          primary: true,
+          disabled: alreadySaved,
+          handler: () => saveBundleSuccessFavorite(byId('bundleSuccessFavoriteButton'))
+        },
+        { label: 'Done', handler: finishSuccess }
+      ]
     });
+    byId('bundleModalActions')?.classList.add('bundle-success-actions');
   }
 
   function finishSuccess() {

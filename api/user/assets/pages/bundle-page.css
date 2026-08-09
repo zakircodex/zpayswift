@@ -480,6 +480,16 @@ body.user-bundle-page {
 .user-bundle-page .bundle-modal-body::-webkit-scrollbar { display: none; }
 .user-bundle-page .bundle-modal-actions { width: 100%; display: grid; gap: 9px; margin-top: 14px; }
 .user-bundle-page .bundle-modal-action { min-height: 48px; border-radius: 18px; }
+.user-bundle-page .bundle-action-modal.success .bundle-modal-actions.bundle-success-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.user-bundle-page .bundle-action-modal.success .bundle-success-actions .bundle-modal-action {
+  min-width: 0;
+  height: 48px;
+  padding: 10px 12px;
+  white-space: nowrap;
+}
 .user-bundle-page .bundle-action-modal.loading .bundle-modal-close,
 .user-bundle-page .bundle-action-modal.loading .bundle-modal-actions { display: none; }
 .user-bundle-page .bundle-result-rows { display: grid; gap: 7px; }
@@ -519,6 +529,8 @@ body.user-bundle-page.bundle-modal-open { overflow: hidden; }
   .user-bundle-page .bundle-preview-row,
   .user-bundle-page .bundle-result-row { grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr); gap: 7px; padding-inline: 9px; }
   .user-bundle-page .bundle-hold-label { font-size: 14px; }
+  .user-bundle-page .bundle-action-modal.success .bundle-modal-actions.bundle-success-actions { gap: 7px; }
+  .user-bundle-page .bundle-action-modal.success .bundle-success-actions .bundle-modal-action { padding-inline: 7px; font-size: 13px; }
 }
 
 @media (min-width: 768px) {
