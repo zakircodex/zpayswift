@@ -497,6 +497,21 @@ body.user-bundle-page {
 .user-bundle-page .bundle-result-row span { color: var(--bundle-muted); font-size: 11px; }
 .user-bundle-page .bundle-result-row strong { min-width: 0; color: #fff; font-size: 12px; text-align: right; overflow-wrap: anywhere; }
 .user-bundle-page .bundle-action-modal.success .bundle-result-row.status strong { color: var(--bundle-green); }
+.user-bundle-page .bundle-favorite-confirmation {
+  width: 100%;
+  flex: 0 0 auto;
+  margin-top: 10px;
+  padding: 9px 11px;
+  border: 1px solid rgba(50, 230, 134, 0.48);
+  border-radius: 14px;
+  color: var(--bundle-green);
+  background: rgba(20, 103, 87, 0.32);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: center;
+}
+.user-bundle-page .bundle-favorite-confirmation.error { border-color: rgba(216, 82, 112, 0.58); color: #ffb5c5; background: rgba(117, 34, 57, 0.34); }
 .user-bundle-page .bundle-favorite-name-field { display: grid; gap: 8px; }
 .user-bundle-page .bundle-favorite-name-field span { color: var(--bundle-muted); font-size: 12px; }
 .user-bundle-page .bundle-favorite-name-input { min-height: 52px; padding: 0 13px; border: 1px solid var(--bundle-line); background: rgba(5, 27, 55, 0.88); }

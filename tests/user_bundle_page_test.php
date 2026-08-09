@@ -115,10 +115,10 @@ bundle_page_expect(
     str_contains($proxy, "case 'bundle_favorites':")
     && str_contains($proxy, "case 'bundle_favorite_add':")
     && str_contains($proxy, 'favorite_create_for_user($uid, user_proxy_read_json_body())')
-    && str_contains($proxy, "'favorites/list.php'")
-    && str_contains($proxy, "'favorites/update.php'")
-    && str_contains($proxy, "'favorites/delete.php'"),
-    'Bundle favourites must reuse the authenticated favorite helper and existing list/update/delete endpoints.'
+    && str_contains($proxy, 'favorite_rows_list($favoriteNode)')
+    && str_contains($proxy, 'favorite_update_for_user($uid, user_proxy_read_json_body())')
+    && str_contains($proxy, 'favorite_delete_for_user($uid, user_proxy_read_json_body())'),
+    'Bundle favourite CRUD must use the authenticated session UID and existing favorite helpers without an internal HTTP hop.'
 );
 
 bundle_page_expect(
@@ -126,7 +126,7 @@ bundle_page_expect(
     && str_contains($js, 'number: fullNumber')
     && str_contains($js, "service_type: 'bundle'")
     && str_contains($js, 'if (state.favoriteSaving || isBundleFavoriteSaved())')
-    && str_contains($js, "label: alreadySaved ? 'Saved' : 'Favorite'")
+    && str_contains($js, "label: alreadySaved ? 'Favorite Saved' : 'Favorite'")
     && str_contains($js, "{ label: 'Done', handler: finishSuccess }")
     && str_contains($js, "error?.code || '').toUpperCase() === 'FAVORITE_ALREADY_EXISTS'"),
     'Bundle success must save the original full number once while preserving Done and duplicate handling.'
@@ -158,9 +158,19 @@ bundle_page_expect(
 );
 
 bundle_page_expect(
-    str_contains($js, "shell.toast(safeMessage(error, 'Favorite number could not be saved.'), 'error')")
-    && str_contains($js, "button.textContent = 'Favorite'"),
-    'Favorite-save failure must remain a local toast and leave the successful Bundle result available.'
+    str_contains($js, "showFavoriteConfirmation('Favorite number saved successfully.')")
+    && str_contains($js, "button.textContent = 'Favorite Saved'")
+    && str_contains($js, "showFavoriteConfirmation(message, 'error')")
+    && str_contains($page, 'id="bundleModalFeedback"')
+    && str_contains($css, '.bundle-favorite-confirmation'),
+    'Favorite save must show an in-modal success/error confirmation while preserving the Bundle success result.'
+);
+
+bundle_page_expect(
+    str_contains($js, 'await loadFavorites();')
+    && str_contains($js, "postWithFreshCsrf('bundle_favorite_update'")
+    && str_contains($js, "postWithFreshCsrf('bundle_favorite_remove'"),
+    'Saved Bundle favorites must reload into the visible list and keep update/remove CSRF recovery.'
 );
 
 bundle_page_expect(

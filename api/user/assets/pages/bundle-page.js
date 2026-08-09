@@ -270,7 +270,7 @@
       wrap: byId('bundleActionModal'), close: byId('bundleModalCloseButton'),
       icon: byId('bundleModalIcon'), spinner: byId('bundleModalSpinner'),
       title: byId('bundleModalTitle'), message: byId('bundleModalMessage'),
-      body: byId('bundleModalBody'), actions: byId('bundleModalActions')
+      body: byId('bundleModalBody'), feedback: byId('bundleModalFeedback'), actions: byId('bundleModalActions')
     };
   }
 
@@ -305,6 +305,9 @@
     modal.close.hidden = loading;
     clear(modal.body);
     clear(modal.actions);
+    modal.feedback.textContent = '';
+    modal.feedback.hidden = true;
+    modal.feedback.classList.remove('error');
     modal.actions.classList.remove('bundle-success-actions');
     if (body instanceof Node) modal.body.appendChild(body);
     modal.body.hidden = !body;
@@ -773,9 +776,17 @@
 
   function setFavoriteButtonSaved(button) {
     if (!button) return;
-    button.textContent = 'Saved';
+    button.textContent = 'Favorite Saved';
     button.disabled = true;
     button.setAttribute('aria-label', 'Favorite number saved');
+  }
+
+  function showFavoriteConfirmation(message, kind = 'success') {
+    const confirmation = byId('bundleModalFeedback');
+    if (!confirmation) return;
+    confirmation.classList.toggle('error', kind === 'error');
+    confirmation.textContent = message;
+    confirmation.hidden = false;
   }
 
   async function saveBundleSuccessFavorite(button) {
@@ -823,18 +834,24 @@
       }
       setFavoriteButtonSaved(button);
       renderFavorites();
+      await loadFavorites();
+      showFavoriteConfirmation('Favorite number saved successfully.');
       shell.toast('Favorite number saved.', 'ok');
     } catch (error) {
       if (String(error?.code || '').toUpperCase() === 'FAVORITE_ALREADY_EXISTS') {
         state.favorites.push({ number: fullNumber, country: 'BD', operator: operatorCode });
         setFavoriteButtonSaved(button);
+        await loadFavorites();
+        showFavoriteConfirmation('Favorite number already saved.');
         shell.toast('Favorite number already saved.', 'ok');
       } else {
         if (button) {
           button.disabled = false;
           button.textContent = 'Favorite';
         }
-        shell.toast(safeMessage(error, 'Favorite number could not be saved.'), 'error');
+        const message = safeMessage(error, 'Favorite number could not be saved.');
+        showFavoriteConfirmation(message, 'error');
+        shell.toast(message, 'error');
       }
     } finally {
       state.favoriteSaving = false;
@@ -859,7 +876,7 @@
       actions: [
         {
           id: 'bundleSuccessFavoriteButton',
-          label: alreadySaved ? 'Saved' : 'Favorite',
+          label: alreadySaved ? 'Favorite Saved' : 'Favorite',
           primary: true,
           disabled: alreadySaved,
           handler: () => saveBundleSuccessFavorite(byId('bundleSuccessFavoriteButton'))
@@ -1001,7 +1018,7 @@
         { label: 'Cancel', handler: closeModalFromAction },
         { label: 'Save', primary: true, handler: async () => {
           try {
-            await shell.post('bundle_favorite_update', { favorite_id: favorite.favorite_id || favorite.id, name: text(input.value) }, '', { busy: false });
+            await postWithFreshCsrf('bundle_favorite_update', { favorite_id: favorite.favorite_id || favorite.id, name: text(input.value) });
             closeCompletedModalState();
             await loadFavorites();
           } catch (error) {
@@ -1015,7 +1032,7 @@
 
   async function removeFavorite(favorite) {
     try {
-      await shell.post('bundle_favorite_remove', { favorite_id: favorite.favorite_id || favorite.id }, '', { busy: false });
+      await postWithFreshCsrf('bundle_favorite_remove', { favorite_id: favorite.favorite_id || favorite.id });
       closeCompletedModalState();
       await loadFavorites();
     } catch (error) {

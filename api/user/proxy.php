@@ -4387,14 +4387,15 @@ switch ($action) {
 
     case 'bundle_favorites':
         user_proxy_require_method('GET');
-        user_proxy_require_login(true, false);
-        user_proxy_forward_authenticated_json(
-            'GET',
-            'favorites/list.php',
-            null,
-            'FAVORITES_LOAD_FAILED',
-            'Favorite numbers could not be loaded.'
-        );
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $favoriteNode = fb_get(favorite_numbers_path($uid));
+        $favorites = is_array($favoriteNode) ? favorite_rows_list($favoriteNode) : [];
+        user_proxy_response(true, 'FAVORITES_LOADED', 'Favorite numbers loaded.', [
+            'favorites' => $favorites,
+            'count' => count($favorites),
+            'limit' => FAVORITE_NUMBERS_LIMIT,
+        ]);
         break;
 
     case 'bundle_favorite_add':
@@ -4423,26 +4424,46 @@ switch ($action) {
     case 'bundle_favorite_update':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
-        user_proxy_require_login(true, false);
-        user_proxy_forward_authenticated_json(
-            'POST',
-            'favorites/update.php',
-            user_proxy_read_json_body(),
-            'FAVORITE_UPDATE_FAILED',
-            'Favorite number could not be updated.'
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $result = favorite_update_for_user($uid, user_proxy_read_json_body());
+        if (empty($result['ok'])) {
+            user_proxy_response(
+                false,
+                (string)($result['code'] ?? 'FAVORITE_UPDATE_FAILED'),
+                (string)($result['message'] ?? 'Favorite number could not be updated.'),
+                [],
+                (int)($result['http_status'] ?? 400)
+            );
+        }
+        user_proxy_response(
+            true,
+            'FAVORITE_UPDATED',
+            'Favorite number updated.',
+            (array)($result['data'] ?? [])
         );
         break;
 
     case 'bundle_favorite_remove':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
-        user_proxy_require_login(true, false);
-        user_proxy_forward_authenticated_json(
-            'POST',
-            'favorites/delete.php',
-            user_proxy_read_json_body(),
-            'FAVORITE_REMOVE_FAILED',
-            'Favorite number could not be removed.'
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $result = favorite_delete_for_user($uid, user_proxy_read_json_body());
+        if (empty($result['ok'])) {
+            user_proxy_response(
+                false,
+                (string)($result['code'] ?? 'FAVORITE_REMOVE_FAILED'),
+                (string)($result['message'] ?? 'Favorite number could not be removed.'),
+                [],
+                (int)($result['http_status'] ?? 400)
+            );
+        }
+        user_proxy_response(
+            true,
+            'FAVORITE_REMOVED',
+            'Favorite number removed.',
+            (array)($result['data'] ?? [])
         );
         break;
 

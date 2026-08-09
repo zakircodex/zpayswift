@@ -123,6 +123,7 @@ user_page_begin($page);
     <h2 id="bundleModalTitle">Bundle</h2>
     <p id="bundleModalMessage"></p>
     <div id="bundleModalBody" class="bundle-modal-body"></div>
+    <div id="bundleModalFeedback" class="bundle-favorite-confirmation" role="status" aria-live="polite" hidden></div>
     <div id="bundleModalActions" class="bundle-modal-actions"></div>
   </div>
 </div>
