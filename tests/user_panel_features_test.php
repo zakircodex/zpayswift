@@ -126,6 +126,13 @@ expect_true(
     'Support ownership check is missing'
 );
 expect_true(
+    str_contains($supportBackend, 'function support_status_is_final')
+    && str_contains($supportBackend, 'function support_claim_active_ticket_slot')
+    && str_contains($supportBackend, "'SUPPORT_ACTIVE_TICKET_EXISTS'")
+    && str_contains($supportBackend, "'SUPPORT_USER_INDEX/' . \$uid"),
+    'Support single-active-ticket contract or existing index reuse is missing'
+);
+expect_true(
     str_contains($supportJs, "makeIdempotencyKey('SUPPORT-CREATE')")
     && str_contains($supportJs, "makeIdempotencyKey('SUPPORT-REPLY')")
     && str_contains($supportJs, 'option.dataset.relatedType')

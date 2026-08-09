@@ -19,6 +19,7 @@
     attachments: [],
     selectedCategory: null,
     requestLogs: [],
+    ticketsLoaded: false,
     createFiles: [],
     replyFiles: [],
     createKey: '',
@@ -114,6 +115,7 @@
         const error = new Error(String((json && json.message) || 'The request could not be completed.'));
         error.code = String((json && json.code) || 'REQUEST_FAILED');
         error.status = response.status;
+        error.data = json && json.data && typeof json.data === 'object' ? json.data : {};
         if (handleSessionError(error)) throw error;
         throw error;
       }
@@ -168,6 +170,35 @@
     return ['CLOSED', 'RESOLVED'].includes(String(status || '').toUpperCase());
   }
 
+  function activeSupportTicket() {
+    return state.tickets.find((ticket) => ticket && ticket.ticket_id && !supportIsClosed(ticket.status)) || null;
+  }
+
+  function renderStartChatState() {
+    const button = $('supportStartChatButton');
+    if (!button) return;
+    if (!state.ticketsLoaded || state.loadingTickets) {
+      button.disabled = true;
+      button.textContent = 'Loading...';
+      button.dataset.activeTicketId = '';
+      return;
+    }
+    const active = activeSupportTicket();
+    button.disabled = false;
+    button.textContent = active ? 'Open Conversation' : 'Start Chat';
+    button.dataset.activeTicketId = active ? String(active.ticket_id) : '';
+  }
+
+  async function startSupportChat() {
+    if (!state.ticketsLoaded || state.loadingTickets) return;
+    const active = activeSupportTicket();
+    if (active) {
+      await openSupportConversation(active.ticket_id);
+      return;
+    }
+    navigate('category');
+  }
+
   function supportStatusClass(status) {
     return 'status-' + String(status || 'OPEN').toLowerCase().replace(/[^a-z0-9]+/g, '-');
   }
@@ -193,6 +224,7 @@
     const next = viewIds[view] ? view : 'main';
     state.view = next;
     document.body.classList.toggle('support-subview-open', next !== 'main');
+    document.body.classList.toggle('support-chat-open', next === 'chat');
     Object.entries(viewIds).forEach(([key, id]) => {
       $(id)?.classList.toggle('hidden', key !== next);
     });
@@ -425,6 +457,7 @@
       return state.tickets;
     }
     state.loadingTickets = true;
+    renderStartChatState();
     const refresh = $('supportRefreshButton');
     if (refresh) refresh.disabled = true;
     try {
@@ -432,9 +465,11 @@
       state.tickets = (Array.isArray(data.tickets) ? data.tickets : []).slice().sort((a, b) =>
         Number(b.last_message_at || b.updated_at || b.created_at || 0) - Number(a.last_message_at || a.updated_at || a.created_at || 0)
       );
+      state.ticketsLoaded = true;
       renderTickets();
       return state.tickets;
     } catch (error) {
+      state.ticketsLoaded = false;
       if (handleSessionError(error)) return [];
       const list = $('supportTicketList');
       if (list) {
@@ -448,6 +483,7 @@
     } finally {
       state.loadingTickets = false;
       if (refresh) refresh.disabled = false;
+      renderStartChatState();
     }
   }
 
@@ -460,6 +496,7 @@
       empty.className = 'support-empty-state';
       empty.textContent = 'No conversations yet.';
       list.appendChild(empty);
+      renderStartChatState();
       return;
     }
     state.tickets.forEach((ticket) => {
@@ -487,6 +524,7 @@
       button.addEventListener('click', () => openSupportConversation(ticket.ticket_id));
       list.appendChild(button);
     });
+    renderStartChatState();
   }
 
   function validateFiles(files) {
@@ -615,7 +653,21 @@
       }
     } catch (error) {
       closeSupportLoading();
-      if (!handleSessionError(error)) openSupportError(safeMessage(error, 'Support request could not be submitted.'));
+      if (handleSessionError(error)) return;
+      if (String(error && error.code || '').toUpperCase() === 'SUPPORT_ACTIVE_TICKET_EXISTS') {
+        await loadSupportTickets(true).catch(() => state.tickets);
+        const activeId = String(error && error.data && (error.data.active_ticket_id || error.data.active_ticket?.ticket_id) || '');
+        const active = state.tickets.find((ticket) => String(ticket.ticket_id || '') === activeId) || activeSupportTicket();
+        if (active && active.ticket_id) {
+          window.history.replaceState(historyState('main'), '', '/user/support');
+          setView('main');
+          await openSupportConversation(active.ticket_id);
+        } else {
+          openSupportError('You already have an active support conversation.');
+        }
+      } else {
+        openSupportError(safeMessage(error, 'Support request could not be submitted.'));
+      }
     } finally {
       state.creating = false;
       setButtonBusy(button, false);
@@ -883,7 +935,7 @@
   }
 
   function bindEvents() {
-    $('supportStartChatButton')?.addEventListener('click', () => navigate('category'));
+    $('supportStartChatButton')?.addEventListener('click', startSupportChat);
     $('supportRefreshButton')?.addEventListener('click', async () => {
       if (state.loadingTickets) return;
       openSupportLoading('Loading support...');
@@ -895,7 +947,6 @@
         closeSupportLoading();
       }
     });
-    $('supportCategoryBack')?.addEventListener('click', requestStepBack);
     $('supportCreateBack')?.addEventListener('click', requestStepBack);
     $('supportConversationBack')?.addEventListener('click', requestStepBack);
     $('supportInfoButton')?.addEventListener('click', openTicketInfo);
@@ -923,6 +974,7 @@
       stopPolling();
       closeSupportLoading();
       document.body.classList.remove('support-keyboard-open');
+      document.body.classList.remove('support-chat-open');
     });
   }
 

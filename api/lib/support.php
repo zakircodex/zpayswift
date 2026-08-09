@@ -748,6 +748,124 @@ function support_user_from_auth(array $auth): array
     return is_array($auth['user'] ?? null) ? $auth['user'] : [];
 }
 
+function support_status_is_final(string $status): bool
+{
+    return in_array(support_clean_code($status), ['CLOSED', 'RESOLVED'], true);
+}
+
+function support_status_is_active(string $status): bool
+{
+    return !support_status_is_final($status);
+}
+
+function support_active_ticket_from_index(string $uid, array $index, ?int $now = null): array
+{
+    if ($uid === '' || $index === []) {
+        return [];
+    }
+    $now ??= support_now();
+    uasort($index, static fn($a, $b) => ((int)($b['updated_at'] ?? $b['reserved_at'] ?? 0) <=> (int)($a['updated_at'] ?? $a['reserved_at'] ?? 0)));
+    foreach ($index as $ticketId => $meta) {
+        $ticketId = support_clean_code(is_array($meta) ? ($meta['ticket_id'] ?? $ticketId) : $ticketId);
+        if ($ticketId === '') {
+            continue;
+        }
+        $meta = is_array($meta) ? $meta : [];
+        $metaStatus = support_clean_code($meta['status'] ?? '');
+        if ($metaStatus === 'CREATING') {
+            $reservedAt = (int)($meta['reserved_at'] ?? $meta['updated_at'] ?? 0);
+            if ($reservedAt > 0 && $now - $reservedAt <= 120) {
+                return [
+                    'ticket_id' => $ticketId,
+                    'uid' => $uid,
+                    'status' => 'CREATING',
+                    'status_label' => 'Creating',
+                    'updated_at' => $reservedAt,
+                ];
+            }
+            continue;
+        }
+        $ticket = support_read_ticket($ticketId);
+        if (
+            $ticket !== []
+            && (string)($ticket['uid'] ?? '') === $uid
+            && support_status_is_active((string)($ticket['status'] ?? 'OPEN'))
+        ) {
+            return support_public_ticket($ticket);
+        }
+    }
+    return [];
+}
+
+function support_find_active_ticket_for_uid(string $uid): array
+{
+    $index = $uid !== '' ? fb_get('SUPPORT_USER_INDEX/' . $uid) : null;
+    return support_active_ticket_from_index($uid, is_array($index) ? $index : []);
+}
+
+function support_active_ticket_error(array $ticket): array
+{
+    return [
+        'ok' => false,
+        'code' => 'SUPPORT_ACTIVE_TICKET_EXISTS',
+        'message' => 'You already have an active support conversation.',
+        'status' => 409,
+        'active_ticket_id' => (string)($ticket['ticket_id'] ?? ''),
+        'active_ticket' => $ticket,
+    ];
+}
+
+function support_claim_active_ticket_slot(string $uid, string $ticketId, int $now, int $maxAttempts = 5): array
+{
+    $path = 'SUPPORT_USER_INDEX/' . $uid;
+    for ($attempt = 0; $attempt < max(1, $maxAttempts); $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        if (empty($snapshot['ok']) || trim((string)($snapshot['etag'] ?? '')) === '') {
+            return ['ok' => false, 'code' => 'SUPPORT_ACTIVE_TICKET_CHECK_FAILED'];
+        }
+        $index = is_array($snapshot['value'] ?? null) ? $snapshot['value'] : [];
+        $active = support_active_ticket_from_index($uid, $index, $now);
+        if ($active !== [] && (string)($active['ticket_id'] ?? '') !== $ticketId) {
+            return ['ok' => false, 'code' => 'SUPPORT_ACTIVE_TICKET_EXISTS', 'active_ticket' => $active];
+        }
+        $index[$ticketId] = [
+            'ticket_id' => $ticketId,
+            'updated_at' => $now,
+            'reserved_at' => $now,
+            'status' => 'CREATING',
+        ];
+        $saved = fb_put_if_match($path, $index, (string)$snapshot['etag']);
+        if (!empty($saved['ok'])) {
+            return ['ok' => true, 'ticket_id' => $ticketId];
+        }
+        if ((int)($saved['status'] ?? 0) !== 412) {
+            return ['ok' => false, 'code' => 'SUPPORT_ACTIVE_TICKET_CHECK_FAILED'];
+        }
+    }
+    return ['ok' => false, 'code' => 'SUPPORT_ACTIVE_TICKET_CHECK_FAILED'];
+}
+
+function support_release_active_ticket_slot(string $uid, string $ticketId, int $maxAttempts = 3): void
+{
+    $path = 'SUPPORT_USER_INDEX/' . $uid;
+    for ($attempt = 0; $attempt < max(1, $maxAttempts); $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        if (empty($snapshot['ok']) || trim((string)($snapshot['etag'] ?? '')) === '') {
+            return;
+        }
+        $index = is_array($snapshot['value'] ?? null) ? $snapshot['value'] : [];
+        $meta = is_array($index[$ticketId] ?? null) ? $index[$ticketId] : [];
+        if (support_clean_code($meta['status'] ?? '') !== 'CREATING') {
+            return;
+        }
+        unset($index[$ticketId]);
+        $saved = fb_put_if_match($path, $index === [] ? null : $index, (string)$snapshot['etag']);
+        if (!empty($saved['ok']) || (int)($saved['status'] ?? 0) !== 412) {
+            return;
+        }
+    }
+}
+
 function support_status_label(string $status): string
 {
     $status = support_clean_code($status);
@@ -1306,6 +1424,11 @@ function support_create_ticket(array $auth, array $body, array $files = []): arr
         }
     }
 
+    $activeTicket = support_find_active_ticket_for_uid($uid);
+    if ($activeTicket !== []) {
+        return support_active_ticket_error($activeTicket);
+    }
+
     $rate = (int)($config['ticket_rate_limit_seconds'] ?? 0);
     $last = (int)(fb_get('SUPPORT_RATE_LIMIT/' . $uid . '/last_created_at') ?? 0);
     if ($rate > 0 && $last > 0 && support_now() - $last < $rate) {
@@ -1339,6 +1462,21 @@ function support_create_ticket(array $auth, array $body, array $files = []): arr
     }
     $attachments = (array)($stored['items'] ?? []);
     $attachmentIds = array_values(array_map(static fn($row) => (string)$row['attachment_id'], $attachments));
+
+    $claim = support_claim_active_ticket_slot($uid, $ticketId, $now);
+    if (empty($claim['ok'])) {
+        support_cleanup_attachments($attachments);
+        $activeTicket = is_array($claim['active_ticket'] ?? null) ? $claim['active_ticket'] : [];
+        if ($activeTicket !== []) {
+            return support_active_ticket_error($activeTicket);
+        }
+        return [
+            'ok' => false,
+            'code' => 'SUPPORT_ACTIVE_TICKET_CHECK_FAILED',
+            'message' => 'Support availability could not be confirmed. Please try again.',
+            'status' => 503,
+        ];
+    }
 
     $ticket = [
         'ticket_id' => $ticketId,
@@ -1382,6 +1520,7 @@ function support_create_ticket(array $auth, array $body, array $files = []): arr
 
     if (!$ok) {
         support_cleanup_attachments($attachments);
+        support_release_active_ticket_slot($uid, $ticketId);
         return ['ok' => false, 'code' => 'SUPPORT_CREATE_FAILED', 'message' => 'Support request could not be submitted.', 'status' => 500];
     }
     foreach ($attachments as $attachment) {

@@ -22,7 +22,15 @@ body.user-support-page .user-page-panel {
   padding-bottom: 0;
 }
 
-body.user-support-page.support-subview-open .user-drawer-floating-trigger {
+body.user-support-page .user-drawer-floating-trigger {
+  display: none;
+}
+
+body.user-support-page.support-chat-open {
+  --support-nav-space: calc(10px + env(safe-area-inset-bottom));
+}
+
+body.user-support-page.support-chat-open .bottom-nav {
   display: none;
 }
 
@@ -367,6 +375,10 @@ body.user-support-page .user-page-content {
   color: var(--z-muted);
   font-size: 13px;
   line-height: 1.3;
+}
+
+#supportSection .support-centered-state-header {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 #supportSection .support-category-grid {
@@ -752,16 +764,21 @@ body.user-support-page .user-page-content {
 
 #supportSection .support-composer {
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr) auto;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
   align-items: end;
   gap: 7px;
 }
 
 #supportSection .support-composer-attachment {
-  width: 46px;
-  height: 46px;
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  max-height: 48px;
+  box-sizing: border-box;
+  padding: 0;
   border-radius: 50%;
   color: var(--z-green);
+  background: rgba(18, 54, 97, 0.98);
 }
 
 #supportSection .support-composer textarea {
@@ -777,21 +794,24 @@ body.user-support-page .user-page-content {
 }
 
 #supportSection .support-send-button {
-  min-width: 70px;
-  height: 46px;
-  grid-auto-flow: column;
-  gap: 4px;
-  padding: 0 11px;
+  width: 48px;
+  min-width: 48px;
+  height: 48px;
+  min-height: 48px;
+  max-height: 48px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border-color: var(--z-green);
-  border-radius: 20px;
+  border-radius: 50%;
   color: #061b12;
   background: var(--z-green);
-  font-weight: 850;
 }
 
 #supportSection .support-send-button svg {
-  width: 18px;
-  height: 18px;
+  width: 21px;
+  height: 21px;
 }
 
 #supportSection .support-closed-notice {
@@ -949,23 +969,27 @@ body.user-support-page.support-keyboard-open .bottom-nav {
   }
 
   #supportSection .support-composer {
-    grid-template-columns: 42px minmax(0, 1fr) 58px;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
     gap: 5px;
   }
 
   #supportSection .support-composer-attachment {
-    width: 42px;
+    width: 44px;
     height: 44px;
+    min-height: 44px;
+    max-height: 44px;
   }
 
   #supportSection .support-send-button {
-    min-width: 58px;
-    padding: 0 8px;
-    font-size: 12px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    max-height: 44px;
   }
 
   #supportSection .support-send-button svg {
-    display: none;
+    display: block;
   }
 }
 

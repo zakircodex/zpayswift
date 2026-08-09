@@ -24,7 +24,7 @@ user_page_begin($page);
         <span class="support-decor-bubble support-decor-bubble-two" aria-hidden="true"></span>
         <h1>Need Help?</h1>
         <p>Start a conversation with Z-Pay Swift Support.</p>
-        <button id="supportStartChatButton" class="support-primary-button" type="button">Start Chat</button>
+        <button id="supportStartChatButton" class="support-primary-button" type="button" disabled>Loading...</button>
       </div>
       <div class="support-list-heading">
         <div>
@@ -42,12 +42,8 @@ user_page_begin($page);
   </div>
 
   <div id="supportCategoryView" class="support-view support-category-view hidden">
-    <header class="support-state-header">
-      <button id="supportCategoryBack" class="support-icon-button" type="button" aria-label="Back to conversations">
-        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20v-2Z"/></svg>
-      </button>
+    <header class="support-state-header support-centered-state-header">
       <div><h1>How can we help?</h1><p>Choose the topic that best matches your issue.</p></div>
-      <span aria-hidden="true"></span>
     </header>
     <div id="supportCategoryGrid" class="support-category-grid" aria-live="polite"></div>
   </div>
@@ -105,7 +101,7 @@ user_page_begin($page);
         </button>
         <textarea id="supportReplyMessage" rows="1" maxlength="2500" placeholder="Message"></textarea>
         <button id="supportReplyButton" class="support-send-button" type="submit" aria-label="Send message">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m3 20.5 18-8.5L3 3.5V10l12 2-12 2v6.5Z"/></svg><span>Send</span>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m3 20.5 18-8.5L3 3.5V10l12 2-12 2v6.5Z"/></svg>
         </button>
       </form>
       <div id="supportClosedNotice" class="support-closed-notice hidden"></div>

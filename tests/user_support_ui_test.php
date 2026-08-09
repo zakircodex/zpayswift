@@ -8,6 +8,7 @@ $js = (string)file_get_contents($root . '/api/user/assets/pages/support-page.js'
 $css = (string)file_get_contents($root . '/api/user/assets/pages/support-page.css');
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $backend = (string)file_get_contents($root . '/api/lib/support.php');
+$createEndpoint = (string)file_get_contents($root . '/api/support/create.php');
 $assertions = 0;
 
 function support_ui_expect(bool $condition, string $message): void
@@ -26,6 +27,13 @@ support_ui_expect(
     && str_contains($page, 'class="page-section user-support-experience active"')
     && !str_contains($page, 'id="loadingWrap"'),
     'Support must own its loader, activate its page root and retain the shared bottom navigation'
+);
+
+support_ui_expect(
+    !str_contains($page, 'id="supportCategoryBack"')
+    && !str_contains($page, '<span>Send</span>')
+    && str_contains($page, 'class="support-state-header support-centered-state-header"'),
+    'Category header or icon-only chat composer markup is incorrect'
 );
 
 support_ui_expect(
@@ -97,6 +105,17 @@ support_ui_expect(
 );
 
 support_ui_expect(
+    str_contains($js, 'function activeSupportTicket()')
+    && str_contains($js, "button.textContent = active ? 'Open Conversation' : 'Start Chat'")
+    && str_contains($js, "'SUPPORT_ACTIVE_TICKET_EXISTS'")
+    && str_contains($backend, 'function support_claim_active_ticket_slot')
+    && str_contains($backend, "'SUPPORT_ACTIVE_TICKET_EXISTS'")
+    && str_contains($backend, "'SUPPORT_USER_INDEX/' . \$uid")
+    && str_contains($createEndpoint, "'active_ticket_id'"),
+    'Single-active-ticket UI/server enforcement is incomplete'
+);
+
+support_ui_expect(
     str_contains($js, 'openSupportLoading')
     && str_contains($js, 'closeSupportLoading')
     && str_contains($js, 'openSupportError')
@@ -116,7 +135,6 @@ support_ui_expect(
     str_contains($css, 'body.user-support-page')
     && str_contains($css, 'height: 100dvh')
     && str_contains($css, 'body.user-support-page #appView')
-    && str_contains($css, 'body.user-support-page.support-subview-open .user-drawer-floating-trigger')
     && str_contains($css, '#supportSection {')
     && str_contains($css, 'margin: 0')
     && str_contains($css, '#supportSection .support-ticket-scroll')
@@ -124,6 +142,15 @@ support_ui_expect(
     && str_contains($css, '#supportSection .support-composer-zone')
     && str_contains($css, '#supportSection .support-action-modal'),
     'Support page fixed regions/body-only scrolling CSS is incomplete'
+);
+
+support_ui_expect(
+    str_contains($css, 'body.user-support-page .user-drawer-floating-trigger')
+    && str_contains($css, 'body.user-support-page.support-chat-open .bottom-nav')
+    && str_contains($css, '#supportSection .support-centered-state-header')
+    && str_contains($css, 'grid-template-columns: 48px minmax(0, 1fr) 48px')
+    && substr_count($css, 'border-radius: 50%') >= 3,
+    'Support hero/category/chat scoped visual rules are incomplete'
 );
 
 support_ui_expect(
