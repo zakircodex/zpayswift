@@ -346,6 +346,20 @@
     return message;
   }
 
+  async function postWithFreshCsrf(action, payload) {
+    try {
+      return await shell.post(action, payload || {}, '', { busy: false });
+    } catch (error) {
+      const code = text(error?.code).toUpperCase();
+      const message = text(error?.message).toLowerCase();
+      const csrfError = Number(error?.status || 0) === 403
+        && (code.includes('CSRF') || code === 'FORBIDDEN' || message.includes('csrf'));
+      if (!csrfError) throw error;
+      await shell.refreshSession();
+      return shell.post(action, payload || {}, '', { busy: false });
+    }
+  }
+
   function openError(title, error, fallback, pushHistory = true) {
     setModal({
       kind: 'error', title, message: safeMessage(error, fallback), pushHistory,
@@ -785,7 +799,7 @@
     }
 
     try {
-      const data = await shell.post('bundle_favorite_add', {
+      const data = await postWithFreshCsrf('bundle_favorite_add', {
         name: `${operatorName} Bundle`,
         number: fullNumber,
         country: 'BD',
@@ -793,7 +807,7 @@
         operator: operatorCode,
         operator_name: operatorName,
         service_type: 'bundle'
-      }, '', { busy: false });
+      });
 
       if (Array.isArray(data.favorites)) {
         state.favorites = data.favorites;

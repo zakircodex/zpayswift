@@ -9,6 +9,7 @@ require_once dirname(__DIR__) . '/lib/operators.php';
 require_once dirname(__DIR__) . '/lib/bundle.php';
 require_once dirname(__DIR__) . '/lib/mfs.php';
 require_once dirname(__DIR__) . '/lib/add_money.php';
+require_once dirname(__DIR__) . '/lib/favorites.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -4399,13 +4400,23 @@ switch ($action) {
     case 'bundle_favorite_add':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
-        user_proxy_require_login(true, false);
-        user_proxy_forward_authenticated_json(
-            'POST',
-            'favorites/save.php',
-            user_proxy_read_json_body(),
-            'FAVORITE_SAVE_FAILED',
-            'Favorite number could not be saved.'
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $result = favorite_create_for_user($uid, user_proxy_read_json_body());
+        if (empty($result['ok'])) {
+            user_proxy_response(
+                false,
+                (string)($result['code'] ?? 'FAVORITE_SAVE_FAILED'),
+                (string)($result['message'] ?? 'Favorite number could not be saved.'),
+                [],
+                (int)($result['http_status'] ?? 400)
+            );
+        }
+        user_proxy_response(
+            true,
+            'FAVORITE_SAVED',
+            'Favorite number saved.',
+            (array)($result['data'] ?? [])
         );
         break;
 

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
+require_once $root . '/api/lib/favorites.php';
 $page = (string)file_get_contents($root . '/api/user/bundle.php');
 $css = (string)file_get_contents($root . '/api/user/assets/pages/bundle-page.css');
 $js = (string)file_get_contents($root . '/api/user/assets/pages/bundle-page.js');
@@ -113,15 +114,15 @@ bundle_page_expect(
 bundle_page_expect(
     str_contains($proxy, "case 'bundle_favorites':")
     && str_contains($proxy, "case 'bundle_favorite_add':")
-    && str_contains($proxy, "'favorites/save.php'")
+    && str_contains($proxy, 'favorite_create_for_user($uid, user_proxy_read_json_body())')
     && str_contains($proxy, "'favorites/list.php'")
     && str_contains($proxy, "'favorites/update.php'")
     && str_contains($proxy, "'favorites/delete.php'"),
-    'Bundle favourites must reuse the existing authenticated favorite-number save/list/update/delete endpoints.'
+    'Bundle favourites must reuse the authenticated favorite helper and existing list/update/delete endpoints.'
 );
 
 bundle_page_expect(
-    str_contains($js, "shell.post('bundle_favorite_add', {")
+    str_contains($js, "postWithFreshCsrf('bundle_favorite_add', {")
     && str_contains($js, 'number: fullNumber')
     && str_contains($js, "service_type: 'bundle'")
     && str_contains($js, 'if (state.favoriteSaving || isBundleFavoriteSaved())')
@@ -129,6 +130,31 @@ bundle_page_expect(
     && str_contains($js, "{ label: 'Done', handler: finishSuccess }")
     && str_contains($js, "error?.code || '').toUpperCase() === 'FAVORITE_ALREADY_EXISTS'"),
     'Bundle success must save the original full number once while preserving Done and duplicate handling.'
+);
+
+bundle_page_expect(
+    str_contains($js, 'async function postWithFreshCsrf(action, payload)')
+    && str_contains($js, 'await shell.refreshSession()')
+    && str_contains($js, "code === 'FORBIDDEN'")
+    && str_contains($js, "message.includes('csrf')"),
+    'Bundle favorite save must refresh and retry once when the page CSRF token is stale.'
+);
+
+$favoritePayload = favorite_validate_create_payload([
+    'name' => 'Grameenphone Bundle',
+    'number' => '01309096677',
+    'country' => 'BD',
+    'country_code' => 'BD',
+    'operator' => 'GP',
+    'operator_name' => 'Grameenphone',
+    'service_type' => 'bundle',
+]);
+bundle_page_expect(
+    !empty($favoritePayload['ok'])
+    && ($favoritePayload['favorite']['number'] ?? '') === '01309096677'
+    && ($favoritePayload['favorite']['operator'] ?? '') === 'GP'
+    && ($favoritePayload['favorite']['service_type'] ?? '') === 'bundle',
+    'The full Bundle receiver payload must pass the existing favorite contract unchanged.'
 );
 
 bundle_page_expect(
