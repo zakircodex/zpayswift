@@ -3,33 +3,40 @@
 
   const proxyUrl = window.USER_PROXY_URL || '/api/user/proxy.php';
   const $ = (id) => document.getElementById(id);
-  const stepOrder = ['phone', 'password', 'otp'];
+  const stepOrder = ['phone', 'password', 'pin', 'otp'];
   const activeRequests = new Set();
   const state = {
     step: 'phone',
     phone: '',
-    phoneCountry: 'BD',
+    phoneCountry: '',
+    fullName: '',
     preAuthToken: '',
+    pinVerified: false,
     otpRequestId: '',
     maskedPhone: '',
     expiresAt: 0,
     timer: 0,
-    trustDevice: true,
     busyCount: 0,
     navigationStarted: false,
-    loginInFlight: false,
+    countryReady: false,
+    phoneInFlight: false,
+    passwordInFlight: false,
+    pinInFlight: false,
+    otpSendInFlight: false,
     verifyInFlight: false,
     resendInFlight: false
   };
+
+  function isFeedbackOpen() {
+    return $('loginFeedbackModal')?.classList.contains('show') === true;
+  }
 
   function setBusy(on, label = 'Loading...') {
     const modal = $('loginLoadingModal');
     const root = $('loginPageRoot');
     if (!modal || !root) return;
 
-    if (on) state.busyCount += 1;
-    else state.busyCount = Math.max(0, state.busyCount - 1);
-
+    state.busyCount = on ? state.busyCount + 1 : Math.max(0, state.busyCount - 1);
     const visible = state.busyCount > 0;
     $('loginLoadingText').textContent = label;
     modal.classList.toggle('show', visible);
@@ -40,15 +47,10 @@
 
   function resetLoginLoading() {
     state.busyCount = 0;
-    const modal = $('loginLoadingModal');
-    modal?.classList.remove('show');
-    modal?.setAttribute('aria-hidden', 'true');
+    $('loginLoadingModal')?.classList.remove('show');
+    $('loginLoadingModal')?.setAttribute('aria-hidden', 'true');
     $('loginPageRoot')?.setAttribute('aria-busy', 'false');
     document.body.classList.toggle('login-modal-open', isFeedbackOpen());
-  }
-
-  function isFeedbackOpen() {
-    return $('loginFeedbackModal')?.classList.contains('show') === true;
   }
 
   function showFeedback(message, type = 'error', title = '') {
@@ -66,15 +68,66 @@
   }
 
   function closeFeedback() {
-    const modal = $('loginFeedbackModal');
-    modal?.classList.remove('show');
-    modal?.setAttribute('aria-hidden', 'true');
-    document.body.classList.remove('login-modal-open');
+    $('loginFeedbackModal')?.classList.remove('show');
+    $('loginFeedbackModal')?.setAttribute('aria-hidden', 'true');
+    document.body.classList.toggle('login-modal-open', state.busyCount > 0);
+  }
+
+  function safeErrorMessage(error, fallback) {
+    const code = String(error?.code || '').toUpperCase();
+    const messages = {
+      VALIDATION_ERROR: 'Please check the information and try again.',
+      PHONE_INVALID: state.phoneCountry === 'BD'
+        ? 'Please enter a valid Bangladesh phone number.'
+        : 'Please enter a valid Malaysia phone number.',
+      ACCOUNT_NOT_FOUND: 'No Z-Pay Swift account was found for this phone number.',
+      USER_NOT_FOUND: 'No Z-Pay Swift account was found for this phone number.',
+      ACCOUNT_REVIEW_REQUIRED: 'Your account is under review. Please wait for admin approval.',
+      ACCOUNT_BLOCKED: 'Your account is blocked. Please contact support.',
+      ACCOUNT_REJECTED: 'Your account registration was rejected.',
+      FORBIDDEN: 'This account is not available for User login.',
+      INVALID_CREDENTIALS: 'Incorrect password. Please try again.',
+      WRONG_PASSWORD: 'Incorrect password. Please try again.',
+      PASSWORD_REQUIRED: 'Password verification is required. Please start again.',
+      WRONG_PIN: 'Incorrect PIN. Please try again.',
+      PIN_REQUIRED: 'PIN verification is required before OTP.',
+      DEVICE_MISMATCH: 'Login verification expired. Please start again.',
+      PREAUTH_NOT_FOUND: 'Login verification expired. Please start again.',
+      PREAUTH_EXPIRED: 'Login verification expired. Please start again.',
+      OTP_INVALID: 'Incorrect OTP. Please try again.',
+      OTP_MISMATCH: 'This OTP does not match the current login request.',
+      OTP_EXPIRED: 'OTP expired. Resend OTP to continue.',
+      OTP_ALREADY_USED: 'This OTP has already been used.',
+      OTP_ATTEMPTS_EXCEEDED: 'Too many incorrect OTP attempts. Request a new OTP.',
+      OTP_VERIFY_CONFLICT: 'OTP verification could not be completed. Please try again.',
+      SMS_FAILED: 'OTP could not be sent. Please try again later.',
+      OTP_SEND_RATE_LIMITED: 'Too many OTP requests. Please wait before trying again.',
+      OTP_RESEND_LIMIT_REACHED: 'OTP resend limit reached. Please start login again later.',
+      SESSION_EXPIRED: 'Login session expired. Please start again.',
+      NETWORK_ERROR: 'Network error. Please check your internet connection.',
+      REQUEST_TIMEOUT: 'Login request timed out. Please try again.',
+      INVALID_RESPONSE: 'A valid response was not received. Please try again.'
+    };
+    if (messages[code]) return messages[code];
+    if (code.includes('ACCOUNT_REVIEW')) return messages.ACCOUNT_REVIEW_REQUIRED;
+    if (code.includes('ACCOUNT_BLOCKED')) return messages.ACCOUNT_BLOCKED;
+    if (code.includes('ACCOUNT_REJECTED')) return messages.ACCOUNT_REJECTED;
+    if (code.includes('WRONG_PASSWORD') || code.includes('INVALID_CREDENTIAL')) return messages.WRONG_PASSWORD;
+    if (code.includes('WRONG_PIN')) return messages.WRONG_PIN;
+    if (code.includes('OTP') && code.includes('EXPIRED')) return messages.OTP_EXPIRED;
+    if (code.includes('OTP') && (code.includes('INVALID') || code.includes('INCORRECT'))) return messages.OTP_INVALID;
+    if (code.includes('PREAUTH') || code.includes('SESSION_EXPIRED')) return messages.SESSION_EXPIRED;
+    return fallback || 'Login could not be completed. Please try again.';
   }
 
   async function post(action, body, label) {
     if (state.navigationStarted) throw new DOMException('Navigation started', 'AbortError');
     const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 25000);
     activeRequests.add(controller);
     setBusy(true, label);
 
@@ -95,22 +148,36 @@
       try {
         json = JSON.parse(text);
       } catch (_) {
-        const parseError = new Error('A valid response was not received. Please try again.');
+        const parseError = new Error('Invalid response');
         parseError.code = 'INVALID_RESPONSE';
         throw parseError;
       }
       if (!response.ok || json?.ok !== true) {
-        const error = new Error(String(json?.message || 'Request failed'));
-        error.code = String(json?.code || 'REQUEST_FAILED');
-        error.status = response.status;
-        error.data = json?.data || {};
-        throw error;
+        const requestError = new Error('Backend request failed');
+        requestError.code = String(json?.code || 'REQUEST_FAILED');
+        requestError.status = response.status;
+        requestError.data = json?.data || {};
+        throw requestError;
       }
       return json.data || {};
+    } catch (error) {
+      if (timedOut) {
+        const timeoutError = new Error('Request timed out');
+        timeoutError.code = 'REQUEST_TIMEOUT';
+        throw timeoutError;
+      }
+      if (error?.name === 'AbortError') throw error;
+      if (!error?.code) error.code = 'NETWORK_ERROR';
+      throw error;
     } finally {
+      window.clearTimeout(timeoutId);
       activeRequests.delete(controller);
       setBusy(false);
     }
+  }
+
+  function countryLabel(country) {
+    return country === 'BD' ? 'Bangladesh (+880)' : 'Malaysia (+60)';
   }
 
   function validPhone(country, phone) {
@@ -160,13 +227,16 @@
   }
 
   function stepCopy(step) {
-    if (step === 'password') {
-      return ['Password', `Enter your password for ${state.phone}.`];
-    }
-    if (step === 'otp') {
-      return ['OTP Verification', 'Enter the code sent to your registered phone.'];
-    }
+    if (step === 'password') return ['Password', `Enter your password for ${state.phone}.`];
+    if (step === 'pin') return [`Welcome back, ${state.fullName || state.phone}`, 'Enter your PIN'];
+    if (step === 'otp') return ['OTP Verification', 'Enter the code sent to your registered phone.'];
     return ['Login', 'Enter your phone number to continue.'];
+  }
+
+  function focusVisible(input) {
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    window.setTimeout(() => input.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
   }
 
   function showStep(step, options = {}) {
@@ -180,15 +250,13 @@
     $('loginStepSubtitle').textContent = subtitle;
     $('loginStepBack').hidden = next === 'phone';
 
-    if (next === 'password') {
-      $('loginAccountPhone').textContent = state.phone;
-      window.setTimeout(() => focusVisible($('loginPassword')), 30);
-    } else if (next === 'otp') {
-      window.setTimeout(() => focusVisible($('loginOtpCode')), 30);
-    } else {
-      clearOtpTimer();
-      window.setTimeout(() => focusVisible($('loginPhone')), 30);
-    }
+    const focusTarget = {
+      phone: $('loginPhone'),
+      password: $('loginPassword'),
+      pin: $('loginPin'),
+      otp: $('loginOtpCode')
+    }[next];
+    window.setTimeout(() => focusVisible(focusTarget), 30);
 
     if (options.history === 'push') {
       history.pushState({ authStep: next }, '', window.location.href);
@@ -197,59 +265,81 @@
     }
   }
 
-  function resetOtpState() {
+  function resetOtpState(keepPreAuth = false) {
     clearOtpTimer();
-    state.preAuthToken = '';
     state.otpRequestId = '';
     state.maskedPhone = '';
     state.expiresAt = 0;
     $('loginOtpCode').value = '';
+    if (!keepPreAuth) {
+      state.preAuthToken = '';
+      state.pinVerified = false;
+    }
   }
 
-  function backStep() {
-    if (isFeedbackOpen()) {
-      closeFeedback();
-      return;
-    }
-    if (state.busyCount > 0) return;
-    if (state.step === 'otp') {
-      resetOtpState();
-      showStep('password');
-      return;
-    }
-    if (state.step === 'password') {
-      $('loginPassword').value = '';
-      showStep('phone');
-      return;
-    }
-    window.location.href = '/';
+  function resetAfterPassword() {
+    $('loginPin').value = '';
+    resetOtpState(false);
   }
 
-  function continuePhone() {
+  function resetAccountState() {
+    $('loginPassword').value = '';
+    resetAfterPassword();
+    state.phone = '';
+    state.fullName = '';
+  }
+
+  function browserMeta() {
+    return {
+      device_id: 'USER_WEB',
+      device_name: 'User Dashboard',
+      browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+    };
+  }
+
+  async function continuePhone() {
+    if (state.phoneInFlight || state.navigationStarted) return;
     const phone = $('loginPhone').value.trim();
-    const country = $('loginPhoneCountry').value.toUpperCase();
+    if (!state.countryReady || !['BD', 'MY'].includes(state.phoneCountry)) {
+      showFeedback('Phone country is still loading. Please try again.');
+      return;
+    }
     if (!phone) {
       showFeedback('Please enter your phone number.');
       return;
     }
-    if (!validPhone(country, phone)) {
-      showFeedback(country === 'MY' ? 'Please enter a valid Malaysia number.' : 'Please enter a valid Bangladesh number.');
+    if (!validPhone(state.phoneCountry, phone)) {
+      showFeedback(state.phoneCountry === 'MY'
+        ? 'Please enter a valid Malaysia phone number.'
+        : 'Please enter a valid Bangladesh phone number.');
       return;
     }
-    state.phone = phone;
-    state.phoneCountry = country;
-    showStep('password', { history: 'push' });
+
+    state.phoneInFlight = true;
+    $('loginPhoneContinue').disabled = true;
+    try {
+      const data = await post('login_check_number', {
+        phone,
+        phone_country: state.phoneCountry,
+        ...browserMeta()
+      }, 'Checking account...');
+      state.phone = String(data.phone || data.account || phone);
+      state.phoneCountry = String(data.phone_country || state.phoneCountry).toUpperCase();
+      state.fullName = String(data.name || data.user?.name || '').trim();
+      $('loginCountryDisplay').textContent = `Country: ${countryLabel(state.phoneCountry)}`;
+      $('loginPhoneCountry').value = state.phoneCountry;
+      resetAfterPassword();
+      showStep('password', { history: 'push' });
+    } catch (error) {
+      if (error?.name !== 'AbortError') showFeedback(safeErrorMessage(error, 'Account could not be verified.'));
+    } finally {
+      state.phoneInFlight = false;
+      if (!state.navigationStarted) $('loginPhoneContinue').disabled = !state.countryReady;
+    }
   }
 
-  function goToDashboard() {
-    if (state.navigationStarted) return;
-    state.navigationStarted = true;
-    clearLoginNavigationState();
-    window.location.replace('/user/dashboard');
-  }
-
-  async function login() {
-    if (state.loginInFlight || state.navigationStarted) return;
+  async function verifyPassword() {
+    if (state.passwordInFlight || state.navigationStarted) return;
     const password = $('loginPassword').value;
     if (!password) {
       showFeedback('Please enter your password.');
@@ -260,34 +350,95 @@
       return;
     }
 
-    state.loginInFlight = true;
+    state.passwordInFlight = true;
     $('loginPasswordContinue').disabled = true;
-    state.trustDevice = $('rememberTrustedDevice').checked;
     try {
-      const data = await post('login', {
+      const data = await post('login_verify_password', {
         phone: state.phone,
         phone_country: state.phoneCountry,
         password,
-        trust_device: state.trustDevice,
-        device_id: 'USER_WEB',
-        device_name: 'User Dashboard',
-        browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
-      }, 'Checking login...');
-
-      if (data.require_otp) {
-        setOtpData(data);
-        showStep('otp', { history: 'push' });
-      } else {
-        goToDashboard();
-      }
+        ...browserMeta()
+      }, 'Checking password...');
+      const token = String(data.pre_auth_token || '');
+      if (!token) throw Object.assign(new Error('Missing pre-auth token'), { code: 'INVALID_RESPONSE' });
+      state.preAuthToken = token;
+      state.fullName = String(data.user?.name || data.name || state.fullName || '').trim();
+      state.pinVerified = false;
+      $('loginPassword').value = '';
+      showStep('pin', { history: 'push' });
     } catch (error) {
-      if (!state.navigationStarted && error?.name !== 'AbortError') {
-        showFeedback(error.message || 'Login failed.');
-      }
+      $('loginPassword').value = '';
+      if (error?.name !== 'AbortError') showFeedback(safeErrorMessage(error, 'Password could not be verified.'));
     } finally {
-      state.loginInFlight = false;
+      state.passwordInFlight = false;
       if (!state.navigationStarted) $('loginPasswordContinue').disabled = false;
     }
+  }
+
+  async function sendLoginOtp() {
+    if (state.otpSendInFlight || state.navigationStarted) return;
+    state.otpSendInFlight = true;
+    try {
+      const data = await post('login_send_otp', {
+        pre_auth_token: state.preAuthToken
+      }, 'Sending OTP...');
+      if (!data.otp_request_id) throw Object.assign(new Error('Missing OTP request'), { code: 'INVALID_RESPONSE' });
+      setOtpData(data);
+      $('loginPin').value = '';
+      showStep('otp', { history: 'push' });
+    } catch (error) {
+      if (error?.name !== 'AbortError') showFeedback(safeErrorMessage(error, 'OTP could not be sent.'));
+    } finally {
+      state.otpSendInFlight = false;
+    }
+  }
+
+  async function verifyPin() {
+    if (state.pinInFlight || state.otpSendInFlight || state.navigationStarted) return;
+    const pin = $('loginPin').value.trim();
+    if (!/^\d{4}$/.test(pin)) {
+      showFeedback('Please enter your 4 digit PIN.');
+      return;
+    }
+    if (!state.preAuthToken) {
+      resetAfterPassword();
+      showStep('password');
+      showFeedback('Login verification expired. Please enter your password again.');
+      return;
+    }
+
+    if (state.pinVerified) {
+      await sendLoginOtp();
+      return;
+    }
+
+    state.pinInFlight = true;
+    $('loginPinContinue').disabled = true;
+    try {
+      const data = await post('login_verify_pin', {
+        pre_auth_token: state.preAuthToken,
+        pin,
+        force_otp: true,
+        ...browserMeta()
+      }, 'Checking PIN...');
+      state.preAuthToken = String(data.pre_auth_token || state.preAuthToken || '');
+      state.pinVerified = true;
+      $('loginPin').value = '';
+      await sendLoginOtp();
+    } catch (error) {
+      $('loginPin').value = '';
+      if (error?.name !== 'AbortError') showFeedback(safeErrorMessage(error, 'PIN could not be verified.'));
+    } finally {
+      state.pinInFlight = false;
+      if (!state.navigationStarted) $('loginPinContinue').disabled = false;
+    }
+  }
+
+  function goToDashboard() {
+    if (state.navigationStarted) return;
+    state.navigationStarted = true;
+    clearLoginNavigationState();
+    window.location.replace('/user/dashboard');
   }
 
   async function verifyOtp() {
@@ -295,15 +446,14 @@
     const otp = $('loginOtpCode').value.trim();
     if (!state.preAuthToken || !state.otpRequestId) {
       showFeedback('Login verification expired. Please start again.');
-      showStep('phone');
       return;
     }
     if (Date.now() >= state.expiresAt) {
       showFeedback('OTP expired. Resend OTP to continue.');
       return;
     }
-    if (!/^\d{4,6}$/.test(otp)) {
-      showFeedback('Please enter the OTP sent to your phone.');
+    if (!/^\d{6}$/.test(otp)) {
+      showFeedback('Please enter the 6 digit OTP sent to your phone.');
       return;
     }
 
@@ -314,16 +464,13 @@
         pre_auth_token: state.preAuthToken,
         otp_request_id: state.otpRequestId,
         otp,
-        trust_device: state.trustDevice,
-        device_id: 'USER_WEB',
-        device_name: 'User Dashboard'
+        trust_device: true,
+        ...browserMeta()
       }, 'Verifying OTP...');
       goToDashboard();
     } catch (error) {
-      if (!state.navigationStarted && error?.name !== 'AbortError') {
-        $('loginOtpCode').value = '';
-        showFeedback(error.message || 'OTP verification failed.');
-      }
+      $('loginOtpCode').value = '';
+      if (error?.name !== 'AbortError') showFeedback(safeErrorMessage(error, 'OTP verification failed.'));
     } finally {
       state.verifyInFlight = false;
       if (!state.navigationStarted) updateOtpCountdown();
@@ -346,42 +493,54 @@
       setOtpData(data);
       $('loginOtpStatus').textContent = 'A new OTP was sent. The previous code is no longer valid.';
     } catch (error) {
-      if (!state.navigationStarted && error?.name !== 'AbortError') {
-        showFeedback(error.message || 'OTP could not be resent.');
-      }
+      if (error?.name !== 'AbortError') showFeedback(safeErrorMessage(error, 'OTP could not be resent.'));
     } finally {
       state.resendInFlight = false;
       updateOtpCountdown();
     }
   }
 
-  function updateCountryUi() {
-    const country = $('loginPhoneCountry').value.toUpperCase();
-    $('loginPhone').placeholder = country === 'MY'
-      ? '01XXXXXXXX or +60XXXXXXXXX'
-      : '01XXXXXXXXX or +8801XXXXXXXXX';
-  }
-
   async function loadCountryDefault() {
+    $('loginPhoneContinue').disabled = true;
     try {
       const data = await post('country_defaults', {}, 'Detecting country...');
-      const country = String(data.phone_country || 'MY').toUpperCase();
-      if (['BD', 'MY'].includes(country)) $('loginPhoneCountry').value = country;
-    } catch (_) {
-      // Keep the server-compatible fallback country.
+      const country = String(data.phone_country || '').toUpperCase();
+      if (!['BD', 'MY'].includes(country)) throw Object.assign(new Error('Country unavailable'), { code: 'INVALID_RESPONSE' });
+      state.phoneCountry = country;
+      state.countryReady = true;
+      $('loginPhoneCountry').value = country;
+      $('loginCountryDisplay').textContent = `Country: ${countryLabel(country)}`;
+      $('loginPhoneContinue').disabled = false;
+    } catch (error) {
+      state.countryReady = false;
+      $('loginCountryDisplay').textContent = 'Country: Unavailable';
+      showFeedback(safeErrorMessage(error, 'Phone country could not be detected. Please reload the page.'));
     }
-    updateCountryUi();
   }
 
-  function focusVisible(input) {
-    if (!input) return;
-    input.focus({ preventScroll: true });
-    window.setTimeout(() => input.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+  function backStep() {
+    if (state.step === 'otp') {
+      resetOtpState(true);
+      $('loginPin').value = '';
+      showStep('pin');
+      return;
+    }
+    if (state.step === 'pin') {
+      resetAfterPassword();
+      showStep('password');
+      return;
+    }
+    if (state.step === 'password') {
+      resetAccountState();
+      showStep('phone');
+      return;
+    }
+    window.location.href = '/';
   }
 
   function handleFocus(event) {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLSelectElement)) return;
+    if (!(target instanceof HTMLInputElement) || target.type === 'hidden') return;
     window.setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120);
   }
 
@@ -391,10 +550,14 @@
     closeFeedback();
     activeRequests.forEach((controller) => controller.abort());
     activeRequests.clear();
+    $('loginPassword').value = '';
+    $('loginPin').value = '';
+    $('loginOtpCode').value = '';
   }
 
   $('loginPhoneContinue').addEventListener('click', continuePhone);
-  $('loginPasswordContinue').addEventListener('click', login);
+  $('loginPasswordContinue').addEventListener('click', verifyPassword);
+  $('loginPinContinue').addEventListener('click', verifyPin);
   $('verifyLoginOtpBtn').addEventListener('click', verifyOtp);
   $('resendLoginOtpBtn').addEventListener('click', resendOtp);
   $('loginStepBack').addEventListener('click', () => history.back());
@@ -402,9 +565,9 @@
   $('loginFeedbackModal').addEventListener('click', (event) => {
     if (event.target === $('loginFeedbackModal')) closeFeedback();
   });
-  $('loginPhoneCountry').addEventListener('change', updateCountryUi);
   $('loginPhone').addEventListener('keydown', (event) => { if (event.key === 'Enter') continuePhone(); });
-  $('loginPassword').addEventListener('keydown', (event) => { if (event.key === 'Enter') login(); });
+  $('loginPassword').addEventListener('keydown', (event) => { if (event.key === 'Enter') verifyPassword(); });
+  $('loginPin').addEventListener('keydown', (event) => { if (event.key === 'Enter') verifyPin(); });
   $('loginOtpCode').addEventListener('keydown', (event) => { if (event.key === 'Enter') verifyOtp(); });
   document.addEventListener('focusin', handleFocus);
 
@@ -414,9 +577,15 @@
       history.pushState({ authStep: state.step }, '', window.location.href);
       return;
     }
+    if (state.busyCount > 0) {
+      history.pushState({ authStep: state.step }, '', window.location.href);
+      return;
+    }
     const requested = event.state?.authStep;
     if (stepOrder.includes(requested)) {
-      if (state.step === 'otp' && requested !== 'otp') resetOtpState();
+      if (state.step === 'otp' && requested === 'pin') resetOtpState(true);
+      if (state.step === 'pin' && requested === 'password') resetAfterPassword();
+      if (state.step === 'password' && requested === 'phone') resetAccountState();
       showStep(requested);
       return;
     }
@@ -427,12 +596,17 @@
   window.addEventListener('pageshow', (event) => {
     if (!event.persisted) return;
     state.navigationStarted = false;
-    state.loginInFlight = false;
+    state.phoneInFlight = false;
+    state.passwordInFlight = false;
+    state.pinInFlight = false;
+    state.otpSendInFlight = false;
     state.verifyInFlight = false;
     state.resendInFlight = false;
-    $('loginPasswordContinue').disabled = false;
     resetLoginLoading();
     closeFeedback();
+    $('loginPhoneContinue').disabled = !state.countryReady;
+    $('loginPasswordContinue').disabled = false;
+    $('loginPinContinue').disabled = false;
   });
 
   resetLoginLoading();

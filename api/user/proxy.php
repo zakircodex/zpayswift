@@ -3807,6 +3807,88 @@ switch ($action) {
         );
         break;
 
+    case 'login_check_number':
+        user_proxy_require_method('POST');
+
+        $body = user_proxy_read_json_body();
+        $phone = trim((string)($body['phone'] ?? ''));
+        $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+
+        if ($phone === '' || !in_array($phoneCountry, ['BD', 'MY'], true)) {
+            user_proxy_response(false, 'VALIDATION_ERROR', 'A valid phone and phone country are required', [], 422);
+        }
+
+        user_proxy_forward_auth_post('auth/check_number.php', [
+            'phone' => $phone,
+            'phone_country' => $phoneCountry,
+            'country_code' => $phoneCountry === 'BD' ? '+880' : '+60',
+            'device_id' => 'USER_WEB',
+            'device_name' => 'User Dashboard',
+            'app_version' => 'WEB',
+            'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
+        ], 'ACCOUNT_CHECK_FAILED', 'Account could not be verified');
+        break;
+
+    case 'login_verify_password':
+        user_proxy_require_method('POST');
+
+        $body = user_proxy_read_json_body();
+        $phone = trim((string)($body['phone'] ?? ''));
+        $password = (string)($body['password'] ?? '');
+        $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+
+        if ($phone === '' || $password === '' || !in_array($phoneCountry, ['BD', 'MY'], true)) {
+            user_proxy_response(false, 'VALIDATION_ERROR', 'Phone, phone country and password are required', [], 422);
+        }
+
+        user_proxy_forward_auth_post('auth/verify_password.php', [
+            'phone' => $phone,
+            'phone_country' => $phoneCountry,
+            'country_code' => $phoneCountry === 'BD' ? '+880' : '+60',
+            'password' => $password,
+            'device_id' => 'USER_WEB',
+            'device_name' => 'User Dashboard',
+            'app_version' => 'WEB',
+            'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
+        ], 'PASSWORD_VERIFY_FAILED', 'Password could not be verified');
+        break;
+
+    case 'login_verify_pin':
+        user_proxy_require_method('POST');
+
+        $body = user_proxy_read_json_body();
+        $preAuthToken = trim((string)($body['pre_auth_token'] ?? ''));
+        $pin = trim((string)($body['pin'] ?? ''));
+
+        if ($preAuthToken === '' || !preg_match('/^\d{4}$/', $pin)) {
+            user_proxy_response(false, 'VALIDATION_ERROR', 'A valid login verification and 4 digit PIN are required', [], 422);
+        }
+
+        user_proxy_forward_auth_post('auth/verify_pin.php', [
+            'pre_auth_token' => $preAuthToken,
+            'pin' => $pin,
+            'device_id' => 'USER_WEB',
+            'device_name' => 'User Dashboard',
+            'app_version' => 'WEB',
+            'force_otp' => true,
+        ], 'PIN_VERIFY_FAILED', 'PIN could not be verified');
+        break;
+
+    case 'login_send_otp':
+        user_proxy_require_method('POST');
+
+        $body = user_proxy_read_json_body();
+        $preAuthToken = trim((string)($body['pre_auth_token'] ?? ''));
+
+        if ($preAuthToken === '') {
+            user_proxy_response(false, 'VALIDATION_ERROR', 'Login verification is required before OTP', [], 422);
+        }
+
+        user_proxy_forward_auth_post('auth/login_send_otp.php', [
+            'pre_auth_token' => $preAuthToken,
+        ], 'OTP_SEND_FAILED', 'OTP could not be sent');
+        break;
+
     case 'login':
         user_proxy_require_method('POST');
 

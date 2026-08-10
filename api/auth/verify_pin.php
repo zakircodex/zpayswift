@@ -34,6 +34,7 @@ if (in_array($purpose, ['TOPUP', 'ZPAY_TRANSFER', 'BUNDLE'], true)) {
 $preAuthToken = trim((string)($body['pre_auth_token'] ?? ''));
 $deviceId = auth_app_device_id($body, (string)($body['device_id'] ?? 'ANDROID_APP'));
 $deviceName = auth_app_device_name($body);
+$forceOtp = auth_app_bool($body['force_otp'] ?? false);
 
 if ($pin === '') {
     api_response(false, 'VALIDATION_ERROR', 'PIN is required.', [], 422);
@@ -57,7 +58,7 @@ if (!auth_app_pin_ok($user, $pin)) {
     api_response(false, 'WRONG_PIN', 'PIN ভুল হয়েছে।', [], 401);
 }
 
-$trusted = auth_app_trusted_login_allowed($uid, $deviceId);
+$trusted = !$forceOtp && auth_app_trusted_login_allowed($uid, $deviceId);
 $now = now_ts();
 $patch = [
     'pin_verified' => true,

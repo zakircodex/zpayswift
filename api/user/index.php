@@ -39,45 +39,38 @@ $loginJsVersion = (string)(filemtime(__DIR__ . '/assets/pages/login-page.js') ?:
     </header>
 
     <div class="login-step" id="loginPhoneStep" data-login-step="phone">
-      <label class="login-country-card" for="loginPhoneCountry">
-        <span>Country</span>
-        <select id="loginPhoneCountry" aria-label="Phone country">
-          <option value="BD">Bangladesh (+880)</option>
-          <option value="MY">Malaysia (+60)</option>
-        </select>
-      </label>
+      <div class="login-country-card" aria-label="Detected phone country">
+        <strong id="loginCountryDisplay">Country: Detecting...</strong>
+        <input id="loginPhoneCountry" type="hidden" value="">
+      </div>
 
       <label class="login-field" for="loginPhone">
-        <span>Phone Number</span>
-        <input id="loginPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="01XXXXXXXXX">
+        <span class="login-visually-hidden">Phone Number</span>
+        <input id="loginPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Phone number">
       </label>
 
-      <button id="loginPhoneContinue" class="login-primary" type="button">Continue</button>
+      <button id="loginPhoneContinue" class="login-primary" type="button" disabled>Continue</button>
 
       <nav class="login-links" aria-label="User account links">
         <a href="/user/register">Register</a>
-        <span aria-hidden="true"></span>
         <a href="/user/forgot">Forgot</a>
       </nav>
     </div>
 
     <div class="login-step" id="loginPasswordStep" data-login-step="password" hidden>
-      <div class="login-account-summary">
-        <span>Signing in as</span>
-        <strong id="loginAccountPhone">-</strong>
-      </div>
-
       <label class="login-field" for="loginPassword">
-        <span>Password</span>
-        <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Enter password">
+        <span class="login-visually-hidden">Password</span>
+        <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Password">
       </label>
-
-      <label class="login-trust-row" for="rememberTrustedDevice">
-        <input type="checkbox" id="rememberTrustedDevice" checked>
-        <span>Trust this browser after OTP verification</span>
-      </label>
-
       <button id="loginPasswordContinue" class="login-primary" type="button">Continue</button>
+    </div>
+
+    <div class="login-step" id="loginPinStep" data-login-step="pin" hidden>
+      <label class="login-field" for="loginPin">
+        <span class="login-visually-hidden">Transaction PIN</span>
+        <input id="loginPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="Transaction PIN">
+      </label>
+      <button id="loginPinContinue" class="login-primary" type="button">Continue</button>
     </div>
 
     <div class="login-step" id="loginOtpStep" data-login-step="otp" hidden>

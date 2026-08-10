@@ -17,6 +17,76 @@ if ($path === '/test/support-viewport') {
 
 if ($path === '/api/user/proxy.php') {
     $action = trim((string)($_GET['action'] ?? ''));
+    $authBody = json_decode((string)file_get_contents('php://input'), true);
+    $authBody = is_array($authBody) ? $authBody : [];
+    if ($action === 'login_check_number' && trim((string)($authBody['phone'] ?? '')) === '0120000000') {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'code' => 'ACCOUNT_NOT_FOUND', 'message' => 'Local account not found', 'data' => []]);
+        exit;
+    }
+    if ($action === 'login_verify_password' && (string)($authBody['password'] ?? '') !== 'correct-password') {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(401);
+        echo json_encode(['ok' => false, 'code' => 'WRONG_PASSWORD', 'message' => 'Local wrong password', 'data' => []]);
+        exit;
+    }
+    if ($action === 'login_verify_pin' && (string)($authBody['pin'] ?? '') !== '1234') {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(401);
+        echo json_encode(['ok' => false, 'code' => 'WRONG_PIN', 'message' => 'Local wrong PIN', 'data' => []]);
+        exit;
+    }
+    if ($action === 'login_verify_otp' && (string)($authBody['otp'] ?? '') !== '123456') {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(422);
+        echo json_encode(['ok' => false, 'code' => 'OTP_INVALID', 'message' => 'Local wrong OTP', 'data' => []]);
+        exit;
+    }
+    $authResponses = [
+        'country_defaults' => [
+            'phone_country' => 'MY',
+            'pricing_country' => 'MY',
+            'currency' => 'MYR',
+        ],
+        'login_check_number' => [
+            'exists' => true,
+            'phone' => '60123456789',
+            'phone_country' => 'MY',
+            'name' => 'LOCAL TEST USER',
+            'account_status' => 'ACTIVE',
+        ],
+        'login_verify_password' => [
+            'pre_auth_token' => 'LOCAL-PREAUTH',
+            'user' => ['name' => 'LOCAL TEST USER'],
+        ],
+        'login_verify_pin' => [
+            'pre_auth_token' => 'LOCAL-PREAUTH',
+            'otp_required' => true,
+        ],
+        'login_send_otp' => [
+            'pre_auth_token' => 'LOCAL-PREAUTH',
+            'otp_request_id' => 'LOCAL-OTP-REQUEST',
+            'masked_phone' => '601*****789',
+            'expires_in_seconds' => 300,
+        ],
+        'login_resend_otp' => [
+            'pre_auth_token' => 'LOCAL-PREAUTH',
+            'otp_request_id' => 'LOCAL-OTP-REQUEST-2',
+            'masked_phone' => '601*****789',
+            'expires_in_seconds' => 300,
+        ],
+        'login_verify_otp' => [
+            'login_complete' => true,
+            'session_active' => true,
+            'redirect' => 'dashboard',
+        ],
+    ];
+    if (isset($authResponses[$action])) {
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['ok' => true, 'code' => 'SUCCESS', 'message' => 'Local auth response', 'data' => $authResponses[$action]]);
+        exit;
+    }
     if ($action === 'support_attachment') {
         header('Content-Type: image/png');
         header('Cache-Control: private, no-store');

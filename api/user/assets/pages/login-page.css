@@ -19,9 +19,9 @@ body.user-login-page {
   font-family: Arial, Helvetica, sans-serif;
   background: var(--login-bg);
 }
-button, input, select { font: inherit; }
-button, a, input, select { -webkit-tap-highlight-color: transparent; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+button, input { font: inherit; }
+button, a, input { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible {
   outline: 3px solid rgba(49, 225, 132, .38);
   outline-offset: 2px;
 }
@@ -45,8 +45,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .user-login-page .login-card {
   position: relative;
   width: min(100%, 430px);
-  min-height: 520px;
-  padding: 26px 24px 24px;
+  min-height: 0;
+  padding: 32px 28px 28px;
   overflow: hidden;
   border: 1px solid var(--login-line);
   border-radius: 30px;
@@ -76,30 +76,35 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .user-login-page .login-brand { text-align: center; }
 .user-login-page .login-logo {
   display: block;
-  width: 84px;
-  height: 84px;
-  margin: 2px auto 12px;
-  border: 2px solid rgba(49, 225, 132, .74);
-  border-radius: 50%;
-  box-shadow: 0 0 0 6px rgba(49, 225, 132, .08);
+  width: 92px !important;
+  height: 92px !important;
+  min-width: 92px;
+  margin: 0 auto 18px;
+  border: 0;
+  border-radius: 20px !important;
+  object-fit: contain;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .2) !important;
 }
-.user-login-page .login-product { font-size: 25px; font-weight: 900; }
+.user-login-page .login-product { font-size: 30px; font-weight: 900; }
 .user-login-page .login-brand h1 {
-  margin: 18px 0 7px;
-  font-size: 30px;
-  line-height: 1.1;
+  margin: 28px 0 7px;
+  font-size: 27px;
+  line-height: 1.2;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 .user-login-page .login-brand p {
-  min-height: 40px;
-  margin: 0 auto 21px;
+  min-height: 0;
+  margin: 0 auto 24px;
   color: var(--login-muted);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.45;
+  text-align: left;
+  overflow-wrap: anywhere;
 }
 
 .user-login-page .login-step[hidden] { display: none; }
 .user-login-page .login-country-card,
-.user-login-page .login-account-summary,
 .user-login-page .login-otp-summary {
   width: 100%;
   min-height: 60px;
@@ -114,24 +119,22 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   background: rgba(7, 29, 56, .82);
 }
 .user-login-page .login-country-card > span,
-.user-login-page .login-account-summary > span,
 .user-login-page .login-otp-summary > span {
   color: var(--login-muted);
   font-size: 13px;
   font-weight: 800;
 }
-.user-login-page .login-country-card select {
-  min-width: 0;
-  max-width: 68%;
-  border: 0;
-  color: var(--login-text);
-  background: transparent;
-  font-weight: 850;
-  text-align: right;
-  outline: 0;
+.user-login-page .login-country-card {
+  min-height: 70px;
+  justify-content: flex-start;
+  padding-inline: 20px;
 }
-.user-login-page .login-country-card option { color: #07172f; background: #fff; }
-.user-login-page .login-account-summary strong { overflow-wrap: anywhere; text-align: right; }
+.user-login-page .login-country-card strong {
+  color: #d8e6f7;
+  font-size: 17px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
 .user-login-page .login-otp-summary {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -146,6 +149,17 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 
 .user-login-page .login-field { display: block; margin-bottom: 15px; }
+.user-login-page .login-visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
 .user-login-page .login-field > span {
   display: block;
   margin: 0 0 8px 3px;
@@ -197,34 +211,25 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 .user-login-page .login-links {
   display: grid;
-  grid-template-columns: 1fr 1px 1fr;
+  grid-template-columns: 1fr 1fr;
   align-items: center;
   gap: 12px;
-  margin-top: 21px;
+  margin-top: 16px;
 }
-.user-login-page .login-links span { width: 1px; height: 24px; background: var(--login-line); }
 .user-login-page .login-links a {
+  min-height: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid var(--login-line);
+  border-radius: 18px;
   color: #dce9f8;
-  font-size: 14px;
+  background: rgba(15, 52, 91, .82);
+  font-size: 15px;
   font-weight: 850;
   text-align: center;
   text-decoration: none;
-}
-.user-login-page .login-trust-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 2px 2px 17px;
-  color: var(--login-muted);
-  font-size: 13px;
-  line-height: 1.4;
-}
-.user-login-page .login-trust-row input {
-  width: 18px;
-  height: 18px;
-  flex: 0 0 18px;
-  margin: 0;
-  accent-color: var(--login-green-dark);
 }
 .user-login-page .login-status {
   margin: 0 0 14px;
@@ -299,17 +304,18 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 @media (max-width: 359px) {
   .user-login-page .login-wrap { padding-inline: 10px; }
-  .user-login-page .login-card { min-height: 500px; padding: 22px 17px 20px; border-radius: 26px; }
-  .user-login-page .login-logo { width: 72px; height: 72px; }
-  .user-login-page .login-product { font-size: 23px; }
-  .user-login-page .login-brand h1 { font-size: 27px; }
-  .user-login-page .login-country-card select { font-size: 13px; }
+  .user-login-page .login-card { padding: 25px 17px 21px; border-radius: 26px; }
+  .user-login-page .login-logo { width: 78px !important; height: 78px !important; min-width: 78px; border-radius: 18px !important; }
+  .user-login-page .login-product { font-size: 26px; }
+  .user-login-page .login-brand h1 { margin-top: 23px; font-size: 24px; }
+  .user-login-page .login-brand p { font-size: 14px; }
+  .user-login-page .login-country-card strong { font-size: 15px; }
+  .user-login-page .login-links { gap: 9px; }
 }
 
 @media (max-height: 650px) {
   .user-login-page .login-wrap { align-items: flex-start; }
-  .user-login-page .login-card { min-height: 0; }
-  .user-login-page .login-logo { width: 68px; height: 68px; }
+  .user-login-page .login-logo { width: 68px !important; height: 68px !important; min-width: 68px; }
   .user-login-page .login-brand h1 { margin-top: 12px; }
 }
 
