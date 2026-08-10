@@ -90,9 +90,6 @@
     document.querySelector('[data-dashboard-action="shopping"]')?.addEventListener('click', () => {
       shell.toast('Shopping is not available yet.', 'info');
     });
-    document.querySelector('[data-dashboard-action="info"]')?.addEventListener('click', () => {
-      shell.toast('Z-Pay Swift Web User Panel', 'info');
-    });
   }
 
   function hasOpenModal() {

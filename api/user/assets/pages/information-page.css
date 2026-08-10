@@ -1,0 +1,422 @@
+/* Android-aligned, page-local Information experience. */
+body.user-info-page {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.user-info-page #appView,
+.user-info-page .app-shell,
+.user-info-page .main-panel {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.user-info-page .main-panel {
+  max-width: none;
+  padding: 0;
+}
+
+.user-info-page .user-page-content {
+  width: min(100%, 560px);
+  height: 100%;
+  min-height: 0;
+  margin: 0 auto;
+  padding: 10px 12px calc(var(--z-nav-height) + 14px + env(safe-area-inset-bottom));
+  overflow: hidden;
+}
+
+.user-info-page #informationSection,
+.user-info-page .information-page-shell {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.user-info-page .information-page-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+}
+
+.user-info-page .information-page-header {
+  min-height: 82px;
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 18px;
+  border: 1px solid rgba(117, 156, 215, 0.36);
+  border-radius: 27px;
+  background:
+    radial-gradient(circle at 86% 18%, rgba(50, 230, 134, 0.15), transparent 34%),
+    linear-gradient(135deg, rgba(18, 64, 131, 0.98), rgba(8, 39, 83, 0.99));
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.24);
+}
+
+.user-info-page .information-page-header h1 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.15;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-info-page .information-header-button {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #fff;
+  background: transparent;
+  cursor: pointer;
+  transition: background 150ms ease, transform 150ms ease;
+}
+
+.user-info-page .information-header-button:hover,
+.user-info-page .information-header-button:focus-visible {
+  outline: 2px solid rgba(50, 230, 134, 0.72);
+  outline-offset: 2px;
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.user-info-page .information-header-button:active {
+  transform: scale(0.96);
+}
+
+.user-info-page .information-header-button svg {
+  width: 29px;
+  height: 29px;
+  fill: currentColor;
+}
+
+.user-info-page .information-scroll-body {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 0 24px;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.user-info-page .information-scroll-body::-webkit-scrollbar {
+  display: none;
+}
+
+.user-info-page .information-content {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+}
+
+.user-info-page .information-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid rgba(117, 156, 215, 0.34);
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(18, 53, 99, 0.97), rgba(10, 36, 74, 0.98));
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.2);
+}
+
+.user-info-page .information-card > h2 {
+  margin: 0 0 12px;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.user-info-page .information-intro-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.user-info-page .information-intro-card img {
+  width: 84px;
+  height: 84px;
+  display: block;
+  object-fit: contain;
+  border-radius: 20px;
+}
+
+.user-info-page .information-intro-card h2 {
+  margin: 8px 0 3px;
+  font-size: 26px;
+}
+
+.user-info-page .information-intro-card > strong {
+  color: var(--z-green);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.user-info-page .information-intro-card p {
+  max-width: 390px;
+  margin: 9px 0 0;
+  color: var(--z-muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.user-info-page .information-service-list,
+.user-info-page .information-step-list,
+.user-info-page .information-app-rows,
+.user-info-page .information-action-list {
+  display: grid;
+  gap: 8px;
+}
+
+.user-info-page .information-service-row {
+  min-width: 0;
+  min-height: 68px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 13px;
+  border: 1px solid rgba(121, 151, 193, 0.5);
+  border-radius: 18px;
+  color: #fff;
+  background: rgba(24, 48, 83, 0.92);
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.user-info-page .information-service-row:hover,
+.user-info-page .information-service-row:focus-visible {
+  outline: none;
+  border-color: rgba(50, 230, 134, 0.72);
+  background: rgba(27, 58, 99, 0.98);
+}
+
+.user-info-page .information-service-row:active {
+  transform: scale(0.99);
+}
+
+.user-info-page .information-service-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: var(--z-green);
+  background: rgba(50, 230, 134, 0.1);
+}
+
+.user-info-page .information-service-icon svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.user-info-page .information-service-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.user-info-page .information-service-copy strong {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.25;
+}
+
+.user-info-page .information-service-copy small {
+  color: var(--z-muted);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.user-info-page .information-row-arrow {
+  color: var(--z-green);
+  font-size: 29px;
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+}
+
+.user-info-page .information-step-row {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid rgba(121, 151, 193, 0.5);
+  border-radius: 18px;
+  background: rgba(24, 48, 83, 0.92);
+}
+
+.user-info-page .information-step-row > span {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #07182c;
+  background: var(--z-green);
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.user-info-page .information-step-row p,
+.user-info-page .information-bullet-row p {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.user-info-page .information-step-row p {
+  color: #fff;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.user-info-page .information-bullet-list {
+  display: grid;
+  gap: 9px;
+}
+
+.user-info-page .information-bullet-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+
+.user-info-page .information-bullet-row i {
+  width: 7px;
+  height: 7px;
+  margin-top: 7px;
+  border-radius: 50%;
+  background: var(--z-green);
+  box-shadow: 0 0 10px rgba(50, 230, 134, 0.4);
+}
+
+.user-info-page .information-bullet-row p {
+  color: var(--z-muted);
+  font-size: 14px;
+  line-height: 1.48;
+}
+
+.user-info-page .information-action-button {
+  min-height: 52px;
+  display: grid;
+  place-items: center;
+  padding: 10px 16px;
+  border: 1px solid rgba(117, 156, 215, 0.5);
+  border-radius: 18px;
+  color: #fff;
+  background: rgba(24, 52, 91, 0.96);
+  font-size: 15px;
+  font-weight: 850;
+  text-align: center;
+  transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+
+.user-info-page .information-action-button.primary {
+  border-color: var(--z-green);
+  color: #07182c;
+  background: var(--z-green);
+}
+
+.user-info-page .information-action-button:hover,
+.user-info-page .information-action-button:focus-visible {
+  outline: 2px solid rgba(50, 230, 134, 0.64);
+  outline-offset: 2px;
+}
+
+.user-info-page .information-action-button:active {
+  transform: scale(0.99);
+}
+
+.user-info-page .information-app-row {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid rgba(121, 151, 193, 0.5);
+  border-radius: 18px;
+  background: rgba(24, 48, 83, 0.92);
+}
+
+.user-info-page .information-app-row small {
+  color: var(--z-muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.user-info-page .information-app-row strong {
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.user-info-page .information-policy-actions {
+  margin-top: 12px;
+}
+
+@media (max-width: 359px) {
+  .user-info-page .user-page-content {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .user-info-page .information-page-header {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    min-height: 76px;
+    padding: 11px 12px;
+    border-radius: 24px;
+  }
+
+  .user-info-page .information-page-header h1 {
+    font-size: 21px;
+  }
+
+  .user-info-page .information-card {
+    padding: 16px;
+    border-radius: 21px;
+  }
+
+  .user-info-page .information-service-row {
+    grid-template-columns: 38px minmax(0, 1fr) 16px;
+    gap: 9px;
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .user-info-page .information-service-icon {
+    width: 36px;
+    height: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .user-info-page .information-header-button,
+  .user-info-page .information-service-row,
+  .user-info-page .information-action-button {
+    scroll-behavior: auto;
+    transition: none;
+  }
+}

@@ -61,6 +61,8 @@ DirectoryIndex index.html
   RewriteRule ^user/nagad/?$ /api/user/nagad.php [L,QSA,NC]
   RewriteRule ^user/history/?$ /api/user/history.php [L,QSA,NC]
   RewriteRule ^user/services/?$ /api/user/services.php [L,QSA,NC]
+  RewriteRule ^user/information/?$ /api/user/information.php [L,QSA,NC]
+  RewriteRule ^user/info/?$ /api/user/information.php [L,QSA,NC]
   RewriteRule ^user/notifications/?$ /api/user/notifications.php [L,QSA,NC]
   RewriteRule ^user/profile/?$ /api/user/profile.php [L,QSA,NC]
   RewriteRule ^user/contact-us/?$ /api/user/contact-us.php [L,QSA,NC]

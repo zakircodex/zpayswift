@@ -31,6 +31,7 @@ $routes = [
     'nagad' => 'nagad.php',
     'history' => 'history.php',
     'services' => 'services.php',
+    'information' => 'information.php',
     'notifications' => 'notifications.php',
     'profile' => 'profile.php',
     'contact-us' => 'contact-us.php',
@@ -100,6 +101,7 @@ foreach ([
     'z-pay-transfer' => 'transfer.php',
     'bundles' => 'bundle.php',
     'send-money' => 'bkash.php',
+    'info' => 'information.php',
 ] as $alias => $file) {
     architecture_expect(
         preg_match(
