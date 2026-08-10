@@ -5162,6 +5162,13 @@ switch ($action) {
             'request_id' => $otpRequestId,
             'otp' => $otp,
             'reset_type' => $resetType,
+            'identity_number' => trim((string)(
+                $body['identity_number']
+                ?? $body['nid_or_passport_number']
+                ?? $body['nid_number']
+                ?? $body['passport_number']
+                ?? ''
+            )),
         ];
 
         if ($resetType === 'PIN') {

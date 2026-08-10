@@ -3,144 +3,144 @@ declare(strict_types=1);
 
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Pragma: no-cache');
+$forgotCssVersion = (string)(filemtime(__DIR__ . '/assets/forgot.css') ?: 1);
+$forgotJsVersion = (string)(filemtime(__DIR__ . '/assets/forgot.js') ?: 1);
 ?>
 <!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#07172f">
-  <title>Recover Z-Pay Swift User Account</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#06162c">
+  <title>Forgot Password &amp; PIN | Z-Pay Swift</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
-  <link rel="stylesheet" href="/api/user/assets/forgot.css?v=1">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
-  <link rel="stylesheet" href="/api/user/assets/user-app.css?v=1">
+  <link rel="stylesheet" href="/api/user/assets/forgot.css?v=<?= htmlspecialchars($forgotCssVersion, ENT_QUOTES, 'UTF-8') ?>">
 </head>
-<body class="user-auth-page">
+<body class="user-forgot-page">
+<main class="forgot-page" id="forgotPageRoot">
+  <section class="forgot-card" aria-labelledby="forgotTitle">
+    <button id="forgotBackButton" class="forgot-back" type="button" aria-label="Back">&larr;</button>
 
-<div class="page">
-  <div class="card">
-    <div class="brand">
-      <img class="logo brand-icon" src="/assets/brand/zpay-icon.png" alt="">
-      <div>
-        <h1>Recover Account</h1>
-        <p>Reset your password or transaction PIN with OTP verification</p>
+    <header class="forgot-brand">
+      <img class="forgot-logo brand-icon" src="/assets/brand/zpay-icon.png" alt="Z-Pay Swift">
+      <h1 id="forgotTitle">Forgot Password &amp; PIN</h1>
+      <p id="forgotStepDescription">Step 1: Enter your phone number.</p>
+    </header>
+
+    <div class="forgot-progress" aria-label="Recovery progress">
+      <span class="active"></span><span></span><span></span><span></span>
+    </div>
+
+    <div class="forgot-step" data-forgot-step="phone">
+      <div class="forgot-type-grid" role="group" aria-label="Reset type">
+        <button id="typePasswordBtn" class="active" type="button">Password</button>
+        <button id="typePinBtn" type="button">PIN</button>
       </div>
+      <input id="resetType" type="hidden" value="PASSWORD">
+
+      <label class="forgot-country-card" for="forgotPhoneCountry">
+        <span>Country</span>
+        <select id="forgotPhoneCountry">
+          <option value="BD">Bangladesh (+880)</option>
+          <option value="MY">Malaysia (+60)</option>
+        </select>
+      </label>
+
+      <label class="forgot-field" for="forgotPhone">
+        <span>Phone Number</span>
+        <input id="forgotPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="01XXXXXXXXX">
+      </label>
+      <button id="forgotPhoneContinue" class="forgot-primary" type="button">Continue</button>
     </div>
 
-    <div id="forgotError" class="alert error hidden"></div>
-    <div id="forgotSuccess" class="alert success hidden"></div>
-
-    <div class="type-grid">
-      <button id="typePasswordBtn" class="type-btn active" type="button">Password</button>
-      <button id="typePinBtn" class="type-btn" type="button">PIN</button>
-    </div>
-
-    <input id="resetType" type="hidden" value="PASSWORD">
-
-    <div class="field">
-      <label>Phone Country</label>
-      <select id="forgotPhoneCountry" class="input">
-        <option value="BD">Bangladesh (+880)</option>
-        <option value="MY">Malaysia (+60)</option>
-      </select>
-      <small class="field-help">OTP gateway is selected from this country.</small>
-    </div>
-
-    <div class="field">
-      <label>Phone Number</label>
-      <input id="forgotPhone" class="input" type="tel" inputmode="tel" placeholder="01XXXXXXXXX">
-    </div>
-
-    <button id="sendForgotOtpBtn" class="btn green full-btn" type="button">Send OTP</button>
-
-    <div class="links">
-      <a href="/user/">Back to Login</a>
-      <a href="/user/register.php">Create New Account</a>
-    </div>
-
-    <div class="note">
-      Bangladesh numbers use BulkSMSBD. Malaysia numbers use SMS360. Your stored wallet/pricing country is not changed.
-    </div>
-  </div>
-</div>
-
-<div id="forgotOtpModal" class="modal">
-  <div class="modal-card">
-    <div class="modal-head">
-      <div>
-        <h3 id="modalTitle">Verify Password Reset OTP</h3>
-        <p id="modalSub">Enter OTP and set your new password</p>
+    <div class="forgot-step" data-forgot-step="identity" hidden>
+      <div class="forgot-account-summary">
+        <span>Account</span>
+        <strong id="forgotAccountPhone">-</strong>
       </div>
+      <label class="forgot-field" for="forgotIdentityType">
+        <span>Identity Type</span>
+        <select id="forgotIdentityType">
+          <option value="NID">National ID (NID)</option>
+          <option value="PASSPORT">Passport</option>
+        </select>
+      </label>
+      <label class="forgot-field" for="forgotIdentityNumber">
+        <span>NID or Passport Number</span>
+        <input id="forgotIdentityNumber" autocomplete="off" maxlength="40" placeholder="Enter registered document number">
+      </label>
+      <p class="forgot-hint">This is checked securely against your existing account before reset.</p>
+      <button id="sendForgotOtpBtn" class="forgot-primary" type="button">Send OTP</button>
     </div>
 
-    <div class="info-grid">
-      <div class="info-box">
-        <label>Phone</label>
+    <div class="forgot-step" data-forgot-step="otp" hidden>
+      <div class="forgot-otp-summary">
+        <span>OTP sent to</span>
         <strong id="otpMaskedPhone">-</strong>
+        <small id="otpExpiresText">05:00</small>
       </div>
-
-      <div class="info-box">
-        <label>Reset Type</label>
-        <strong id="otpResetTypeText">Password</strong>
-      </div>
+      <label class="forgot-field" for="otpCode">
+        <span>OTP Code</span>
+        <input id="otpCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6 digit OTP">
+      </label>
+      <p id="otpStatus" class="forgot-status" aria-live="polite">Enter the OTP sent to your phone.</p>
+      <button id="forgotOtpContinue" class="forgot-primary" type="button">Continue</button>
+      <button id="resendForgotOtpBtn" class="forgot-secondary" type="button" disabled>Resend OTP</button>
     </div>
 
-    <div class="field mt-14">
-      <label>OTP Code</label>
-      <input id="otpCode" class="input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6 digit OTP">
-    </div>
-
-    <div id="passwordFields">
-      <div class="field">
-        <label>New Password</label>
-        <input id="newPassword" class="input" type="password" placeholder="Minimum 6 characters">
+    <div class="forgot-step" data-forgot-step="credential" hidden>
+      <div id="passwordFields">
+        <label class="forgot-field" for="newPassword">
+          <span>New Password</span>
+          <input id="newPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters">
+        </label>
+        <label class="forgot-field" for="confirmPassword">
+          <span>Confirm New Password</span>
+          <input id="confirmPassword" type="password" autocomplete="new-password" placeholder="Confirm password">
+        </label>
       </div>
-
-      <div class="field">
-        <label>Confirm New Password</label>
-        <input id="confirmPassword" class="input" type="password" placeholder="Confirm password">
+      <div id="pinFields" hidden>
+        <label class="forgot-field" for="newPin">
+          <span>New PIN</span>
+          <input id="newPin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="4 to 8 digit PIN">
+        </label>
+        <label class="forgot-field" for="confirmPin">
+          <span>Confirm New PIN</span>
+          <input id="confirmPin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="Confirm PIN">
+        </label>
       </div>
+      <button id="verifyForgotOtpBtn" class="forgot-primary" type="button">Reset Password</button>
     </div>
 
-    <div id="pinFields" class="hidden">
-      <div class="field">
-        <label>New PIN</label>
-        <input id="newPin" class="input" type="password" inputmode="numeric" placeholder="4 to 8 digit PIN">
-      </div>
+    <nav class="forgot-links" aria-label="Recovery links">
+      <a href="/user/">Back to Login</a>
+      <a href="/user/register">Create Account</a>
+    </nav>
+  </section>
+</main>
 
-      <div class="field">
-        <label>Confirm New PIN</label>
-        <input id="confirmPin" class="input" type="password" inputmode="numeric" placeholder="Confirm PIN">
-      </div>
-    </div>
-
-    <div id="otpStatus" class="status-box">
-      OTP পাঠানোর পরে এখানে status দেখাবে।
-    </div>
-
-    <div class="modal-actions">
-      <button id="verifyForgotOtpBtn" class="btn green" type="button">Verify & Reset</button>
-      <button id="resendForgotOtpBtn" class="btn blue" type="button">Resend OTP</button>
-      <button id="cancelForgotOtpBtn" class="btn ghost" type="button">Cancel</button>
-    </div>
+<div id="forgotFeedbackModal" class="forgot-modal" role="dialog" aria-modal="true" aria-labelledby="forgotFeedbackTitle" aria-hidden="true">
+  <div class="forgot-modal-card">
+    <div id="forgotFeedbackIcon" class="forgot-modal-icon" aria-hidden="true">!</div>
+    <h2 id="forgotFeedbackTitle">Error</h2>
+    <p id="forgotFeedbackMessage"></p>
+    <button id="forgotFeedbackOk" class="forgot-primary" type="button">OK</button>
   </div>
 </div>
 
-<div id="loadingWrap" class="loading">
-  <div class="loading-box">
-    <div class="spinner"></div>
-    <div id="loadingText">Loading...</div>
+<div id="forgotLoadingModal" class="forgot-loading" role="status" aria-live="polite" aria-hidden="true">
+  <div class="forgot-loading-card">
+    <div class="forgot-spinner" aria-hidden="true"></div>
+    <div id="forgotLoadingText">Loading...</div>
   </div>
 </div>
-
-<div id="toastWrap" class="toast-wrap"></div>
 
 <script>
 window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
-<script src="/api/user/assets/forgot.js?v=1"></script>
+<script src="/api/user/assets/forgot.js?v=<?= htmlspecialchars($forgotJsVersion, ENT_QUOTES, 'UTF-8') ?>"></script>
 </body>
 </html>

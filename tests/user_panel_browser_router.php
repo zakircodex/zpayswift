@@ -180,6 +180,20 @@ if (str_starts_with($path, '/api/') || str_starts_with($path, '/assets/')) {
     return false;
 }
 
+$authRoutes = [
+    '/auth-test/login' => 'index.php',
+    '/auth-test/register' => 'register.php',
+    '/auth-test/forgot' => 'forgot.php',
+];
+
+if (isset($authRoutes[$path])) {
+    session_name('zawtopup_user');
+    session_start();
+    $_SESSION = [];
+    require $root . '/api/user/' . $authRoutes[$path];
+    exit;
+}
+
 $routes = [
     '/user/' => 'dashboard.php',
     '/user/dashboard' => 'dashboard.php',
