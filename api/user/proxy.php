@@ -3825,6 +3825,7 @@ switch ($action) {
             'device_id' => 'USER_WEB',
             'device_name' => 'User Dashboard',
             'app_version' => 'WEB',
+            'trusted_device_cookie' => user_proxy_get_trust_cookie(),
             'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
         ], 'ACCOUNT_CHECK_FAILED', 'Account could not be verified');
         break;
@@ -3864,14 +3865,48 @@ switch ($action) {
             user_proxy_response(false, 'VALIDATION_ERROR', 'A valid login verification and 4 digit PIN are required', [], 422);
         }
 
-        user_proxy_forward_auth_post('auth/verify_pin.php', [
+        $pinRes = user_proxy_internal_api_request('POST', 'auth/verify_pin.php', [
             'pre_auth_token' => $preAuthToken,
             'pin' => $pin,
             'device_id' => 'USER_WEB',
             'device_name' => 'User Dashboard',
             'app_version' => 'WEB',
             'force_otp' => true,
-        ], 'PIN_VERIFY_FAILED', 'PIN could not be verified');
+            'trusted_device_cookie' => user_proxy_get_trust_cookie(),
+        ], [
+            'X-APP-KEY' => APP_KEY,
+        ]);
+
+        if (!$pinRes['ok']) {
+            $json = is_array($pinRes['json'] ?? null) ? $pinRes['json'] : [];
+            user_proxy_response(
+                false,
+                (string)($json['code'] ?? 'PIN_VERIFY_FAILED'),
+                (string)($json['message'] ?? 'PIN could not be verified'),
+                (array)($json['data'] ?? []),
+                $pinRes['status'] > 0 ? (int)$pinRes['status'] : 400
+            );
+        }
+
+        $pinData = (array)($pinRes['json']['data'] ?? []);
+        $sessionToken = trim((string)($pinData['session_token'] ?? ''));
+        if ($sessionToken !== '' && empty($pinData['otp_required'])) {
+            user_proxy_finalize_login_with_session_token($sessionToken);
+            user_proxy_response(true, 'SUCCESS', 'Trusted device login successful', [
+                'login_complete' => true,
+                'session_active' => true,
+                'redirect' => 'dashboard',
+                'user' => $_SESSION['user_user'],
+                'csrf' => user_proxy_get_csrf(),
+            ]);
+        }
+
+        user_proxy_response(
+            true,
+            (string)($pinRes['json']['code'] ?? 'PIN_VERIFIED'),
+            (string)($pinRes['json']['message'] ?? 'PIN verified'),
+            $pinData
+        );
         break;
 
     case 'login_send_otp':

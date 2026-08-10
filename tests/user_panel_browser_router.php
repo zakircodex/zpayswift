@@ -15,10 +15,28 @@ if ($path === '/test/support-viewport') {
     exit;
 }
 
+if ($path === '/test/login-viewport') {
+    $width = max(320, min(1366, (int)($_GET['width'] ?? 390)));
+    $height = max(420, min(1000, (int)($_GET['height'] ?? 844)));
+    $trusted = (string)($_GET['trusted'] ?? '0') === '1' ? '1' : '0';
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><html><head><meta charset="utf-8"><style>'
+        . 'html,body{margin:0;min-height:100%;background:#020a16;display:grid;place-items:start center}'
+        . 'iframe{width:' . $width . 'px;height:' . $height . 'px;border:0;background:#07172f}'
+        . '#loginMetrics{position:fixed;left:0;bottom:0;max-width:100%;font:10px monospace;color:#fff;background:#000}'
+        . '</style></head><body><iframe id="loginFrame" src="/auth-test/login?trusted=' . $trusted . '" title="Login viewport"></iframe>'
+        . '<output id="loginMetrics" aria-label="Login viewport metrics">waiting</output><script>'
+        . 'const frame=document.getElementById("loginFrame"),out=document.getElementById("loginMetrics");'
+        . 'frame.addEventListener("load",()=>{const report=()=>{const d=frame.contentDocument,root=d.getElementById("loginPageRoot"),input=d.activeElement,actions={loginPhone:"loginPhoneContinue",loginPassword:"loginPasswordContinue",loginPin:"loginPinContinue",loginOtpCode:"verifyLoginOtpBtn"},action=d.getElementById(actions[input?.id]||"loginPhoneContinue"),ir=input?.getBoundingClientRect(),ar=action?.getBoundingClientRect();out.textContent=JSON.stringify({width:d.documentElement.clientWidth,height:d.documentElement.clientHeight,scrollWidth:d.documentElement.scrollWidth,bodyScrollWidth:d.body.scrollWidth,rootClientHeight:root?.clientHeight,rootScrollHeight:root?.scrollHeight,activeInput:input?.id||"",inputTop:Math.round(ir?.top||0),actionBottom:Math.round(ar?.bottom||0),actionVisible:(ar?.bottom||0)<=d.documentElement.clientHeight+1});};setTimeout(report,600);setInterval(report,150);});'
+        . '</script></body></html>';
+    exit;
+}
+
 if ($path === '/api/user/proxy.php') {
     $action = trim((string)($_GET['action'] ?? ''));
     $authBody = json_decode((string)file_get_contents('php://input'), true);
     $authBody = is_array($authBody) ? $authBody : [];
+    $trustedLogin = (string)($_COOKIE['LOCAL_AUTH_TRUST'] ?? '') === 'VALID';
     if ($action === 'login_check_number' && trim((string)($authBody['phone'] ?? '')) === '0120000000') {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(404);
@@ -55,14 +73,18 @@ if ($path === '/api/user/proxy.php') {
             'phone_country' => 'MY',
             'name' => 'LOCAL TEST USER',
             'account_status' => 'ACTIVE',
+            'trusted_login_available' => $trustedLogin,
+            'pre_auth_token' => $trustedLogin ? 'LOCAL-TRUSTED-PREAUTH' : '',
         ],
         'login_verify_password' => [
             'pre_auth_token' => 'LOCAL-PREAUTH',
             'user' => ['name' => 'LOCAL TEST USER'],
         ],
         'login_verify_pin' => [
-            'pre_auth_token' => 'LOCAL-PREAUTH',
-            'otp_required' => true,
+            'pre_auth_token' => $trustedLogin ? 'LOCAL-TRUSTED-PREAUTH' : 'LOCAL-PREAUTH',
+            'otp_required' => !$trustedLogin,
+            'login_complete' => $trustedLogin,
+            'session_active' => $trustedLogin,
         ],
         'login_send_otp' => [
             'pre_auth_token' => 'LOCAL-PREAUTH',
@@ -260,6 +282,13 @@ if (isset($authRoutes[$path])) {
     session_name('zawtopup_user');
     session_start();
     $_SESSION = [];
+    if ((string)($_GET['trusted'] ?? '') === '1') {
+        setcookie('LOCAL_AUTH_TRUST', 'VALID', ['path' => '/', 'samesite' => 'Lax']);
+        $_COOKIE['LOCAL_AUTH_TRUST'] = 'VALID';
+    } elseif ((string)($_GET['trusted'] ?? '') === '0') {
+        setcookie('LOCAL_AUTH_TRUST', '', ['expires' => time() - 3600, 'path' => '/', 'samesite' => 'Lax']);
+        unset($_COOKIE['LOCAL_AUTH_TRUST']);
+    }
     require $root . '/api/user/' . $authRoutes[$path];
     exit;
 }

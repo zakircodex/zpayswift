@@ -911,6 +911,94 @@ function auth_device_is_trusted(string $uid, string $deviceId): bool
         && in_array($status, ['', 'ACTIVE', 'TRUSTED'], true);
 }
 
+function auth_trusted_browser_cookie_context(
+    string $uid,
+    string $cookieValue,
+    string $expectedDeviceId = '',
+    array $user = [],
+    bool $touch = true
+): array {
+    $uid = auth_clean_string($uid);
+    $cookieValue = trim($cookieValue);
+    $expectedDeviceId = auth_clean_string($expectedDeviceId);
+
+    if ($uid === '' || $cookieValue === '' || strpos($cookieValue, ':') === false) {
+        return ['ok' => false, 'code' => 'TRUSTED_DEVICE_MISSING'];
+    }
+
+    [$selector, $token] = explode(':', $cookieValue, 2);
+    $selector = trim($selector);
+    $token = trim($token);
+    if (
+        !preg_match('/^[A-Za-z0-9_-]{8,128}$/', $selector)
+        || strlen($token) < 32
+        || strlen($token) > 256
+    ) {
+        return ['ok' => false, 'code' => 'TRUSTED_DEVICE_INVALID'];
+    }
+
+    $row = fb_get('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector);
+    if (!is_array($row)) {
+        return ['ok' => false, 'code' => 'TRUSTED_DEVICE_NOT_FOUND'];
+    }
+
+    $storedHash = trim((string)($row['token_hash'] ?? ''));
+    $status = auth_status_value($row['status'] ?? '');
+    $expiresAt = (int)($row['expires_at'] ?? 0);
+    $rowDeviceId = auth_clean_string($row['device_id'] ?? '');
+    if (
+        $storedHash === ''
+        || !hash_equals($storedHash, hash('sha256', $token))
+        || auth_clean_string($row['uid'] ?? $uid) !== $uid
+        || empty($row['trusted'])
+        || empty($row['otp_verified'])
+        || !empty($row['manual_logout'])
+        || !empty($row['revoked'])
+        || !in_array($status, ['', 'ACTIVE', 'TRUSTED'], true)
+        || $expiresAt <= now_ts()
+        || ($expectedDeviceId !== '' && $rowDeviceId !== $expectedDeviceId)
+    ) {
+        return ['ok' => false, 'code' => 'TRUSTED_DEVICE_INVALID'];
+    }
+
+    if (!$user) {
+        $loadedUser = fb_get('USERS/' . $uid);
+        $user = is_array($loadedUser) ? $loadedUser : [];
+    }
+    if (!$user) {
+        return ['ok' => false, 'code' => 'ACCOUNT_NOT_FOUND'];
+    }
+
+    $activeDeviceId = auth_clean_string($user['active_device_id'] ?? $user['ACTIVE_DEVICE_ID'] ?? '');
+    $userEpoch = auth_session_epoch_from_user($user);
+    $trustedEpoch = auth_clean_string($row['auth_session_epoch'] ?? '');
+    if (
+        $expectedDeviceId === ''
+        || $activeDeviceId !== $expectedDeviceId
+        || !auth_device_is_trusted($uid, $expectedDeviceId)
+        || $userEpoch === ''
+        || $trustedEpoch === ''
+        || !hash_equals($userEpoch, $trustedEpoch)
+    ) {
+        return ['ok' => false, 'code' => 'TRUSTED_DEVICE_EXPIRED'];
+    }
+
+    if ($touch) {
+        @fb_patch('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector, [
+            'last_used_at' => now_ts(),
+            'updated_at' => now_ts(),
+        ]);
+    }
+
+    return [
+        'ok' => true,
+        'code' => 'TRUSTED_DEVICE_VALID',
+        'selector' => $selector,
+        'selector_hash' => hash('sha256', $selector),
+        'expires_at' => $expiresAt,
+    ];
+}
+
 function auth_mark_device_trusted(string $uid, string $deviceId, string $deviceName = '', string $appVersion = ''): bool
 {
     $uid = auth_clean_string($uid);

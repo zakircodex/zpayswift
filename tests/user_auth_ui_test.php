@@ -34,7 +34,9 @@ $forgotPage = source($root . '/api/user/forgot.php');
 $forgotJs = source($root . '/api/user/assets/forgot.js');
 $forgotCss = source($root . '/api/user/assets/forgot.css');
 $proxy = source($root . '/api/user/proxy.php');
+$checkNumberEndpoint = source($root . '/api/auth/check_number.php');
 $verifyPinEndpoint = source($root . '/api/auth/verify_pin.php');
+$authLibrary = source($root . '/api/lib/auth.php');
 
 auth_ui_expect(str_contains($loginPage, 'Enter your phone number to continue.'), 'Login phone-first copy is missing');
 auth_ui_expect(str_contains($loginPage, 'data-login-step="phone"') && str_contains($loginPage, 'data-login-step="password"') && str_contains($loginPage, 'data-login-step="pin"') && str_contains($loginPage, 'data-login-step="otp"'), 'Login staged markup is incomplete');
@@ -47,12 +49,17 @@ auth_ui_expect(str_contains($loginJs, "post('login_verify_otp'") && str_contains
 auth_ui_expect(str_contains($loginJs, "const stepOrder = ['phone', 'password', 'pin', 'otp']"), 'Login Back order must include the PIN step');
 auth_ui_expect(str_contains($loginJs, 'expires_in_seconds') && str_contains($loginJs, 'formatCountdown'), 'Login OTP 300-second countdown support is missing');
 auth_ui_expect(str_contains($loginJs, 'state.phoneInFlight') && str_contains($loginJs, 'state.passwordInFlight') && str_contains($loginJs, 'state.pinInFlight') && str_contains($loginJs, 'state.verifyInFlight'), 'Login duplicate submission guards are missing');
+auth_ui_expect(str_contains($loginJs, 'trusted_login_available') && str_contains($loginJs, 'data.login_complete === true'), 'Trusted browser must route from phone to PIN and complete login after PIN');
+auth_ui_expect(str_contains($loginJs, 'window.visualViewport') && str_contains($loginJs, 'ensureLoginControlVisible') && str_contains($loginJs, 'actionForInput'), 'Login keyboard handling must keep inputs and action buttons visible');
 auth_ui_expect(str_contains($loginJs, "window.addEventListener('pagehide'") && str_contains($loginJs, "window.addEventListener('pageshow'"), 'Login transition/BFCache cleanup is missing');
 auth_ui_expect(!str_contains($loginJs, 'localStorage') && !str_contains($loginJs, 'console.log'), 'Login must not store/log credentials or auth tokens');
 auth_ui_expect(str_contains($loginCss, '.user-login-page .login-card') && str_contains($loginCss, '.login-page-loading'), 'Login CSS is not page-scoped or loader-compatible');
+auth_ui_expect(str_contains($loginCss, '--login-keyboard-inset') && str_contains($loginCss, '.user-login-page.login-keyboard-open'), 'Login keyboard viewport CSS is missing');
 auth_ui_expect(str_contains($proxy, "case 'login_check_number':") && str_contains($proxy, "case 'login_verify_password':") && str_contains($proxy, "case 'login_verify_pin':") && str_contains($proxy, "case 'login_send_otp':"), 'Web proxy staged login routes are missing');
-auth_ui_expect(str_contains($proxy, "'force_otp' => true"), 'Web PIN verification must require OTP');
-auth_ui_expect(str_contains($verifyPinEndpoint, "auth_app_bool(\$body['force_otp'] ?? false)") && str_contains($verifyPinEndpoint, '!$forceOtp && auth_app_trusted_login_allowed'), 'Optional force-OTP handling must preserve Android trusted-device behaviour');
+auth_ui_expect(substr_count($proxy, "'trusted_device_cookie' => user_proxy_get_trust_cookie()") >= 2, 'Trusted cookie must be injected server-side for account recognition and PIN verification');
+auth_ui_expect(str_contains($checkNumberEndpoint, 'trusted_login_available') && str_contains($checkNumberEndpoint, 'TRUSTED_DEVICE_RECOGNIZED'), 'Account check must issue trusted-browser PIN pre-auth only after secure validation');
+auth_ui_expect(str_contains($verifyPinEndpoint, 'trusted_browser_verified') && str_contains($verifyPinEndpoint, 'TRUSTED_DEVICE_INVALID'), 'PIN verification must revalidate the trusted browser');
+auth_ui_expect(str_contains($authLibrary, 'function auth_trusted_browser_cookie_context') && str_contains($authLibrary, "'auth_session_epoch'"), 'Trusted browser validation must bind token, device and session epoch');
 
 foreach (['details', 'contact', 'security', 'location', 'otp'] as $step) {
     auth_ui_expect(str_contains($registerPage, 'data-register-step="' . $step . '"'), "Register {$step} step is missing");

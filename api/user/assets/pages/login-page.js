@@ -11,6 +11,7 @@
     phoneCountry: '',
     fullName: '',
     preAuthToken: '',
+    trustedLogin: false,
     pinVerified: false,
     otpRequestId: '',
     maskedPhone: '',
@@ -94,6 +95,8 @@
       DEVICE_MISMATCH: 'Login verification expired. Please start again.',
       PREAUTH_NOT_FOUND: 'Login verification expired. Please start again.',
       PREAUTH_EXPIRED: 'Login verification expired. Please start again.',
+      TRUSTED_DEVICE_INVALID: 'Trusted login expired. Please verify your password again.',
+      TRUSTED_DEVICE_EXPIRED: 'Trusted login expired. Please verify your password again.',
       OTP_INVALID: 'Incorrect OTP. Please try again.',
       OTP_MISMATCH: 'This OTP does not match the current login request.',
       OTP_EXPIRED: 'OTP expired. Resend OTP to continue.',
@@ -233,10 +236,51 @@
     return ['Login', 'Enter your phone number to continue.'];
   }
 
+  function actionForInput(input) {
+    const actions = {
+      loginPhone: $('loginPhoneContinue'),
+      loginPassword: $('loginPasswordContinue'),
+      loginPin: $('loginPinContinue'),
+      loginOtpCode: $('verifyLoginOtpBtn')
+    };
+    return input ? actions[input.id] || null : null;
+  }
+
+  function updateKeyboardViewport() {
+    const viewport = window.visualViewport;
+    const visibleHeight = viewport ? viewport.height : window.innerHeight;
+    const visibleBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+    const keyboardInset = Math.max(0, window.innerHeight - visibleBottom);
+    document.documentElement.style.setProperty('--login-keyboard-inset', `${Math.round(keyboardInset)}px`);
+    document.body.classList.toggle('login-keyboard-open', keyboardInset > 80 || visibleHeight < 560);
+  }
+
+  function ensureLoginControlVisible(input) {
+    if (!input || document.activeElement !== input) return;
+    updateKeyboardViewport();
+    const viewport = window.visualViewport;
+    const visibleTop = (viewport?.offsetTop || 0) + 14;
+    const visibleBottom = (viewport ? viewport.offsetTop + viewport.height : window.innerHeight) - 18;
+    const action = actionForInput(input);
+    const inputRect = input.getBoundingClientRect();
+    const actionRect = action?.getBoundingClientRect() || inputRect;
+    const targetTop = Math.min(inputRect.top, actionRect.top);
+    const targetBottom = Math.max(inputRect.bottom, actionRect.bottom);
+    const wrap = $('loginPageRoot');
+    if (!wrap) return;
+
+    if (targetBottom > visibleBottom) {
+      wrap.scrollBy({ top: targetBottom - visibleBottom + 12, behavior: 'smooth' });
+    } else if (targetTop < visibleTop) {
+      wrap.scrollBy({ top: targetTop - visibleTop - 12, behavior: 'smooth' });
+    }
+  }
+
   function focusVisible(input) {
     if (!input) return;
     input.focus({ preventScroll: true });
-    window.setTimeout(() => input.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    window.setTimeout(() => ensureLoginControlVisible(input), 80);
+    window.setTimeout(() => ensureLoginControlVisible(input), 280);
   }
 
   function showStep(step, options = {}) {
@@ -280,6 +324,7 @@
   function resetAfterPassword() {
     $('loginPin').value = '';
     resetOtpState(false);
+    state.trustedLogin = false;
   }
 
   function resetAccountState() {
@@ -329,7 +374,14 @@
       $('loginCountryDisplay').textContent = `Country: ${countryLabel(state.phoneCountry)}`;
       $('loginPhoneCountry').value = state.phoneCountry;
       resetAfterPassword();
-      showStep('password', { history: 'push' });
+      const trustedToken = String(data.pre_auth_token || '');
+      state.trustedLogin = data.trusted_login_available === true && trustedToken !== '';
+      if (state.trustedLogin) {
+        state.preAuthToken = trustedToken;
+        showStep('pin', { history: 'push' });
+      } else {
+        showStep('password', { history: 'push' });
+      }
     } catch (error) {
       if (error?.name !== 'AbortError') showFeedback(safeErrorMessage(error, 'Account could not be verified.'));
     } finally {
@@ -362,6 +414,7 @@
       const token = String(data.pre_auth_token || '');
       if (!token) throw Object.assign(new Error('Missing pre-auth token'), { code: 'INVALID_RESPONSE' });
       state.preAuthToken = token;
+      state.trustedLogin = false;
       state.fullName = String(data.user?.name || data.name || state.fullName || '').trim();
       state.pinVerified = false;
       $('loginPassword').value = '';
@@ -418,15 +471,26 @@
       const data = await post('login_verify_pin', {
         pre_auth_token: state.preAuthToken,
         pin,
-        force_otp: true,
         ...browserMeta()
       }, 'Checking PIN...');
+      if (data.login_complete === true && data.session_active === true) {
+        $('loginPin').value = '';
+        goToDashboard();
+        return;
+      }
       state.preAuthToken = String(data.pre_auth_token || state.preAuthToken || '');
       state.pinVerified = true;
       $('loginPin').value = '';
       await sendLoginOtp();
     } catch (error) {
       $('loginPin').value = '';
+      const code = String(error?.code || '').toUpperCase();
+      if (code === 'TRUSTED_DEVICE_INVALID' || code === 'TRUSTED_DEVICE_EXPIRED') {
+        state.trustedLogin = false;
+        state.preAuthToken = '';
+        state.pinVerified = false;
+        showStep('password', { history: 'replace' });
+      }
       if (error?.name !== 'AbortError') showFeedback(safeErrorMessage(error, 'PIN could not be verified.'));
     } finally {
       state.pinInFlight = false;
@@ -526,6 +590,11 @@
       return;
     }
     if (state.step === 'pin') {
+      if (state.trustedLogin) {
+        resetAccountState();
+        showStep('phone');
+        return;
+      }
       resetAfterPassword();
       showStep('password');
       return;
@@ -541,7 +610,16 @@
   function handleFocus(event) {
     const target = event.target;
     if (!(target instanceof HTMLInputElement) || target.type === 'hidden') return;
-    window.setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120);
+    window.setTimeout(() => ensureLoginControlVisible(target), 80);
+    window.setTimeout(() => ensureLoginControlVisible(target), 280);
+  }
+
+  function handleViewportChange() {
+    updateKeyboardViewport();
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement && active.type !== 'hidden') {
+      window.setTimeout(() => ensureLoginControlVisible(active), 30);
+    }
   }
 
   function clearLoginNavigationState() {
@@ -553,6 +631,8 @@
     $('loginPassword').value = '';
     $('loginPin').value = '';
     $('loginOtpCode').value = '';
+    document.documentElement.style.removeProperty('--login-keyboard-inset');
+    document.body.classList.remove('login-keyboard-open');
   }
 
   $('loginPhoneContinue').addEventListener('click', continuePhone);
@@ -570,6 +650,9 @@
   $('loginPin').addEventListener('keydown', (event) => { if (event.key === 'Enter') verifyPin(); });
   $('loginOtpCode').addEventListener('keydown', (event) => { if (event.key === 'Enter') verifyOtp(); });
   document.addEventListener('focusin', handleFocus);
+  document.addEventListener('focusout', () => window.setTimeout(handleViewportChange, 80));
+  window.visualViewport?.addEventListener('resize', handleViewportChange);
+  window.visualViewport?.addEventListener('scroll', handleViewportChange);
 
   window.addEventListener('popstate', (event) => {
     if (isFeedbackOpen()) {
@@ -585,6 +668,7 @@
     if (stepOrder.includes(requested)) {
       if (state.step === 'otp' && requested === 'pin') resetOtpState(true);
       if (state.step === 'pin' && requested === 'password') resetAfterPassword();
+      if (state.step === 'pin' && requested === 'phone') resetAccountState();
       if (state.step === 'password' && requested === 'phone') resetAccountState();
       showStep(requested);
       return;
@@ -607,9 +691,11 @@
     $('loginPhoneContinue').disabled = !state.countryReady;
     $('loginPasswordContinue').disabled = false;
     $('loginPinContinue').disabled = false;
+    updateKeyboardViewport();
   });
 
   resetLoginLoading();
+  updateKeyboardViewport();
   showStep('phone', { history: 'replace' });
   loadCountryDefault();
 })();

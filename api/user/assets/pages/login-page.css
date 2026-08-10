@@ -1,4 +1,5 @@
 :root {
+  --login-keyboard-inset: 0px;
   --login-bg: #06162c;
   --login-card: rgba(13, 43, 82, .96);
   --login-field: #071d38;
@@ -36,10 +37,20 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: max(18px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom));
+  padding: max(18px, env(safe-area-inset-top)) 14px
+    calc(max(18px, env(safe-area-inset-bottom)) + var(--login-keyboard-inset));
+  scroll-padding-block: 18px calc(110px + var(--login-keyboard-inset));
   background:
     radial-gradient(circle at 82% 13%, rgba(32, 189, 107, .12), transparent 26%),
     linear-gradient(180deg, #071b35 0%, #06142a 58%, #051225 100%);
+}
+
+.user-login-page.login-keyboard-open .login-wrap {
+  align-items: flex-start;
+}
+
+.user-login-page.login-keyboard-open .login-card {
+  margin-block: 0 18px;
 }
 
 .user-login-page .login-card {

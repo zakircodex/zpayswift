@@ -29,7 +29,12 @@ function user_verify_issue_session(array $user, string $uid, string $deviceId, s
     return auth_issue_website_user_session($user, $uid, $deviceId, $deviceName, $preAuthRow);
 }
 
-function user_verify_create_trusted_device(string $uid, string $deviceId, string $deviceName): array
+function user_verify_create_trusted_device(
+    string $uid,
+    string $deviceId,
+    string $deviceName,
+    string $authSessionEpoch
+): array
 {
     $selector = bin2hex(random_bytes(8));
     $rawToken = bin2hex(random_bytes(24));
@@ -46,6 +51,7 @@ function user_verify_create_trusted_device(string $uid, string $deviceId, string
         'updated_at'   => $now,
         'last_used_at' => $now,
         'expires_at'   => $expiresAt,
+        'auth_session_epoch' => $authSessionEpoch,
         'trusted'      => true,
         'otp_verified' => true,
         'manual_logout' => false,
@@ -161,7 +167,12 @@ if (!auth_otp_complete_verification($otpRequestId, $otpOwner, $now)) {
 $trustedDeviceCookie = null;
 
 if ($trustDevice) {
-    $trusted = user_verify_create_trusted_device($uid, $deviceId, $deviceName);
+    $trusted = user_verify_create_trusted_device(
+        $uid,
+        $deviceId,
+        $deviceName,
+        (string)($sessionResult['auth_session_epoch'] ?? '')
+    );
 
     if (!empty($trusted['ok'])) {
         $trustedDeviceCookie = [

@@ -148,6 +148,8 @@ function auth_app_create_preauth(string $uid, string $phone, array $body, array 
         'pricing_country' => (string)($extra['pricing_country'] ?? ''),
         'password_verified' => !empty($extra['password_verified']),
         'pin_verified' => !empty($extra['pin_verified']),
+        'trusted_browser_verified' => !empty($extra['trusted_browser_verified']),
+        'trusted_browser_selector_hash' => trim((string)($extra['trusted_browser_selector_hash'] ?? '')),
         'otp_verified' => false,
         'status' => (string)($extra['status'] ?? 'PASSWORD_VERIFIED'),
         'device_id' => trim((string)($body['device_id'] ?? 'ANDROID_APP')),

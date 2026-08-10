@@ -35,6 +35,7 @@ $preAuthToken = trim((string)($body['pre_auth_token'] ?? ''));
 $deviceId = auth_app_device_id($body, (string)($body['device_id'] ?? 'ANDROID_APP'));
 $deviceName = auth_app_device_name($body);
 $forceOtp = auth_app_bool($body['force_otp'] ?? false);
+$trustedDeviceCookie = trim((string)($body['trusted_device_cookie'] ?? ''));
 
 if ($pin === '') {
     api_response(false, 'VALIDATION_ERROR', 'PIN is required.', [], 422);
@@ -58,7 +59,34 @@ if (!auth_app_pin_ok($user, $pin)) {
     api_response(false, 'WRONG_PIN', 'PIN ভুল হয়েছে।', [], 401);
 }
 
-$trusted = !$forceOtp && auth_app_trusted_login_allowed($uid, $deviceId);
+$trustedBrowserPreauth = !empty($preAuthRow['trusted_browser_verified']);
+$trusted = false;
+if ($trustedBrowserPreauth) {
+    $trustedBrowser = auth_trusted_browser_cookie_context(
+        $uid,
+        $trustedDeviceCookie,
+        $deviceId,
+        $user,
+        true
+    );
+    $expectedSelectorHash = trim((string)($preAuthRow['trusted_browser_selector_hash'] ?? ''));
+    $actualSelectorHash = trim((string)($trustedBrowser['selector_hash'] ?? ''));
+    if (
+        empty($trustedBrowser['ok'])
+        || $expectedSelectorHash === ''
+        || $actualSelectorHash === ''
+        || !hash_equals($expectedSelectorHash, $actualSelectorHash)
+    ) {
+        @fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, [
+            'status' => 'TRUSTED_DEVICE_INVALID',
+            'updated_at' => now_ts(),
+        ]);
+        api_response(false, 'TRUSTED_DEVICE_INVALID', 'Trusted login expired. Please verify your password again.', [], 401);
+    }
+    $trusted = true;
+} else {
+    $trusted = !$forceOtp && auth_app_trusted_login_allowed($uid, $deviceId);
+}
 $now = now_ts();
 $patch = [
     'pin_verified' => true,

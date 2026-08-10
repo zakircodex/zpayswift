@@ -46,46 +46,9 @@ function user_login_issue_session(array $user, string $uid, string $deviceId, st
     return auth_issue_website_user_session($user, $uid, $deviceId, $deviceName, $requestMeta);
 }
 
-function user_login_has_valid_trusted_device(string $uid, string $cookieValue): bool
+function user_login_trusted_device_context(string $uid, string $cookieValue, string $deviceId): array
 {
-    $cookieValue = trim($cookieValue);
-
-    if ($cookieValue === '' || strpos($cookieValue, ':') === false) {
-        return false;
-    }
-
-    [$selector, $token] = explode(':', $cookieValue, 2);
-
-    $selector = trim($selector);
-    $token = trim($token);
-
-    if ($selector === '' || $token === '') {
-        return false;
-    }
-
-    $row = fb_get('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector);
-    if (!is_array($row)) {
-        return false;
-    }
-
-    $storedHash = trim((string)($row['token_hash'] ?? ''));
-    $status = strtoupper(trim((string)($row['status'] ?? '')));
-    $expiresAt = (int)($row['expires_at'] ?? 0);
-
-    if ($storedHash === '' || $status !== 'ACTIVE' || $expiresAt < now_ts()) {
-        return false;
-    }
-
-    if (!hash_equals($storedHash, hash('sha256', $token))) {
-        return false;
-    }
-
-    fb_patch('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector, [
-        'last_used_at' => now_ts(),
-        'updated_at'   => now_ts(),
-    ]);
-
-    return true;
+    return auth_trusted_browser_cookie_context($uid, $cookieValue, $deviceId);
 }
 
 $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
@@ -174,12 +137,21 @@ if ($passwordHash === '' || !password_verify($password, $passwordHash)) {
 | Trusted device -> OTP skip
 |--------------------------------------------------------------------------
 */
-if (user_login_has_valid_trusted_device($uid, $trustedDeviceCookie)) {
+$trustedDeviceContext = user_login_trusted_device_context($uid, $trustedDeviceCookie, $deviceId);
+if (!empty($trustedDeviceContext['ok'])) {
     $sessionResult = user_login_issue_session($user, $uid, $deviceId, $deviceName, $requestMeta);
     if (empty($sessionResult['ok'])) {
         api_response(false, 'SERVER_ERROR', 'Failed to create session', [], 500);
     }
     $sessionToken = (string)($sessionResult['session_token'] ?? '');
+    $trustedSelector = trim((string)($trustedDeviceContext['selector'] ?? ''));
+    if ($trustedSelector !== '') {
+        @fb_patch('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $trustedSelector, [
+            'auth_session_epoch' => (string)($sessionResult['auth_session_epoch'] ?? ''),
+            'last_used_at' => now_ts(),
+            'updated_at' => now_ts(),
+        ]);
+    }
 
     if (function_exists('system_log')) {
         system_log('USER_TRUSTED_LOGIN', $uid, 'Trusted device login successful', [
