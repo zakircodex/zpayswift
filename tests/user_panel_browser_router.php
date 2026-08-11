@@ -77,10 +77,16 @@ if ($path === '/api/user/proxy.php') {
         echo json_encode(['ok' => false, 'code' => 'OTP_INVALID', 'message' => 'Local wrong OTP', 'data' => []]);
         exit;
     }
-    if ($action === 'forgot_send_otp' && trim((string)($authBody['phone'] ?? '')) === '0120000000') {
+    if ($action === 'forgot_start' && trim((string)($authBody['phone'] ?? '')) === '0120000000') {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(404);
         echo json_encode(['ok' => false, 'code' => 'ACCOUNT_NOT_FOUND', 'message' => 'Local account not found', 'data' => []]);
+        exit;
+    }
+    if ($action === 'forgot_verify_identity' && (string)($authBody['identity_number'] ?? '') !== 'LOCAL-ID-123') {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(403);
+        echo json_encode(['ok' => false, 'code' => 'IDENTITY_VERIFICATION_FAILED', 'message' => 'Identity verification failed. Please check your information.', 'data' => ['attempts_remaining' => 4]]);
         exit;
     }
     if ($action === 'forgot_verify_otp' && (string)($authBody['otp'] ?? '') !== '123456') {
@@ -139,6 +145,17 @@ if ($path === '/api/user/proxy.php') {
             'login_complete' => true,
             'session_active' => true,
             'redirect' => 'dashboard',
+        ],
+        'forgot_start' => [
+            'pre_auth_token' => 'LOCAL-FORGOT-PREAUTH',
+            'identity_type' => 'NID',
+            'requires_identity' => true,
+            'expires_in_seconds' => 900,
+        ],
+        'forgot_verify_identity' => [
+            'pre_auth_token' => 'LOCAL-FORGOT-PREAUTH',
+            'identity_type' => 'NID',
+            'identity_verified' => true,
         ],
         'forgot_send_otp' => [
             'pre_auth_token' => 'LOCAL-FORGOT-PREAUTH',

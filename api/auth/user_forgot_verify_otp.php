@@ -47,6 +47,10 @@ if (!is_array($preAuthRow)) {
     user_forgot_verify_response(false, 'FORGOT_SESSION_EXPIRED', 'Forgot session expired. Please start again.', [], 410);
 }
 
+if ($resetType === 'PASSWORD_PIN' && empty($preAuthRow['identity_verified'])) {
+    user_forgot_verify_response(false, 'IDENTITY_REQUIRED', 'Identity verification is required before OTP.', [], 409);
+}
+
 $storedOtpRequestId = trim((string)($preAuthRow['otp_request_id'] ?? ''));
 
 if ($storedOtpRequestId === '' || $storedOtpRequestId !== $otpRequestId) {
@@ -54,8 +58,12 @@ if ($storedOtpRequestId === '' || $storedOtpRequestId !== $otpRequestId) {
 }
 
 $preAuthStatus = strtoupper(trim((string)($preAuthRow['status'] ?? '')));
+$allowedPreAuthStatuses = ['OTP_PENDING', 'SENT', 'RESENT'];
+if ($resetType === 'PASSWORD_PIN') {
+    $allowedPreAuthStatuses[] = 'OTP_SENDING';
+}
 
-if (!in_array($preAuthStatus, ['OTP_PENDING', 'SENT', 'RESENT'], true)) {
+if (!in_array($preAuthStatus, $allowedPreAuthStatuses, true)) {
     user_forgot_verify_response(false, 'FORGOT_SESSION_EXPIRED', 'Forgot session expired. Please start again.', [], 410);
 }
 
@@ -101,9 +109,26 @@ if (!empty($otpRow['used'])) {
 }
 
 $otpStatus = strtoupper(trim((string)($otpRow['status'] ?? '')));
+$allowedOtpStatuses = ['SENT', 'RESENT', 'LOCKED'];
+if ($resetType === 'PASSWORD_PIN') {
+    $allowedOtpStatuses[] = 'SENDING';
+}
 
-if (!in_array($otpStatus, ['SENT', 'RESENT', 'LOCKED'], true)) {
+if (!in_array($otpStatus, $allowedOtpStatuses, true)) {
     user_forgot_verify_response(false, 'OTP_INVALID_STATUS', 'OTP is not active', [], 400);
+}
+
+if ($resetType === 'PASSWORD_PIN' && $preAuthStatus === 'OTP_SENDING') {
+    @fb_patch('AUTH_USER_FORGOT_PREAUTH/' . $preAuthToken, [
+        'status' => 'OTP_PENDING',
+        'updated_at' => $now,
+    ]);
+}
+if ($resetType === 'PASSWORD_PIN' && $otpStatus === 'SENDING') {
+    @fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+        'status' => 'SENT',
+        'updated_at' => $now,
+    ]);
 }
 
 $otpExpiresAt = (int)($otpRow['expires_at'] ?? 0);
@@ -167,6 +192,7 @@ if ($resetType === 'PASSWORD_PIN') {
     $verified = fb_patch('AUTH_USER_FORGOT_PREAUTH/' . $preAuthToken, [
         'otp_verified' => true,
         'otp_verified_at' => $now,
+        'reset_allowed' => true,
         'status' => 'OTP_VERIFIED',
         'updated_at' => $now,
         'expires_at' => $now + 900,

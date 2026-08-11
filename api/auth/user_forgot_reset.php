@@ -41,7 +41,12 @@ if ($status === 'COMPLETED') {
     api_response(false, 'RESET_TOKEN_USED', 'This reset authorization has already been used.', [], 409);
 }
 
-if ($resetType !== 'PASSWORD_PIN' || empty($preAuthRow['otp_verified'])) {
+if (
+    $resetType !== 'PASSWORD_PIN'
+    || empty($preAuthRow['identity_verified'])
+    || empty($preAuthRow['otp_verified'])
+    || empty($preAuthRow['reset_allowed'])
+) {
     api_response(false, 'OTP_REQUIRED', 'OTP verification is required before reset.', [], 409);
 }
 

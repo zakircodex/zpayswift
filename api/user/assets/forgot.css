@@ -98,7 +98,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 .user-forgot-page .forgot-progress {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px;
   margin: 17px 0 20px;
 }
@@ -164,6 +164,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 .user-forgot-page .forgot-country-card,
 .user-forgot-page .forgot-account-summary,
+.user-forgot-page .forgot-identity-summary,
 .user-forgot-page .forgot-otp-summary {
   width: 100%;
   min-height: 58px;
@@ -179,6 +180,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 .user-forgot-page .forgot-country-card > span,
 .user-forgot-page .forgot-account-summary > span,
+.user-forgot-page .forgot-identity-summary > span,
 .user-forgot-page .forgot-otp-summary > span {
   color: var(--forgot-muted);
   font-size: 12px;
@@ -198,6 +200,24 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   font-size: 15px;
   font-weight: 900;
   text-align: right;
+}
+.user-forgot-page .forgot-identity-summary strong {
+  color: var(--forgot-green);
+  font-size: 15px;
+  font-weight: 900;
+  text-align: right;
+}
+.user-forgot-page .forgot-step-title {
+  margin: 0 0 7px;
+  color: var(--forgot-text);
+  font-size: 22px;
+  line-height: 1.2;
+}
+.user-forgot-page .forgot-step-copy {
+  margin: 0 0 15px;
+  color: var(--forgot-muted);
+  font-size: 13px;
+  line-height: 1.45;
 }
 .user-forgot-page .forgot-account-summary strong { text-align: right; overflow-wrap: anywhere; }
 .user-forgot-page .forgot-otp-summary {

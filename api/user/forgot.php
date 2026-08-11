@@ -30,7 +30,7 @@ $forgotJsVersion = (string)(filemtime(__DIR__ . '/assets/forgot.js') ?: 1);
     </header>
 
     <div class="forgot-progress" aria-label="Recovery progress">
-      <span class="active"></span><span></span><span></span>
+      <span class="active"></span><span></span><span></span><span></span>
     </div>
 
     <div class="forgot-step" data-forgot-step="phone">
@@ -45,6 +45,20 @@ $forgotJsVersion = (string)(filemtime(__DIR__ . '/assets/forgot.js') ?: 1);
         <input id="forgotPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Phone number">
       </label>
       <button id="forgotPhoneContinue" class="forgot-primary" type="button">Continue</button>
+    </div>
+
+    <div class="forgot-step" data-forgot-step="identity" hidden>
+      <h2 class="forgot-step-title">Verify Your Identity</h2>
+      <p class="forgot-step-copy">Confirm your registered identity to continue account recovery.</p>
+      <div class="forgot-identity-summary" aria-label="Registered identity type">
+        <span>Registered Identity</span>
+        <strong id="forgotIdentityTypeLabel">-</strong>
+      </div>
+      <label class="forgot-field" for="forgotIdentityNumber">
+        <span id="forgotIdentityInputLabel">Identity Number</span>
+        <input id="forgotIdentityNumber" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="Enter registered identity number">
+      </label>
+      <button id="forgotIdentityContinue" class="forgot-primary" type="button">Verify Identity</button>
     </div>
 
     <div class="forgot-step" data-forgot-step="otp" hidden>

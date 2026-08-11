@@ -4,7 +4,7 @@
   const USER_PROXY_URL = window.USER_PROXY_URL || '/api/user/proxy.php';
   const USER_LOGIN_URL = window.USER_LOGIN_URL || '/user/';
   const el = (id) => document.getElementById(id);
-  const steps = ['phone', 'otp', 'credential'];
+  const steps = ['phone', 'identity', 'otp', 'credential'];
   const activeRequests = new Set();
   const state = {
     step: 'phone',
@@ -14,6 +14,8 @@
     requestInFlight: false,
     feedbackAfterClose: '',
     resetAuthorizationToken: '',
+    recoveryPreAuthToken: '',
+    identityType: '',
     forgotOtp: {
       preAuthToken: '',
       otpRequestId: '',
@@ -118,6 +120,7 @@
   function stepDescription(step) {
     const descriptions = {
       phone: 'Enter your phone number to recover your account.',
+      identity: 'Confirm your registered identity before an OTP is sent.',
       otp: 'Enter the OTP sent to your registered phone.',
       credential: 'Set your new password and transaction PIN.'
     };
@@ -127,6 +130,7 @@
   function actionForInput(input) {
     const actions = {
       forgotPhone: el('forgotPhoneContinue'),
+      forgotIdentityNumber: el('forgotIdentityContinue'),
       otpCode: el('forgotOtpContinue'),
       newPassword: el('updateForgotCredentialsBtn'),
       confirmPassword: el('updateForgotCredentialsBtn'),
@@ -167,7 +171,7 @@
   }
 
   function focusForStep(step) {
-    const ids = { phone: 'forgotPhone', otp: 'otpCode', credential: 'newPassword' };
+    const ids = { phone: 'forgotPhone', identity: 'forgotIdentityNumber', otp: 'otpCode', credential: 'newPassword' };
     const node = el(ids[step]);
     if (!node) return;
     window.setTimeout(() => {
@@ -231,7 +235,7 @@
   }
 
   function clearSensitiveFields() {
-    ['otpCode', 'newPassword', 'confirmPassword', 'newPin', 'confirmPin'].forEach((id) => {
+    ['forgotIdentityNumber', 'otpCode', 'newPassword', 'confirmPassword', 'newPin', 'confirmPin'].forEach((id) => {
       el(id).value = '';
     });
   }
@@ -240,6 +244,8 @@
     clearOtpTimer();
     clearSensitiveFields();
     state.phone = '';
+    state.recoveryPreAuthToken = '';
+    state.identityType = '';
     state.resetAuthorizationToken = '';
     state.forgotOtp = { preAuthToken: '', otpRequestId: '', maskedPhone: '', expiresAt: 0, timer: 0 };
   }
@@ -257,23 +263,69 @@
     state.requestInFlight = true;
     el('forgotPhoneContinue').disabled = true;
     try {
-      const data = await proxyPost('forgot_send_otp', {
+      const data = await proxyPost('forgot_start', {
         phone,
         phone_country: country,
-        reset_type: 'PASSWORD_PIN',
-        device_id: 'USER_WEB',
-        device_name: 'User Forgot',
         browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
-      }, 'Verifying account and sending OTP...');
+      }, 'Verifying account...');
+      const preAuthToken = String(data.pre_auth_token || data.reset_token || data.forgot_token || '');
+      const identityType = String(data.identity_type || '').toUpperCase();
+      if (!preAuthToken || !['NID', 'PASSPORT'].includes(identityType)) {
+        throw new Error('Identity verification could not be prepared. Please start again.');
+      }
       state.phone = phone;
       state.phoneCountry = country;
-      updateOtpState(data);
-      showStep('otp', 'push');
+      state.recoveryPreAuthToken = preAuthToken;
+      state.identityType = identityType;
+      el('forgotIdentityTypeLabel').textContent = identityType === 'PASSPORT' ? 'Passport' : 'NID';
+      el('forgotIdentityInputLabel').textContent = identityType === 'PASSPORT' ? 'Passport Number' : 'NID Number';
+      el('forgotIdentityNumber').placeholder = identityType === 'PASSPORT' ? 'Enter registered passport number' : 'Enter registered NID number';
+      showStep('identity', 'push');
     } catch (error) {
       showFeedback(error.message || 'Account could not be verified.');
     } finally {
       state.requestInFlight = false;
       el('forgotPhoneContinue').disabled = false;
+      updateOtpCountdown();
+    }
+  }
+
+  async function verifyIdentity() {
+    if (state.requestInFlight) return;
+    const identityNumber = el('forgotIdentityNumber').value.trim();
+    if (!state.recoveryPreAuthToken) {
+      state.feedbackAfterClose = 'restart';
+      return showFeedback('Recovery session expired. Please start again.');
+    }
+    if (!identityNumber) {
+      return showFeedback(state.identityType === 'PASSPORT' ? 'Please enter your registered passport number.' : 'Please enter your registered NID number.');
+    }
+
+    state.requestInFlight = true;
+    el('forgotIdentityContinue').disabled = true;
+    try {
+      await proxyPost('forgot_verify_identity', {
+        pre_auth_token: state.recoveryPreAuthToken,
+        identity_number: identityNumber
+      }, 'Verifying identity...');
+      el('forgotIdentityNumber').value = '';
+
+      const otpData = await proxyPost('forgot_send_otp', {
+        pre_auth_token: state.recoveryPreAuthToken,
+        reset_type: 'PASSWORD_PIN',
+        device_id: 'USER_WEB'
+      }, 'Sending OTP...');
+      updateOtpState(otpData);
+      showStep('otp', 'push');
+    } catch (error) {
+      const code = String(error.code || '').toUpperCase();
+      if (code.includes('ATTEMPTS_EXCEEDED') || code.includes('FORGOT_SESSION')) {
+        state.feedbackAfterClose = 'restart';
+      }
+      showFeedback(error.message || 'Identity verification could not be completed.');
+    } finally {
+      state.requestInFlight = false;
+      el('forgotIdentityContinue').disabled = false;
       updateOtpCountdown();
     }
   }
@@ -309,7 +361,7 @@
       showStep('credential', 'push');
     } catch (error) {
       const code = String(error.code || '').toUpperCase();
-      if (code.includes('OTP_EXPIRED') || code.includes('FORGOT_SESSION')) state.feedbackAfterClose = 'restart';
+      if (code.includes('FORGOT_SESSION')) state.feedbackAfterClose = 'restart';
       showFeedback(error.message || 'OTP could not be verified.');
     } finally {
       state.requestInFlight = false;
@@ -428,7 +480,11 @@
       window.location.href = USER_LOGIN_URL;
       return;
     }
-    if (state.step === 'otp') clearRecoveryState();
+    if (state.step === 'identity') clearRecoveryState();
+    if (state.step === 'otp') {
+      clearOtpTimer();
+      el('otpCode').value = '';
+    }
     if (state.step === 'credential') clearSensitiveFields();
     showStep(steps[index - 1]);
   }
@@ -449,6 +505,7 @@
   }
 
   el('forgotPhoneContinue').addEventListener('click', continuePhone);
+  el('forgotIdentityContinue').addEventListener('click', verifyIdentity);
   el('forgotOtpContinue').addEventListener('click', verifyOtp);
   el('resendForgotOtpBtn').addEventListener('click', resendOtp);
   el('updateForgotCredentialsBtn').addEventListener('click', updateCredentials);
@@ -462,6 +519,7 @@
     else history.back();
   });
   el('forgotPhone').addEventListener('keydown', (event) => { if (event.key === 'Enter') continuePhone(); });
+  el('forgotIdentityNumber').addEventListener('keydown', (event) => { if (event.key === 'Enter') verifyIdentity(); });
   el('otpCode').addEventListener('keydown', (event) => { if (event.key === 'Enter') verifyOtp(); });
   ['newPassword', 'confirmPassword', 'newPin', 'confirmPin'].forEach((id) => {
     el(id).addEventListener('keydown', (event) => { if (event.key === 'Enter') updateCredentials(); });
@@ -478,7 +536,11 @@
     }
     const requested = event.state?.forgotStep;
     if (steps.includes(requested)) {
-      if (requested === 'phone' && state.step === 'otp') clearRecoveryState();
+      if (requested === 'phone' && state.step !== 'phone') clearRecoveryState();
+      if (state.step === 'otp' && requested === 'identity') {
+        clearOtpTimer();
+        el('otpCode').value = '';
+      }
       if (state.step === 'credential' && requested !== 'credential') clearSensitiveFields();
       showStep(requested);
       return;

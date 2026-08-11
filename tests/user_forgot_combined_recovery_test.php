@@ -51,6 +51,7 @@ $reset = forgot_test_source($root . '/api/auth/user_forgot_reset.php');
 $proxy = forgot_test_source($root . '/api/user/proxy.php');
 
 forgot_test_expect(str_contains($send, "'PASSWORD_PIN'") && str_contains($send, "'USER_FORGOT_PASSWORD_PIN'"), 'send endpoint must support the combined recovery purpose');
+forgot_test_expect(str_contains($send, 'user_forgot_send_combined_from_identity') && str_contains($send, "empty(\$preAuthRow['identity_verified'])"), 'combined recovery OTP must require prior identity verification');
 forgot_test_expect(str_contains($send, "['PASSWORD', 'PIN', 'PASSWORD_PIN']") && str_contains($verify, "if (\$resetType === 'PIN')") && str_contains($verify, "\$update['password_hash']"), 'legacy Password/PIN send and verify branches must remain present');
 forgot_test_expect(str_contains($resend, "'status' => 'CANCELLED'") && str_contains($resend, '$newOtpRequestId'), 'resend must rotate and cancel the old OTP');
 forgot_test_expect(str_contains($verify, "'OTP_ALREADY_USED'") && str_contains($verify, "'status' => 'OTP_VERIFIED'"), 'OTP verify must reject used codes and authorize reset separately');
@@ -60,6 +61,7 @@ forgot_test_expect(str_contains($reset, "\$claim['status'] = 'RESETTING'") && st
 forgot_test_expect(substr_count($reset, "fb_patch('USERS/' . \$uid, \$update)") === 1, 'password and PIN must use one atomic user-row patch');
 forgot_test_expect(str_contains($reset, 'auth_app_revoke_user_sessions_and_trust($uid)'), 'successful reset must invalidate sessions and trusted devices');
 forgot_test_expect(str_contains($reset, "'RESET_TOKEN_USED'") && str_contains($reset, "'DEVICE_MISMATCH'"), 'reset token replay and device mismatch must be rejected');
+forgot_test_expect(str_contains($reset, "empty(\$preAuthRow['identity_verified'])") && str_contains($reset, "empty(\$preAuthRow['reset_allowed'])"), 'combined reset must enforce the full identity and OTP state machine');
 forgot_test_expect(str_contains($proxy, "case 'forgot_reset_credentials':") && str_contains($proxy, "'device_id' => 'USER_WEB'"), 'Web proxy must expose only the scoped combined reset action');
 
 echo "User forgot combined recovery tests passed ({$assertions} assertions).\n";

@@ -101,6 +101,10 @@ if (!in_array($resetType, ['PASSWORD', 'PIN', 'PASSWORD_PIN'], true)) {
 }
 
 if ($resetType === 'PASSWORD_PIN') {
+    if (empty($preAuthRow['identity_verified'])) {
+        user_forgot_res_response(false, 'IDENTITY_REQUIRED', 'Identity verification is required before OTP.', [], 409);
+    }
+
     $storedDeviceId = trim((string)($preAuthRow['device_id'] ?? ''));
     $requestDeviceId = trim((string)($body['device_id'] ?? 'USER_WEB'));
     if ($storedDeviceId !== '' && $requestDeviceId !== '' && !hash_equals($storedDeviceId, $requestDeviceId)) {

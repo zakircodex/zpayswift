@@ -5225,6 +5225,53 @@ switch ($action) {
         ], 'REGISTER_CONFIRM_FAILED', 'Failed to confirm registration');
         break;
 
+    case 'forgot_start':
+        user_proxy_require_method('POST');
+
+        $body = user_proxy_read_json_body();
+        $phone = trim((string)($body['phone'] ?? ''));
+        $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+        if ($phone === '') {
+            user_proxy_response(false, 'VALIDATION_ERROR', 'Phone is required', [], 422);
+        }
+
+        user_proxy_forward_auth_post('auth/user_forgot_start.php', [
+            'phone' => $phone,
+            'phone_country' => $phoneCountry,
+            'device_id' => 'USER_WEB',
+            'device_name' => 'User Forgot',
+            'client_ip' => security_client_ip(),
+            'ip_country' => auth_request_ip_country(),
+            'user_agent' => security_user_agent(),
+            'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
+        ], 'FORGOT_START_FAILED', 'Account recovery could not be started');
+        break;
+
+    case 'forgot_verify_identity':
+        user_proxy_require_method('POST');
+
+        $body = user_proxy_read_json_body();
+        $preAuthToken = trim((string)(
+            $body['pre_auth_token']
+            ?? $body['reset_token']
+            ?? $body['forgot_token']
+            ?? ''
+        ));
+        $identityNumber = trim((string)($body['identity_number'] ?? ''));
+        if ($preAuthToken === '' || $identityNumber === '') {
+            user_proxy_response(false, 'VALIDATION_ERROR', 'Recovery session and identity number are required', [], 422);
+        }
+
+        user_proxy_forward_auth_post('auth/user_forgot_verify_identity.php', [
+            'pre_auth_token' => $preAuthToken,
+            'reset_token' => $preAuthToken,
+            'forgot_token' => $preAuthToken,
+            'identity_number' => $identityNumber,
+            'device_id' => 'USER_WEB',
+            'device_name' => 'User Forgot',
+        ], 'FORGOT_IDENTITY_FAILED', 'Identity verification could not be completed');
+        break;
+
     case 'forgot':
     case 'forgot_password':
     case 'forgot_send_otp':
@@ -5236,12 +5283,34 @@ switch ($action) {
         $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
         $resetType = strtoupper(trim((string)($body['reset_type'] ?? 'PASSWORD')));
 
-        if ($phone === '') {
-            user_proxy_response(false, 'VALIDATION_ERROR', 'Phone is required', [], 422);
-        }
-
         if (!in_array($resetType, ['PASSWORD', 'PIN', 'PASSWORD_PIN'], true)) {
             user_proxy_response(false, 'VALIDATION_ERROR', 'Invalid reset type', [], 422);
+        }
+
+        if ($resetType === 'PASSWORD_PIN') {
+            $preAuthToken = trim((string)(
+                $body['pre_auth_token']
+                ?? $body['reset_token']
+                ?? $body['forgot_token']
+                ?? ''
+            ));
+            if ($preAuthToken === '') {
+                user_proxy_response(false, 'IDENTITY_REQUIRED', 'Identity verification is required before OTP.', [], 409);
+            }
+
+            user_proxy_forward_auth_post('auth/user_forgot_send_otp.php', [
+                'pre_auth_token' => $preAuthToken,
+                'reset_token' => $preAuthToken,
+                'forgot_token' => $preAuthToken,
+                'reset_type' => 'PASSWORD_PIN',
+                'device_id' => 'USER_WEB',
+                'device_name' => 'User Forgot',
+            ], 'FORGOT_OTP_SEND_FAILED', 'Failed to send forgot OTP');
+            break;
+        }
+
+        if ($phone === '') {
+            user_proxy_response(false, 'VALIDATION_ERROR', 'Phone is required', [], 422);
         }
 
         user_proxy_forward_auth_post('auth/user_forgot_send_otp.php', [
