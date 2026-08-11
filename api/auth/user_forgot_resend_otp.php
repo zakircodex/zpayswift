@@ -96,8 +96,16 @@ if ($phone === '' || $uid === '') {
     user_forgot_res_response(false, 'FORGOT_SESSION_INVALID', 'Forgot session is invalid. Please start again.', [], 400);
 }
 
-if (!in_array($resetType, ['PASSWORD', 'PIN'], true)) {
+if (!in_array($resetType, ['PASSWORD', 'PIN', 'PASSWORD_PIN'], true)) {
     $resetType = 'PASSWORD';
+}
+
+if ($resetType === 'PASSWORD_PIN') {
+    $storedDeviceId = trim((string)($preAuthRow['device_id'] ?? ''));
+    $requestDeviceId = trim((string)($body['device_id'] ?? 'USER_WEB'));
+    if ($storedDeviceId !== '' && $requestDeviceId !== '' && !hash_equals($storedDeviceId, $requestDeviceId)) {
+        user_forgot_res_response(false, 'DEVICE_MISMATCH', 'Device mismatch for this reset session.', [], 400);
+    }
 }
 
 $now = user_forgot_res_now();
@@ -125,7 +133,9 @@ if (empty($resendState['ok'])) {
     'updated_at' => $now,
 ]);
 
-$purpose = $resetType === 'PIN' ? 'USER_FORGOT_PIN' : 'USER_FORGOT_PASSWORD';
+$purpose = $resetType === 'PIN'
+    ? 'USER_FORGOT_PIN'
+    : ($resetType === 'PASSWORD_PIN' ? 'USER_FORGOT_PASSWORD_PIN' : 'USER_FORGOT_PASSWORD');
 
 $otpRow = [
     'otp_request_id' => $newOtpRequestId,
@@ -174,7 +184,9 @@ if (!$okPre) {
     user_forgot_res_response(false, 'SERVER_ERROR', 'Failed to update forgot OTP session', [], 500);
 }
 
-$label = $resetType === 'PIN' ? 'PIN reset' : 'password reset';
+$label = $resetType === 'PIN'
+    ? 'PIN reset'
+    : ($resetType === 'PASSWORD_PIN' ? 'password/PIN reset' : 'password reset');
 $message = 'Z-Pay Swift ' . $label . ' OTP is ' . $newOtpCode . '. Valid for 5 minutes. Do not share this code.';
 
 $smsResult = user_forgot_res_send_sms(

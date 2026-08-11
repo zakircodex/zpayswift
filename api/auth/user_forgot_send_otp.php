@@ -118,7 +118,7 @@ if ($phone === '') {
     user_forgot_send_response(false, 'VALIDATION_ERROR', auth_phone_validation_message($phoneCountry), [], 422);
 }
 
-if (!in_array($resetType, ['PASSWORD', 'PIN'], true)) {
+if (!in_array($resetType, ['PASSWORD', 'PIN', 'PASSWORD_PIN'], true)) {
     user_forgot_send_response(false, 'VALIDATION_ERROR', 'Invalid reset type', [], 422);
 }
 
@@ -163,8 +163,12 @@ $otpCode = (string)random_int(100000, 999999);
 $otpRequestId = 'UFOTP' . strtoupper(bin2hex(random_bytes(6)));
 $preAuthToken = 'UFPA' . user_forgot_send_token(16);
 
-$label = $resetType === 'PIN' ? 'PIN reset' : 'password reset';
-$purpose = $resetType === 'PIN' ? 'USER_FORGOT_PIN' : 'USER_FORGOT_PASSWORD';
+$label = $resetType === 'PIN'
+    ? 'PIN reset'
+    : ($resetType === 'PASSWORD_PIN' ? 'password/PIN reset' : 'password reset');
+$purpose = $resetType === 'PIN'
+    ? 'USER_FORGOT_PIN'
+    : ($resetType === 'PASSWORD_PIN' ? 'USER_FORGOT_PASSWORD_PIN' : 'USER_FORGOT_PASSWORD');
 
 $message = 'Z-Pay Swift ' . $label . ' OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
 $sendRateState = auth_otp_send_rate_state($purpose, $otpPhone, $now);

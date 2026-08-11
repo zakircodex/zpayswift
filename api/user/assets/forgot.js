@@ -4,23 +4,22 @@
   const USER_PROXY_URL = window.USER_PROXY_URL || '/api/user/proxy.php';
   const USER_LOGIN_URL = window.USER_LOGIN_URL || '/user/';
   const el = (id) => document.getElementById(id);
-  const steps = ['phone', 'identity', 'otp', 'credential'];
+  const steps = ['phone', 'otp', 'credential'];
   const activeRequests = new Set();
   const state = {
     step: 'phone',
-    resetType: 'PASSWORD',
     phone: '',
-    phoneCountry: 'BD',
+    phoneCountry: '',
     busyCount: 0,
     requestInFlight: false,
     feedbackAfterClose: '',
+    resetAuthorizationToken: '',
     forgotOtp: {
       preAuthToken: '',
       otpRequestId: '',
       maskedPhone: '',
       expiresAt: 0,
-      timer: 0,
-      otp: ''
+      timer: 0
     }
   };
 
@@ -35,6 +34,7 @@
     el('forgotFeedbackTitle').textContent = title || (type === 'success' ? 'Success' : 'Error');
     el('forgotFeedbackMessage').textContent = String(message || 'Something went wrong.');
     el('forgotFeedbackIcon').textContent = type === 'success' ? '\u2713' : '!';
+    el('forgotFeedbackOk').textContent = state.feedbackAfterClose === 'login' ? 'Back to Login' : 'OK';
     modal.classList.add('show');
     modal.setAttribute('aria-hidden', 'false');
     document.body.classList.add('forgot-modal-open');
@@ -42,25 +42,19 @@
   }
 
   function closeFeedback() {
+    const next = state.feedbackAfterClose;
+    state.feedbackAfterClose = '';
     el('forgotFeedbackModal')?.classList.remove('show');
     el('forgotFeedbackModal')?.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('forgot-modal-open');
-    if (state.feedbackAfterClose === 'login') {
-      state.feedbackAfterClose = '';
+    el('forgotFeedbackOk').textContent = 'OK';
+
+    if (next === 'login') {
+      clearRecoveryState();
       window.location.replace(USER_LOGIN_URL);
-    } else if (state.feedbackAfterClose === 'restart') {
-      state.feedbackAfterClose = '';
-      resetOtpState();
-      clearSensitiveFields();
+    } else if (next === 'restart') {
+      clearRecoveryState();
       showStep('phone', 'replace');
-    } else if (state.feedbackAfterClose === 'otp') {
-      state.feedbackAfterClose = '';
-      state.forgotOtp.otp = '';
-      el('otpCode').value = '';
-      showStep('otp');
-    } else if (state.feedbackAfterClose === 'identity') {
-      state.feedbackAfterClose = '';
-      showStep('identity');
     }
   }
 
@@ -105,7 +99,6 @@
       if (!response.ok || json?.ok !== true) {
         const error = new Error(String(json?.message || 'Request failed'));
         error.code = String(json?.code || 'REQUEST_FAILED');
-        error.data = json?.data || {};
         throw error;
       }
       return json.data || {};
@@ -122,36 +115,66 @@
       : /^(?:01[3-9]\d{8}|8801[3-9]\d{8}|1[3-9]\d{8})$/.test(digits);
   }
 
-  function setResetType(type) {
-    const next = String(type || 'PASSWORD').toUpperCase();
-    state.resetType = ['PASSWORD', 'PIN'].includes(next) ? next : 'PASSWORD';
-    el('resetType').value = state.resetType;
-    el('typePasswordBtn').classList.toggle('active', state.resetType === 'PASSWORD');
-    el('typePinBtn').classList.toggle('active', state.resetType === 'PIN');
-    el('passwordFields').hidden = state.resetType === 'PIN';
-    el('pinFields').hidden = state.resetType !== 'PIN';
-    el('verifyForgotOtpBtn').textContent = state.resetType === 'PIN' ? 'Reset PIN' : 'Reset Password';
+  function stepDescription(step) {
+    const descriptions = {
+      phone: 'Enter your phone number to recover your account.',
+      otp: 'Enter the OTP sent to your registered phone.',
+      credential: 'Set your new password and transaction PIN.'
+    };
+    return descriptions[step] || descriptions.phone;
   }
 
-  function stepDescription(step) {
-    const name = state.resetType === 'PIN' ? 'PIN' : 'password';
-    const map = {
-      phone: 'Step 1: Enter your phone number.',
-      identity: 'Step 2: Verify your registered identity.',
-      otp: 'Step 3: Enter the OTP sent to your phone.',
-      credential: `Step 4: Set your new ${name}.`
+  function actionForInput(input) {
+    const actions = {
+      forgotPhone: el('forgotPhoneContinue'),
+      otpCode: el('forgotOtpContinue'),
+      newPassword: el('updateForgotCredentialsBtn'),
+      confirmPassword: el('updateForgotCredentialsBtn'),
+      newPin: el('updateForgotCredentialsBtn'),
+      confirmPin: el('updateForgotCredentialsBtn')
     };
-    return map[step] || map.phone;
+    return input ? actions[input.id] || null : null;
+  }
+
+  function updateKeyboardViewport() {
+    const viewport = window.visualViewport;
+    const visibleHeight = viewport ? viewport.height : window.innerHeight;
+    const visibleBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+    const keyboardInset = Math.max(0, window.innerHeight - visibleBottom);
+    document.documentElement.style.setProperty('--forgot-keyboard-inset', `${Math.round(keyboardInset)}px`);
+    document.body.classList.toggle('forgot-keyboard-open', keyboardInset > 80 || visibleHeight < 560);
+  }
+
+  function ensureControlVisible(input) {
+    if (!input || document.activeElement !== input) return;
+    updateKeyboardViewport();
+    const viewport = window.visualViewport;
+    const visibleTop = (viewport?.offsetTop || 0) + 14;
+    const visibleBottom = (viewport ? viewport.offsetTop + viewport.height : window.innerHeight) - 18;
+    const action = actionForInput(input);
+    const inputRect = input.getBoundingClientRect();
+    const actionRect = action?.getBoundingClientRect() || inputRect;
+    const targetTop = Math.min(inputRect.top, actionRect.top);
+    const targetBottom = Math.max(inputRect.bottom, actionRect.bottom);
+    const page = el('forgotPageRoot');
+    if (!page) return;
+
+    if (targetBottom > visibleBottom) {
+      page.scrollBy({ top: targetBottom - visibleBottom + 12, behavior: 'smooth' });
+    } else if (targetTop < visibleTop) {
+      page.scrollBy({ top: targetTop - visibleTop - 12, behavior: 'smooth' });
+    }
   }
 
   function focusForStep(step) {
-    const ids = { phone: 'forgotPhone', identity: 'forgotIdentityNumber', otp: 'otpCode', credential: state.resetType === 'PIN' ? 'newPin' : 'newPassword' };
+    const ids = { phone: 'forgotPhone', otp: 'otpCode', credential: 'newPassword' };
     const node = el(ids[step]);
     if (!node) return;
     window.setTimeout(() => {
       node.focus({ preventScroll: true });
-      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 50);
+      ensureControlVisible(node);
+    }, 80);
+    window.setTimeout(() => ensureControlVisible(node), 280);
   }
 
   function showStep(step, historyMode = '') {
@@ -167,23 +190,6 @@
     if (historyMode === 'push') history.pushState({ forgotStep: next }, '', window.location.href);
     else if (historyMode === 'replace') history.replaceState({ forgotStep: next }, '', window.location.href);
     focusForStep(next);
-  }
-
-  function continuePhone() {
-    const phone = el('forgotPhone').value.trim();
-    const country = el('forgotPhoneCountry').value.toUpperCase();
-    if (!phone) {
-      showFeedback('Please enter your phone number.');
-      return;
-    }
-    if (!validPhone(country, phone)) {
-      showFeedback(country === 'MY' ? 'Invalid Malaysia number.' : 'Invalid Bangladesh number.');
-      return;
-    }
-    state.phone = phone;
-    state.phoneCountry = country;
-    el('forgotAccountPhone').textContent = phone;
-    showStep('identity', 'push');
   }
 
   function clearOtpTimer() {
@@ -215,7 +221,7 @@
     state.forgotOtp.expiresAt = expiresAt > 0
       ? (expiresAt < 1000000000000 ? expiresAt * 1000 : expiresAt)
       : Date.now() + expiresIn * 1000;
-    state.forgotOtp.otp = '';
+    state.resetAuthorizationToken = '';
     el('otpMaskedPhone').textContent = state.forgotOtp.maskedPhone || '-';
     el('otpCode').value = '';
     el('otpStatus').textContent = 'Enter the OTP sent to your phone.';
@@ -224,76 +230,108 @@
     state.forgotOtp.timer = window.setInterval(updateOtpCountdown, 1000);
   }
 
-  function resetOtpState() {
-    clearOtpTimer();
-    state.forgotOtp = { preAuthToken: '', otpRequestId: '', maskedPhone: '', expiresAt: 0, timer: 0, otp: '' };
-    el('otpCode').value = '';
+  function clearSensitiveFields() {
+    ['otpCode', 'newPassword', 'confirmPassword', 'newPin', 'confirmPin'].forEach((id) => {
+      el(id).value = '';
+    });
   }
 
-  async function sendForgotOtp() {
+  function clearRecoveryState() {
+    clearOtpTimer();
+    clearSensitiveFields();
+    state.phone = '';
+    state.resetAuthorizationToken = '';
+    state.forgotOtp = { preAuthToken: '', otpRequestId: '', maskedPhone: '', expiresAt: 0, timer: 0 };
+  }
+
+  async function continuePhone() {
     if (state.requestInFlight) return;
-    const identity = el('forgotIdentityNumber').value.trim();
-    if (!identity) {
-      showFeedback('NID or Passport number is required.');
-      return;
+    const phone = el('forgotPhone').value.trim();
+    const country = el('forgotPhoneCountry').value.toUpperCase();
+    if (!['BD', 'MY'].includes(country)) return showFeedback('Phone country could not be detected. Please reload the page.');
+    if (!phone) return showFeedback('Please enter your phone number.');
+    if (!validPhone(country, phone)) {
+      return showFeedback(country === 'MY' ? 'Invalid Malaysia number.' : 'Invalid Bangladesh number.');
     }
+
     state.requestInFlight = true;
-    el('sendForgotOtpBtn').disabled = true;
+    el('forgotPhoneContinue').disabled = true;
     try {
-      const response = await proxyPost('forgot_send_otp', {
-        phone: state.phone,
-        phone_country: state.phoneCountry,
-        reset_type: state.resetType,
+      const data = await proxyPost('forgot_send_otp', {
+        phone,
+        phone_country: country,
+        reset_type: 'PASSWORD_PIN',
         device_id: 'USER_WEB',
         device_name: 'User Forgot',
         browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || ''
-      }, 'Sending recovery OTP...');
-      updateOtpState(response);
+      }, 'Verifying account and sending OTP...');
+      state.phone = phone;
+      state.phoneCountry = country;
+      updateOtpState(data);
       showStep('otp', 'push');
     } catch (error) {
-      showFeedback(error.message || 'Recovery OTP could not be sent.');
+      showFeedback(error.message || 'Account could not be verified.');
     } finally {
       state.requestInFlight = false;
-      el('sendForgotOtpBtn').disabled = false;
+      el('forgotPhoneContinue').disabled = false;
       updateOtpCountdown();
     }
   }
 
-  function continueOtp() {
+  async function verifyOtp() {
+    if (state.requestInFlight) return;
+    if (state.resetAuthorizationToken) {
+      showStep('credential', 'push');
+      return;
+    }
+
     const otp = el('otpCode').value.trim();
     if (!state.forgotOtp.preAuthToken || !state.forgotOtp.otpRequestId) {
-      showFeedback('Recovery session expired. Please start again.');
-      return;
+      state.feedbackAfterClose = 'restart';
+      return showFeedback('Recovery session expired. Please start again.');
     }
-    if (Date.now() >= state.forgotOtp.expiresAt) {
-      showFeedback('OTP expired. Resend OTP to continue.');
-      return;
+    if (Date.now() >= state.forgotOtp.expiresAt) return showFeedback('OTP expired. Resend OTP to continue.');
+    if (!/^\d{4,6}$/.test(otp)) return showFeedback('Please enter the OTP sent to your phone.');
+
+    state.requestInFlight = true;
+    el('forgotOtpContinue').disabled = true;
+    try {
+      const data = await proxyPost('forgot_verify_otp', {
+        pre_auth_token: state.forgotOtp.preAuthToken,
+        otp_request_id: state.forgotOtp.otpRequestId,
+        otp,
+        reset_type: 'PASSWORD_PIN',
+        device_id: 'USER_WEB'
+      }, 'Verifying OTP...');
+      state.resetAuthorizationToken = String(data.reset_authorization_token || data.reset_token || '');
+      if (!state.resetAuthorizationToken) throw new Error('Reset authorization could not be created. Please start again.');
+      clearOtpTimer();
+      showStep('credential', 'push');
+    } catch (error) {
+      const code = String(error.code || '').toUpperCase();
+      if (code.includes('OTP_EXPIRED') || code.includes('FORGOT_SESSION')) state.feedbackAfterClose = 'restart';
+      showFeedback(error.message || 'OTP could not be verified.');
+    } finally {
+      state.requestInFlight = false;
+      el('forgotOtpContinue').disabled = false;
     }
-    if (!/^\d{4,6}$/.test(otp)) {
-      showFeedback('Please enter the OTP sent to your phone.');
-      return;
-    }
-    state.forgotOtp.otp = otp;
-    setResetType(state.resetType);
-    showStep('credential', 'push');
   }
 
-  async function resendForgotOtp() {
+  async function resendOtp() {
     if (state.requestInFlight || Date.now() < state.forgotOtp.expiresAt) return;
     if (!state.forgotOtp.preAuthToken || !state.forgotOtp.otpRequestId) {
-      showFeedback('Recovery session expired. Please start again.');
-      return;
+      state.feedbackAfterClose = 'restart';
+      return showFeedback('Recovery session expired. Please start again.');
     }
+
     state.requestInFlight = true;
     try {
-      const response = await proxyPost('forgot_resend_otp', {
+      const data = await proxyPost('forgot_resend_otp', {
         pre_auth_token: state.forgotOtp.preAuthToken,
-        reset_token: state.forgotOtp.preAuthToken,
-        forgot_token: state.forgotOtp.preAuthToken,
         otp_request_id: state.forgotOtp.otpRequestId,
-        request_id: state.forgotOtp.otpRequestId
+        device_id: 'USER_WEB'
       }, 'Resending OTP...');
-      updateOtpState(response);
+      updateOtpState(data);
       el('otpStatus').textContent = 'A new OTP was sent. The previous code is no longer valid.';
     } catch (error) {
       showFeedback(error.message || 'OTP could not be resent.');
@@ -303,156 +341,145 @@
     }
   }
 
-  function validateCredential() {
-    if (state.resetType === 'PIN') {
-      const pin = el('newPin').value.trim();
-      const confirmPin = el('confirmPin').value.trim();
-      if (!/^\d{4,8}$/.test(pin)) return 'PIN must be 4 to 8 digits.';
-      if (pin !== confirmPin) return 'PIN confirmation does not match.';
-      return '';
-    }
+  function validateCredentials() {
     const password = el('newPassword').value;
     const confirmPassword = el('confirmPassword').value;
+    const pin = el('newPin').value.trim();
+    const confirmPin = el('confirmPin').value.trim();
     if (password.length < 6) return 'Password must be at least 6 characters.';
     if (password !== confirmPassword) return 'Password confirmation does not match.';
+    if (!/^\d{4}$/.test(pin)) return 'PIN must be exactly 4 digits.';
+    if (pin !== confirmPin) return 'PIN confirmation does not match.';
     return '';
   }
 
-  async function verifyForgotOtp() {
+  async function updateCredentials() {
     if (state.requestInFlight) return;
-    const errorMessage = validateCredential();
-    if (errorMessage) {
-      showFeedback(errorMessage);
-      return;
-    }
-    if (Date.now() >= state.forgotOtp.expiresAt) {
-      showFeedback('OTP expired. Resend OTP to continue.');
-      return;
-    }
-
-    const body = {
-      pre_auth_token: state.forgotOtp.preAuthToken,
-      reset_token: state.forgotOtp.preAuthToken,
-      forgot_token: state.forgotOtp.preAuthToken,
-      otp_request_id: state.forgotOtp.otpRequestId,
-      request_id: state.forgotOtp.otpRequestId,
-      otp: state.forgotOtp.otp,
-      reset_type: state.resetType,
-      identity_type: el('forgotIdentityType').value.toUpperCase(),
-      identity_number: el('forgotIdentityNumber').value.trim()
-    };
-    if (state.resetType === 'PIN') {
-      body.new_pin = el('newPin').value.trim();
-      body.confirm_pin = el('confirmPin').value.trim();
-    } else {
-      body.new_password = el('newPassword').value;
-      body.confirm_password = el('confirmPassword').value;
+    const validation = validateCredentials();
+    if (validation) return showFeedback(validation);
+    if (!state.forgotOtp.preAuthToken || !state.resetAuthorizationToken) {
+      state.feedbackAfterClose = 'restart';
+      return showFeedback('Reset authorization expired. Please start again.');
     }
 
     state.requestInFlight = true;
-    el('verifyForgotOtpBtn').disabled = true;
+    el('updateForgotCredentialsBtn').disabled = true;
     try {
-      await proxyPost('forgot_verify_otp', body, `Resetting ${state.resetType === 'PIN' ? 'PIN' : 'password'}...`);
+      await proxyPost('forgot_reset_credentials', {
+        pre_auth_token: state.forgotOtp.preAuthToken,
+        reset_authorization_token: state.resetAuthorizationToken,
+        new_password: el('newPassword').value,
+        confirm_password: el('confirmPassword').value,
+        new_pin: el('newPin').value.trim(),
+        confirm_pin: el('confirmPin').value.trim(),
+        device_id: 'USER_WEB'
+      }, 'Updating password and PIN...');
       clearSensitiveFields();
-      resetOtpState();
+      clearOtpTimer();
+      state.forgotOtp.preAuthToken = '';
+      state.forgotOtp.otpRequestId = '';
+      state.resetAuthorizationToken = '';
       state.feedbackAfterClose = 'login';
-      showFeedback(`${state.resetType === 'PIN' ? 'PIN' : 'Password'} reset successful. Please login.`, 'success', 'Reset Complete');
+      showFeedback(
+        'Your password and transaction PIN were updated successfully.',
+        'success',
+        'Password & PIN Updated'
+      );
     } catch (error) {
-      clearSensitiveFields(false);
       const code = String(error.code || '').toUpperCase();
-      if (code.includes('OTP_EXPIRED') || code.includes('FORGOT_SESSION')) {
-        state.feedbackAfterClose = 'restart';
-      } else if (code.includes('OTP_')) {
-        state.feedbackAfterClose = 'otp';
-      } else if (code.includes('IDENTITY_')) {
-        state.feedbackAfterClose = 'identity';
-      }
-      showFeedback(error.message || 'Reset could not be completed.');
+      if (code.includes('RESET_TOKEN') || code.includes('FORGOT_SESSION')) state.feedbackAfterClose = 'restart';
+      showFeedback(error.message || 'Password and PIN could not be updated.');
     } finally {
       state.requestInFlight = false;
-      el('verifyForgotOtpBtn').disabled = false;
+      el('updateForgotCredentialsBtn').disabled = false;
     }
-  }
-
-  function clearSensitiveFields(includeOtp = true) {
-    ['newPassword', 'confirmPassword', 'newPin', 'confirmPin'].forEach((id) => { el(id).value = ''; });
-    if (includeOtp) el('otpCode').value = '';
   }
 
   function updateCountryUi() {
     const country = el('forgotPhoneCountry').value.toUpperCase();
-    el('forgotPhone').placeholder = country === 'MY'
-      ? '01XXXXXXXX or +60XXXXXXXXX'
-      : '01XXXXXXXXX or +8801XXXXXXXXX';
+    el('forgotCountryDisplay').textContent = country === 'BD'
+      ? 'Bangladesh (+880)'
+      : (country === 'MY' ? 'Malaysia (+60)' : 'Unavailable');
   }
 
   async function loadCountryDefault() {
+    el('forgotPhoneContinue').disabled = true;
     try {
       const data = await proxyPost('country_defaults', {}, 'Detecting country...');
-      const country = String(data.phone_country || 'MY').toUpperCase();
-      if (['BD', 'MY'].includes(country)) el('forgotPhoneCountry').value = country;
-    } catch (_) {
-      // Keep the server-compatible fallback country.
+      const country = String(data.phone_country || '').toUpperCase();
+      if (!['BD', 'MY'].includes(country)) throw new Error('Phone country is unavailable.');
+      state.phoneCountry = country;
+      el('forgotPhoneCountry').value = country;
+      el('forgotPhoneContinue').disabled = false;
+    } catch (error) {
+      state.phoneCountry = '';
+      el('forgotPhoneCountry').value = '';
+      showFeedback(error.message || 'Phone country could not be detected. Please reload the page.');
     }
     updateCountryUi();
   }
 
   function handleBack() {
-    if (modalOpen()) {
-      closeFeedback();
-      return;
-    }
+    if (modalOpen()) return closeFeedback();
     if (state.busyCount > 0) return;
     const index = steps.indexOf(state.step);
     if (index <= 0) {
+      clearRecoveryState();
       window.location.href = USER_LOGIN_URL;
       return;
     }
-    if (steps.indexOf(state.step) >= steps.indexOf('otp') && index - 1 < steps.indexOf('otp')) resetOtpState();
-    if (state.step === 'credential') clearSensitiveFields(false);
+    if (state.step === 'otp') clearRecoveryState();
+    if (state.step === 'credential') clearSensitiveFields();
     showStep(steps[index - 1]);
   }
 
-  function focusVisible(event) {
+  function handleFocus(event) {
     const target = event.target;
-    if (!(target instanceof HTMLInputElement) && !(target instanceof HTMLSelectElement)) return;
-    window.setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120);
+    if (!(target instanceof HTMLInputElement) || target.type === 'hidden') return;
+    window.setTimeout(() => ensureControlVisible(target), 80);
+    window.setTimeout(() => ensureControlVisible(target), 280);
   }
 
-  el('typePasswordBtn').addEventListener('click', () => setResetType('PASSWORD'));
-  el('typePinBtn').addEventListener('click', () => setResetType('PIN'));
+  function handleViewportChange() {
+    updateKeyboardViewport();
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement && active.type !== 'hidden') {
+      window.setTimeout(() => ensureControlVisible(active), 30);
+    }
+  }
+
   el('forgotPhoneContinue').addEventListener('click', continuePhone);
-  el('sendForgotOtpBtn').addEventListener('click', sendForgotOtp);
-  el('forgotOtpContinue').addEventListener('click', continueOtp);
-  el('resendForgotOtpBtn').addEventListener('click', resendForgotOtp);
-  el('verifyForgotOtpBtn').addEventListener('click', verifyForgotOtp);
+  el('forgotOtpContinue').addEventListener('click', verifyOtp);
+  el('resendForgotOtpBtn').addEventListener('click', resendOtp);
+  el('updateForgotCredentialsBtn').addEventListener('click', updateCredentials);
   el('forgotFeedbackOk').addEventListener('click', closeFeedback);
   el('forgotFeedbackModal').addEventListener('click', (event) => {
-    if (event.target === el('forgotFeedbackModal')) closeFeedback();
+    if (event.target === el('forgotFeedbackModal') && state.feedbackAfterClose !== 'login') closeFeedback();
   });
   el('forgotBackButton').addEventListener('click', () => {
-    if (state.step === 'phone') window.location.href = USER_LOGIN_URL;
+    if (modalOpen()) closeFeedback();
+    else if (state.step === 'phone') window.location.href = USER_LOGIN_URL;
     else history.back();
   });
-  el('forgotPhoneCountry').addEventListener('change', updateCountryUi);
   el('forgotPhone').addEventListener('keydown', (event) => { if (event.key === 'Enter') continuePhone(); });
-  el('forgotIdentityNumber').addEventListener('keydown', (event) => { if (event.key === 'Enter') sendForgotOtp(); });
-  el('otpCode').addEventListener('keydown', (event) => { if (event.key === 'Enter') continueOtp(); });
+  el('otpCode').addEventListener('keydown', (event) => { if (event.key === 'Enter') verifyOtp(); });
   ['newPassword', 'confirmPassword', 'newPin', 'confirmPin'].forEach((id) => {
-    el(id).addEventListener('keydown', (event) => { if (event.key === 'Enter') verifyForgotOtp(); });
+    el(id).addEventListener('keydown', (event) => { if (event.key === 'Enter') updateCredentials(); });
   });
-  document.addEventListener('focusin', focusVisible);
+  document.addEventListener('focusin', handleFocus);
+  document.addEventListener('focusout', () => window.setTimeout(handleViewportChange, 80));
+  window.visualViewport?.addEventListener('resize', handleViewportChange);
+  window.visualViewport?.addEventListener('scroll', handleViewportChange);
 
   window.addEventListener('popstate', (event) => {
     if (modalOpen()) {
       closeFeedback();
-      history.pushState({ forgotStep: state.step }, '', window.location.href);
       return;
     }
     const requested = event.state?.forgotStep;
     if (steps.includes(requested)) {
-      if (steps.indexOf(requested) < steps.indexOf('otp') && steps.indexOf(state.step) >= steps.indexOf('otp')) resetOtpState();
-      if (state.step === 'credential' && requested !== 'credential') clearSensitiveFields(false);
+      if (requested === 'phone' && state.step === 'otp') clearRecoveryState();
+      if (state.step === 'credential' && requested !== 'credential') clearSensitiveFields();
       showStep(requested);
       return;
     }
@@ -463,18 +490,20 @@
     activeRequests.forEach((controller) => controller.abort());
     activeRequests.clear();
     clearOtpTimer();
+    clearSensitiveFields();
     resetBusy();
+    document.documentElement.style.removeProperty('--forgot-keyboard-inset');
+    document.body.classList.remove('forgot-keyboard-open');
   });
   window.addEventListener('pageshow', (event) => {
     if (!event.persisted) return;
     resetBusy();
-    closeFeedback();
-    clearSensitiveFields();
-    if (state.step === 'credential') showStep('otp', 'replace');
+    if (modalOpen()) closeFeedback();
+    handleViewportChange();
   });
 
-  setResetType('PASSWORD');
   showStep('phone', 'replace');
   resetBusy();
+  updateKeyboardViewport();
   loadCountryDefault();
 })();

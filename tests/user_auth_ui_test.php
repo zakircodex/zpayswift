@@ -77,16 +77,19 @@ auth_ui_expect(str_contains($registerJs, 'navigator.geolocation.getCurrentPositi
 auth_ui_expect(!str_contains($registerJs, 'localStorage') && !str_contains($registerJs, 'console.log'), 'Register must not store/log password, PIN or OTP');
 auth_ui_expect(str_contains($registerCss, '.user-register-page .register-card') && !str_contains($registerCss, "\n.card{"), 'Register CSS must remain page scoped');
 
-foreach (['phone', 'identity', 'otp', 'credential'] as $step) {
+foreach (['phone', 'otp', 'credential'] as $step) {
     auth_ui_expect(str_contains($forgotPage, 'data-forgot-step="' . $step . '"'), "Forgot {$step} step is missing");
 }
-auth_ui_expect(str_contains($forgotPage, 'id="forgotIdentityNumber"'), 'Forgot registered identity input is missing');
+auth_ui_expect(!str_contains($forgotPage, 'data-forgot-step="identity"') && !str_contains($forgotPage, 'id="forgotIdentityNumber"'), 'Web Forgot must not retain the old separate identity/reset-type UI');
+auth_ui_expect(str_contains($forgotPage, 'id="forgotCountryDisplay"') && str_contains($forgotPage, 'id="forgotPhoneCountry" type="hidden"') && !str_contains($forgotPage, '<select id="forgotPhoneCountry"'), 'Forgot country must be detected and read-only');
+auth_ui_expect(str_contains($forgotPage, 'id="newPassword"') && str_contains($forgotPage, 'id="newPin"') && str_contains($forgotPage, 'Update Password &amp; PIN'), 'Forgot combined password and PIN form is incomplete');
 auth_ui_expect(str_contains($forgotPage, 'id="forgotLoadingModal"') && !str_contains($forgotPage, 'id="loadingWrap"'), 'Forgot loader must be page-local');
-auth_ui_expect(str_contains($forgotJs, "proxyPost('forgot_send_otp'") && str_contains($forgotJs, "proxyPost('forgot_resend_otp'") && str_contains($forgotJs, "proxyPost('forgot_verify_otp'"), 'Forgot canonical proxy actions are missing');
-auth_ui_expect(str_contains($forgotJs, 'identity_number: el(\'forgotIdentityNumber\')'), 'Forgot reset must send the registered identity number');
-auth_ui_expect(str_contains($proxy, "'identity_number' => trim((string)("), 'User proxy must forward the required forgot identity field');
+auth_ui_expect(str_contains($forgotJs, "proxyPost('forgot_send_otp'") && str_contains($forgotJs, "proxyPost('forgot_resend_otp'") && str_contains($forgotJs, "proxyPost('forgot_verify_otp'") && str_contains($forgotJs, "proxyPost('forgot_reset_credentials'"), 'Forgot staged combined proxy actions are missing');
+auth_ui_expect(str_contains($forgotJs, "reset_type: 'PASSWORD_PIN'") && str_contains($forgotJs, 'reset_authorization_token:'), 'Forgot combined reset authorization contract is missing');
+auth_ui_expect(str_contains($proxy, "case 'forgot_reset_credentials':") && str_contains($proxy, "'auth/user_forgot_reset.php'"), 'User proxy combined credential-reset route is missing');
 auth_ui_expect(str_contains($forgotJs, 'expires_in_seconds') && str_contains($forgotJs, 'formatCountdown'), 'Forgot OTP countdown support is missing');
-auth_ui_expect(str_contains($forgotJs, "code.includes('OTP_')") && str_contains($forgotJs, "code.includes('IDENTITY_')"), 'Forgot canonical OTP/identity error recovery is missing');
+auth_ui_expect(str_contains($forgotJs, "code.includes('OTP_EXPIRED')") && str_contains($forgotJs, "code.includes('RESET_TOKEN')"), 'Forgot OTP/reset-token error recovery is missing');
+auth_ui_expect(str_contains($forgotJs, 'window.visualViewport') && str_contains($forgotJs, 'ensureControlVisible') && str_contains($forgotCss, '--forgot-keyboard-inset'), 'Forgot keyboard viewport handling is missing');
 auth_ui_expect(!str_contains($forgotJs, 'localStorage') && !str_contains($forgotJs, 'console.log'), 'Forgot must not store/log reset secrets');
 auth_ui_expect(str_contains($forgotCss, '.user-forgot-page .forgot-card') && !str_contains($forgotCss, "\n.card{"), 'Forgot CSS must remain page scoped');
 

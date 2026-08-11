@@ -1,4 +1,5 @@
 :root {
+  --forgot-keyboard-inset: 0px;
   --forgot-bg: #06162c;
   --forgot-card: #0c2d56;
   --forgot-field: #071d38;
@@ -36,11 +37,16 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: max(16px, env(safe-area-inset-top)) 14px max(20px, env(safe-area-inset-bottom));
+  padding: max(16px, env(safe-area-inset-top)) 14px
+    calc(max(20px, env(safe-area-inset-bottom)) + var(--forgot-keyboard-inset));
+  scroll-padding-block: 18px calc(110px + var(--forgot-keyboard-inset));
   background:
     radial-gradient(circle at 82% 10%, rgba(49, 225, 132, .12), transparent 25%),
     linear-gradient(180deg, #071b35 0%, #06142a 60%, #051225 100%);
 }
+
+.user-forgot-page.forgot-keyboard-open .forgot-page { align-items: flex-start; }
+.user-forgot-page.forgot-keyboard-open .forgot-card { margin-block: 0 18px; }
 
 .user-forgot-page .forgot-card {
   position: relative;
@@ -92,7 +98,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 .user-forgot-page .forgot-progress {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 7px;
   margin: 17px 0 20px;
 }
@@ -102,9 +108,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   background: rgba(169, 192, 220, .2);
 }
 .user-forgot-page .forgot-progress span.active { background: var(--forgot-green); }
-.user-forgot-page .forgot-step[hidden],
-.user-forgot-page #passwordFields[hidden],
-.user-forgot-page #pinFields[hidden] { display: none; }
+.user-forgot-page .forgot-step[hidden] { display: none; }
 
 .user-forgot-page .forgot-type-grid {
   display: grid;
@@ -188,6 +192,12 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   font-weight: 850;
   text-align: right;
   outline: none;
+}
+.user-forgot-page .forgot-country-card strong {
+  color: var(--forgot-text);
+  font-size: 15px;
+  font-weight: 900;
+  text-align: right;
 }
 .user-forgot-page .forgot-account-summary strong { text-align: right; overflow-wrap: anywhere; }
 .user-forgot-page .forgot-otp-summary {

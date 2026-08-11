@@ -32,6 +32,22 @@ if ($path === '/test/login-viewport') {
     exit;
 }
 
+if ($path === '/test/forgot-viewport') {
+    $width = max(320, min(1366, (int)($_GET['width'] ?? 390)));
+    $height = max(420, min(1000, (int)($_GET['height'] ?? 844)));
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><html><head><meta charset="utf-8"><style>'
+        . 'html,body{margin:0;min-height:100%;background:#020a16;display:grid;place-items:start center}'
+        . 'iframe{width:' . $width . 'px;height:' . $height . 'px;border:0;background:#07172f}'
+        . '#forgotMetrics{position:fixed;left:0;bottom:0;max-width:100%;font:10px monospace;color:#fff;background:#000}'
+        . '</style></head><body><iframe id="forgotFrame" src="/auth-test/forgot" title="Forgot viewport"></iframe>'
+        . '<output id="forgotMetrics" aria-label="Forgot viewport metrics">waiting</output><script>'
+        . 'const frame=document.getElementById("forgotFrame"),out=document.getElementById("forgotMetrics");'
+        . 'frame.addEventListener("load",()=>{const report=()=>{const d=frame.contentDocument,root=d.getElementById("forgotPageRoot"),input=d.activeElement,actions={forgotPhone:"forgotPhoneContinue",otpCode:"forgotOtpContinue",newPassword:"updateForgotCredentialsBtn",confirmPassword:"updateForgotCredentialsBtn",newPin:"updateForgotCredentialsBtn",confirmPin:"updateForgotCredentialsBtn"},action=d.getElementById(actions[input?.id]||"forgotPhoneContinue"),ir=input?.getBoundingClientRect(),ar=action?.getBoundingClientRect();out.textContent=JSON.stringify({width:d.documentElement.clientWidth,height:d.documentElement.clientHeight,scrollWidth:d.documentElement.scrollWidth,bodyScrollWidth:d.body.scrollWidth,rootScrollHeight:root?.scrollHeight,activeInput:input?.id||"",inputTop:Math.round(ir?.top||0),actionBottom:Math.round(ar?.bottom||0),actionVisible:(ar?.bottom||0)<=d.documentElement.clientHeight+1});};setTimeout(report,600);setInterval(report,150);});'
+        . '</script></body></html>';
+    exit;
+}
+
 if ($path === '/api/user/proxy.php') {
     $action = trim((string)($_GET['action'] ?? ''));
     $authBody = json_decode((string)file_get_contents('php://input'), true);
@@ -58,6 +74,18 @@ if ($path === '/api/user/proxy.php') {
     if ($action === 'login_verify_otp' && (string)($authBody['otp'] ?? '') !== '123456') {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(422);
+        echo json_encode(['ok' => false, 'code' => 'OTP_INVALID', 'message' => 'Local wrong OTP', 'data' => []]);
+        exit;
+    }
+    if ($action === 'forgot_send_otp' && trim((string)($authBody['phone'] ?? '')) === '0120000000') {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(404);
+        echo json_encode(['ok' => false, 'code' => 'ACCOUNT_NOT_FOUND', 'message' => 'Local account not found', 'data' => []]);
+        exit;
+    }
+    if ($action === 'forgot_verify_otp' && (string)($authBody['otp'] ?? '') !== '123456') {
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(400);
         echo json_encode(['ok' => false, 'code' => 'OTP_INVALID', 'message' => 'Local wrong OTP', 'data' => []]);
         exit;
     }
@@ -111,6 +139,30 @@ if ($path === '/api/user/proxy.php') {
             'login_complete' => true,
             'session_active' => true,
             'redirect' => 'dashboard',
+        ],
+        'forgot_send_otp' => [
+            'pre_auth_token' => 'LOCAL-FORGOT-PREAUTH',
+            'otp_request_id' => 'LOCAL-FORGOT-OTP',
+            'masked_phone' => '601*****789',
+            'expires_in_seconds' => 300,
+            'reset_type' => 'PASSWORD_PIN',
+        ],
+        'forgot_resend_otp' => [
+            'pre_auth_token' => 'LOCAL-FORGOT-PREAUTH',
+            'otp_request_id' => 'LOCAL-FORGOT-OTP-2',
+            'masked_phone' => '601*****789',
+            'expires_in_seconds' => 300,
+            'reset_type' => 'PASSWORD_PIN',
+        ],
+        'forgot_verify_otp' => [
+            'pre_auth_token' => 'LOCAL-FORGOT-PREAUTH',
+            'reset_authorization_token' => 'LOCAL-FORGOT-PREAUTH',
+            'reset_type' => 'PASSWORD_PIN',
+            'expires_in_seconds' => 900,
+        ],
+        'forgot_reset_credentials' => [
+            'sessions_revoked' => true,
+            'finalization_pending' => false,
         ],
     ];
     if (isset($authResponses[$action])) {

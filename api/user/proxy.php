@@ -5240,7 +5240,7 @@ switch ($action) {
             user_proxy_response(false, 'VALIDATION_ERROR', 'Phone is required', [], 422);
         }
 
-        if (!in_array($resetType, ['PASSWORD', 'PIN'], true)) {
+        if (!in_array($resetType, ['PASSWORD', 'PIN', 'PASSWORD_PIN'], true)) {
             user_proxy_response(false, 'VALIDATION_ERROR', 'Invalid reset type', [], 422);
         }
 
@@ -5285,6 +5285,8 @@ switch ($action) {
             'forgot_token' => $preAuthToken,
             'otp_request_id' => $otpRequestId,
             'request_id' => $otpRequestId,
+            'device_id' => 'USER_WEB',
+            'device_name' => 'User Forgot',
         ], 'FORGOT_OTP_RESEND_FAILED', 'Failed to resend forgot OTP');
         break;
 
@@ -5310,7 +5312,7 @@ switch ($action) {
         $otp = trim((string)($body['otp'] ?? ''));
         $resetType = strtoupper(trim((string)($body['reset_type'] ?? 'PASSWORD')));
 
-        if (!in_array($resetType, ['PASSWORD', 'PIN'], true)) {
+        if (!in_array($resetType, ['PASSWORD', 'PIN', 'PASSWORD_PIN'], true)) {
             user_proxy_response(false, 'VALIDATION_ERROR', 'Invalid reset type', [], 422);
         }
 
@@ -5326,6 +5328,8 @@ switch ($action) {
             'request_id' => $otpRequestId,
             'otp' => $otp,
             'reset_type' => $resetType,
+            'device_id' => 'USER_WEB',
+            'device_name' => 'User Forgot',
             'identity_number' => trim((string)(
                 $body['identity_number']
                 ?? $body['nid_or_passport_number']
@@ -5338,7 +5342,7 @@ switch ($action) {
         if ($resetType === 'PIN') {
             $forwardBody['new_pin'] = trim((string)($body['new_pin'] ?? ''));
             $forwardBody['confirm_pin'] = trim((string)($body['confirm_pin'] ?? ''));
-        } else {
+        } elseif ($resetType === 'PASSWORD') {
             $forwardBody['new_password'] = (string)($body['new_password'] ?? '');
             $forwardBody['confirm_password'] = (string)($body['confirm_password'] ?? '');
         }
@@ -5349,6 +5353,38 @@ switch ($action) {
             'FORGOT_VERIFY_FAILED',
             'Failed to verify OTP'
         );
+        break;
+
+    case 'forgot_reset_credentials':
+        user_proxy_require_method('POST');
+
+        $body = user_proxy_read_json_body();
+        $preAuthToken = trim((string)(
+            $body['pre_auth_token']
+            ?? $body['reset_token']
+            ?? $body['forgot_token']
+            ?? ''
+        ));
+        $resetAuthorizationToken = trim((string)($body['reset_authorization_token'] ?? ''));
+
+        if ($preAuthToken === '' || $resetAuthorizationToken === '') {
+            user_proxy_response(false, 'FORGOT_SESSION_EXPIRED', 'Reset authorization expired. Please start again.', [], 410);
+        }
+
+        user_proxy_forward_auth_post('auth/user_forgot_reset.php', [
+            'pre_auth_token' => $preAuthToken,
+            'reset_token' => $preAuthToken,
+            'forgot_token' => $preAuthToken,
+            'reset_authorization_token' => $resetAuthorizationToken,
+            'new_password' => (string)($body['new_password'] ?? ''),
+            'confirm_password' => (string)($body['confirm_password'] ?? ''),
+            'new_pin' => trim((string)($body['new_pin'] ?? '')),
+            'confirm_pin' => trim((string)($body['confirm_pin'] ?? '')),
+            'device_id' => 'USER_WEB',
+            'device_name' => 'User Forgot',
+            'client_ip' => security_client_ip(),
+            'user_agent' => security_user_agent(),
+        ], 'FORGOT_RESET_FAILED', 'Password and PIN could not be updated');
         break;
 
     default:

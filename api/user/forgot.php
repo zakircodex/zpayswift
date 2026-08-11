@@ -30,49 +30,21 @@ $forgotJsVersion = (string)(filemtime(__DIR__ . '/assets/forgot.js') ?: 1);
     </header>
 
     <div class="forgot-progress" aria-label="Recovery progress">
-      <span class="active"></span><span></span><span></span><span></span>
+      <span class="active"></span><span></span><span></span>
     </div>
 
     <div class="forgot-step" data-forgot-step="phone">
-      <div class="forgot-type-grid" role="group" aria-label="Reset type">
-        <button id="typePasswordBtn" class="active" type="button">Password</button>
-        <button id="typePinBtn" type="button">PIN</button>
-      </div>
-      <input id="resetType" type="hidden" value="PASSWORD">
-
-      <label class="forgot-country-card" for="forgotPhoneCountry">
+      <div class="forgot-country-card" aria-label="Detected phone country">
         <span>Country</span>
-        <select id="forgotPhoneCountry">
-          <option value="BD">Bangladesh (+880)</option>
-          <option value="MY">Malaysia (+60)</option>
-        </select>
-      </label>
+        <strong id="forgotCountryDisplay">Detecting...</strong>
+      </div>
+      <input id="forgotPhoneCountry" type="hidden" value="">
 
       <label class="forgot-field" for="forgotPhone">
         <span>Phone Number</span>
-        <input id="forgotPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="01XXXXXXXXX">
+        <input id="forgotPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Phone number">
       </label>
       <button id="forgotPhoneContinue" class="forgot-primary" type="button">Continue</button>
-    </div>
-
-    <div class="forgot-step" data-forgot-step="identity" hidden>
-      <div class="forgot-account-summary">
-        <span>Account</span>
-        <strong id="forgotAccountPhone">-</strong>
-      </div>
-      <label class="forgot-field" for="forgotIdentityType">
-        <span>Identity Type</span>
-        <select id="forgotIdentityType">
-          <option value="NID">National ID (NID)</option>
-          <option value="PASSPORT">Passport</option>
-        </select>
-      </label>
-      <label class="forgot-field" for="forgotIdentityNumber">
-        <span>NID or Passport Number</span>
-        <input id="forgotIdentityNumber" autocomplete="off" maxlength="40" placeholder="Enter registered document number">
-      </label>
-      <p class="forgot-hint">This is checked securely against your existing account before reset.</p>
-      <button id="sendForgotOtpBtn" class="forgot-primary" type="button">Send OTP</button>
     </div>
 
     <div class="forgot-step" data-forgot-step="otp" hidden>
@@ -86,32 +58,28 @@ $forgotJsVersion = (string)(filemtime(__DIR__ . '/assets/forgot.js') ?: 1);
         <input id="otpCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6 digit OTP">
       </label>
       <p id="otpStatus" class="forgot-status" aria-live="polite">Enter the OTP sent to your phone.</p>
-      <button id="forgotOtpContinue" class="forgot-primary" type="button">Continue</button>
+      <button id="forgotOtpContinue" class="forgot-primary" type="button">Verify</button>
       <button id="resendForgotOtpBtn" class="forgot-secondary" type="button" disabled>Resend OTP</button>
     </div>
 
     <div class="forgot-step" data-forgot-step="credential" hidden>
-      <div id="passwordFields">
-        <label class="forgot-field" for="newPassword">
-          <span>New Password</span>
-          <input id="newPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters">
-        </label>
-        <label class="forgot-field" for="confirmPassword">
-          <span>Confirm New Password</span>
-          <input id="confirmPassword" type="password" autocomplete="new-password" placeholder="Confirm password">
-        </label>
-      </div>
-      <div id="pinFields" hidden>
-        <label class="forgot-field" for="newPin">
-          <span>New PIN</span>
-          <input id="newPin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="4 to 8 digit PIN">
-        </label>
-        <label class="forgot-field" for="confirmPin">
-          <span>Confirm New PIN</span>
-          <input id="confirmPin" type="password" inputmode="numeric" autocomplete="new-password" placeholder="Confirm PIN">
-        </label>
-      </div>
-      <button id="verifyForgotOtpBtn" class="forgot-primary" type="button">Reset Password</button>
+      <label class="forgot-field" for="newPassword">
+        <span>New Password</span>
+        <input id="newPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters">
+      </label>
+      <label class="forgot-field" for="confirmPassword">
+        <span>Confirm New Password</span>
+        <input id="confirmPassword" type="password" autocomplete="new-password" placeholder="Confirm password">
+      </label>
+      <label class="forgot-field" for="newPin">
+        <span>New 4-digit PIN</span>
+        <input id="newPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="4" placeholder="4-digit PIN">
+      </label>
+      <label class="forgot-field" for="confirmPin">
+        <span>Confirm New PIN</span>
+        <input id="confirmPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="4" placeholder="Confirm PIN">
+      </label>
+      <button id="updateForgotCredentialsBtn" class="forgot-primary" type="button">Update Password &amp; PIN</button>
     </div>
 
     <nav class="forgot-links" aria-label="Recovery links">

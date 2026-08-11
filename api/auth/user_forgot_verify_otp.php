@@ -25,7 +25,7 @@ $otp = trim((string)($body['otp'] ?? ''));
 $resetType = strtoupper(trim((string)($body['reset_type'] ?? 'PASSWORD')));
 $identityNumber = auth_app_identity_number($body);
 
-if (!in_array($resetType, ['PASSWORD', 'PIN'], true)) {
+if (!in_array($resetType, ['PASSWORD', 'PIN', 'PASSWORD_PIN'], true)) {
     user_forgot_verify_response(false, 'VALIDATION_ERROR', 'Invalid reset type', [], 422);
 }
 
@@ -33,7 +33,7 @@ if ($preAuthToken === '' || $otpRequestId === '' || $otp === '') {
     user_forgot_verify_response(false, 'VALIDATION_ERROR', 'pre_auth_token, otp_request_id and otp are required', [], 422);
 }
 
-if ($identityNumber === '') {
+if ($resetType !== 'PASSWORD_PIN' && $identityNumber === '') {
     user_forgot_verify_response(false, 'IDENTITY_REQUIRED', 'NID or Passport number is required', [
         'field' => 'nid_or_passport_number',
     ], 422);
@@ -72,7 +72,7 @@ if ($preAuthExpiresAt <= $now) {
 
 $storedResetType = strtoupper(trim((string)($preAuthRow['reset_type'] ?? $resetType)));
 
-if (!in_array($storedResetType, ['PASSWORD', 'PIN'], true)) {
+if (!in_array($storedResetType, ['PASSWORD', 'PIN', 'PASSWORD_PIN'], true)) {
     $storedResetType = $resetType;
 }
 
@@ -150,6 +150,47 @@ $status = strtoupper(trim((string)($userRow['status'] ?? 'INACTIVE')));
 
 if ($status !== 'ACTIVE') {
     user_forgot_verify_response(false, 'FORBIDDEN', 'Account is inactive', [], 403);
+}
+
+$role = strtoupper(trim((string)($userRow['role'] ?? '')));
+if (!in_array($role, ['USER', 'RETAILER'], true)) {
+    user_forgot_verify_response(false, 'FORBIDDEN', 'Account recovery is not allowed.', [], 403);
+}
+
+if ($resetType === 'PASSWORD_PIN') {
+    $storedDeviceId = trim((string)($preAuthRow['device_id'] ?? ''));
+    $requestDeviceId = auth_app_device_id($body, 'USER_WEB');
+    if ($storedDeviceId !== '' && $requestDeviceId !== '' && !hash_equals($storedDeviceId, $requestDeviceId)) {
+        user_forgot_verify_response(false, 'DEVICE_MISMATCH', 'Device mismatch for this reset session.', [], 400);
+    }
+
+    $verified = fb_patch('AUTH_USER_FORGOT_PREAUTH/' . $preAuthToken, [
+        'otp_verified' => true,
+        'otp_verified_at' => $now,
+        'status' => 'OTP_VERIFIED',
+        'updated_at' => $now,
+        'expires_at' => $now + 900,
+    ]);
+
+    if (!$verified) {
+        user_forgot_verify_response(false, 'SERVER_ERROR', 'OTP verification could not be finalized. Please start again.', [], 500);
+    }
+
+    @fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+        'used' => true,
+        'used_at' => $now,
+        'status' => 'VERIFIED',
+        'updated_at' => $now,
+    ]);
+
+    user_forgot_verify_response(true, 'OTP_VERIFIED', 'OTP verified successfully.', [
+        'pre_auth_token' => $preAuthToken,
+        'reset_token' => $preAuthToken,
+        'forgot_token' => $preAuthToken,
+        'reset_authorization_token' => $preAuthToken,
+        'reset_type' => 'PASSWORD_PIN',
+        'expires_in_seconds' => 900,
+    ]);
 }
 
 $identityState = auth_app_identity_match_state($userRow, $identityNumber);
