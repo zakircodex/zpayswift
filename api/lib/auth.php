@@ -911,6 +911,48 @@ function auth_device_is_trusted(string $uid, string $deviceId): bool
         && in_array($status, ['', 'ACTIVE', 'TRUSTED'], true);
 }
 
+function auth_trusted_browser_cookie_parts(string $cookieValue): array
+{
+    $cookieValue = trim($cookieValue);
+    if ($cookieValue === '') {
+        return [];
+    }
+
+    $parts = explode(':', $cookieValue);
+    if (count($parts) === 2) {
+        [$selector, $token] = $parts;
+        $uidHint = '';
+    } elseif (count($parts) === 3) {
+        [$uidHint, $selector, $token] = $parts;
+    } else {
+        return [];
+    }
+
+    $uidHint = auth_clean_string($uidHint);
+    $selector = trim($selector);
+    $token = trim($token);
+    if (
+        ($uidHint !== '' && !preg_match('/^[A-Za-z0-9_-]{2,128}$/', $uidHint))
+        || !preg_match('/^[A-Za-z0-9_-]{8,128}$/', $selector)
+        || strlen($token) < 32
+        || strlen($token) > 256
+    ) {
+        return [];
+    }
+
+    return [
+        'uid_hint' => $uidHint,
+        'selector' => $selector,
+        'token' => $token,
+    ];
+}
+
+function auth_trusted_browser_cookie_uid_hint(string $cookieValue): string
+{
+    $parts = auth_trusted_browser_cookie_parts($cookieValue);
+    return auth_clean_string($parts['uid_hint'] ?? '');
+}
+
 function auth_trusted_browser_cookie_context(
     string $uid,
     string $cookieValue,
@@ -922,18 +964,15 @@ function auth_trusted_browser_cookie_context(
     $cookieValue = trim($cookieValue);
     $expectedDeviceId = auth_clean_string($expectedDeviceId);
 
-    if ($uid === '' || $cookieValue === '' || strpos($cookieValue, ':') === false) {
+    if ($uid === '' || $cookieValue === '') {
         return ['ok' => false, 'code' => 'TRUSTED_DEVICE_MISSING'];
     }
 
-    [$selector, $token] = explode(':', $cookieValue, 2);
-    $selector = trim($selector);
-    $token = trim($token);
-    if (
-        !preg_match('/^[A-Za-z0-9_-]{8,128}$/', $selector)
-        || strlen($token) < 32
-        || strlen($token) > 256
-    ) {
+    $parts = auth_trusted_browser_cookie_parts($cookieValue);
+    $selector = trim((string)($parts['selector'] ?? ''));
+    $token = trim((string)($parts['token'] ?? ''));
+    $uidHint = auth_clean_string($parts['uid_hint'] ?? '');
+    if (!$parts || ($uidHint !== '' && !hash_equals($uid, $uidHint))) {
         return ['ok' => false, 'code' => 'TRUSTED_DEVICE_INVALID'];
     }
 
@@ -997,6 +1036,25 @@ function auth_trusted_browser_cookie_context(
         'selector_hash' => hash('sha256', $selector),
         'expires_at' => $expiresAt,
     ];
+}
+
+function auth_web_logout_preserves_trusted_device(
+    string $uid,
+    string $deviceId,
+    string $cookieValue,
+    array $user = []
+): bool {
+    if (auth_clean_string($deviceId) !== 'USER_WEB') {
+        return false;
+    }
+
+    return !empty(auth_trusted_browser_cookie_context(
+        $uid,
+        $cookieValue,
+        $deviceId,
+        $user,
+        false
+    )['ok']);
 }
 
 function auth_mark_device_trusted(string $uid, string $deviceId, string $deviceName = '', string $appVersion = ''): bool

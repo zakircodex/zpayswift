@@ -43,6 +43,7 @@ auth_ui_expect(str_contains($loginPage, 'data-login-step="phone"') && str_contai
 auth_ui_expect(str_contains($loginPage, 'id="loginLoadingModal"') && !str_contains($loginPage, 'id="loadingWrap"'), 'Login loader must remain page-local');
 auth_ui_expect(str_contains($loginPage, 'href="/user/register"') && str_contains($loginPage, 'href="/user/forgot"'), 'Login Register/Forgot links are incorrect');
 auth_ui_expect(str_contains($loginPage, 'id="loginCountryDisplay"') && str_contains($loginPage, 'id="loginPhoneCountry" type="hidden"') && !str_contains($loginPage, '<select id="loginPhoneCountry"'), 'Login country must be read-only');
+auth_ui_expect(str_contains($loginPage, 'id="loginUseAnotherAccount"') && str_contains($loginPage, 'Use another account'), 'Trusted PIN screen must offer local account switching');
 auth_ui_expect(str_contains($loginPage, 'placeholder="Phone number"') && !str_contains($loginPage, '01XXXXXXXXX or'), 'Login phone placeholder must match Android');
 auth_ui_expect(str_contains($loginJs, "post('login_check_number'") && str_contains($loginJs, "post('login_verify_password'") && str_contains($loginJs, "post('login_verify_pin'") && str_contains($loginJs, "post('login_send_otp'"), 'Staged login proxy actions are missing');
 auth_ui_expect(str_contains($loginJs, "post('login_verify_otp'") && str_contains($loginJs, "post('login_resend_otp'"), 'Login OTP actions are missing');
@@ -50,13 +51,16 @@ auth_ui_expect(str_contains($loginJs, "const stepOrder = ['phone', 'password', '
 auth_ui_expect(str_contains($loginJs, 'expires_in_seconds') && str_contains($loginJs, 'formatCountdown'), 'Login OTP 300-second countdown support is missing');
 auth_ui_expect(str_contains($loginJs, 'state.phoneInFlight') && str_contains($loginJs, 'state.passwordInFlight') && str_contains($loginJs, 'state.pinInFlight') && str_contains($loginJs, 'state.verifyInFlight'), 'Login duplicate submission guards are missing');
 auth_ui_expect(str_contains($loginJs, 'trusted_login_available') && str_contains($loginJs, 'data.login_complete === true'), 'Trusted browser must route from phone to PIN and complete login after PIN');
+auth_ui_expect(str_contains($loginJs, "post('login_trusted_account'") && str_contains($loginJs, 'bootstrapLogin()'), 'Login page must resolve a trusted account before showing the phone flow');
+auth_ui_expect(str_contains($loginJs, 'ignore_trusted_device: state.ignoreTrustedLogin') && str_contains($loginJs, 'useAnotherAccount'), 'Use another account must bypass only the local trusted selection');
 auth_ui_expect(str_contains($loginJs, 'window.visualViewport') && str_contains($loginJs, 'ensureLoginControlVisible') && str_contains($loginJs, 'actionForInput'), 'Login keyboard handling must keep inputs and action buttons visible');
 auth_ui_expect(str_contains($loginJs, "window.addEventListener('pagehide'") && str_contains($loginJs, "window.addEventListener('pageshow'"), 'Login transition/BFCache cleanup is missing');
 auth_ui_expect(!str_contains($loginJs, 'localStorage') && !str_contains($loginJs, 'console.log'), 'Login must not store/log credentials or auth tokens');
 auth_ui_expect(str_contains($loginCss, '.user-login-page .login-card') && str_contains($loginCss, '.login-page-loading'), 'Login CSS is not page-scoped or loader-compatible');
 auth_ui_expect(str_contains($loginCss, '--login-keyboard-inset') && str_contains($loginCss, '.user-login-page.login-keyboard-open'), 'Login keyboard viewport CSS is missing');
 auth_ui_expect(str_contains($proxy, "case 'login_check_number':") && str_contains($proxy, "case 'login_verify_password':") && str_contains($proxy, "case 'login_verify_pin':") && str_contains($proxy, "case 'login_send_otp':"), 'Web proxy staged login routes are missing');
-auth_ui_expect(substr_count($proxy, "'trusted_device_cookie' => user_proxy_get_trust_cookie()") >= 2, 'Trusted cookie must be injected server-side for account recognition and PIN verification');
+auth_ui_expect(str_contains($proxy, "case 'login_trusted_account':") && str_contains($proxy, "'preserve_trusted_device'"), 'Trusted page-load lookup and Web logout preservation are missing');
+auth_ui_expect(str_contains($proxy, "'trusted_device_cookie' => \$trustedDeviceCookie") && str_contains($proxy, "'trusted_device_cookie' => user_proxy_get_trust_cookie()"), 'Trusted cookie must be injected server-side for account recognition and PIN verification');
 auth_ui_expect(str_contains($checkNumberEndpoint, 'trusted_login_available') && str_contains($checkNumberEndpoint, 'TRUSTED_DEVICE_RECOGNIZED'), 'Account check must issue trusted-browser PIN pre-auth only after secure validation');
 auth_ui_expect(str_contains($verifyPinEndpoint, 'trusted_browser_verified') && str_contains($verifyPinEndpoint, 'TRUSTED_DEVICE_INVALID'), 'PIN verification must revalidate the trusted browser');
 auth_ui_expect(str_contains($authLibrary, 'function auth_trusted_browser_cookie_context') && str_contains($authLibrary, "'auth_session_epoch'"), 'Trusted browser validation must bind token, device and session epoch');

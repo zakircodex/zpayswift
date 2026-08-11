@@ -426,6 +426,7 @@ function user_proxy_get_trust_cookie(): string
 
 function user_proxy_set_trust_cookie(array $cookieData): void
 {
+    $uid = trim((string)($cookieData['uid'] ?? ''));
     $selector = trim((string)($cookieData['selector'] ?? ''));
     $token = trim((string)($cookieData['token'] ?? ''));
     $expiresAt = (int)($cookieData['expires_at'] ?? 0);
@@ -440,7 +441,11 @@ function user_proxy_set_trust_cookie(array $cookieData): void
         $https = true;
     }
 
-    setcookie(user_proxy_trust_cookie_name(), $selector . ':' . $token, [
+    $cookieValue = $uid !== ''
+        ? $uid . ':' . $selector . ':' . $token
+        : $selector . ':' . $token;
+
+    setcookie(user_proxy_trust_cookie_name(), $cookieValue, [
         'expires' => $expiresAt,
         'path' => '/',
         'domain' => '',
@@ -449,7 +454,7 @@ function user_proxy_set_trust_cookie(array $cookieData): void
         'samesite' => 'Lax',
     ]);
 
-    $_COOKIE[user_proxy_trust_cookie_name()] = $selector . ':' . $token;
+    $_COOKIE[user_proxy_trust_cookie_name()] = $cookieValue;
 }
 
 function user_proxy_session_user_if_fresh(): array
@@ -3807,6 +3812,43 @@ switch ($action) {
         );
         break;
 
+    case 'login_trusted_account':
+        user_proxy_require_method('POST');
+
+        $body = user_proxy_read_json_body();
+        $trustedDeviceCookie = user_proxy_get_trust_cookie();
+        if ($trustedDeviceCookie === '') {
+            user_proxy_response(true, 'TRUSTED_LOGIN_UNAVAILABLE', 'Trusted login is not available', [
+                'trusted_login_available' => false,
+            ]);
+        }
+
+        $trustedRes = user_proxy_internal_api_request('POST', 'auth/check_number.php', [
+            'device_id' => 'USER_WEB',
+            'device_name' => 'User Dashboard',
+            'app_version' => 'WEB',
+            'trusted_device_cookie' => $trustedDeviceCookie,
+            'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
+        ], [
+            'X-APP-KEY' => APP_KEY,
+        ]);
+
+        if (!$trustedRes['ok']) {
+            user_proxy_response(true, 'TRUSTED_LOGIN_UNAVAILABLE', 'Trusted login is not available', [
+                'trusted_login_available' => false,
+            ]);
+        }
+
+        $trustedData = (array)($trustedRes['json']['data'] ?? []);
+        if (empty($trustedData['trusted_login_available']) || trim((string)($trustedData['pre_auth_token'] ?? '')) === '') {
+            user_proxy_response(true, 'TRUSTED_LOGIN_UNAVAILABLE', 'Trusted login is not available', [
+                'trusted_login_available' => false,
+            ]);
+        }
+
+        user_proxy_response(true, 'TRUSTED_ACCOUNT_FOUND', 'Trusted account found', $trustedData);
+        break;
+
     case 'login_check_number':
         user_proxy_require_method('POST');
 
@@ -3818,6 +3860,7 @@ switch ($action) {
             user_proxy_response(false, 'VALIDATION_ERROR', 'A valid phone and phone country are required', [], 422);
         }
 
+        $ignoreTrustedDevice = user_proxy_bool_value($body['ignore_trusted_device'] ?? false);
         user_proxy_forward_auth_post('auth/check_number.php', [
             'phone' => $phone,
             'phone_country' => $phoneCountry,
@@ -3825,7 +3868,7 @@ switch ($action) {
             'device_id' => 'USER_WEB',
             'device_name' => 'User Dashboard',
             'app_version' => 'WEB',
-            'trusted_device_cookie' => user_proxy_get_trust_cookie(),
+            'trusted_device_cookie' => $ignoreTrustedDevice ? '' : user_proxy_get_trust_cookie(),
             'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
         ], 'ACCOUNT_CHECK_FAILED', 'Account could not be verified');
         break;
@@ -4097,9 +4140,13 @@ switch ($action) {
         user_proxy_require_csrf();
 
         $token = user_proxy_get_session_token();
+        $trustedDeviceCookie = user_proxy_get_trust_cookie();
 
         if ($token !== '') {
-            user_proxy_internal_api_request('POST', 'auth/logout.php', [], [
+            user_proxy_internal_api_request('POST', 'auth/logout.php', [
+                'preserve_trusted_device' => $trustedDeviceCookie !== '',
+                'trusted_device_cookie' => $trustedDeviceCookie,
+            ], [
                 'X-APP-KEY' => APP_KEY,
                 'X-SESSION-TOKEN' => $token,
             ]);

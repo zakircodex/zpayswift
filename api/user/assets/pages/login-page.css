@@ -115,6 +115,27 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 
 .user-login-page .login-step[hidden] { display: none; }
+.user-login-page .login-use-another {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  min-height: 42px;
+  margin: 12px auto 0;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  color: #b9cce2;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.user-login-page .login-use-another:hover,
+.user-login-page .login-use-another:focus-visible {
+  color: var(--login-green);
+  background: rgba(49, 225, 132, .08);
+}
+.user-login-page .login-use-another[hidden] { display: none; }
 .user-login-page .login-country-card,
 .user-login-page .login-otp-summary {
   width: 100%;

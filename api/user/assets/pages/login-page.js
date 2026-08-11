@@ -12,6 +12,7 @@
     fullName: '',
     preAuthToken: '',
     trustedLogin: false,
+    ignoreTrustedLogin: false,
     pinVerified: false,
     otpRequestId: '',
     maskedPhone: '',
@@ -20,6 +21,7 @@
     busyCount: 0,
     navigationStarted: false,
     countryReady: false,
+    trustedLookupInFlight: false,
     phoneInFlight: false,
     passwordInFlight: false,
     pinInFlight: false,
@@ -292,7 +294,8 @@
     const [title, subtitle] = stepCopy(next);
     $('loginStepTitle').textContent = title;
     $('loginStepSubtitle').textContent = subtitle;
-    $('loginStepBack').hidden = next === 'phone';
+    $('loginStepBack').hidden = next === 'phone' || (next === 'pin' && state.trustedLogin);
+    $('loginUseAnotherAccount').hidden = !(next === 'pin' && state.trustedLogin);
 
     const focusTarget = {
       phone: $('loginPhone'),
@@ -300,7 +303,9 @@
       pin: $('loginPin'),
       otp: $('loginOtpCode')
     }[next];
-    window.setTimeout(() => focusVisible(focusTarget), 30);
+    if (options.focus !== false) {
+      window.setTimeout(() => focusVisible(focusTarget), 30);
+    }
 
     if (options.history === 'push') {
       history.pushState({ authStep: next }, '', window.location.href);
@@ -366,6 +371,7 @@
       const data = await post('login_check_number', {
         phone,
         phone_country: state.phoneCountry,
+        ignore_trusted_device: state.ignoreTrustedLogin,
         ...browserMeta()
       }, 'Checking account...');
       state.phone = String(data.phone || data.account || phone);
@@ -486,10 +492,14 @@
       $('loginPin').value = '';
       const code = String(error?.code || '').toUpperCase();
       if (code === 'TRUSTED_DEVICE_INVALID' || code === 'TRUSTED_DEVICE_EXPIRED') {
+        state.ignoreTrustedLogin = true;
         state.trustedLogin = false;
-        state.preAuthToken = '';
-        state.pinVerified = false;
-        showStep('password', { history: 'replace' });
+        resetAccountState();
+        state.countryReady = false;
+        state.phoneCountry = '';
+        $('loginCountryDisplay').textContent = 'Country: Detecting...';
+        showStep('phone', { history: 'replace', focus: false });
+        loadCountryDefault().then(() => focusVisible($('loginPhone')));
       }
       if (error?.name !== 'AbortError') showFeedback(safeErrorMessage(error, 'PIN could not be verified.'));
     } finally {
@@ -582,6 +592,57 @@
     }
   }
 
+  async function resolveTrustedAccount() {
+    if (state.trustedLookupInFlight || state.navigationStarted) return false;
+    state.trustedLookupInFlight = true;
+    try {
+      const data = await post('login_trusted_account', {
+        ...browserMeta()
+      }, 'Checking trusted device...');
+      const token = String(data.pre_auth_token || '');
+      if (data.trusted_login_available !== true || token === '') return false;
+
+      state.phone = String(data.phone || data.account || '');
+      state.phoneCountry = String(data.phone_country || '').toUpperCase();
+      state.fullName = String(data.name || data.user?.name || '').trim();
+      state.preAuthToken = token;
+      state.trustedLogin = true;
+      state.ignoreTrustedLogin = false;
+      state.countryReady = ['BD', 'MY'].includes(state.phoneCountry);
+      $('loginPhoneCountry').value = state.phoneCountry;
+      $('loginCountryDisplay').textContent = state.countryReady
+        ? `Country: ${countryLabel(state.phoneCountry)}`
+        : 'Country: Detecting...';
+      showStep('pin', { history: 'replace' });
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      state.trustedLookupInFlight = false;
+    }
+  }
+
+  async function bootstrapLogin() {
+    showStep('phone', { history: 'replace', focus: false });
+    const trusted = await resolveTrustedAccount();
+    if (trusted || state.navigationStarted) return;
+    await loadCountryDefault();
+    focusVisible($('loginPhone'));
+  }
+
+  async function useAnotherAccount() {
+    if (state.busyCount > 0 || state.navigationStarted) return;
+    state.ignoreTrustedLogin = true;
+    resetAccountState();
+    state.countryReady = false;
+    state.phoneCountry = '';
+    $('loginPhoneCountry').value = '';
+    $('loginCountryDisplay').textContent = 'Country: Detecting...';
+    showStep('phone', { history: 'replace', focus: false });
+    await loadCountryDefault();
+    focusVisible($('loginPhone'));
+  }
+
   function backStep() {
     if (state.step === 'otp') {
       resetOtpState(true);
@@ -638,6 +699,7 @@
   $('loginPhoneContinue').addEventListener('click', continuePhone);
   $('loginPasswordContinue').addEventListener('click', verifyPassword);
   $('loginPinContinue').addEventListener('click', verifyPin);
+  $('loginUseAnotherAccount').addEventListener('click', useAnotherAccount);
   $('verifyLoginOtpBtn').addEventListener('click', verifyOtp);
   $('resendLoginOtpBtn').addEventListener('click', resendOtp);
   $('loginStepBack').addEventListener('click', () => history.back());
@@ -696,6 +758,5 @@
 
   resetLoginLoading();
   updateKeyboardViewport();
-  showStep('phone', { history: 'replace' });
-  loadCountryDefault();
+  bootstrapLogin();
 })();

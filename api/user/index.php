@@ -71,6 +71,7 @@ $loginJsVersion = (string)(filemtime(__DIR__ . '/assets/pages/login-page.js') ?:
         <input id="loginPin" type="password" inputmode="numeric" maxlength="4" autocomplete="current-password" placeholder="Transaction PIN">
       </label>
       <button id="loginPinContinue" class="login-primary" type="button">Continue</button>
+      <button id="loginUseAnotherAccount" class="login-use-another" type="button" hidden>Use another account</button>
     </div>
 
     <div class="login-step" id="loginOtpStep" data-login-step="otp" hidden>

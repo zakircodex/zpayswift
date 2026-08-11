@@ -70,6 +70,7 @@ function user_verify_create_trusted_device(
 
     return [
         'ok' => true,
+        'uid' => $uid,
         'selector' => $selector,
         'token' => $rawToken,
         'expires_at' => $expiresAt,
@@ -176,6 +177,7 @@ if ($trustDevice) {
 
     if (!empty($trusted['ok'])) {
         $trustedDeviceCookie = [
+            'uid' => (string)($trusted['uid'] ?? ''),
             'selector' => (string)($trusted['selector'] ?? ''),
             'token' => (string)($trusted['token'] ?? ''),
             'expires_at' => (int)($trusted['expires_at'] ?? 0),

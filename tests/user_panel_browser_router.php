@@ -76,6 +76,15 @@ if ($path === '/api/user/proxy.php') {
             'trusted_login_available' => $trustedLogin,
             'pre_auth_token' => $trustedLogin ? 'LOCAL-TRUSTED-PREAUTH' : '',
         ],
+        'login_trusted_account' => [
+            'exists' => $trustedLogin,
+            'phone' => $trustedLogin ? '60123456789' : '',
+            'phone_country' => $trustedLogin ? 'MY' : '',
+            'name' => $trustedLogin ? 'LOCAL TEST USER' : '',
+            'account_status' => $trustedLogin ? 'ACTIVE' : '',
+            'trusted_login_available' => $trustedLogin,
+            'pre_auth_token' => $trustedLogin ? 'LOCAL-TRUSTED-PREAUTH' : '',
+        ],
         'login_verify_password' => [
             'pre_auth_token' => 'LOCAL-PREAUTH',
             'user' => ['name' => 'LOCAL TEST USER'],

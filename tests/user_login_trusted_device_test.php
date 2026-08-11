@@ -109,6 +109,7 @@ $deviceId = 'USER_WEB';
 $selector = 'ABCDEF0123456789';
 $token = str_repeat('a', 48);
 $cookie = $selector . ':' . $token;
+$uidCookie = $uid . ':' . $selector . ':' . $token;
 $epoch = 'SE_CURRENT';
 
 trusted_test_set('USERS/' . $uid, [
@@ -146,6 +147,11 @@ trusted_expect(!empty($valid['ok']), 'valid HttpOnly selector/token must allow t
 trusted_expect(($valid['selector_hash'] ?? '') === hash('sha256', $selector), 'pre-auth must bind the trusted selector');
 trusted_expect(!in_array('AUTH_TRUSTED_DEVICES', $readPaths, true), 'trusted login must not scan the global trusted-device node');
 trusted_expect(in_array('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector, $readPaths, true), 'trusted login must use a direct selector path');
+trusted_expect(auth_trusted_browser_cookie_uid_hint($uidCookie) === $uid, 'new trusted cookie must provide a validated direct UID lookup hint');
+trusted_expect(!empty(auth_trusted_browser_cookie_context($uid, $uidCookie, $deviceId, [], false)['ok']), 'UID-bound trusted cookie must validate against the same user row');
+trusted_expect(empty(auth_trusted_browser_cookie_context('U-OTHER', $uidCookie, $deviceId, [], false)['ok']), 'cookie UID hint must never authenticate a different user');
+trusted_expect(auth_web_logout_preserves_trusted_device($uid, $deviceId, $uidCookie), 'Web logout must preserve a fully validated browser trust credential');
+trusted_expect(!auth_web_logout_preserves_trusted_device($uid, 'ANDROID_APP', $uidCookie), 'Android logout must never use the Web trust-preservation rule');
 
 $wrongToken = auth_trusted_browser_cookie_context($uid, $selector . ':' . str_repeat('b', 48), $deviceId, [], false);
 trusted_expect(empty($wrongToken['ok']), 'wrong browser token must be rejected');
@@ -163,5 +169,6 @@ trusted_test_set('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector . '/expires_at
 auth_mark_manual_logout($uid, $deviceId);
 $loggedOut = auth_trusted_browser_cookie_context($uid, $cookie, $deviceId, [], false);
 trusted_expect(empty($loggedOut['ok']), 'manual logout must revoke trusted PIN login');
+trusted_expect(!auth_web_logout_preserves_trusted_device($uid, $deviceId, $uidCookie), 'revoked browser trust must not survive logout');
 
 echo "Trusted Web login tests passed.\n";
