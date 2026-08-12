@@ -5159,6 +5159,46 @@ switch ($action) {
         user_proxy_forward_authenticated_json('POST', 'notifications/mark_all_read.php', [], 'NOTIFICATION_UPDATE_FAILED', 'Notifications could not be updated.');
         break;
 
+    case 'register_precheck':
+        user_proxy_require_method('POST');
+
+        $body = user_proxy_read_json_body();
+        $stage = strtoupper(trim((string)($body['stage'] ?? '')));
+        require_once dirname(__DIR__) . '/lib/auth_android.php';
+        require_once dirname(__DIR__) . '/lib/register_android.php';
+
+        if ($stage === 'PERSONAL') {
+            $name = trim((string)($body['name'] ?? ''));
+            $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
+            $phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);
+            $email = strtolower(trim((string)($body['email'] ?? '')));
+
+            if ($name === '' || strlen($name) > 100) {
+                user_proxy_response(false, 'VALIDATION_ERROR', 'Please enter your full name.', ['field' => 'name'], 422);
+            }
+            if ($phone === '') {
+                user_proxy_response(false, 'VALIDATION_ERROR', auth_phone_validation_message($phoneCountry), ['field' => 'phone'], 422);
+            }
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                user_proxy_response(false, 'VALIDATION_ERROR', 'Please enter a valid email address.', ['field' => 'email'], 422);
+            }
+            if (reg_app_phone_uid($phone, $phoneCountry) !== '') {
+                user_proxy_response(false, 'PHONE_ALREADY_REGISTERED', 'This phone number is already registered.', [], 409);
+            }
+            if (reg_app_email_uid($email) !== '') {
+                user_proxy_response(false, 'EMAIL_ALREADY_REGISTERED', 'This email is already registered.', [], 409);
+            }
+
+            user_proxy_response(true, 'REGISTER_PERSONAL_AVAILABLE', 'Registration details are available.', [
+                'phone_country' => $phoneCountry,
+                'phone_available' => true,
+                'email_available' => true,
+            ]);
+        }
+
+        user_proxy_response(false, 'VALIDATION_ERROR', 'Invalid registration precheck stage.', [], 422);
+        break;
+
     case 'register':
     case 'register_send_otp':
         user_proxy_require_method('POST');

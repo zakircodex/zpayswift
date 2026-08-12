@@ -65,15 +65,19 @@ auth_ui_expect(str_contains($checkNumberEndpoint, 'trusted_login_available') && 
 auth_ui_expect(str_contains($verifyPinEndpoint, 'trusted_browser_verified') && str_contains($verifyPinEndpoint, 'TRUSTED_DEVICE_INVALID'), 'PIN verification must revalidate the trusted browser');
 auth_ui_expect(str_contains($authLibrary, 'function auth_trusted_browser_cookie_context') && str_contains($authLibrary, "'auth_session_epoch'"), 'Trusted browser validation must bind token, device and session epoch');
 
-foreach (['details', 'contact', 'security', 'location', 'otp'] as $step) {
+foreach (['personal', 'security', 'identity', 'location', 'review', 'otp'] as $step) {
     auth_ui_expect(str_contains($registerPage, 'data-register-step="' . $step . '"'), "Register {$step} step is missing");
 }
-auth_ui_expect(str_contains($registerPage, 'id="regIdentityNumber"') && str_contains($registerPage, 'id="verifyLocationBtn"'), 'Register identity/location controls are missing');
+auth_ui_expect(str_contains($registerPage, 'id="regIdentityNumber"') && str_contains($registerPage, 'id="verifyLocationBtn"') && str_contains($registerPage, 'id="sendRegisterOtpBtn"'), 'Register identity/location/review controls are missing');
+auth_ui_expect(str_contains($registerPage, 'id="regPhoneCountry" type="hidden"') && !str_contains($registerPage, '<select id="regPhoneCountry"'), 'Register phone country must remain detected and read-only');
+auth_ui_expect(str_contains($registerPage, 'data-register-identity="NID"') && str_contains($registerPage, 'data-register-identity="PASSPORT"'), 'Register canonical identity selector is missing');
+auth_ui_expect(str_contains($registerPage, 'id="reviewIdentity"') && !str_contains($registerPage, 'id="reviewIdentityNumber"'), 'Register review must show identity type without exposing the full identity number');
 auth_ui_expect(str_contains($registerPage, 'id="registerLoadingModal"') && !str_contains($registerPage, 'id="loadingWrap"'), 'Register loader must be page-local');
 auth_ui_expect(str_contains($registerJs, 'identity_number:') && str_contains($registerJs, 'gps_lat:') && str_contains($registerJs, 'terms_accepted:'), 'Register canonical fields are not preserved');
 auth_ui_expect(!preg_match('/pricing_country\s*:/', $registerJs), 'Register must not submit user-controlled pricing_country');
-auth_ui_expect(str_contains($registerJs, "proxyPost('registration_location_check'") && str_contains($registerJs, "proxyPost('register_send_otp'") && str_contains($registerJs, "proxyPost('register_confirm'"), 'Register canonical actions are missing');
+auth_ui_expect(str_contains($registerJs, "proxyPost('register_precheck'") && str_contains($registerJs, "proxyPost('registration_location_check'") && str_contains($registerJs, "proxyPost('register_send_otp'") && str_contains($registerJs, "proxyPost('register_confirm'"), 'Register canonical staged actions are missing');
 auth_ui_expect(str_contains($registerJs, 'navigator.geolocation.getCurrentPosition'), 'Registration must require browser GPS location');
+auth_ui_expect(str_contains($registerJs, 'window.visualViewport') && str_contains($registerJs, 'ensureControlVisible') && str_contains($registerCss, '--register-keyboard-inset'), 'Register keyboard viewport handling is missing');
 auth_ui_expect(!str_contains($registerJs, 'localStorage') && !str_contains($registerJs, 'console.log'), 'Register must not store/log password, PIN or OTP');
 auth_ui_expect(str_contains($registerCss, '.user-register-page .register-card') && !str_contains($registerCss, "\n.card{"), 'Register CSS must remain page scoped');
 

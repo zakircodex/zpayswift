@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once __DIR__ . '/../lib/auth_sms.php';
 require_once __DIR__ . '/../lib/auth_android.php';
+require_once __DIR__ . '/../lib/register_android.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -232,6 +233,10 @@ if (user_reg_find_uid_by_phone($phone, $phoneCountry) !== '') {
 
 if (user_reg_find_uid_by_email($email) !== '') {
     user_reg_response(false, 'DUPLICATE_EMAIL', 'Email already registered', [], 409);
+}
+
+if (reg_app_document_owner_uid($identityHash, $identityType) !== '') {
+    user_reg_response(false, 'IDENTITY_ALREADY_USED', 'This NID or Passport is already used by another account.', [], 409);
 }
 
 $now = user_reg_now();

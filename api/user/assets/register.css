@@ -1,14 +1,15 @@
 :root {
+  --register-keyboard-inset: 0px;
   --register-bg: #06162c;
-  --register-card: #0c2d56;
+  --register-card: rgba(13, 43, 82, .96);
   --register-field: #071d38;
-  --register-line: rgba(157, 198, 235, .28);
+  --register-line: rgba(151, 192, 231, .28);
   --register-text: #f7fbff;
-  --register-muted: #a8bdd8;
+  --register-muted: #a9bdd7;
   --register-green: #31e184;
   --register-green-dark: #20bd6b;
   --register-danger: #e25a75;
-  --register-shadow: 0 22px 54px rgba(0, 0, 0, .32);
+  --register-shadow: 0 22px 52px rgba(0, 0, 0, .32);
 }
 
 * { box-sizing: border-box; }
@@ -19,9 +20,9 @@ body.user-register-page {
   font-family: Arial, Helvetica, sans-serif;
   background: var(--register-bg);
 }
-button, input, select { font: inherit; }
-button, a, input, select { -webkit-tap-highlight-color: transparent; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+button, input { font: inherit; }
+button, a, input { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, a:focus-visible, input:focus-visible {
   outline: 3px solid rgba(49, 225, 132, .4);
   outline-offset: 2px;
 }
@@ -36,185 +37,278 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: max(16px, env(safe-area-inset-top)) 14px max(20px, env(safe-area-inset-bottom));
+  padding: max(18px, env(safe-area-inset-top)) 14px
+    calc(max(18px, env(safe-area-inset-bottom)) + var(--register-keyboard-inset));
+  scroll-padding-block: 18px calc(110px + var(--register-keyboard-inset));
   background:
-    radial-gradient(circle at 82% 10%, rgba(49, 225, 132, .12), transparent 25%),
-    linear-gradient(180deg, #071b35 0%, #06142a 60%, #051225 100%);
+    radial-gradient(circle at 82% 13%, rgba(32, 189, 107, .12), transparent 26%),
+    linear-gradient(180deg, #071b35 0%, #06142a 58%, #051225 100%);
 }
+
+.user-register-page.register-keyboard-open .register-page { align-items: flex-start; }
+.user-register-page.register-keyboard-open .register-card { margin-block: 0 18px; }
 
 .user-register-page .register-card {
   position: relative;
-  width: min(100%, 470px);
-  min-height: 600px;
-  padding: 24px;
+  width: min(100%, 430px);
+  min-height: 0;
+  padding: 32px 28px 28px;
   overflow: hidden;
   border: 1px solid var(--register-line);
   border-radius: 30px;
   background:
-    radial-gradient(circle at 88% 3%, rgba(49, 225, 132, .12), transparent 28%),
-    linear-gradient(155deg, rgba(18, 67, 119, .97), var(--register-card) 58%, #082342);
+    radial-gradient(circle at 88% 4%, rgba(49, 225, 132, .12), transparent 29%),
+    linear-gradient(155deg, rgba(17, 66, 119, .95), var(--register-card) 55%, rgba(8, 31, 60, .98));
   box-shadow: var(--register-shadow);
 }
 
 .user-register-page .register-back {
   position: absolute;
-  top: 18px;
-  left: 18px;
+  top: 16px;
+  left: 16px;
   z-index: 2;
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   border: 1px solid var(--register-line);
   border-radius: 50%;
   color: var(--register-text);
-  background: rgba(5, 24, 48, .58);
-  font-size: 25px;
+  background: rgba(5, 24, 48, .55);
+  font-size: 21px;
+  line-height: 1;
   cursor: pointer;
 }
 
 .user-register-page .register-brand { text-align: center; }
 .user-register-page .register-logo {
   display: block;
-  width: 74px;
-  height: 74px;
-  margin: 0 auto 12px;
-  border: 2px solid rgba(49, 225, 132, .72);
-  border-radius: 50%;
-  box-shadow: 0 0 0 6px rgba(49, 225, 132, .07);
+  width: 92px !important;
+  height: 92px !important;
+  min-width: 92px;
+  margin: 0 auto 18px;
+  border: 0;
+  border-radius: 20px !important;
+  object-fit: contain;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .2) !important;
 }
-.user-register-page .register-brand h1 { margin: 0 0 7px; font-size: 29px; line-height: 1.15; }
+.user-register-page .register-brand h1 {
+  margin: 0 0 7px;
+  font-size: 27px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
 .user-register-page .register-brand p {
-  min-height: 40px;
-  margin: 0;
+  min-height: 0;
+  margin: 0 auto;
   color: var(--register-muted);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
+
 .user-register-page .register-progress {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 7px;
-  margin: 17px 0 20px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 6px;
+  margin: 13px 0 16px;
 }
 .user-register-page .register-progress span {
-  height: 5px;
+  height: 3px;
   border-radius: 999px;
   background: rgba(169, 192, 220, .2);
 }
 .user-register-page .register-progress span.active { background: var(--register-green); }
 .user-register-page .register-step[hidden] { display: none; }
 
-.user-register-page .register-field { display: block; margin-bottom: 14px; }
-.user-register-page .register-field > span,
-.user-register-page .register-location-label {
+.user-register-page .register-step-title {
+  margin: 0 0 6px;
+  color: var(--register-text);
+  font-size: 20px;
+  line-height: 1.2;
+}
+.user-register-page .register-step-copy {
+  margin: 0 0 13px;
+  color: var(--register-muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.user-register-page .register-field { display: block; margin-bottom: 12px; }
+.user-register-page .register-field > span {
   display: block;
   margin: 0 0 8px 3px;
   color: #dbe9f8;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 850;
+  text-align: left;
 }
-.user-register-page .register-field input,
-.user-register-page .register-field select {
+.user-register-page .register-field input {
   width: 100%;
-  min-height: 55px;
-  padding: 13px 15px;
+  min-height: 58px;
+  padding: 14px 16px;
   border: 1px solid var(--register-line);
-  border-radius: 18px;
+  border-radius: 19px;
   color: var(--register-text);
   background: var(--register-field);
+  font-size: 17px;
   outline: none;
 }
-.user-register-page .register-field select option,
-.user-register-page .register-country-card option { color: #07172f; background: #fff; }
 .user-register-page .register-field input::placeholder { color: #8299b8; }
-.user-register-page .register-field input:focus,
-.user-register-page .register-field select:focus {
+.user-register-page .register-field input:focus {
   border-color: var(--register-green);
   box-shadow: 0 0 0 3px rgba(49, 225, 132, .13);
 }
-.user-register-page .register-field small {
-  display: block;
-  margin: 7px 3px 0;
-  color: var(--register-muted);
-  font-size: 11px;
-  line-height: 1.4;
-}
-.user-register-page .register-two-column {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 11px;
-}
+
 .user-register-page .register-country-card,
 .user-register-page .register-pricing-result,
 .user-register-page .register-otp-summary {
   width: 100%;
-  min-height: 58px;
+  min-height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   padding: 12px 15px;
   border: 1px solid var(--register-line);
   border-radius: 18px;
-  background: rgba(7, 29, 56, .8);
+  background: rgba(7, 29, 56, .82);
 }
-.user-register-page .register-country-card > span,
-.user-register-page .register-pricing-result > span,
-.user-register-page .register-otp-summary > span {
+.user-register-page .register-country-card {
+  min-height: 70px;
+  justify-content: flex-start;
+  padding-inline: 20px;
+}
+.user-register-page .register-country-card strong {
+  color: #d8e6f7;
+  font-size: 17px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.user-register-page .register-identity-selector {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 5px;
+  border: 1px solid var(--register-line);
+  border-radius: 18px;
+  background: rgba(7, 29, 56, .75);
+}
+.user-register-page .register-identity-selector button {
+  min-height: 46px;
+  border: 0;
+  border-radius: 14px;
+  color: var(--register-muted);
+  background: transparent;
+  font-weight: 900;
+  cursor: pointer;
+}
+.user-register-page .register-identity-selector button.active {
+  color: #06160e;
+  background: var(--register-green);
+}
+.user-register-page .register-privacy-note {
+  margin: -2px 3px 13px;
   color: var(--register-muted);
   font-size: 12px;
-  font-weight: 800;
-}
-.user-register-page .register-country-card select {
-  max-width: 68%;
-  border: 0;
-  color: var(--register-text);
-  background: transparent;
-  font-weight: 850;
-  text-align: right;
-  outline: none;
-}
-.user-register-page .register-pricing-result strong { text-align: right; }
-.user-register-page .register-otp-summary {
-  display: grid;
-  grid-template-columns: 1fr auto;
-}
-.user-register-page .register-otp-summary small {
-  grid-row: 1 / 3;
-  grid-column: 2;
-  align-self: center;
-  color: var(--register-green);
-  font-weight: 900;
+  line-height: 1.45;
 }
 
 .user-register-page .register-location-card {
   display: grid;
-  gap: 13px;
-  padding: 15px;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
   border: 1px solid var(--register-line);
-  border-radius: 20px;
-  background: rgba(7, 29, 56, .8);
+  border-radius: 19px;
+  background: rgba(7, 29, 56, .82);
+}
+.user-register-page .register-location-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #06160e;
+  background: var(--register-green);
+  font-size: 10px;
+  font-weight: 900;
 }
 .user-register-page .register-location-card strong { display: block; font-size: 15px; }
 .user-register-page .register-location-card p {
-  margin: 5px 0 0;
+  margin: 4px 0 0;
   color: var(--register-muted);
   font-size: 12px;
   line-height: 1.45;
 }
-.user-register-page .register-pricing-result { margin-top: 12px; }
-.user-register-page .register-hint {
-  margin: -2px 3px 12px;
+.user-register-page .register-pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-top: 11px;
+}
+.user-register-page .register-pricing-result {
+  min-height: 72px;
+  display: block;
+  margin: 0;
+}
+.user-register-page .register-pricing-result span {
+  display: block;
+  margin-bottom: 6px;
   color: var(--register-muted);
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.user-register-page .register-pricing-result strong {
+  display: block;
+  color: var(--register-text);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.user-register-page .register-hint {
+  margin: 10px 3px 13px;
+  color: var(--register-muted);
+  font-size: 12px;
   line-height: 1.45;
 }
+
+.user-register-page .register-review-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 13px;
+}
+.user-register-page .register-review-list > div {
+  min-height: 51px;
+  display: grid;
+  grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 13px;
+  border: 1px solid var(--register-line);
+  border-radius: 16px;
+  background: rgba(7, 29, 56, .76);
+}
+.user-register-page .register-review-list span {
+  color: var(--register-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.user-register-page .register-review-list strong {
+  min-width: 0;
+  color: var(--register-text);
+  font-size: 13px;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 .user-register-page .register-terms {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  margin: 0 0 14px;
+  margin: 0 0 13px;
   padding: 12px 13px;
   border: 1px solid var(--register-line);
   border-radius: 17px;
@@ -232,52 +326,78 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 .user-register-page .register-terms a { color: var(--register-green); font-weight: 850; }
 
-.user-register-page .register-primary,
-.user-register-page .register-secondary,
-.user-register-page .register-link-button {
-  width: 100%;
-  min-height: 54px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0 16px;
-  border-radius: 18px;
+.user-register-page .register-otp-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+}
+.user-register-page .register-otp-summary > span {
+  color: var(--register-muted);
+  font-size: 13px;
+  font-weight: 800;
+}
+.user-register-page .register-otp-summary strong { overflow-wrap: anywhere; }
+.user-register-page .register-otp-summary small {
+  grid-row: 1 / 3;
+  grid-column: 2;
+  align-self: center;
+  color: var(--register-green);
   font-weight: 900;
-  text-decoration: none;
-  cursor: pointer;
 }
-.user-register-page .register-primary,
-.user-register-page .register-link-button {
-  border: 1px solid var(--register-green);
-  color: #06160e;
-  background: linear-gradient(135deg, var(--register-green), var(--register-green-dark));
-}
-.user-register-page .register-secondary {
-  border: 1px solid var(--register-line);
-  color: var(--register-text);
-  background: #103a68;
-}
-.user-register-page .register-step > .register-secondary { margin-top: 10px; }
 .user-register-page .register-status {
-  margin: 0 0 14px;
-  padding: 11px 13px;
+  margin: 0 0 13px;
+  padding: 10px 13px;
   border: 1px solid var(--register-line);
   border-radius: 15px;
   color: var(--register-muted);
   background: rgba(7, 29, 56, .72);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
-.user-register-page .register-links {
-  display: flex;
+
+.user-register-page .register-primary,
+.user-register-page .register-secondary {
+  width: 100%;
+  min-height: 56px;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  gap: 22px;
-  margin-top: 18px;
+  padding: 0 17px;
+  border-radius: 19px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.user-register-page .register-primary {
+  border: 1px solid var(--register-green);
+  color: #06160e;
+  background: linear-gradient(135deg, var(--register-green), var(--register-green-dark));
+  box-shadow: 0 10px 24px rgba(32, 189, 107, .18);
+}
+.user-register-page .register-secondary {
+  margin-top: 10px;
+  border: 1px solid var(--register-line);
+  color: var(--register-text);
+  background: rgba(15, 52, 91, .82);
+}
+
+.user-register-page .register-links {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
 }
 .user-register-page .register-links a {
+  min-height: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 11px;
+  border: 1px solid var(--register-line);
+  border-radius: 18px;
   color: #dce9f8;
-  font-size: 12px;
+  background: rgba(15, 52, 91, .82);
+  font-size: 14px;
   font-weight: 850;
+  text-align: center;
   text-decoration: none;
 }
 
@@ -296,7 +416,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .user-register-page .register-loading.show { display: grid; }
 .user-register-page .register-modal-card,
 .user-register-page .register-loading-card {
-  width: min(100%, 400px);
+  width: min(100%, 390px);
   max-height: calc(100dvh - 36px);
   overflow-y: auto;
   padding: 25px 22px 22px;
@@ -322,7 +442,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   color: #06160e;
   background: var(--register-green);
 }
-.user-register-page .register-modal-icon.review { background: #e3a63a; }
+.user-register-page .register-modal-icon.review { color: #07150e; background: #e3a63a; }
 .user-register-page .register-modal-card h2 { margin: 0 0 8px; font-size: 24px; }
 .user-register-page .register-modal-card p {
   margin: 0 0 18px;
@@ -331,7 +451,6 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
-.user-register-page .register-modal-card .register-secondary { margin-top: 10px; }
 .user-register-page .register-loading-card { width: min(100%, 300px); }
 .user-register-page .register-spinner {
   width: 48px;
@@ -342,20 +461,25 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   border-radius: 50%;
   animation: register-spin .8s linear infinite;
 }
+.user-register-page.register-modal-open { overflow: hidden; }
 @keyframes register-spin { to { transform: rotate(360deg); } }
 
-@media (max-width: 430px) {
-  .user-register-page .register-page { align-items: flex-start; padding-inline: 10px; }
-  .user-register-page .register-card { min-height: 0; padding: 22px 17px 20px; border-radius: 27px; }
-  .user-register-page .register-two-column { grid-template-columns: 1fr; gap: 0; }
-  .user-register-page .register-logo { width: 68px; height: 68px; }
-  .user-register-page .register-brand h1 { font-size: 26px; }
-  .user-register-page .register-links { gap: 14px; }
+@media (max-width: 359px) {
+  .user-register-page .register-page { padding-inline: 10px; }
+  .user-register-page .register-card { padding: 25px 17px 21px; border-radius: 26px; }
+  .user-register-page .register-logo { width: 78px !important; height: 78px !important; min-width: 78px; border-radius: 18px !important; }
+  .user-register-page .register-brand h1 { font-size: 24px; }
+  .user-register-page .register-brand p { font-size: 14px; }
+  .user-register-page .register-country-card strong { font-size: 15px; }
+  .user-register-page .register-links { gap: 9px; }
+  .user-register-page .register-links a { padding-inline: 8px; font-size: 12px; }
+  .user-register-page .register-pricing-grid { grid-template-columns: 1fr; }
 }
 
-@media (max-height: 700px) {
+@media (max-height: 720px) {
   .user-register-page .register-page { align-items: flex-start; }
-  .user-register-page .register-card { min-height: 0; }
+  .user-register-page .register-logo { width: 68px !important; height: 68px !important; min-width: 68px; margin-bottom: 10px; }
+  .user-register-page .register-progress { margin-block: 10px 13px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

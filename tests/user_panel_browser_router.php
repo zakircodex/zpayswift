@@ -48,6 +48,22 @@ if ($path === '/test/forgot-viewport') {
     exit;
 }
 
+if ($path === '/test/register-viewport') {
+    $width = max(320, min(1366, (int)($_GET['width'] ?? 390)));
+    $height = max(420, min(1000, (int)($_GET['height'] ?? 844)));
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><html><head><meta charset="utf-8"><style>'
+        . 'html,body{margin:0;min-height:100%;background:#020a16;display:grid;place-items:start center}'
+        . 'iframe{width:' . $width . 'px;height:' . $height . 'px;border:0;background:#07172f}'
+        . '#registerMetrics{position:fixed;left:0;bottom:0;max-width:100%;font:10px monospace;color:#fff;background:#000}'
+        . '</style></head><body><iframe id="registerFrame" src="/auth-test/register" title="Register viewport"></iframe>'
+        . '<output id="registerMetrics" aria-label="Register viewport metrics">waiting</output><script>'
+        . 'const frame=document.getElementById("registerFrame"),out=document.getElementById("registerMetrics");'
+        . 'frame.addEventListener("load",()=>{const report=()=>{const d=frame.contentDocument,root=d.getElementById("registerPageRoot"),input=d.activeElement,actions={regName:"registerPersonalContinue",regPhone:"registerPersonalContinue",regEmail:"registerPersonalContinue",regPassword:"registerSecurityContinue",regIdentityNumber:"registerIdentityContinue",otpCode:"verifyRegisterOtpBtn"},action=d.getElementById(actions[input?.id]||"registerPersonalContinue"),ir=input?.getBoundingClientRect(),ar=action?.getBoundingClientRect();out.textContent=JSON.stringify({width:d.documentElement.clientWidth,height:d.documentElement.clientHeight,scrollWidth:d.documentElement.scrollWidth,bodyScrollWidth:d.body.scrollWidth,rootScrollHeight:root?.scrollHeight,step:root?.dataset.registerCurrentStep||"",activeInput:input?.id||"",inputTop:Math.round(ir?.top||0),actionBottom:Math.round(ar?.bottom||0),actionVisible:(ar?.bottom||0)<=d.documentElement.clientHeight+1});};setTimeout(report,600);setInterval(report,150);});'
+        . '</script></body></html>';
+    exit;
+}
+
 if ($path === '/api/user/proxy.php') {
     $action = trim((string)($_GET['action'] ?? ''));
     $authBody = json_decode((string)file_get_contents('php://input'), true);
@@ -183,6 +199,36 @@ if ($path === '/api/user/proxy.php') {
         'forgot_reset_credentials' => [
             'sessions_revoked' => true,
             'finalization_pending' => false,
+        ],
+        'register_precheck' => [
+            'phone_country' => $forgotPhoneCountry,
+            'phone_available' => true,
+            'email_available' => true,
+            'identity_available' => true,
+        ],
+        'registration_location_check' => [
+            'gps_country' => $forgotPhoneCountry,
+            'ip_country' => $forgotPhoneCountry,
+            'pricing_country' => $forgotPhoneCountry,
+            'currency' => $forgotPhoneCountry === 'BD' ? 'BDT' : 'MYR',
+            'account_status' => 'ACTIVE',
+            'requires_admin_review' => false,
+        ],
+        'register_send_otp' => [
+            'pre_auth_token' => 'LOCAL-REGISTER-PREAUTH',
+            'otp_request_id' => 'LOCAL-REGISTER-OTP',
+            'masked_phone' => '601*****789',
+            'expires_in_seconds' => 300,
+        ],
+        'register_resend_otp' => [
+            'pre_auth_token' => 'LOCAL-REGISTER-PREAUTH',
+            'otp_request_id' => 'LOCAL-REGISTER-OTP-2',
+            'masked_phone' => '601*****789',
+            'expires_in_seconds' => 300,
+        ],
+        'register_confirm' => [
+            'account_status' => 'ACTIVE',
+            'requires_admin_review' => false,
         ],
     ];
     if (isset($authResponses[$action])) {
