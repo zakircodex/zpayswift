@@ -120,9 +120,9 @@
   function stepDescription(step) {
     const descriptions = {
       phone: 'Enter your phone number to recover your account.',
-      identity: 'Confirm your registered identity before an OTP is sent.',
-      otp: 'Enter the OTP sent to your registered phone.',
-      credential: 'Set your new password and transaction PIN.'
+      identity: 'Confirm your registered identity to continue.',
+      otp: 'Enter the OTP sent to your phone.',
+      credential: 'Create a new password and transaction PIN.'
     };
     return descriptions[step] || descriptions.phone;
   }
@@ -184,6 +184,7 @@
   function showStep(step, historyMode = '') {
     const next = steps.includes(step) ? step : 'phone';
     state.step = next;
+    el('forgotPageRoot').dataset.forgotCurrentStep = next;
     document.querySelectorAll('[data-forgot-step]').forEach((node) => {
       node.hidden = node.dataset.forgotStep !== next;
     });

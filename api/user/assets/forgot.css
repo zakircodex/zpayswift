@@ -1,15 +1,15 @@
 :root {
   --forgot-keyboard-inset: 0px;
   --forgot-bg: #06162c;
-  --forgot-card: #0c2d56;
+  --forgot-card: rgba(13, 43, 82, .96);
   --forgot-field: #071d38;
-  --forgot-line: rgba(157, 198, 235, .28);
+  --forgot-line: rgba(151, 192, 231, .28);
   --forgot-text: #f7fbff;
-  --forgot-muted: #a8bdd8;
+  --forgot-muted: #a9bdd7;
   --forgot-green: #31e184;
   --forgot-green-dark: #20bd6b;
   --forgot-danger: #e25a75;
-  --forgot-shadow: 0 22px 54px rgba(0, 0, 0, .32);
+  --forgot-shadow: 0 22px 52px rgba(0, 0, 0, .32);
 }
 
 * { box-sizing: border-box; }
@@ -37,12 +37,12 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   overflow-x: hidden;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: max(16px, env(safe-area-inset-top)) 14px
-    calc(max(20px, env(safe-area-inset-bottom)) + var(--forgot-keyboard-inset));
+  padding: max(18px, env(safe-area-inset-top)) 14px
+    calc(max(18px, env(safe-area-inset-bottom)) + var(--forgot-keyboard-inset));
   scroll-padding-block: 18px calc(110px + var(--forgot-keyboard-inset));
   background:
-    radial-gradient(circle at 82% 10%, rgba(49, 225, 132, .12), transparent 25%),
-    linear-gradient(180deg, #071b35 0%, #06142a 60%, #051225 100%);
+    radial-gradient(circle at 82% 13%, rgba(32, 189, 107, .12), transparent 26%),
+    linear-gradient(180deg, #071b35 0%, #06142a 58%, #051225 100%);
 }
 
 .user-forgot-page.forgot-keyboard-open .forgot-page { align-items: flex-start; }
@@ -50,60 +50,69 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 .user-forgot-page .forgot-card {
   position: relative;
-  width: min(100%, 440px);
-  min-height: 570px;
-  padding: 24px;
+  width: min(100%, 430px);
+  min-height: 0;
+  padding: 32px 28px 28px;
   overflow: hidden;
   border: 1px solid var(--forgot-line);
   border-radius: 30px;
   background:
-    radial-gradient(circle at 88% 3%, rgba(49, 225, 132, .12), transparent 28%),
-    linear-gradient(155deg, rgba(18, 67, 119, .97), var(--forgot-card) 58%, #082342);
+    radial-gradient(circle at 88% 4%, rgba(49, 225, 132, .12), transparent 29%),
+    linear-gradient(155deg, rgba(17, 66, 119, .95), var(--forgot-card) 55%, rgba(8, 31, 60, .98));
   box-shadow: var(--forgot-shadow);
 }
 
 .user-forgot-page .forgot-back {
   position: absolute;
-  top: 18px;
-  left: 18px;
+  top: 16px;
+  left: 16px;
   z-index: 2;
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   border: 1px solid var(--forgot-line);
   border-radius: 50%;
   color: var(--forgot-text);
-  background: rgba(5, 24, 48, .58);
-  font-size: 25px;
+  background: rgba(5, 24, 48, .55);
+  font-size: 21px;
+  line-height: 1;
   cursor: pointer;
 }
 
 .user-forgot-page .forgot-brand { text-align: center; }
 .user-forgot-page .forgot-logo {
   display: block;
-  width: 74px;
-  height: 74px;
-  margin: 0 auto 12px;
-  border: 2px solid rgba(49, 225, 132, .72);
-  border-radius: 50%;
-  box-shadow: 0 0 0 6px rgba(49, 225, 132, .07);
+  width: 92px !important;
+  height: 92px !important;
+  min-width: 92px;
+  margin: 0 auto 18px;
+  border: 0;
+  border-radius: 20px !important;
+  object-fit: contain;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .2) !important;
 }
-.user-forgot-page .forgot-brand h1 { margin: 0 0 7px; font-size: 27px; line-height: 1.15; }
+.user-forgot-page .forgot-brand h1 {
+  margin: 0 0 7px;
+  font-size: 27px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
 .user-forgot-page .forgot-brand p {
-  min-height: 40px;
-  margin: 0;
+  min-height: 0;
+  margin: 0 auto;
   color: var(--forgot-muted);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 .user-forgot-page .forgot-progress {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 7px;
-  margin: 17px 0 20px;
+  gap: 6px;
+  margin: 13px 0 16px;
 }
 .user-forgot-page .forgot-progress span {
-  height: 5px;
+  height: 3px;
   border-radius: 999px;
   background: rgba(169, 192, 220, .2);
 }
@@ -134,23 +143,24 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   background: var(--forgot-green);
 }
 
-.user-forgot-page .forgot-field { display: block; margin-bottom: 14px; }
+.user-forgot-page .forgot-field { display: block; margin-bottom: 12px; }
 .user-forgot-page .forgot-field > span {
   display: block;
   margin: 0 0 8px 3px;
   color: #dbe9f8;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 850;
 }
 .user-forgot-page .forgot-field input,
 .user-forgot-page .forgot-field select {
   width: 100%;
-  min-height: 56px;
-  padding: 13px 15px;
+  min-height: 58px;
+  padding: 14px 16px;
   border: 1px solid var(--forgot-line);
-  border-radius: 18px;
+  border-radius: 19px;
   color: var(--forgot-text);
   background: var(--forgot-field);
+  font-size: 17px;
   outline: none;
 }
 .user-forgot-page .forgot-field select option,
@@ -167,23 +177,23 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .user-forgot-page .forgot-identity-summary,
 .user-forgot-page .forgot-otp-summary {
   width: 100%;
-  min-height: 58px;
+  min-height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
   padding: 12px 15px;
   border: 1px solid var(--forgot-line);
   border-radius: 18px;
-  background: rgba(7, 29, 56, .8);
+  background: rgba(7, 29, 56, .82);
 }
 .user-forgot-page .forgot-country-card > span,
 .user-forgot-page .forgot-account-summary > span,
 .user-forgot-page .forgot-identity-summary > span,
 .user-forgot-page .forgot-otp-summary > span {
   color: var(--forgot-muted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
 }
 .user-forgot-page .forgot-country-card select {
@@ -197,9 +207,13 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 .user-forgot-page .forgot-country-card strong {
   color: var(--forgot-text);
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 900;
   text-align: right;
+}
+.user-forgot-page .forgot-country-card {
+  min-height: 70px;
+  padding-inline: 20px;
 }
 .user-forgot-page .forgot-identity-summary strong {
   color: var(--forgot-green);
@@ -208,15 +222,15 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   text-align: right;
 }
 .user-forgot-page .forgot-step-title {
-  margin: 0 0 7px;
+  margin: 0 0 6px;
   color: var(--forgot-text);
-  font-size: 22px;
+  font-size: 20px;
   line-height: 1.2;
 }
 .user-forgot-page .forgot-step-copy {
-  margin: 0 0 15px;
+  margin: 0 0 12px;
   color: var(--forgot-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.45;
 }
 .user-forgot-page .forgot-account-summary strong { text-align: right; overflow-wrap: anywhere; }
@@ -233,25 +247,25 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 .user-forgot-page .forgot-hint,
 .user-forgot-page .forgot-status {
-  margin: 0 0 14px;
-  padding: 11px 13px;
+  margin: 0 0 12px;
+  padding: 10px 13px;
   border: 1px solid var(--forgot-line);
   border-radius: 15px;
   color: var(--forgot-muted);
   background: rgba(7, 29, 56, .72);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
 .user-forgot-page .forgot-primary,
 .user-forgot-page .forgot-secondary {
   width: 100%;
-  min-height: 55px;
+  min-height: 56px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 16px;
-  border-radius: 18px;
+  padding: 0 17px;
+  border-radius: 19px;
   font-weight: 900;
   cursor: pointer;
 }
@@ -259,23 +273,34 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   border: 1px solid var(--forgot-green);
   color: #06160e;
   background: linear-gradient(135deg, var(--forgot-green), var(--forgot-green-dark));
+  box-shadow: 0 10px 24px rgba(32, 189, 107, .18);
 }
 .user-forgot-page .forgot-secondary {
   margin-top: 10px;
   border: 1px solid var(--forgot-line);
   color: var(--forgot-text);
-  background: #103a68;
+  background: rgba(15, 52, 91, .82);
 }
 .user-forgot-page .forgot-links {
-  display: flex;
-  justify-content: center;
-  gap: 22px;
-  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
 }
 .user-forgot-page .forgot-links a {
+  min-height: 54px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  border: 1px solid var(--forgot-line);
+  border-radius: 18px;
   color: #dce9f8;
-  font-size: 12px;
+  background: rgba(15, 52, 91, .82);
+  font-size: 15px;
   font-weight: 850;
+  text-align: center;
   text-decoration: none;
 }
 
@@ -320,11 +345,11 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   color: #06160e;
   background: var(--forgot-green);
 }
-.user-forgot-page .forgot-modal-card h2 { margin: 0 0 8px; font-size: 24px; }
+.user-forgot-page .forgot-modal-card h2 { margin: 0 0 9px; font-size: 25px; }
 .user-forgot-page .forgot-modal-card p {
   margin: 0 0 18px;
   color: #d0dff0;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -341,16 +366,32 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 @keyframes forgot-spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 430px) {
-  .user-forgot-page .forgot-page { align-items: flex-start; padding-inline: 10px; }
-  .user-forgot-page .forgot-card { min-height: 0; padding: 22px 17px 20px; border-radius: 27px; }
-  .user-forgot-page .forgot-logo { width: 68px; height: 68px; }
+  .user-forgot-page .forgot-page { padding-inline: 10px; }
+  .user-forgot-page .forgot-card { padding: 25px 17px 21px; border-radius: 26px; }
+  .user-forgot-page .forgot-logo {
+    width: 78px !important;
+    height: 78px !important;
+    min-width: 78px;
+    border-radius: 18px !important;
+  }
   .user-forgot-page .forgot-brand h1 { font-size: 24px; }
-  .user-forgot-page .forgot-links { gap: 14px; }
+  .user-forgot-page .forgot-brand p { font-size: 14px; }
+  .user-forgot-page .forgot-country-card strong { font-size: 15px; }
+  .user-forgot-page .forgot-links { gap: 9px; }
+  .user-forgot-page .forgot-links a { padding-inline: 8px; font-size: 14px; }
 }
 
-@media (max-height: 680px) {
+@media (max-height: 650px) {
   .user-forgot-page .forgot-page { align-items: flex-start; }
-  .user-forgot-page .forgot-card { min-height: 0; }
+  .user-forgot-page .forgot-logo {
+    width: 68px !important;
+    height: 68px !important;
+    min-width: 68px;
+  }
+}
+
+@media (max-height: 760px) {
+  .user-forgot-page .forgot-page[data-forgot-current-step="credential"] { align-items: flex-start; }
 }
 
 @media (prefers-reduced-motion: reduce) {

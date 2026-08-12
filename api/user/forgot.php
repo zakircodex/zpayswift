@@ -26,7 +26,7 @@ $forgotJsVersion = (string)(filemtime(__DIR__ . '/assets/forgot.js') ?: 1);
     <header class="forgot-brand">
       <img class="forgot-logo brand-icon" src="/assets/brand/zpay-icon.png" alt="Z-Pay Swift">
       <h1 id="forgotTitle">Forgot Password &amp; PIN</h1>
-      <p id="forgotStepDescription">Step 1: Enter your phone number.</p>
+      <p id="forgotStepDescription">Enter your phone number to recover your account.</p>
     </header>
 
     <div class="forgot-progress" aria-label="Recovery progress">
