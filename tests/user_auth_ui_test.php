@@ -81,8 +81,10 @@ foreach (['phone', 'identity', 'otp', 'credential'] as $step) {
     auth_ui_expect(str_contains($forgotPage, 'data-forgot-step="' . $step . '"'), "Forgot {$step} step is missing");
 }
 auth_ui_expect(str_contains($forgotPage, 'id="forgotIdentityNumber"') && str_contains($forgotPage, 'id="forgotIdentityTypeLabel"'), 'Web Forgot identity verification UI is missing');
+auth_ui_expect(str_contains($forgotPage, 'Registered Identity: <span id="forgotIdentityTypeLabel"') && !str_contains($forgotPage, 'forgotIdentityTypeSelect'), 'Forgot must display the server-resolved identity type without a selector');
 auth_ui_expect(!str_contains($forgotPage, 'identity_number_last4') && !str_contains($forgotPage, 'stored identity number'), 'Forgot UI must not expose registered identity values');
 auth_ui_expect(str_contains($forgotPage, 'id="forgotCountryDisplay"') && str_contains($forgotPage, 'id="forgotPhoneCountry" type="hidden"') && !str_contains($forgotPage, '<select id="forgotPhoneCountry"'), 'Forgot country must be detected and read-only');
+auth_ui_expect(str_contains($forgotPage, 'Country: Detecting...'), 'Forgot country summary must use the Login-style one-line pattern');
 auth_ui_expect(str_contains($forgotPage, 'id="newPassword"') && str_contains($forgotPage, 'id="newPin"') && str_contains($forgotPage, 'Update Password &amp; PIN'), 'Forgot combined password and PIN form is incomplete');
 auth_ui_expect(str_contains($forgotPage, 'id="forgotLoadingModal"') && !str_contains($forgotPage, 'id="loadingWrap"'), 'Forgot loader must be page-local');
 auth_ui_expect(str_contains($forgotJs, "proxyPost('forgot_start'") && str_contains($forgotJs, "proxyPost('forgot_verify_identity'") && str_contains($forgotJs, "proxyPost('forgot_send_otp'") && str_contains($forgotJs, "proxyPost('forgot_resend_otp'") && str_contains($forgotJs, "proxyPost('forgot_verify_otp'") && str_contains($forgotJs, "proxyPost('forgot_reset_credentials'"), 'Forgot staged identity and combined reset proxy actions are missing');

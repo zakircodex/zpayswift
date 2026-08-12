@@ -3,15 +3,15 @@ declare(strict_types=1);
 
 function user_forgot_registered_identity_type(array $user): string
 {
-    $type = strtoupper(trim((string)(
-        $user['identity_type']
-        ?? $user['KYC']['type']
-        ?? $user['KYC']['document_type']
-        ?? ''
-    )));
-
-    if (in_array($type, ['NID', 'PASSPORT'], true)) {
-        return $type;
+    foreach ([
+        $user['identity_type'] ?? '',
+        $user['KYC']['type'] ?? '',
+        $user['KYC']['document_type'] ?? '',
+    ] as $candidate) {
+        $type = strtoupper(trim((string)$candidate));
+        if (in_array($type, ['NID', 'PASSPORT'], true)) {
+            return $type;
+        }
     }
 
     $passportCandidates = [
@@ -20,55 +20,113 @@ function user_forgot_registered_identity_type(array $user): string
         $user['KYC']['passport_hash'] ?? '',
         $user['KYC']['passport'] ?? '',
     ];
-    foreach ($passportCandidates as $candidate) {
-        if (trim((string)$candidate) !== '') {
-            return 'PASSPORT';
-        }
-    }
-
     $nidCandidates = [
         $user['nid_hash'] ?? '',
         $user['nid'] ?? '',
         $user['KYC']['nid_hash'] ?? '',
         $user['KYC']['nid'] ?? '',
     ];
-    foreach ($nidCandidates as $candidate) {
-        if (trim((string)$candidate) !== '') {
-            return 'NID';
-        }
+    $hasPassport = count(array_filter($passportCandidates, static fn($value): bool => trim((string)$value) !== '')) > 0;
+    $hasNid = count(array_filter($nidCandidates, static fn($value): bool => trim((string)$value) !== '')) > 0;
+
+    if ($hasPassport === $hasNid) {
+        return '';
     }
 
-    return '';
+    return $hasPassport ? 'PASSPORT' : 'NID';
 }
 
-function user_forgot_identity_is_configured(array $user): bool
+function user_forgot_identity_candidates(array $user, string $identityType): array
 {
-    $candidates = [
+    $identityType = strtoupper(trim($identityType));
+    if (!in_array($identityType, ['NID', 'PASSPORT'], true)) {
+        return ['hashes' => [], 'plain' => []];
+    }
+
+    $hashes = [
         $user['identity_number_hash'] ?? '',
         $user['document_number_hash'] ?? '',
         $user['nid_or_passport_hash'] ?? '',
-        $user['nid_hash'] ?? '',
-        $user['passport_hash'] ?? '',
-        $user['identity_number'] ?? '',
-        $user['document_number'] ?? '',
-        $user['nid_or_passport_number'] ?? '',
-        $user['nid'] ?? '',
-        $user['passport'] ?? '',
         $user['KYC']['identity_number_hash'] ?? '',
         $user['KYC']['document_number_hash'] ?? '',
         $user['KYC']['nid_or_passport_hash'] ?? '',
+    ];
+    $plain = [
+        $user['identity_number'] ?? '',
+        $user['document_number'] ?? '',
+        $user['nid_or_passport_number'] ?? '',
         $user['KYC']['identity_number'] ?? '',
         $user['KYC']['document_number'] ?? '',
         $user['KYC']['nid_or_passport_number'] ?? '',
     ];
 
-    foreach ($candidates as $candidate) {
+    if ($identityType === 'NID') {
+        $hashes[] = $user['nid_hash'] ?? '';
+        $hashes[] = $user['KYC']['nid_hash'] ?? '';
+        $plain[] = $user['nid'] ?? '';
+        $plain[] = $user['KYC']['nid'] ?? '';
+    } else {
+        $hashes[] = $user['passport_hash'] ?? '';
+        $hashes[] = $user['KYC']['passport_hash'] ?? '';
+        $plain[] = $user['passport'] ?? '';
+        $plain[] = $user['KYC']['passport'] ?? '';
+    }
+
+    return ['hashes' => $hashes, 'plain' => $plain];
+}
+
+function user_forgot_identity_is_configured(array $user, string $identityType = ''): bool
+{
+    $identityType = $identityType !== '' ? strtoupper(trim($identityType)) : user_forgot_registered_identity_type($user);
+    $candidates = user_forgot_identity_candidates($user, $identityType);
+
+    foreach (array_merge($candidates['hashes'], $candidates['plain']) as $candidate) {
         if (trim((string)$candidate) !== '') {
             return true;
         }
     }
 
     return false;
+}
+
+function user_forgot_identity_match_state(array $user, string $identityNumber, string $identityType): array
+{
+    $submittedHashes = auth_app_identity_hash_variants($identityNumber);
+    if (empty($submittedHashes)) {
+        return ['configured' => false, 'match' => false];
+    }
+
+    $candidates = user_forgot_identity_candidates($user, $identityType);
+    $configured = false;
+    foreach ($candidates['hashes'] as $candidate) {
+        $candidate = trim((string)$candidate);
+        if ($candidate === '') {
+            continue;
+        }
+        $configured = true;
+        foreach ($submittedHashes as $submittedHash) {
+            if (hash_equals($candidate, $submittedHash)) {
+                return ['configured' => true, 'match' => true];
+            }
+        }
+    }
+
+    foreach ($candidates['plain'] as $candidate) {
+        $storedHashes = auth_app_identity_hash_variants((string)$candidate);
+        if (empty($storedHashes)) {
+            continue;
+        }
+        $configured = true;
+        foreach ($storedHashes as $storedHash) {
+            foreach ($submittedHashes as $submittedHash) {
+                if (hash_equals($storedHash, $submittedHash)) {
+                    return ['configured' => true, 'match' => true];
+                }
+            }
+        }
+    }
+
+    return ['configured' => $configured, 'match' => false];
 }
 
 function user_forgot_identity_attempt_state(array $row, int $now): array

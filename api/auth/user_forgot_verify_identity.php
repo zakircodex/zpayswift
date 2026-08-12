@@ -68,7 +68,15 @@ if (!in_array($role, ['USER', 'RETAILER'], true) || $accountStatus !== 'ACTIVE')
     api_response(false, 'FORBIDDEN', 'This account is not eligible for recovery.', [], 403);
 }
 
-$identityState = auth_app_identity_match_state($user, $identityNumber);
+$identityType = strtoupper(trim((string)($row['identity_type'] ?? '')));
+$registeredIdentityType = user_forgot_registered_identity_type($user);
+if (!in_array($identityType, ['NID', 'PASSPORT'], true)
+    || $registeredIdentityType === ''
+    || !hash_equals($identityType, $registeredIdentityType)) {
+    api_response(false, 'IDENTITY_NOT_CONFIGURED', 'Identity verification is unavailable for this account. Please contact support.', [], 409);
+}
+
+$identityState = user_forgot_identity_match_state($user, $identityNumber, $identityType);
 if (empty($identityState['configured'])) {
     api_response(false, 'IDENTITY_NOT_CONFIGURED', 'Identity verification is unavailable for this account. Please contact support.', [], 409);
 }

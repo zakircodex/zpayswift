@@ -121,8 +121,8 @@
     const descriptions = {
       phone: 'Enter your phone number to recover your account.',
       identity: 'Confirm your registered identity to continue.',
-      otp: 'Enter the OTP sent to your phone.',
-      credential: 'Create a new password and transaction PIN.'
+      otp: 'Enter the verification code sent to your phone.',
+      credential: 'Set new login credentials for your account.'
     };
     return descriptions[step] || descriptions.phone;
   }
@@ -208,7 +208,7 @@
 
   function updateOtpCountdown() {
     const seconds = Math.max(0, Math.ceil((state.forgotOtp.expiresAt - Date.now()) / 1000));
-    el('otpExpiresText').textContent = seconds > 0 ? formatCountdown(seconds) : 'Expired';
+    el('otpExpiresText').textContent = seconds > 0 ? `Code expires in ${formatCountdown(seconds)}` : 'Code expired';
     el('forgotOtpContinue').disabled = seconds < 1 || state.requestInFlight;
     el('resendForgotOtpBtn').disabled = seconds > 0 || state.requestInFlight;
     if (seconds < 1) {
@@ -451,8 +451,8 @@
   function updateCountryUi() {
     const country = el('forgotPhoneCountry').value.toUpperCase();
     el('forgotCountryDisplay').textContent = country === 'BD'
-      ? 'Bangladesh (+880)'
-      : (country === 'MY' ? 'Malaysia (+60)' : 'Unavailable');
+      ? 'Country: Bangladesh (+880)'
+      : (country === 'MY' ? 'Country: Malaysia (+60)' : 'Country: Unavailable');
   }
 
   async function loadCountryDefault() {

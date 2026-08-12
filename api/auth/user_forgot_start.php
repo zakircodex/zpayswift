@@ -40,7 +40,7 @@ if ($storedPhoneCountry !== $phoneCountry) {
 }
 
 $identityType = user_forgot_registered_identity_type($user);
-if ($identityType === '' || !user_forgot_identity_is_configured($user)) {
+if ($identityType === '' || !user_forgot_identity_is_configured($user, $identityType)) {
     api_response(false, 'IDENTITY_NOT_CONFIGURED', 'Identity verification is unavailable for this account. Please contact support.', [], 409);
 }
 

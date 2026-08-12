@@ -35,8 +35,7 @@ $forgotJsVersion = (string)(filemtime(__DIR__ . '/assets/forgot.js') ?: 1);
 
     <div class="forgot-step" data-forgot-step="phone">
       <div class="forgot-country-card" aria-label="Detected phone country">
-        <span>Country</span>
-        <strong id="forgotCountryDisplay">Detecting...</strong>
+        <strong id="forgotCountryDisplay">Country: Detecting...</strong>
       </div>
       <input id="forgotPhoneCountry" type="hidden" value="">
 
@@ -49,10 +48,9 @@ $forgotJsVersion = (string)(filemtime(__DIR__ . '/assets/forgot.js') ?: 1);
 
     <div class="forgot-step" data-forgot-step="identity" hidden>
       <h2 class="forgot-step-title">Verify Your Identity</h2>
-      <p class="forgot-step-copy">Confirm your registered identity to continue account recovery.</p>
+      <p class="forgot-step-copy">Enter the identity number registered with your account.</p>
       <div class="forgot-identity-summary" aria-label="Registered identity type">
-        <span>Registered Identity</span>
-        <strong id="forgotIdentityTypeLabel">-</strong>
+        <strong>Registered Identity: <span id="forgotIdentityTypeLabel">-</span></strong>
       </div>
       <label class="forgot-field" for="forgotIdentityNumber">
         <span id="forgotIdentityInputLabel">Identity Number</span>
@@ -62,21 +60,23 @@ $forgotJsVersion = (string)(filemtime(__DIR__ . '/assets/forgot.js') ?: 1);
     </div>
 
     <div class="forgot-step" data-forgot-step="otp" hidden>
+      <h2 class="forgot-step-title">Verify OTP</h2>
       <div class="forgot-otp-summary">
         <span>OTP sent to</span>
         <strong id="otpMaskedPhone">-</strong>
-        <small id="otpExpiresText">05:00</small>
+        <small id="otpExpiresText">Code expires in 05:00</small>
       </div>
       <label class="forgot-field" for="otpCode">
         <span>OTP Code</span>
-        <input id="otpCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6 digit OTP">
+        <input id="otpCode" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter OTP">
       </label>
       <p id="otpStatus" class="forgot-status" aria-live="polite">Enter the OTP sent to your phone.</p>
       <button id="forgotOtpContinue" class="forgot-primary" type="button">Verify</button>
-      <button id="resendForgotOtpBtn" class="forgot-secondary" type="button" disabled>Resend OTP</button>
+      <button id="resendForgotOtpBtn" class="forgot-secondary" type="button" disabled>Didn't receive the code? Resend OTP</button>
     </div>
 
     <div class="forgot-step" data-forgot-step="credential" hidden>
+      <h2 class="forgot-step-title">Create New Password &amp; PIN</h2>
       <label class="forgot-field" for="newPassword">
         <span>New Password</span>
         <input id="newPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters">
@@ -86,7 +86,7 @@ $forgotJsVersion = (string)(filemtime(__DIR__ . '/assets/forgot.js') ?: 1);
         <input id="confirmPassword" type="password" autocomplete="new-password" placeholder="Confirm password">
       </label>
       <label class="forgot-field" for="newPin">
-        <span>New 4-digit PIN</span>
+        <span>New PIN</span>
         <input id="newPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="4" placeholder="4-digit PIN">
       </label>
       <label class="forgot-field" for="confirmPin">

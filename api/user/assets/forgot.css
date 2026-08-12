@@ -213,13 +213,27 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 .user-forgot-page .forgot-country-card {
   min-height: 70px;
+  justify-content: center;
   padding-inline: 20px;
 }
+.user-forgot-page .forgot-identity-summary {
+  min-height: 70px;
+  justify-content: center;
+  padding-inline: 20px;
+}
+.user-forgot-page .forgot-country-card strong,
 .user-forgot-page .forgot-identity-summary strong {
-  color: var(--forgot-green);
-  font-size: 15px;
+  color: #d8e6f7;
+  font-size: 17px;
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.user-forgot-page .forgot-identity-summary strong {
   font-weight: 900;
-  text-align: right;
+}
+.user-forgot-page .forgot-identity-summary strong span {
+  color: var(--forgot-green);
 }
 .user-forgot-page .forgot-step-title {
   margin: 0 0 6px;
@@ -376,7 +390,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   }
   .user-forgot-page .forgot-brand h1 { font-size: 24px; }
   .user-forgot-page .forgot-brand p { font-size: 14px; }
-  .user-forgot-page .forgot-country-card strong { font-size: 15px; }
+  .user-forgot-page .forgot-country-card strong,
+  .user-forgot-page .forgot-identity-summary strong { font-size: 15px; }
   .user-forgot-page .forgot-links { gap: 9px; }
   .user-forgot-page .forgot-links a { padding-inline: 8px; font-size: 14px; }
 }

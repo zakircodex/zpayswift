@@ -53,6 +53,9 @@ if ($path === '/api/user/proxy.php') {
     $authBody = json_decode((string)file_get_contents('php://input'), true);
     $authBody = is_array($authBody) ? $authBody : [];
     $trustedLogin = (string)($_COOKIE['LOCAL_AUTH_TRUST'] ?? '') === 'VALID';
+    $forgotIdentityType = strtoupper((string)($_COOKIE['LOCAL_FORGOT_IDENTITY'] ?? 'NID')) === 'PASSPORT' ? 'PASSPORT' : 'NID';
+    $forgotPhoneCountry = strtoupper((string)($_COOKIE['LOCAL_FORGOT_COUNTRY'] ?? 'MY')) === 'BD' ? 'BD' : 'MY';
+    $forgotIdentityNumber = $forgotIdentityType === 'PASSPORT' ? 'LOCAL-PASSPORT-123' : 'LOCAL-ID-123';
     if ($action === 'login_check_number' && trim((string)($authBody['phone'] ?? '')) === '0120000000') {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(404);
@@ -83,7 +86,7 @@ if ($path === '/api/user/proxy.php') {
         echo json_encode(['ok' => false, 'code' => 'ACCOUNT_NOT_FOUND', 'message' => 'Local account not found', 'data' => []]);
         exit;
     }
-    if ($action === 'forgot_verify_identity' && (string)($authBody['identity_number'] ?? '') !== 'LOCAL-ID-123') {
+    if ($action === 'forgot_verify_identity' && (string)($authBody['identity_number'] ?? '') !== $forgotIdentityNumber) {
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(403);
         echo json_encode(['ok' => false, 'code' => 'IDENTITY_VERIFICATION_FAILED', 'message' => 'Identity verification failed. Please check your information.', 'data' => ['attempts_remaining' => 4]]);
@@ -97,9 +100,9 @@ if ($path === '/api/user/proxy.php') {
     }
     $authResponses = [
         'country_defaults' => [
-            'phone_country' => 'MY',
-            'pricing_country' => 'MY',
-            'currency' => 'MYR',
+            'phone_country' => $forgotPhoneCountry,
+            'pricing_country' => $forgotPhoneCountry,
+            'currency' => $forgotPhoneCountry === 'BD' ? 'BDT' : 'MYR',
         ],
         'login_check_number' => [
             'exists' => true,
@@ -148,13 +151,13 @@ if ($path === '/api/user/proxy.php') {
         ],
         'forgot_start' => [
             'pre_auth_token' => 'LOCAL-FORGOT-PREAUTH',
-            'identity_type' => 'NID',
+            'identity_type' => $forgotIdentityType,
             'requires_identity' => true,
             'expires_in_seconds' => 900,
         ],
         'forgot_verify_identity' => [
             'pre_auth_token' => 'LOCAL-FORGOT-PREAUTH',
-            'identity_type' => 'NID',
+            'identity_type' => $forgotIdentityType,
             'identity_verified' => true,
         ],
         'forgot_send_otp' => [
@@ -367,6 +370,12 @@ if (isset($authRoutes[$path])) {
         setcookie('LOCAL_AUTH_TRUST', '', ['expires' => time() - 3600, 'path' => '/', 'samesite' => 'Lax']);
         unset($_COOKIE['LOCAL_AUTH_TRUST']);
     }
+    $forgotIdentityType = strtoupper((string)($_GET['identity'] ?? 'NID')) === 'PASSPORT' ? 'PASSPORT' : 'NID';
+    $forgotPhoneCountry = strtoupper((string)($_GET['country'] ?? 'MY')) === 'BD' ? 'BD' : 'MY';
+    setcookie('LOCAL_FORGOT_IDENTITY', $forgotIdentityType, ['path' => '/', 'samesite' => 'Lax']);
+    setcookie('LOCAL_FORGOT_COUNTRY', $forgotPhoneCountry, ['path' => '/', 'samesite' => 'Lax']);
+    $_COOKIE['LOCAL_FORGOT_IDENTITY'] = $forgotIdentityType;
+    $_COOKIE['LOCAL_FORGOT_COUNTRY'] = $forgotPhoneCountry;
     require $root . '/api/user/' . $authRoutes[$path];
     exit;
 }
