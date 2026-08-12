@@ -78,6 +78,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   line-height: 1;
   cursor: pointer;
 }
+.user-register-page .register-back[hidden] { display: none; }
 
 .user-register-page .register-brand { text-align: center; }
 .user-register-page .register-logo {
@@ -108,8 +109,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 .user-register-page .register-progress {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
   margin: 13px 0 16px;
 }
 .user-register-page .register-progress span {
@@ -131,6 +132,12 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   color: var(--register-muted);
   font-size: 14px;
   line-height: 1.45;
+}
+.user-register-page .register-section-title {
+  margin: 14px 2px 9px;
+  color: var(--register-text);
+  font-size: 16px;
+  line-height: 1.25;
 }
 
 .user-register-page .register-field { display: block; margin-bottom: 12px; }
@@ -274,6 +281,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   font-size: 12px;
   line-height: 1.45;
 }
+.user-register-page .register-location-action { margin: 0 0 12px; }
 
 .user-register-page .register-review-list {
   display: grid;
@@ -379,13 +387,12 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   background: rgba(15, 52, 91, .82);
 }
 
-.user-register-page .register-links {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+.user-register-page .register-login-action {
+  display: block;
   margin-top: 16px;
 }
-.user-register-page .register-links a {
+.user-register-page .register-login-action a {
+  width: 100%;
   min-height: 54px;
   display: inline-flex;
   align-items: center;
@@ -400,6 +407,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   text-align: center;
   text-decoration: none;
 }
+.user-register-page .register-login-action strong { color: var(--register-green); }
 
 .user-register-page .register-modal,
 .user-register-page .register-loading {
@@ -471,8 +479,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .user-register-page .register-brand h1 { font-size: 24px; }
   .user-register-page .register-brand p { font-size: 14px; }
   .user-register-page .register-country-card strong { font-size: 15px; }
-  .user-register-page .register-links { gap: 9px; }
-  .user-register-page .register-links a { padding-inline: 8px; font-size: 12px; }
+  .user-register-page .register-login-action a { padding-inline: 8px; font-size: 13px; }
   .user-register-page .register-pricing-grid { grid-template-columns: 1fr; }
 }
 

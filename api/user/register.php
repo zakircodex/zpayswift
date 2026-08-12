@@ -21,24 +21,19 @@ $registerJsVersion = (string)(filemtime(__DIR__ . '/assets/register.js') ?: 1);
 <body class="user-register-page">
 <main class="register-page" id="registerPageRoot">
   <section class="register-card" aria-labelledby="registerTitle">
-    <button id="registerBackButton" class="register-back" type="button" aria-label="Back">&larr;</button>
+    <button id="registerBackButton" class="register-back" type="button" aria-label="Previous step" hidden>&larr;</button>
 
     <header class="register-brand">
       <img class="register-logo brand-icon" src="/assets/brand/zpay-icon.png" alt="Z-Pay Swift">
       <h1 id="registerTitle">Create Account</h1>
-      <p id="registerStepDescription">Enter your personal information to get started.</p>
+      <p id="registerStepDescription">Enter your phone number to get started.</p>
     </header>
 
     <div class="register-progress" aria-label="Registration progress">
-      <span class="active"></span><span></span><span></span><span></span><span></span><span></span>
+      <span class="active"></span><span></span><span></span><span></span><span></span><span></span><span></span>
     </div>
 
-    <div class="register-step" data-register-step="personal">
-      <label class="register-field" for="regName">
-        <span>Full Name</span>
-        <input id="regName" autocomplete="name" maxlength="100" placeholder="Enter your full name">
-      </label>
-
+    <div class="register-step" data-register-step="phone">
       <div class="register-country-card" aria-label="Detected phone country">
         <strong id="regCountryDisplay">Country: Detecting...</strong>
       </div>
@@ -48,42 +43,22 @@ $registerJsVersion = (string)(filemtime(__DIR__ . '/assets/register.js') ?: 1);
         <span>Phone Number</span>
         <input id="regPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="Phone number">
       </label>
+      <button id="registerPhoneContinue" class="register-primary" type="button" disabled>Continue</button>
+    </div>
 
+    <div class="register-step" data-register-step="personal" hidden>
+      <label class="register-field" for="regName">
+        <span>Full Name</span>
+        <input id="regName" autocomplete="name" maxlength="100" placeholder="Enter your full name">
+      </label>
       <label class="register-field" for="regEmail">
         <span>Email</span>
         <input id="regEmail" type="email" inputmode="email" autocomplete="email" maxlength="160" placeholder="Enter your email">
       </label>
-
       <button id="registerPersonalContinue" class="register-primary" type="button">Continue</button>
     </div>
 
-    <div class="register-step" data-register-step="security" hidden>
-      <h2 class="register-step-title">Secure Your Account</h2>
-      <p class="register-step-copy">Create your password and transaction PIN.</p>
-
-      <label class="register-field" for="regPassword">
-        <span>Password</span>
-        <input id="regPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters">
-      </label>
-      <label class="register-field" for="regConfirmPassword">
-        <span>Confirm Password</span>
-        <input id="regConfirmPassword" type="password" autocomplete="new-password" placeholder="Confirm password">
-      </label>
-      <label class="register-field" for="regPin">
-        <span>PIN</span>
-        <input id="regPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="4 to 8 digits">
-      </label>
-      <label class="register-field" for="regConfirmPin">
-        <span>Confirm PIN</span>
-        <input id="regConfirmPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="Confirm PIN">
-      </label>
-      <button id="registerSecurityContinue" class="register-primary" type="button">Continue</button>
-    </div>
-
     <div class="register-step" data-register-step="identity" hidden>
-      <h2 class="register-step-title">Verify Your Identity</h2>
-      <p class="register-step-copy">Choose the identity document registered with this account.</p>
-
       <div class="register-identity-selector" role="group" aria-label="Identity type">
         <button type="button" class="active" data-register-identity="NID" aria-pressed="true">NID</button>
         <button type="button" data-register-identity="PASSPORT" aria-pressed="false">Passport</button>
@@ -98,10 +73,42 @@ $registerJsVersion = (string)(filemtime(__DIR__ . '/assets/register.js') ?: 1);
       <button id="registerIdentityContinue" class="register-primary" type="button">Continue</button>
     </div>
 
-    <div class="register-step" data-register-step="location" hidden>
-      <h2 class="register-step-title">Verify Location</h2>
-      <p class="register-step-copy">Verify your location to determine account pricing securely.</p>
+    <div class="register-step" data-register-step="password" hidden>
+      <label class="register-field" for="regPassword">
+        <span>Password</span>
+        <input id="regPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters">
+      </label>
+      <label class="register-field" for="regConfirmPassword">
+        <span>Confirm Password</span>
+        <input id="regConfirmPassword" type="password" autocomplete="new-password" placeholder="Confirm password">
+      </label>
+      <button id="registerPasswordContinue" class="register-primary" type="button">Continue</button>
+    </div>
 
+    <div class="register-step" data-register-step="pin" hidden>
+      <label class="register-field" for="regPin">
+        <span>PIN</span>
+        <input id="regPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="4 to 8 digits">
+      </label>
+      <label class="register-field" for="regConfirmPin">
+        <span>Confirm PIN</span>
+        <input id="regConfirmPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="Confirm PIN">
+      </label>
+      <button id="registerPinContinue" class="register-primary" type="button">Continue</button>
+    </div>
+
+    <div class="register-step" data-register-step="review" hidden>
+      <div class="register-review-list" aria-label="Registration summary">
+        <div><span>Full Name</span><strong id="reviewName">-</strong></div>
+        <div><span>Phone</span><strong id="reviewPhone">-</strong></div>
+        <div><span>Email</span><strong id="reviewEmail">-</strong></div>
+        <div><span>Identity</span><strong id="reviewIdentity">-</strong></div>
+        <div><span>Phone Country</span><strong id="reviewPhoneCountry">-</strong></div>
+        <div><span>Pricing Country</span><strong id="reviewPricingCountry">Not verified</strong></div>
+        <div><span>Wallet Currency</span><strong id="reviewCurrency">-</strong></div>
+      </div>
+
+      <h2 class="register-section-title">Verify Location</h2>
       <section class="register-location-card" aria-labelledby="regLocationTitle">
         <div class="register-location-icon" aria-hidden="true">GPS</div>
         <div>
@@ -121,36 +128,16 @@ $registerJsVersion = (string)(filemtime(__DIR__ . '/assets/register.js') ?: 1);
         </div>
       </div>
       <p id="regCountryHint" class="register-hint">Phone country is used for OTP. GPS and security checks determine pricing.</p>
-
-      <button id="verifyLocationBtn" class="register-primary" type="button">Verify Location</button>
-      <button id="registerLocationContinue" class="register-secondary" type="button" disabled>Continue</button>
-    </div>
-
-    <div class="register-step" data-register-step="review" hidden>
-      <h2 class="register-step-title">Review Your Account</h2>
-      <p class="register-step-copy">Check your information before creating your account.</p>
-
-      <div class="register-review-list" aria-label="Registration summary">
-        <div><span>Name</span><strong id="reviewName">-</strong></div>
-        <div><span>Phone</span><strong id="reviewPhone">-</strong></div>
-        <div><span>Email</span><strong id="reviewEmail">-</strong></div>
-        <div><span>Identity Type</span><strong id="reviewIdentity">-</strong></div>
-        <div><span>Phone Country</span><strong id="reviewPhoneCountry">-</strong></div>
-        <div><span>Pricing Country</span><strong id="reviewPricingCountry">-</strong></div>
-        <div><span>Wallet Currency</span><strong id="reviewCurrency">-</strong></div>
-      </div>
+      <button id="verifyLocationBtn" class="register-secondary register-location-action" type="button">Verify Location</button>
 
       <label class="register-terms" for="regTermsAccepted">
         <input id="regTermsAccepted" type="checkbox" value="1">
         <span>I agree to the <a href="/terms" target="_blank" rel="noopener">Terms &amp; Conditions</a> and <a href="/privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span>
       </label>
-
-      <button id="sendRegisterOtpBtn" class="register-primary" type="button">Create Account</button>
+      <button id="sendRegisterOtpBtn" class="register-primary" type="button" disabled>Create Account</button>
     </div>
 
     <div class="register-step" data-register-step="otp" hidden>
-      <h2 class="register-step-title">Verify OTP</h2>
-      <p class="register-step-copy">Enter the verification code sent to your phone.</p>
       <div class="register-otp-summary">
         <span>OTP sent to</span>
         <strong id="otpMaskedPhone">-</strong>
@@ -165,9 +152,8 @@ $registerJsVersion = (string)(filemtime(__DIR__ . '/assets/register.js') ?: 1);
       <button id="resendRegisterOtpBtn" class="register-secondary" type="button" disabled>Didn't receive the code? Resend OTP</button>
     </div>
 
-    <nav class="register-links" aria-label="Registration links">
-      <a href="/user/">Back to Login</a>
-      <a href="/user/forgot">Forgot Password &amp; PIN</a>
+    <nav class="register-login-action" aria-label="Registration link">
+      <a href="/user/">Already have an account? <strong>Log in</strong></a>
     </nav>
   </section>
 </main>

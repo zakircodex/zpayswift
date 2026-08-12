@@ -177,6 +177,12 @@ $password = (string)($body['password'] ?? '');
 $confirmPassword = (string)($body['confirm_password'] ?? '');
 $pin = trim((string)($body['pin'] ?? ''));
 $confirmPin = trim((string)($body['confirm_pin'] ?? ''));
+$identityTypeInput = strtoupper(trim((string)(
+    $body['nid_or_passport_type']
+    ?? $body['identity_type']
+    ?? $body['document_type']
+    ?? ''
+)));
 $identityType = auth_app_identity_type($body);
 $identityNumber = auth_app_identity_number($body);
 $identityHash = auth_app_identity_hash($identityNumber);
@@ -193,6 +199,15 @@ $termsAccepted = user_reg_bool($body['terms_accepted'] ?? false);
 if ($name === '' || $phone === '' || $email === '' || $password === '' || $confirmPassword === '' || $pin === '' || $confirmPin === '') {
     $message = $phone === '' ? auth_phone_validation_message($phoneCountry) : 'All fields are required';
     user_reg_response(false, 'VALIDATION_ERROR', $message, [], 422);
+}
+
+$nameLength = function_exists('mb_strlen') ? mb_strlen($name, 'UTF-8') : strlen($name);
+if ($nameLength > 100) {
+    user_reg_response(false, 'VALIDATION_ERROR', 'Please enter a valid full name', [], 422);
+}
+
+if (!in_array($identityTypeInput, ['NID', 'PASSPORT'], true)) {
+    user_reg_response(false, 'VALIDATION_ERROR', 'Select a valid identity type', [], 422);
 }
 
 if ($identityHash === '') {

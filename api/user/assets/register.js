@@ -4,16 +4,20 @@
   const USER_PROXY_URL = window.USER_PROXY_URL || '/api/user/proxy.php';
   const USER_LOGIN_URL = window.USER_LOGIN_URL || '/user/';
   const el = (id) => document.getElementById(id);
-  const steps = ['personal', 'security', 'identity', 'location', 'review', 'otp'];
+  const steps = ['phone', 'personal', 'identity', 'password', 'pin', 'review', 'otp'];
   const activeRequests = new Set();
   const state = {
-    step: 'personal',
+    step: 'phone',
     busyCount: 0,
     requestInFlight: false,
     feedbackAfterClose: '',
     ipCountry: '',
+    countryReady: false,
+    phoneVerifiedKey: '',
     personalVerifiedKey: '',
     identityVerifiedKey: '',
+    passwordVerified: false,
+    pinVerified: false,
     registrationLocation: emptyLocation(),
     registerOtp: emptyOtp()
   };
@@ -143,6 +147,7 @@
       EMAIL_ALREADY_REGISTERED: 'This email is already registered.',
       IDENTITY_ALREADY_USED: 'This NID or Passport is already used by another account.',
       DOCUMENT_ALREADY_USED: 'This NID or Passport is already used by another account.',
+      IDENTITY_REQUIRED: 'NID or Passport number is required.',
       TERMS_REQUIRED: 'You must accept the Terms & Conditions and Privacy Policy.',
       LOCATION_REQUIRED: 'Location verification is required.',
       GPS_REQUIRED: 'Location verification is required.',
@@ -189,8 +194,12 @@
     updateCountryUi();
   }
 
+  function phoneKey() {
+    return [el('regPhoneCountry').value, el('regPhone').value.trim()].join('|');
+  }
+
   function personalKey() {
-    return [el('regName').value.trim(), el('regPhoneCountry').value, el('regPhone').value.trim(), el('regEmail').value.trim().toLowerCase()].join('|');
+    return [el('regName').value.trim(), el('regEmail').value.trim().toLowerCase()].join('|');
   }
 
   function identityKey() {
@@ -219,19 +228,29 @@
     };
   }
 
+  function validatePhone() {
+    if (!state.countryReady) return 'Phone country could not be detected. Please reload the page.';
+    const data = getFormData();
+    if (!data.phone_country || !validPhone(data.phone_country, data.phone)) return 'Please enter a valid phone number.';
+    return '';
+  }
+
   function validatePersonal() {
-    syncPhoneCountryFromInput();
     const data = getFormData();
     if (!data.name || data.name.length > 100) return 'Please enter your full name.';
-    if (!data.phone_country || !validPhone(data.phone_country, data.phone)) return 'Please enter a valid phone number.';
     if (!/^\S+@\S+\.\S+$/.test(data.email)) return 'Please enter a valid email address.';
     return '';
   }
 
-  function validateSecurity() {
+  function validatePassword() {
     const data = getFormData();
     if (data.password.length < 6) return 'Password must be at least 6 characters.';
     if (data.password !== data.confirm_password) return 'Password confirmation does not match.';
+    return '';
+  }
+
+  function validatePin() {
+    const data = getFormData();
     if (!/^\d{4,8}$/.test(data.pin)) return 'PIN must be 4 to 8 digits.';
     if (data.pin !== data.confirm_pin) return 'PIN confirmation does not match.';
     return '';
@@ -244,28 +263,29 @@
     return '';
   }
 
-  function stepDescription(step) {
-    const descriptions = {
-      personal: 'Enter your personal information to get started.',
-      security: 'Create your password and transaction PIN.',
-      identity: 'Register the identity document used for this account.',
-      location: 'Verify your location to determine account pricing securely.',
-      review: 'Check your information before creating your account.',
-      otp: 'Enter the verification code sent to your phone.'
+  function stepCopy(step) {
+    const content = {
+      phone: ['Create Account', 'Enter your phone number to get started.'],
+      personal: ['Personal Information', 'Tell us a little about yourself.'],
+      identity: ['Verify Identity', 'Choose the identity document you want to register.'],
+      password: ['Create Password', 'Create a secure password for your account.'],
+      pin: ['Create Transaction PIN', 'Set your PIN for secure transactions.'],
+      review: ['Review Your Account', 'Check your information before creating your account.'],
+      otp: ['Verify OTP', 'Enter the verification code sent to your phone.']
     };
-    return descriptions[step] || descriptions.personal;
+    return content[step] || content.phone;
   }
 
   function actionForInput(input) {
     const actions = {
+      regPhone: el('registerPhoneContinue'),
       regName: el('registerPersonalContinue'),
-      regPhone: el('registerPersonalContinue'),
       regEmail: el('registerPersonalContinue'),
-      regPassword: el('registerSecurityContinue'),
-      regConfirmPassword: el('registerSecurityContinue'),
-      regPin: el('registerSecurityContinue'),
-      regConfirmPin: el('registerSecurityContinue'),
       regIdentityNumber: el('registerIdentityContinue'),
+      regPassword: el('registerPasswordContinue'),
+      regConfirmPassword: el('registerPasswordContinue'),
+      regPin: el('registerPinContinue'),
+      regConfirmPin: el('registerPinContinue'),
       otpCode: el('verifyRegisterOtpBtn')
     };
     return input ? actions[input.id] || null : null;
@@ -298,7 +318,7 @@
   }
 
   function focusForStep(step) {
-    const ids = { personal: 'regName', security: 'regPassword', identity: 'regIdentityNumber', location: 'verifyLocationBtn', review: 'sendRegisterOtpBtn', otp: 'otpCode' };
+    const ids = { phone: 'regPhone', personal: 'regName', identity: 'regIdentityNumber', password: 'regPassword', pin: 'regPin', review: 'verifyLocationBtn', otp: 'otpCode' };
     const node = el(ids[step]);
     if (!node) return;
     window.setTimeout(() => {
@@ -308,26 +328,57 @@
   }
 
   function showStep(step, historyMode = '') {
-    const next = steps.includes(step) ? step : 'personal';
+    const next = steps.includes(step) ? step : 'phone';
     state.step = next;
     el('registerPageRoot').dataset.registerCurrentStep = next;
     document.querySelectorAll('[data-register-step]').forEach((node) => {
       node.hidden = node.dataset.registerStep !== next;
     });
-    el('registerTitle').textContent = 'Create Account';
-    el('registerStepDescription').textContent = stepDescription(next);
-    el('registerBackButton').setAttribute('aria-label', next === 'personal' ? 'Back to login' : 'Previous step');
+    const copy = stepCopy(next);
+    el('registerTitle').textContent = copy[0];
+    el('registerStepDescription').textContent = copy[1];
+    el('registerBackButton').hidden = next === 'phone';
+    el('registerBackButton').setAttribute('aria-label', 'Previous step');
     document.querySelectorAll('.register-progress span').forEach((node, index) => {
       node.classList.toggle('active', index <= steps.indexOf(next));
     });
     el('registerPageRoot').scrollTo({ top: 0, behavior: 'smooth' });
     if (historyMode === 'push') history.pushState({ registerStep: next }, '', window.location.href);
     else if (historyMode === 'replace') history.replaceState({ registerStep: next }, '', window.location.href);
+    if (next === 'review') {
+      updateReview();
+      updateCreateAvailability();
+    }
     focusForStep(next);
+  }
+
+  async function continuePhone() {
+    if (state.requestInFlight) return;
+    syncPhoneCountryFromInput();
+    const validation = validatePhone();
+    if (validation) return showFeedback(validation);
+    const data = getFormData();
+    state.requestInFlight = true;
+    el('registerPhoneContinue').disabled = true;
+    try {
+      await proxyPost('register_precheck', {
+        stage: 'PHONE',
+        phone: data.phone,
+        phone_country: data.phone_country
+      }, 'Checking phone number...');
+      state.phoneVerifiedKey = phoneKey();
+      showStep('personal', 'push');
+    } catch (error) {
+      showFeedback(safeErrorMessage(error, 'Phone number could not be verified. Please try again.'));
+    } finally {
+      state.requestInFlight = false;
+      el('registerPhoneContinue').disabled = false;
+    }
   }
 
   async function continuePersonal() {
     if (state.requestInFlight) return;
+    if (state.phoneVerifiedKey !== phoneKey()) return showFeedback('Please verify your phone number again.');
     const validation = validatePersonal();
     if (validation) return showFeedback(validation);
     const data = getFormData();
@@ -337,12 +388,10 @@
       await proxyPost('register_precheck', {
         stage: 'PERSONAL',
         name: data.name,
-        phone: data.phone,
-        phone_country: data.phone_country,
         email: data.email
-      }, 'Checking account details...');
+      }, 'Checking personal information...');
       state.personalVerifiedKey = personalKey();
-      showStep('security', 'push');
+      showStep('identity', 'push');
     } catch (error) {
       showFeedback(safeErrorMessage(error, 'Account details could not be verified. Please try again.'));
     } finally {
@@ -351,18 +400,79 @@
     }
   }
 
-  function continueSecurity() {
+  async function continueIdentity() {
+    if (state.requestInFlight) return;
     if (state.personalVerifiedKey !== personalKey()) return showFeedback('Please verify your personal information again.');
-    const validation = validateSecurity();
-    if (validation) return showFeedback(validation);
-    showStep('identity', 'push');
-  }
-
-  function continueIdentity() {
     const validation = validateIdentity();
     if (validation) return showFeedback(validation);
-    state.identityVerifiedKey = identityKey();
-    showStep('location', 'push');
+    const data = getFormData();
+    state.requestInFlight = true;
+    el('registerIdentityContinue').disabled = true;
+    try {
+      await proxyPost('register_precheck', {
+        stage: 'IDENTITY',
+        identity_type: data.identity_type,
+        identity_number: data.identity_number
+      }, 'Checking identity details...');
+      state.identityVerifiedKey = identityKey();
+      showStep('password', 'push');
+    } catch (error) {
+      showFeedback(safeErrorMessage(error, 'Identity details could not be verified. Please try again.'));
+    } finally {
+      state.requestInFlight = false;
+      el('registerIdentityContinue').disabled = false;
+    }
+  }
+
+  async function continuePassword() {
+    if (state.requestInFlight) return;
+    if (state.identityVerifiedKey !== identityKey()) return showFeedback('Please verify your identity again.');
+    const validation = validatePassword();
+    if (validation) return showFeedback(validation);
+    const data = getFormData();
+    state.requestInFlight = true;
+    el('registerPasswordContinue').disabled = true;
+    try {
+      await proxyPost('register_precheck', {
+        stage: 'PASSWORD',
+        password: data.password,
+        confirm_password: data.confirm_password
+      }, 'Checking password...');
+      state.passwordVerified = true;
+      showStep('pin', 'push');
+    } catch (error) {
+      showFeedback(safeErrorMessage(error, 'Password could not be verified. Please try again.'));
+    } finally {
+      state.requestInFlight = false;
+      el('registerPasswordContinue').disabled = false;
+    }
+  }
+
+  async function continuePin() {
+    if (state.requestInFlight) return;
+    if (!state.passwordVerified) return showFeedback('Please verify your password again.');
+    const passwordValidation = validatePassword();
+    if (passwordValidation) return showFeedback(passwordValidation);
+    const validation = validatePin();
+    if (validation) return showFeedback(validation);
+    const data = getFormData();
+    state.requestInFlight = true;
+    el('registerPinContinue').disabled = true;
+    try {
+      await proxyPost('register_precheck', {
+        stage: 'PIN',
+        pin: data.pin,
+        confirm_pin: data.confirm_pin
+      }, 'Checking transaction PIN...');
+      state.pinVerified = true;
+      updateReview();
+      showStep('review', 'push');
+    } catch (error) {
+      showFeedback(safeErrorMessage(error, 'PIN could not be verified. Please try again.'));
+    } finally {
+      state.requestInFlight = false;
+      el('registerPinContinue').disabled = false;
+    }
   }
 
   function browserPosition() {
@@ -378,6 +488,13 @@
 
   function updateCountryUi() {
     const phoneCountry = el('regPhoneCountry').value.toUpperCase();
+    if (!['BD', 'MY'].includes(phoneCountry)) {
+      el('regCountryDisplay').textContent = 'Country: Unavailable';
+      el('regPricingCountryDisplay').textContent = 'Not verified';
+      el('regCurrencyDisplay').textContent = '-';
+      el('regCountryHint').textContent = 'Phone country must be detected before location and pricing verification.';
+      return;
+    }
     const country = countryDetails(phoneCountry || 'MY');
     el('regCountryDisplay').textContent = `Country: ${country.name} (${country.dial})`;
     const pricingCountry = state.registrationLocation.pricingCountry;
@@ -394,13 +511,21 @@
     el('regLocationTitle').textContent = 'Location permission required';
     el('regLocationStatus').textContent = message;
     el('verifyLocationBtn').textContent = 'Verify Location';
-    el('registerLocationContinue').disabled = true;
     updateCountryUi();
+    updateReview();
+    updateCreateAvailability();
   }
 
   async function verifyRegistrationLocation() {
     if (state.requestInFlight) return;
+    if (state.phoneVerifiedKey !== phoneKey()) return showFeedback('Please verify your phone number again.');
+    if (state.personalVerifiedKey !== personalKey()) return showFeedback('Please verify your personal information again.');
     if (state.identityVerifiedKey !== identityKey()) return showFeedback('Please verify your identity again.');
+    if (!state.passwordVerified || !state.pinVerified) return showFeedback('Please verify your password and PIN again.');
+    const passwordValidation = validatePassword();
+    if (passwordValidation) return showFeedback(passwordValidation);
+    const pinValidation = validatePin();
+    if (pinValidation) return showFeedback(pinValidation);
     state.requestInFlight = true;
     el('verifyLocationBtn').disabled = true;
     try {
@@ -431,14 +556,15 @@
       el('regLocationTitle').textContent = state.registrationLocation.requiresAdminReview ? 'Location verified - review required' : 'Location verified';
       el('regLocationStatus').textContent = 'Pricing and wallet currency were resolved securely.';
       el('verifyLocationBtn').textContent = 'Recheck Location';
-      el('registerLocationContinue').disabled = false;
       updateCountryUi();
+      updateReview();
     } catch (error) {
       invalidateLocation('Location permission was denied or unavailable.');
       showFeedback(safeErrorMessage(error, 'Location verification is required to create an account.'));
     } finally {
       state.requestInFlight = false;
       el('verifyLocationBtn').disabled = false;
+      updateCreateAvailability();
     }
   }
 
@@ -454,10 +580,25 @@
     el('reviewCurrency').textContent = state.registrationLocation.currency || '-';
   }
 
-  function continueLocation() {
-    if (!state.registrationLocation.verified) return showFeedback('Location verification is required.');
-    updateReview();
-    showStep('review', 'push');
+  function registrationReady() {
+    return state.phoneVerifiedKey === phoneKey()
+      && state.personalVerifiedKey === personalKey()
+      && state.identityVerifiedKey === identityKey()
+      && state.passwordVerified
+      && state.pinVerified
+      && validatePhone() === ''
+      && validatePersonal() === ''
+      && validateIdentity() === ''
+      && validatePassword() === ''
+      && validatePin() === ''
+      && state.registrationLocation.verified
+      && el('regTermsAccepted').checked;
+  }
+
+  function updateCreateAvailability() {
+    const button = el('sendRegisterOtpBtn');
+    if (!button) return;
+    button.disabled = state.requestInFlight || !registrationReady();
   }
 
   function clearOtpTimer() {
@@ -505,6 +646,12 @@
 
   async function sendRegisterOtp() {
     if (state.requestInFlight) return;
+    if (state.phoneVerifiedKey !== phoneKey()) return showFeedback('Please verify your phone number again.');
+    if (state.personalVerifiedKey !== personalKey()) return showFeedback('Please verify your personal information again.');
+    if (state.identityVerifiedKey !== identityKey()) return showFeedback('Please verify your identity again.');
+    if (!state.passwordVerified || !state.pinVerified) return showFeedback('Please verify your password and PIN again.');
+    const validation = validatePhone() || validatePersonal() || validateIdentity() || validatePassword() || validatePin();
+    if (validation) return showFeedback(validation);
     if (!state.registrationLocation.verified) return showFeedback('Location verification is required.');
     if (!el('regTermsAccepted').checked) return showFeedback('You must accept the Terms & Conditions and Privacy Policy.');
     if (state.registerOtp.preAuthToken && Date.now() < state.registerOtp.expiresAt) {
@@ -522,7 +669,7 @@
       showFeedback(safeErrorMessage(error, 'Registration OTP could not be sent. Please try again.'));
     } finally {
       state.requestInFlight = false;
-      el('sendRegisterOtpBtn').disabled = false;
+      updateCreateAvailability();
       updateOtpCountdown();
     }
   }
@@ -577,14 +724,20 @@
   }
 
   async function loadCountryDefaults() {
+    el('registerPhoneContinue').disabled = true;
     try {
       const data = await proxyPost('country_defaults', { browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '' }, 'Detecting country...');
       const phoneCountry = String(data.phone_country || '').toUpperCase();
+      if (!['BD', 'MY'].includes(phoneCountry)) throw new Error('Phone country is unavailable.');
       state.ipCountry = String(data.ip_country || '').toUpperCase();
-      el('regPhoneCountry').value = ['BD', 'MY'].includes(phoneCountry) ? phoneCountry : 'MY';
-    } catch (_) {
+      state.countryReady = true;
+      el('regPhoneCountry').value = phoneCountry;
+      el('registerPhoneContinue').disabled = false;
+    } catch (error) {
       state.ipCountry = '';
-      el('regPhoneCountry').value = 'MY';
+      state.countryReady = false;
+      el('regPhoneCountry').value = '';
+      showFeedback(error.message || 'Phone country could not be detected. Please reload the page.');
     }
     invalidateLocation();
   }
@@ -601,6 +754,7 @@
     el('regIdentityNumber').placeholder = next === 'PASSPORT' ? 'Enter your passport number' : 'Enter your NID number';
     state.identityVerifiedKey = '';
     invalidateLocation('Verify your location after confirming identity.');
+    clearOtpState();
   }
 
   function clearSensitiveFields() {
@@ -628,11 +782,12 @@
     if (active instanceof HTMLInputElement && active.type !== 'hidden') window.setTimeout(() => ensureControlVisible(active), 30);
   }
 
+  el('registerPhoneContinue').addEventListener('click', continuePhone);
   el('registerPersonalContinue').addEventListener('click', continuePersonal);
-  el('registerSecurityContinue').addEventListener('click', continueSecurity);
   el('registerIdentityContinue').addEventListener('click', continueIdentity);
+  el('registerPasswordContinue').addEventListener('click', continuePassword);
+  el('registerPinContinue').addEventListener('click', continuePin);
   el('verifyLocationBtn').addEventListener('click', verifyRegistrationLocation);
-  el('registerLocationContinue').addEventListener('click', continueLocation);
   el('sendRegisterOtpBtn').addEventListener('click', sendRegisterOtp);
   el('verifyRegisterOtpBtn').addEventListener('click', verifyRegisterOtp);
   el('resendRegisterOtpBtn').addEventListener('click', resendRegisterOtp);
@@ -646,18 +801,19 @@
   });
 
   el('regPhone').addEventListener('input', () => {
-    const oldCountry = el('regPhoneCountry').value;
     syncPhoneCountryFromInput();
-    state.personalVerifiedKey = '';
-    if (oldCountry !== el('regPhoneCountry').value) clearOtpState();
+    state.phoneVerifiedKey = '';
+    invalidateLocation('Verify your location after confirming the phone number.');
+    clearOtpState();
   });
-  ['regName', 'regEmail'].forEach((id) => el(id).addEventListener('input', () => { state.personalVerifiedKey = ''; clearOtpState(); }));
+  ['regName', 'regEmail'].forEach((id) => el(id).addEventListener('input', () => { state.personalVerifiedKey = ''; clearOtpState(); updateCreateAvailability(); }));
   el('regIdentityNumber').addEventListener('input', () => { state.identityVerifiedKey = ''; invalidateLocation('Verify your location after confirming identity.'); clearOtpState(); });
-  ['regPassword', 'regConfirmPassword', 'regPin', 'regConfirmPin'].forEach((id) => el(id).addEventListener('input', clearOtpState));
+  ['regPassword', 'regConfirmPassword'].forEach((id) => el(id).addEventListener('input', () => { state.passwordVerified = false; state.pinVerified = false; clearOtpState(); updateCreateAvailability(); }));
+  ['regPin', 'regConfirmPin'].forEach((id) => el(id).addEventListener('input', () => { state.pinVerified = false; clearOtpState(); updateCreateAvailability(); }));
+  el('regTermsAccepted').addEventListener('change', updateCreateAvailability);
 
   el('registerBackButton').addEventListener('click', () => {
-    if (state.step === 'personal') window.location.href = USER_LOGIN_URL;
-    else history.back();
+    history.back();
   });
   el('otpCode').addEventListener('keydown', (event) => { if (event.key === 'Enter') verifyRegisterOtp(); });
   document.addEventListener('focusin', handleFocus);
@@ -693,14 +849,17 @@
     closeAllModals();
     clearSensitiveFields();
     clearOtpState();
+    state.phoneVerifiedKey = '';
     state.personalVerifiedKey = '';
     state.identityVerifiedKey = '';
-    showStep('personal', 'replace');
+    state.passwordVerified = false;
+    state.pinVerified = false;
+    showStep('phone', 'replace');
     handleViewportChange();
   });
 
   setIdentityType('NID');
-  showStep('personal', 'replace');
+  showStep('phone', 'replace');
   resetBusy();
   updateKeyboardViewport();
   loadCountryDefaults();

@@ -65,10 +65,11 @@ auth_ui_expect(str_contains($checkNumberEndpoint, 'trusted_login_available') && 
 auth_ui_expect(str_contains($verifyPinEndpoint, 'trusted_browser_verified') && str_contains($verifyPinEndpoint, 'TRUSTED_DEVICE_INVALID'), 'PIN verification must revalidate the trusted browser');
 auth_ui_expect(str_contains($authLibrary, 'function auth_trusted_browser_cookie_context') && str_contains($authLibrary, "'auth_session_epoch'"), 'Trusted browser validation must bind token, device and session epoch');
 
-foreach (['personal', 'security', 'identity', 'location', 'review', 'otp'] as $step) {
+foreach (['phone', 'personal', 'identity', 'password', 'pin', 'review', 'otp'] as $step) {
     auth_ui_expect(str_contains($registerPage, 'data-register-step="' . $step . '"'), "Register {$step} step is missing");
 }
 auth_ui_expect(str_contains($registerPage, 'id="regIdentityNumber"') && str_contains($registerPage, 'id="verifyLocationBtn"') && str_contains($registerPage, 'id="sendRegisterOtpBtn"'), 'Register identity/location/review controls are missing');
+auth_ui_expect(str_contains($registerPage, 'Already have an account? <strong>Log in</strong>') && !str_contains($registerPage, 'Forgot Password &amp; PIN'), 'Register must expose one Login action and no Forgot action');
 auth_ui_expect(str_contains($registerPage, 'id="regPhoneCountry" type="hidden"') && !str_contains($registerPage, '<select id="regPhoneCountry"'), 'Register phone country must remain detected and read-only');
 auth_ui_expect(str_contains($registerPage, 'data-register-identity="NID"') && str_contains($registerPage, 'data-register-identity="PASSPORT"'), 'Register canonical identity selector is missing');
 auth_ui_expect(str_contains($registerPage, 'id="reviewIdentity"') && !str_contains($registerPage, 'id="reviewIdentityNumber"'), 'Register review must show identity type without exposing the full identity number');
