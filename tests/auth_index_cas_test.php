@@ -116,4 +116,16 @@ $loser = auth_index_claim($racePath, 'UID_LOSER', 'UID_LOSER');
 assert_true(empty($loser['ok']) && !empty($loser['conflict']), 'CAS loser must observe the competing index owner');
 assert_true(test_get($racePath) === 'UID_WINNER', 'CAS loser must not overwrite the winning identity index');
 
+foreach (['NID', 'PASSPORT'] as $documentType) {
+    $identityPath = 'USER_INDEX/' . $documentType . '/test-identity-hash';
+    $injectCompetitorPath = $identityPath;
+    $injectCompetitorUid = 'UID_' . $documentType . '_WINNER';
+    $identityLoser = auth_index_claim($identityPath, 'UID_' . $documentType . '_LOSER', [
+        'uid' => 'UID_' . $documentType . '_LOSER',
+        'document_type' => $documentType,
+    ]);
+    assert_true(empty($identityLoser['ok']) && !empty($identityLoser['conflict']), $documentType . ' concurrent claim must have one winner');
+    assert_true(auth_index_owner_uid(test_get($identityPath)) === 'UID_' . $documentType . '_WINNER', $documentType . ' loser must not overwrite the winner');
+}
+
 echo "auth index CAS tests passed\n";

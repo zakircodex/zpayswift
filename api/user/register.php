@@ -76,11 +76,11 @@ $registerJsVersion = (string)(filemtime(__DIR__ . '/assets/register.js') ?: 1);
     <div class="register-step" data-register-step="password" hidden>
       <label class="register-field" for="regPassword">
         <span>Password</span>
-        <input id="regPassword" type="password" autocomplete="new-password" placeholder="Minimum 6 characters">
+        <input id="regPassword" type="password" inputmode="numeric" autocomplete="new-password" maxlength="6" placeholder="6 digits">
       </label>
       <label class="register-field" for="regConfirmPassword">
         <span>Confirm Password</span>
-        <input id="regConfirmPassword" type="password" autocomplete="new-password" placeholder="Confirm password">
+        <input id="regConfirmPassword" type="password" inputmode="numeric" autocomplete="new-password" maxlength="6" placeholder="Confirm 6-digit password">
       </label>
       <button id="registerPasswordContinue" class="register-primary" type="button">Continue</button>
     </div>
@@ -88,11 +88,11 @@ $registerJsVersion = (string)(filemtime(__DIR__ . '/assets/register.js') ?: 1);
     <div class="register-step" data-register-step="pin" hidden>
       <label class="register-field" for="regPin">
         <span>PIN</span>
-        <input id="regPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="4 to 8 digits">
+        <input id="regPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="4" placeholder="4 digits">
       </label>
       <label class="register-field" for="regConfirmPin">
         <span>Confirm PIN</span>
-        <input id="regConfirmPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="8" placeholder="Confirm PIN">
+        <input id="regConfirmPin" type="password" inputmode="numeric" autocomplete="new-password" maxlength="4" placeholder="Confirm 4-digit PIN">
       </label>
       <button id="registerPinContinue" class="register-primary" type="button">Continue</button>
     </div>

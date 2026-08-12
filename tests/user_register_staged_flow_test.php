@@ -31,6 +31,8 @@ $proxy = register_flow_source($root . '/api/user/proxy.php');
 $sendOtp = register_flow_source($root . '/api/auth/user_register_send_otp.php');
 $confirm = register_flow_source($root . '/api/auth/user_register_confirm.php');
 $androidRegister = register_flow_source($root . '/api/lib/register_android.php');
+$credentials = register_flow_source($root . '/api/lib/user_web_credentials.php');
+$identityUniqueness = register_flow_source($root . '/api/lib/user_registration_identity.php');
 
 foreach (['phone', 'personal', 'identity', 'password', 'pin', 'review', 'otp'] as $step) {
     register_flow_expect(str_contains($page, 'data-register-step="' . $step . '"'), "Missing {$step} registration step");
@@ -45,8 +47,18 @@ register_flow_expect(str_contains($page, 'href="/terms"') && str_contains($page,
 register_flow_expect(str_contains($proxy, "case 'register_precheck':") && str_contains($proxy, "\$stage === 'PHONE'") && str_contains($proxy, "\$stage === 'PERSONAL'"), 'Registration phone/personal precheck routes are incomplete');
 register_flow_expect(str_contains($proxy, "\$stage === 'IDENTITY'") && str_contains($proxy, "\$stage === 'PASSWORD'") && str_contains($proxy, "\$stage === 'PIN'"), 'Identity, password and PIN prechecks are incomplete');
 register_flow_expect(str_contains($proxy, 'reg_app_phone_uid') && str_contains($proxy, 'reg_app_email_uid'), 'Registration prechecks must use canonical direct indexes');
-register_flow_expect(str_contains($sendOtp, 'reg_app_document_owner_uid($identityHash, $identityType)'), 'OTP preparation must recheck identity availability');
-register_flow_expect(str_contains($confirm, 'auth_index_claim') && str_contains($confirm, "'USER_IDENTITY_INDEX/' . \$identityHash"), 'Final registration must retain CAS-backed unique index claims');
+register_flow_expect(str_contains($proxy, 'user_web_registration_identity_lookup') && str_contains($proxy, 'NID_ALREADY_REGISTERED') && str_contains($proxy, 'PASSPORT_ALREADY_REGISTERED'), 'Identity precheck must reject existing NID and Passport indexes');
+register_flow_expect(str_contains($sendOtp, 'user_web_registration_identity_lookup($identityHashes, $identityType)'), 'OTP preparation must recheck normalized identity variants');
+register_flow_expect(str_contains($confirm, 'auth_index_claim') && str_contains($confirm, 'reg_app_document_index_paths($hash, $identityType)'), 'Final registration must retain CAS-backed unique index claims for every normalized identity variant');
+register_flow_expect(strpos($confirm, 'auth_index_claim') < strpos($confirm, "fb_put('USERS/' . \$uid"), 'Identity and other unique indexes must be claimed before account creation');
+register_flow_expect(str_contains($confirm, 'NID_ALREADY_REGISTERED') && str_contains($confirm, 'PASSPORT_ALREADY_REGISTERED'), 'Final registration must preserve type-specific identity conflicts');
+register_flow_expect(str_contains($confirm, 'user_web_registration_identity_lookup($identityHashes, $identityType)'), 'Direct final registration must recheck existing and legacy identities');
+register_flow_expect(str_contains($identityUniqueness, "'orderBy' => json_encode('identity_number_hash'") && str_contains($identityUniqueness, 'IDENTITY_LOOKUP_FAILED'), 'Legacy identity lookup must be filtered and fail closed');
+register_flow_expect(str_contains($credentials, "preg_match('/^\\d{6}$/D', \$password)") && str_contains($credentials, "preg_match('/^\\d{4}$/D', \$pin)"), 'Canonical Web User credential lengths are incorrect');
+register_flow_expect(str_contains($identityUniqueness, '$upper = strtoupper($trimmed)') && str_contains($identityUniqueness, "preg_replace('/[^A-Z0-9]+/', '', \$upper)"), 'Web identity punctuation normalization must preserve lowercase letters before hashing');
+register_flow_expect(str_contains($proxy, 'user_web_password_valid($password)') && str_contains($proxy, 'user_web_transaction_pin_valid($pin)'), 'Registration precheck must use canonical Web User credential validators');
+register_flow_expect(str_contains($sendOtp, 'user_web_password_valid($password)') && str_contains($sendOtp, 'user_web_transaction_pin_valid($pin)'), 'OTP preparation must revalidate canonical credential lengths');
+register_flow_expect(str_contains($js, '/^\\d{6}$/.test(data.password)') && str_contains($js, '/^\\d{4}$/.test(data.pin)'), 'Register client validation must enforce exact credential lengths');
 
 register_flow_expect(str_contains($js, "proxyPost('registration_location_check'") && str_contains($js, 'navigator.geolocation.getCurrentPosition'), 'GPS-authoritative market verification is missing');
 register_flow_expect(str_contains($js, "requiresAdminReview: Boolean(data.requires_admin_review)\n      };\n      clearOtpState();"), 'Location re-verification must invalidate any stale registration OTP state');

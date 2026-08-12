@@ -26,23 +26,26 @@ function forgot_test_source(string $path): string
 
 require_once $root . '/api/lib/user_forgot_recovery.php';
 
-$valid = user_forgot_combined_validate_credentials('secret99', 'secret99', '2468', '2468');
-forgot_test_expect(!empty($valid['ok']), 'valid password and four-digit PIN should pass');
-forgot_test_expect(empty(user_forgot_combined_validate_credentials('short', 'short', '2468', '2468')['ok']), 'short password must fail');
-forgot_test_expect(empty(user_forgot_combined_validate_credentials('secret99', 'different', '2468', '2468')['ok']), 'password mismatch must fail');
-forgot_test_expect(empty(user_forgot_combined_validate_credentials('secret99', 'secret99', '24680', '24680')['ok']), 'non-four-digit PIN must fail');
-forgot_test_expect(empty(user_forgot_combined_validate_credentials('secret99', 'secret99', '2468', '1357')['ok']), 'PIN mismatch must fail');
+$valid = user_forgot_combined_validate_credentials('123456', '123456', '2468', '2468');
+forgot_test_expect(!empty($valid['ok']), 'six-digit password and four-digit PIN should pass');
+forgot_test_expect(empty(user_forgot_combined_validate_credentials('12345', '12345', '2468', '2468')['ok']), 'five-digit password must fail');
+forgot_test_expect(empty(user_forgot_combined_validate_credentials('1234567', '1234567', '2468', '2468')['ok']), 'seven-digit password must fail');
+forgot_test_expect(empty(user_forgot_combined_validate_credentials('12ab56', '12ab56', '2468', '2468')['ok']), 'non-numeric password must fail');
+forgot_test_expect(empty(user_forgot_combined_validate_credentials('123456', '654321', '2468', '2468')['ok']), 'password mismatch must fail');
+forgot_test_expect(empty(user_forgot_combined_validate_credentials('123456', '123456', '24680', '24680')['ok']), 'non-four-digit PIN must fail');
+forgot_test_expect(empty(user_forgot_combined_validate_credentials('123456', '123456', '24AB', '24AB')['ok']), 'non-numeric PIN must fail');
+forgot_test_expect(empty(user_forgot_combined_validate_credentials('123456', '123456', '2468', '1357')['ok']), 'PIN mismatch must fail');
 
 $oldUser = [
     'password_hash' => password_hash('old-secret', PASSWORD_DEFAULT),
     'pin_hash' => password_hash('1111', PASSWORD_DEFAULT),
 ];
-$update = user_forgot_combined_build_update('new-secret', '2468', 123456);
+$update = user_forgot_combined_build_update('654321', '2468', 123456);
 $updatedUser = array_merge($oldUser, $update);
 forgot_test_expect(isset($update['password_hash'], $update['pin_hash']), 'one credential update must contain both hashes');
 forgot_test_expect(!password_verify('old-secret', $updatedUser['password_hash']), 'old password must stop matching');
 forgot_test_expect(!password_verify('1111', $updatedUser['pin_hash']), 'old PIN must stop matching');
-forgot_test_expect(user_forgot_combined_credentials_match($updatedUser, 'new-secret', '2468'), 'new password and PIN must both match');
+forgot_test_expect(user_forgot_combined_credentials_match($updatedUser, '654321', '2468'), 'new password and PIN must both match');
 
 $send = forgot_test_source($root . '/api/auth/user_forgot_send_otp.php');
 $resend = forgot_test_source($root . '/api/auth/user_forgot_resend_otp.php');

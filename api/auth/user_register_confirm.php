@@ -4,6 +4,8 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once __DIR__ . '/../lib/roles.php';
 require_once __DIR__ . '/../lib/account_review.php';
+require_once __DIR__ . '/../lib/register_android.php';
+require_once __DIR__ . '/../lib/user_registration_identity.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -147,6 +149,9 @@ $passwordHash = trim((string)($preAuthRow['password_hash'] ?? ''));
 $pinHash = trim((string)($preAuthRow['pin_hash'] ?? ''));
 $identityType = strtoupper(trim((string)($preAuthRow['identity_type'] ?? $preAuthRow['KYC']['type'] ?? '')));
 $identityHash = trim((string)($preAuthRow['identity_number_hash'] ?? $preAuthRow['KYC']['identity_number_hash'] ?? ''));
+$identityHashes = is_array($preAuthRow['identity_hash_variants'] ?? null)
+    ? $preAuthRow['identity_hash_variants']
+    : [];
 $identityLast4 = trim((string)($preAuthRow['identity_number_last4'] ?? $preAuthRow['KYC']['identity_number_last4'] ?? ''));
 $phoneCountry = auth_normalize_country_code((string)($preAuthRow['phone_country'] ?? ''));
 $pricingCountry = auth_normalize_country_code((string)(
@@ -187,7 +192,19 @@ if ($identityHash === '') {
 }
 
 if (!in_array($identityType, ['NID', 'PASSPORT'], true)) {
-    $identityType = 'NID';
+    user_reg_confirm_response(false, 'REGISTER_SESSION_INVALID', 'Register session is invalid. Please start again.', [], 400);
+}
+
+$validatedIdentityHashes = [];
+foreach (array_merge([$identityHash], $identityHashes) as $hash) {
+    $hash = strtolower(trim((string)$hash));
+    if (preg_match('/^[a-f0-9]{64}$/D', $hash) === 1) {
+        $validatedIdentityHashes[] = $hash;
+    }
+}
+$identityHashes = array_values(array_unique($validatedIdentityHashes));
+if (empty($identityHashes)) {
+    user_reg_confirm_response(false, 'REGISTER_SESSION_INVALID', 'Register session is invalid. Please start again.', [], 400);
 }
 
 if ($termsAcceptedAt <= 0) {
@@ -200,6 +217,18 @@ if (user_reg_confirm_find_uid_by_phone($phone, $phoneCountry) !== '') {
 
 if (user_reg_confirm_find_uid_by_email($email) !== '') {
     user_reg_confirm_response(false, 'DUPLICATE_EMAIL', 'Email already registered', [], 409);
+}
+
+$identityLookup = user_web_registration_identity_lookup($identityHashes, $identityType);
+if (empty($identityLookup['ok'])) {
+    user_reg_confirm_response(false, 'IDENTITY_CHECK_UNAVAILABLE', 'Identity availability could not be checked. Please try again.', [], 503);
+}
+if (!empty($identityLookup['occupied'])) {
+    $identityCode = $identityType === 'PASSPORT' ? 'PASSPORT_ALREADY_REGISTERED' : 'NID_ALREADY_REGISTERED';
+    $identityMessage = $identityType === 'PASSPORT'
+        ? 'This Passport is already registered.'
+        : 'This NID is already registered.';
+    user_reg_confirm_response(false, $identityCode, $identityMessage, [], 409);
 }
 
 $otpClaim = auth_otp_claim_verification($otpRequestId, 'USER_REGISTER', $uid, $otp, $now);
@@ -295,11 +324,10 @@ $roleSettings['api_enabled'] = false;
 $roleSettings['updated_at'] = $now;
 
 $phoneIndexes = auth_phone_index_candidates($phone, $phoneCountry);
-$identityIndexPaths = [
-    'USER_IDENTITY_INDEX/' . $identityHash,
-    'USER_INDEX/IDENTITY/' . $identityHash,
-    'USER_INDEX/' . $identityType . '/' . $identityHash,
-];
+$identityIndexPaths = [];
+foreach ($identityHashes as $hash) {
+    $identityIndexPaths = array_merge($identityIndexPaths, reg_app_document_index_paths($hash, $identityType));
+}
 $identityIndexPaths = array_values(array_unique($identityIndexPaths));
 
 $indexClaims = [];
@@ -329,12 +357,16 @@ foreach ($indexPayloads as $path => $payload) {
 
         $code = str_contains($path, '/EMAIL/')
             ? 'EMAIL_ALREADY_REGISTERED'
-            : (str_contains($path, '/PHONE/') ? 'PHONE_ALREADY_REGISTERED' : 'IDENTITY_ALREADY_USED');
+            : (str_contains($path, '/PHONE/')
+                ? 'PHONE_ALREADY_REGISTERED'
+                : ($identityType === 'PASSPORT' ? 'PASSPORT_ALREADY_REGISTERED' : 'NID_ALREADY_REGISTERED'));
         $message = $code === 'EMAIL_ALREADY_REGISTERED'
             ? 'This email is already registered.'
             : ($code === 'PHONE_ALREADY_REGISTERED'
                 ? 'This phone number is already registered.'
-                : 'This NID or Passport is already used by another account.');
+                : ($identityType === 'PASSPORT'
+                    ? 'This Passport is already registered.'
+                    : 'This NID is already registered.'));
         user_reg_confirm_response(false, $code, $message, [], !empty($claim['conflict']) ? 409 : 500);
     }
 

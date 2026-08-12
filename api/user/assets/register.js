@@ -147,6 +147,9 @@
       EMAIL_ALREADY_REGISTERED: 'This email is already registered.',
       IDENTITY_ALREADY_USED: 'This NID or Passport is already used by another account.',
       DOCUMENT_ALREADY_USED: 'This NID or Passport is already used by another account.',
+      NID_ALREADY_REGISTERED: 'This NID is already registered.',
+      PASSPORT_ALREADY_REGISTERED: 'This Passport is already registered.',
+      IDENTITY_CHECK_UNAVAILABLE: 'Identity availability could not be checked. Please try again.',
       IDENTITY_REQUIRED: 'NID or Passport number is required.',
       TERMS_REQUIRED: 'You must accept the Terms & Conditions and Privacy Policy.',
       LOCATION_REQUIRED: 'Location verification is required.',
@@ -244,14 +247,14 @@
 
   function validatePassword() {
     const data = getFormData();
-    if (data.password.length < 6) return 'Password must be at least 6 characters.';
+    if (!/^\d{6}$/.test(data.password)) return 'Password must be exactly 6 digits.';
     if (data.password !== data.confirm_password) return 'Password confirmation does not match.';
     return '';
   }
 
   function validatePin() {
     const data = getFormData();
-    if (!/^\d{4,8}$/.test(data.pin)) return 'PIN must be 4 to 8 digits.';
+    if (!/^\d{4}$/.test(data.pin)) return 'PIN must be exactly 4 digits.';
     if (data.pin !== data.confirm_pin) return 'PIN confirmation does not match.';
     return '';
   }

@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/user_web_credentials.php';
+
 function user_forgot_registered_identity_type(array $user): string
 {
     foreach ([
@@ -176,8 +178,8 @@ function user_forgot_combined_validate_credentials(
         return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Password confirmation does not match.'];
     }
 
-    if (strlen($newPassword) < 6) {
-        return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Password must be at least 6 characters.'];
+    if (!user_web_password_valid($newPassword)) {
+        return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Password must be exactly 6 digits.'];
     }
 
     if ($newPin === '' || $confirmPin === '') {
@@ -188,7 +190,7 @@ function user_forgot_combined_validate_credentials(
         return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'PIN confirmation does not match.'];
     }
 
-    if (!preg_match('/^\d{4}$/', $newPin)) {
+    if (!user_web_transaction_pin_valid($newPin)) {
         return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'PIN must be exactly 4 digits.'];
     }
 

@@ -5166,6 +5166,8 @@ switch ($action) {
         $stage = strtoupper(trim((string)($body['stage'] ?? '')));
         require_once dirname(__DIR__) . '/lib/auth_android.php';
         require_once dirname(__DIR__) . '/lib/register_android.php';
+        require_once dirname(__DIR__) . '/lib/user_web_credentials.php';
+        require_once dirname(__DIR__) . '/lib/user_registration_identity.php';
 
         if ($stage === 'PHONE') {
             $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
@@ -5212,8 +5214,23 @@ switch ($action) {
             if (!in_array($identityTypeInput, ['NID', 'PASSPORT'], true)) {
                 user_proxy_response(false, 'VALIDATION_ERROR', 'Select a valid identity type.', ['field' => 'identity_type'], 422);
             }
-            if (auth_app_identity_hash($identityNumber) === '') {
+            $identityHash = auth_app_identity_hash($identityNumber);
+            if ($identityHash === '') {
                 user_proxy_response(false, 'IDENTITY_REQUIRED', $identityTypeInput === 'PASSPORT' ? 'Passport number is required.' : 'NID number is required.', ['field' => 'identity_number'], 422);
+            }
+            $identityLookup = user_web_registration_identity_lookup(
+                user_web_registration_identity_hashes($identityNumber),
+                $identityTypeInput
+            );
+            if (empty($identityLookup['ok'])) {
+                user_proxy_response(false, 'IDENTITY_CHECK_UNAVAILABLE', 'Identity availability could not be checked. Please try again.', [], 503);
+            }
+            if (!empty($identityLookup['occupied'])) {
+                $code = $identityTypeInput === 'PASSPORT' ? 'PASSPORT_ALREADY_REGISTERED' : 'NID_ALREADY_REGISTERED';
+                $message = $identityTypeInput === 'PASSPORT'
+                    ? 'This Passport is already registered.'
+                    : 'This NID is already registered.';
+                user_proxy_response(false, $code, $message, [], 409);
             }
 
             user_proxy_response(true, 'REGISTER_IDENTITY_VALID', 'Identity details are valid.', [
@@ -5224,8 +5241,8 @@ switch ($action) {
         if ($stage === 'PASSWORD') {
             $password = (string)($body['password'] ?? '');
             $confirmPassword = (string)($body['confirm_password'] ?? '');
-            if (strlen($password) < 6) {
-                user_proxy_response(false, 'VALIDATION_ERROR', 'Password must be at least 6 characters.', ['field' => 'password'], 422);
+            if (!user_web_password_valid($password)) {
+                user_proxy_response(false, 'VALIDATION_ERROR', 'Password must be exactly 6 digits.', ['field' => 'password'], 422);
             }
             if ($password !== $confirmPassword) {
                 user_proxy_response(false, 'VALIDATION_ERROR', 'Password confirmation does not match.', ['field' => 'confirm_password'], 422);
@@ -5237,8 +5254,8 @@ switch ($action) {
         if ($stage === 'PIN') {
             $pin = trim((string)($body['pin'] ?? ''));
             $confirmPin = trim((string)($body['confirm_pin'] ?? ''));
-            if (!preg_match('/^\d{4,8}$/', $pin)) {
-                user_proxy_response(false, 'VALIDATION_ERROR', 'PIN must be 4 to 8 digits.', ['field' => 'pin'], 422);
+            if (!user_web_transaction_pin_valid($pin)) {
+                user_proxy_response(false, 'VALIDATION_ERROR', 'PIN must be exactly 4 digits.', ['field' => 'pin'], 422);
             }
             if ($pin !== $confirmPin) {
                 user_proxy_response(false, 'VALIDATION_ERROR', 'PIN confirmation does not match.', ['field' => 'confirm_pin'], 422);

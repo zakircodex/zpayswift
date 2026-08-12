@@ -5,6 +5,8 @@ require_once dirname(__DIR__) . '/bootstrap.php';
 require_once __DIR__ . '/../lib/auth_sms.php';
 require_once __DIR__ . '/../lib/auth_android.php';
 require_once __DIR__ . '/../lib/register_android.php';
+require_once __DIR__ . '/../lib/user_web_credentials.php';
+require_once __DIR__ . '/../lib/user_registration_identity.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -186,6 +188,7 @@ $identityTypeInput = strtoupper(trim((string)(
 $identityType = auth_app_identity_type($body);
 $identityNumber = auth_app_identity_number($body);
 $identityHash = auth_app_identity_hash($identityNumber);
+$identityHashes = user_web_registration_identity_hashes($identityNumber);
 $identityLast4 = auth_app_identity_last4($identityNumber);
 $deviceId = trim((string)($body['device_id'] ?? 'USER_WEB'));
 $deviceName = trim((string)($body['device_name'] ?? 'User Register'));
@@ -226,16 +229,16 @@ if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
     user_reg_response(false, 'VALIDATION_ERROR', 'Valid email is required', [], 422);
 }
 
-if (strlen($password) < 6) {
-    user_reg_response(false, 'VALIDATION_ERROR', 'Password must be at least 6 characters', [], 422);
+if (!user_web_password_valid($password)) {
+    user_reg_response(false, 'VALIDATION_ERROR', 'Password must be exactly 6 digits.', [], 422);
 }
 
 if ($password !== $confirmPassword) {
     user_reg_response(false, 'VALIDATION_ERROR', 'Password confirmation does not match', [], 422);
 }
 
-if (!preg_match('/^\d{4,8}$/', $pin)) {
-    user_reg_response(false, 'VALIDATION_ERROR', 'PIN must be 4 to 8 digits', [], 422);
+if (!user_web_transaction_pin_valid($pin)) {
+    user_reg_response(false, 'VALIDATION_ERROR', 'PIN must be exactly 4 digits.', [], 422);
 }
 
 if ($pin !== $confirmPin) {
@@ -250,8 +253,16 @@ if (user_reg_find_uid_by_email($email) !== '') {
     user_reg_response(false, 'DUPLICATE_EMAIL', 'Email already registered', [], 409);
 }
 
-if (reg_app_document_owner_uid($identityHash, $identityType) !== '') {
-    user_reg_response(false, 'IDENTITY_ALREADY_USED', 'This NID or Passport is already used by another account.', [], 409);
+$identityLookup = user_web_registration_identity_lookup($identityHashes, $identityType);
+if (empty($identityLookup['ok'])) {
+    user_reg_response(false, 'IDENTITY_CHECK_UNAVAILABLE', 'Identity availability could not be checked. Please try again.', [], 503);
+}
+if (!empty($identityLookup['occupied'])) {
+    $identityCode = $identityType === 'PASSPORT' ? 'PASSPORT_ALREADY_REGISTERED' : 'NID_ALREADY_REGISTERED';
+    $identityMessage = $identityType === 'PASSPORT'
+        ? 'This Passport is already registered.'
+        : 'This NID is already registered.';
+    user_reg_response(false, $identityCode, $identityMessage, [], 409);
 }
 
 $now = user_reg_now();
@@ -350,6 +361,7 @@ $preAuthRow = [
     'pin_hash' => password_hash($pin, PASSWORD_DEFAULT),
     'identity_type' => $identityType,
     'identity_number_hash' => $identityHash,
+    'identity_hash_variants' => $identityHashes,
     'identity_number_last4' => $identityLast4,
     'kyc_status' => 'PENDING_REVIEW',
     'KYC' => [

@@ -399,7 +399,7 @@
     const confirmPassword = el('confirmPassword').value;
     const pin = el('newPin').value.trim();
     const confirmPin = el('confirmPin').value.trim();
-    if (password.length < 6) return 'Password must be at least 6 characters.';
+    if (!/^\d{6}$/.test(password)) return 'Password must be exactly 6 digits.';
     if (password !== confirmPassword) return 'Password confirmation does not match.';
     if (!/^\d{4}$/.test(pin)) return 'PIN must be exactly 4 digits.';
     if (pin !== confirmPin) return 'PIN confirmation does not match.';
