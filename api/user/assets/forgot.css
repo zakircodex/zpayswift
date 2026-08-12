@@ -150,6 +150,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   color: #dbe9f8;
   font-size: 14px;
   font-weight: 850;
+  text-align: left;
 }
 .user-forgot-page .forgot-field input,
 .user-forgot-page .forgot-field select {
@@ -213,20 +214,27 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 }
 .user-forgot-page .forgot-country-card {
   min-height: 70px;
-  justify-content: center;
+  justify-content: flex-start;
   padding-inline: 20px;
 }
 .user-forgot-page .forgot-identity-summary {
   min-height: 70px;
-  justify-content: center;
+  justify-content: flex-start;
   padding-inline: 20px;
+}
+.user-forgot-page .forgot-country-card,
+.user-forgot-page .forgot-identity-summary,
+.user-forgot-page .forgot-otp-summary,
+.user-forgot-page .forgot-hint,
+.user-forgot-page .forgot-status {
+  text-align: left;
 }
 .user-forgot-page .forgot-country-card strong,
 .user-forgot-page .forgot-identity-summary strong {
   color: #d8e6f7;
   font-size: 17px;
   line-height: 1.35;
-  text-align: center;
+  text-align: left;
   overflow-wrap: anywhere;
 }
 .user-forgot-page .forgot-identity-summary strong {
