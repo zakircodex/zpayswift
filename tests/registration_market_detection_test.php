@@ -44,12 +44,23 @@ require_once dirname(__DIR__) . '/api/lib/account_review.php';
 
 function market_test_server(array $values): void
 {
+    foreach ([
+        'FRONTEND_CDN',
+        'REDIRECT_FRONTEND_CDN',
+        'ZPAY_TRUSTED_CLOUDFLARE',
+        'REDIRECT_ZPAY_TRUSTED_CLOUDFLARE',
+        'REDIRECT_REDIRECT_ZPAY_TRUSTED_CLOUDFLARE',
+    ] as $key) {
+        putenv($key);
+    }
+
     foreach (array_keys($_SERVER) as $key) {
         if (
             str_starts_with($key, 'HTTP_CF_')
             || str_starts_with($key, 'HTTP_X_FORWARDED_')
             || str_starts_with($key, 'HTTP_X_ZPAY_')
             || str_contains($key, 'ZPAY_TRUSTED_CLOUDFLARE')
+            || str_contains($key, 'FRONTEND_CDN')
             || $key === 'REMOTE_ADDR'
             || $key === 'GEOIP_COUNTRY_CODE'
         ) {
@@ -97,6 +108,25 @@ market_test_expect(
     'LiteSpeed restored visitor IP lost the server-owned Cloudflare trust marker'
 );
 market_test_expect(market_request_ip() === '203.0.113.18', 'restored Cloudflare visitor IP was not selected');
+
+market_test_server([
+    'REMOTE_ADDR' => '203.0.113.19',
+    'HTTP_CF_CONNECTING_IP' => '203.0.113.19',
+    'HTTP_CF_IPCOUNTRY' => 'BD',
+]);
+putenv('FRONTEND_CDN=CF');
+$litespeedEnvCf = market_request_ip_country_details();
+market_test_expect(
+    $litespeedEnvCf['country'] === 'BD' && $litespeedEnvCf['source'] === 'CLOUDFLARE',
+    'LiteSpeed process environment did not establish trusted Cloudflare country'
+);
+putenv('FRONTEND_CDN');
+
+market_test_server([
+    'REMOTE_ADDR' => '173.245.48.10',
+    'HTTP_CF_CONNECTING_IP' => '2001:4860:4860::8888',
+    'HTTP_CF_IPCOUNTRY' => 'MY',
+]);
 
 $myMatch = market_test_decision(3.1390, 101.6869, 'MY');
 market_test_expect($myMatch['gps_country'] === 'MY' && $myMatch['pricing_country'] === 'MY', 'Malaysia GPS pricing changed');
@@ -165,6 +195,15 @@ $spoofedMarker = market_request_ip_country_details();
 market_test_expect($spoofedMarker['country'] === 'UNKNOWN', 'client header spoofed the server-owned Cloudflare marker');
 
 market_test_server([
+    'REMOTE_ADDR' => '198.51.100.22',
+    'HTTP_CF_CONNECTING_IP' => '8.8.8.8',
+    'HTTP_CF_IPCOUNTRY' => 'MY',
+    'HTTP_FRONTEND_CDN' => 'CF',
+]);
+$spoofedFrontendCdn = market_request_ip_country_details();
+market_test_expect($spoofedFrontendCdn['country'] === 'UNKNOWN', 'client Frontend-CDN header spoofed LiteSpeed environment trust');
+
+market_test_server([
     'REMOTE_ADDR' => '203.0.113.22',
     'REDIRECT_ZPAY_TRUSTED_CLOUDFLARE' => '1',
     'GEOIP_COUNTRY_CODE' => 'BD',
@@ -178,9 +217,16 @@ market_test_expect(
 $rootRewrite = (string)file_get_contents(dirname(__DIR__) . '/.htaccess');
 market_test_expect(
     str_contains($rootRewrite, 'RewriteCond %{ENV:FRONTEND_CDN} ^CF$ [NC]')
+        && str_contains($rootRewrite, '%{CONN_REMOTE_ADDR} -ipmatch')
         && str_contains($rootRewrite, 'E=ZPAY_TRUSTED_CLOUDFLARE:1'),
-    'LiteSpeed server-owned Cloudflare marker is not forwarded to PHP'
+    'raw Cloudflare connection-peer trust is not forwarded to PHP'
 );
+foreach (market_cloudflare_trusted_proxy_cidrs() as $cloudflareCidr) {
+    market_test_expect(
+        str_contains($rootRewrite, "'" . $cloudflareCidr . "'"),
+        'missing raw-peer rewrite rule for a configured Cloudflare CIDR'
+    );
+}
 
 market_test_server([
     'REMOTE_ADDR' => '173.245.48.15',

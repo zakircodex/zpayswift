@@ -113,7 +113,24 @@ function market_cloudflare_trusted_proxy_cidrs(): array
 
 function market_server_cloudflare_marker_trusted(): bool
 {
+    foreach (['FRONTEND_CDN', 'REDIRECT_FRONTEND_CDN'] as $key) {
+        $value = $_SERVER[$key] ?? getenv($key);
+        if (strtoupper(trim((string)$value)) === 'CF') {
+            return true;
+        }
+    }
+
     foreach ($_SERVER as $key => $value) {
+        if (
+            preg_match('/^(?:REDIRECT_)*ZPAY_TRUSTED_CLOUDFLARE$/', (string)$key) === 1
+            && market_bool_constant_value($value)
+        ) {
+            return true;
+        }
+    }
+
+    $environment = getenv();
+    foreach (is_array($environment) ? $environment : [] as $key => $value) {
         if (
             preg_match('/^(?:REDIRECT_)*ZPAY_TRUSTED_CLOUDFLARE$/', (string)$key) === 1
             && market_bool_constant_value($value)

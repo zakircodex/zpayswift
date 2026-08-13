@@ -4,9 +4,57 @@ DirectoryIndex index.html
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
-  # LiteSpeed sets FRONTEND_CDN from the connection peer, before REMOTE_ADDR
-  # is restored to the visitor IP. Carry that server-owned trust signal to PHP.
+  # LiteSpeed may restore REMOTE_ADDR to the visitor IP. Preserve only
+  # server-owned Cloudflare trust signals; request headers are not used here.
   RewriteCond %{ENV:FRONTEND_CDN} ^CF$ [NC]
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+
+  # Apache/LiteSpeed keeps the actual TCP peer in CONN_REMOTE_ADDR even after
+  # REMOTE_ADDR restoration. Match that unspoofable peer against Cloudflare's
+  # published IPv4/IPv6 ranges.
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '173.245.48.0/20'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '103.21.244.0/22'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '103.22.200.0/22'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '103.31.4.0/22'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '141.101.64.0/18'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '108.162.192.0/18'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '190.93.240.0/20'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '188.114.96.0/20'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '197.234.240.0/22'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '198.41.128.0/17'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '162.158.0.0/15'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '104.16.0.0/13'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '104.24.0.0/14'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '172.64.0.0/13'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '131.0.72.0/22'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '2400:cb00::/32'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '2606:4700::/32'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '2803:f800::/32'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '2405:b500::/32'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '2405:8100::/32'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '2a06:98c0::/29'"
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+  RewriteCond expr "%{CONN_REMOTE_ADDR} -ipmatch '2c0f:f248::/32'"
   RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
 
   # zsky24.com is an isolated public Z Sky 24 host sharing this codebase.
