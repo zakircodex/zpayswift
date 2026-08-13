@@ -504,11 +504,6 @@ function support_telegram_save_reply_from_message(array $message, int $updateId 
         return ['ok' => false, 'code' => 'TELEGRAM_CONTEXT_MISSING', 'message' => 'Reply mode is not active.'];
     }
     $idem = support_telegram_reply_idempotency_key($message, $updateId);
-    $idemPath = 'SUPPORT_TELEGRAM_REPLY_IDEMPOTENCY/' . $idem;
-    $existing = fb_get($idemPath);
-    if (is_array($existing) && (string)($existing['message_id'] ?? '') !== '') {
-        return ['ok' => true, 'duplicate' => true, 'ticket_id' => (string)($existing['ticket_id'] ?? ''), 'message' => 'Duplicate Telegram reply ignored.'];
-    }
     $actorAllowed = support_telegram_actor_allowed($chatId, $fromId);
     $replyToTelegramMessageId = (string)($message['reply_to_message']['message_id'] ?? '');
     $telegramReplyMap = $replyToTelegramMessageId === '' ? [] : support_telegram_lookup_message_map($chatId, $replyToTelegramMessageId);
@@ -570,6 +565,7 @@ function support_telegram_save_reply_from_message(array $message, int $updateId 
     $result = support_reply($auth, $ticketId, $text, [], 'ADMIN', [
         'source' => 'TELEGRAM',
         'sender_telegram_id' => $fromId,
+        'admin_chat_id' => $chatId,
         'sender_name' => support_clean_text($message['from']['first_name'] ?? 'Telegram Admin', 80),
         'idempotency_key' => $idem,
         'reply_to_message_id' => $replyToMessageId,
@@ -577,16 +573,7 @@ function support_telegram_save_reply_from_message(array $message, int $updateId 
     if (empty($result['ok'])) {
         return $result;
     }
-    $messages = (array)($result['messages'] ?? []);
-    $last = end($messages);
-    $savedMessageId = is_array($last) ? (string)($last['message_id'] ?? '') : '';
-    fb_put($idemPath, [
-        'ticket_id' => $ticketId,
-        'message_id' => $savedMessageId,
-        'admin_telegram_user_id' => $fromId,
-        'admin_chat_id' => $chatId,
-        'created_at' => support_now(),
-    ]);
+    $savedMessageId = (string)($result['message_id'] ?? '');
     support_telegram_store_message_map($chatId, (string)($message['message_id'] ?? ''), $ticketId, $savedMessageId);
     support_telegram_set_reply_context($ticketId, $chatId, $fromId);
     return $result + ['ticket_id' => $ticketId];
@@ -1228,19 +1215,32 @@ function support_save_auto_message(string $ticketId, string $idempotencyKey, str
         return ['ok' => false, 'code' => 'SUPPORT_AUTO_MESSAGE_INVALID'];
     }
 
-    $path = support_auto_message_idempotency_path($ticketId, $idempotencyKey);
-    $existing = fb_get($path);
-    if (is_array($existing) && (string)($existing['message_id'] ?? '') !== '') {
-        return ['ok' => true, 'duplicate' => true, 'message_id' => (string)$existing['message_id']];
-    }
-
     $ticket = support_read_ticket($ticketId);
     if ($ticket === []) {
         return ['ok' => false, 'code' => 'SUPPORT_TICKET_NOT_FOUND'];
     }
 
+    $path = support_auto_message_idempotency_path($ticketId, $idempotencyKey);
+    $claim = support_reply_claim_operation($path, $ticketId, 'SYSTEM', 'SUPPORT', [
+        'idempotency_key' => $idempotencyKey,
+        'source' => 'SYSTEM',
+        'payload_hash' => hash('sha256', $ticketId . '|SYSTEM|' . $message),
+    ]);
+    if (empty($claim['ok'])) {
+        if (!empty($claim['in_progress'])) {
+            $replay = support_reply_wait_for_operation($path, $ticketId);
+            if ($replay !== []) {
+                return ['ok' => true, 'duplicate' => true, 'message_id' => (string)$replay['message_id']];
+            }
+        }
+        return ['ok' => false, 'code' => (string)($claim['code'] ?? 'SUPPORT_AUTO_MESSAGE_SAVE_FAILED')];
+    }
+    if (!empty($claim['duplicate'])) {
+        return ['ok' => true, 'duplicate' => true, 'message_id' => (string)$claim['message_id']];
+    }
+
     $now = support_now();
-    $messageId = support_message_id();
+    $messageId = (string)$claim['message_id'];
     $row = [
         'message_id' => $messageId,
         'ticket_id' => $ticketId,
@@ -1257,28 +1257,39 @@ function support_save_auto_message(string $ticketId, string $idempotencyKey, str
         'system' => true,
     ];
 
-    if (!fb_put('SUPPORT_MESSAGES/' . $ticketId . '/' . $messageId, $row)) {
-        return ['ok' => false, 'code' => 'SUPPORT_AUTO_MESSAGE_SAVE_FAILED'];
-    }
-    fb_put($path, [
-        'ticket_id' => $ticketId,
-        'message_id' => $messageId,
+    $operation = array_merge((array)($claim['operation'] ?? []), [
+        'status' => 'COMPLETED',
         'idempotency_key' => $idempotencyKey,
-        'created_at' => $now,
+        'lease_until' => 0,
+        'committed_at' => $now,
+        'completed_at' => $now,
+        'updated_at' => $now,
+        'side_effect_status' => 'COMPLETED',
     ]);
-
+    $writes = [
+        'SUPPORT_MESSAGES/' . $ticketId . '/' . $messageId => $row,
+        $path => $operation,
+    ];
     if ($patchTicket) {
-        fb_patch('SUPPORT_TICKETS/' . $ticketId, [
+        $ticketPatch = [
             'updated_at' => $now,
             'last_message_at' => $now,
             'last_message_by' => 'SUPPORT',
             'last_message_preview' => $message,
             'user_unread' => true,
-        ]);
-        fb_patch('SUPPORT_USER_INDEX/' . (string)($ticket['uid'] ?? '') . '/' . $ticketId, [
-            'updated_at' => $now,
-            'status' => support_clean_code($ticket['status'] ?? 'OPEN'),
-        ]);
+        ];
+        foreach ($ticketPatch as $field => $value) {
+            $writes['SUPPORT_TICKETS/' . $ticketId . '/' . $field] = $value;
+        }
+        $indexPath = 'SUPPORT_USER_INDEX/' . (string)($ticket['uid'] ?? '') . '/' . $ticketId;
+        $writes[$indexPath . '/ticket_id'] = $ticketId;
+        $writes[$indexPath . '/updated_at'] = $now;
+        $writes[$indexPath . '/status'] = support_clean_code($ticket['status'] ?? 'OPEN');
+    }
+
+    if (!fb_patch('', $writes)) {
+        support_reply_mark_retryable($path, (string)($claim['owner_token'] ?? ''), 'SUPPORT_AUTO_MESSAGE_SAVE_FAILED');
+        return ['ok' => false, 'code' => 'SUPPORT_AUTO_MESSAGE_SAVE_FAILED'];
     }
 
     return ['ok' => true, 'message_id' => $messageId, 'message' => $row];
@@ -1567,18 +1578,18 @@ function support_notify_telegram_new_ticket(array $ticket, array $canonicalMessa
     }
 }
 
-function support_notify_telegram_user_reply(array $ticket, array $message, array $attachments = []): void
+function support_notify_telegram_user_reply(array $ticket, array $message, array $attachments = []): array
 {
     $ticketId = (string)($ticket['ticket_id'] ?? '');
     if ($ticketId === '') {
-        return;
+        return ['ok' => false, 'message' => 'Support ticket is unavailable'];
     }
     $text = "New User Reply\n\n"
         . "Ticket: " . $ticketId . "\n"
         . "User: " . support_clean_text($ticket['user_name'] ?? '', 80) . "\n"
         . "Subject: " . support_telegram_message_excerpt((string)($ticket['subject'] ?? ''), 180) . "\n\n"
         . "Message:\n" . support_telegram_message_excerpt((string)($message['message'] ?? ''), 700);
-    support_telegram_send_canonical_alert(
+    return support_telegram_send_canonical_alert(
         $ticketId,
         (string)($message['message_id'] ?? ''),
         $text,
@@ -1876,6 +1887,377 @@ function support_details_payload(array $ticket): array
     ];
 }
 
+function support_reply_lease_seconds(): int
+{
+    $seconds = defined('SUPPORT_REPLY_CLAIM_LEASE_SECONDS')
+        ? (int)constant('SUPPORT_REPLY_CLAIM_LEASE_SECONDS')
+        : 60;
+    return max(15, min(300, $seconds));
+}
+
+function support_reply_operation_path(string $uid, string $ticketId, string $senderType, array $meta): string
+{
+    $idempotencyKey = support_clean_text($meta['idempotency_key'] ?? '', 160);
+    if ($idempotencyKey === '') {
+        return '';
+    }
+
+    $hash = hash('sha256', $idempotencyKey);
+    $source = support_clean_code($meta['source'] ?? '');
+    if ($source === 'TELEGRAM') {
+        // Telegram's canonical key is already a SHA-256 digest. Keep its
+        // historical Firebase path stable while still hashing non-canonical input.
+        $telegramKey = preg_match('/^[a-f0-9]{64}$/i', $idempotencyKey) === 1
+            ? strtolower($idempotencyKey)
+            : $hash;
+        return 'SUPPORT_TELEGRAM_REPLY_IDEMPOTENCY/' . $telegramKey;
+    }
+    if (in_array(support_clean_code($senderType), ['ADMIN', 'SUPPORT'], true)) {
+        return 'SUPPORT_ADMIN_REPLY_IDEMPOTENCY/' . support_clean_code($ticketId) . '/' . $hash;
+    }
+
+    return 'SUPPORT_USER_REPLY_IDEMPOTENCY/' . trim($uid) . '/' . support_clean_code($ticketId) . '/' . $hash;
+}
+
+function support_reply_operation_replay(string $ticketId, array $operation): array
+{
+    $operationTicketId = support_clean_code($operation['ticket_id'] ?? '');
+    if ($operationTicketId === '' || !hash_equals(support_clean_code($ticketId), $operationTicketId)) {
+        return [];
+    }
+    $messageId = support_clean_code($operation['message_id'] ?? '');
+    $ticket = support_read_ticket($ticketId);
+    $message = $messageId !== '' ? fb_get('SUPPORT_MESSAGES/' . support_clean_code($ticketId) . '/' . $messageId) : null;
+    if ($ticket === [] || !is_array($message)) {
+        return [];
+    }
+
+    return [
+        'ok' => true,
+        'duplicate' => true,
+        'idempotent_replay' => true,
+        'message_id' => $messageId,
+    ] + support_details_payload($ticket);
+}
+
+function support_reply_payload_hash(
+    string $ticketId,
+    string $uid,
+    string $senderType,
+    string $message,
+    array $files,
+    array $meta
+): string {
+    $uploads = [];
+    foreach (support_upload_files($files) as $file) {
+        $tmp = (string)($file['tmp_name'] ?? '');
+        $uploads[] = [
+            'size' => (int)($file['size'] ?? 0),
+            'hash' => $tmp !== '' && is_file($tmp) ? (string)hash_file('sha256', $tmp) : '',
+        ];
+    }
+
+    return hash('sha256', (string)json_encode([
+        'ticket_id' => support_clean_code($ticketId),
+        'uid' => trim($uid),
+        'sender_type' => support_clean_code($senderType),
+        'source' => support_clean_code($meta['source'] ?? ''),
+        'reply_to_message_id' => support_clean_code($meta['reply_to_message_id'] ?? ''),
+        'message' => $message,
+        'uploads' => $uploads,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+}
+
+function support_reply_claim_operation(
+    string $path,
+    string $ticketId,
+    string $uid,
+    string $senderType,
+    array $meta
+): array {
+    if ($path === '') {
+        return [
+            'ok' => true,
+            'claimed' => true,
+            'path' => '',
+            'owner_token' => '',
+            'message_id' => support_message_id(),
+            'operation' => [],
+        ];
+    }
+
+    for ($attempt = 0; $attempt < 6; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+            return ['ok' => false, 'code' => 'SUPPORT_REPLY_CLAIM_FAILED', 'message' => 'Reply could not be sent.', 'status' => 500];
+        }
+
+        $current = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+        $payloadHash = trim((string)($meta['payload_hash'] ?? ''));
+        $existingPayloadHash = trim((string)($current['payload_hash'] ?? ''));
+        if ($existingPayloadHash !== '' && ($payloadHash === '' || !hash_equals($existingPayloadHash, $payloadHash))) {
+            return [
+                'ok' => false,
+                'code' => 'SUPPORT_IDEMPOTENCY_CONFLICT',
+                'message' => 'This reply key belongs to a different request.',
+                'status' => 409,
+            ];
+        }
+
+        $replay = support_reply_operation_replay($ticketId, $current);
+        if ($replay === [] && (string)($current['message_id'] ?? '') !== '' && (string)($current['ticket_id'] ?? '') === '') {
+            $replay = support_reply_operation_replay($ticketId, array_merge($current, ['ticket_id' => $ticketId]));
+        }
+        if ($replay !== []) {
+            return $replay + ['claimed' => false, 'path' => $path, 'operation' => $current];
+        }
+
+        $now = support_now();
+        $status = support_clean_code($current['status'] ?? '');
+        $leaseUntil = (int)($current['lease_until'] ?? 0);
+        if ($status === 'CLAIMED' && $leaseUntil > $now) {
+            return [
+                'ok' => false,
+                'code' => 'SUPPORT_REPLY_IN_PROGRESS',
+                'message' => 'This reply is still being sent.',
+                'status' => 409,
+                'in_progress' => true,
+                'message_id' => support_clean_code($current['message_id'] ?? ''),
+                'path' => $path,
+                'operation' => $current,
+            ];
+        }
+        if (in_array($status, ['COMMITTED', 'COMPLETED'], true)) {
+            return ['ok' => false, 'code' => 'SUPPORT_REPLY_RECOVERY_REQUIRED', 'message' => 'Reply status could not be confirmed.', 'status' => 503];
+        }
+
+        $ownerToken = bin2hex(random_bytes(16));
+        $messageId = support_clean_code($current['message_id'] ?? '');
+        if ($messageId === '') {
+            $messageId = support_message_id();
+        }
+        $operation = array_merge($current, [
+            'ticket_id' => support_clean_code($ticketId),
+            'message_id' => $messageId,
+            'uid' => trim($uid),
+            'sender_type' => support_clean_code($senderType),
+            'source' => support_clean_code($meta['source'] ?? ''),
+            'idempotency_key_hash' => hash('sha256', support_clean_text($meta['idempotency_key'] ?? '', 160)),
+            'payload_hash' => $payloadHash,
+            'status' => 'CLAIMED',
+            'owner_token' => $ownerToken,
+            'created_at' => (int)($current['created_at'] ?? 0) > 0 ? (int)$current['created_at'] : $now,
+            'claimed_at' => (int)($current['claimed_at'] ?? 0) > 0 ? (int)$current['claimed_at'] : $now,
+            'lease_until' => $now + support_reply_lease_seconds(),
+            'updated_at' => $now,
+            'attempts' => (int)($current['attempts'] ?? 0) + 1,
+            'last_error' => '',
+        ]);
+        if (support_clean_code($meta['source'] ?? '') === 'TELEGRAM') {
+            $operation['admin_telegram_user_id'] = support_clean_text($meta['sender_telegram_id'] ?? '', 80);
+            $operation['admin_chat_id'] = support_clean_text($meta['admin_chat_id'] ?? '', 80);
+        }
+
+        $write = fb_put_if_match($path, $operation, (string)$snapshot['etag']);
+        if (!empty($write['ok'])) {
+            return [
+                'ok' => true,
+                'claimed' => true,
+                'path' => $path,
+                'owner_token' => $ownerToken,
+                'message_id' => $messageId,
+                'operation' => $operation,
+            ];
+        }
+        if ((int)($write['status'] ?? 0) !== 412) {
+            return ['ok' => false, 'code' => 'SUPPORT_REPLY_CLAIM_FAILED', 'message' => 'Reply could not be sent.', 'status' => 500];
+        }
+    }
+
+    return ['ok' => false, 'code' => 'SUPPORT_REPLY_IN_PROGRESS', 'message' => 'This reply is still being sent.', 'status' => 409];
+}
+
+function support_reply_wait_for_operation(string $path, string $ticketId, int $attempts = 40): array
+{
+    for ($attempt = 0; $attempt < $attempts; $attempt++) {
+        if ($attempt > 0) {
+            usleep(50000);
+        }
+        $row = fb_get($path);
+        $replay = is_array($row) ? support_reply_operation_replay($ticketId, $row) : [];
+        if ($replay !== []) {
+            return $replay + ['path' => $path, 'operation' => $row];
+        }
+    }
+    return [];
+}
+
+function support_reply_renew_operation(string $path, string $ownerToken): array
+{
+    if ($path === '') {
+        return ['ok' => true, 'operation' => []];
+    }
+    for ($attempt = 0; $attempt < 4; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        $row = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)
+            || support_clean_code($row['status'] ?? '') !== 'CLAIMED'
+            || $ownerToken === ''
+            || !hash_equals($ownerToken, (string)($row['owner_token'] ?? ''))) {
+            return ['ok' => false, 'code' => 'SUPPORT_REPLY_CLAIM_LOST'];
+        }
+        $row['lease_until'] = support_now() + support_reply_lease_seconds();
+        $row['updated_at'] = support_now();
+        $write = fb_put_if_match($path, $row, (string)$snapshot['etag']);
+        if (!empty($write['ok'])) {
+            return ['ok' => true, 'operation' => $row];
+        }
+        if ((int)($write['status'] ?? 0) !== 412) {
+            break;
+        }
+    }
+    return ['ok' => false, 'code' => 'SUPPORT_REPLY_CLAIM_LOST'];
+}
+
+function support_reply_mark_retryable(string $path, string $ownerToken, string $errorCode): void
+{
+    if ($path === '' || $ownerToken === '') {
+        return;
+    }
+    $snapshot = fb_get_with_etag($path);
+    $row = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+    if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)
+        || support_clean_code($row['status'] ?? '') !== 'CLAIMED'
+        || !hash_equals($ownerToken, (string)($row['owner_token'] ?? ''))) {
+        return;
+    }
+    $row['status'] = 'FAILED_RETRYABLE';
+    $row['lease_until'] = 0;
+    $row['updated_at'] = support_now();
+    $row['last_error'] = support_clean_code($errorCode);
+    fb_put_if_match($path, $row, (string)$snapshot['etag']);
+}
+
+function support_reply_claim_side_effects(string $path): bool
+{
+    if ($path === '') {
+        return true;
+    }
+    for ($attempt = 0; $attempt < 4; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        $row = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)
+            || support_clean_code($row['status'] ?? '') !== 'COMMITTED'
+            || support_clean_code($row['side_effect_status'] ?? '') !== 'PENDING') {
+            return false;
+        }
+        $row['side_effect_status'] = 'PROCESSING';
+        $row['side_effect_started_at'] = support_now();
+        $row['updated_at'] = support_now();
+        $write = fb_put_if_match($path, $row, (string)$snapshot['etag']);
+        if (!empty($write['ok'])) {
+            return true;
+        }
+        if ((int)($write['status'] ?? 0) !== 412) {
+            return false;
+        }
+    }
+    return false;
+}
+
+function support_reply_run_side_effects(array $ticket, array $message, array $attachments): array
+{
+    $messageId = support_clean_code($message['message_id'] ?? '');
+    $isAdmin = in_array(support_clean_code($message['sender_type'] ?? ''), ['ADMIN', 'SUPPORT'], true);
+    if ($isAdmin) {
+        support_telegram_edit_ticket_message($ticket);
+        support_record_user_notification(
+            (string)($ticket['uid'] ?? ''),
+            (string)($ticket['ticket_id'] ?? ''),
+            'Support Reply',
+            'Support replied to your ticket.',
+            'SUPPORT_REPLY',
+            $messageId
+        );
+        support_send_user_push(
+            (string)($ticket['uid'] ?? ''),
+            'Support Reply',
+            'Support replied to your ticket.',
+            [
+                'type' => 'SUPPORT_REPLY',
+                'ticket_id' => (string)($ticket['ticket_id'] ?? ''),
+                'message_id' => $messageId,
+            ],
+            'SUPPORT_REPLY:' . (string)($ticket['ticket_id'] ?? '') . ':' . $messageId
+        );
+        return ['ok' => true, 'error' => '', 'stage' => 'ADMIN_NOTIFY_COMPLETED'];
+    }
+
+    support_record_admin_notification(
+        (string)($ticket['ticket_id'] ?? ''),
+        'New User Reply',
+        'User replied to support ticket ' . (string)($ticket['ticket_id'] ?? '')
+    );
+    $telegram = support_notify_telegram_user_reply($ticket, $message, $attachments);
+    return [
+        'ok' => !empty($telegram['ok']),
+        'error' => !empty($telegram['ok']) ? '' : support_clean_code($telegram['message'] ?? 'TELEGRAM_SEND_FAILED'),
+        'stage' => !empty($telegram['ok']) ? 'TELEGRAM_COMPLETED' : 'TELEGRAM_FAILED',
+    ];
+}
+
+function support_reply_finish_side_effects(string $path, array $result): void
+{
+    if ($path === '') {
+        return;
+    }
+    for ($attempt = 0; $attempt < 4; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        $row = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)
+            || support_clean_code($row['status'] ?? '') !== 'COMMITTED'
+            || support_clean_code($row['side_effect_status'] ?? '') !== 'PROCESSING') {
+            return;
+        }
+        $row['status'] = 'COMPLETED';
+        $row['side_effect_status'] = !empty($result['ok']) ? 'COMPLETED' : 'FAILED';
+        $row['side_effect_error'] = !empty($result['ok']) ? '' : support_clean_code($result['error'] ?? 'SIDE_EFFECT_FAILED');
+        $row['side_effect_stage'] = support_clean_code($result['stage'] ?? 'SIDE_EFFECT_COMPLETED');
+        $row['side_effect_attempts'] = (int)($row['side_effect_attempts'] ?? 0) + 1;
+        $row['completed_at'] = support_now();
+        $row['updated_at'] = support_now();
+        $write = fb_put_if_match($path, $row, (string)$snapshot['etag']);
+        if (!empty($write['ok']) || (int)($write['status'] ?? 0) !== 412) {
+            return;
+        }
+    }
+}
+
+function support_reply_resume_pending_side_effects(string $path, string $ticketId, array $operation): void
+{
+    if ($path === ''
+        || support_clean_code($operation['status'] ?? '') !== 'COMMITTED'
+        || support_clean_code($operation['side_effect_status'] ?? '') !== 'PENDING'
+        || !support_reply_claim_side_effects($path)) {
+        return;
+    }
+
+    $messageId = support_clean_code($operation['message_id'] ?? '');
+    $ticket = support_read_ticket($ticketId);
+    $message = $messageId !== '' ? fb_get('SUPPORT_MESSAGES/' . support_clean_code($ticketId) . '/' . $messageId) : null;
+    if ($ticket === [] || !is_array($message)) {
+        support_reply_finish_side_effects($path, [
+            'ok' => false,
+            'error' => 'CANONICAL_REPLY_UNAVAILABLE',
+            'stage' => 'CANONICAL_REPLY_UNAVAILABLE',
+        ]);
+        return;
+    }
+
+    $attachments = support_attachment_rows_for_ids($ticketId, (array)($message['attachment_ids'] ?? []));
+    support_reply_finish_side_effects($path, support_reply_run_side_effects($ticket, $message, $attachments));
+}
+
 function support_reply(array $auth, string $ticketId, string $message, array $files = [], string $senderType = 'USER', array $meta = []): array
 {
     $ticket = support_read_ticket($ticketId);
@@ -1886,6 +2268,44 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
     $isAdmin = in_array($senderType, ['ADMIN', 'SUPPORT'], true);
     if (!$isAdmin && !support_user_can_access($auth, $ticket)) {
         return ['ok' => false, 'code' => 'SUPPORT_TICKET_FORBIDDEN', 'message' => 'This ticket is not available.', 'status' => 403];
+    }
+    $message = support_clean_text($message, 2500);
+    if ($message === '' && support_upload_files($files) === []) {
+        return ['ok' => false, 'code' => 'SUPPORT_MESSAGE_REQUIRED', 'message' => 'Please describe your issue.', 'status' => 422];
+    }
+    $idempotencyKey = support_clean_text($meta['idempotency_key'] ?? '', 160);
+    if ($idempotencyKey === '') {
+        return ['ok' => false, 'code' => 'SUPPORT_IDEMPOTENCY_REQUIRED', 'message' => 'Reply request identity is required.', 'status' => 422];
+    }
+    $meta['idempotency_key'] = $idempotencyKey;
+    $meta['payload_hash'] = support_reply_payload_hash(
+        (string)$ticket['ticket_id'],
+        $uid,
+        $senderType,
+        $message,
+        $files,
+        $meta
+    );
+    $operationPath = support_reply_operation_path($uid, (string)$ticket['ticket_id'], $senderType, $meta);
+    $existingOperation = $operationPath !== '' ? fb_get($operationPath) : null;
+    if (is_array($existingOperation)) {
+        $existingPayloadHash = trim((string)($existingOperation['payload_hash'] ?? ''));
+        if ($existingPayloadHash !== '' && !hash_equals($existingPayloadHash, (string)$meta['payload_hash'])) {
+            return [
+                'ok' => false,
+                'code' => 'SUPPORT_IDEMPOTENCY_CONFLICT',
+                'message' => 'This reply key belongs to a different request.',
+                'status' => 409,
+            ];
+        }
+        $replayOperation = (string)($existingOperation['ticket_id'] ?? '') === ''
+            ? array_merge($existingOperation, ['ticket_id' => (string)$ticket['ticket_id']])
+            : $existingOperation;
+        $replay = support_reply_operation_replay((string)$ticket['ticket_id'], $replayOperation);
+        if ($replay !== []) {
+            support_reply_resume_pending_side_effects($operationPath, (string)$ticket['ticket_id'], $existingOperation);
+            return $replay + ['path' => $operationPath, 'operation' => $existingOperation];
+        }
     }
     $status = support_clean_code($ticket['status'] ?? 'OPEN');
     if (!$isAdmin && !in_array($status, ['OPEN', 'PENDING', 'REPLIED'], true)) {
@@ -1900,15 +2320,40 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
     if ($status === 'RESOLVED') {
         return ['ok' => false, 'code' => 'SUPPORT_TICKET_RESOLVED', 'message' => 'This ticket has been resolved.', 'status' => 409];
     }
-    $message = support_clean_text($message, 2500);
-    $messageId = support_message_id();
+    $claim = support_reply_claim_operation($operationPath, (string)$ticket['ticket_id'], $uid, $senderType, $meta);
+    if (empty($claim['ok'])) {
+        if (!empty($claim['in_progress']) && $operationPath !== '') {
+            $replay = support_reply_wait_for_operation($operationPath, (string)$ticket['ticket_id']);
+            if ($replay !== []) {
+                support_reply_resume_pending_side_effects(
+                    $operationPath,
+                    (string)$ticket['ticket_id'],
+                    (array)($replay['operation'] ?? [])
+                );
+                return $replay;
+            }
+        }
+        return $claim;
+    }
+    if (!empty($claim['duplicate'])) {
+        support_reply_resume_pending_side_effects(
+            $operationPath,
+            (string)$ticket['ticket_id'],
+            (array)($claim['operation'] ?? [])
+        );
+        return $claim;
+    }
+    $messageId = (string)$claim['message_id'];
+    $ownerToken = (string)($claim['owner_token'] ?? '');
     $config = support_config();
     $stored = support_store_attachments($files, (string)$ticket['ticket_id'], $messageId, (string)$ticket['uid'], $config);
     if (empty($stored['ok'])) {
+        support_reply_mark_retryable($operationPath, $ownerToken, (string)($stored['code'] ?? 'SUPPORT_UPLOAD_FAILED'));
         return ['ok' => false, 'code' => $stored['code'], 'message' => $stored['message'], 'status' => 422];
     }
     $attachments = (array)($stored['items'] ?? []);
     if ($message === '' && $attachments === []) {
+        support_reply_mark_retryable($operationPath, $ownerToken, 'SUPPORT_MESSAGE_REQUIRED');
         return ['ok' => false, 'code' => 'SUPPORT_MESSAGE_REQUIRED', 'message' => 'Please describe your issue.', 'status' => 422];
     }
     $replyToMessageId = support_clean_text($meta['reply_to_message_id'] ?? '', 80);
@@ -1949,45 +2394,76 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
         'admin_unread' => !$isAdmin,
         'user_unread' => $isAdmin,
     ];
-    if (!fb_put('SUPPORT_MESSAGES/' . $ticket['ticket_id'] . '/' . $messageId, $row) || !fb_patch('SUPPORT_TICKETS/' . $ticket['ticket_id'], $patch)) {
+    $renewed = support_reply_renew_operation($operationPath, $ownerToken);
+    if (empty($renewed['ok'])) {
         support_cleanup_attachments($attachments);
+        $replay = $operationPath !== '' ? support_reply_wait_for_operation($operationPath, (string)$ticket['ticket_id']) : [];
+        return $replay !== []
+            ? $replay
+            : ['ok' => false, 'code' => 'SUPPORT_REPLY_IN_PROGRESS', 'message' => 'This reply is still being sent.', 'status' => 409];
+    }
+    $operation = (array)($renewed['operation'] ?? []);
+    $userIndexPath = 'SUPPORT_USER_INDEX/' . $ticket['uid'] . '/' . $ticket['ticket_id'];
+    $writes = [
+        'SUPPORT_MESSAGES/' . $ticket['ticket_id'] . '/' . $messageId => $row,
+        $userIndexPath . '/ticket_id' => (string)$ticket['ticket_id'],
+        $userIndexPath . '/updated_at' => $now,
+        $userIndexPath . '/status' => $newStatus,
+    ];
+    foreach ($patch as $field => $value) {
+        $writes['SUPPORT_TICKETS/' . $ticket['ticket_id'] . '/' . $field] = $value;
+    }
+    foreach ($attachments as $attachment) {
+        $writes['SUPPORT_ATTACHMENTS/' . $ticket['ticket_id'] . '/' . $attachment['attachment_id']] = $attachment;
+    }
+    if ($operationPath !== '') {
+        $operation = array_merge($operation, [
+            'status' => 'COMMITTED',
+            'lease_until' => 0,
+            'committed_at' => $now,
+            'updated_at' => $now,
+            'side_effect_status' => 'PENDING',
+            'side_effect_attempts' => (int)($operation['side_effect_attempts'] ?? 0),
+            'last_error' => '',
+        ]);
+        $writes[$operationPath] = $operation;
+    }
+    if (!fb_patch('', $writes)) {
+        $replay = $operationPath !== ''
+            ? support_reply_wait_for_operation($operationPath, (string)$ticket['ticket_id'])
+            : [];
+        if ($replay !== []) {
+            $canonicalMessageId = support_clean_code($replay['message_id'] ?? '');
+            $canonicalMessage = $canonicalMessageId !== ''
+                ? fb_get('SUPPORT_MESSAGES/' . support_clean_code((string)$ticket['ticket_id']) . '/' . $canonicalMessageId)
+                : null;
+            if (is_array($canonicalMessage)) {
+                $canonicalAttachments = array_fill_keys((array)($canonicalMessage['attachment_ids'] ?? []), true);
+                $uncommittedAttachments = array_values(array_filter(
+                    $attachments,
+                    static fn($attachment) => empty($canonicalAttachments[(string)($attachment['attachment_id'] ?? '')])
+                ));
+                support_cleanup_attachments($uncommittedAttachments);
+            }
+            support_reply_resume_pending_side_effects(
+                $operationPath,
+                (string)$ticket['ticket_id'],
+                (array)($replay['operation'] ?? [])
+            );
+            return $replay;
+        }
+        support_cleanup_attachments($attachments);
+        support_reply_mark_retryable($operationPath, $ownerToken, 'SUPPORT_REPLY_COMMIT_FAILED');
         return ['ok' => false, 'code' => 'SUPPORT_REPLY_FAILED', 'message' => 'Reply could not be sent.', 'status' => 500];
     }
-    fb_patch('SUPPORT_USER_INDEX/' . $ticket['uid'] . '/' . $ticket['ticket_id'], ['updated_at' => $now, 'status' => $newStatus]);
-    foreach ($attachments as $attachment) {
-        fb_put('SUPPORT_ATTACHMENTS/' . $ticket['ticket_id'] . '/' . $attachment['attachment_id'], $attachment);
-    }
     $ticket = support_read_ticket((string)$ticket['ticket_id']);
-    if ($isAdmin && $ticket !== []) {
-        support_telegram_edit_ticket_message($ticket);
-        support_record_user_notification(
-            (string)($ticket['uid'] ?? ''),
-            (string)($ticket['ticket_id'] ?? ''),
-            'Support Reply',
-            'Support replied to your ticket.',
-            'SUPPORT_REPLY',
-            $messageId
+    if ($ticket !== [] && support_reply_claim_side_effects($operationPath)) {
+        support_reply_finish_side_effects(
+            $operationPath,
+            support_reply_run_side_effects($ticket, $row, $attachments)
         );
-        support_send_user_push(
-            (string)($ticket['uid'] ?? ''),
-            'Support Reply',
-            'Support replied to your ticket.',
-            [
-                'type' => 'SUPPORT_REPLY',
-                'ticket_id' => (string)($ticket['ticket_id'] ?? ''),
-                'message_id' => $messageId,
-            ],
-            'SUPPORT_REPLY:' . (string)($ticket['ticket_id'] ?? '') . ':' . $messageId
-        );
-    } elseif (!$isAdmin && $ticket !== []) {
-        support_record_admin_notification(
-            (string)($ticket['ticket_id'] ?? ''),
-            'New User Reply',
-            'User replied to support ticket ' . (string)($ticket['ticket_id'] ?? '')
-        );
-        support_notify_telegram_user_reply($ticket, $row, $attachments);
     }
-    return ['ok' => true] + support_details_payload($ticket);
+    return ['ok' => true, 'message_id' => $messageId] + support_details_payload($ticket);
 }
 
 function support_admin_list(string $status = '', string $query = '', int $limit = 50): array
