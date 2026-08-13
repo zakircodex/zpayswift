@@ -24,6 +24,22 @@ function user_web_registration_identity_hashes(string $identityNumber): array
     return array_values(array_unique(array_filter($hashes)));
 }
 
+function user_web_registration_identity_legacy_index_missing(array $response): bool
+{
+    if ((int)($response['status'] ?? 0) !== 400) {
+        return false;
+    }
+
+    $message = strtolower(trim((string)(
+        $response['json']['error']
+        ?? $response['body']
+        ?? ''
+    )));
+
+    return str_contains($message, 'index not defined')
+        && str_contains($message, 'identity_number_hash');
+}
+
 function user_web_registration_identity_lookup(array $hashes, string $identityType): array
 {
     $identityType = strtoupper(trim($identityType));
@@ -57,7 +73,18 @@ function user_web_registration_identity_lookup(array $hashes, string $identityTy
             'limitToFirst' => 2,
         ]);
         if (empty($response['ok'])) {
-            return ['ok' => false, 'occupied' => false, 'code' => 'IDENTITY_LOOKUP_FAILED'];
+            if (!user_web_registration_identity_legacy_index_missing($response)) {
+                return ['ok' => false, 'occupied' => false, 'code' => 'IDENTITY_LOOKUP_FAILED'];
+            }
+
+            // Some deployments do not index this legacy private-user field. New
+            // registrations remain protected by the typed indexes and final CAS claims.
+            return [
+                'ok' => true,
+                'occupied' => false,
+                'source' => 'INDEX_ONLY',
+                'legacy_lookup_available' => false,
+            ];
         }
 
         $rows = $response['json'] ?? null;
@@ -71,5 +98,10 @@ function user_web_registration_identity_lookup(array $hashes, string $identityTy
         }
     }
 
-    return ['ok' => true, 'occupied' => false, 'source' => 'NONE'];
+    return [
+        'ok' => true,
+        'occupied' => false,
+        'source' => 'NONE',
+        'legacy_lookup_available' => true,
+    ];
 }

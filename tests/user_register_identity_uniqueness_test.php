@@ -5,7 +5,7 @@ $_SERVER['SCRIPT_FILENAME'] = __FILE__;
 
 $identityStore = [];
 $legacyIdentityRows = [];
-$identityLookupShouldFail = false;
+$identityLookupFailure = '';
 
 function fb_get(string $path)
 {
@@ -21,8 +21,17 @@ function fb_request(
     array $headers = [],
     bool $includeHeaders = false
 ): array {
-    global $legacyIdentityRows, $identityLookupShouldFail;
-    if ($identityLookupShouldFail) {
+    global $legacyIdentityRows, $identityLookupFailure;
+    if ($identityLookupFailure === 'missing_index') {
+        return [
+            'ok' => false,
+            'status' => 400,
+            'body' => '{"error":"Index not defined: identity_number_hash"}',
+            'json' => ['error' => 'Index not defined: identity_number_hash'],
+            'error' => null,
+        ];
+    }
+    if ($identityLookupFailure === 'outage') {
         return ['ok' => false, 'status' => 503, 'json' => null, 'error' => 'fixture failure'];
     }
 
@@ -81,10 +90,20 @@ $legacyIdentityRows[$legacyHash] = ['UID_LEGACY' => ['identity_number_hash' => $
 $legacyLookup = user_web_registration_identity_lookup([$legacyHash], 'NID');
 identity_test_expect(!empty($legacyLookup['ok']) && !empty($legacyLookup['occupied']) && ($legacyLookup['source'] ?? '') === 'LEGACY_USER_HASH', 'pre-index user identity hash must still block registration');
 
-$identityLookupShouldFail = true;
-$failedLookup = user_web_registration_identity_lookup([auth_app_identity_hash('UNAVAILABLE123')], 'PASSPORT');
-identity_test_expect(empty($failedLookup['ok']) && empty($failedLookup['occupied']), 'identity lookup failure must fail closed');
-$identityLookupShouldFail = false;
+$identityLookupFailure = 'missing_index';
+$missingIndexLookup = user_web_registration_identity_lookup([auth_app_identity_hash('UNAVAILABLE123')], 'PASSPORT');
+identity_test_expect(
+    !empty($missingIndexLookup['ok'])
+        && empty($missingIndexLookup['occupied'])
+        && ($missingIndexLookup['source'] ?? '') === 'INDEX_ONLY'
+        && ($missingIndexLookup['legacy_lookup_available'] ?? true) === false,
+    'missing legacy Firebase index must fall back to authoritative identity indexes'
+);
+
+$identityLookupFailure = 'outage';
+$failedLookup = user_web_registration_identity_lookup([auth_app_identity_hash('OUTAGE123')], 'PASSPORT');
+identity_test_expect(empty($failedLookup['ok']) && empty($failedLookup['occupied']), 'unrelated identity lookup failure must remain fail closed');
+$identityLookupFailure = '';
 
 $nidPaths = reg_app_document_index_paths($nidHash, 'NID');
 $passportPaths = reg_app_document_index_paths($passportHash, 'PASSPORT');
