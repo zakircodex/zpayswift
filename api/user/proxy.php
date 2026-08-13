@@ -4237,7 +4237,7 @@ switch ($action) {
                 'month' => $month,
                 'items' => user_proxy_collect_request_logs($uid, $limit, false, $month),
                 'wallet_history' => $summaryOnly ? [] : user_proxy_collect_wallet_received($uid, $month, $limit),
-                'add_money_history' => $summaryOnly ? [] : add_money_list_user_history($uid, $limit),
+                'add_money_history' => $summaryOnly ? [] : add_money_public_request_rows(add_money_list_user_history($uid, $limit)),
                 'history_complete' => !$summaryOnly,
             ],
             'loaded_at' => user_proxy_now(),
@@ -4289,7 +4289,7 @@ switch ($action) {
 
         user_proxy_response(true, 'SUCCESS', 'Add money settings loaded', [
             'profile' => add_money_user_payload($userRow, $walletRow),
-            'history' => add_money_list_user_history($uid, 25),
+            'history' => add_money_public_request_rows(add_money_list_user_history($uid, 25)),
         ]);
         break;
 
@@ -4302,7 +4302,7 @@ switch ($action) {
 
         user_proxy_response(true, 'SUCCESS', 'Add money history loaded', [
             'uid' => $uid,
-            'items' => add_money_list_user_history($uid, $limit),
+            'items' => add_money_public_request_rows(add_money_list_user_history($uid, $limit)),
         ]);
         break;
 
@@ -4370,7 +4370,7 @@ switch ($action) {
             'month' => $month,
             'items' => user_proxy_collect_request_logs($uid, $limit, $legacy, $month),
             'wallet_history' => user_proxy_collect_wallet_received($uid, $month, $limit),
-            'add_money_history' => add_money_list_user_history($uid, $limit),
+            'add_money_history' => add_money_public_request_rows(add_money_list_user_history($uid, $limit)),
             'mode' => $legacy ? 'fast_with_legacy_fallback' : 'fast',
         ]);
         break;

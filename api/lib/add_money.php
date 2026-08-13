@@ -24,6 +24,94 @@ function add_money_token(int $bytes = 24): string
     return bin2hex(random_bytes($bytes));
 }
 
+function add_money_receipt_token_ttl_seconds(): int
+{
+    $ttl = defined('RECEIPT_TOKEN_TTL_SECONDS')
+        ? (int)constant('RECEIPT_TOKEN_TTL_SECONDS')
+        : 30 * 24 * 60 * 60;
+
+    return max(60 * 60, min(365 * 24 * 60 * 60, $ttl));
+}
+
+function add_money_receipt_token_metadata(int $issuedAt): array
+{
+    return [
+        'receipt_token_version' => 2,
+        'issued_at' => $issuedAt,
+        'expires_at' => $issuedAt + add_money_receipt_token_ttl_seconds(),
+        'status' => 'ACTIVE',
+    ];
+}
+
+function add_money_receipt_token_access(array $tokenRow, ?int $now = null): array
+{
+    $hasVersion = array_key_exists('receipt_token_version', $tokenRow);
+    $version = (int)($tokenRow['receipt_token_version'] ?? 1);
+
+    // Historical capabilities predate expiry metadata. Keep them readable without
+    // inventing dates or rewriting production records.
+    if (!$hasVersion || $version === 1) {
+        return ['ok' => true, 'legacy' => true, 'version' => 1, 'code' => 'LEGACY_RECEIPT_TOKEN'];
+    }
+
+    if ($version !== 2) {
+        return ['ok' => false, 'legacy' => false, 'version' => $version, 'code' => 'RECEIPT_TOKEN_INVALID'];
+    }
+
+    $status = strtoupper(trim((string)($tokenRow['status'] ?? '')));
+    if ($status !== 'ACTIVE') {
+        return [
+            'ok' => false,
+            'legacy' => false,
+            'version' => $version,
+            'code' => in_array($status, ['REVOKED', 'DISABLED'], true)
+                ? 'RECEIPT_TOKEN_REVOKED'
+                : 'RECEIPT_TOKEN_INVALID',
+        ];
+    }
+
+    $issuedAt = (int)($tokenRow['issued_at'] ?? 0);
+    $expiresAt = (int)($tokenRow['expires_at'] ?? 0);
+    if ($issuedAt <= 0 || $expiresAt <= $issuedAt) {
+        return ['ok' => false, 'legacy' => false, 'version' => $version, 'code' => 'RECEIPT_TOKEN_INVALID'];
+    }
+
+    if (($now ?? add_money_now()) >= $expiresAt) {
+        return ['ok' => false, 'legacy' => false, 'version' => $version, 'code' => 'RECEIPT_TOKEN_EXPIRED'];
+    }
+
+    return [
+        'ok' => true,
+        'legacy' => false,
+        'version' => $version,
+        'code' => 'RECEIPT_TOKEN_VALID',
+        'issued_at' => $issuedAt,
+        'expires_at' => $expiresAt,
+    ];
+}
+
+function add_money_receipt_token_matches_request(string $token, array $tokenRow, array $requestRow): bool
+{
+    $pairs = [
+        [trim((string)($tokenRow['request_id'] ?? '')), trim((string)($requestRow['request_id'] ?? ''))],
+        [trim((string)($tokenRow['uid'] ?? '')), trim((string)($requestRow['uid'] ?? ''))],
+        [trim((string)($tokenRow['path'] ?? '')), trim((string)($requestRow['receipt_path'] ?? ''))],
+        [trim((string)($tokenRow['hash'] ?? '')), trim((string)($requestRow['receipt_hash'] ?? ''))],
+    ];
+
+    if ($token === '' || !hash_equals($token, trim((string)($requestRow['receipt_token'] ?? '')))) {
+        return false;
+    }
+
+    foreach ($pairs as [$indexValue, $requestValue]) {
+        if ($indexValue === '' || $requestValue === '' || !hash_equals($indexValue, $requestValue)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 function add_money_h($value): string
 {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
@@ -1227,6 +1315,10 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         }
     }
 
+    $receiptTokenMetadata = !empty($receipt['token'])
+        ? add_money_receipt_token_metadata($now)
+        : [];
+
     $row = [
         'request_id' => $requestId,
         'uid' => $uid,
@@ -1265,6 +1357,13 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         'balance_after' => 0,
     ];
 
+    if ($receiptTokenMetadata !== []) {
+        $row['receipt_token_version'] = (int)$receiptTokenMetadata['receipt_token_version'];
+        $row['receipt_token_issued_at'] = (int)$receiptTokenMetadata['issued_at'];
+        $row['receipt_token_expires_at'] = (int)$receiptTokenMetadata['expires_at'];
+        $row['receipt_token_status'] = (string)$receiptTokenMetadata['status'];
+    }
+
     if (!fb_put('ADD_MONEY_REQUESTS/' . $requestId, $row)) {
         add_money_delete_receipt_file($receipt);
         add_money_release_unique_claims($claimedUniqueIndexes, $uid, $requestId);
@@ -1288,14 +1387,14 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
     } elseif (!empty($receipt['hash'])) {
         $receiptHashPath = 'ADD_MONEY_RECEIPT_HASHES/' . $receipt['hash'];
         $hashSaved = add_money_unique_index_finalize($receiptHashPath, $uid, $requestId, ['status' => 'SUCCESS']);
-        $tokenSaved = fb_put('ADD_MONEY_RECEIPT_TOKENS/' . $receipt['token'], [
+        $tokenSaved = fb_put('ADD_MONEY_RECEIPT_TOKENS/' . $receipt['token'], array_merge([
             'request_id' => $requestId,
             'uid' => $uid,
             'path' => $receipt['path'],
             'mime' => $receipt['mime'],
             'hash' => $receipt['hash'],
             'created_at' => $now,
-        ]);
+        ], $receiptTokenMetadata));
 
         if (!$hashSaved || !$tokenSaved) {
             fb_delete('ADD_MONEY_REQUESTS/' . $requestId);
@@ -1348,6 +1447,10 @@ function add_money_public_request_row(array $row): array
         'receipt_path',
         'receipt_token',
         'receipt_hash',
+        'receipt_token_version',
+        'receipt_token_issued_at',
+        'receipt_token_expires_at',
+        'receipt_token_status',
         'telegram_chat_id',
         'telegram_message_id',
         'telegram_error',

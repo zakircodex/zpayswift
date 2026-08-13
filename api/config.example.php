@@ -32,6 +32,8 @@ define('OTP_MAX_ATTEMPTS', 5);
 define('OTP_RESEND_LIMIT', 5);
 define('OTP_RESEND_COOLDOWN_SECONDS', 60);
 define('OTP_SEND_LIMIT_PER_HOUR', 12);
+/* New Add Money receipt capabilities expire; historical unversioned links remain compatible. */
+define('RECEIPT_TOKEN_TTL_SECONDS', 60 * 60 * 24 * 30);
 
 /* BulkSMSBD OTP SMS */
 define('BULKSMSBD_SMS_API_URL', 'https://bulksmsbd.net/api/smsapi');

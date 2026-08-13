@@ -14,6 +14,9 @@ $ok = !empty($data);
 http_response_code($ok ? 200 : 404);
 header('Content-Type: text/html; charset=utf-8');
 header('X-Robots-Tag: noindex, nofollow', true);
+header('Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
 
 function transfer_receipt_h($value): string
 {
