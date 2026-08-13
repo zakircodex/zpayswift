@@ -242,7 +242,9 @@ $userRow = [
     'ip_source' => (string)($preAuth['ip_source'] ?? 'UNKNOWN'),
     'created_ip' => (string)($preAuth['created_ip'] ?? ''),
     'registration_ip' => (string)($preAuth['created_ip'] ?? ''),
-    'country_mismatch' => (bool)($preAuth['country_mismatch'] ?? ($phoneCountry !== $pricingCountry)),
+    'country_mismatch' => array_key_exists('country_mismatch', $preAuth)
+        ? (bool)$preAuth['country_mismatch']
+        : market_gps_ip_country_mismatch($preAuth['gps_country'] ?? '', $preAuth['ip_country'] ?? ''),
     'vpn_suspected' => (bool)($preAuth['vpn_suspected'] ?? false),
     'market_detection_source' => (string)($preAuth['market_detection_source'] ?? ''),
     'account_review_reason' => (string)($preAuth['account_review_reason'] ?? ''),

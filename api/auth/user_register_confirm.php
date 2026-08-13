@@ -297,7 +297,9 @@ $userRow = [
     'wallet_currency' => $currency,
     'ip_country' => $ipCountry,
     'ip_source' => (string)($preAuthRow['ip_source'] ?? ''),
-    'country_mismatch' => (bool)($preAuthRow['country_mismatch'] ?? ($pricingCountry !== $phoneCountry)),
+    'country_mismatch' => array_key_exists('country_mismatch', $preAuthRow)
+        ? (bool)$preAuthRow['country_mismatch']
+        : market_gps_ip_country_mismatch($preAuthRow['gps_country'] ?? '', $preAuthRow['ip_country'] ?? ''),
     'gps_lat' => (float)($preAuthRow['gps_lat'] ?? 0),
     'gps_lng' => (float)($preAuthRow['gps_lng'] ?? 0),
     'gps_accuracy' => (float)($preAuthRow['gps_accuracy'] ?? 0),

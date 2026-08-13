@@ -17,6 +17,24 @@ function market_iso_country_code($value): string
     return $country;
 }
 
+function market_ip_country_code($value): string
+{
+    $country = market_iso_country_code($value);
+
+    if ($country === '' || in_array($country, ['A1', 'A2', 'AP', 'EU', 'T1', 'XX', 'ZZ'], true)) {
+        return '';
+    }
+
+    return $country;
+}
+
+function market_ip_country_source($value): string
+{
+    $source = strtoupper(trim((string)$value));
+
+    return in_array($source, ['CLOUDFLARE', 'SERVER_GEOIP', 'UNKNOWN'], true) ? $source : '';
+}
+
 function market_bool_constant(string $name, bool $default): bool
 {
     if (!defined($name)) {
@@ -42,6 +60,120 @@ function market_cloudflare_country_enabled(): bool
 function market_require_cloudflare_country(): bool
 {
     return market_bool_constant('SECURITY_REQUIRE_CLOUDFLARE_FOR_COUNTRY', false);
+}
+
+function market_cloudflare_trusted_proxy_cidrs(): array
+{
+    $hasConfiguredRanges = defined('SECURITY_CLOUDFLARE_TRUSTED_PROXY_CIDRS')
+        || defined('SECURITY_TRUSTED_PROXY_CIDRS');
+    $configured = defined('SECURITY_CLOUDFLARE_TRUSTED_PROXY_CIDRS')
+        ? constant('SECURITY_CLOUDFLARE_TRUSTED_PROXY_CIDRS')
+        : (defined('SECURITY_TRUSTED_PROXY_CIDRS') ? constant('SECURITY_TRUSTED_PROXY_CIDRS') : []);
+
+    if (is_string($configured)) {
+        $configured = preg_split('/[\s,]+/', trim($configured)) ?: [];
+    }
+
+    if ($hasConfiguredRanges && is_array($configured)) {
+        return array_values(array_filter(array_map('trim', $configured), static function (string $cidr): bool {
+            return $cidr !== '';
+        }));
+    }
+
+    // Official lists: https://www.cloudflare.com/ips-v4/ and /ips-v6/ (checked 2026-08-13).
+    return [
+        '173.245.48.0/20',
+        '103.21.244.0/22',
+        '103.22.200.0/22',
+        '103.31.4.0/22',
+        '141.101.64.0/18',
+        '108.162.192.0/18',
+        '190.93.240.0/20',
+        '188.114.96.0/20',
+        '197.234.240.0/22',
+        '198.41.128.0/17',
+        '162.158.0.0/15',
+        '104.16.0.0/13',
+        '104.24.0.0/14',
+        '172.64.0.0/13',
+        '131.0.72.0/22',
+        '2400:cb00::/32',
+        '2606:4700::/32',
+        '2803:f800::/32',
+        '2405:b500::/32',
+        '2405:8100::/32',
+        '2a06:98c0::/29',
+        '2c0f:f248::/32',
+    ];
+}
+
+function market_ip_in_cidr(string $ip, string $cidr): bool
+{
+    if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
+        return false;
+    }
+
+    $parts = explode('/', trim($cidr), 2);
+    $network = trim((string)($parts[0] ?? ''));
+    $packedIp = @inet_pton($ip);
+    $packedNetwork = @inet_pton($network);
+
+    if ($packedIp === false || $packedNetwork === false || strlen($packedIp) !== strlen($packedNetwork)) {
+        return false;
+    }
+
+    $maxBits = strlen($packedIp) * 8;
+    $prefix = isset($parts[1]) && $parts[1] !== '' ? (int)$parts[1] : $maxBits;
+    if ($prefix < 0 || $prefix > $maxBits) {
+        return false;
+    }
+
+    $wholeBytes = intdiv($prefix, 8);
+    $remainingBits = $prefix % 8;
+    if ($wholeBytes > 0 && substr($packedIp, 0, $wholeBytes) !== substr($packedNetwork, 0, $wholeBytes)) {
+        return false;
+    }
+
+    if ($remainingBits === 0) {
+        return true;
+    }
+
+    $mask = (0xFF << (8 - $remainingBits)) & 0xFF;
+
+    return (ord($packedIp[$wholeBytes]) & $mask) === (ord($packedNetwork[$wholeBytes]) & $mask);
+}
+
+function market_cloudflare_request_trusted(): bool
+{
+    if (!market_cloudflare_country_enabled()) {
+        return false;
+    }
+
+    if (market_bool_constant('SECURITY_CLOUDFLARE_ORIGIN_LOCKED', false)) {
+        return true;
+    }
+
+    $remoteIp = trim((string)($_SERVER['REMOTE_ADDR'] ?? ''));
+    foreach (market_cloudflare_trusted_proxy_cidrs() as $cidr) {
+        if (market_ip_in_cidr($remoteIp, $cidr)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function market_gps_ip_country_mismatch($gpsCountry, $ipCountry): bool
+{
+    $gpsCountry = market_ip_country_code($gpsCountry);
+    $ipCountry = market_ip_country_code($ipCountry);
+
+    return $gpsCountry !== '' && $ipCountry !== '' && $gpsCountry !== $ipCountry;
+}
+
+function market_mismatch_marks_vpn_suspected(): bool
+{
+    return market_bool_constant('REGISTRATION_GPS_IP_MISMATCH_VPN_SUSPECTED', true);
 }
 
 function market_forwarding_key(): string
@@ -78,37 +210,57 @@ function market_trusted_forwarded_ip(): string
     return $expected !== '' && hash_equals($expected, $signature) ? $ip : '';
 }
 
-function market_trusted_forwarded_ip_country(): string
+function market_trusted_forwarded_ip_country_details(): array
 {
-    $country = market_iso_country_code($_SERVER['HTTP_X_ZPAY_IP_COUNTRY'] ?? '');
+    $rawCountry = strtoupper(trim((string)($_SERVER['HTTP_X_ZPAY_IP_COUNTRY'] ?? '')));
+    $country = $rawCountry === 'UNKNOWN' ? 'UNKNOWN' : market_ip_country_code($rawCountry);
     $signature = trim((string)($_SERVER['HTTP_X_ZPAY_IP_COUNTRY_SIGNATURE'] ?? ''));
 
     if ($country === '' || $signature === '') {
-        return '';
+        return ['trusted' => false, 'country' => ''];
     }
 
     $expected = market_forwarding_signature('ip-country', $country);
 
-    return $expected !== '' && hash_equals($expected, $signature) ? $country : '';
+    $trusted = $expected !== '' && hash_equals($expected, $signature);
+    $source = market_ip_country_source($_SERVER['HTTP_X_ZPAY_IP_SOURCE'] ?? '');
+    $sourceSignature = trim((string)($_SERVER['HTTP_X_ZPAY_IP_SOURCE_SIGNATURE'] ?? ''));
+    $expectedSourceSignature = market_forwarding_signature('ip-source', $source);
+    $sourceTrusted = $trusted
+        && $source !== ''
+        && $sourceSignature !== ''
+        && $expectedSourceSignature !== ''
+        && hash_equals($expectedSourceSignature, $sourceSignature);
+
+    return [
+        'trusted' => $trusted,
+        'country' => $country,
+        'source' => $sourceTrusted ? $source : 'SIGNED_FORWARD',
+    ];
+}
+
+function market_trusted_forwarded_ip_country(): string
+{
+    $details = market_trusted_forwarded_ip_country_details();
+
+    return !empty($details['trusted']) ? (string)$details['country'] : '';
 }
 
 function market_request_ip(): string
 {
-    $cfIp = trim((string)($_SERVER['HTTP_CF_CONNECTING_IP'] ?? ''));
-    if (market_cloudflare_country_enabled() && $cfIp !== '' && filter_var($cfIp, FILTER_VALIDATE_IP) !== false) {
-        return $cfIp;
-    }
-
     $forwarded = market_trusted_forwarded_ip();
     if ($forwarded !== '') {
         return $forwarded;
     }
 
-    if (function_exists('security_client_ip')) {
-        return security_client_ip();
+    $cfIp = trim((string)($_SERVER['HTTP_CF_CONNECTING_IP'] ?? ''));
+    if (market_cloudflare_request_trusted() && $cfIp !== '' && filter_var($cfIp, FILTER_VALIDATE_IP) !== false) {
+        return $cfIp;
     }
 
-    return trim((string)($_SERVER['REMOTE_ADDR'] ?? ''));
+    $remoteIp = trim((string)($_SERVER['REMOTE_ADDR'] ?? ''));
+
+    return filter_var($remoteIp, FILTER_VALIDATE_IP) !== false ? $remoteIp : '';
 }
 
 function market_request_ip_country(array $body = []): string
@@ -120,10 +272,18 @@ function market_request_ip_country(array $body = []): string
 
 function market_request_ip_country_details(array $body = []): array
 {
-    if (market_cloudflare_country_enabled()) {
-        $cfCountry = market_iso_country_code($_SERVER['HTTP_CF_IPCOUNTRY'] ?? '');
+    $forwarded = market_trusted_forwarded_ip_country_details();
+    if (!empty($forwarded['trusted'])) {
+        return [
+            'country' => (string)$forwarded['country'],
+            'source' => (string)($forwarded['source'] ?? 'SIGNED_FORWARD'),
+        ];
+    }
 
-        if ($cfCountry !== '' && $cfCountry !== 'XX') {
+    if (market_cloudflare_request_trusted()) {
+        $cfCountry = market_ip_country_code($_SERVER['HTTP_CF_IPCOUNTRY'] ?? '');
+
+        if ($cfCountry !== '') {
             return [
                 'country' => $cfCountry,
                 'source' => 'CLOUDFLARE',
@@ -136,28 +296,22 @@ function market_request_ip_country_details(array $body = []): array
         ];
     }
 
-    $forwarded = market_trusted_forwarded_ip_country();
-    if ($forwarded !== '') {
-        return [
-            'country' => $forwarded,
-            'source' => 'SIGNED_FORWARD',
-        ];
-    }
-
-    foreach ([
-        $_SERVER['GEOIP_COUNTRY_CODE'] ?? '',
-    ] as $candidate) {
-        $country = market_iso_country_code($candidate);
-        if ($country !== '') {
-            return [
-                'country' => $country,
-                'source' => 'SERVER_GEOIP',
-            ];
+    if (!market_cloudflare_country_enabled()) {
+        foreach ([
+            $_SERVER['GEOIP_COUNTRY_CODE'] ?? '',
+        ] as $candidate) {
+            $country = market_ip_country_code($candidate);
+            if ($country !== '') {
+                return [
+                    'country' => $country,
+                    'source' => 'SERVER_GEOIP',
+                ];
+            }
         }
     }
 
     return [
-        'country' => market_require_cloudflare_country() ? 'UNKNOWN' : '',
+        'country' => 'UNKNOWN',
         'source' => 'UNKNOWN',
     ];
 }
@@ -301,14 +455,11 @@ function market_registration_decision(array $body, string $phoneCountry): array
         $detectionSource = 'BROWSER_GPS_IP_UNKNOWN';
     }
 
-    if (
-        in_array($gpsCountry, ['BD', 'MY'], true)
-        && $ipCountry !== ''
-        && $ipCountry !== 'UNKNOWN'
-        && $gpsCountry !== $ipCountry
-    ) {
+    $gpsIpCountryMismatch = market_gps_ip_country_mismatch($gpsCountry, $ipCountry);
+
+    if ($gpsIpCountryMismatch) {
         $accountStatus = 'REVIEW';
-        $vpnSuspected = true;
+        $vpnSuspected = market_mismatch_marks_vpn_suspected();
         $reviewReasons[] = 'GPS_IP_COUNTRY_MISMATCH';
         $detectionSource = 'BROWSER_GPS_IP_MISMATCH';
     } elseif (
@@ -363,7 +514,6 @@ function market_registration_decision(array $body, string $phoneCountry): array
         $reviewReasons[] = 'IP_RISK_' . ($riskType !== '' ? $riskType : 'UNKNOWN');
     }
 
-    $countryMismatch = $phoneCountry !== '' && $phoneCountry !== $pricingCountry;
     $reason = implode(', ', array_values(array_unique($reviewReasons)));
 
     return [
@@ -385,7 +535,7 @@ function market_registration_decision(array $body, string $phoneCountry): array
         'ip_country' => $ipCountry,
         'ip_source' => $ipSource,
         'created_ip' => $createdIp,
-        'country_mismatch' => $countryMismatch,
+        'country_mismatch' => $gpsIpCountryMismatch,
         'vpn_suspected' => $vpnSuspected,
         'market_detection_source' => $detectionSource,
         'account_review_reason' => $reason,

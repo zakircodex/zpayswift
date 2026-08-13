@@ -3725,12 +3725,26 @@ function user_proxy_forward_auth_post(string $relativePath, array $body, string 
             $headers['X-ZPAY-CLIENT-IP-SIGNATURE'] = $forwardedIpSignature;
         }
 
-        $rawIpCountry = market_request_ip_country($body);
+        $rawIpCountryDetails = function_exists('market_request_ip_country_details')
+            ? market_request_ip_country_details($body)
+            : [
+                'country' => market_request_ip_country($body),
+                'source' => 'UNKNOWN',
+            ];
+        $rawIpCountry = (string)($rawIpCountryDetails['country'] ?? 'UNKNOWN');
         $ipCountrySignature = market_forwarding_signature('ip-country', $rawIpCountry);
 
         if ($rawIpCountry !== '' && $ipCountrySignature !== '') {
             $headers['X-ZPAY-IP-COUNTRY'] = $rawIpCountry;
             $headers['X-ZPAY-IP-COUNTRY-SIGNATURE'] = $ipCountrySignature;
+        }
+
+        $rawIpSource = market_ip_country_source($rawIpCountryDetails['source'] ?? 'UNKNOWN');
+        $ipSourceSignature = market_forwarding_signature('ip-source', $rawIpSource);
+
+        if ($rawIpSource !== '' && $ipSourceSignature !== '') {
+            $headers['X-ZPAY-IP-SOURCE'] = $rawIpSource;
+            $headers['X-ZPAY-IP-SOURCE-SIGNATURE'] = $ipSourceSignature;
         }
     }
 
