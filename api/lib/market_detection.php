@@ -492,9 +492,12 @@ function market_registration_decision(array $body, string $phoneCountry): array
     }
 
     if ($ipCountry === '' || $ipCountry === 'UNKNOWN') {
-        $accountStatus = 'REVIEW';
-        $reviewReasons[] = 'IP_COUNTRY_UNKNOWN';
         $detectionSource = 'BROWSER_GPS_IP_UNKNOWN';
+
+        if (market_require_cloudflare_country()) {
+            $accountStatus = 'REVIEW';
+            $reviewReasons[] = 'IP_COUNTRY_UNKNOWN';
+        }
     }
 
     $gpsIpCountryMismatch = market_gps_ip_country_mismatch($gpsCountry, $ipCountry);

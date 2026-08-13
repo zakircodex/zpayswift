@@ -141,6 +141,7 @@ market_test_server([
 $bdMatch = market_test_decision(23.8103, 90.4125, 'BD');
 market_test_expect($bdMatch['gps_country'] === 'BD' && $bdMatch['pricing_country'] === 'BD', 'Bangladesh GPS pricing changed');
 market_test_expect($bdMatch['country_mismatch'] === false, 'GPS BD plus IP BD must not mismatch');
+market_test_expect($bdMatch['account_status'] === 'ACTIVE', 'matching Bangladesh request should remain active');
 
 market_test_server([
     'REMOTE_ADDR' => '173.245.48.12',
@@ -164,8 +165,21 @@ market_test_server([
 $unknown = market_test_decision(3.1390, 101.6869, 'MY');
 market_test_expect($unknown['ip_country'] === 'UNKNOWN' && $unknown['ip_source'] === 'UNKNOWN', 'unknown Cloudflare country must stay explicit');
 market_test_expect($unknown['country_mismatch'] === false, 'unknown IP must not become a contradictory mismatch');
-market_test_expect(str_contains($unknown['account_review_reason'], 'IP_COUNTRY_UNKNOWN'), 'unknown IP review reason missing');
+market_test_expect($unknown['vpn_suspected'] === false, 'unknown IP must not become a VPN signal');
+market_test_expect($unknown['account_status'] === 'ACTIVE', 'unknown IP must remain advisory when Cloudflare country is optional');
+market_test_expect($unknown['review_required'] === false, 'optional unknown IP incorrectly required account review');
+market_test_expect($unknown['account_review_reason'] === '', 'optional unknown IP added an account review reason');
+market_test_expect($unknown['market_detection_source'] === 'BROWSER_GPS_IP_UNKNOWN', 'unknown IP detection source was lost');
 market_test_expect($unknown['ip_country'] !== 'US', 'unknown country defaulted to US');
+
+$unknownBd = market_test_decision(23.8103, 90.4125, 'BD');
+market_test_expect($unknownBd['pricing_country'] === 'BD' && $unknownBd['currency'] === 'BDT', 'unknown IP changed Bangladesh GPS pricing');
+market_test_expect($unknownBd['account_status'] === 'ACTIVE', 'valid Bangladesh GPS was reviewed only because IP was unknown');
+
+$unsupportedGpsUnknownIp = market_test_decision(1.3521, 103.8198, 'MY');
+market_test_expect($unsupportedGpsUnknownIp['account_status'] === 'REVIEW', 'unsupported GPS market must still require review');
+market_test_expect(str_contains($unsupportedGpsUnknownIp['account_review_reason'], 'GPS_OUTSIDE_SUPPORTED_MARKET'), 'unsupported GPS review reason was lost');
+market_test_expect(!str_contains($unsupportedGpsUnknownIp['account_review_reason'], 'IP_COUNTRY_UNKNOWN'), 'optional unknown IP polluted unsupported GPS review reasons');
 
 market_test_server([
     'REMOTE_ADDR' => '173.245.48.14',
