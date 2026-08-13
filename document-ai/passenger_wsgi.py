@@ -50,7 +50,7 @@ def application(environ, start_response):
         return _json_response(
             start_response,
             "200 OK",
-            b'{"success":true,"code":"OK","message":"Document AI service healthy.","data":{"service":"document-ai","entrypoint":"passenger_wsgi"}}',
+            b'{"success":true,"code":"DOCUMENT_AI_RETIRED","message":"Document AI verification is retired.","data":{"service":"document-ai","status":"RETIRED","entrypoint":"passenger_wsgi"}}',
         )
 
     try:
@@ -58,6 +58,6 @@ def application(environ, start_response):
     except Exception:
         return _json_response(
             start_response,
-            "503 Service Unavailable",
-            b'{"success":false,"code":"OCR_ENGINE_UNAVAILABLE","message":"Document OCR engine is temporarily unavailable.","data":{}}',
+            "410 Gone",
+            b'{"success":false,"code":"DOCUMENT_AI_RETIRED","message":"Document AI verification is no longer available.","data":{}}',
         )

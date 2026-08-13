@@ -105,11 +105,6 @@ define('REGISTRATION_GPS_IP_MISMATCH_VPN_SUSPECTED', true);
 /* Partner public API hardening */
 define('SUBADMIN_API_ALLOW_QUERY_KEY', false);
 
-/* Private local Document AI service */
-define('DOCUMENT_AI_URL', 'http://127.0.0.1:8010/v1/document/verify');
-define('DOCUMENT_AI_KEY', '');
-define('DOCUMENT_AI_TEMP_DIR', '');
-
 /* Default user country / wallet currency */
 define('DEFAULT_USER_COUNTRY', 'BD');
 define('DEFAULT_USER_CURRENCY', 'BDT');

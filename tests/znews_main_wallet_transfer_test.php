@@ -137,8 +137,10 @@ znews_transfer_test_expect(str_contains($rateUpdate, 'auth_require_admin_session
 znews_transfer_test_expect(str_contains($rateUpdate, 'expected_updated_at'), 'rate update lacks version protection');
 
 $summary = znews_transfer_test_read($root . '/api/znews/balance/summary.php');
-znews_transfer_test_expect(str_contains($summary, "'main_wallet_transfer_enabled' => true"), 'balance summary does not enable transfer');
-znews_transfer_test_expect(str_contains($summary, "'minimum_bdt' => '200'"), 'balance summary threshold missing');
-znews_transfer_test_expect(str_contains($summary, "'transfer_requires_admin_approval' => true"), 'approval requirement missing');
+$create = znews_transfer_test_read($root . '/api/znews/transfers/create.php');
+znews_transfer_test_expect(str_contains($summary, "'revenue_mode' => 'PERIOD_REVIEW_DIRECT_ZPAY_PAYOUT'"), 'period-review payout mode is missing');
+znews_transfer_test_expect(str_contains($summary, "'main_wallet_transfer_enabled' => false"), 'retired creator transfer is exposed as enabled');
+znews_transfer_test_expect(str_contains($summary, "'withdraw_request_enabled' => false"), 'retired withdrawal flow is exposed as enabled');
+znews_transfer_test_expect(str_contains($create, 'ZNEWS_CREATOR_WITHDRAW_DISABLED') && str_contains($create, '410'), 'legacy creator transfer endpoint is not retired');
 
 echo "Z News main-wallet transfer tests passed ({$assertions} assertions).\n";

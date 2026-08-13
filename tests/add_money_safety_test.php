@@ -134,6 +134,8 @@ function month_key(?int $ts = null): string
 
 require_once dirname(__DIR__) . '/api/lib/add_money.php';
 
+$receiptEndpoint = (string)file_get_contents(dirname(__DIR__) . '/api/add_money/receipt.php');
+
 function assert_true(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -141,6 +143,12 @@ function assert_true(bool $condition, string $message): void
         exit(1);
     }
 }
+
+assert_true(
+    str_contains($receiptEndpoint, "header('Cache-Control: private, no-store")
+    && str_contains($receiptEndpoint, "header('Pragma: no-cache')"),
+    'private receipt responses must not be cached by browsers or shared intermediaries'
+);
 
 function put_wallet(string $uid, float $available, string $currency = 'BDT'): void
 {

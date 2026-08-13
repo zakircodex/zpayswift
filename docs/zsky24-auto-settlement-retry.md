@@ -1,16 +1,11 @@
-# Z Sky 24 automatic settlement retry
+# Z Sky 24 automatic settlement retry (retired)
 
-Failed automatic creator-credit attempts are stored under
-`ZNEWS_AUTO_SETTLEMENT_RETRIES`. The worker is CLI-only and reuses the existing
-exact-once settlement service.
+Per-view automatic creator credit is retired. Creator payouts now use the
+canonical period-review/direct-Z-Pay payout flow.
 
-Recommended cPanel cron (every five minutes):
+Do not configure or run an automatic-settlement retry cron. The retained CLI
+entrypoint exits without reading retry rows or changing balances, so an old cron
+cannot apply a legacy payout after deployment.
 
-```cron
-*/5 * * * * /usr/local/bin/php /home/zedpayhe/repositories/zpayswift/tools/zsky24_auto_settlement_retry.php --limit=50 >/dev/null 2>&1
-```
-
-Confirm the PHP path and repository path in cPanel before enabling the cron.
-Rows use bounded exponential backoff and stop automatically after 12 failed
-attempts. Failed rows remain available for investigation; they never accept a
-client-provided settlement amount.
+Historical retry rows and settlement code are not deleted or migrated by this
+retirement. Review them separately if reconciliation is required.

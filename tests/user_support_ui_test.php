@@ -9,6 +9,7 @@ $css = (string)file_get_contents($root . '/api/user/assets/pages/support-page.cs
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $backend = (string)file_get_contents($root . '/api/lib/support.php');
 $createEndpoint = (string)file_get_contents($root . '/api/support/create.php');
+$attachmentEndpoint = (string)file_get_contents($root . '/api/support/attachment.php');
 $assertions = 0;
 
 function support_ui_expect(bool $condition, string $message): void
@@ -89,6 +90,13 @@ support_ui_expect(
     && str_contains($proxy, "case 'support_attachment':")
     && str_contains($proxy, "header('Cache-Control: private, no-store"),
     'Support attachments are not routed through the authenticated private bridge'
+);
+
+support_ui_expect(
+    str_contains($attachmentEndpoint, "(string)(\$row['ticket_id'] ?? '') !== \$ticketId")
+    && str_contains($attachmentEndpoint, "['image/jpeg', 'image/png', 'image/webp']")
+    && str_contains($attachmentEndpoint, "header('Cache-Control: private, no-store"),
+    'Private attachment delivery must bind metadata, constrain MIME and disable caching'
 );
 
 support_ui_expect(

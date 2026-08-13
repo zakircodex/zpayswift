@@ -434,7 +434,11 @@ assert_true(str_contains($authAndroid, "get_session_by_token(\$token)"), 'Quick 
 assert_true(!str_contains($adminProxy, "'internal_url' =>"), 'admin proxy must not expose internal URLs');
 assert_true(str_contains($adminProxy, "case 'logout':") && str_contains($adminProxy, 'proxy_require_csrf();'), 'admin logout must require CSRF');
 assert_true(!str_contains($mfsPending, 'getMessage()'), 'admin MFS errors must not expose exception details');
-assert_true(!str_contains($htaccess, '%{HTTP_HOST}'), 'HTTPS redirect must not trust Host header');
+assert_true(
+    str_contains($htaccess, 'RewriteRule ^ https://zpayswift.com%{REQUEST_URI}')
+    && preg_match('/RewriteRule[^\r\n]*%\{HTTP_HOST\}/', $htaccess) !== 1,
+    'HTTPS redirects must use fixed canonical hosts rather than interpolating Host'
+);
 assert_true(
     str_contains($dashboardJs, "'WAITING_ADMIN'") && str_contains($dashboardJs, "return 'Pending';"),
     'WAITING_ADMIN must display as Pending'

@@ -37,6 +37,7 @@ $adminGateway = zsky_creator_read('api/admin/zsky24_creator_admin.php');
 $adminJs = zsky_creator_read('api/admin/assets/zsky24-admin.js');
 $adminCss = zsky_creator_read('api/admin/assets/zsky24-admin.css');
 $ingest = zsky_creator_read('api/znews/ads/impressions/ingest.php');
+$complete = zsky_creator_read('api/znews/views/complete.php');
 $summary = zsky_creator_read('api/znews/balance/summary.php');
 $ledger = zsky_creator_read('api/znews/balance/ledger.php');
 $transfer = zsky_creator_read('api/znews/transfers/create.php');
@@ -112,6 +113,8 @@ zsky_creator_expect(str_contains($adminCss, '.zsky-payout-dock') && str_contains
 
 zsky_creator_expect(!str_contains($ingest, 'settlements_auto.php'), 'per-impression auto settlement is still loaded');
 zsky_creator_expect(str_contains($ingest, 'DISABLED_PERIOD_REVENUE_PAYOUT'), 'auto-credit disabled status missing');
+zsky_creator_expect(!str_contains($complete, 'settlements_auto.php'), 'per-view auto settlement is still loaded');
+zsky_creator_expect(!str_contains($complete, 'znews_auto_settle_view_impressions'), 'view completion still triggers per-view auto settlement');
 zsky_creator_expect(str_contains($summary, "'creator_balance_enabled' => false"), 'balance summary remains enabled');
 zsky_creator_expect(str_contains($ledger, "'creator_balance_enabled' => false"), 'balance ledger remains enabled');
 zsky_creator_expect(str_contains($transfer, 'ZNEWS_CREATOR_WITHDRAW_DISABLED') && str_contains($transfer, '410'), 'legacy creator withdrawal is not retired');
