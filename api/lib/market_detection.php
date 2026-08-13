@@ -75,9 +75,13 @@ function market_cloudflare_trusted_proxy_cidrs(): array
     }
 
     if ($hasConfiguredRanges && is_array($configured)) {
-        return array_values(array_filter(array_map('trim', $configured), static function (string $cidr): bool {
+        $configured = array_values(array_filter(array_map('trim', $configured), static function (string $cidr): bool {
             return $cidr !== '';
         }));
+
+        if ($configured !== []) {
+            return $configured;
+        }
     }
 
     // Official lists: https://www.cloudflare.com/ips-v4/ and /ips-v6/ (checked 2026-08-13).
@@ -105,6 +109,29 @@ function market_cloudflare_trusted_proxy_cidrs(): array
         '2a06:98c0::/29',
         '2c0f:f248::/32',
     ];
+}
+
+function market_server_cloudflare_marker_trusted(): bool
+{
+    foreach ($_SERVER as $key => $value) {
+        if (
+            preg_match('/^(?:REDIRECT_)*ZPAY_TRUSTED_CLOUDFLARE$/', (string)$key) === 1
+            && market_bool_constant_value($value)
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function market_bool_constant_value($value): bool
+{
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    return in_array(strtoupper(trim((string)$value)), ['1', 'TRUE', 'YES', 'Y', 'ON'], true);
 }
 
 function market_ip_in_cidr(string $ip, string $cidr): bool
@@ -150,6 +177,10 @@ function market_cloudflare_request_trusted(): bool
     }
 
     if (market_bool_constant('SECURITY_CLOUDFLARE_ORIGIN_LOCKED', false)) {
+        return true;
+    }
+
+    if (market_server_cloudflare_marker_trusted()) {
         return true;
     }
 
@@ -290,23 +321,17 @@ function market_request_ip_country_details(array $body = []): array
             ];
         }
 
-        return [
-            'country' => 'UNKNOWN',
-            'source' => 'UNKNOWN',
-        ];
     }
 
-    if (!market_cloudflare_country_enabled()) {
-        foreach ([
-            $_SERVER['GEOIP_COUNTRY_CODE'] ?? '',
-        ] as $candidate) {
-            $country = market_ip_country_code($candidate);
-            if ($country !== '') {
-                return [
-                    'country' => $country,
-                    'source' => 'SERVER_GEOIP',
-                ];
-            }
+    foreach ([
+        $_SERVER['GEOIP_COUNTRY_CODE'] ?? '',
+    ] as $candidate) {
+        $country = market_ip_country_code($candidate);
+        if ($country !== '') {
+            return [
+                'country' => $country,
+                'source' => 'SERVER_GEOIP',
+            ];
         }
     }
 

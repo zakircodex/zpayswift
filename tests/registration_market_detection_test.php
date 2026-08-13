@@ -5,10 +5,8 @@ $_SERVER['SCRIPT_FILENAME'] = __FILE__;
 
 define('SECURITY_CLOUDFLARE_IP_COUNTRY_ENABLED', true);
 define('SECURITY_REQUIRE_CLOUDFLARE_FOR_COUNTRY', false);
-define('SECURITY_CLOUDFLARE_TRUSTED_PROXY_CIDRS', [
-    '173.245.48.0/20',
-    '2400:cb00::/32',
-]);
+// An empty override must safely fall back to Cloudflare's published ranges.
+define('SECURITY_CLOUDFLARE_TRUSTED_PROXY_CIDRS', []);
 define('SECURITY_CLOUDFLARE_ORIGIN_LOCKED', false);
 define('REGISTRATION_GPS_IP_MISMATCH_VPN_SUSPECTED', true);
 
@@ -51,6 +49,7 @@ function market_test_server(array $values): void
             str_starts_with($key, 'HTTP_CF_')
             || str_starts_with($key, 'HTTP_X_FORWARDED_')
             || str_starts_with($key, 'HTTP_X_ZPAY_')
+            || str_contains($key, 'ZPAY_TRUSTED_CLOUDFLARE')
             || $key === 'REMOTE_ADDR'
             || $key === 'GEOIP_COUNTRY_CODE'
         ) {
@@ -75,6 +74,7 @@ function market_test_decision(float $lat, float $lng, string $phoneCountry = 'MY
 market_test_expect(market_ip_in_cidr('173.245.48.10', '173.245.48.0/20'), 'IPv4 CIDR matching failed');
 market_test_expect(market_ip_in_cidr('2400:cb00::1234', '2400:cb00::/32'), 'IPv6 CIDR matching failed');
 market_test_expect(!market_ip_in_cidr('198.51.100.10', '173.245.48.0/20'), 'untrusted IPv4 matched Cloudflare CIDR');
+market_test_expect(market_cloudflare_trusted_proxy_cidrs() !== [], 'empty Cloudflare CIDR override disabled official safe defaults');
 
 market_test_server([
     'REMOTE_ADDR' => '173.245.48.10',
@@ -84,6 +84,19 @@ market_test_server([
 $trustedCf = market_request_ip_country_details();
 market_test_expect($trustedCf['country'] === 'MY' && $trustedCf['source'] === 'CLOUDFLARE', 'trusted Cloudflare country was not accepted');
 market_test_expect(market_request_ip() === '2001:4860:4860::8888', 'trusted Cloudflare IPv6 visitor IP was not selected');
+
+market_test_server([
+    'REMOTE_ADDR' => '203.0.113.18',
+    'HTTP_CF_CONNECTING_IP' => '203.0.113.18',
+    'HTTP_CF_IPCOUNTRY' => 'MY',
+    'REDIRECT_ZPAY_TRUSTED_CLOUDFLARE' => '1',
+]);
+$restoredCf = market_request_ip_country_details();
+market_test_expect(
+    $restoredCf['country'] === 'MY' && $restoredCf['source'] === 'CLOUDFLARE',
+    'LiteSpeed restored visitor IP lost the server-owned Cloudflare trust marker'
+);
+market_test_expect(market_request_ip() === '203.0.113.18', 'restored Cloudflare visitor IP was not selected');
 
 $myMatch = market_test_decision(3.1390, 101.6869, 'MY');
 market_test_expect($myMatch['gps_country'] === 'MY' && $myMatch['pricing_country'] === 'MY', 'Malaysia GPS pricing changed');
@@ -141,6 +154,33 @@ market_test_server([
 $spoofed = market_request_ip_country_details();
 market_test_expect($spoofed['country'] === 'UNKNOWN', 'untrusted direct request controlled country with spoofed Cloudflare headers');
 market_test_expect(market_request_ip() === '198.51.100.20', 'untrusted X-Forwarded-For or Cloudflare header controlled visitor IP');
+
+market_test_server([
+    'REMOTE_ADDR' => '198.51.100.21',
+    'HTTP_CF_CONNECTING_IP' => '8.8.4.4',
+    'HTTP_CF_IPCOUNTRY' => 'BD',
+    'HTTP_ZPAY_TRUSTED_CLOUDFLARE' => '1',
+]);
+$spoofedMarker = market_request_ip_country_details();
+market_test_expect($spoofedMarker['country'] === 'UNKNOWN', 'client header spoofed the server-owned Cloudflare marker');
+
+market_test_server([
+    'REMOTE_ADDR' => '203.0.113.22',
+    'REDIRECT_ZPAY_TRUSTED_CLOUDFLARE' => '1',
+    'GEOIP_COUNTRY_CODE' => 'BD',
+]);
+$serverGeoIp = market_request_ip_country_details();
+market_test_expect(
+    $serverGeoIp['country'] === 'BD' && $serverGeoIp['source'] === 'SERVER_GEOIP',
+    'server GeoIP did not safely resolve a missing Cloudflare country header'
+);
+
+$rootRewrite = (string)file_get_contents(dirname(__DIR__) . '/.htaccess');
+market_test_expect(
+    str_contains($rootRewrite, 'RewriteCond %{ENV:FRONTEND_CDN} ^CF$ [NC]')
+        && str_contains($rootRewrite, 'E=ZPAY_TRUSTED_CLOUDFLARE:1'),
+    'LiteSpeed server-owned Cloudflare marker is not forwarded to PHP'
+);
 
 market_test_server([
     'REMOTE_ADDR' => '173.245.48.15',

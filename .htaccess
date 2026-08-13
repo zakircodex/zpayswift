@@ -4,6 +4,11 @@ DirectoryIndex index.html
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
+  # LiteSpeed sets FRONTEND_CDN from the connection peer, before REMOTE_ADDR
+  # is restored to the visitor IP. Carry that server-owned trust signal to PHP.
+  RewriteCond %{ENV:FRONTEND_CDN} ^CF$ [NC]
+  RewriteRule ^ - [E=ZPAY_TRUSTED_CLOUDFLARE:1]
+
   # zsky24.com is an isolated public Z Sky 24 host sharing this codebase.
   RewriteCond %{HTTP_HOST} ^(?:www\.)?zsky24\.com$ [NC]
   RewriteCond %{HTTPS} !=on
