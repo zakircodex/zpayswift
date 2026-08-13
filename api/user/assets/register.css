@@ -109,7 +109,7 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 .user-register-page .register-progress {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: 5px;
   margin: 13px 0 16px;
 }
@@ -222,6 +222,104 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   font-size: 12px;
   line-height: 1.45;
 }
+
+.user-register-page .register-upload-card {
+  margin-bottom: 13px;
+  padding: 14px;
+  border: 1px solid var(--register-line);
+  border-radius: 20px;
+  background: rgba(7, 29, 56, .78);
+}
+.user-register-page .register-upload-heading {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 12px;
+}
+.user-register-page .register-upload-heading strong,
+.user-register-page .register-upload-heading span { display: block; }
+.user-register-page .register-upload-heading strong { margin-bottom: 3px; font-size: 15px; }
+.user-register-page .register-upload-heading span {
+  color: var(--register-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.user-register-page .register-upload-icon {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #06160e;
+  background: var(--register-green);
+  font-size: 11px;
+  font-weight: 900;
+}
+.user-register-page .register-upload-icon.face { background: #25d5b0; }
+.user-register-page .register-media-preview {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px dashed rgba(49, 225, 132, .46);
+  border-radius: 18px;
+  color: var(--register-muted);
+  background: #05182f;
+}
+.user-register-page .register-selfie-preview { aspect-ratio: 4 / 3; }
+.user-register-page .register-media-preview img,
+.user-register-page .register-media-preview video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: #031123;
+}
+.user-register-page .register-media-preview img[hidden],
+.user-register-page .register-media-preview video[hidden] { display: none; }
+.user-register-page .register-selfie-preview img,
+.user-register-page .register-selfie-preview video { object-fit: cover; }
+.user-register-page .register-media-preview span { padding: 18px; font-size: 13px; text-align: center; }
+.user-register-page .register-upload-actions,
+.user-register-page .register-selfie-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.user-register-page .register-selfie-actions > :only-child { grid-column: 1 / -1; }
+.user-register-page .register-selfie-actions [hidden] { display: none !important; }
+.user-register-page .register-upload-action {
+  min-height: 48px;
+  margin: 0;
+  font-size: 13px;
+  text-align: center;
+}
+.user-register-page .register-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.user-register-page .register-upload-status {
+  margin: 10px 2px 0;
+  color: var(--register-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.user-register-page .register-selfie-guide {
+  margin: 0 0 11px;
+  padding-left: 20px;
+  color: var(--register-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+.user-register-page .register-selfie-guide li::marker { color: var(--register-green); }
 
 .user-register-page .register-location-card {
   display: grid;

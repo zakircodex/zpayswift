@@ -30,7 +30,7 @@ $registerJsVersion = (string)(filemtime(__DIR__ . '/assets/register.js') ?: 1);
     </header>
 
     <div class="register-progress" aria-label="Registration progress">
-      <span class="active"></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      <span class="active"></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
     </div>
 
     <div class="register-step" data-register-step="phone">
@@ -73,6 +73,62 @@ $registerJsVersion = (string)(filemtime(__DIR__ . '/assets/register.js') ?: 1);
       <button id="registerIdentityContinue" class="register-primary" type="button">Continue</button>
     </div>
 
+    <div class="register-step" data-register-step="document" hidden>
+      <section class="register-upload-card" aria-labelledby="regDocumentLabel">
+        <div class="register-upload-heading">
+          <div class="register-upload-icon" aria-hidden="true">ID</div>
+          <div>
+            <strong id="regDocumentLabel">NID Document</strong>
+            <span id="regDocumentHint">Upload a clear photo of your registered NID.</span>
+          </div>
+        </div>
+        <div id="regDocumentPreviewBox" class="register-media-preview" data-empty-label="No document selected">
+          <img id="regDocumentPreview" alt="Selected identity document preview" hidden>
+          <span id="regDocumentPlaceholder">No document selected</span>
+        </div>
+        <div class="register-upload-actions">
+          <label class="register-secondary register-upload-action" for="regDocumentCamera">Take Photo</label>
+          <label class="register-secondary register-upload-action" for="regDocumentFile">Upload Photo</label>
+        </div>
+        <input id="regDocumentCamera" class="register-file-input" type="file" accept="image/jpeg,image/png" capture="environment">
+        <input id="regDocumentFile" class="register-file-input" type="file" accept="image/jpeg,image/png">
+        <p id="regDocumentStatus" class="register-upload-status" aria-live="polite">JPG or PNG, maximum 8 MB.</p>
+      </section>
+      <button id="registerDocumentContinue" class="register-primary" type="button" disabled>Continue</button>
+    </div>
+
+    <div class="register-step" data-register-step="selfie" hidden>
+      <section class="register-upload-card" aria-labelledby="regSelfieTitle">
+        <div class="register-upload-heading">
+          <div class="register-upload-icon face" aria-hidden="true">ME</div>
+          <div>
+            <strong id="regSelfieTitle">Selfie Verification</strong>
+            <span>Take a clear selfie to verify your identity.</span>
+          </div>
+        </div>
+        <ul class="register-selfie-guide">
+          <li>Keep your face centered and clearly visible.</li>
+          <li>Use good lighting and remove face coverings.</li>
+          <li>Make sure only one person is visible.</li>
+        </ul>
+        <div class="register-media-preview register-selfie-preview">
+          <video id="regSelfieVideo" playsinline muted hidden></video>
+          <img id="regSelfiePreview" alt="Captured selfie preview" hidden>
+          <span id="regSelfiePlaceholder">Camera preview will appear here</span>
+        </div>
+        <canvas id="regSelfieCanvas" hidden></canvas>
+        <input id="regSelfieFallback" class="register-file-input" type="file" accept="image/jpeg,image/png" capture="user">
+        <div class="register-selfie-actions">
+          <button id="registerStartCamera" class="register-secondary" type="button">Open Camera</button>
+          <label id="registerSelfieFallbackLabel" class="register-secondary register-upload-action" for="regSelfieFallback">Take Photo</label>
+          <button id="registerCaptureSelfie" class="register-primary" type="button" hidden>Capture Selfie</button>
+          <button id="registerRetakeSelfie" class="register-secondary" type="button" hidden>Retake</button>
+        </div>
+        <p id="regSelfieStatus" class="register-upload-status" aria-live="polite">Camera permission is required for a selfie.</p>
+      </section>
+      <button id="registerSelfieContinue" class="register-primary" type="button" disabled>Continue</button>
+    </div>
+
     <div class="register-step" data-register-step="password" hidden>
       <label class="register-field" for="regPassword">
         <span>Password</span>
@@ -103,6 +159,8 @@ $registerJsVersion = (string)(filemtime(__DIR__ . '/assets/register.js') ?: 1);
         <div><span>Phone</span><strong id="reviewPhone">-</strong></div>
         <div><span>Email</span><strong id="reviewEmail">-</strong></div>
         <div><span>Identity</span><strong id="reviewIdentity">-</strong></div>
+        <div><span>Identity Document</span><strong id="reviewDocumentStatus">Not uploaded</strong></div>
+        <div><span>Selfie Verification</span><strong id="reviewSelfieStatus">Not completed</strong></div>
         <div><span>Phone Country</span><strong id="reviewPhoneCountry">-</strong></div>
         <div><span>Pricing Country</span><strong id="reviewPricingCountry">Not verified</strong></div>
         <div><span>Wallet Currency</span><strong id="reviewCurrency">-</strong></div>

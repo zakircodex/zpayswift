@@ -7,6 +7,7 @@ require_once __DIR__ . '/../lib/auth_android.php';
 require_once __DIR__ . '/../lib/register_android.php';
 require_once __DIR__ . '/../lib/user_web_credentials.php';
 require_once __DIR__ . '/../lib/user_registration_identity.php';
+require_once __DIR__ . '/../lib/user_registration_kyc.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -198,6 +199,7 @@ $currency = auth_country_currency($pricingCountry);
 $createdIp = (string)$marketDecision['created_ip'];
 $countryMismatch = (bool)$marketDecision['country_mismatch'];
 $termsAccepted = user_reg_bool($body['terms_accepted'] ?? false);
+$kycDraftToken = trim((string)($body['kyc_register_token'] ?? $body['register_token'] ?? ''));
 
 if ($name === '' || $phone === '' || $email === '' || $password === '' || $confirmPassword === '' || $pin === '' || $confirmPin === '') {
     $message = $phone === '' ? auth_phone_validation_message($phoneCountry) : 'All fields are required';
@@ -265,6 +267,43 @@ if (!empty($identityLookup['occupied'])) {
     user_reg_response(false, $identityCode, $identityMessage, [], 409);
 }
 
+if ($kycDraftToken === '') {
+    user_reg_response(false, 'KYC_REQUIRED', 'Identity document and selfie verification are required.', [], 422);
+}
+
+$kycDraft = fb_get('AUTH_USER_REGISTER_PREAUTH/' . $kycDraftToken);
+if (!is_array($kycDraft) || !user_registration_kyc_is_web_draft($kycDraft)) {
+    user_reg_response(false, 'REGISTER_SESSION_EXPIRED', 'Registration verification session expired. Please start again.', [], 410);
+}
+$draftExpiresAt = (int)($kycDraft['expires_at'] ?? 0);
+if ($draftExpiresAt <= user_reg_now()) {
+    user_reg_response(false, 'REGISTER_SESSION_EXPIRED', 'Registration verification session expired. Please start again.', [], 410);
+}
+
+$draftPhone = user_reg_normalize_phone((string)($kycDraft['phone'] ?? ''), $phoneCountry);
+$draftEmail = strtolower(trim((string)($kycDraft['email'] ?? '')));
+$draftIdentityType = strtoupper(trim((string)($kycDraft['identity_type'] ?? $kycDraft['document_type'] ?? '')));
+$draftIdentityHash = trim((string)($kycDraft['identity_number_hash'] ?? ''));
+if (
+    $draftPhone === ''
+    || !hash_equals($draftPhone, $phone)
+    || $draftEmail === ''
+    || !hash_equals($draftEmail, $email)
+    || !hash_equals($draftIdentityType, $identityType)
+    || $draftIdentityHash === ''
+    || !hash_equals($draftIdentityHash, $identityHash)
+) {
+    user_reg_response(false, 'KYC_SESSION_MISMATCH', 'Registration verification does not match these account details.', [], 409);
+}
+
+$kycState = user_registration_kyc_state($kycDraft, $kycDraftToken);
+if (empty($kycState['kyc_ready'])) {
+    user_reg_response(false, 'KYC_REQUIRED', 'Identity document and selfie verification are required.', [
+        'document_required' => empty($kycState['document_ready']),
+        'selfie_required' => empty($kycState['selfie_ready']),
+    ], 422);
+}
+
 $now = user_reg_now();
 $expiresAt = $now + 300;
 $termsAcceptedAt = $now;
@@ -272,7 +311,7 @@ $termsAcceptedAt = $now;
 $uid = user_reg_make_uid();
 $otpCode = (string)random_int(100000, 999999);
 $otpRequestId = 'UROTP' . strtoupper(bin2hex(random_bytes(6)));
-$preAuthToken = 'URPA' . user_reg_token(16);
+$preAuthToken = $kycDraftToken;
 
 $message = 'Z-Pay Swift register OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
 $sendRateState = auth_otp_send_rate_state('USER_REGISTER', $phone, $now);
@@ -324,6 +363,14 @@ $otpRow = [
     'expires_at' => $expiresAt,
 ] + auth_otp_reset_attempts_patch();
 
+$draftKyc = is_array($kycState['kyc'] ?? null) ? (array)$kycState['kyc'] : [];
+$draftKyc['type'] = $identityType;
+$draftKyc['document_type'] = $identityType;
+$draftKyc['identity_number_hash'] = $identityHash;
+$draftKyc['identity_number_last4'] = $identityLast4;
+$draftKyc['status'] = 'PENDING_REVIEW';
+$draftKyc['updated_at'] = $now;
+
 $preAuthRow = [
     'pre_auth_token' => $preAuthToken,
     'otp_request_id' => $otpRequestId,
@@ -364,14 +411,13 @@ $preAuthRow = [
     'identity_hash_variants' => $identityHashes,
     'identity_number_last4' => $identityLast4,
     'kyc_status' => 'PENDING_REVIEW',
-    'KYC' => [
-        'type' => $identityType,
-        'identity_number_hash' => $identityHash,
-        'identity_number_last4' => $identityLast4,
-        'status' => 'PENDING_REVIEW',
-        'created_at' => $now,
-        'updated_at' => $now,
-    ],
+    'KYC' => $draftKyc,
+    'document_path_private' => (string)$kycState['document_path_private'],
+    'document_upload_ref' => 'DOCUMENT',
+    'selfie_path_private' => (string)$kycState['selfie_path_private'],
+    'selfie_upload_ref' => 'SELFIE',
+    'web_kyc_draft' => true,
+    'registration_source' => 'USER_WEB',
     'role' => 'USER',
     'status' => 'OTP_PENDING',
     'device_id' => $deviceId,
@@ -384,12 +430,17 @@ $preAuthRow = [
 ];
 
 $okOtp = fb_put('AUTH_OTP_REQUESTS/' . $otpRequestId, $otpRow);
-$okPre = $okOtp ? fb_put('AUTH_USER_REGISTER_PREAUTH/' . $preAuthToken, $preAuthRow) : false;
+$okPre = $okOtp ? fb_patch('AUTH_USER_REGISTER_PREAUTH/' . $preAuthToken, $preAuthRow) : false;
 
 if (!($okOtp && $okPre)) {
     if (function_exists('fb_delete')) {
         @fb_delete('AUTH_OTP_REQUESTS/' . $otpRequestId);
-        @fb_delete('AUTH_USER_REGISTER_PREAUTH/' . $preAuthToken);
+        @fb_patch('AUTH_USER_REGISTER_PREAUTH/' . $preAuthToken, [
+            'status' => 'KYC_READY',
+            'otp_request_id' => '',
+            'updated_at' => user_reg_now(),
+            'expires_at' => user_reg_now() + 3600,
+        ]);
     }
 
     user_reg_response(false, 'SERVER_ERROR', 'Failed to prepare register OTP', [], 500);

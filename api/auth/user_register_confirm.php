@@ -6,6 +6,7 @@ require_once __DIR__ . '/../lib/roles.php';
 require_once __DIR__ . '/../lib/account_review.php';
 require_once __DIR__ . '/../lib/register_android.php';
 require_once __DIR__ . '/../lib/user_registration_identity.php';
+require_once __DIR__ . '/../lib/user_registration_kyc.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -231,6 +232,24 @@ if (!empty($identityLookup['occupied'])) {
     user_reg_confirm_response(false, $identityCode, $identityMessage, [], 409);
 }
 
+$kycState = user_registration_kyc_state($preAuthRow, $preAuthToken);
+if (empty($kycState['kyc_ready'])) {
+    user_reg_confirm_response(false, 'KYC_REQUIRED', 'Identity document and selfie verification are required.', [
+        'document_required' => empty($kycState['document_ready']),
+        'selfie_required' => empty($kycState['selfie_ready']),
+    ], 422);
+}
+$preAuthKyc = is_array($kycState['kyc'] ?? null) ? (array)$kycState['kyc'] : [];
+$kycType = strtoupper(trim((string)($preAuthKyc['document_type'] ?? $preAuthKyc['type'] ?? '')));
+$kycIdentityHash = trim((string)($preAuthKyc['identity_number_hash'] ?? ''));
+if (
+    !hash_equals($identityType, $kycType)
+    || $kycIdentityHash === ''
+    || !hash_equals($identityHash, $kycIdentityHash)
+) {
+    user_reg_confirm_response(false, 'KYC_SESSION_MISMATCH', 'Registration verification does not match these account details.', [], 409);
+}
+
 $otpClaim = auth_otp_claim_verification($otpRequestId, 'USER_REGISTER', $uid, $otp, $now);
 if (empty($otpClaim['ok'])) {
     user_reg_confirm_response(
@@ -242,6 +261,26 @@ if (empty($otpClaim['ok'])) {
     );
 }
 $otpOwner = (string)($otpClaim['owner_token'] ?? '');
+
+$userKyc = [
+    'type' => $identityType,
+    'document_type' => $identityType,
+    'identity_number_hash' => $identityHash,
+    'identity_number_last4' => $identityLast4,
+    'document_path_private' => (string)$kycState['document_path_private'],
+    'document_mime' => (string)($preAuthKyc['document_mime'] ?? ''),
+    'document_size' => (int)($preAuthKyc['document_size'] ?? 0),
+    'document_uploaded_at' => (int)($preAuthKyc['document_uploaded_at'] ?? 0),
+    'document_upload_ref' => 'DOCUMENT',
+    'selfie_path_private' => (string)$kycState['selfie_path_private'],
+    'selfie_mime' => (string)($preAuthKyc['selfie_mime'] ?? ''),
+    'selfie_size' => (int)($preAuthKyc['selfie_size'] ?? 0),
+    'selfie_uploaded_at' => (int)($preAuthKyc['selfie_uploaded_at'] ?? 0),
+    'selfie_upload_ref' => 'SELFIE',
+    'status' => 'PENDING_REVIEW',
+    'created_at' => $now,
+    'updated_at' => $now,
+];
 
 $userRow = [
     'uid' => $uid,
@@ -286,14 +325,7 @@ $userRow = [
     'identity_number_hash' => $identityHash,
     'identity_number_last4' => $identityLast4,
     'kyc_status' => 'PENDING_REVIEW',
-    'KYC' => [
-        'type' => $identityType,
-        'identity_number_hash' => $identityHash,
-        'identity_number_last4' => $identityLast4,
-        'status' => 'PENDING_REVIEW',
-        'created_at' => $now,
-        'updated_at' => $now,
-    ],
+    'KYC' => $userKyc,
     'created_at' => $now,
     'updated_at' => $now,
     'last_login_at' => 0,

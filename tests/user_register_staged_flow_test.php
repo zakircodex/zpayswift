@@ -33,15 +33,22 @@ $confirm = register_flow_source($root . '/api/auth/user_register_confirm.php');
 $androidRegister = register_flow_source($root . '/api/lib/register_android.php');
 $credentials = register_flow_source($root . '/api/lib/user_web_credentials.php');
 $identityUniqueness = register_flow_source($root . '/api/lib/user_registration_identity.php');
+$prepareKyc = register_flow_source($root . '/api/auth/user_register_prepare_kyc.php');
+$uploadKyc = register_flow_source($root . '/api/auth/register_upload_kyc.php');
+$kycHelper = register_flow_source($root . '/api/lib/user_registration_kyc.php');
 
-foreach (['phone', 'personal', 'identity', 'password', 'pin', 'review', 'otp'] as $step) {
+foreach (['phone', 'personal', 'identity', 'document', 'selfie', 'password', 'pin', 'review', 'otp'] as $step) {
     register_flow_expect(str_contains($page, 'data-register-step="' . $step . '"'), "Missing {$step} registration step");
 }
-register_flow_expect(str_contains($js, "const steps = ['phone', 'personal', 'identity', 'password', 'pin', 'review', 'otp']"), 'Registration Back/history order is incorrect');
+register_flow_expect(str_contains($js, "const steps = ['phone', 'personal', 'identity', 'document', 'selfie', 'password', 'pin', 'review', 'otp']"), 'Registration Back/history order is incorrect');
 register_flow_expect(str_contains($page, 'Country: Detecting...') && str_contains($page, 'id="regPhoneCountry" type="hidden"') && !str_contains($page, '<select id="regPhoneCountry"'), 'Phone country is not read-only');
 register_flow_expect(str_contains($page, 'id="registerPhoneContinue" class="register-primary" type="button" disabled') && str_contains($js, "'Country: Unavailable'"), 'Country detection must fail closed before phone validation');
 register_flow_expect(str_contains($page, 'data-register-identity="NID"') && str_contains($page, 'data-register-identity="PASSPORT"'), 'NID and Passport registration paths are incomplete');
+register_flow_expect(str_contains($page, 'id="regDocumentCamera"') && str_contains($page, 'capture="environment"') && str_contains($page, 'id="regSelfieFallback"') && str_contains($page, 'capture="user"'), 'Document and selfie mobile capture inputs are incomplete');
+register_flow_expect(str_contains($page, 'id="regSelfieVideo" playsinline') && str_contains($js, "facingMode: 'user'") && str_contains($js, 'navigator.mediaDevices?.getUserMedia'), 'Front-camera selfie flow is incomplete');
+register_flow_expect(str_contains($js, 'if (state.registrationKyc.documentUploaded)') && str_contains($js, 'if (state.registrationKyc.selfieUploaded)'), 'Back/Next must reuse accepted KYC uploads instead of uploading them twice');
 register_flow_expect(!str_contains($page, 'id="reviewIdentityNumber"') && !str_contains($page, '>Password</span><strong') && !str_contains($page, '>PIN</span><strong'), 'Review leaks identity or credentials');
+register_flow_expect(str_contains($page, 'id="reviewDocumentStatus"') && str_contains($page, 'id="reviewSelfieStatus"') && !str_contains($page, 'document_path_private'), 'Review must show KYC status without private paths');
 register_flow_expect(str_contains($page, 'href="/terms"') && str_contains($page, 'href="/privacy"'), 'Terms and Privacy routes are not preserved');
 
 register_flow_expect(str_contains($proxy, "case 'register_precheck':") && str_contains($proxy, "\$stage === 'PHONE'") && str_contains($proxy, "\$stage === 'PERSONAL'"), 'Registration phone/personal precheck routes are incomplete');
@@ -49,6 +56,13 @@ register_flow_expect(str_contains($proxy, "\$stage === 'IDENTITY'") && str_conta
 register_flow_expect(str_contains($proxy, 'reg_app_phone_uid') && str_contains($proxy, 'reg_app_email_uid'), 'Registration prechecks must use canonical direct indexes');
 register_flow_expect(str_contains($proxy, 'user_web_registration_identity_lookup') && str_contains($proxy, 'NID_ALREADY_REGISTERED') && str_contains($proxy, 'PASSPORT_ALREADY_REGISTERED'), 'Identity precheck must reject existing NID and Passport indexes');
 register_flow_expect(str_contains($sendOtp, 'user_web_registration_identity_lookup($identityHashes, $identityType)'), 'OTP preparation must recheck normalized identity variants');
+register_flow_expect(str_contains($prepareKyc, "'web_kyc_draft' => true") && str_contains($prepareKyc, "'registration_source' => 'USER_WEB'") && str_contains($prepareKyc, 'AUTH_USER_REGISTER_PREAUTH/'), 'Web KYC draft must use the canonical registration pre-auth node');
+register_flow_expect(str_contains($proxy, "case 'register_upload_kyc':") && str_contains($proxy, "'auth/register_upload_kyc.php'") && str_contains($proxy, "'X-APP-KEY' => APP_KEY"), 'Web KYC upload must reuse the Android endpoint through the internal proxy');
+register_flow_expect(str_contains($uploadKyc, 'user_registration_kyc_is_web_draft') && str_contains($uploadKyc, 'if (!$webDraft)') && str_contains($uploadKyc, 'reg_app_require_otp_verified($preAuth)'), 'Android OTP upload contract must remain while allowing only bound Web drafts');
+register_flow_expect(str_contains($uploadKyc, "'image/jpeg' => 'jpg'") && str_contains($uploadKyc, "'image/png' => 'png'") && str_contains($uploadKyc, '8 * 1024 * 1024'), 'Server-side upload MIME and size rules are incomplete');
+register_flow_expect(str_contains($kycHelper, 'realpath(user_registration_kyc_token_root') && str_contains($kycHelper, 'str_starts_with($file, $root)') && str_contains($kycHelper, "['image/jpeg', 'image/png']"), 'Private KYC ownership and file validation are incomplete');
+register_flow_expect(str_contains($sendOtp, 'user_registration_kyc_state($kycDraft, $kycDraftToken)') && str_contains($sendOtp, 'KYC_SESSION_MISMATCH') && str_contains($sendOtp, "'kyc_register_token'"), 'OTP must require token-owned document and selfie uploads');
+register_flow_expect(str_contains($confirm, 'user_registration_kyc_state($preAuthRow, $preAuthToken)') && str_contains($confirm, 'KYC_SESSION_MISMATCH') && str_contains($confirm, "'document_path_private'") && str_contains($confirm, "'selfie_path_private'"), 'Final registration must revalidate and retain private KYC metadata');
 register_flow_expect(str_contains($confirm, 'auth_index_claim') && str_contains($confirm, 'reg_app_document_index_paths($hash, $identityType)'), 'Final registration must retain CAS-backed unique index claims for every normalized identity variant');
 register_flow_expect(strpos($confirm, 'auth_index_claim') < strpos($confirm, "fb_put('USERS/' . \$uid"), 'Identity and other unique indexes must be claimed before account creation');
 register_flow_expect(str_contains($confirm, 'NID_ALREADY_REGISTERED') && str_contains($confirm, 'PASSPORT_ALREADY_REGISTERED'), 'Final registration must preserve type-specific identity conflicts');

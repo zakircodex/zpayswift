@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once __DIR__ . '/../lib/auth_android.php';
 require_once __DIR__ . '/../lib/register_android.php';
+require_once __DIR__ . '/../lib/user_registration_kyc.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -109,7 +110,10 @@ function reg_kyc_save_upload(string $registerToken, string $uploadType, array $f
 $body = $_POST ?: [];
 $registerToken = reg_app_find_preauth_token($body);
 $preAuth = reg_app_get_preauth($registerToken);
-reg_app_require_otp_verified($preAuth);
+$webDraft = user_registration_kyc_is_web_draft($preAuth);
+if (!$webDraft) {
+    reg_app_require_otp_verified($preAuth);
+}
 
 $status = strtoupper(trim((string)($preAuth['status'] ?? '')));
 if ($status === 'COMPLETED' || !empty($preAuth['completed_at'])) {
@@ -128,9 +132,22 @@ if ($fileField === '' || !$file) {
         : 'Document photo is required.', [], 422);
 }
 
+if ($webDraft && $uploadType === 'SELFIE') {
+    $currentState = user_registration_kyc_state($preAuth, $registerToken);
+    if (empty($currentState['document_ready'])) {
+        api_response(false, 'DOCUMENT_REQUIRED', 'Please upload the required identity document first.', [], 422);
+    }
+}
+
 $now = reg_app_now();
 $saved = reg_kyc_save_upload($registerToken, $uploadType, $file);
-$documentType = reg_app_document_type($body + $preAuth);
+$documentType = $webDraft
+    ? strtoupper(trim((string)($preAuth['identity_type'] ?? $preAuth['document_type'] ?? '')))
+    : reg_app_document_type($body + $preAuth);
+if (!in_array($documentType, ['NID', 'PASSPORT'], true)) {
+    @unlink((string)$saved['path_private']);
+    api_response(false, 'REGISTER_SESSION_INVALID', 'Registration identity state is invalid. Please start again.', [], 409);
+}
 $patch = [
     'status' => $uploadType === 'DOCUMENT' ? 'DOCUMENT_UPLOADED' : 'SELFIE_UPLOADED',
     'updated_at' => $now,
@@ -138,6 +155,9 @@ $patch = [
 ];
 
 $kyc = is_array($preAuth['KYC'] ?? null) ? (array)$preAuth['KYC'] : [];
+$previousPath = $uploadType === 'DOCUMENT'
+    ? trim((string)($kyc['document_path_private'] ?? ''))
+    : trim((string)($kyc['selfie_path_private'] ?? ''));
 if ($documentType !== '') {
     $kyc['type'] = $documentType;
     $kyc['document_type'] = $documentType;
@@ -166,7 +186,12 @@ $kyc['updated_at'] = $now;
 $patch['KYC'] = $kyc;
 
 if (!fb_patch('AUTH_USER_REGISTER_PREAUTH/' . $registerToken, $patch)) {
+    @unlink((string)$saved['path_private']);
     api_response(false, 'SERVER_ERROR', 'Failed to save KYC upload state.', [], 500);
+}
+
+if ($previousPath !== '' && !hash_equals($previousPath, (string)$saved['path_private'])) {
+    user_registration_kyc_remove_private_file($previousPath, $registerToken);
 }
 
 $documentReady = !empty($kyc['document_path_private']);

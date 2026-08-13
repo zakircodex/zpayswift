@@ -4,7 +4,7 @@
   const USER_PROXY_URL = window.USER_PROXY_URL || '/api/user/proxy.php';
   const USER_LOGIN_URL = window.USER_LOGIN_URL || '/user/';
   const el = (id) => document.getElementById(id);
-  const steps = ['phone', 'personal', 'identity', 'password', 'pin', 'review', 'otp'];
+  const steps = ['phone', 'personal', 'identity', 'document', 'selfie', 'password', 'pin', 'review', 'otp'];
   const activeRequests = new Set();
   const state = {
     step: 'phone',
@@ -16,6 +16,7 @@
     phoneVerifiedKey: '',
     personalVerifiedKey: '',
     identityVerifiedKey: '',
+    registrationKyc: emptyKyc(),
     passwordVerified: false,
     pinVerified: false,
     registrationLocation: emptyLocation(),
@@ -39,6 +40,20 @@
 
   function emptyOtp() {
     return { preAuthToken: '', otpRequestId: '', maskedPhone: '', expiresAt: 0, timer: 0 };
+  }
+
+  function emptyKyc() {
+    return {
+      registerToken: '',
+      identityKey: '',
+      documentFile: null,
+      documentUploaded: false,
+      documentPreviewUrl: '',
+      selfieFile: null,
+      selfieUploaded: false,
+      selfiePreviewUrl: '',
+      stream: null
+    };
   }
 
   function modalOpen() {
@@ -132,6 +147,37 @@
     }
   }
 
+  async function proxyUpload(action, formData, busyText) {
+    const controller = new AbortController();
+    activeRequests.add(controller);
+    setBusy(true, busyText);
+    try {
+      const response = await fetch(`${USER_PROXY_URL}?action=${encodeURIComponent(action)}`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+        body: formData
+      });
+      const responseText = await response.text();
+      let json;
+      try {
+        json = JSON.parse(responseText);
+      } catch (_) {
+        throw requestError('INVALID_RESPONSE', 'A valid response was not received. Please try again.');
+      }
+      if (!response.ok || json?.ok !== true) {
+        const error = requestError(String(json?.code || 'REQUEST_FAILED'), String(json?.message || 'Request failed'));
+        error.data = json?.data || {};
+        throw error;
+      }
+      return json.data || {};
+    } finally {
+      activeRequests.delete(controller);
+      setBusy(false);
+    }
+  }
+
   function requestError(code, message) {
     const error = new Error(message);
     error.code = code;
@@ -151,6 +197,12 @@
       PASSPORT_ALREADY_REGISTERED: 'This Passport is already registered.',
       IDENTITY_CHECK_UNAVAILABLE: 'Identity availability could not be checked. Please try again.',
       IDENTITY_REQUIRED: 'NID or Passport number is required.',
+      KYC_REQUIRED: 'Identity document and selfie verification are required.',
+      DOCUMENT_REQUIRED: 'Please upload the required identity document.',
+      KYC_SESSION_MISMATCH: 'Registration verification does not match these account details.',
+      UPLOAD_TYPE_INVALID: 'Only clear JPG or PNG images are accepted.',
+      UPLOAD_SIZE_INVALID: 'Image size must be within 8 MB.',
+      UPLOAD_INVALID: 'This image could not be accepted. Please try another clear photo.',
       TERMS_REQUIRED: 'You must accept the Terms & Conditions and Privacy Policy.',
       LOCATION_REQUIRED: 'Location verification is required.',
       GPS_REQUIRED: 'Location verification is required.',
@@ -271,6 +323,10 @@
       phone: ['Create Account', 'Enter your phone number to get started.'],
       personal: ['Personal Information', 'Tell us a little about yourself.'],
       identity: ['Verify Identity', 'Choose the identity document you want to register.'],
+      document: ['Upload Identity Document', el('regIdentityType').value === 'PASSPORT'
+        ? 'Upload the photo/details page of your passport.'
+        : 'Upload a clear photo of your registered NID.'],
+      selfie: ['Selfie Verification', 'Take a clear selfie to verify your identity.'],
       password: ['Create Password', 'Create a secure password for your account.'],
       pin: ['Create Transaction PIN', 'Set your PIN for secure transactions.'],
       review: ['Review Your Account', 'Check your information before creating your account.'],
@@ -321,7 +377,7 @@
   }
 
   function focusForStep(step) {
-    const ids = { phone: 'regPhone', personal: 'regName', identity: 'regIdentityNumber', password: 'regPassword', pin: 'regPin', review: 'verifyLocationBtn', otp: 'otpCode' };
+    const ids = { phone: 'regPhone', personal: 'regName', identity: 'regIdentityNumber', document: 'regDocumentCamera', selfie: 'registerStartCamera', password: 'regPassword', pin: 'regPin', review: 'verifyLocationBtn', otp: 'otpCode' };
     const node = el(ids[step]);
     if (!node) return;
     window.setTimeout(() => {
@@ -332,6 +388,7 @@
 
   function showStep(step, historyMode = '') {
     const next = steps.includes(step) ? step : 'phone';
+    if (state.step === 'selfie' && next !== 'selfie') stopSelfieCamera();
     state.step = next;
     el('registerPageRoot').dataset.registerCurrentStep = next;
     document.querySelectorAll('[data-register-step]').forEach((node) => {
@@ -352,6 +409,7 @@
       updateReview();
       updateCreateAvailability();
     }
+    if (next === 'document') updateDocumentCopy();
     focusForStep(next);
   }
 
@@ -417,13 +475,211 @@
         identity_type: data.identity_type,
         identity_number: data.identity_number
       }, 'Checking identity details...');
+      const prepared = await proxyPost('register_prepare_kyc', {
+        name: data.name,
+        phone: data.phone,
+        phone_country: data.phone_country,
+        email: data.email,
+        identity_type: data.identity_type,
+        identity_number: data.identity_number
+      }, 'Preparing secure verification...');
       state.identityVerifiedKey = identityKey();
-      showStep('password', 'push');
+      resetKycState(false);
+      state.registrationKyc.registerToken = String(prepared.register_token || prepared.pre_auth_token || '');
+      state.registrationKyc.identityKey = identityKey();
+      if (!state.registrationKyc.registerToken) throw requestError('REGISTER_SESSION_INVALID', 'Registration verification could not be prepared.');
+      showStep('document', 'push');
     } catch (error) {
       showFeedback(safeErrorMessage(error, 'Identity details could not be verified. Please try again.'));
     } finally {
       state.requestInFlight = false;
       el('registerIdentityContinue').disabled = false;
+    }
+  }
+
+  function validUploadFile(file) {
+    if (!(file instanceof File)) return 'Please select a clear image.';
+    if (!['image/jpeg', 'image/png'].includes(file.type)) return 'Only clear JPG or PNG images are accepted.';
+    if (file.size <= 0 || file.size > 8 * 1024 * 1024) return 'Image size must be within 8 MB.';
+    return '';
+  }
+
+  function revokePreview(url) {
+    if (url) URL.revokeObjectURL(url);
+  }
+
+  function resetKycState(clearToken = true) {
+    stopSelfieCamera();
+    revokePreview(state.registrationKyc.documentPreviewUrl);
+    revokePreview(state.registrationKyc.selfiePreviewUrl);
+    const token = clearToken ? '' : state.registrationKyc.registerToken;
+    const key = clearToken ? '' : state.registrationKyc.identityKey;
+    state.registrationKyc = emptyKyc();
+    state.registrationKyc.registerToken = token;
+    state.registrationKyc.identityKey = key;
+    if (el('regDocumentPreview')) el('regDocumentPreview').hidden = true;
+    if (el('regDocumentPlaceholder')) el('regDocumentPlaceholder').hidden = false;
+    if (el('regDocumentStatus')) el('regDocumentStatus').textContent = 'JPG or PNG, maximum 8 MB.';
+    if (el('registerDocumentContinue')) el('registerDocumentContinue').disabled = true;
+    if (el('regSelfiePreview')) el('regSelfiePreview').hidden = true;
+    if (el('regSelfiePlaceholder')) el('regSelfiePlaceholder').hidden = false;
+    if (el('regSelfieStatus')) el('regSelfieStatus').textContent = 'Camera permission is required for a selfie.';
+    if (el('registerSelfieContinue')) el('registerSelfieContinue').disabled = true;
+    if (el('registerStartCamera')) el('registerStartCamera').hidden = false;
+    if (el('registerSelfieFallbackLabel')) el('registerSelfieFallbackLabel').hidden = false;
+    if (el('registerRetakeSelfie')) el('registerRetakeSelfie').hidden = true;
+  }
+
+  function updateDocumentCopy() {
+    const passport = el('regIdentityType').value === 'PASSPORT';
+    el('regDocumentLabel').textContent = passport ? 'Passport Photo Page' : 'NID Document';
+    el('regDocumentHint').textContent = passport
+      ? 'Upload the photo/details page of your passport.'
+      : 'Upload a clear photo of your registered NID.';
+  }
+
+  function selectDocumentFile(file) {
+    const error = validUploadFile(file);
+    if (error) return showFeedback(error);
+    revokePreview(state.registrationKyc.documentPreviewUrl);
+    state.registrationKyc.documentFile = file;
+    state.registrationKyc.documentUploaded = false;
+    state.registrationKyc.documentPreviewUrl = URL.createObjectURL(file);
+    el('regDocumentPreview').src = state.registrationKyc.documentPreviewUrl;
+    el('regDocumentPreview').hidden = false;
+    el('regDocumentPlaceholder').hidden = true;
+    el('regDocumentStatus').textContent = 'Preview ready. Continue to upload securely, or choose another photo.';
+    el('registerDocumentContinue').disabled = false;
+  }
+
+  async function continueDocument() {
+    if (state.requestInFlight) return;
+    if (state.registrationKyc.identityKey !== identityKey() || !state.registrationKyc.registerToken) {
+      return showFeedback('Please verify your identity again.');
+    }
+    if (!state.registrationKyc.documentFile) return showFeedback('Please upload the required identity document.');
+    if (state.registrationKyc.documentUploaded) {
+      showStep('selfie', 'push');
+      return;
+    }
+    state.requestInFlight = true;
+    el('registerDocumentContinue').disabled = true;
+    try {
+      const form = new FormData();
+      form.append('register_token', state.registrationKyc.registerToken);
+      form.append('upload_type', 'DOCUMENT');
+      form.append('document_photo', state.registrationKyc.documentFile, 'document-photo');
+      await proxyUpload('register_upload_kyc', form, 'Uploading identity document...');
+      state.registrationKyc.documentUploaded = true;
+      el('regDocumentStatus').textContent = 'Identity document uploaded securely.';
+      showStep('selfie', 'push');
+    } catch (error) {
+      showFeedback(safeErrorMessage(error, 'This image could not be accepted. Please try another clear photo.'));
+    } finally {
+      state.requestInFlight = false;
+      el('registerDocumentContinue').disabled = !state.registrationKyc.documentFile;
+    }
+  }
+
+  function stopSelfieCamera() {
+    const stream = state.registrationKyc?.stream;
+    if (stream) stream.getTracks().forEach((track) => track.stop());
+    if (state.registrationKyc) state.registrationKyc.stream = null;
+    if (el('regSelfieVideo')) {
+      el('regSelfieVideo').srcObject = null;
+      el('regSelfieVideo').hidden = true;
+    }
+    if (el('registerCaptureSelfie')) el('registerCaptureSelfie').hidden = true;
+    if (!state.registrationKyc?.selfieFile) {
+      if (el('registerStartCamera')) el('registerStartCamera').hidden = false;
+      if (el('registerSelfieFallbackLabel')) el('registerSelfieFallbackLabel').hidden = false;
+    }
+  }
+
+  async function startSelfieCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      el('regSelfieStatus').textContent = 'Live camera is unavailable. Use Take Photo instead.';
+      el('regSelfieFallback').click();
+      return;
+    }
+    stopSelfieCamera();
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      state.registrationKyc.stream = stream;
+      const video = el('regSelfieVideo');
+      video.srcObject = stream;
+      video.hidden = false;
+      el('regSelfiePreview').hidden = true;
+      el('regSelfiePlaceholder').hidden = true;
+      el('registerCaptureSelfie').hidden = false;
+      el('registerStartCamera').hidden = true;
+      el('registerSelfieFallbackLabel').hidden = true;
+      el('registerRetakeSelfie').hidden = true;
+      el('regSelfieStatus').textContent = 'Center your face, then capture the selfie.';
+      await video.play();
+    } catch (_) {
+      el('regSelfieStatus').textContent = 'Camera permission was denied. Allow access or use Take Photo.';
+      showFeedback('Camera permission is required to take a selfie.');
+    }
+  }
+
+  function setSelfieFile(file) {
+    const error = validUploadFile(file);
+    if (error) return showFeedback(error);
+    stopSelfieCamera();
+    revokePreview(state.registrationKyc.selfiePreviewUrl);
+    state.registrationKyc.selfieFile = file;
+    state.registrationKyc.selfieUploaded = false;
+    state.registrationKyc.selfiePreviewUrl = URL.createObjectURL(file);
+    el('regSelfiePreview').src = state.registrationKyc.selfiePreviewUrl;
+    el('regSelfiePreview').hidden = false;
+    el('regSelfiePlaceholder').hidden = true;
+    el('registerStartCamera').hidden = true;
+    el('registerSelfieFallbackLabel').hidden = true;
+    el('registerRetakeSelfie').hidden = false;
+    el('regSelfieStatus').textContent = 'Selfie preview ready. Retake if needed.';
+    el('registerSelfieContinue').disabled = false;
+  }
+
+  function captureSelfie() {
+    const video = el('regSelfieVideo');
+    if (!state.registrationKyc.stream || !video.videoWidth || !video.videoHeight) return showFeedback('Camera is not ready yet.');
+    const canvas = el('regSelfieCanvas');
+    const maxWidth = 1600;
+    const scale = Math.min(1, maxWidth / video.videoWidth);
+    canvas.width = Math.max(1, Math.round(video.videoWidth * scale));
+    canvas.height = Math.max(1, Math.round(video.videoHeight * scale));
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (!blob) return showFeedback('Selfie could not be captured. Please try again.');
+      setSelfieFile(new File([blob], 'selfie.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
+    }, 'image/jpeg', 0.9);
+  }
+
+  async function continueSelfie() {
+    if (state.requestInFlight) return;
+    if (!state.registrationKyc.documentUploaded) return showFeedback('Please upload the required identity document first.');
+    if (!state.registrationKyc.selfieFile) return showFeedback('Please capture your selfie first.');
+    if (state.registrationKyc.selfieUploaded) {
+      showStep('password', 'push');
+      return;
+    }
+    state.requestInFlight = true;
+    el('registerSelfieContinue').disabled = true;
+    try {
+      const form = new FormData();
+      form.append('register_token', state.registrationKyc.registerToken);
+      form.append('upload_type', 'SELFIE');
+      form.append('selfie_photo', state.registrationKyc.selfieFile, 'selfie-photo');
+      await proxyUpload('register_upload_kyc', form, 'Uploading selfie verification...');
+      state.registrationKyc.selfieUploaded = true;
+      el('regSelfieStatus').textContent = 'Selfie uploaded securely.';
+      showStep('password', 'push');
+    } catch (error) {
+      showFeedback(safeErrorMessage(error, 'Selfie upload failed. Please try again.'));
+    } finally {
+      state.requestInFlight = false;
+      el('registerSelfieContinue').disabled = !state.registrationKyc.selfieFile;
     }
   }
 
@@ -578,6 +834,8 @@
     el('reviewPhone').textContent = data.phone;
     el('reviewEmail').textContent = data.email;
     el('reviewIdentity').textContent = data.identity_type === 'PASSPORT' ? 'Passport' : 'NID';
+    el('reviewDocumentStatus').textContent = state.registrationKyc.documentUploaded ? 'Uploaded' : 'Not uploaded';
+    el('reviewSelfieStatus').textContent = state.registrationKyc.selfieUploaded ? 'Completed' : 'Not completed';
     el('reviewPhoneCountry').textContent = phoneCountry.name;
     el('reviewPricingCountry').textContent = pricingName(state.registrationLocation.pricingCountry);
     el('reviewCurrency').textContent = state.registrationLocation.currency || '-';
@@ -587,6 +845,10 @@
     return state.phoneVerifiedKey === phoneKey()
       && state.personalVerifiedKey === personalKey()
       && state.identityVerifiedKey === identityKey()
+      && state.registrationKyc.identityKey === identityKey()
+      && state.registrationKyc.documentUploaded
+      && state.registrationKyc.selfieUploaded
+      && Boolean(state.registrationKyc.registerToken)
       && state.passwordVerified
       && state.pinVerified
       && validatePhone() === ''
@@ -652,6 +914,9 @@
     if (state.phoneVerifiedKey !== phoneKey()) return showFeedback('Please verify your phone number again.');
     if (state.personalVerifiedKey !== personalKey()) return showFeedback('Please verify your personal information again.');
     if (state.identityVerifiedKey !== identityKey()) return showFeedback('Please verify your identity again.');
+    if (!state.registrationKyc.documentUploaded || !state.registrationKyc.selfieUploaded || !state.registrationKyc.registerToken) {
+      return showFeedback('Identity document and selfie verification are required.');
+    }
     if (!state.passwordVerified || !state.pinVerified) return showFeedback('Please verify your password and PIN again.');
     const validation = validatePhone() || validatePersonal() || validateIdentity() || validatePassword() || validatePin();
     if (validation) return showFeedback(validation);
@@ -665,7 +930,10 @@
     state.requestInFlight = true;
     el('sendRegisterOtpBtn').disabled = true;
     try {
-      const response = await proxyPost('register_send_otp', data, 'Sending registration OTP...');
+      const response = await proxyPost('register_send_otp', {
+        ...data,
+        kyc_register_token: state.registrationKyc.registerToken
+      }, 'Sending registration OTP...');
       updateOtpState(response);
       showStep('otp', 'push');
     } catch (error) {
@@ -756,6 +1024,7 @@
     el('regIdentityLabel').textContent = next === 'PASSPORT' ? 'Passport Number' : 'NID Number';
     el('regIdentityNumber').placeholder = next === 'PASSPORT' ? 'Enter your passport number' : 'Enter your NID number';
     state.identityVerifiedKey = '';
+    resetKycState();
     invalidateLocation('Verify your location after confirming identity.');
     clearOtpState();
   }
@@ -788,6 +1057,8 @@
   el('registerPhoneContinue').addEventListener('click', continuePhone);
   el('registerPersonalContinue').addEventListener('click', continuePersonal);
   el('registerIdentityContinue').addEventListener('click', continueIdentity);
+  el('registerDocumentContinue').addEventListener('click', continueDocument);
+  el('registerSelfieContinue').addEventListener('click', continueSelfie);
   el('registerPasswordContinue').addEventListener('click', continuePassword);
   el('registerPinContinue').addEventListener('click', continuePin);
   el('verifyLocationBtn').addEventListener('click', verifyRegistrationLocation);
@@ -802,6 +1073,21 @@
   document.querySelectorAll('[data-register-identity]').forEach((button) => {
     button.addEventListener('click', () => setIdentityType(button.dataset.registerIdentity));
   });
+  ['regDocumentCamera', 'regDocumentFile'].forEach((id) => {
+    el(id).addEventListener('change', (event) => {
+      const file = event.target.files?.[0] || null;
+      event.target.value = '';
+      if (file) selectDocumentFile(file);
+    });
+  });
+  el('registerStartCamera').addEventListener('click', startSelfieCamera);
+  el('registerCaptureSelfie').addEventListener('click', captureSelfie);
+  el('registerRetakeSelfie').addEventListener('click', startSelfieCamera);
+  el('regSelfieFallback').addEventListener('change', (event) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = '';
+    if (file) setSelfieFile(file);
+  });
 
   el('regPhone').addEventListener('input', () => {
     syncPhoneCountryFromInput();
@@ -810,7 +1096,7 @@
     clearOtpState();
   });
   ['regName', 'regEmail'].forEach((id) => el(id).addEventListener('input', () => { state.personalVerifiedKey = ''; clearOtpState(); updateCreateAvailability(); }));
-  el('regIdentityNumber').addEventListener('input', () => { state.identityVerifiedKey = ''; invalidateLocation('Verify your location after confirming identity.'); clearOtpState(); });
+  el('regIdentityNumber').addEventListener('input', () => { state.identityVerifiedKey = ''; resetKycState(); invalidateLocation('Verify your location after confirming identity.'); clearOtpState(); });
   ['regPassword', 'regConfirmPassword'].forEach((id) => el(id).addEventListener('input', () => { state.passwordVerified = false; state.pinVerified = false; clearOtpState(); updateCreateAvailability(); }));
   ['regPin', 'regConfirmPin'].forEach((id) => el(id).addEventListener('input', () => { state.pinVerified = false; clearOtpState(); updateCreateAvailability(); }));
   el('regTermsAccepted').addEventListener('change', updateCreateAvailability);
@@ -841,6 +1127,7 @@
     activeRequests.forEach((controller) => controller.abort());
     activeRequests.clear();
     clearOtpTimer();
+    stopSelfieCamera();
     clearSensitiveFields();
     resetBusy();
     document.documentElement.style.removeProperty('--register-keyboard-inset');
@@ -855,6 +1142,7 @@
     state.phoneVerifiedKey = '';
     state.personalVerifiedKey = '';
     state.identityVerifiedKey = '';
+    resetKycState();
     state.passwordVerified = false;
     state.pinVerified = false;
     showStep('phone', 'replace');

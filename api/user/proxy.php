@@ -3756,6 +3756,30 @@ function user_proxy_forward_auth_post(string $relativePath, array $body, string 
     );
 }
 
+function user_proxy_forward_auth_multipart(
+    string $relativePath,
+    array $fields,
+    array $files,
+    string $fallbackCode,
+    string $fallbackMessage
+): void {
+    $res = user_proxy_internal_multipart_request(
+        $relativePath,
+        $fields,
+        $files,
+        ['X-APP-KEY' => APP_KEY, 'X-ZPAY-CLIENT' => 'USER_WEB']
+    );
+    $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+
+    user_proxy_response(
+        !empty($res['ok']),
+        (string)($json['code'] ?? $fallbackCode),
+        (string)($json['message'] ?? $fallbackMessage),
+        (array)($json['data'] ?? []),
+        (int)(($res['status'] ?? 0) > 0 ? $res['status'] : 502)
+    );
+}
+
 /* =========================================================
    Router
 ========================================================= */
@@ -5267,6 +5291,33 @@ switch ($action) {
         user_proxy_response(false, 'VALIDATION_ERROR', 'Invalid registration precheck stage.', [], 422);
         break;
 
+    case 'register_prepare_kyc':
+        user_proxy_require_method('POST');
+        $body = user_proxy_read_json_body();
+        user_proxy_forward_auth_post('auth/user_register_prepare_kyc.php', [
+            'name' => trim((string)($body['name'] ?? '')),
+            'phone' => trim((string)($body['phone'] ?? '')),
+            'phone_country' => auth_normalize_country_code((string)($body['phone_country'] ?? '')),
+            'email' => trim((string)($body['email'] ?? '')),
+            'identity_type' => strtoupper(trim((string)($body['identity_type'] ?? ''))),
+            'identity_number' => trim((string)($body['identity_number'] ?? '')),
+        ], 'REGISTER_KYC_PREPARE_FAILED', 'Registration verification could not be prepared.');
+        break;
+
+    case 'register_upload_kyc':
+        user_proxy_require_method('POST');
+        $fields = array_intersect_key($_POST, array_flip([
+            'pre_auth_token', 'register_token', 'upload_type', 'kyc_type',
+        ]));
+        user_proxy_forward_auth_multipart(
+            'auth/register_upload_kyc.php',
+            $fields,
+            array_intersect_key($_FILES, array_flip(['document_photo', 'selfie_photo', 'file'])),
+            'REGISTER_KYC_UPLOAD_FAILED',
+            'Verification image could not be uploaded.'
+        );
+        break;
+
     case 'register':
     case 'register_send_otp':
         user_proxy_require_method('POST');
@@ -5292,6 +5343,7 @@ switch ($action) {
             'gps_lat' => $body['gps_lat'] ?? null,
             'gps_lng' => $body['gps_lng'] ?? null,
             'gps_accuracy' => $body['gps_accuracy'] ?? null,
+            'kyc_register_token' => trim((string)($body['kyc_register_token'] ?? '')),
         ], 'REGISTER_OTP_SEND_FAILED', 'Failed to send register OTP');
         break;
 
