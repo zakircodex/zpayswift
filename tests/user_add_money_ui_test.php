@@ -87,7 +87,11 @@ expect_add_money(
 expect_add_money(
     str_contains($css, '#addMoneySection .add-money-account-card.selected')
     && str_contains($css, '#addMoneySection .add-money-receipt-preview')
-    && str_contains($css, 'grid-template-columns: 52px minmax(0, 1fr) 44px')
+    && str_contains($css, 'grid-template-columns: 44px minmax(0, 1fr) 40px')
+    && str_contains($css, 'min-height: 90px')
+    && str_contains($css, 'grid-template-columns: 48px minmax(0, 1fr)')
+    && str_contains($css, '#addMoneySection .add-money-support-card')
+    && str_contains($css, 'width: min(100%, 720px)')
     && str_contains($css, '@media'),
     'Responsive Add Money account/receipt styling is incomplete'
 );
