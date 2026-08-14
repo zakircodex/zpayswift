@@ -27,6 +27,16 @@ expect_add_money(
     'Isolated Add Money page shell is missing or old intro card remains'
 );
 expect_add_money(
+    str_contains($page, "'show_header' => false")
+    && str_contains($page, "'show_drawer' => false")
+    && str_contains($page, "'show_bottom_nav' => true")
+    && str_contains($page, 'id="addMoneyBackButton"')
+    && str_contains($page, 'href="/user/dashboard"')
+    && str_contains($page, 'class="add-money-page-header"')
+    && !str_contains($page, 'id="openSidebarBtn"'),
+    'Add Money must use a Back header with the shared bottom navigation and no menu trigger'
+);
+expect_add_money(
     str_contains($js, 'function addMoneyCountryProfile')
     && str_contains($js, 'profile.pricing_country')
     && !str_contains($js, 'phone_country'),
@@ -91,6 +101,8 @@ expect_add_money(
     && str_contains($css, 'min-height: 90px')
     && str_contains($css, 'grid-template-columns: 48px minmax(0, 1fr)')
     && str_contains($css, '#addMoneySection .add-money-support-card')
+    && str_contains($css, '#addMoneySection .add-money-page-header')
+    && str_contains($css, '#addMoneySection .add-money-header-button')
     && str_contains($css, 'width: min(100%, 720px)')
     && str_contains($css, '@media'),
     'Responsive Add Money account/receipt styling is incomplete'
