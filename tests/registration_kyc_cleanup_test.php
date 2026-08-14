@@ -346,6 +346,7 @@ $confirmSource = file_get_contents($root . '/api/auth/user_register_confirm.php'
 $reviewSource = file_get_contents($root . '/api/lib/account_review.php') ?: '';
 cleanup_expect(str_contains($configSource, 'REGISTRATION_KYC_TEMP_TTL_SECONDS') && str_contains($configSource, '60 * 60 * 72'), 'example config must document the conservative 72-hour retention');
 cleanup_expect(str_contains($cliSource, "PHP_SAPI !== 'cli'") && str_contains($cliSource, '--dry-run') && str_contains($cliSource, '--limit='), 'cleanup command must be CLI-only with dry-run and batch controls');
+cleanup_expect(str_contains($cliSource, 'app_private_config_path()') && str_contains($cliSource, 'exit(1);'), 'missing cleanup configuration must fail with a non-zero CLI exit');
 cleanup_expect(!str_contains($cliSource, 'document_path_private') && !str_contains($cliSource, 'selfie_path_private'), 'CLI output must not expose private KYC paths');
 cleanup_expect(str_contains($helperSource, 'fb_put_if_match') && str_contains($helperSource, 'fb_delete_if_match'), 'cleanup metadata must use Firebase CAS claim/delete');
 cleanup_expect(!str_contains($helperSource, "fb_get_with_etag('USERS')"), 'cleanup must not read the full user tree');

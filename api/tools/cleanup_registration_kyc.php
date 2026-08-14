@@ -7,6 +7,13 @@ if (PHP_SAPI !== 'cli') {
 }
 
 $apiRoot = dirname(__DIR__);
+require_once $apiRoot . '/lib/app_paths.php';
+$privateConfigPath = app_private_config_path();
+if (!is_file($privateConfigPath) || !is_readable($privateConfigPath)) {
+    fwrite(STDERR, "KYC cleanup configuration is unavailable.\n");
+    exit(1);
+}
+
 require_once $apiRoot . '/bootstrap.php';
 require_once $apiRoot . '/lib/user_registration_kyc.php';
 
