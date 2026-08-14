@@ -12,10 +12,23 @@
   const SHARE_ALLOWED_LABELS = new Set([
     'DATE', 'PROVIDER', 'REQUEST ID', 'BUNDLE', 'NUMBER', 'OPERATOR', 'RECEIVER NUMBER',
     'AMOUNT', 'BDT AMOUNT', 'MYR AMOUNT', 'MYR PAID', 'RATE', 'COMMISSION', 'FEE',
-    'TOTAL PAID', 'WALLET DEBIT', 'BALANCE AFTER', 'PAID', 'REFERENCE',
+    'TOTAL PAID', 'WALLET DEBIT', 'PAID', 'REFERENCE',
     'SENDER LAST DIGIT', 'TRANSFER ID', 'SENDER', 'RECEIVER', 'ACCOUNT', 'PHONE',
     'AMOUNT RECEIVED', 'PAYMENT ACCOUNT', 'TRANSACTION ID'
   ]);
+  const SHARE_LAYOUT = Object.freeze({
+    width: 1080,
+    cardInset: 34,
+    cardPadding: 42,
+    minHeight: 720,
+    titleY: 188,
+    titleLineHeight: 64,
+    badgeHeight: 58,
+    badgeToRows: 102,
+    labelToValue: 42,
+    valueLineHeight: 43,
+    rowGap: 18
+  });
   const state = {
     rows: [],
     loading: false,
@@ -576,10 +589,19 @@
     else hideDetails();
   }
 
+  function normalizedShareLabel(value) {
+    return text(value).toUpperCase().replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  function isShareAllowedLabel(value) {
+    const label = normalizedShareLabel(value);
+    return SHARE_ALLOWED_LABELS.has(label) && !/\bBALANCE\b/.test(label);
+  }
+
   function shareRows(item) {
     return item.detailRows.filter((entry) => {
-      const label = entry.label.toUpperCase();
-      if (!SHARE_ALLOWED_LABELS.has(label)) return false;
+      const label = normalizedShareLabel(entry.label);
+      if (!isShareAllowedLabel(label)) return false;
       return !(item.source === 'BUNDLE' && ['COMMISSION', 'RATE'].includes(label));
     });
   }
@@ -618,23 +640,44 @@
     context.roundRect(x, y, width, height, safeRadius);
   }
 
-  async function createShareBlob(item) {
-    await document.fonts?.ready?.catch?.(() => {});
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Canvas is unavailable.');
-    const width = 1080;
-    const padding = 76;
-    const contentWidth = width - padding * 2;
-    const rows = shareRows(item);
+  function prepareShareLayout(context, item) {
+    const contentX = SHARE_LAYOUT.cardInset + SHARE_LAYOUT.cardPadding;
+    const contentWidth = SHARE_LAYOUT.width - contentX * 2;
     context.font = '500 34px system-ui, sans-serif';
-    const prepared = rows.map((entry) => ({
+    const valueDescent = Math.max(8, Math.ceil(context.measureText('Ag').actualBoundingBoxDescent || 0));
+    const rows = shareRows(item).map((entry) => ({
       label: entry.label,
       lines: wrapCanvasText(context, entry.value, contentWidth)
     }));
     context.font = '800 52px system-ui, sans-serif';
     const titleLines = wrapCanvasText(context, item.title, contentWidth);
-    const height = Math.max(720, 300 + titleLines.length * 64 + prepared.reduce((total, entry) => total + 54 + entry.lines.length * 43, 0));
+    const badgeY = SHARE_LAYOUT.titleY + titleLines.length * SHARE_LAYOUT.titleLineHeight;
+    let rowY = badgeY + SHARE_LAYOUT.badgeToRows;
+    let contentBottom = badgeY - 6 + SHARE_LAYOUT.badgeHeight;
+    const preparedRows = rows.map((entry) => {
+      const labelY = rowY;
+      const firstValueY = labelY + SHARE_LAYOUT.labelToValue;
+      const lineYs = entry.lines.map((line, index) => firstValueY + index * SHARE_LAYOUT.valueLineHeight);
+      const lastValueY = lineYs[lineYs.length - 1];
+      contentBottom = lastValueY + valueDescent;
+      rowY = lastValueY + SHARE_LAYOUT.valueLineHeight + SHARE_LAYOUT.rowGap;
+      return { ...entry, labelY, lineYs };
+    });
+    const height = Math.max(
+      SHARE_LAYOUT.minHeight,
+      Math.ceil(contentBottom + SHARE_LAYOUT.cardPadding + SHARE_LAYOUT.cardInset)
+    );
+    return { contentX, contentWidth, titleLines, badgeY, rows: preparedRows, contentBottom, height };
+  }
+
+  async function createShareBlob(item) {
+    await document.fonts?.ready?.catch?.(() => {});
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Canvas is unavailable.');
+    const layout = prepareShareLayout(context, item);
+    const width = SHARE_LAYOUT.width;
+    const height = layout.height;
     canvas.width = width;
     canvas.height = height;
     const gradient = context.createLinearGradient(0, 0, width, height);
@@ -642,7 +685,14 @@
     gradient.addColorStop(1, '#0b2d5c');
     context.fillStyle = gradient;
     context.fillRect(0, 0, width, height);
-    roundedRect(context, 34, 34, width - 68, height - 68, 46);
+    roundedRect(
+      context,
+      SHARE_LAYOUT.cardInset,
+      SHARE_LAYOUT.cardInset,
+      width - SHARE_LAYOUT.cardInset * 2,
+      height - SHARE_LAYOUT.cardInset * 2,
+      46
+    );
     context.fillStyle = '#10284f';
     context.fill();
     context.strokeStyle = 'rgba(78, 127, 168, 0.85)';
@@ -655,36 +705,32 @@
     context.fillText('Z-Pay Swift', width / 2, 118);
     context.fillStyle = '#ffffff';
     context.font = '800 52px system-ui, sans-serif';
-    let y = 188;
-    titleLines.forEach((line) => {
-      context.fillText(line, width / 2, y);
-      y += 64;
+    let titleY = SHARE_LAYOUT.titleY;
+    layout.titleLines.forEach((line) => {
+      context.fillText(line, width / 2, titleY);
+      titleY += SHARE_LAYOUT.titleLineHeight;
     });
     const info = statusInfo(item.status);
     context.font = '800 29px system-ui, sans-serif';
     const badgeWidth = Math.max(176, context.measureText(info.label).width + 70);
-    roundedRect(context, (width - badgeWidth) / 2, y - 6, badgeWidth, 58, 29);
+    roundedRect(context, (width - badgeWidth) / 2, layout.badgeY - 6, badgeWidth, SHARE_LAYOUT.badgeHeight, 29);
     context.fillStyle = info.className === 'successful' ? 'rgba(50,230,134,.14)' : info.className === 'failed' ? 'rgba(255,122,122,.14)' : 'rgba(255,255,255,.08)';
     context.fill();
     context.strokeStyle = info.className === 'successful' ? '#32e686' : info.className === 'failed' ? '#ff8b8b' : '#c8d6ec';
     context.stroke();
     context.fillStyle = info.className === 'successful' ? '#32e686' : info.className === 'failed' ? '#ff8b8b' : '#c8d6ec';
-    context.fillText(info.label, width / 2, y + 33);
-    y += 102;
+    context.fillText(info.label, width / 2, layout.badgeY + 33);
 
     context.textAlign = 'left';
-    prepared.forEach((entry) => {
+    layout.rows.forEach((entry) => {
       context.fillStyle = '#8ea3c6';
       context.font = '700 28px system-ui, sans-serif';
-      context.fillText(entry.label, padding, y);
-      y += 42;
+      context.fillText(entry.label, layout.contentX, entry.labelY);
       context.fillStyle = '#ffffff';
       context.font = '500 34px system-ui, sans-serif';
-      entry.lines.forEach((line) => {
-        context.fillText(line, padding, y);
-        y += 43;
+      entry.lines.forEach((line, index) => {
+        context.fillText(line, layout.contentX, entry.lineYs[index]);
       });
-      y += 18;
     });
 
     return new Promise((resolve, reject) => canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Image creation failed.')), 'image/png'));

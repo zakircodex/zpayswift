@@ -122,11 +122,42 @@ history_ui_expect(
 
 history_ui_expect(
     str_contains($js, 'SHARE_ALLOWED_LABELS')
+    && str_contains($js, 'function isShareAllowedLabel(value)')
+    && str_contains($js, "return SHARE_ALLOWED_LABELS.has(label) && !/\\bBALANCE\\b/.test(label);")
+    && str_contains($js, 'if (!isShareAllowedLabel(label)) return false;')
     && str_contains($js, "item.source === 'BUNDLE'")
     && str_contains($js, "['COMMISSION', 'RATE'].includes(label)")
     && !str_contains($js, "'UID', 'SESSION TOKEN'")
     && !str_contains($js, 'receipt_token'),
     'Share allowlist does not preserve Android privacy behavior'
+);
+
+$shareAllowedStart = strpos($js, 'const SHARE_ALLOWED_LABELS');
+$shareAllowedEnd = strpos($js, 'const SHARE_LAYOUT');
+$shareAllowedBlock = ($shareAllowedStart !== false && $shareAllowedEnd !== false && $shareAllowedEnd > $shareAllowedStart)
+    ? substr($js, $shareAllowedStart, $shareAllowedEnd - $shareAllowedStart)
+    : '';
+history_ui_expect(
+    $shareAllowedBlock !== '' && !str_contains($shareAllowedBlock, 'BALANCE'),
+    'Balance labels must never be part of the History share allowlist'
+);
+
+history_ui_expect(
+    str_contains($js, 'function prepareShareLayout(context, item)')
+    && str_contains($js, "actualBoundingBoxDescent")
+    && str_contains($js, 'const lastValueY = lineYs[lineYs.length - 1]')
+    && str_contains($js, 'contentBottom = lastValueY + valueDescent')
+    && str_contains($js, 'Math.ceil(contentBottom + SHARE_LAYOUT.cardPadding + SHARE_LAYOUT.cardInset)')
+    && str_contains($js, 'layout.rows.forEach((entry) =>')
+    && str_contains($js, 'entry.lineYs[index]'),
+    'Share card height must be driven by the final rendered wrapped line'
+);
+
+history_ui_expect(
+    str_contains($js, "if (context.measureText(word).width > maxWidth)")
+    && str_contains($js, 'Array.from(word).forEach((character) =>')
+    && str_contains($js, 'context.measureText(next).width > maxWidth'),
+    'Long unbroken transaction IDs must wrap within the share card width'
 );
 
 history_ui_expect(

@@ -369,8 +369,8 @@ if ($path === '/api/user/proxy.php') {
                 'created_at' => time() - 7200,
             ],
             [
-                'transfer_id' => 'TRANSFER-LOCAL-SENT',
-                'request_id' => 'TRANSFER-LOCAL-SENT',
+                'transfer_id' => 'WTR2026081413273051B7C03A64-EXTRA-LONG-IDENTIFIER-FOR-WRAP-COVERAGE-0001',
+                'request_id' => 'WTR2026081413273051B7C03A64-EXTRA-LONG-IDENTIFIER-FOR-WRAP-COVERAGE-0001',
                 'direction' => 'DEBIT',
                 'status' => 'COMPLETED',
                 'counterparty_name' => 'LOCAL RECEIVER',
