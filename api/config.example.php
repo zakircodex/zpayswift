@@ -34,6 +34,9 @@ define('OTP_RESEND_COOLDOWN_SECONDS', 60);
 define('OTP_SEND_LIMIT_PER_HOUR', 12);
 /* New Add Money receipt capabilities expire; historical unversioned links remain compatible. */
 define('RECEIPT_TOKEN_TTL_SECONDS', 60 * 60 * 24 * 30);
+/* Abandoned pre-registration KYC is eligible 72 hours after its session expires. */
+define('REGISTRATION_KYC_TEMP_TTL_SECONDS', 60 * 60 * 72);
+define('REGISTRATION_KYC_CLEANUP_BATCH_LIMIT', 100);
 
 /* BulkSMSBD OTP SMS */
 define('BULKSMSBD_SMS_API_URL', 'https://bulksmsbd.net/api/smsapi');
