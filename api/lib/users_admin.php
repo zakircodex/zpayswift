@@ -231,8 +231,11 @@ function admin_users_find_user_by_uid(string $uid): array
         'country_mismatch' => array_key_exists('country_mismatch', $user)
             ? (bool)$user['country_mismatch']
             : (
-                function_exists('auth_phone_country_from_user')
-                && auth_phone_country_from_user($user) !== admin_users_country_code($user, $wallet)
+                function_exists('market_gps_ip_country_mismatch')
+                && market_gps_ip_country_mismatch(
+                    $user['gps_country'] ?? '',
+                    $user['ip_country'] ?? ''
+                )
             ),
         'created_ip' => (string)($user['created_ip'] ?? $user['registration_ip'] ?? ''),
         'last_login_ip' => (string)($user['last_login_ip'] ?? ''),
@@ -546,8 +549,11 @@ function admin_users_list_users(
             'country_mismatch' => array_key_exists('country_mismatch', $row)
                 ? (bool)$row['country_mismatch']
                 : (
-                    function_exists('auth_phone_country_from_user')
-                    && auth_phone_country_from_user($row) !== admin_users_country_code($row, $wallet)
+                    function_exists('market_gps_ip_country_mismatch')
+                    && market_gps_ip_country_mismatch(
+                        $row['gps_country'] ?? '',
+                        $row['ip_country'] ?? ''
+                    )
                 ),
             'created_ip' => (string)($row['created_ip'] ?? $row['registration_ip'] ?? ''),
             'last_login_ip' => (string)($row['last_login_ip'] ?? ''),

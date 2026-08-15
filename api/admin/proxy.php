@@ -745,7 +745,7 @@ function proxy_forward_api_post(string $relativePath, array $body = []): void
         proxy_response(
             false,
             (string)($json['code'] ?? 'SERVER_ERROR'),
-            (string)($json['message'] ?? $res['error'] ?? 'Admin request failed'),
+            (string)($json['message'] ?? 'Admin request failed'),
             (array)($json['data'] ?? []),
             $res['status'] > 0 ? $res['status'] : 500
         );
@@ -821,7 +821,7 @@ function proxy_counts_from_existing_topup_lists(): void
     $warnings = [
         'status_counts' => [
             'code' => (string)(($fast['json']['code'] ?? '') ?: 'SERVER_ERROR'),
-            'message' => (string)(($fast['json']['message'] ?? '') ?: ($fast['error'] ?? 'status_counts.php failed')),
+            'message' => (string)(($fast['json']['message'] ?? '') ?: 'Unable to load status counts.'),
         ],
     ];
 
@@ -838,7 +838,7 @@ function proxy_counts_from_existing_topup_lists(): void
 
             $warnings[$bucket] = [
                 'code' => (string)($json['code'] ?? 'SERVER_ERROR'),
-                'message' => (string)($json['message'] ?? $res['error'] ?? 'Failed to load ' . $bucket),
+                'message' => (string)($json['message'] ?? 'Failed to load ' . $bucket),
             ];
 
             continue;

@@ -31,6 +31,7 @@ const state = {
   autoRefreshSeconds: Number(localStorage.getItem('zaw_admin_auto_refresh') || 0),
   autoRefreshTimer: null,
   autoRefreshUiTimer: null,
+  refreshInFlight: false,
   lastRefreshAt: 0,
   nextRefreshAt: 0,
 
@@ -197,7 +198,7 @@ function readJsonSafeFromText(text){
   try{
     return JSON.parse(text);
   }catch(_){
-    throw new Error(text.length > 500 ? text.slice(0, 500) : text);
+    throw new Error('Invalid response from server');
   }
 }
 
@@ -1197,6 +1198,9 @@ async function loadSectionData(sectionId, force = false){
 }
 
 async function refreshCurrentView(silent = false){
+  if (state.refreshInFlight) return;
+
+  state.refreshInFlight = true;
   const sectionId = activeSectionId();
 
   const options = silent
@@ -1243,6 +1247,7 @@ async function refreshCurrentView(silent = false){
 
     log(err.message || 'Refresh failed');
   }finally{
+    state.refreshInFlight = false;
     if (!silent) setBusy(false);
   }
 }

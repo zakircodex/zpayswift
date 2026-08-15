@@ -63,7 +63,10 @@ api_response(true, 'SUCCESS', 'User loaded', [
     'gps_accuracy' => (float)($user['gps_accuracy'] ?? 0),
     'country_mismatch' => array_key_exists('country_mismatch', $user)
         ? (bool)$user['country_mismatch']
-        : auth_phone_country_from_user($user) !== admin_user_get_country_code($user, $wallet),
+        : market_gps_ip_country_mismatch(
+            $user['gps_country'] ?? '',
+            $user['ip_country'] ?? ''
+        ),
     'vpn_suspected' => (bool)($user['vpn_suspected'] ?? false),
     'market_detection_source' => (string)($user['market_detection_source'] ?? ''),
     'account_review_reason' => (string)($user['account_review_reason'] ?? ''),

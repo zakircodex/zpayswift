@@ -176,7 +176,7 @@
   async function readJson(res){
     var text=await res.text();
     var json={};
-    try{json=JSON.parse(text);}catch(e){throw new Error(text||'Invalid server response');}
+    try{json=JSON.parse(text);}catch(e){throw new Error('Invalid response from server');}
     if(!res.ok||!json.ok){
       var er=new Error(json.message||'Request failed');
       er.code=json.code||'ERROR';

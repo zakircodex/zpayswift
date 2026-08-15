@@ -289,7 +289,10 @@ function admin_users_list_make_item(string $uid, array $user, array $wallet): ar
         'gps_country' => strtoupper(trim((string)($user['gps_country'] ?? ''))),
         'country_mismatch' => array_key_exists('country_mismatch', $user)
             ? (bool)$user['country_mismatch']
-            : $phoneCountry !== $country,
+            : market_gps_ip_country_mismatch(
+                $user['gps_country'] ?? '',
+                $user['ip_country'] ?? ''
+            ),
         'vpn_suspected' => (bool)($user['vpn_suspected'] ?? false),
         'market_detection_source' => (string)($user['market_detection_source'] ?? ''),
         'account_review_reason' => (string)($user['account_review_reason'] ?? ''),

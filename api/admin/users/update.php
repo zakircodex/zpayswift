@@ -105,6 +105,18 @@ $country = normalize_admin_country((string)(
     ?? ''
 ));
 
+if ($roleProvided && !is_valid_role($body['role'] ?? null)) {
+    api_response(false, 'VALIDATION_ERROR', 'Invalid role', ['field' => 'role'], 422);
+}
+
+$requestedStatus = strtoupper(trim((string)($body['status'] ?? '')));
+if (
+    $statusProvided
+    && !in_array($requestedStatus, ['ACTIVE', 'INACTIVE', 'REVIEW', 'BLOCKED', 'REJECTED'], true)
+) {
+    api_response(false, 'VALIDATION_ERROR', 'Invalid status', ['field' => 'status'], 422);
+}
+
 $commissionPer1000 = $commissionProvided ? (float)$body['commission_per_1000'] : null;
 $apiEnabled = $apiEnabledProvided ? admin_bool_or_null($body['api_enabled']) : null;
 $topupEnabled = $topupEnabledProvided ? admin_bool_or_null($body['topup_enabled']) : null;
@@ -254,7 +266,15 @@ if ($countryProvided) {
     $updates['service_country'] = $country;
     $updates['currency'] = $country === 'MY' ? 'MYR' : 'BDT';
     $updates['wallet_currency'] = $country === 'MY' ? 'MYR' : 'BDT';
-    $updates['country_mismatch'] = auth_phone_country_from_user($user) !== $country;
+    $updates['country_mismatch'] = array_key_exists('country_mismatch', $user)
+        ? (bool)$user['country_mismatch']
+        : (
+            function_exists('market_gps_ip_country_mismatch')
+            && market_gps_ip_country_mismatch(
+                $user['gps_country'] ?? '',
+                $user['ip_country'] ?? ''
+            )
+        );
 }
 
 /*

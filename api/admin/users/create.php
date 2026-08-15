@@ -61,8 +61,19 @@ $currency = auth_country_currency($pricingCountry);
 $email = strtolower(trim((string)($body['email'] ?? '')));
 $password = (string)($body['password'] ?? '');
 $pin = (string)($body['pin'] ?? '');
-$role = normalize_admin_role($body['role'] ?? 'USER');
-$status = normalize_admin_status($body['status'] ?? 'ACTIVE');
+$requestedRole = $body['role'] ?? 'USER';
+$requestedStatus = strtoupper(trim((string)($body['status'] ?? 'ACTIVE')));
+
+if (!is_valid_role($requestedRole)) {
+    api_response(false, 'VALIDATION_ERROR', 'Invalid role', ['field' => 'role'], 422);
+}
+
+if (!in_array($requestedStatus, ['ACTIVE', 'INACTIVE'], true)) {
+    api_response(false, 'VALIDATION_ERROR', 'Invalid status', ['field' => 'status'], 422);
+}
+
+$role = normalize_admin_role($requestedRole);
+$status = normalize_admin_status($requestedStatus);
 $commissionPer1000 = $commissionProvided
     ? (float)$body['commission_per_1000']
     : role_default_commission_per_1000($role);
