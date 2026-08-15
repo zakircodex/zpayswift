@@ -103,6 +103,9 @@ expect_add_money(
     && str_contains($css, '#addMoneySection .add-money-support-card')
     && str_contains($css, '#addMoneySection .add-money-page-header')
     && str_contains($css, '#addMoneySection .add-money-header-button')
+    && str_contains($css, 'top: calc(8px + env(safe-area-inset-top))')
+    && str_contains($css, 'margin: calc(12px + env(safe-area-inset-top)) 0 14px')
+    && str_contains($css, 'inset: calc(-8px - env(safe-area-inset-top)) -1px auto')
     && str_contains($css, 'width: min(100%, 720px)')
     && str_contains($css, '@media'),
     'Responsive Add Money account/receipt styling is incomplete'
