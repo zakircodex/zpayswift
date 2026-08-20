@@ -17,6 +17,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/admin/assets/admin-ux.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-ux.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-users.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-users.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-operations.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-operations.css') ?: 1)) ?>">
+  <link rel="stylesheet" href="/api/admin/assets/admin-transactions.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-transactions.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
@@ -363,43 +364,46 @@ header('Pragma: no-cache');
       </section>
 
       <section class="section" id="topupSection">
-        <div class="card">
-          <div class="panel-head">
+        <div class="card admin-topup-card">
+          <div class="panel-head admin-transaction-panel-head">
             <div>
               <h3>Topup Requests</h3>
               <p>Pending, claimed, processing and done.</p>
             </div>
-            <div class="tabs">
-              <button class="tab-btn active" data-topup-tab="pending">Pending</button>
-              <button class="tab-btn" data-topup-tab="claimed">Claimed</button>
-              <button class="tab-btn" data-topup-tab="processing">Processing</button>
-              <button class="tab-btn" data-topup-tab="done">Done</button>
+            <div class="tabs topup-status-tabs" aria-label="Top-Up request status">
+              <button class="tab-btn active" data-topup-tab="pending" type="button">Pending</button>
+              <button class="tab-btn" data-topup-tab="claimed" type="button">Claimed</button>
+              <button class="tab-btn" data-topup-tab="processing" type="button">Processing</button>
+              <button class="tab-btn" data-topup-tab="done" type="button">Done</button>
             </div>
           </div>
 
-          <div class="toolbar">
-            <div class="toolbar-left">
+          <div class="toolbar admin-transaction-toolbar">
+            <label class="toolbar-left admin-transaction-search" for="topupSearch">
+              <span>Search queue</span>
               <input class="input md" id="topupSearch" placeholder="Search request id / uid / number / operator">
-            </div>
+            </label>
             <div class="toolbar-right">
-              <button class="btn ghost" id="reloadTopupBtn">Reload Topup</button>
+              <button class="btn ghost" id="reloadTopupBtn" type="button">Reload Topup</button>
             </div>
           </div>
 
-          <div class="table-wrap">
-            <table>
+          <div class="table-wrap admin-transaction-table-wrap topup-table-wrap">
+            <table class="admin-transaction-table topup-requests-table">
               <thead>
                 <tr>
                   <th>Request</th>
                   <th>User</th>
-                  <th>Topup</th>
+                  <th>Service</th>
+                  <th>Wallet</th>
                   <th>Status</th>
-                  <th>Time</th>
-                  <th>Action</th>
+                  <th>Created</th>
+                  <th>Worker</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="topupTableBody">
-                <tr><td colspan="6" class="empty">No data yet.</td></tr>
+                <tr><td colspan="8" class="empty admin-transaction-state">No data yet.</td></tr>
               </tbody>
             </table>
           </div>
@@ -410,30 +414,32 @@ header('Pragma: no-cache');
 
   
 
-  <div class="card">
-    <div class="panel-head">
+  <div class="card admin-bundle-card">
+    <div class="panel-head admin-transaction-panel-head">
       <div>
         <h3>Bundle Requests</h3>
         <p>Pending bundle queue with manual success / failed actions.</p>
       </div>
 
-      <button class="btn ghost" id="reloadBundleBtn">Reload Bundles</button>
+      <button class="btn ghost" id="reloadBundleBtn" type="button">Reload Bundles</button>
     </div>
 
-    <div class="table-wrap">
-      <table>
+    <div class="table-wrap admin-transaction-table-wrap bundle-table-wrap">
+      <table class="admin-transaction-table bundle-requests-table">
         <thead>
           <tr>
             <th>Request</th>
             <th>User</th>
             <th>Bundle</th>
-            <th>Time</th>
-            <th>Action</th>
+            <th>Financials</th>
+            <th>Status</th>
+            <th>Created</th>
+            <th>Actions</th>
           </tr>
         </thead>
 
         <tbody id="bundleTableBody">
-          <tr><td colspan="5" class="empty">No data yet.</td></tr>
+          <tr><td colspan="7" class="empty admin-transaction-state">No data yet.</td></tr>
         </tbody>
       </table>
     </div>
@@ -444,16 +450,16 @@ header('Pragma: no-cache');
       
       
       <section class="section" id="bundleOffersSection">
-  <div class="card">
-    <div class="panel-head">
+  <div class="card bundle-offers-card">
+    <div class="panel-head bundle-offers-panel-head">
       <div>
         <h3>Bundle Offers</h3>
         <p>Create, edit, expire and delete bundle offers shown to users, retailers and subadmins.</p>
       </div>
 
       <div class="row-actions">
-        <button class="btn brand" id="createBundleOfferBtn">Add Bundle</button>
-        <button class="btn ghost" id="reloadBundleOffersBtn">Reload Offers</button>
+        <button class="btn brand" id="createBundleOfferBtn" type="button">Add Bundle</button>
+        <button class="btn ghost" id="reloadBundleOffersBtn" type="button">Reload Offers</button>
       </div>
     </div>
 
@@ -472,8 +478,8 @@ header('Pragma: no-cache');
       </div>
     </div>
 
-    <div class="table-wrap">
-      <table>
+    <div class="table-wrap bundle-offers-table-wrap">
+      <table class="bundle-offers-table">
         <thead>
           <tr>
             <th>Offer</th>

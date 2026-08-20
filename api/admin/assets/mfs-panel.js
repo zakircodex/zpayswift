@@ -27,7 +27,16 @@
   function money(v){ var n=Number(v||0); return Number.isFinite(n)?n.toFixed(2):'0.00'; }
   function ts(v){ var n=Number(v||0); if(!n)return '-'; var d=new Date(String(Math.trunc(n)).length<=10?n*1000:n); return isNaN(d.getTime())?'-':d.toLocaleString(); }
   function msg(text,type){ var box=el('mfsPageMsg'); if(!box)return; box.className='mfs-msg '+(type||''); box.textContent=String(text||''); }
-  function statusPill(v){ var t=String(v||'-').toUpperCase(); var cls='info'; if(['SUCCESS','SUCCESSFUL','DONE','COMPLETED'].indexOf(t)>=0)cls='success'; else if(['FAILED','CANCELLED'].indexOf(t)>=0)cls='danger'; else if(['PENDING','PROCESSING','WAITING_ADMIN'].indexOf(t)>=0)cls='warning'; return '<span class="pill '+cls+'">'+esc(t)+'</span>'; }
+  function statusPill(v){
+    var status=String(v||'-').toUpperCase();
+    var cls='info';
+    var label=status;
+    if(['SUCCESS','SUCCESSFUL','DONE','COMPLETED'].indexOf(status)>=0){cls='success';label='Successful';}
+    else if(['FAILED','CANCELLED','REJECTED','REFUNDED'].indexOf(status)>=0){cls='danger';label='Failed';}
+    else if(['PROCESSING','CLAIMED','DIALING'].indexOf(status)>=0){cls='processing';label='Processing';}
+    else if(['PENDING','WAITING_ADMIN','WAITING_APPROVAL','ADMIN_PENDING'].indexOf(status)>=0){cls='warning';label='Pending';}
+    return '<span class="pill mfs-status-pill '+cls+' status-'+esc(status.toLowerCase())+'">'+esc(label)+'</span>';
+  }
   function normalizeRows(data){ return Array.isArray(data.items)?data.items:Array.isArray(data.rows)?data.rows:Array.isArray(data.requests)?data.requests:[]; }
   function totalRows(data){ var total=Number(data&&data.pagination&&data.pagination.total); return Number.isFinite(total)?total:normalizeRows(data||{}).length; }
   function rowNumber(r){ return r.receiver_number||r.number||r.mfs_number||r.to_number||'-'; }
@@ -64,6 +73,66 @@
       return 'Received: BDT '+money(r.amount_bdt||0)+' | Send: RM '+money(rmAmount(r))+' | Fee: RM '+money(rmFee(r))+' | Total Paid: RM '+money(rmTotal(r));
     }
     return 'Amount: BDT '+money(r.amount_bdt||r.amount||0)+' | Fee: BDT '+money(r.fee_bdt||0)+' | Total Paid: BDT '+money(bdtTotal(r));
+  }
+  function canonicalWalletDebitText(r){
+    var amount=r.wallet_debit_amount;
+    if(amount===undefined||amount===null||amount==='')amount=r.debit_amount;
+    if(amount===undefined||amount===null||amount==='')amount=r.wallet_debit;
+    if(amount===undefined||amount===null||amount==='')return '';
+    var currency=normalizeCurrency(r.wallet_debit_currency||r.wallet_currency||r.currency);
+    return (currency==='MYR'?'RM ':'BDT ')+money(amount);
+  }
+  function canonicalRateText(r){
+    var value=r.exchange_rate;
+    if(value===undefined||value===null||value==='')value=r.rate_myr_to_bdt;
+    if(value===undefined||value===null||value==='')return '';
+    return '1 RM = BDT '+money(value);
+  }
+  function canonicalFeeText(r){
+    if(isRemittance(r))return 'RM '+money(rmFee(r));
+    return 'BDT '+money(r.fee_bdt||r.fee_amount||0);
+  }
+  function rowAmountMarkup(r){
+    var html='<span class="admin-mfs-amount-primary">BDT '+money(r.amount_bdt||r.amount||0)+'</span>';
+    if(isRemittance(r))html+='<small>Send: RM '+money(rmAmount(r))+'</small><small>Fee: RM '+money(rmFee(r))+'</small><small>Total: RM '+money(rmTotal(r))+'</small>';
+    else html+='<small>Fee: BDT '+money(r.fee_bdt||0)+'</small><small>Total: BDT '+money(bdtTotal(r))+'</small>';
+    var walletDebit=canonicalWalletDebitText(r);
+    if(walletDebit)html+='<small>Wallet: '+esc(walletDebit)+'</small>';
+    return '<span class="admin-mfs-amount-stack">'+html+'</span>';
+  }
+  function detailItem(label,value,wide){
+    if(value===undefined||value===null||String(value).trim()==='')return '';
+    return '<div class="admin-mfs-detail-item'+(wide?' admin-mfs-detail-wide':'')+'"><span>'+esc(label)+'</span><strong>'+esc(value)+'</strong></div>';
+  }
+  function mfsViewDetailsHtml(row){
+    var walletDebit=canonicalWalletDebitText(row);
+    var rate=canonicalRateText(row);
+    var html='<section class="admin-mfs-detail-section"><h3>Request</h3><div class="admin-mfs-detail-grid">';
+    html+=detailItem('Status',String(row.status||'-').replace(/_/g,' '));
+    html+=detailItem('Request ID',row.request_id||'-',true);
+    html+=detailItem('User / UID',row.user_name||row.uid||'-');
+    html+=detailItem('User Phone',row.user_phone||row.phone||'-');
+    html+=detailItem('Provider',row.provider_name||row.provider||'-');
+    html+=detailItem('Service',row.service_type||row.service_mode||'-');
+    html+=detailItem('Receiver',rowNumber(row));
+    html+='</div></section><section class="admin-mfs-detail-section"><h3>Financial Display</h3><div class="admin-mfs-detail-grid">';
+    html+=detailItem('Amount BDT','BDT '+money(row.amount_bdt||row.amount||0));
+    if(isRemittance(row))html+=detailItem('Amount RM','RM '+money(rmAmount(row)));
+    html+=detailItem('Fee',canonicalFeeText(row));
+    if(isRemittance(row))html+=detailItem('Total Paid','RM '+money(rmTotal(row)));
+    else html+=detailItem('Total Paid','BDT '+money(bdtTotal(row)));
+    html+=detailItem('Wallet Debit',walletDebit);
+    html+=detailItem('Rate',rate);
+    html+='</div></section><section class="admin-mfs-detail-section"><h3>Processing</h3><div class="admin-mfs-detail-grid">';
+    html+=detailItem('Reference',row.reference||row.reference_no||row.customer_reference,true);
+    html+=detailItem('TRX ID',row.trx_id||row.trxid||row.transaction_id,true);
+    html+=detailItem('Sender Number',row.sender_number||row.sender_phone);
+    html+=detailItem('Sender Name',row.sender_name);
+    html+=detailItem('Created',ts(row.created_at));
+    html+=detailItem('Updated',ts(row.updated_at));
+    html+=detailItem('Message',row.message||row.failure_reason||row.status_message,true);
+    html+='</div></section>';
+    return html;
   }
   function num(id){ var n=Number(el(id)&&el(id).value||0); return Number.isFinite(n)?n:0; }
   function numDefault(id,def){ var node=el(id); if(!node)return def; var raw=String(node.value||'').trim(); if(raw==='')return def; var n=Number(raw); return Number.isFinite(n)?n:def; }
@@ -363,10 +432,12 @@
       return;
     }
     body.innerHTML=rows.map(function(r){
-      return '<tr><td><b>'+esc(r.request_id||'-')+'</b><br><small>'+esc(r.request_source||r.source||'-')+'</small></td><td>'+esc(r.uid||'-')+'<br><small>'+esc(r.user_phone||'-')+'</small></td><td>'+esc(r.provider_name||r.provider||'-')+'<br><small>'+esc(r.service_type||'-')+'</small></td><td><code>'+esc(rowNumber(r))+'</code></td><td>'+esc(rowAmount(r))+'</td><td>'+statusPill(r.status||'-')+'</td><td>'+esc(ts(r.created_at||r.updated_at))+'</td><td>'+actionButtons(r)+'</td></tr>';
+      return '<tr class="admin-mfs-request-row"><td data-label="Request"><b class="admin-mfs-request-id">'+esc(r.request_id||'-')+'</b><small>'+esc(r.request_source||r.source||'-')+'</small></td><td data-label="User"><span class="admin-mfs-user-cell"><b>'+esc(r.user_name||r.uid||'-')+'</b><small>'+esc(r.uid||'-')+'</small><small>'+esc(r.user_phone||'-')+'</small></span></td><td data-label="Provider"><span class="admin-mfs-provider-cell"><b>'+esc(r.provider_name||r.provider||'-')+'</b><small>'+esc(r.service_type||r.service_mode||'-')+'</small></span></td><td data-label="Receiver"><code>'+esc(rowNumber(r))+'</code></td><td data-label="Amount">'+rowAmountMarkup(r)+'</td><td data-label="Status">'+statusPill(r.status||'-')+'</td><td data-label="Created"><time>'+esc(ts(r.created_at||r.updated_at))+'</time></td><td data-label="Actions">'+actionButtons(r)+'</td></tr>';
     }).join('');
     mobile.innerHTML=rows.map(function(r){
-      return '<div class="admin-mfs-card"><div class="admin-mfs-card-top"><div><h3 class="admin-mfs-card-title">'+esc(r.provider_name||r.provider||'MFS')+' &bull; '+esc(rowNumber(r))+'</h3><p class="admin-mfs-card-sub">'+esc(r.request_id||'-')+'</p></div>'+statusPill(r.status||'-')+'</div><div class="admin-mfs-card-grid"><div class="admin-mfs-kv"><label>User</label><strong>'+esc(r.uid||'-')+'</strong></div><div class="admin-mfs-kv"><label>Receiver</label><strong><code>'+esc(rowNumber(r))+'</code></strong></div><div class="admin-mfs-kv"><label>Amount</label><strong>'+esc(rowAmount(r))+'</strong></div><div class="admin-mfs-kv"><label>Service</label><strong>'+esc(r.service_type||'-')+'</strong></div><div class="admin-mfs-kv"><label>Phone</label><strong>'+esc(r.user_phone||'-')+'</strong></div><div class="admin-mfs-kv"><label>Time</label><strong>'+esc(ts(r.created_at||r.updated_at))+'</strong></div></div>'+actionButtons(r)+'</div>';
+      var walletDebit=canonicalWalletDebitText(r);
+      var reference=r.reference||r.reference_no||r.trx_id||r.trxid||'';
+      return '<article class="admin-mfs-card"><div class="admin-mfs-card-top"><div><p class="admin-mfs-card-kicker">'+esc(r.service_type||r.service_mode||'MFS Request')+'</p><h3 class="admin-mfs-card-title">'+esc(r.provider_name||r.provider||'MFS')+' &bull; '+esc(rowNumber(r))+'</h3><p class="admin-mfs-card-sub">'+esc(r.request_id||'-')+'</p></div>'+statusPill(r.status||'-')+'</div><div class="admin-mfs-card-grid"><div class="admin-mfs-kv"><label>User / UID</label><strong>'+esc(r.user_name||r.uid||'-')+'</strong><small>'+esc(r.uid||'')+'</small></div><div class="admin-mfs-kv"><label>Phone</label><strong>'+esc(r.user_phone||'-')+'</strong></div><div class="admin-mfs-kv admin-mfs-kv-wide"><label>Amount</label>'+rowAmountMarkup(r)+'</div><div class="admin-mfs-kv"><label>Wallet Debit</label><strong>'+esc(walletDebit||'-')+'</strong></div><div class="admin-mfs-kv"><label>Created</label><strong>'+esc(ts(r.created_at||r.updated_at))+'</strong></div>'+(reference?'<div class="admin-mfs-kv admin-mfs-kv-wide"><label>Reference</label><strong>'+esc(reference)+'</strong></div>':'')+'</div>'+actionButtons(r)+'</article>';
     }).join('');
   }
 
@@ -747,7 +818,7 @@
       var data=await get('mfs_get',{request_id:id});
       var row=data.item||data.row||data.request||data||findRow(id);
       el('mfsViewTitle').textContent='MFS Request '+String(id||'');
-      el('mfsViewDetails').textContent=JSON.stringify(row,null,2);
+      el('mfsViewDetails').innerHTML=mfsViewDetailsHtml(row);
       state.viewReceiptUrl=String(row.receipt_url||'');
       var actions=el('mfsViewReceiptActions');
       var open=el('mfsViewReceiptOpen');

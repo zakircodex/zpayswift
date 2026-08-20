@@ -1,15 +1,13 @@
 /* Z-Pay Swift Admin MFS panel */
 .mfs-body{
   min-height:100vh;
-  background:
-    radial-gradient(circle at 12% 0%,rgba(59,130,246,.16),transparent 32%),
-    radial-gradient(circle at 88% 12%,rgba(236,72,153,.11),transparent 28%),
-    linear-gradient(180deg,#07101d 0%,#0b1220 54%,#0f172a 100%);
+  overflow-x:hidden;
+  background:linear-gradient(180deg,#061522 0%,#081827 52%,#091523 100%);
 }
 
 .mfs-app{
   display:grid;
-  grid-template-columns:260px minmax(0,1fr);
+  grid-template-columns:240px minmax(0,1fr);
   min-height:100vh;
 }
 
@@ -18,10 +16,10 @@
   top:0;
   height:100vh;
   overflow-y:auto;
-  padding:18px;
+  padding:16px;
   border-right:1px solid var(--line);
-  background:rgba(8,14,25,.94);
-  box-shadow:16px 0 42px rgba(0,0,0,.2);
+  background:rgba(6,18,31,.96);
+  box-shadow:10px 0 30px rgba(0,0,0,.15);
   backdrop-filter:blur(18px);
   z-index:30;
 }
@@ -33,7 +31,7 @@
 
 .mfs-sidebar .nav-btn.active{
   border:1px solid rgba(34,197,94,.26);
-  background:linear-gradient(135deg,rgba(34,197,94,.2),rgba(59,130,246,.13));
+  background:rgba(34,197,94,.14);
   color:#dcfce7;
 }
 
@@ -50,18 +48,18 @@
 
 .mfs-main{
   min-width:0;
-  padding:22px;
+  padding:clamp(14px,2vw,22px);
 }
 
 .mfs-topbar-wrap{
   display:grid;
   gap:12px;
-  margin-bottom:18px;
-  padding:18px;
+  margin-bottom:14px;
+  padding:15px 16px;
   border:1px solid var(--line);
-  border-radius:var(--radius);
-  background:linear-gradient(180deg,rgba(16,24,38,.96),rgba(16,24,38,.86));
-  box-shadow:var(--shadow);
+  border-radius:18px;
+  background:rgba(13,31,49,.88);
+  box-shadow:0 12px 30px rgba(0,0,0,.14);
 }
 
 .mfs-topbar{
@@ -90,12 +88,12 @@
 .mfs-panel-head h2,
 .admin-mfs-modal-card h2{
   margin:0;
-  letter-spacing:-.025em;
+  letter-spacing:0;
 }
 
 .mfs-topbar h1{
   margin-top:3px;
-  font-size:28px;
+  font-size:25px;
 }
 
 .mfs-topbar p,
@@ -129,8 +127,8 @@
 .mfs-summary-grid{
   display:grid;
   grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:16px;
-  margin-bottom:18px;
+  gap:12px;
+  margin-bottom:14px;
 }
 
 .mfs-loader{
@@ -163,23 +161,16 @@
 .mfs-summary-card{
   position:relative;
   overflow:hidden;
-  min-height:142px;
-  padding:17px;
+  min-height:106px;
+  padding:15px;
   border:1px solid var(--line);
-  border-radius:var(--radius);
-  background:linear-gradient(180deg,rgba(16,24,38,.98),rgba(16,24,38,.9));
-  box-shadow:var(--shadow);
+  border-radius:17px;
+  background:rgba(14,34,53,.86);
+  box-shadow:0 10px 26px rgba(0,0,0,.12);
 }
 
 .mfs-summary-card::after{
-  content:"";
-  position:absolute;
-  width:96px;
-  height:96px;
-  right:-28px;
-  bottom:-34px;
-  border-radius:50%;
-  opacity:.18;
+  content:none;
 }
 
 .mfs-summary-card.pending::after{background:#f59e0b}
@@ -198,7 +189,7 @@
 .mfs-summary-value{
   margin-top:7px;
   color:var(--text);
-  font-size:34px;
+  font-size:30px;
   font-weight:900;
 }
 
@@ -209,12 +200,12 @@
 }
 
 .mfs-panel-card{
-  margin-bottom:18px;
+  margin-bottom:14px;
   overflow:hidden;
   border:1px solid var(--line);
-  border-radius:var(--radius);
-  background:linear-gradient(180deg,rgba(16,24,38,.98),rgba(16,24,38,.92));
-  box-shadow:var(--shadow);
+  border-radius:18px;
+  background:rgba(12,29,47,.9);
+  box-shadow:0 12px 30px rgba(0,0,0,.13);
 }
 
 .mfs-panel-head{
@@ -346,7 +337,8 @@
 }
 
 .admin-mfs-my-fee-card{
-  background:linear-gradient(135deg,rgba(34,197,94,.075),rgba(59,130,246,.06));
+  border-color:rgba(34,197,94,.2);
+  background:rgba(34,197,94,.055);
 }
 
 .admin-mfs-role-fees{
@@ -416,11 +408,65 @@
 }
 
 .admin-mfs-table-wrap{
+  max-width:100%;
+  overflow-x:auto;
+  overscroll-behavior-inline:contain;
   padding-top:0;
 }
 
 .admin-mfs-table-wrap table{
   min-width:1040px;
+}
+
+.admin-mfs-table thead th{
+  position:sticky;
+  top:0;
+  z-index:2;
+  background:#0c2033;
+}
+
+.admin-mfs-table th,
+.admin-mfs-table td{
+  padding:11px 10px;
+  vertical-align:top;
+}
+
+.admin-mfs-request-row:hover td{
+  background:rgba(45,212,191,.025);
+}
+
+.admin-mfs-request-id,
+.admin-mfs-user-cell,
+.admin-mfs-provider-cell,
+.admin-mfs-amount-stack{
+  display:grid;
+  gap:3px;
+  min-width:0;
+}
+
+.admin-mfs-request-id{
+  max-width:180px;
+  overflow-wrap:anywhere;
+  color:#e2e8f0;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:12px;
+}
+
+.admin-mfs-user-cell b,
+.admin-mfs-provider-cell b,
+.admin-mfs-amount-primary{
+  color:#f8fafc;
+  font-size:13px;
+  font-weight:850;
+}
+
+.admin-mfs-amount-stack small,
+.admin-mfs-user-cell small,
+.admin-mfs-provider-cell small{
+  display:block;
+  color:var(--muted);
+  font-size:11px;
+  line-height:1.35;
 }
 
 .admin-mfs-table-wrap td{
@@ -478,7 +524,7 @@
   padding:13px;
   border:1px solid var(--line);
   border-radius:16px;
-  background:rgba(20,31,48,.76);
+  background:rgba(15,37,58,.82);
 }
 
 .admin-mfs-card-top{
@@ -493,6 +539,14 @@
   color:var(--text);
   font-size:14px;
   font-weight:900;
+}
+
+.admin-mfs-card-kicker{
+  margin:0 0 4px;
+  color:#86efac;
+  font-size:10px;
+  font-weight:850;
+  text-transform:uppercase;
 }
 
 .admin-mfs-card-sub{
@@ -529,6 +583,53 @@
   overflow-wrap:anywhere;
   color:var(--text);
   font-size:13px;
+}
+
+.admin-mfs-kv small{
+  display:block;
+  margin-top:3px;
+  color:var(--muted);
+  font-size:11px;
+  overflow-wrap:anywhere;
+}
+
+.admin-mfs-kv-wide{
+  grid-column:1/-1;
+}
+
+.mfs-status-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:max-content;
+  min-height:28px;
+  padding:4px 9px;
+  border:1px solid rgba(148,163,184,.24);
+  border-radius:999px;
+  background:rgba(148,163,184,.09);
+  color:#cbd5e1;
+  font-size:11px;
+  font-weight:850;
+  white-space:nowrap;
+}
+
+.mfs-status-pill.success{
+  border-color:rgba(34,197,94,.3);
+  background:rgba(34,197,94,.1);
+  color:#86efac;
+}
+
+.mfs-status-pill.danger{
+  border-color:rgba(248,113,113,.3);
+  background:rgba(239,68,68,.1);
+  color:#fca5a5;
+}
+
+.mfs-status-pill.warning,
+.mfs-status-pill.processing{
+  border-color:rgba(96,165,250,.28);
+  background:rgba(59,130,246,.09);
+  color:#bfdbfe;
 }
 
 .mfs-msg{
@@ -570,13 +671,13 @@
 .admin-mfs-modal-card{
   position:relative;
   width:min(680px,100%);
-  max-height:calc(100vh - 32px);
+  max-height:calc(100dvh - 32px);
   overflow:auto;
   padding:19px;
   border:1px solid var(--line);
   border-radius:20px;
-  background:#0d1525;
-  box-shadow:var(--shadow);
+  background:#0b1d2f;
+  box-shadow:0 22px 60px rgba(0,0,0,.34);
 }
 
 .admin-mfs-compact-modal{
@@ -606,18 +707,61 @@
   color:#fca5a5;
 }
 
-.admin-mfs-details{
-  max-height:56vh;
-  overflow:auto;
-  margin:15px 0 0;
-  padding:14px;
-  border:1px solid var(--line);
-  border-radius:14px;
-  background:rgba(2,6,23,.48);
-  color:#bfdbfe;
-  font:12px/1.65 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  white-space:pre-wrap;
-  word-break:break-word;
+.admin-mfs-details-grid{
+  display:grid;
+  gap:10px;
+  margin-top:15px;
+}
+
+.admin-mfs-detail-section{
+  padding:12px;
+  border:1px solid rgba(148,163,184,.13);
+  border-radius:15px;
+  background:rgba(255,255,255,.025);
+}
+
+.admin-mfs-detail-section h3{
+  margin:0 0 10px;
+  color:#86efac;
+  font-size:12px;
+  text-transform:uppercase;
+}
+
+.admin-mfs-detail-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+
+.admin-mfs-detail-item{
+  min-width:0;
+  padding:9px 10px;
+  border:1px solid rgba(148,163,184,.1);
+  border-radius:11px;
+  background:rgba(2,12,24,.32);
+}
+
+.admin-mfs-detail-item span,
+.admin-mfs-detail-item strong{
+  display:block;
+}
+
+.admin-mfs-detail-item span{
+  margin-bottom:4px;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:800;
+  text-transform:uppercase;
+}
+
+.admin-mfs-detail-item strong{
+  color:var(--text);
+  font-size:13px;
+  overflow-wrap:anywhere;
+}
+
+.admin-mfs-detail-wide{
+  grid-column:1/-1;
 }
 
 .admin-mfs-review-grid{
@@ -745,8 +889,8 @@
 
   .mfs-sidebar{
     position:fixed;
-    left:-286px;
-    width:270px;
+    left:-256px;
+    width:244px;
     transition:left .22s ease;
   }
 
@@ -815,7 +959,7 @@
   }
 
   .mfs-summary-card{
-    min-height:116px;
+    min-height:98px;
     padding:13px;
   }
 
@@ -880,5 +1024,45 @@
 
   .admin-mfs-review-grid{
     grid-template-columns:1fr;
+  }
+
+  .admin-mfs-detail-grid{
+    grid-template-columns:1fr;
+  }
+
+  .admin-mfs-detail-wide{
+    grid-column:auto;
+  }
+
+  .admin-mfs-modal{
+    align-items:flex-end;
+    padding:8px;
+  }
+
+  .admin-mfs-modal-card{
+    max-height:calc(100dvh - 16px);
+    padding:16px;
+    border-radius:18px;
+  }
+}
+
+@media(max-width:360px){
+  .mfs-summary-grid{
+    grid-template-columns:1fr;
+  }
+
+  .mfs-top-actions,
+  .admin-mfs-submit{
+    display:grid;
+    grid-template-columns:1fr;
+  }
+
+  .admin-mfs-actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .admin-mfs-actions .mini-btn{
+    width:100%;
   }
 }

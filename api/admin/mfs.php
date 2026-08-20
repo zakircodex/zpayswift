@@ -14,10 +14,10 @@ header('Pragma: no-cache');
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=21">
-  <link rel="stylesheet" href="/api/admin/assets/mfs-panel.css?v=5">
+  <link rel="stylesheet" href="/api/admin/assets/mfs-panel.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/mfs-panel.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
-<body class="mfs-body">
+<body class="mfs-body admin-mfs-premium">
   <div class="mfs-app">
     <aside class="mfs-sidebar" id="mfsSidebar">
       <div class="sidebar-brand">
@@ -88,7 +88,7 @@ header('Pragma: no-cache');
         </div>
       </div>
 
-      <section class="mfs-summary-grid" aria-label="MFS request summary">
+      <section class="mfs-summary-grid admin-mfs-summary-grid" aria-label="MFS request summary">
         <article class="mfs-summary-card pending">
           <div class="mfs-summary-label">Pending</div>
           <div class="mfs-summary-value" id="mfsSummaryPending">0</div>
@@ -271,7 +271,7 @@ header('Pragma: no-cache');
         </div>
 
         <div class="admin-mfs-table-wrap table-wrap">
-          <table>
+          <table class="admin-mfs-table">
             <thead>
               <tr>
                 <th>Request</th>
@@ -346,7 +346,7 @@ header('Pragma: no-cache');
       <div class="admin-mfs-modal-card">
         <div class="mfs-section-kicker">Request Details</div>
         <h2 id="mfsViewTitle">MFS Request</h2>
-        <pre class="admin-mfs-details" id="mfsViewDetails"></pre>
+        <div class="admin-mfs-details-grid" id="mfsViewDetails"></div>
         <div class="admin-mfs-receipt-actions hidden" id="mfsViewReceiptActions">
           <a class="btn green" id="mfsViewReceiptOpen" href="#" target="_blank" rel="noopener">View Receipt</a>
           <button class="btn ghost" id="mfsViewReceiptCopy" type="button">Copy Receipt Link</button>
@@ -379,6 +379,6 @@ header('Pragma: no-cache');
   window.ADMIN_MFS_PROXY_URL = '/api/admin/proxy.php';
   window.ADMIN_DASHBOARD_URL = '/admin/';
   </script>
-  <script src="/api/admin/assets/mfs-panel.js?v=7"></script>
+  <script src="/api/admin/assets/mfs-panel.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/mfs-panel.js') ?: 1)) ?>"></script>
 </body>
 </html>

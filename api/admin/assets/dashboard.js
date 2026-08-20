@@ -251,6 +251,43 @@ function bundlePriceAmount(item){
   );
 }
 
+function transactionCurrency(value, fallback = 'BDT'){
+  const currency = String(value || fallback).trim().toUpperCase();
+  return ['MYR', 'RM'].includes(currency) ? 'MYR' : 'BDT';
+}
+
+function transactionMoney(amount, currency = 'BDT'){
+  const code = transactionCurrency(currency);
+  return `${walletPrefix(code)} ${money(amount)}`;
+}
+
+function topupServiceAmount(item){
+  return Number(item?.amount_bdt ?? item?.topup_amount_bdt ?? item?.amount ?? 0);
+}
+
+function topupWalletDebitText(item){
+  const amount = item?.wallet_debit_amount ?? item?.wallet_debit ?? item?.wallet_hold_amount;
+  if (amount === undefined || amount === null || amount === '') return '-';
+  const currency = transactionCurrency(item?.wallet_debit_currency ?? item?.wallet_currency ?? item?.display_currency);
+  return transactionMoney(amount, currency);
+}
+
+function topupRateText(item){
+  const rate = Number(item?.exchange_rate ?? item?.rate_myr_to_bdt ?? item?.rate_snapshot ?? 0);
+  return rate > 0 ? `RM 1 = BDT ${money(rate)}` : '';
+}
+
+function topupWorkerText(item){
+  return String(item?.worker_id ?? item?.worker_device_id ?? item?.device_id ?? item?.claimed_by ?? '').trim();
+}
+
+function bundleWalletDebitText(item){
+  const amount = item?.wallet_debit_amount ?? item?.wallet_hold_amount ?? item?.payable_amount;
+  if (amount === undefined || amount === null || amount === '') return '-';
+  const currency = transactionCurrency(item?.wallet_debit_currency ?? item?.wallet_currency ?? item?.currency);
+  return transactionMoney(amount, currency);
+}
+
 function parseBdtPriceFromText(text){
   const s = String(text || '').toUpperCase();
   const matches = [...s.matchAll(/(\d+(?:\.\d+)?)\s*BDT/g)];
@@ -1365,7 +1402,7 @@ function renderTopups(){
   if (!tbody) return;
 
   if (!rows.length){
-    tbody.innerHTML = '<tr><td colspan="6" class="empty">No topup request found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty admin-transaction-state">No Top-Up request found.</td></tr>';
     return;
   }
 
@@ -1376,35 +1413,46 @@ function renderTopups(){
     const phone = item.phone || item.user_phone || '-';
     const operator = item.operator || '-';
     const topupNumber = item.topup_number || item.number || '-';
-    const amount = item.amount ?? item.amount_bdt ?? 0;
     const status = item.status || state.topupTab.toUpperCase();
     const ts = item.created_at || item.updated_at || item.claimed_at || item.processing_at || 0;
     const finalStatus = String(status).toUpperCase();
+    const statusClass = finalStatus.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
+    const rateText = topupRateText(item);
+    const workerText = topupWorkerText(item);
+    const workerState = String(item.worker_status || item.claim_status || item.processing_status || '').trim();
 
     return `
-      <tr>
-        <td>
-          <div><strong>${esc(requestId)}</strong></div>
-          <div class="muted" style="font-size:12px;">UID: ${esc(uid)}</div>
+      <tr class="admin-transaction-row topup-request-row status-${esc(statusClass)}">
+        <td class="transaction-request-cell" data-label="Request">
+          <div class="mono transaction-request-id" title="${esc(requestId)}">${esc(requestId)}</div>
+          <div class="muted">UID: ${esc(uid)}</div>
         </td>
-        <td>
-          <div>${esc(userName)}</div>
-          <div class="muted" style="font-size:12px;">${esc(phone)}</div>
+        <td class="transaction-user-cell" data-label="User">
+          <strong>${esc(userName)}</strong>
+          <div class="muted">${esc(phone)}</div>
         </td>
-        <td>
-          <div>${esc(operator)} • ${esc(topupNumber)}</div>
-          <div class="muted" style="font-size:12px;">Amount: ${money(amount)}</div>
+        <td class="transaction-service-cell" data-label="Service">
+          <strong>${esc(operator)} &bull; ${esc(topupNumber)}</strong>
+          <div class="transaction-service-amount">BDT ${money(topupServiceAmount(item))}</div>
         </td>
-        <td>${statusPill(status)}</td>
-        <td>${fmtTs(ts)}</td>
-        <td>
-          <div class="row-actions">
-            <button class="mini-btn" onclick="viewTopup('${esc(requestId)}')">View</button>
+        <td class="transaction-wallet-cell" data-label="Wallet">
+          <strong>${esc(topupWalletDebitText(item))}</strong>
+          ${rateText ? `<div class="muted">${esc(rateText)}</div>` : ''}
+        </td>
+        <td class="transaction-status-cell" data-label="Status"><span class="transaction-status-badge status-${esc(statusClass)}">${statusPill(status)}</span></td>
+        <td class="transaction-time-cell" data-label="Created">${fmtTs(ts)}</td>
+        <td class="transaction-worker-cell" data-label="Worker">
+          <strong>${esc(workerText || '-')}</strong>
+          ${workerState ? `<div class="muted">${esc(workerState)}</div>` : ''}
+        </td>
+        <td class="transaction-actions-cell" data-label="Actions">
+          <div class="row-actions transaction-row-actions">
+            <button class="mini-btn transaction-view-btn" type="button" onclick="viewTopup('${esc(requestId)}')">View</button>
             ${
               finalStatus !== 'SUCCESS' && finalStatus !== 'FAILED'
                 ? `
-                  <button class="mini-btn" onclick="openTopupAction('${esc(requestId)}','success')">Success</button>
-                  <button class="mini-btn" onclick="openTopupAction('${esc(requestId)}','failed')">Failed</button>
+                  <button class="mini-btn green transaction-success-btn" type="button" onclick="openTopupAction('${esc(requestId)}','success')">Success</button>
+                  <button class="mini-btn red transaction-failed-btn" type="button" onclick="openTopupAction('${esc(requestId)}','failed')">Failed</button>
                 `
                 : ''
             }
@@ -1421,32 +1469,70 @@ async function viewTopup(requestId){
     const req = data.request || {};
     const user = data.user || {};
     const wallet = data.wallet || {};
+    const requestStatus = String(req.status || '-').toUpperCase();
+    const requestStatusClass = requestStatus.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
+    const walletCurrency = transactionCurrency(
+      req.wallet_debit_currency || req.wallet_currency || req.display_currency ||
+      wallet.currency || wallet.wallet_currency || wallet.display_currency || user.currency
+    );
+    const rateText = topupRateText(req);
+    const workerText = topupWorkerText(req);
 
     openDrawer(
       `Topup Request ${requestId}`,
       `${req.operator || '-'} • ${req.topup_number || req.number || '-'}`,
       `
-        <div class="detail-grid">
-          <div class="detail-item"><label>Status</label><strong>${statusPill(req.status || '-')}</strong></div>
-          <div class="detail-item"><label>Amount</label><strong>${money(req.amount ?? req.amount_bdt ?? 0)}</strong></div>
-          <div class="detail-item"><label>Topup Number</label><strong>${esc(req.topup_number || req.number || '-')}</strong></div>
-          <div class="detail-item"><label>Operator</label><strong>${esc(req.operator || '-')}</strong></div>
-          <div class="detail-item"><label>UID</label><strong>${esc(req.uid || '-')}</strong></div>
-          <div class="detail-item"><label>Created</label><strong>${fmtTs(req.created_at || req.updated_at || 0)}</strong></div>
+        <div class="transaction-detail-shell">
+          <div class="transaction-detail-summary">
+            <div><span>Service Amount</span><strong>BDT ${money(topupServiceAmount(req))}</strong><small>${esc(req.operator || '-')} &bull; ${esc(req.topup_number || req.number || '-')}</small></div>
+            <span class="transaction-status-badge status-${esc(requestStatusClass)}">${statusPill(requestStatus)}</span>
+          </div>
 
-          <div class="detail-item"><label>User Name</label><strong>${esc(user.name || '-')}</strong></div>
-          <div class="detail-item"><label>User Phone</label><strong>${esc(user.phone || '-')}</strong></div>
-          <div class="detail-item"><label>User Email</label><strong>${esc(user.email || '-')}</strong></div>
-          <div class="detail-item"><label>User Status</label><strong>${esc(user.status || '-')}</strong></div>
+          <section class="transaction-detail-group">
+            <h4>Request</h4>
+            <div class="detail-grid transaction-detail-grid">
+              <div class="detail-item"><label>Request ID</label><strong class="mono">${esc(req.request_id || requestId)}</strong></div>
+              <div class="detail-item"><label>Top-Up Number</label><strong>${esc(req.topup_number || req.number || '-')}</strong></div>
+              <div class="detail-item"><label>Operator</label><strong>${esc(req.operator || '-')}</strong></div>
+              <div class="detail-item"><label>Created</label><strong>${fmtTs(req.created_at || req.updated_at || 0)}</strong></div>
+              <div class="detail-item"><label>Updated</label><strong>${fmtTs(req.updated_at || 0)}</strong></div>
+              <div class="detail-item"><label>Message</label><strong>${esc(req.message || req.status_message || '-')}</strong></div>
+            </div>
+          </section>
 
-          <div class="detail-item"><label>Available Balance</label><strong>${money(wallet.available_balance)}</strong></div>
-          <div class="detail-item"><label>Hold Balance</label><strong>${money(wallet.hold_balance)}</strong></div>
-          <div class="detail-item"><label>Wallet Updated</label><strong>${fmtTs(wallet.updated_at)}</strong></div>
-        </div>
+          <section class="transaction-detail-group">
+            <h4>User</h4>
+            <div class="detail-grid transaction-detail-grid">
+              <div class="detail-item"><label>UID</label><strong class="mono">${esc(req.uid || user.uid || '-')}</strong></div>
+              <div class="detail-item"><label>Name</label><strong>${esc(user.name || '-')}</strong></div>
+              <div class="detail-item"><label>Phone</label><strong>${esc(user.phone || '-')}</strong></div>
+              <div class="detail-item"><label>Email</label><strong>${esc(user.email || '-')}</strong></div>
+              <div class="detail-item"><label>User Status</label><strong>${esc(user.status || '-')}</strong></div>
+            </div>
+          </section>
 
-        <div class="detail-item" style="margin-top:16px;">
-          <label>Raw Request JSON</label>
-          <div class="log-box">${esc(JSON.stringify(req, null, 2))}</div>
+          <section class="transaction-detail-group transaction-financial-group">
+            <h4>Financial Display</h4>
+            <div class="detail-grid transaction-detail-grid">
+              <div class="detail-item"><label>Service Amount</label><strong>BDT ${money(topupServiceAmount(req))}</strong></div>
+              <div class="detail-item"><label>Wallet Debit</label><strong>${esc(topupWalletDebitText(req))}</strong></div>
+              ${rateText ? `<div class="detail-item"><label>Canonical Rate</label><strong>${esc(rateText)}</strong></div>` : ''}
+              <div class="detail-item"><label>Available Balance</label><strong>${transactionMoney(wallet.available_balance, walletCurrency)}</strong></div>
+              <div class="detail-item"><label>Hold Balance</label><strong>${transactionMoney(wallet.hold_balance, walletCurrency)}</strong></div>
+              <div class="detail-item"><label>Wallet Updated</label><strong>${fmtTs(wallet.updated_at)}</strong></div>
+            </div>
+          </section>
+
+          <section class="transaction-detail-group">
+            <h4>Worker / Processing</h4>
+            <div class="detail-grid transaction-detail-grid">
+              <div class="detail-item"><label>Worker / Device</label><strong class="mono">${esc(workerText || '-')}</strong></div>
+              <div class="detail-item"><label>Claimed At</label><strong>${fmtTs(req.claimed_at || 0)}</strong></div>
+              <div class="detail-item"><label>Processing At</label><strong>${fmtTs(req.processing_at || 0)}</strong></div>
+              <div class="detail-item"><label>Completed At</label><strong>${fmtTs(req.completed_at || req.done_at || 0)}</strong></div>
+              <div class="detail-item"><label>Reference / TRX</label><strong class="mono">${esc(req.trxid || req.transaction_id || req.reference || '-')}</strong></div>
+            </div>
+          </section>
         </div>
       `
     );
@@ -1485,7 +1571,7 @@ function renderBundles(){
   if (!tbody) return;
 
   if (!state.bundles.length){
-    tbody.innerHTML = '<tr><td colspan="5" class="empty">No bundle request found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="empty admin-transaction-state">No Bundle request found.</td></tr>';
     return;
   }
 
@@ -1495,38 +1581,50 @@ function renderBundles(){
     const phone = item.user_phone || item.phone || '-';
     const bundleName = item.bundle_name || item.package_name || item.plan_name || '-';
     const operator = item.operator || '-';
+    const number = item.topup_number || item.number || item.receiver_number || '-';
     const ts = item.created_at || item.updated_at || 0;
+    const status = String(item.status || item.request_status || 'WAITING_ADMIN').toUpperCase();
+    const statusClass = status.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
 
     const priceAmount = bundlePriceAmount(item);
     const payAmount = bundlePayAmount(item);
     const userCommission = Number(item.user_commission || item.customer_commission || item.user_discount || 0);
     const subadminProfit = Number(item.subadmin_profit || item.subadmin_commission || 0);
+    const walletDebit = bundleWalletDebitText(item);
 
     return `
-      <tr>
-        <td>
-          <div><strong>${esc(requestId)}</strong></div>
-          <div class="muted" style="font-size:12px;">UID: ${esc(uid)}</div>
+      <tr class="admin-transaction-row bundle-request-row status-${esc(statusClass)}">
+        <td class="transaction-request-cell" data-label="Request">
+          <div class="mono transaction-request-id" title="${esc(requestId)}">${esc(requestId)}</div>
+          <div class="muted">UID: ${esc(uid)}</div>
         </td>
 
-        <td>${esc(phone)}</td>
-
-        <td>
-          <div>${esc(operator)} • ${esc(bundleName)}</div>
-          <div class="muted" style="font-size:12px;">
-            Amount: ${money(payAmount)}
-          </div>
-          <div class="muted" style="font-size:12px;">
-            Price: ${money(priceAmount)} • User Commission: ${money(userCommission)} • Subadmin Profit: ${money(subadminProfit)}
-          </div>
+        <td class="transaction-user-cell" data-label="User">
+          <strong>${esc(item.user_name || item.name || '-')}</strong>
+          <div class="muted">${esc(phone)}</div>
         </td>
 
-        <td>${fmtTs(ts)}</td>
+        <td class="transaction-service-cell bundle-service-cell" data-label="Bundle">
+          <strong>${esc(operator)} &bull; ${esc(bundleName)}</strong>
+          <div class="muted">${esc(number)}</div>
+          <div class="transaction-service-amount">Service: BDT ${money(item.amount_bdt ?? item.service_amount_bdt ?? priceAmount)}</div>
+        </td>
 
-        <td>
-          <div class="row-actions">
-            <button class="mini-btn" onclick="openBundleAction('${esc(requestId)}','success')">Success</button>
-            <button class="mini-btn" onclick="openBundleAction('${esc(requestId)}','failed')">Failed</button>
+        <td class="bundle-financial-cell" data-label="Financials">
+          <div><span>Wallet</span><strong>${esc(walletDebit)}</strong></div>
+          <div><span>You Pay</span><strong>${esc(transactionMoney(payAmount, item.wallet_debit_currency || item.wallet_currency || item.currency || item.display_currency || 'BDT'))}</strong></div>
+          <div><span>Bundle Commission</span><strong>${money(userCommission)}</strong></div>
+          ${subadminProfit ? `<div><span>Subadmin Profit</span><strong>${money(subadminProfit)}</strong></div>` : ''}
+        </td>
+
+        <td class="transaction-status-cell" data-label="Status"><span class="transaction-status-badge status-${esc(statusClass)}">${statusPill(status)}</span></td>
+
+        <td class="transaction-time-cell" data-label="Created">${fmtTs(ts)}</td>
+
+        <td class="transaction-actions-cell" data-label="Actions">
+          <div class="row-actions transaction-row-actions bundle-row-actions">
+            <button class="mini-btn green transaction-success-btn" type="button" onclick="openBundleAction('${esc(requestId)}','success')">Success</button>
+            <button class="mini-btn red transaction-failed-btn" type="button" onclick="openBundleAction('${esc(requestId)}','failed')">Failed</button>
           </div>
         </td>
       </tr>
@@ -1536,6 +1634,9 @@ function renderBundles(){
 
 function openBundleAction(requestId, type){
   const isSuccess = type === 'success';
+  const row = state.bundles.find(item => String(item.request_id || item.id || '') === String(requestId)) || {};
+  const status = String(row.status || row.request_status || 'WAITING_ADMIN').toUpperCase();
+  const statusClass = status.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
   const defaultMessage = isSuccess
     ? 'Bundle successful'
     : 'Bundle failed';
@@ -1543,31 +1644,35 @@ function openBundleAction(requestId, type){
   openModal(
     isSuccess ? 'Mark Bundle Success' : 'Mark Bundle Failed',
     `
-      <div class="form-grid">
-        <div class="form-full">
-          <label>Request ID</label>
-          <input class="input" id="bundleRequestId" value="${esc(requestId)}" readonly>
+      <div class="transaction-action-shell bundle-action-shell">
+        <input id="bundleRequestId" type="hidden" value="${esc(requestId)}">
+        <div class="transaction-action-summary">
+          <div><span>${isSuccess ? 'Complete Bundle' : 'Fail Bundle'}</span><strong>${esc(row.operator || '-')} &bull; ${esc(row.bundle_name || row.package_name || row.plan_name || '-')}</strong></div>
+          <span class="transaction-status-badge status-${esc(statusClass)}">${statusPill(status)}</span>
         </div>
-
-        <div class="form-full">
-          <label>Message / Note</label>
+        <div class="detail-grid transaction-action-context">
+          <div class="detail-item"><label>Request ID</label><strong class="mono">${esc(requestId)}</strong></div>
+          <div class="detail-item"><label>User / UID</label><strong>${esc(row.user_name || row.name || row.uid || '-')}</strong></div>
+          <div class="detail-item"><label>Number</label><strong>${esc(row.topup_number || row.number || row.receiver_number || '-')}</strong></div>
+          <div class="detail-item"><label>Service Amount</label><strong>BDT ${money(row.amount_bdt ?? row.service_amount_bdt ?? bundlePriceAmount(row))}</strong></div>
+          <div class="detail-item"><label>Wallet Debit</label><strong>${esc(bundleWalletDebitText(row))}</strong></div>
+          <div class="detail-item"><label>Bundle Commission</label><strong>${money(row.user_commission || row.customer_commission || row.user_discount || 0)}</strong></div>
+        </div>
+        <div class="transaction-action-field">
+          <label for="bundleMessage">Message / Note</label>
           <textarea class="input" id="bundleMessage" rows="4">${esc(defaultMessage)}</textarea>
         </div>
-
-        <div class="form-full">
-          <div class="muted" style="font-size:13px;">
-            This action will update bundle status and refresh related data.
-          </div>
-        </div>
+        <p class="transaction-action-note">This action will update bundle status and refresh related data.</p>
       </div>
     `,
     `
-      <button class="btn ghost" id="bundleCancelBtn" onclick="closeModal()">Cancel</button>
-      <button class="btn ${isSuccess ? 'brand' : 'red'}" id="bundleSubmitBtn" onclick="submitBundleAction('${type}')">
+      <button class="btn ghost" id="bundleCancelBtn" type="button" onclick="closeModal()">Cancel</button>
+      <button class="btn ${isSuccess ? 'brand' : 'red'}" id="bundleSubmitBtn" type="button" onclick="submitBundleAction('${type}')">
         ${isSuccess ? 'Confirm Success' : 'Confirm Failed'}
       </button>
     `
   );
+  setModalPresentationScope('bundle-action');
 }
 
 async function submitBundleAction(type){
@@ -4046,6 +4151,9 @@ function renderDoneBundlesSummary(){
 
 function openTopupAction(requestId, type){
   const isSuccess = type === 'success';
+  const row = state.topups.find(item => String(item.request_id || item.id || '') === String(requestId)) || {};
+  const status = String(row.status || state.topupTab.toUpperCase()).toUpperCase();
+  const statusClass = status.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
   const defaultMessage = isSuccess
     ? 'Topup successful'
     : 'Topup failed';
@@ -4053,31 +4161,35 @@ function openTopupAction(requestId, type){
   openModal(
     isSuccess ? 'Mark Topup Success' : 'Mark Topup Failed',
     `
-      <div class="form-grid">
-        <div class="form-full">
-          <label>Request ID</label>
-          <input class="input" id="topupRequestId" value="${esc(requestId)}" readonly>
+      <div class="transaction-action-shell topup-action-shell">
+        <input id="topupRequestId" type="hidden" value="${esc(requestId)}">
+        <div class="transaction-action-summary">
+          <div><span>${isSuccess ? 'Complete Top-Up' : 'Fail Top-Up'}</span><strong>BDT ${money(topupServiceAmount(row))}</strong></div>
+          <span class="transaction-status-badge status-${esc(statusClass)}">${statusPill(status)}</span>
         </div>
-
-        <div class="form-full">
-          <label>Message / Note</label>
+        <div class="detail-grid transaction-action-context">
+          <div class="detail-item"><label>Request ID</label><strong class="mono">${esc(requestId)}</strong></div>
+          <div class="detail-item"><label>User / UID</label><strong>${esc(row.user_name || row.name || row.uid || '-')}</strong></div>
+          <div class="detail-item"><label>Number</label><strong>${esc(row.topup_number || row.number || '-')}</strong></div>
+          <div class="detail-item"><label>Operator</label><strong>${esc(row.operator || '-')}</strong></div>
+          <div class="detail-item"><label>Wallet Debit</label><strong>${esc(topupWalletDebitText(row))}</strong></div>
+          ${topupRateText(row) ? `<div class="detail-item"><label>Canonical Rate</label><strong>${esc(topupRateText(row))}</strong></div>` : ''}
+        </div>
+        <div class="transaction-action-field">
+          <label for="topupMessage">Message / Note</label>
           <textarea class="input" id="topupMessage" rows="4">${esc(defaultMessage)}</textarea>
         </div>
-
-        <div class="form-full">
-          <div class="muted" style="font-size:13px;">
-            This action will update request status and refresh dashboard data.
-          </div>
-        </div>
+        <p class="transaction-action-note">This action will update request status and refresh dashboard data.</p>
       </div>
     `,
     `
-      <button class="btn ghost" id="topupCancelBtn" onclick="closeModal()">Cancel</button>
-      <button class="btn ${isSuccess ? 'brand' : 'red'}" id="topupSubmitBtn" onclick="submitTopupAction('${type}')">
+      <button class="btn ghost" id="topupCancelBtn" type="button" onclick="closeModal()">Cancel</button>
+      <button class="btn ${isSuccess ? 'brand' : 'red'}" id="topupSubmitBtn" type="button" onclick="submitTopupAction('${type}')">
         ${isSuccess ? 'Confirm Success' : 'Confirm Failed'}
       </button>
     `
   );
+  setModalPresentationScope('topup-action');
 }
 
 async function submitTopupAction(type){
@@ -4287,39 +4399,47 @@ function openDirectTopupModal(){
   openModal(
     'Admin Direct Topup',
     `
-      <div class="form-grid">
-        <div>
-          <label>Topup Number</label>
-          <input class="input" id="directTopupNumber" placeholder="01712345678">
+      <div class="direct-topup-shell">
+        <div class="direct-topup-heading">
+          <div><span>Service denomination</span><strong>BDT</strong></div>
+          <p>Creates the existing Admin direct Top-Up request without wallet conversion.</p>
         </div>
+        <div class="form-grid direct-topup-form">
+        <label class="transaction-action-field" for="directTopupNumber">
+          <span>Topup Number</span>
+          <input class="input" id="directTopupNumber" placeholder="01712345678">
+        </label>
 
-        <div>
-          <label>Operator</label>
-          <select id="directTopupOperator">
+        <label class="transaction-action-field" for="directTopupOperator">
+          <span>Operator</span>
+          <select class="input" id="directTopupOperator">
             <option value="GP">GP</option>
             <option value="ROBI">ROBI</option>
             <option value="BL">Banglalink</option>
             <option value="AIRTEL">AIRTEL</option>
             <option value="TT">TT</option>
           </select>
-        </div>
+        </label>
 
-        <div>
-          <label>Amount</label>
+        <label class="transaction-action-field" for="directTopupAmount">
+          <span>Amount BDT</span>
           <input class="input" id="directTopupAmount" type="number" step="0.01" min="0" placeholder="50">
-        </div>
+        </label>
 
-        <div>
-          <label>Note</label>
+        <label class="transaction-action-field" for="directTopupNote">
+          <span>Note</span>
           <input class="input" id="directTopupNote" placeholder="Admin manual topup">
+        </label>
         </div>
+        <p class="transaction-action-note">Operator codes, validation and Worker queue behavior remain unchanged.</p>
       </div>
     `,
     `
-      <button class="btn ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn brand" onclick="submitDirectTopup()">Create Topup</button>
+      <button class="btn ghost" type="button" onclick="closeModal()">Cancel</button>
+      <button class="btn brand" type="button" onclick="submitDirectTopup()">Create Topup</button>
     `
   );
+  setModalPresentationScope('direct-topup');
 }
 
 async function submitDirectTopup(){
