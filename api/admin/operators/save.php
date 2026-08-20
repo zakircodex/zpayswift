@@ -91,6 +91,7 @@ if ($active && $workerDialReady) {
 }
 
 $existingPrivate = fb_get('OPERATOR_PRIVATE/' . $operator);
+$existingPrivate = is_array($existingPrivate) ? $existingPrivate : [];
 $existingPin = is_array($existingPrivate) ? trim((string)($existingPrivate['retailer_secret_pin'] ?? '')) : '';
 if ($active && $workerDialReady && $requiresSecretPin && $retailerSecretPin === '' && $existingPin === '') {
     api_response(false, 'VALIDATION_ERROR', 'retailer_secret_pin is required', ['field' => 'retailer_secret_pin'], 422);
@@ -127,10 +128,6 @@ $config['updated_at'] = $now;
 $config['updated_by'] = (string)($adminUser['uid'] ?? '');
 $config['updated_by_role'] = auth_status_value($adminUser['role'] ?? 'ADMIN');
 
-if (!fb_put('TOPUP_CONFIG', $config)) {
-    api_response(false, 'SERVER_ERROR', 'Failed to save top-up config', [], 500);
-}
-
 $existingRuntime = get_operator_runtime($operator) ?: [];
 $runtime = array_merge($existingRuntime, [
     'code' => $operator,
@@ -149,15 +146,13 @@ $runtime = array_merge($existingRuntime, [
     'updated_at' => $now,
 ]);
 
-if (!fb_put('OPERATOR_RUNTIME/' . $operator, $runtime)) {
-    api_response(false, 'SERVER_ERROR', 'Failed to save operator runtime', [], 500);
-}
-
-if (!fb_put('OPERATOR_PRIVATE/' . $operator, [
+$private = array_merge($existingPrivate, [
     'retailer_secret_pin' => $retailerSecretPin,
     'updated_at' => $now,
-])) {
-    api_response(false, 'SERVER_ERROR', 'Failed to save operator private config', [], 500);
+]);
+
+if (!operator_config_save_atomic($operator, $config, $runtime, $private)) {
+    api_response(false, 'SERVER_ERROR', 'Failed to save operator settings', [], 500);
 }
 
 admin_action_log('SAVE_OPERATOR', $operator, 'Operator settings updated', [
