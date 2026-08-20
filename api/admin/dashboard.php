@@ -18,6 +18,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/admin/assets/admin-users.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-users.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-operations.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-operations.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-transactions.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-transactions.css') ?: 1)) ?>">
+  <link rel="stylesheet" href="/api/admin/assets/admin-support.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-support.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
@@ -570,64 +571,69 @@ header('Pragma: no-cache');
       </section>
 
       <section class="section" id="supportSection">
-        <div class="card">
-          <div class="panel-head">
+        <div class="card support-admin-card">
+          <div class="panel-head support-panel-head">
             <div>
               <h3>Support Tickets</h3>
               <p>Review customer support requests, replies and secure screenshots.</p>
             </div>
             <div class="row-actions">
-              <button class="btn ghost" id="reloadSupportBtn">Reload</button>
+              <button class="btn ghost" id="reloadSupportBtn" type="button">Reload</button>
             </div>
           </div>
 
-          <div class="toolbar">
-            <div class="toolbar-left">
-              <select id="supportStatusFilter" class="input sm">
-                <option value="">All Status</option>
-                <option value="OPEN">Open</option>
-                <option value="PENDING">Pending</option>
-                <option value="REPLIED">Replied</option>
-                <option value="RESOLVED">Resolved</option>
-                <option value="CLOSED">Closed</option>
-              </select>
-              <input class="input md" id="supportSearch" placeholder="Search ticket, user, phone, subject or request ID">
+          <div class="toolbar support-toolbar">
+            <div class="toolbar-left support-filter-grid">
+              <label class="support-filter-field" for="supportStatusFilter">
+                <span>Status</span>
+                <select id="supportStatusFilter" class="input sm">
+                  <option value="">All Status</option>
+                  <option value="OPEN">Open</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="REPLIED">Replied</option>
+                  <option value="RESOLVED">Resolved</option>
+                  <option value="CLOSED">Closed</option>
+                </select>
+              </label>
+              <label class="support-filter-field support-search-field" for="supportSearch">
+                <span>Search</span>
+                <input class="input md" id="supportSearch" placeholder="Search ticket, user, phone, subject or request ID">
+              </label>
             </div>
           </div>
 
-          <div class="table-wrap">
-            <table>
+          <div class="table-wrap support-ticket-table-wrap">
+            <table class="support-ticket-table">
               <thead>
                 <tr>
                   <th>Ticket</th>
                   <th>User</th>
-                  <th>Category</th>
-                  <th>Subject</th>
+                  <th>Conversation</th>
                   <th>Related Request</th>
                   <th>Status</th>
                   <th>Attachments</th>
                   <th>Last Activity</th>
-                  <th>Action</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="supportTicketsTableBody">
-                <tr><td colspan="9" class="empty">No support ticket loaded yet.</td></tr>
+                <tr><td colspan="8" class="empty support-ticket-state">No support ticket loaded yet.</td></tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <div class="card" style="margin-top:16px;">
-          <div class="panel-head">
+        <div class="card support-config-card">
+          <div class="panel-head support-panel-head">
             <div>
               <h3>Contact Us Settings</h3>
               <p>Public quick-contact options and support ticket policy.</p>
             </div>
-            <button class="btn brand" id="saveSupportConfigBtn">Save Contact Settings</button>
+            <button class="btn brand" id="saveSupportConfigBtn" type="button">Save Contact Settings</button>
           </div>
 
-          <div class="card-body">
-            <div class="form-grid">
+          <div class="card-body support-config-body">
+            <div class="form-grid support-config-grid">
               <label>Contact Us Enabled
                 <select class="input" id="supportContactEnabled">
                   <option value="1">Enabled</option>
@@ -673,7 +679,7 @@ header('Pragma: no-cache');
               <label>Average Response Text
                 <input class="input" id="supportAverageResponse" placeholder="Average response time: within 24 hours.">
               </label>
-              <label style="grid-column:1/-1;">Support Notice
+              <label class="support-notice-field">Support Notice
                 <textarea class="input" id="supportNotice" rows="3" placeholder="Never share your password, PIN or OTP."></textarea>
               </label>
               <label>Attachments Enabled
@@ -701,16 +707,16 @@ header('Pragma: no-cache');
           </div>
         </div>
 
-        <div class="card" style="margin-top:16px;">
-          <div class="panel-head">
+        <div class="card support-categories-card">
+          <div class="panel-head support-panel-head">
             <div>
               <h3>Support Categories</h3>
               <p>Manage active categories shown in the Android Contact Us page.</p>
             </div>
-            <button class="btn brand" id="supportCategoryAddBtn">Add Category</button>
+            <button class="btn brand" id="supportCategoryAddBtn" type="button">Add Category</button>
           </div>
-          <div class="table-wrap">
-            <table>
+          <div class="table-wrap support-category-table-wrap">
+            <table class="support-category-table">
               <thead>
                 <tr>
                   <th>Code</th>

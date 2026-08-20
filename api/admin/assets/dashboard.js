@@ -4592,26 +4592,50 @@ function supportTicketStatus(row){
   return String(row?.status || 'OPEN').toUpperCase();
 }
 
+function supportStatusBadge(row){
+  const status = supportTicketStatus(row);
+  const statusClass = status.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
+  const label = row?.status_label || status.replace(/_/g, ' ');
+  return `<span class="support-status-badge status-${esc(statusClass)}">${statusPill(label)}</span>`;
+}
+
 function renderSupportTickets(){
   const tbody = document.getElementById('supportTicketsTableBody');
   if (!tbody) return;
   if (!state.supportTickets.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="empty">No support ticket found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty support-ticket-state">No support ticket found.</td></tr>';
     return;
   }
   tbody.innerHTML = state.supportTickets.map(row => {
     const id = String(row.ticket_id || '');
+    const status = supportTicketStatus(row);
+    const statusClass = status.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
+    const preview = String(row.last_message_preview || '').trim();
+    const attachmentCount = Number(row.attachment_count || 0);
     return `
-      <tr>
-        <td><div class="mono">${esc(id)}</div><div class="muted">${fmtTs(row.created_at || 0)}</div></td>
-        <td><strong>${esc(row.user_name || '-')}</strong><div class="muted">${esc(row.user_phone || '-')}</div><div class="muted">${esc(row.uid || '')}</div></td>
-        <td>${esc(row.category_name || row.category_code || '-')}</td>
-        <td><strong>${esc(row.subject || '-')}</strong>${row.admin_unread ? '<span class="support-unread">New</span>' : ''}<div class="muted">${esc(row.last_message_preview || '')}</div></td>
-        <td>${esc(row.related_request_id || '-')}</td>
-        <td>${statusPill(row.status_label || supportTicketStatus(row))}</td>
-        <td>${Number(row.attachment_count || 0)}</td>
-        <td>${fmtTs(row.last_message_at || row.updated_at || 0)}</td>
-        <td><button class="mini-btn blue" onclick="openSupportTicket('${jsArg(id)}')">View</button></td>
+      <tr class="support-ticket-row status-${esc(statusClass)}">
+        <td class="support-ticket-id-cell" data-label="Ticket">
+          <div class="support-ticket-id-line"><span class="mono support-ticket-id" title="${esc(id)}">${esc(id)}</span>${row.admin_unread ? '<span class="support-unread">New</span>' : ''}</div>
+          <div class="muted">Created ${fmtTs(row.created_at || 0)}</div>
+        </td>
+        <td class="support-ticket-user-cell" data-label="User">
+          <strong>${esc(row.user_name || '-')}</strong>
+          <span>${esc(row.user_phone || '-')}</span>
+          <span class="mono">${esc(row.uid || '')}</span>
+        </td>
+        <td class="support-ticket-conversation-cell" data-label="Conversation">
+          <strong>${esc(row.subject || '-')}</strong>
+          <span class="support-ticket-category">${esc(row.category_name || row.category_code || '-')}</span>
+          <p>${esc(preview || 'No message preview.')}</p>
+        </td>
+        <td class="support-ticket-related-cell" data-label="Related Request"><span class="mono">${esc(row.related_request_id || '-')}</span></td>
+        <td class="support-ticket-status-cell" data-label="Status">${supportStatusBadge(row)}</td>
+        <td class="support-ticket-attachment-cell" data-label="Attachments"><span class="support-attachment-count">${attachmentCount}</span></td>
+        <td class="support-ticket-activity-cell" data-label="Last Activity">
+          <strong>${fmtTs(row.last_message_at || row.updated_at || 0)}</strong>
+          <span>${esc(row.last_message_by || 'Latest update')}</span>
+        </td>
+        <td class="support-ticket-actions-cell" data-label="Actions"><button class="mini-btn blue support-view-ticket-btn" type="button" onclick="openSupportTicket('${jsArg(id)}')">Open</button></td>
       </tr>
     `;
   }).join('');
@@ -4632,11 +4656,12 @@ function supportAttachmentCards(ticketId, attachments, ids){
     <div class="support-attachments">
       ${rows.map(row => {
         const url = supportAttachmentUrl(ticketId, String(row.attachment_id || ''));
+        const mime = String(row.mime || 'image').replace(/^image\//i, '').toUpperCase();
         return `
           <a class="support-attachment-card" href="${esc(url)}" target="_blank" rel="noopener">
             <img src="${esc(url)}" alt="${esc(row.original_name || 'Attachment')}" loading="lazy">
             <span>${esc(row.original_name || 'Screenshot')}</span>
-            <small>${money((Number(row.size || 0) / 1024))} KB</small>
+            <small>${esc(mime)} &bull; ${money((Number(row.size || 0) / 1024))} KB</small>
           </a>
         `;
       }).join('')}
@@ -4649,23 +4674,33 @@ function supportIsAdminMessage(msg){
   return sender === 'ADMIN' || sender === 'SUPPORT';
 }
 
+function supportMessageIdentity(msg){
+  const source = String(msg?.source || '').toUpperCase();
+  const senderType = String(msg?.sender_type || '').toUpperCase();
+  if (source === 'TELEGRAM') return { label:'Telegram Admin', source:'Telegram', className:'telegram' };
+  if (senderType === 'ADMIN') return { label:msg?.sender_name || 'Admin', source:'', className:'admin-panel' };
+  if (senderType === 'SUPPORT') return { label:msg?.sender_name || 'Support', source:'', className:'support' };
+  if (source === 'SYSTEM') return { label:'System', source:'', className:'system' };
+  return { label:msg?.sender_name || 'User', source:'', className:'web-user' };
+}
+
 function supportMessageHtml(msg, ticketId, attachments){
   const fromAdmin = supportIsAdminMessage(msg);
-  const sender = fromAdmin ? 'You' : 'User';
+  const identity = supportMessageIdentity(msg);
   return `
-    <div class="support-message ${fromAdmin ? 'admin' : 'user'}">
+    <article class="support-message ${fromAdmin ? 'admin' : 'user'} source-${esc(identity.className)}">
       <div class="support-message-head">
-        <strong>${esc(sender)}</strong>
+        <div><strong>${esc(identity.label)}</strong>${identity.source ? `<span class="support-message-source">${esc(identity.source)}</span>` : ''}</div>
         <span>${fmtTs(msg.created_at || 0)}</span>
       </div>
       <div class="support-message-text">${esc(msg.message || '-')}</div>
       ${supportAttachmentCards(ticketId, attachments, msg.attachment_ids || [])}
-    </div>
+    </article>
   `;
 }
 
 function supportConversationHtml(messages, ticketId, attachments){
-  if (!messages.length) return '<div class="empty">No conversation message found.</div>';
+  if (!messages.length) return '<div class="empty support-conversation-empty">No conversation message found.</div>';
   const ordered = [...messages].sort((a,b) => Number(a.created_at || 0) - Number(b.created_at || 0));
   return ordered.map(msg => supportMessageHtml(msg, ticketId, attachments)).join('');
 }
@@ -4683,29 +4718,32 @@ async function openSupportTicket(ticketId){
   const body = `
     <div class="support-chat-shell">
       <div class="support-chat-head">
-        <div>
+        <div class="support-chat-identity">
+          <small>Customer</small>
           <strong>${esc(ticket.user_name || 'Support User')}</strong>
           <span>${esc(ticket.subject || 'Support request')}</span>
+          <div class="support-chat-identity-meta"><span>${esc(ticket.user_phone || '-')}</span><span class="mono">${esc(ticket.uid || '-')}</span></div>
         </div>
-        ${statusPill(ticket.status_label || ticket.status || '-')}
+        ${supportStatusBadge(ticket)}
       </div>
       <div class="support-chat-meta">
-        <span>${esc(id)}</span>
-        <span>${esc(ticket.category_name || ticket.category_code || '-')}</span>
-        ${ticket.related_request_id ? `<span>${esc(ticket.related_request_id)}</span>` : ''}
-        <span>${fmtTs(ticket.created_at || 0)}</span>
+        <span><b>Ticket</b> ${esc(id)}</span>
+        <span><b>Category</b> ${esc(ticket.category_name || ticket.category_code || '-')}</span>
+        ${ticket.related_request_id ? `<span><b>Request</b> ${esc(ticket.related_request_id)}</span>` : ''}
+        <span><b>Created</b> ${fmtTs(ticket.created_at || 0)}</span>
       </div>
+      <div class="support-conversation-head"><strong>Conversation</strong><span>${messages.length} message${messages.length === 1 ? '' : 's'}</span></div>
       <div class="support-conversation">
         ${supportConversationHtml(messages, id, attachments)}
       </div>
       ${blocked ? `<div class="support-closed-note">${closed ? 'This ticket is closed.' : 'This ticket has been resolved.'}</div>` : `
         <div class="support-composer">
-          <textarea id="supportReplyMessage" class="input" rows="3" placeholder="Write a reply..."></textarea>
-          <input id="supportReplyAttachments" class="input" type="file" accept="image/jpeg,image/png,image/webp" multiple>
-          <div class="row-actions">
-            <button class="btn brand" id="supportReplySendBtn" onclick="submitSupportReply('${jsArg(id)}')">Send</button>
-            <button class="btn blue" onclick="setSupportTicketStatus('${jsArg(id)}','PENDING')">Pending</button>
-            <button class="btn red" onclick="setSupportTicketStatus('${jsArg(id)}','CLOSED')">Close</button>
+          <label class="support-reply-field" for="supportReplyMessage"><span>Admin Reply</span><textarea id="supportReplyMessage" class="input" rows="3" placeholder="Write a reply..."></textarea></label>
+          <label class="support-attachment-field" for="supportReplyAttachments"><span>Attachments</span><input id="supportReplyAttachments" class="input" type="file" accept="image/jpeg,image/png,image/webp" multiple><small>JPG, PNG or WEBP. Existing upload limits apply.</small></label>
+          <div class="row-actions support-composer-actions">
+            <button class="btn brand" id="supportReplySendBtn" type="button" onclick="submitSupportReply('${jsArg(id)}')">Send Reply</button>
+            <button class="btn blue" type="button" onclick="setSupportTicketStatus('${jsArg(id)}','PENDING')">Pending</button>
+            <button class="btn red" type="button" onclick="setSupportTicketStatus('${jsArg(id)}','CLOSED')">Close Ticket</button>
           </div>
         </div>
       `}
