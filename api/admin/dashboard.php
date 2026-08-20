@@ -15,6 +15,7 @@ header('Pragma: no-cache');
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=23">
   <link rel="stylesheet" href="/api/admin/assets/admin-ux.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-ux.css') ?: 1)) ?>">
+  <link rel="stylesheet" href="/api/admin/assets/admin-users.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-users.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
@@ -713,27 +714,28 @@ header('Pragma: no-cache');
       </section>
 
       <section class="section" id="usersSection">
-        <div class="card">
-          <div class="panel-head">
-  <div>
-    <h3>Users</h3>
-    <p>User details, wallet actions and ledger view.</p>
-  </div>
-  <div class="row-actions user-head-actions">
-    <button class="btn brand" id="createUserBtn">Create User</button>
-    <button class="btn blue" id="walletHistoryBtn">Balance History</button>
-    <button class="btn ghost" id="reloadUsersBtn">Reload Users</button>
-  </div>
-</div>
-
-          <div class="toolbar">
-            <div class="toolbar-left">
-              <input class="input md" id="usersSearch" placeholder="Search UID / phone / email / recent name">
+        <div class="card users-panel-card">
+          <div class="panel-head users-panel-head">
+            <div>
+              <h3>Users</h3>
+              <p>User details, wallet actions and ledger view.</p>
             </div>
           </div>
 
-          <div class="table-wrap">
-            <table>
+          <div class="toolbar users-toolbar">
+            <div class="toolbar-left users-search-wrap">
+              <label class="users-search-label" for="usersSearch">Search Users</label>
+              <input class="input md" id="usersSearch" placeholder="Search UID / phone / email / recent name" autocomplete="off">
+            </div>
+            <div class="row-actions user-head-actions users-toolbar-actions">
+              <button class="btn brand" id="createUserBtn" type="button">Create User</button>
+              <button class="btn blue" id="walletHistoryBtn" type="button">Balance History</button>
+              <button class="btn ghost" id="reloadUsersBtn" type="button">Reload Users</button>
+            </div>
+          </div>
+
+          <div class="table-wrap users-table-wrap">
+            <table class="users-table">
               <thead>
   <tr>
     <th>User</th>
@@ -742,16 +744,17 @@ header('Pragma: no-cache');
     <th>Role</th>
     <th>Country / Risk</th>
     <th>Available</th>
+    <th>Created</th>
     <th>Last Login</th>
     <th>Action</th>
   </tr>
 </thead>
 <tbody id="usersTableBody">
-  <tr><td colspan="8" class="empty">No data yet.</td></tr>
+  <tr><td colspan="9" class="empty users-state-cell">No data yet.</td></tr>
 </tbody>
             </table>
           </div>
-          <div class="users-pagination" id="usersPagination">
+          <div class="users-pagination users-pagination-bar" id="usersPagination">
             <span id="usersPaginationText">0 users</span>
             <div class="row-actions">
               <button class="btn ghost" id="usersPrevBtn" type="button">Previous</button>

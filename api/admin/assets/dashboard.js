@@ -2238,7 +2238,7 @@ async function loadUsers(options = {}){
   const search = document.getElementById('usersSearch')?.value.trim() || '';
 
   if (tbody) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">Loading users...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty users-state-cell users-loading-state">Loading users...</td></tr>';
   }
 
   try {
@@ -2273,7 +2273,7 @@ async function loadUsers(options = {}){
   } catch (err) {
     state.loaded.users = false;
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="8" class="empty">${esc(err.message || 'Unable to load users.')}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="empty users-state-cell users-error-state">${esc(err.message || 'Unable to load users.')}</td></tr>`;
     }
     renderUsersPagination();
     if (!options.silentLog) {
@@ -2290,45 +2290,59 @@ function renderUsers(){
   if (!tbody) return;
 
   if (!rows.length){
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">No user found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty users-state-cell users-empty-state">No user found.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = rows.map(item => `
-    <tr>
-      <td>
-        <div><strong>${esc(item.name || '-')}</strong></div>
-        <div class="muted" style="font-size:12px;">UID: ${esc(item.uid || '-')}</div>
-        <div class="muted" style="font-size:12px;">${esc(item.email || '-')}</div>
+  tbody.innerHTML = rows.map(item => {
+    const accountStatus = String(item.account_status || item.status || 'ACTIVE').toUpperCase();
+    const role = String(item.role || 'USER').toUpperCase();
+    const pricingCountry = String(item.pricing_country || item.market_country || item.country_code || item.country || '-').toUpperCase();
+    const walletCurrency = walletNativeCurrency(item);
+    const statusClass = accountStatus.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
+    const roleClass = role.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
+
+    return `
+    <tr class="user-table-row">
+      <td class="user-primary-cell" data-label="User">
+        <div class="user-primary-name">${esc(item.name || '-')}</div>
+        <div class="user-primary-phone">${esc(item.phone || '-')}</div>
+        <div class="user-primary-uid" title="${esc(item.uid || '-')}">UID: ${esc(item.uid || '-')}</div>
+        <div class="user-primary-email">${esc(item.email || '-')}</div>
       </td>
-      <td>${esc(item.phone || '-')}</td>
-      <td>
-        ${statusPill(item.account_status || item.status || 'ACTIVE')}
-        ${item.vpn_suspected ? '<div class="muted" style="font-size:11px;color:#ff8f9f;margin-top:5px;">Risk review</div>' : ''}
+      <td class="user-phone-cell" data-label="Phone">${esc(item.phone || '-')}</td>
+      <td class="user-status-cell" data-label="Status">
+        <div class="user-status-badge status-${esc(statusClass)}">${statusPill(accountStatus)}</div>
+        ${item.vpn_suspected ? '<div class="user-risk-flag">Risk review</div>' : ''}
       </td>
-      <td>${rolePill(item.role || 'USER')}</td>
-      <td>
-        <div><strong>${esc(item.phone_country || '-')}</strong> <span class="muted">OTP</span></div>
-        <div class="muted" style="font-size:12px;">${esc(item.pricing_country || item.market_country || item.country_code || item.country || '-')} pricing</div>
-        <div class="muted" style="font-size:11px;">GPS ${esc(item.gps_country || '-')} / IP ${esc(item.ip_country || '-')}</div>
-        ${item.country_mismatch ? '<div class="muted" style="font-size:11px;color:#ffb96a;">Country mismatch</div>' : ''}
+      <td class="user-role-cell" data-label="Role"><div class="user-role-badge role-${esc(roleClass)}">${rolePill(role)}</div></td>
+      <td class="user-market-cell" data-label="Market">
+        <div class="user-market-stack">
+          <div class="user-market-row"><span>Phone</span><strong>${esc(item.phone_country || '-')}</strong></div>
+          <div class="user-market-row"><span>Pricing</span><strong>${esc(pricingCountry)}</strong></div>
+          <div class="user-market-row"><span>Wallet</span><strong>${esc(walletCurrency)}</strong></div>
+        </div>
+        <div class="user-risk-meta">GPS ${esc(item.gps_country || '-')} / IP ${esc(item.ip_country || '-')}</div>
+        ${item.country_mismatch ? '<div class="user-mismatch-flag">Country mismatch</div>' : ''}
       </td>
-      <td>${walletMoney(item, 'available')}${walletRawHint(item, 'available')}</td>
-      <td>${fmtTs(item.last_login_at || 0)}</td>
-      <td>
-        <div class="row-actions">
-          <button class="mini-btn" onclick="viewUser('${esc(item.uid || '')}')">View</button>
-          <button class="mini-btn" onclick="openEditUserModal('${esc(item.uid || '')}')">Edit</button>
-          ${String(item.account_status || item.status || '').toUpperCase() === 'REVIEW'
+      <td class="user-balance-cell" data-label="Balance"><strong>${walletMoney(item, 'available')}</strong>${walletRawHint(item, 'available')}</td>
+      <td class="user-date-cell" data-label="Created">${fmtTs(item.created_at || 0)}</td>
+      <td class="user-date-cell" data-label="Last Login">${fmtTs(item.last_login_at || 0)}</td>
+      <td class="user-actions-cell" data-label="Actions">
+        <div class="row-actions user-row-actions">
+          <button class="mini-btn user-action-view" type="button" onclick="viewUser('${esc(item.uid || '')}')">View</button>
+          <button class="mini-btn user-action-edit" type="button" onclick="openEditUserModal('${esc(item.uid || '')}')">Edit</button>
+          ${accountStatus === 'REVIEW'
             ? `
-              <button class="mini-btn" onclick="approveUserAccount('${esc(item.uid || '')}')">Approve</button>
-              <button class="mini-btn" onclick="rejectUserAccount('${esc(item.uid || '')}')">Reject</button>
+              <button class="mini-btn user-action-approve" type="button" onclick="approveUserAccount('${esc(item.uid || '')}')">Approve</button>
+              <button class="mini-btn red user-action-reject" type="button" onclick="rejectUserAccount('${esc(item.uid || '')}')">Reject</button>
             `
             : ''}
         </div>
       </td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderUsersPagination(){
@@ -2354,63 +2368,94 @@ async function viewUser(uid){
   try{
     const data = await proxyGet('user_get', { uid }, { busyText: 'Loading user details...' });
     const w = data.wallet || {};
+    const userRole = String(data.role || 'USER').toUpperCase();
+    const userStatus = String(data.account_status || data.status || 'ACTIVE').toUpperCase();
+    const userRoleClass = userRole.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
+    const userStatusClass = userStatus.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
 
     openDrawer(
       `User ${uid}`,
       `${data.name || '-'} • ${data.phone || '-'}`,
       `
-        <div class="detail-grid">
-          <div class="detail-item"><label>Name</label><strong>${esc(data.name || '-')}</strong></div>
-          <div class="detail-item"><label>Phone</label><strong>${esc(data.phone || '-')}</strong></div>
-          <div class="detail-item"><label>Email</label><strong>${esc(data.email || '-')}</strong></div>
-          <div class="detail-item"><label>Status</label><strong>${esc(data.status || '-')}</strong></div>
-          <div class="detail-item"><label>Account Review Status</label><strong>${esc(data.account_status || data.status || '-')}</strong></div>
-          <div class="detail-item"><label>Role</label><strong>${esc(data.role || 'USER')}</strong></div>
-          <div class="detail-item"><label>Phone Country (OTP)</label><strong>${esc(data.phone_country || '-')}</strong></div>
-          <div class="detail-item"><label>Pricing Country (fee/wallet/service)</label><strong>${esc(data.pricing_country || data.market_country || data.country_code || data.country || '-')}</strong></div>
-          <div class="detail-item"><label>IP Country</label><strong>${esc(data.ip_country || '-')}</strong></div>
-          <div class="detail-item"><label>GPS Country</label><strong>${esc(data.gps_country || '-')}</strong></div>
-          <div class="detail-item"><label>GPS Accuracy</label><strong>${Number(data.gps_accuracy || 0).toFixed(0)} m</strong></div>
-          <div class="detail-item"><label>Country Mismatch</label><strong>${data.country_mismatch ? 'Yes - review recommended' : 'No'}</strong></div>
-          <div class="detail-item"><label>VPN / Proxy Suspected</label><strong>${data.vpn_suspected ? 'Yes' : 'No'}</strong></div>
-          <div class="detail-item"><label>Detection Source</label><strong>${esc(data.market_detection_source || '-')}</strong></div>
-          <div class="detail-item"><label>Review Reason</label><strong>${esc(data.account_review_reason || '-')}</strong></div>
-          <div class="detail-item"><label>IP Risk</label><strong>${esc(data.ip_risk_type || '-')} (${Number(data.ip_risk_score || 0)})</strong></div>
-          <div class="detail-item"><label>Registration IP</label><strong>${esc(data.created_ip || data.registration_ip || '-')}</strong></div>
-          <div class="detail-item"><label>Last Login IP</label><strong>${esc(data.last_login_ip || '-')}</strong></div>
-          <div class="detail-item"><label>Topup Commission / 1000 BDT</label><strong>${Number(data.commission_per_1000 || 0).toFixed(2)}</strong></div>
-          <div class="detail-item"><label>API Enabled</label><strong>${data.api_enabled ? 'Yes' : 'No'}</strong></div>
-          <div class="detail-item"><label>Topup Enabled</label><strong>${data.topup_enabled ? 'Yes' : 'No'}</strong></div>
-          <div class="detail-item"><label>Bundle Enabled</label><strong>${data.bundle_enabled ? 'Yes' : 'No'}</strong></div>
-          <div class="detail-item"><label>Amount Limits</label><strong>${Number(data.min_amount || 0).toFixed(2)} - ${Number(data.max_amount || 0).toFixed(2)}</strong></div>
-          <div class="detail-item"><label>Created</label><strong>${fmtTs(data.created_at)}</strong></div>
-          <div class="detail-item"><label>Last Login</label><strong>${fmtTs(data.last_login_at)}</strong></div>
-          <div class="detail-item"><label>Available Balance</label><strong>${walletMoney(w, 'available')}</strong>${walletRawHint(w, 'available')}</div>
-          <div class="detail-item"><label>Hold Balance</label><strong>${walletMoney(w, 'hold')}</strong>${walletRawHint(w, 'hold')}</div>
-          <div class="detail-item"><label>Wallet Currency</label><strong>${esc(w.wallet_currency || w.currency || 'BDT')}</strong></div>
-          <div class="detail-item"><label>Total Topup Spent</label><strong>${money(w.total_topup_spent)}</strong></div>
-          <div class="detail-item"><label>Total Bundle Spent</label><strong>${money(w.total_bundle_spent)}</strong></div>
-          <div class="detail-item"><label>Total Refund</label><strong>${money(w.total_refund)}</strong></div>
-          <div class="detail-item"><label>Wallet Updated</label><strong>${fmtTs(w.updated_at)}</strong></div>
+        <div class="user-detail-shell">
+          <section class="user-detail-group" aria-labelledby="userAccountGroupTitle">
+            <div class="user-detail-group-head">
+              <h4 id="userAccountGroupTitle">Account</h4>
+              <div class="user-detail-badges"><span class="user-role-badge role-${esc(userRoleClass)}">${rolePill(userRole)}</span><span class="user-status-badge status-${esc(userStatusClass)}">${statusPill(userStatus)}</span></div>
+            </div>
+            <div class="detail-grid user-detail-grid">
+              <div class="detail-item"><label>Name</label><strong>${esc(data.name || '-')}</strong></div>
+              <div class="detail-item"><label>UID</label><strong class="user-detail-uid">${esc(data.uid || uid)}</strong></div>
+              <div class="detail-item"><label>Phone</label><strong>${esc(data.phone || '-')}</strong></div>
+              <div class="detail-item"><label>Email</label><strong>${esc(data.email || '-')}</strong></div>
+              <div class="detail-item"><label>Role</label><strong>${esc(data.role || 'USER')}</strong></div>
+              <div class="detail-item"><label>Status</label><strong>${esc(data.status || '-')}</strong></div>
+              <div class="detail-item"><label>Account Review Status</label><strong>${esc(data.account_status || data.status || '-')}</strong></div>
+              <div class="detail-item"><label>Created</label><strong>${fmtTs(data.created_at)}</strong></div>
+              <div class="detail-item"><label>Last Login</label><strong>${fmtTs(data.last_login_at)}</strong></div>
+            </div>
+          </section>
+
+          <section class="user-detail-group" aria-labelledby="userMarketGroupTitle">
+            <div class="user-detail-group-head"><h4 id="userMarketGroupTitle">Market</h4></div>
+            <div class="detail-grid user-detail-grid">
+              <div class="detail-item"><label>Phone Country (OTP)</label><strong>${esc(data.phone_country || '-')}</strong></div>
+              <div class="detail-item"><label>Pricing Country (fee/wallet/service)</label><strong>${esc(data.pricing_country || data.market_country || data.country_code || data.country || '-')}</strong></div>
+              <div class="detail-item"><label>Wallet Currency</label><strong>${esc(w.wallet_currency || w.currency || 'BDT')}</strong></div>
+              <div class="detail-item"><label>Detection Source</label><strong>${esc(data.market_detection_source || '-')}</strong></div>
+            </div>
+          </section>
+
+          <section class="user-detail-group user-review-group" aria-labelledby="userSecurityGroupTitle">
+            <div class="user-detail-group-head"><h4 id="userSecurityGroupTitle">Security / Review</h4></div>
+            <div class="detail-grid user-detail-grid">
+              <div class="detail-item"><label>GPS Country</label><strong>${esc(data.gps_country || '-')}</strong></div>
+              <div class="detail-item"><label>IP Country</label><strong>${esc(data.ip_country || '-')}</strong></div>
+              <div class="detail-item"><label>GPS Accuracy</label><strong>${Number(data.gps_accuracy || 0).toFixed(0)} m</strong></div>
+              <div class="detail-item"><label>Country Mismatch</label><strong>${data.country_mismatch ? 'Yes - review recommended' : 'No'}</strong></div>
+              <div class="detail-item"><label>VPN / Proxy Suspected</label><strong>${data.vpn_suspected ? 'Yes' : 'No'}</strong></div>
+              <div class="detail-item user-review-reason"><label>Review Reason</label><strong>${esc(data.account_review_reason || '-')}</strong></div>
+              <div class="detail-item"><label>IP Risk</label><strong>${esc(data.ip_risk_type || '-')} (${Number(data.ip_risk_score || 0)})</strong></div>
+              <div class="detail-item"><label>Registration IP</label><strong>${esc(data.created_ip || data.registration_ip || '-')}</strong></div>
+              <div class="detail-item"><label>Last Login IP</label><strong>${esc(data.last_login_ip || '-')}</strong></div>
+            </div>
+          </section>
+
+          <section class="user-detail-group" aria-labelledby="userWalletGroupTitle">
+            <div class="user-detail-group-head"><h4 id="userWalletGroupTitle">Wallet / Commission</h4></div>
+            <div class="detail-grid user-detail-grid">
+              <div class="detail-item user-wallet-balance"><label>Available Balance</label><strong>${walletMoney(w, 'available')}</strong>${walletRawHint(w, 'available')}</div>
+              <div class="detail-item user-wallet-balance"><label>Hold Balance</label><strong>${walletMoney(w, 'hold')}</strong>${walletRawHint(w, 'hold')}</div>
+              <div class="detail-item"><label>Topup Commission / 1000 BDT</label><strong>${Number(data.commission_per_1000 || 0).toFixed(2)}</strong></div>
+              <div class="detail-item"><label>API Enabled</label><strong>${data.api_enabled ? 'Yes' : 'No'}</strong></div>
+              <div class="detail-item"><label>Topup Enabled</label><strong>${data.topup_enabled ? 'Yes' : 'No'}</strong></div>
+              <div class="detail-item"><label>Bundle Enabled</label><strong>${data.bundle_enabled ? 'Yes' : 'No'}</strong></div>
+              <div class="detail-item"><label>Amount Limits</label><strong>${Number(data.min_amount || 0).toFixed(2)} - ${Number(data.max_amount || 0).toFixed(2)}</strong></div>
+              <div class="detail-item"><label>Total Topup Spent</label><strong>${money(w.total_topup_spent)}</strong></div>
+              <div class="detail-item"><label>Total Bundle Spent</label><strong>${money(w.total_bundle_spent)}</strong></div>
+              <div class="detail-item"><label>Total Refund</label><strong>${money(w.total_refund)}</strong></div>
+              <div class="detail-item"><label>Wallet Updated</label><strong>${fmtTs(w.updated_at)}</strong></div>
+            </div>
+          </section>
         </div>
       `,
       `
-        <button class="btn ghost" onclick="closeDrawer()">Close</button>
-        <button class="btn blue" onclick="openEditUserModal('${esc(uid)}')">Edit User</button>
-        ${String(data.account_status || data.status || '').toUpperCase() === 'REVIEW'
+        <button class="btn ghost user-detail-action" onclick="closeDrawer()">Close</button>
+        <button class="btn blue user-detail-action" onclick="openEditUserModal('${esc(uid)}')">Edit User</button>
+        ${userStatus === 'REVIEW'
           ? `
-            <button class="btn brand" onclick="approveUserAccount('${esc(uid)}')">Approve Account</button>
-            <button class="btn orange" onclick="rejectUserAccount('${esc(uid)}')">Reject Account</button>
+            <button class="btn brand user-detail-action user-review-approve" onclick="approveUserAccount('${esc(uid)}')">Approve Account</button>
+            <button class="btn orange user-detail-action user-review-reject" onclick="rejectUserAccount('${esc(uid)}')">Reject Account</button>
           `
           : ''}
         ${
           canManageApiKeys(data.role)
-            ? `<button class="btn blue" onclick="openUserApiKeys('${esc(uid)}')">API Keys</button>`
+            ? `<button class="btn blue user-detail-action" onclick="openUserApiKeys('${esc(uid)}')">API Keys</button>`
             : ''
         }
-        <button class="btn brand" onclick="openWalletAction('add','${esc(uid)}')">Add Balance</button>
-        <button class="btn orange" onclick="openWalletAction('deduct','${esc(uid)}')">Deduct Balance</button>
-        <button class="btn blue ledger-btn" onclick="openLedger('${esc(uid)}')">View Ledger</button>
+        <button class="btn brand user-detail-action" onclick="openWalletAction('add','${esc(uid)}')">Add Balance</button>
+        <button class="btn orange user-detail-action" onclick="openWalletAction('deduct','${esc(uid)}')">Deduct Balance</button>
+        <button class="btn blue ledger-btn user-detail-action" onclick="openLedger('${esc(uid)}')">View Ledger</button>
       `
     );
   }catch(err){
@@ -2430,7 +2475,7 @@ async function openEditUserModal(uid){
     openModal(
       `Edit User • ${uid}`,
       `
-        <div class="form-grid">
+        <div class="form-grid user-edit-form">
           <div class="form-full">
             <label>UID</label>
             <input class="input" id="editUserUid" value="${esc(data.uid || uid)}" readonly>
@@ -3032,23 +3077,23 @@ function openWalletAction(type, uid){
   const actionId = window.crypto?.randomUUID?.()
     || `WA_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const currencyFields = `
-    <div>
+    <div class="user-wallet-currency-field">
       <label>Receiver Currency</label>
       <input class="input" id="walletCurrency" value="${esc(currency === 'MYR' ? 'MYR (RM)' : 'BDT')}" readonly>
     </div>
 
-    <div>
+    <div class="user-wallet-amount-field">
       <label>Amount (${esc(prefix)})</label>
       <input class="input" id="walletAmount" type="number" step="0.01" min="0">
     </div>
 
-    <div class="form-full muted">The amount is ${type === 'add' ? 'credited to' : 'deducted from'} the receiver wallet in ${esc(prefix)}. No exchange conversion is applied.</div>
+    <div class="form-full muted user-wallet-rule">The amount is ${type === 'add' ? 'credited to' : 'deducted from'} the receiver wallet in ${esc(prefix)}. No exchange conversion is applied.</div>
   `;
 
   openModal(
     type === 'add' ? 'Add Balance' : 'Deduct Balance',
     `
-      <div class="form-grid">
+      <div class="form-grid user-wallet-form">
         <div class="form-full">
           <label>UID</label>
           <input class="input" id="walletUid" value="${esc(uid)}" readonly>

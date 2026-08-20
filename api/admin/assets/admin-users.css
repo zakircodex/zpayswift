@@ -1,0 +1,616 @@
+/* Admin Users section presentation. Data and action contracts remain in dashboard.js. */
+#usersSection{
+  min-width:0;
+}
+
+#usersSection .users-panel-card{
+  min-width:0;
+}
+
+#usersSection .users-panel-head{
+  min-height:auto;
+  padding-bottom:12px;
+}
+
+#usersSection .users-toolbar{
+  display:flex;
+  align-items:end;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 15px;
+  border-top:1px solid rgba(125,166,216,.1);
+  border-bottom:1px solid rgba(125,166,216,.12);
+  background:rgba(7,23,38,.34);
+}
+
+#usersSection .users-search-wrap{
+  display:grid;
+  flex:1 1 360px;
+  gap:5px;
+  min-width:220px;
+}
+
+#usersSection .users-search-label{
+  color:#9fb2ca;
+  font-size:11px;
+  font-weight:700;
+}
+
+#usersSection #usersSearch{
+  width:min(440px,100%);
+  height:48px;
+  min-height:48px;
+  border-radius:12px;
+}
+
+#usersSection .users-toolbar-actions{
+  display:grid !important;
+  grid-template-columns:repeat(3,minmax(118px,auto));
+  justify-content:end !important;
+  gap:8px !important;
+  width:auto;
+}
+
+#usersSection .users-toolbar-actions .btn{
+  width:100% !important;
+  min-width:0 !important;
+  height:48px;
+  min-height:48px;
+  padding:0 13px;
+  border-radius:12px;
+}
+
+#usersSection .users-table-wrap{
+  max-height:min(66vh,720px);
+  padding:0;
+  overflow:auto;
+  overscroll-behavior:contain;
+  scrollbar-color:#315171 transparent;
+}
+
+#usersSection .users-table{
+  min-width:1230px;
+  table-layout:fixed;
+}
+
+#usersSection .users-table th{
+  position:sticky;
+  top:0;
+  z-index:3;
+  height:42px;
+  padding:9px 10px;
+  background:#0d2135;
+  box-shadow:0 1px 0 rgba(125,166,216,.18);
+}
+
+#usersSection .users-table th:nth-child(1){width:210px}
+#usersSection .users-table th:nth-child(2){width:128px}
+#usersSection .users-table th:nth-child(3){width:105px}
+#usersSection .users-table th:nth-child(4){width:105px}
+#usersSection .users-table th:nth-child(5){width:156px}
+#usersSection .users-table th:nth-child(6){width:130px;text-align:right}
+#usersSection .users-table th:nth-child(7){width:132px}
+#usersSection .users-table th:nth-child(8){width:132px}
+#usersSection .users-table th:nth-child(9){width:184px}
+
+#usersSection .users-table td{
+  padding:11px 10px;
+  vertical-align:middle;
+  background:rgba(7,23,38,.12);
+}
+
+#usersSection .user-table-row:hover td{
+  background:rgba(67,141,240,.055);
+}
+
+#usersSection .user-primary-cell{
+  min-width:0;
+}
+
+#usersSection .user-primary-name{
+  color:#f5f9fe;
+  font-size:13.5px;
+  font-weight:800;
+  line-height:1.3;
+  overflow-wrap:anywhere;
+}
+
+#usersSection .user-primary-phone{
+  display:none;
+}
+
+#usersSection .user-primary-uid{
+  max-width:100%;
+  margin-top:4px;
+  overflow:hidden;
+  color:#9fb2ca;
+  font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  font-size:10.5px;
+  line-height:1.35;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+#usersSection .user-primary-email{
+  margin-top:3px;
+  overflow:hidden;
+  color:#849ab4;
+  font-size:10.5px;
+  line-height:1.35;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+#usersSection .user-phone-cell,
+#usersSection .user-date-cell{
+  color:#cbd8e7;
+  font-size:11.5px;
+}
+
+#usersSection .user-status-badge,
+#usersSection .user-role-badge{
+  display:inline-flex;
+}
+
+#usersSection :is(.status-blocked,.status-rejected,.status-inactive) .pill,
+#usersSection .role-admin .pill,
+.user-detail-badges :is(.status-blocked,.status-rejected,.status-inactive,.role-admin) .pill{
+  border-color:rgba(240,100,114,.34);
+  background:rgba(240,100,114,.1);
+  color:#ffadb5;
+}
+
+#usersSection .status-review .pill,
+#usersSection :is(.role-subadmin,.role-partner) .pill,
+.user-detail-badges :is(.status-review,.role-subadmin,.role-partner) .pill{
+  border-color:rgba(244,174,69,.34);
+  background:rgba(244,174,69,.1);
+  color:#ffd58e;
+}
+
+#usersSection .status-active .pill,
+#usersSection .role-retailer .pill,
+.user-detail-badges :is(.status-active,.role-retailer) .pill{
+  border-color:rgba(39,216,115,.3);
+  background:rgba(39,216,115,.09);
+  color:#82efa9;
+}
+
+#usersSection .role-user .pill,
+.user-detail-badges .role-user .pill{
+  border-color:rgba(67,141,240,.28);
+  background:rgba(67,141,240,.09);
+  color:#a9cef9;
+}
+
+#usersSection .user-risk-flag,
+#usersSection .user-mismatch-flag{
+  margin-top:5px;
+  font-size:10.5px;
+  font-weight:700;
+}
+
+#usersSection .user-risk-flag{
+  color:#ff9ca8;
+}
+
+#usersSection .user-mismatch-flag{
+  color:#ffc47c;
+}
+
+#usersSection .user-market-stack{
+  display:grid;
+  gap:3px;
+}
+
+#usersSection .user-market-row{
+  display:grid;
+  grid-template-columns:48px minmax(0,1fr);
+  align-items:center;
+  gap:6px;
+}
+
+#usersSection .user-market-row span{
+  color:#849ab4;
+  font-size:10px;
+}
+
+#usersSection .user-market-row strong{
+  color:#edf5fd;
+  font-size:11.5px;
+}
+
+#usersSection .user-risk-meta{
+  margin-top:6px;
+  color:#8196af;
+  font-size:10px;
+  line-height:1.35;
+}
+
+#usersSection .user-balance-cell{
+  text-align:right;
+}
+
+#usersSection .user-balance-cell > strong{
+  display:block;
+  color:#eafff2;
+  font-size:13px;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+
+#usersSection .user-balance-cell .muted{
+  font-size:10px !important;
+}
+
+#usersSection .user-row-actions{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(76px,1fr));
+  gap:6px;
+}
+
+#usersSection .user-row-actions .mini-btn{
+  width:100%;
+  min-width:0;
+  min-height:36px;
+  padding:7px 9px;
+  border-radius:9px;
+  font-size:11px;
+}
+
+#usersSection .user-action-view{
+  border-color:rgba(39,216,115,.28);
+  color:#a7f3c1;
+}
+
+#usersSection .user-action-approve{
+  border-color:rgba(39,216,115,.36);
+  background:rgba(39,216,115,.14);
+  color:#baf6cf;
+}
+
+#usersSection .users-pagination-bar{
+  min-height:58px;
+  padding:10px 15px 14px;
+  border-top:1px solid rgba(125,166,216,.1);
+}
+
+#usersSection .users-pagination-bar > span{
+  color:#a9bbd0;
+  font-size:12px;
+  font-weight:700;
+}
+
+#usersSection .users-pagination-bar .btn{
+  min-width:104px;
+  min-height:40px;
+  height:40px;
+}
+
+#usersSection .users-state-cell{
+  height:150px;
+  color:#9fb2ca;
+  background:rgba(7,23,38,.2);
+  font-size:13px;
+}
+
+#usersSection .users-error-state{
+  color:#ffb1ba;
+}
+
+.user-detail-shell{
+  display:grid;
+  gap:12px;
+}
+
+.user-detail-group{
+  min-width:0;
+  padding:13px;
+  border:1px solid rgba(125,166,216,.17);
+  border-radius:14px;
+  background:rgba(12,31,51,.68);
+}
+
+.user-detail-group-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.user-detail-group-head h4{
+  margin:0;
+  color:#f4f8fd;
+  font-size:14px;
+  line-height:1.3;
+}
+
+.user-detail-badges{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:6px;
+}
+
+.user-detail-grid{
+  gap:8px !important;
+}
+
+.user-detail-grid .detail-item{
+  padding:9px 10px;
+}
+
+.user-detail-uid{
+  font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  font-size:12px !important;
+  overflow-wrap:anywhere;
+}
+
+.user-review-group{
+  border-color:rgba(244,174,69,.22);
+}
+
+.user-review-reason{
+  grid-column:1 / -1;
+}
+
+.user-wallet-balance{
+  border-color:rgba(39,216,115,.18) !important;
+  background:rgba(39,216,115,.055) !important;
+}
+
+.user-wallet-balance strong{
+  color:#baf6cf !important;
+  font-variant-numeric:tabular-nums;
+}
+
+.user-detail-action{
+  min-width:0 !important;
+}
+
+.user-review-reject{
+  border-color:rgba(240,100,114,.34) !important;
+  background:#bd3f4d !important;
+}
+
+.user-edit-form > div > label,
+.user-wallet-form > div > label{
+  display:block;
+  margin-bottom:6px;
+  color:#a8bad0;
+  font-size:12px;
+  font-weight:700;
+}
+
+.user-wallet-form{
+  gap:10px !important;
+}
+
+.user-wallet-currency-field .input{
+  border-color:rgba(39,216,115,.3);
+  color:#baf6cf;
+  font-weight:800;
+}
+
+.user-wallet-amount-field .input{
+  font-size:18px;
+  font-weight:800;
+  font-variant-numeric:tabular-nums;
+}
+
+.user-wallet-rule{
+  padding:10px 11px;
+  border:1px solid rgba(39,216,115,.18);
+  border-radius:11px;
+  background:rgba(39,216,115,.055);
+  color:#afd0bc;
+  font-size:12px;
+  line-height:1.45;
+}
+
+@media(max-width:1100px){
+  #usersSection .users-toolbar{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  #usersSection .users-search-wrap,
+  #usersSection #usersSearch{
+    width:100%;
+  }
+
+  #usersSection .users-toolbar-actions{
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    width:100%;
+  }
+}
+
+@media(max-width:700px){
+  #usersSection .users-panel-head{
+    padding-bottom:10px;
+  }
+
+  #usersSection .users-toolbar{
+    padding:10px 13px 13px;
+  }
+
+  #usersSection .users-search-wrap{
+    min-width:0;
+  }
+
+  #usersSection .users-toolbar-actions{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  #usersSection #reloadUsersBtn{
+    grid-column:1 / -1;
+  }
+
+  #usersSection .users-table-wrap{
+    max-height:none;
+    padding:0 10px 10px;
+    overflow:visible;
+  }
+
+  #usersSection .users-table,
+  #usersSection .users-table tbody,
+  #usersSection .users-table tr,
+  #usersSection .users-table td{
+    display:block;
+    width:100%;
+    min-width:0;
+  }
+
+  #usersSection .users-table{
+    border-collapse:separate;
+    min-width:0;
+  }
+
+  #usersSection .users-table thead{
+    display:none;
+  }
+
+  #usersSection .user-table-row{
+    margin-top:10px;
+    padding:11px;
+    border:1px solid rgba(125,166,216,.18);
+    border-radius:15px;
+    background:rgba(12,31,51,.74);
+  }
+
+  #usersSection .users-table .user-table-row td{
+    display:grid;
+    grid-template-columns:82px minmax(0,1fr);
+    align-items:start;
+    gap:9px;
+    padding:7px 0;
+    border:0;
+    background:transparent;
+    text-align:left;
+  }
+
+  #usersSection .users-table .user-table-row td::before{
+    content:attr(data-label);
+    color:#7f96b1;
+    font-size:10.5px;
+    font-weight:700;
+    line-height:1.4;
+  }
+
+  #usersSection .users-table .user-primary-cell{
+    display:block;
+    padding:0 0 10px;
+    border-bottom:1px solid rgba(125,166,216,.12);
+  }
+
+  #usersSection .users-table .user-primary-cell::before{
+    display:none;
+  }
+
+  #usersSection .user-primary-name{
+    font-size:15px;
+  }
+
+  #usersSection .user-primary-phone{
+    display:block;
+    margin-top:4px;
+    color:#d8e5f3;
+    font-size:12px;
+  }
+
+  #usersSection .user-primary-uid,
+  #usersSection .user-primary-email{
+    overflow:visible;
+    text-overflow:clip;
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
+
+  #usersSection .user-phone-cell{
+    display:none !important;
+  }
+
+  #usersSection .user-market-stack{
+    min-width:0;
+  }
+
+  #usersSection .user-balance-cell > strong{
+    white-space:normal;
+  }
+
+  #usersSection .users-table .user-actions-cell{
+    display:block;
+    padding-top:10px;
+    border-top:1px solid rgba(125,166,216,.12);
+  }
+
+  #usersSection .users-table .user-actions-cell::before{
+    display:block;
+    margin-bottom:7px;
+  }
+
+  #usersSection .user-row-actions{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  #usersSection .users-table .users-state-cell{
+    display:grid;
+    place-items:center;
+    height:130px;
+    margin-top:10px;
+    border:1px solid rgba(125,166,216,.16);
+    border-radius:14px;
+  }
+
+  #usersSection .users-pagination-bar{
+    align-items:stretch;
+    flex-direction:column;
+    padding:10px 13px 13px;
+  }
+
+  #usersSection .users-pagination-bar .row-actions,
+  #usersSection .users-pagination-bar .btn{
+    width:100%;
+  }
+
+  #usersSection .users-pagination-bar .row-actions{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .user-detail-grid,
+  .user-wallet-form,
+  .user-edit-form{
+    grid-template-columns:1fr !important;
+  }
+
+  .user-review-reason{
+    grid-column:auto;
+  }
+
+  .user-detail-group{
+    padding:11px;
+  }
+}
+
+@media(max-width:380px){
+  #usersSection .users-toolbar-actions .btn{
+    padding-inline:8px;
+    font-size:11.5px;
+  }
+
+  #usersSection .users-table .user-table-row td{
+    grid-template-columns:72px minmax(0,1fr);
+    gap:7px;
+  }
+
+  .user-detail-group-head{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .user-detail-badges{
+    justify-content:flex-start;
+  }
+}
