@@ -14,7 +14,7 @@ header('Pragma: no-cache');
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
   <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=23">
-  <link rel="stylesheet" href="/api/admin/assets/admin-ux.css?v=2">
+  <link rel="stylesheet" href="/api/admin/assets/admin-ux.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-ux.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
@@ -129,7 +129,7 @@ header('Pragma: no-cache');
       <span id="lastRefreshText">Last refresh: never</span>
     </div>
 
-<div class="status-strip" id="configStatusStrip">
+<div class="status-group" id="configStatusStrip">
   <div class="status-chip">
     <span class="status-dot" id="cfgTopupDot"></span>
     <span id="cfgTopupText">Topup: -</span>
@@ -158,7 +158,7 @@ header('Pragma: no-cache');
   </div>
 </div>
 
-      <div class="cards">
+      <div class="cards dashboard-status-cards">
         <div class="card admin-summary-card pending"><div class="card-body"><div class="metric-title">Pending</div><div class="metric-value" id="countPending">0</div><div class="metric-sub">Waiting queue</div></div></div>
         <div class="card admin-summary-card claimed"><div class="card-body"><div class="metric-title">Claimed</div><div class="metric-value" id="countClaimed">0</div><div class="metric-sub">Taken by worker</div></div></div>
         <div class="card admin-summary-card processing"><div class="card-body"><div class="metric-title">Processing</div><div class="metric-value" id="countProcessing">0</div><div class="metric-sub">Dialing / waiting</div></div></div>
@@ -166,8 +166,8 @@ header('Pragma: no-cache');
       </div>
 
       <section class="section active" id="dashboardSection">
-        <div class="split">
-          <div class="card">
+        <div class="split dashboard-primary-grid">
+          <div class="card quick-summary-card">
             <div class="panel-head">
               <div>
                 <h3>Quick Summary</h3>
@@ -205,7 +205,7 @@ header('Pragma: no-cache');
 
 
 
-          <div class="card">
+          <div class="card dashboard-log-card">
             <div class="panel-head">
               <div>
                 <h3>Dashboard Log</h3>
@@ -218,7 +218,7 @@ header('Pragma: no-cache');
           </div>
         </div>
         
-        <div class="card" style="margin-top:16px;">
+        <div class="card worker-status-card">
   <div class="panel-head">
     <div>
       <h3>Worker Status</h3>
@@ -229,7 +229,7 @@ header('Pragma: no-cache');
   
 
   <div class="card-body">
-    <div class="detail-grid">
+    <div class="detail-grid worker-metric-grid">
       <div class="detail-item"><label>Total Workers</label><strong id="workersTotalCount">0</strong></div>
       <div class="detail-item"><label>Online</label><strong id="workersOnlineCount">0</strong></div>
       <div class="detail-item"><label>Busy</label><strong id="workersBusyCount">0</strong></div>
@@ -238,8 +238,8 @@ header('Pragma: no-cache');
     </div>
   </div>
 
-  <div class="table-wrap">
-    <table>
+  <div class="table-wrap worker-table-wrap">
+    <table class="workers-table">
       <thead>
         <tr>
           <th>Device</th>
@@ -890,7 +890,7 @@ window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
 <script src="/api/admin/assets/dashboard.js?v=42"></script>
 <script src="/api/admin/assets/zsky24-admin.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.js') ?: 1)) ?>"></script>
-<script src="/api/admin/assets/admin-dashboard-ux.js?v=2"></script>
+<script src="/api/admin/assets/admin-dashboard-ux.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-dashboard-ux.js') ?: 1)) ?>"></script>
 
 </body>
 </html>

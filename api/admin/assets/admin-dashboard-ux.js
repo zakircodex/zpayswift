@@ -4,11 +4,14 @@
 
   var sectionMeta={
     dashboardSection:['Admin Dashboard','Secure operations overview for topup, bundle and wallet activity.'],
+    addMoneySection:['Add Money','Review payment proofs and manage configured deposit accounts.'],
+    supportSection:['Support','Review conversations and respond to user support requests.'],
     topupSection:['Topup Requests','Review pending, claimed, processing and completed topup requests.'],
     bundleSection:['Bundle Requests','Manage pending bundle requests and completion actions.'],
     bundleOffersSection:['Bundle Offers','Create and maintain the bundle offers shown across the platform.'],
     usersSection:['Users & Wallets','Manage user accounts, balances, ledger history and API access.'],
-    operatorsSection:['Operators','Configure operator templates, availability and secure settings.']
+    operatorsSection:['Operators','Configure operator templates, availability and secure settings.'],
+    zsky24Section:['Z Sky 24','Review isolated creator-credit operations and transfer queues.']
   };
 
   function addCss(){
@@ -16,7 +19,7 @@
     var link=document.createElement('link');
     link.id='zpayAdminUxCss';
     link.rel='stylesheet';
-    link.href='/api/admin/assets/admin-ux.css?v=2';
+    link.href='/api/admin/assets/admin-ux.css';
     document.head.appendChild(link);
   }
 
