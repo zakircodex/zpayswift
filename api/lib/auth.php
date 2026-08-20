@@ -157,6 +157,234 @@ function auth_index_release(string $path, string $uid): bool
     return false;
 }
 
+function auth_admin_login_max_failed_attempts(): int
+{
+    $max = defined('ADMIN_LOGIN_MAX_FAILED_ATTEMPTS')
+        ? (int)ADMIN_LOGIN_MAX_FAILED_ATTEMPTS
+        : 5;
+
+    return max(1, min(20, $max));
+}
+
+function auth_admin_login_attempt_window_seconds(): int
+{
+    $seconds = defined('ADMIN_LOGIN_ATTEMPT_WINDOW_SECONDS')
+        ? (int)ADMIN_LOGIN_ATTEMPT_WINDOW_SECONDS
+        : 900;
+
+    return max(60, min(86400, $seconds));
+}
+
+function auth_admin_login_lock_seconds(): int
+{
+    $seconds = defined('ADMIN_LOGIN_LOCK_SECONDS')
+        ? (int)ADMIN_LOGIN_LOCK_SECONDS
+        : 900;
+
+    return max(60, min(86400, $seconds));
+}
+
+function auth_admin_login_attempt_identity(string $country, string $phone): string
+{
+    $country = auth_normalize_country_code($country);
+    $phone = preg_replace('/\D+/', '', trim($phone)) ?? '';
+
+    return ($country !== '' ? $country : 'UNKNOWN') . '|' . $phone;
+}
+
+function auth_admin_login_attempt_key(string $country, string $phone): string
+{
+    $identity = auth_admin_login_attempt_identity($country, $phone);
+    $secret = function_exists('security_secret_for_hash')
+        ? security_secret_for_hash()
+        : 'zpay-admin-login-rate-limit';
+
+    return hash_hmac('sha256', 'admin-login-password|' . $identity, $secret);
+}
+
+function auth_admin_login_attempt_path(string $country, string $phone): string
+{
+    return 'AUTH_ADMIN_LOGIN_PASSWORD_LIMIT/IDENTITY/'
+        . auth_admin_login_attempt_key($country, $phone);
+}
+
+function auth_admin_login_attempt_row_state(array $row, int $now): array
+{
+    $windowSeconds = auth_admin_login_attempt_window_seconds();
+    $windowStartedAt = (int)($row['window_started_at'] ?? 0);
+    $failedAttempts = max(0, (int)($row['failed_attempts'] ?? 0));
+    $lockedUntil = max(0, (int)($row['locked_until'] ?? 0));
+    $expiresAt = max(0, (int)($row['expires_at'] ?? 0));
+
+    $expired = ($expiresAt > 0 && $expiresAt <= $now)
+        || $windowStartedAt <= 0
+        || $windowStartedAt > $now
+        || ($now - $windowStartedAt) >= $windowSeconds
+        || ($lockedUntil > 0 && $lockedUntil <= $now);
+
+    if ($expired) {
+        $windowStartedAt = $now;
+        $failedAttempts = 0;
+        $lockedUntil = 0;
+    }
+
+    $blocked = $lockedUntil > $now;
+
+    return [
+        'blocked' => $blocked,
+        'retry_after_seconds' => $blocked ? max(1, $lockedUntil - $now) : 0,
+        'window_started_at' => $windowStartedAt,
+        'failed_attempts' => $failedAttempts,
+        'locked_until' => $lockedUntil,
+        'revision' => max(0, (int)($row['revision'] ?? 0)),
+    ];
+}
+
+function auth_admin_login_attempt_state(string $country, string $phone, ?int $now = null): array
+{
+    $now = $now ?? now_ts();
+    $path = auth_admin_login_attempt_path($country, $phone);
+
+    try {
+        $snapshot = fb_get_with_etag($path);
+    } catch (Throwable $e) {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+    }
+
+    if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+    }
+
+    $value = $snapshot['value'] ?? null;
+    if ($value !== null && !is_array($value)) {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_STATE_INVALID'];
+    }
+
+    $state = auth_admin_login_attempt_row_state(is_array($value) ? $value : [], $now);
+
+    return $state + [
+        'ok' => true,
+        'path' => $path,
+        'etag' => (string)$snapshot['etag'],
+        'exists' => is_array($value),
+        'checked_at' => $now,
+    ];
+}
+
+function auth_admin_login_record_failed_password(
+    string $country,
+    string $phone,
+    ?int $now = null
+): array {
+    $now = $now ?? now_ts();
+    $path = auth_admin_login_attempt_path($country, $phone);
+    $identityHash = auth_admin_login_attempt_key($country, $phone);
+    $maxAttempts = auth_admin_login_max_failed_attempts();
+    $windowSeconds = auth_admin_login_attempt_window_seconds();
+    $lockSeconds = auth_admin_login_lock_seconds();
+
+    for ($attempt = 0; $attempt < 8; $attempt++) {
+        try {
+            $snapshot = fb_get_with_etag($path);
+        } catch (Throwable $e) {
+            return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+        }
+
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+            return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+        }
+
+        $value = $snapshot['value'] ?? null;
+        if ($value !== null && !is_array($value)) {
+            return ['ok' => false, 'code' => 'RATE_LIMIT_STATE_INVALID'];
+        }
+
+        $state = auth_admin_login_attempt_row_state(is_array($value) ? $value : [], $now);
+        if (!empty($state['blocked'])) {
+            return ['ok' => true] + $state;
+        }
+
+        $failedAttempts = (int)$state['failed_attempts'] + 1;
+        $locked = $failedAttempts >= $maxAttempts;
+        $lockedUntil = $locked ? $now + $lockSeconds : 0;
+        $windowStartedAt = (int)$state['window_started_at'];
+        $expiresAt = max($windowStartedAt + $windowSeconds, $lockedUntil);
+        $row = [
+            'scope' => 'ADMIN_LOGIN_PASSWORD',
+            'identity_hash' => $identityHash,
+            'window_started_at' => $windowStartedAt,
+            'failed_attempts' => $failedAttempts,
+            'locked_until' => $lockedUntil,
+            'last_failed_at' => $now,
+            'revision' => (int)$state['revision'] + 1,
+            'expires_at' => $expiresAt,
+            'updated_at' => $now,
+        ];
+
+        try {
+            $write = fb_put_if_match($path, $row, (string)$snapshot['etag']);
+        } catch (Throwable $e) {
+            return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+        }
+
+        if (!empty($write['ok'])) {
+            return [
+                'ok' => true,
+                'blocked' => $locked,
+                'retry_after_seconds' => $locked ? $lockSeconds : 0,
+                'failed_attempts' => $failedAttempts,
+            ];
+        }
+
+        if ((int)($write['status'] ?? 0) !== 412) {
+            return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+        }
+    }
+
+    return ['ok' => false, 'code' => 'RATE_LIMIT_CAS_CONFLICT'];
+}
+
+function auth_admin_login_reset_failed_passwords(
+    string $country,
+    string $phone,
+    array $precheckState = []
+): array {
+    $path = auth_admin_login_attempt_path($country, $phone);
+    $state = $precheckState;
+
+    if (($state['path'] ?? '') !== $path || !is_string($state['etag'] ?? null)) {
+        $state = auth_admin_login_attempt_state($country, $phone);
+    }
+
+    if (empty($state['ok'])) {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+    }
+
+    if (empty($state['exists'])) {
+        return ['ok' => true, 'cleared' => false];
+    }
+
+    try {
+        $delete = fb_delete_if_match($path, (string)$state['etag']);
+    } catch (Throwable $e) {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+    }
+
+    if (!empty($delete['ok'])) {
+        return ['ok' => true, 'cleared' => true];
+    }
+
+    if ((int)($delete['status'] ?? 0) === 412) {
+        return [
+            'ok' => true,
+            'cleared' => false,
+            'concurrent_failure_preserved' => true,
+        ];
+    }
+
+    return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+}
+
 function auth_otp_max_attempts(): int
 {
     $max = defined('OTP_MAX_ATTEMPTS') ? (int)OTP_MAX_ATTEMPTS : 5;

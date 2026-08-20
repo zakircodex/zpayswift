@@ -40,6 +40,37 @@ function admin_login_find_uid_by_phone(string $phone, string $country): string
     return auth_find_uid_by_phone_country($phone, $country);
 }
 
+function admin_login_rate_limit_response(array $state): void
+{
+    if (empty($state['ok'])) {
+        api_response(
+            false,
+            'SERVER_ERROR',
+            'Login protection is temporarily unavailable.',
+            [],
+            500
+        );
+    }
+
+    if (!empty($state['blocked'])) {
+        api_response(false, 'ADMIN_LOGIN_RATE_LIMITED', 'Too many login attempts. Please try again later.', [
+            'retry_after_seconds' => max(1, (int)($state['retry_after_seconds'] ?? 0)),
+        ], 429);
+    }
+}
+
+function admin_login_record_password_failure(
+    string $phoneCountry,
+    string $phone,
+    string $code,
+    string $message,
+    int $httpStatus
+): void {
+    $state = auth_admin_login_record_failed_password($phoneCountry, $phone);
+    admin_login_rate_limit_response($state);
+    api_response(false, $code, $message, [], $httpStatus);
+}
+
 function admin_login_issue_session(
     array $user,
     string $uid,
@@ -153,16 +184,31 @@ if ($phone === '' || $password === '') {
     api_response(false, 'VALIDATION_ERROR', $phone === '' ? auth_phone_validation_message($phoneCountry) : 'Phone and password are required', [], 422);
 }
 
+$passwordAttemptState = auth_admin_login_attempt_state($phoneCountry, $phone);
+admin_login_rate_limit_response($passwordAttemptState);
+
 $uid = admin_login_find_uid_by_phone($phone, $phoneCountry);
 
 if ($uid === '') {
-    api_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found for selected country/number', [], 404);
+    admin_login_record_password_failure(
+        $phoneCountry,
+        $phone,
+        'ACCOUNT_NOT_FOUND',
+        'Account not found for selected country/number',
+        404
+    );
 }
 
 $user = fb_get('USERS/' . $uid);
 
 if (!is_array($user)) {
-    api_response(false, 'INVALID_CREDENTIALS', 'Invalid phone or password', [], 401);
+    admin_login_record_password_failure(
+        $phoneCountry,
+        $phone,
+        'INVALID_CREDENTIALS',
+        'Invalid phone or password',
+        401
+    );
 }
 
 $status = strtoupper(trim((string)($user['status'] ?? 'INACTIVE')));
@@ -172,7 +218,13 @@ $storedPhoneCountry = auth_phone_country_from_user($user);
 $pricingCountry = auth_pricing_country_from_user($user, (array)(fb_get('USER_WALLETS/' . $uid) ?: []));
 
 if ($storedPhoneCountry !== $phoneCountry) {
-    api_response(false, 'ACCOUNT_NOT_FOUND', 'Account not found for selected country/number', [], 404);
+    admin_login_record_password_failure(
+        $phoneCountry,
+        $phone,
+        'ACCOUNT_NOT_FOUND',
+        'Account not found for selected country/number',
+        404
+    );
 }
 
 $otpPhone = normalize_phone_by_country((string)($user['phone'] ?? $phone), $storedPhoneCountry);
@@ -189,7 +241,22 @@ if ($role !== 'ADMIN') {
 }
 
 if ($passwordHash === '' || !password_verify($password, $passwordHash)) {
-    api_response(false, 'INVALID_CREDENTIALS', 'Invalid phone or password', [], 401);
+    admin_login_record_password_failure(
+        $phoneCountry,
+        $phone,
+        'INVALID_CREDENTIALS',
+        'Invalid phone or password',
+        401
+    );
+}
+
+$passwordAttemptReset = auth_admin_login_reset_failed_passwords(
+    $phoneCountry,
+    $phone,
+    $passwordAttemptState
+);
+if (empty($passwordAttemptReset['ok'])) {
+    api_response(false, 'SERVER_ERROR', 'Login protection is temporarily unavailable.', [], 500);
 }
 
 if (admin_login_has_valid_trusted_device($uid, $trustedDeviceCookie)) {
