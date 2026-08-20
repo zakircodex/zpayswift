@@ -558,12 +558,21 @@ function openModal(title, bodyHtml, footHtml){
   const titleNode = document.getElementById('modalTitle');
   const bodyNode = document.getElementById('modalBody');
   const footNode = document.getElementById('modalFoot');
+  const modalNode = document.querySelector('#modalWrap .modal');
 
   if (titleNode) titleNode.textContent = title;
   if (bodyNode) bodyNode.innerHTML = bodyHtml;
   if (footNode) footNode.innerHTML = footHtml;
+  modalNode?.removeAttribute('data-modal-scope');
 
   document.getElementById('modalWrap')?.classList.add('open');
+}
+
+function setModalPresentationScope(scope){
+  const modalNode = document.querySelector('#modalWrap .modal');
+  if (!modalNode) return;
+  if (scope) modalNode.dataset.modalScope = String(scope);
+  else modalNode.removeAttribute('data-modal-scope');
 }
 
 function closeModal(){
@@ -2378,6 +2387,24 @@ async function viewUser(uid){
       `${data.name || '-'} • ${data.phone || '-'}`,
       `
         <div class="user-detail-shell">
+          ${userStatus === 'REVIEW'
+            ? `
+              <aside class="account-review-summary" aria-label="Account review summary">
+                <div class="account-review-summary-head">
+                  <div>
+                    <span class="account-review-eyebrow">Account Review</span>
+                    <h4>Verification requires an Admin decision</h4>
+                  </div>
+                  <span class="user-status-badge status-review">${statusPill('REVIEW')}</span>
+                </div>
+                <div class="account-review-summary-grid">
+                  <div><span>Identity</span><strong>${esc(data.name || '-')}</strong><small>${esc(data.phone || '-')}</small></div>
+                  <div><span>Market</span><strong>${esc(data.pricing_country || data.market_country || data.country_code || data.country || '-')} / ${esc(w.wallet_currency || w.currency || 'BDT')}</strong><small>Phone: ${esc(data.phone_country || '-')}</small></div>
+                  <div><span>Review Reason</span><strong>${esc(data.account_review_reason || '-')}</strong><small>GPS ${esc(data.gps_country || '-')} / IP ${esc(data.ip_country || '-')}</small></div>
+                </div>
+              </aside>
+            `
+            : ''}
           <section class="user-detail-group" aria-labelledby="userAccountGroupTitle">
             <div class="user-detail-group-head">
               <h4 id="userAccountGroupTitle">Account</h4>
@@ -4767,10 +4794,22 @@ function addMoneyFilters(){
 }
 
 async function loadAddMoneyRequests(options = {}){
-  const data = await proxyGet('add_money_requests', addMoneyFilters(), options);
-  state.addMoney = Array.isArray(data.items) ? data.items : [];
-  state.loaded.addMoney = true;
-  renderAddMoneyRequests();
+  const tbody = document.getElementById('addMoneyTableBody');
+  if (tbody && !state.loaded.addMoney) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty add-money-state-cell add-money-loading-state"><span class="add-money-state-dot"></span>Loading Add Money requests...</td></tr>';
+  }
+
+  try {
+    const data = await proxyGet('add_money_requests', addMoneyFilters(), options);
+    state.addMoney = Array.isArray(data.items) ? data.items : [];
+    state.loaded.addMoney = true;
+    renderAddMoneyRequests();
+  } catch (err) {
+    if (tbody && !state.loaded.addMoney) {
+      tbody.innerHTML = '<tr><td colspan="9" class="empty add-money-state-cell add-money-error-state">Add Money requests could not be loaded.</td></tr>';
+    }
+    throw err;
+  }
 }
 
 function addMoneyAmount(row){
@@ -4782,7 +4821,7 @@ function renderAddMoneyRequests(){
   if (!tbody) return;
 
   if (!state.addMoney.length) {
-    tbody.innerHTML = '<tr><td colspan="8" class="empty">No add money request found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" class="empty add-money-state-cell">No Add Money requests found.</td></tr>';
     return;
   }
 
@@ -4793,24 +4832,34 @@ function renderAddMoneyRequests(){
     const receiptUrl = String(row.receipt_url || '');
     const txn = String(row.transaction_id || '');
     const sender = String(row.sender_number || '');
-    const proof = receiptUrl
-      ? `<a class="mini-btn blue" href="${esc(receiptUrl)}" target="_blank" rel="noopener">View Receipt</a>`
-      : `<div class="muted">Txn: ${esc(txn || '-')}</div><div class="muted">Sender: ${esc(sender || '-')}</div>`;
+    const statusClass = status.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
+    const proof = `
+      <div class="add-money-proof-stack">
+        ${receiptUrl ? `<button class="mini-btn blue add-money-receipt-btn" type="button" onclick="openAddMoneyReceipt('${esc(id)}')">View Receipt</button>` : '<span class="muted">No receipt</span>'}
+        ${(txn || sender) ? `
+          <div class="add-money-proof-meta">
+            ${txn ? `<span><b>Txn</b>${esc(txn)}</span>` : ''}
+            ${sender ? `<span><b>Sender</b>${esc(sender)}</span>` : ''}
+          </div>
+        ` : ''}
+      </div>
+    `;
 
     return `
-      <tr>
-        <td><div class="mono">${esc(id)}</div><div class="muted">${fmtTs(row.created_at || 0)}</div></td>
-        <td><strong>${esc(row.name || '-')}</strong><div class="muted">${esc(row.phone || '-')} - ${esc(row.role || '-')}</div></td>
-        <td>${esc(row.pricing_country || '-')}<div class="muted">${esc(row.currency || '-')}</div></td>
-        <td>${esc(row.method || '-')}</td>
-        <td><strong>${addMoneyAmount(row)}</strong></td>
-        <td>${proof}</td>
-        <td class="status-cell add-money-status-cell">${statusPill(status)}</td>
-        <td class="actions-cell">
-          <div class="row-actions">
-            ${pending ? `<button class="mini-btn green" onclick="openAddMoneyAction('${esc(id)}','APPROVE')">Approve</button>` : ''}
-            ${pending ? `<button class="mini-btn red" onclick="openAddMoneyAction('${esc(id)}','REJECT')">Reject</button>` : ''}
-            <button class="mini-btn ghost" onclick="copyAddMoneyValue('${esc(id)}')">Copy ID</button>
+      <tr class="add-money-request-row status-${esc(statusClass)}">
+        <td class="add-money-request-cell" data-label="Request"><div class="mono add-money-request-id" title="${esc(id)}">${esc(id)}</div></td>
+        <td class="add-money-user-cell" data-label="User"><strong>${esc(row.name || '-')}</strong><div class="muted">${esc(row.phone || '-')}</div><div class="muted add-money-user-role">${esc(row.role || '-')}</div></td>
+        <td class="add-money-market-cell" data-label="Market"><strong>${esc(row.pricing_country || '-')}</strong><div class="muted">Wallet: ${esc(row.currency || '-')}</div></td>
+        <td class="add-money-method-cell" data-label="Method"><strong>${esc(row.method || '-')}</strong>${row.payment_account_name ? `<div class="muted">${esc(row.payment_account_name)}</div>` : ''}</td>
+        <td class="add-money-amount-cell" data-label="Amount"><strong>${addMoneyAmount(row)}</strong></td>
+        <td class="add-money-submitted-cell" data-label="Submitted"><span>${fmtTs(row.created_at || 0)}</span></td>
+        <td class="add-money-proof-cell" data-label="Proof">${proof}</td>
+        <td class="status-cell add-money-status-cell" data-label="Status"><span class="add-money-status-badge status-${esc(statusClass)}">${statusPill(status)}</span></td>
+        <td class="actions-cell add-money-actions-cell" data-label="Actions">
+          <div class="row-actions add-money-row-actions">
+            ${pending ? `<button class="mini-btn green add-money-approve-btn" type="button" onclick="openAddMoneyAction('${esc(id)}','APPROVE')">Approve</button>` : ''}
+            ${pending ? `<button class="mini-btn red add-money-reject-btn" type="button" onclick="openAddMoneyAction('${esc(id)}','REJECT')">Reject</button>` : ''}
+            <button class="mini-btn ghost add-money-copy-btn" type="button" onclick="copyAddMoneyValue('${esc(id)}')">Copy ID</button>
           </div>
         </td>
       </tr>
@@ -4835,20 +4884,74 @@ function openAddMoneyAction(requestId, action){
   }
 
   const isApprove = action === 'APPROVE';
+  const status = String(row.status || 'PENDING').toUpperCase();
+  const statusClass = status.replace(/[^A-Z0-9_-]/g, '-').toLowerCase();
+  const receiptUrl = String(row.receipt_url || '');
   const body = `
-    <div class="detail-grid">
-      <div class="detail-item"><label>Request ID</label><strong>${esc(requestId)}</strong></div>
-      <div class="detail-item"><label>User</label><strong>${esc(row.name || '-')}</strong></div>
-      <div class="detail-item"><label>Amount</label><strong>${addMoneyAmount(row)}</strong></div>
-      <div class="detail-item"><label>Method</label><strong>${esc(row.method || '-')}</strong></div>
+    <div class="add-money-action-shell">
+      <div class="add-money-action-summary">
+        <div><span>${isApprove ? 'Approval' : 'Rejection'}</span><strong>${addMoneyAmount(row)}</strong></div>
+        <span class="add-money-status-badge status-${esc(statusClass)}">${statusPill(status)}</span>
+      </div>
+      <div class="detail-grid add-money-context-grid">
+        <div class="detail-item"><label>Request ID</label><strong class="mono">${esc(requestId)}</strong></div>
+        <div class="detail-item"><label>User</label><strong>${esc(row.name || '-')}</strong><small>${esc(row.phone || '-')}</small></div>
+        <div class="detail-item"><label>Market / Currency</label><strong>${esc(row.pricing_country || '-')} / ${esc(row.currency || '-')}</strong></div>
+        <div class="detail-item"><label>Method</label><strong>${esc(row.method || '-')}</strong></div>
+        <div class="detail-item"><label>Submitted</label><strong>${fmtTs(row.created_at || 0)}</strong></div>
+        ${receiptUrl ? `<div class="detail-item add-money-context-receipt"><label>Payment Proof</label><button class="mini-btn blue" type="button" onclick="openAddMoneyReceipt('${esc(requestId)}')">View Receipt</button></div>` : ''}
+      </div>
+      ${isApprove
+        ? '<p class="add-money-action-note">Wallet balance will be credited only after this approval.</p>'
+        : '<label class="add-money-reject-label" for="addMoneyRejectReason">Reject Reason</label><textarea id="addMoneyRejectReason" class="input add-money-reject-reason" rows="3" placeholder="Reason shown in user history"></textarea>'}
     </div>
-    ${isApprove ? '<p class="muted">Wallet balance will be credited only after this approval.</p>' : '<label>Reject Reason</label><textarea id="addMoneyRejectReason" class="input" rows="3" placeholder="Reason shown in user history"></textarea>'}
   `;
   const foot = `
-    <button class="btn ${isApprove ? 'brand' : 'red'}" onclick="submitAddMoneyAction('${esc(requestId)}','${isApprove ? 'APPROVE' : 'REJECT'}')">${isApprove ? 'Approve Request' : 'Reject Request'}</button>
-    <button class="btn ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn ${isApprove ? 'brand' : 'red'} add-money-confirm-action" type="button" onclick="submitAddMoneyAction('${esc(requestId)}','${isApprove ? 'APPROVE' : 'REJECT'}')">${isApprove ? 'Approve Request' : 'Reject Request'}</button>
+    <button class="btn ghost" type="button" onclick="closeModal()">Cancel</button>
   `;
   openModal(isApprove ? 'Approve Add Money' : 'Reject Add Money', body, foot);
+  setModalPresentationScope('add-money-action');
+}
+
+function openAddMoneyReceipt(requestId){
+  const row = state.addMoney.find(item => String(item.request_id || '') === String(requestId));
+  const receiptUrl = String(row?.receipt_url || '');
+  if (!row || !receiptUrl) {
+    showToast('Receipt is not available', 'error');
+    return;
+  }
+
+  const mime = String(row.receipt_mime || '').toLowerCase();
+  const isPdf = mime === 'application/pdf' || /\.pdf(?:$|[?#])/i.test(receiptUrl);
+  const preview = isPdf
+    ? `<div class="add-money-pdf-preview"><span>PDF</span><strong>Payment receipt document</strong><small>Open the receipt to review the full document.</small></div>`
+    : `<div class="add-money-image-preview-wrap"><img id="addMoneyReceiptImage" class="add-money-receipt-image" src="${esc(receiptUrl)}" alt="Payment receipt preview" referrerpolicy="no-referrer"><div id="addMoneyReceiptFallback" class="add-money-receipt-fallback hidden">Preview unavailable. Open the receipt to review it.</div></div>`;
+
+  const body = `
+    <div class="add-money-receipt-shell">
+      <div class="add-money-receipt-context">
+        <div><span>User</span><strong>${esc(row.name || '-')}</strong><small>${esc(row.phone || '-')}</small></div>
+        <div><span>Amount</span><strong>${addMoneyAmount(row)}</strong><small>${esc(row.method || '-')}</small></div>
+        <div><span>Request ID</span><strong class="mono">${esc(requestId)}</strong><small>${fmtTs(row.created_at || 0)}</small></div>
+      </div>
+      ${preview}
+    </div>
+  `;
+  const foot = `
+    <a class="btn brand add-money-open-receipt" href="${esc(receiptUrl)}" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer">Open Receipt</a>
+    <button class="btn ghost" type="button" onclick="closeModal()">Close</button>
+  `;
+
+  openModal('Payment Receipt', body, foot);
+  setModalPresentationScope('add-money-receipt');
+
+  const image = document.getElementById('addMoneyReceiptImage');
+  const fallback = document.getElementById('addMoneyReceiptFallback');
+  image?.addEventListener('error', () => {
+    image.classList.add('hidden');
+    fallback?.classList.remove('hidden');
+  }, { once:true });
 }
 
 async function submitAddMoneyAction(requestId, action){
@@ -5189,6 +5292,7 @@ window.submitWalletAction = submitWalletAction;
 window.openLedger = openLedger;
 window.loadWalletTransferHistory = loadWalletTransferHistory;
 window.openAddMoneyAction = openAddMoneyAction;
+window.openAddMoneyReceipt = openAddMoneyReceipt;
 window.submitAddMoneyAction = submitAddMoneyAction;
 window.copyAddMoneyValue = copyAddMoneyValue;
 window.openAddMoneyPaymentAccountModal = openAddMoneyPaymentAccountModal;

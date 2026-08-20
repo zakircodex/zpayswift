@@ -16,6 +16,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=23">
   <link rel="stylesheet" href="/api/admin/assets/admin-ux.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-ux.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-users.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-users.css') ?: 1)) ?>">
+  <link rel="stylesheet" href="/api/admin/assets/admin-operations.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-operations.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
@@ -497,55 +498,65 @@ header('Pragma: no-cache');
       
 
       <section class="section" id="addMoneySection">
-        <div class="card">
-          <div class="panel-head">
+        <div class="card add-money-admin-card">
+          <div class="panel-head add-money-panel-head">
             <div>
               <h3>Add Money Requests</h3>
               <p>Manual bKash, Nagad and bank transfer approvals.</p>
             </div>
-            <div class="row-actions">
-              <button class="btn blue" id="addMoneySettingsBtn">Payment Settings</button>
-              <button class="btn ghost" id="reloadAddMoneyBtn">Reload</button>
+            <div class="row-actions add-money-head-actions">
+              <button class="btn blue" id="addMoneySettingsBtn" type="button">Payment Settings</button>
+              <button class="btn ghost" id="reloadAddMoneyBtn" type="button">Reload</button>
             </div>
           </div>
 
-          <div class="toolbar add-money-filter-row">
-            <select id="addMoneyStatusFilter" class="input sm">
-              <option value="">All Status</option>
-              <option value="PENDING">Pending</option>
-              <option value="APPROVED">Approved</option>
-              <option value="REJECTED">Rejected</option>
-            </select>
-            <select id="addMoneyCountryFilter" class="input sm">
-              <option value="">All Countries</option>
-              <option value="BD">BD</option>
-              <option value="MY">MY</option>
-            </select>
-            <select id="addMoneyMethodFilter" class="input sm">
-              <option value="">All Methods</option>
-              <option value="BKASH">bKash</option>
-              <option value="NAGAD">Nagad</option>
-              <option value="BANK">Bank</option>
-              <option value="EWALLET">eWallet</option>
-            </select>
+          <div class="toolbar add-money-filter-row add-money-toolbar" aria-label="Add Money request filters">
+            <label class="add-money-filter-field" for="addMoneyStatusFilter">
+              <span>Status</span>
+              <select id="addMoneyStatusFilter" class="input sm">
+                <option value="">All Status</option>
+                <option value="PENDING">Pending</option>
+                <option value="APPROVED">Approved</option>
+                <option value="REJECTED">Rejected</option>
+              </select>
+            </label>
+            <label class="add-money-filter-field" for="addMoneyCountryFilter">
+              <span>Market</span>
+              <select id="addMoneyCountryFilter" class="input sm">
+                <option value="">All Countries</option>
+                <option value="BD">BD</option>
+                <option value="MY">MY</option>
+              </select>
+            </label>
+            <label class="add-money-filter-field" for="addMoneyMethodFilter">
+              <span>Method</span>
+              <select id="addMoneyMethodFilter" class="input sm">
+                <option value="">All Methods</option>
+                <option value="BKASH">bKash</option>
+                <option value="NAGAD">Nagad</option>
+                <option value="BANK">Bank</option>
+                <option value="EWALLET">eWallet</option>
+              </select>
+            </label>
           </div>
 
-          <div class="table-wrap">
-            <table>
+          <div class="table-wrap add-money-table-wrap">
+            <table class="add-money-requests-table">
               <thead>
                 <tr>
                   <th>Request</th>
                   <th>User</th>
-                  <th>Country</th>
+                  <th>Market</th>
                   <th>Method</th>
                   <th>Amount</th>
+                  <th>Submitted</th>
                   <th>Proof</th>
                   <th>Status</th>
                   <th>Action</th>
                 </tr>
               </thead>
               <tbody id="addMoneyTableBody">
-                <tr><td colspan="8" class="empty">No add money request loaded yet.</td></tr>
+                <tr><td colspan="9" class="empty add-money-state-cell">No add money request loaded yet.</td></tr>
               </tbody>
             </table>
           </div>
