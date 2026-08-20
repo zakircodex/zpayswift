@@ -170,6 +170,19 @@ $actorUid = trim((string)($callback['from']['id'] ?? 'TELEGRAM_ADMIN'));
 $result = account_review_apply($uid, $action, $actorUid, 'TELEGRAM_ADMIN');
 
 if (empty($result['ok'])) {
+    if ((string)($result['code'] ?? '') === 'ACCOUNT_REVIEW_ALREADY_DECIDED') {
+        $latestUser = fb_get('USERS/' . $uid);
+        $storedUser = is_array($latestUser) ? $latestUser : $user;
+        $storedStatus = account_review_canonical_status($storedUser);
+
+        tg_account_review_answer($callbackId, 'Account review was already completed.', true);
+        tg_account_review_edit($chatId, $messageId, $storedUser, false);
+        tg_account_review_json(true, 'ACCOUNT_REVIEW_ALREADY_DECIDED', 'Account review was already completed.', [
+            'uid' => $uid,
+            'status' => $storedStatus,
+        ]);
+    }
+
     tg_account_review_answer($callbackId, (string)($result['message'] ?? 'Unable to update account'), true);
     tg_account_review_json(true, (string)($result['code'] ?? 'ERROR'), (string)($result['message'] ?? 'Unable to update account'), [
         'uid' => $uid,
@@ -178,7 +191,7 @@ if (empty($result['ok'])) {
 
 $latestUser = fb_get('USERS/' . $uid);
 $updatedUser = is_array($latestUser) ? $latestUser : $user;
-$status = strtoupper(trim((string)($updatedUser['account_status'] ?? $updatedUser['status'] ?? '')));
+$status = account_review_canonical_status($updatedUser);
 $answer = $status === 'ACTIVE' ? 'Account approved' : 'Account rejected';
 
 tg_account_review_answer($callbackId, $answer);

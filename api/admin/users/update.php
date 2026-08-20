@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
 require_once dirname(__DIR__, 2) . '/lib/currency_conversion.php';
+require_once dirname(__DIR__, 2) . '/lib/account_review.php';
 
 function email_to_index_key(string $email): string
 {
@@ -153,6 +154,50 @@ if (
 $user = fb_get('USERS/' . $uid);
 if (!is_array($user)) {
     api_response(false, 'NOT_FOUND', 'User not found', [], 404);
+}
+
+$canonicalReviewStatus = account_review_canonical_status($user);
+$hasReviewHistory = $canonicalReviewStatus === 'REVIEW'
+    || in_array(strtoupper(trim((string)($user['review_status'] ?? ''))), ['APPROVED', 'REJECTED'], true)
+    || (int)($user['reviewed_at'] ?? 0) > 0;
+$reviewDecisionControlled = $canonicalReviewStatus === 'REVIEW'
+    || ($hasReviewHistory && in_array($canonicalReviewStatus, ['ACTIVE', 'REJECTED'], true));
+
+if ($statusProvided && $canonicalReviewStatus === 'REVIEW' && !in_array($requestedStatus, ['REVIEW', 'ACTIVE', 'REJECTED'], true)) {
+    api_response(
+        false,
+        'ACCOUNT_REVIEW_ACTION_REQUIRED',
+        'Use Approve or Reject to complete this account review.',
+        ['uid' => $uid, 'status' => $canonicalReviewStatus],
+        409
+    );
+}
+
+if ($statusProvided && $reviewDecisionControlled && in_array($requestedStatus, ['ACTIVE', 'REJECTED'], true)) {
+    $reviewResult = account_review_apply(
+        $uid,
+        $requestedStatus === 'ACTIVE' ? 'APPROVE' : 'REJECT',
+        (string)($adminUser['uid'] ?? ''),
+        'ADMIN'
+    );
+
+    if (empty($reviewResult['ok'])) {
+        api_response(
+            false,
+            (string)($reviewResult['code'] ?? 'SERVER_ERROR'),
+            (string)($reviewResult['message'] ?? 'Failed to update account review status'),
+            (array)($reviewResult['data'] ?? []),
+            account_review_http_status($reviewResult)
+        );
+    }
+
+    $latestUser = fb_get('USERS/' . $uid);
+    if (!is_array($latestUser)) {
+        api_response(false, 'SERVER_ERROR', 'Account review completed but reload failed', [], 500);
+    }
+
+    $user = $latestUser;
+    $statusProvided = false;
 }
 
 $oldName = trim((string)($user['name'] ?? ''));

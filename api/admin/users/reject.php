@@ -27,7 +27,5 @@ api_response(
     (string)($result['code'] ?? 'SERVER_ERROR'),
     (string)($result['message'] ?? 'Failed to reject account'),
     (array)($result['data'] ?? []),
-    !empty($result['ok'])
-        ? 200
-        : (($result['code'] ?? '') === 'NOT_FOUND' ? 404 : (($result['code'] ?? '') === 'SERVER_ERROR' ? 500 : 422))
+    account_review_http_status($result)
 );

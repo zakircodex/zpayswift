@@ -282,6 +282,70 @@ function account_review_send_telegram(string $uid, array $user): array
     ];
 }
 
+function account_review_canonical_status(array $user): string
+{
+    return strtoupper(trim((string)($user['account_status'] ?? $user['status'] ?? 'INACTIVE')));
+}
+
+function account_review_http_status(array $result): int
+{
+    if (!empty($result['ok'])) {
+        return 200;
+    }
+
+    return match ((string)($result['code'] ?? '')) {
+        'NOT_FOUND' => 404,
+        'FORBIDDEN' => 403,
+        'ACCOUNT_REVIEW_ALREADY_DECIDED', 'ACCOUNT_REVIEW_CONFLICT' => 409,
+        'SERVER_ERROR' => 500,
+        default => 422,
+    };
+}
+
+function account_review_terminal_result(string $uid, string $action, string $currentStatus): ?array
+{
+    $expectedStatus = $action === 'APPROVE' ? 'ACTIVE' : 'REJECTED';
+    if ($currentStatus === $expectedStatus) {
+        return [
+            'ok' => true,
+            'code' => $expectedStatus === 'ACTIVE' ? 'ALREADY_ACTIVE' : 'ALREADY_REJECTED',
+            'message' => $expectedStatus === 'ACTIVE'
+                ? 'Account is already active'
+                : 'Account is already rejected',
+            'data' => [
+                'uid' => $uid,
+                'status' => $expectedStatus,
+                'account_status' => $expectedStatus,
+                'idempotent_replay' => true,
+            ],
+        ];
+    }
+
+    if (in_array($currentStatus, ['ACTIVE', 'REJECTED'], true)) {
+        return [
+            'ok' => false,
+            'code' => 'ACCOUNT_REVIEW_ALREADY_DECIDED',
+            'message' => 'Account review was already completed.',
+            'data' => [
+                'uid' => $uid,
+                'status' => $currentStatus,
+                'account_status' => $currentStatus,
+            ],
+        ];
+    }
+
+    return null;
+}
+
+function account_review_run_side_effect(string $name, callable $callback): void
+{
+    try {
+        $callback();
+    } catch (Throwable $exception) {
+        error_log('Account review side effect failed: ' . $name);
+    }
+}
+
 function account_review_apply(
     string $uid,
     string $action,
@@ -293,7 +357,11 @@ function account_review_apply(
     $actorUid = trim($actorUid);
     $actorRole = strtoupper(trim($actorRole));
 
-    if ($uid === '' || !in_array($action, ['APPROVE', 'REJECT'], true)) {
+    if (
+        $uid === ''
+        || preg_match('/^[A-Za-z0-9_-]{6,39}$/', $uid) !== 1
+        || !in_array($action, ['APPROVE', 'REJECT'], true)
+    ) {
         return [
             'ok' => false,
             'code' => 'VALIDATION_ERROR',
@@ -302,73 +370,139 @@ function account_review_apply(
         ];
     }
 
-    $user = fb_get('USERS/' . $uid);
-    if (!is_array($user)) {
+    if ($actorUid === '' || !in_array($actorRole, ['ADMIN', 'TELEGRAM_ADMIN'], true)) {
         return [
             'ok' => false,
-            'code' => 'NOT_FOUND',
-            'message' => 'User not found',
+            'code' => 'FORBIDDEN',
+            'message' => 'Account review access denied',
             'data' => [],
         ];
     }
 
-    $currentStatus = strtoupper(trim((string)($user['account_status'] ?? $user['status'] ?? 'INACTIVE')));
-    if ($action === 'APPROVE' && $currentStatus === 'ACTIVE') {
-        return [
-            'ok' => true,
-            'code' => 'ALREADY_ACTIVE',
-            'message' => 'Account is already active',
-            'data' => ['uid' => $uid, 'status' => 'ACTIVE'],
-        ];
-    }
-
-    if ($action === 'REJECT' && $currentStatus === 'REJECTED') {
-        return [
-            'ok' => true,
-            'code' => 'ALREADY_REJECTED',
-            'message' => 'Account is already rejected',
-            'data' => ['uid' => $uid, 'status' => 'REJECTED'],
-        ];
-    }
-
-    if (!in_array($currentStatus, ['REVIEW', 'BLOCKED', 'INACTIVE'], true)) {
-        return [
-            'ok' => false,
-            'code' => 'INVALID_STATUS',
-            'message' => 'Account cannot be reviewed from its current status',
-            'data' => ['uid' => $uid, 'current_status' => $currentStatus],
-        ];
-    }
-
-    $now = function_exists('now_ts') ? (int)now_ts() : time();
+    $path = 'USERS/' . $uid;
+    $user = [];
+    $currentStatus = '';
     $newStatus = $action === 'APPROVE' ? 'ACTIVE' : 'REJECTED';
-    $patch = [
-        'status' => $newStatus,
-        'account_status' => $newStatus,
-        'review_required' => false,
-        'requires_admin_review' => false,
-        'review_status' => $action === 'APPROVE' ? 'APPROVED' : 'REJECTED',
-        'reviewed_by_uid' => $actorUid,
-        'reviewed_by_role' => $actorRole,
-        'reviewed_at' => $now,
-        'updated_at' => $now,
-    ];
+    $now = 0;
 
-    if ($action === 'APPROVE') {
-        $patch['approved_by'] = $actorUid;
-        $patch['approved_by_uid'] = $actorUid;
-        $patch['approved_at'] = $now;
-    } else {
-        $patch['rejected_by'] = $actorUid;
-        $patch['rejected_by_uid'] = $actorUid;
-        $patch['rejected_at'] = $now;
+    for ($attempt = 0; $attempt < 4; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null) || $snapshot['etag'] === '') {
+            return [
+                'ok' => false,
+                'code' => 'SERVER_ERROR',
+                'message' => 'Failed to load account review status',
+                'data' => ['uid' => $uid],
+            ];
+        }
+
+        $user = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+        if ($user === []) {
+            return [
+                'ok' => false,
+                'code' => 'NOT_FOUND',
+                'message' => 'User not found',
+                'data' => [],
+            ];
+        }
+
+        $currentStatus = account_review_canonical_status($user);
+        $terminalResult = account_review_terminal_result($uid, $action, $currentStatus);
+        if ($terminalResult !== null) {
+            return $terminalResult;
+        }
+
+        if ($currentStatus !== 'REVIEW') {
+            return [
+                'ok' => false,
+                'code' => 'INVALID_STATUS',
+                'message' => 'Account cannot be reviewed from its current status',
+                'data' => ['uid' => $uid, 'current_status' => $currentStatus],
+            ];
+        }
+
+        $now = function_exists('now_ts') ? (int)now_ts() : time();
+        $updatedUser = array_replace($user, [
+            'status' => $newStatus,
+            'account_status' => $newStatus,
+            'review_required' => false,
+            'requires_admin_review' => false,
+            'review_status' => $action === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+            'reviewed_by_uid' => $actorUid,
+            'reviewed_by_role' => $actorRole,
+            'reviewed_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        if ($action === 'APPROVE') {
+            $updatedUser['approved_by'] = $actorUid;
+            $updatedUser['approved_by_uid'] = $actorUid;
+            $updatedUser['approved_at'] = $now;
+        } else {
+            $updatedUser['rejected_by'] = $actorUid;
+            $updatedUser['rejected_by_uid'] = $actorUid;
+            $updatedUser['rejected_at'] = $now;
+        }
+
+        $save = fb_put_if_match($path, $updatedUser, (string)$snapshot['etag']);
+        if (!empty($save['ok'])) {
+            break;
+        }
+
+        if ((int)($save['status'] ?? 0) !== 412) {
+            return [
+                'ok' => false,
+                'code' => 'SERVER_ERROR',
+                'message' => 'Failed to update account review status',
+                'data' => ['uid' => $uid],
+            ];
+        }
+
+        // Re-read on conflict and validate REVIEW again; never overwrite a terminal decision.
+        $user = [];
+        $currentStatus = '';
     }
 
-    if (!fb_patch('USERS/' . $uid, $patch)) {
+    if ($user === [] || $currentStatus === '') {
+        $latest = fb_get_with_etag($path);
+        if (empty($latest['ok'])) {
+            return [
+                'ok' => false,
+                'code' => 'SERVER_ERROR',
+                'message' => 'Failed to reload account review status',
+                'data' => ['uid' => $uid],
+            ];
+        }
+
+        $latestUser = is_array($latest['value'] ?? null) ? (array)$latest['value'] : [];
+        if ($latestUser === []) {
+            return [
+                'ok' => false,
+                'code' => 'NOT_FOUND',
+                'message' => 'User not found',
+                'data' => [],
+            ];
+        }
+
+        $latestStatus = account_review_canonical_status($latestUser);
+        $terminalResult = account_review_terminal_result($uid, $action, $latestStatus);
+        if ($terminalResult !== null) {
+            return $terminalResult;
+        }
+
+        if ($latestStatus !== 'REVIEW') {
+            return [
+                'ok' => false,
+                'code' => 'INVALID_STATUS',
+                'message' => 'Account cannot be reviewed from its current status',
+                'data' => ['uid' => $uid, 'current_status' => $latestStatus],
+            ];
+        }
+
         return [
             'ok' => false,
-            'code' => 'SERVER_ERROR',
-            'message' => 'Failed to update account review status',
+            'code' => 'ACCOUNT_REVIEW_CONFLICT',
+            'message' => 'Account review changed. Please reload and try again.',
             'data' => ['uid' => $uid],
         ];
     }
@@ -387,45 +521,48 @@ function account_review_apply(
         'actor_role' => $actorRole,
     ];
 
-    if (
-        function_exists('admin_action_log')
-        && in_array($actorRole, ['ADMIN', 'TELEGRAM_ADMIN'], true)
-    ) {
-        admin_action_log(
-            $action === 'APPROVE' ? 'APPROVE_USER_ACCOUNT' : 'REJECT_USER_ACCOUNT',
-            $uid,
-            $action === 'APPROVE'
-                ? 'Admin approved reviewed user account'
-                : 'Admin rejected reviewed user account',
-            $logContext
-        );
+    if (function_exists('admin_action_log')) {
+        account_review_run_side_effect('admin_action_log', static function () use ($action, $uid, $logContext): void {
+            admin_action_log(
+                $action === 'APPROVE' ? 'APPROVE_USER_ACCOUNT' : 'REJECT_USER_ACCOUNT',
+                $uid,
+                $action === 'APPROVE'
+                    ? 'Admin approved reviewed user account'
+                    : 'Admin rejected reviewed user account',
+                $logContext
+            );
+        });
     }
 
     if (function_exists('system_log')) {
-        system_log(
-            $action === 'APPROVE' ? 'USER_ACCOUNT_APPROVED' : 'USER_ACCOUNT_REJECTED',
-            $uid,
-            $action === 'APPROVE'
-                ? 'Reviewed user account approved'
-                : 'Reviewed user account rejected',
-            $logContext
-        );
+        account_review_run_side_effect('system_log', static function () use ($action, $uid, $logContext): void {
+            system_log(
+                $action === 'APPROVE' ? 'USER_ACCOUNT_APPROVED' : 'USER_ACCOUNT_REJECTED',
+                $uid,
+                $action === 'APPROVE'
+                    ? 'Reviewed user account approved'
+                    : 'Reviewed user account rejected',
+                $logContext
+            );
+        });
     }
 
-    notification_record_user(
-        $uid,
-        $action === 'APPROVE' ? 'ACCOUNT_APPROVED' : 'ACCOUNT_REJECTED',
-        $action === 'APPROVE' ? 'Account Approved' : 'Account Rejected',
-        $action === 'APPROVE'
-            ? 'Your Z-Pay Swift account has been approved.'
-            : 'Your Z-Pay Swift account review was rejected.',
-        'ACCOUNT',
-        $uid,
-        ($action === 'APPROVE' ? 'ACCOUNT_APPROVED:' : 'ACCOUNT_REJECTED:') . $uid . ':' . $now,
-        [
-            'status' => $newStatus,
-        ]
-    );
+    account_review_run_side_effect('notification', static function () use ($uid, $action, $now, $newStatus): void {
+        notification_record_user(
+            $uid,
+            $action === 'APPROVE' ? 'ACCOUNT_APPROVED' : 'ACCOUNT_REJECTED',
+            $action === 'APPROVE' ? 'Account Approved' : 'Account Rejected',
+            $action === 'APPROVE'
+                ? 'Your Z-Pay Swift account has been approved.'
+                : 'Your Z-Pay Swift account review was rejected.',
+            'ACCOUNT',
+            $uid,
+            ($action === 'APPROVE' ? 'ACCOUNT_APPROVED:' : 'ACCOUNT_REJECTED:') . $uid . ':' . $now,
+            [
+                'status' => $newStatus,
+            ]
+        );
+    });
 
     return [
         'ok' => true,

@@ -2645,6 +2645,17 @@ async function submitEditUser(confirmCurrencyConversion = false){
       return;
     }
 
+    if (err.code === 'ACCOUNT_REVIEW_ALREADY_DECIDED' || err.code === 'ACCOUNT_REVIEW_CONFLICT') {
+      alert(err.message || 'Account review was already completed.');
+      await loadUsers({ busy:false, silentLog:true });
+
+      const drawer = document.getElementById('drawer');
+      if (drawer && drawer.classList.contains('open')) {
+        await viewUser(payload.uid);
+      }
+      return;
+    }
+
     alert(err.message || 'Failed to update user');
   }
 }
@@ -2672,6 +2683,17 @@ async function approveUserAccount(uid){
       await viewUser(uid);
     }
   } catch (err) {
+    if (err.code === 'ACCOUNT_REVIEW_ALREADY_DECIDED' || err.code === 'ACCOUNT_REVIEW_CONFLICT') {
+      alert(err.message || 'Account review was already completed.');
+      await loadUsers({ busy:false, silentLog:true });
+
+      const drawer = document.getElementById('drawer');
+      if (drawer && drawer.classList.contains('open')) {
+        await viewUser(uid);
+      }
+      return;
+    }
+
     alert(err.message || 'Failed to approve account');
   }
 }
@@ -2694,6 +2716,17 @@ async function rejectUserAccount(uid){
       await viewUser(uid);
     }
   } catch (err) {
+    if (err.code === 'ACCOUNT_REVIEW_ALREADY_DECIDED' || err.code === 'ACCOUNT_REVIEW_CONFLICT') {
+      alert(err.message || 'Account review was already completed.');
+      await loadUsers({ busy:false, silentLog:true });
+
+      const drawer = document.getElementById('drawer');
+      if (drawer && drawer.classList.contains('open')) {
+        await viewUser(uid);
+      }
+      return;
+    }
+
     alert(err.message || 'Failed to reject account');
   }
 }
