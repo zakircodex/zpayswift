@@ -3540,53 +3540,116 @@ function topupListText(value){
   return Array.isArray(value) ? value.join(', ') : String(value || '');
 }
 
+function operatorPresentationMeta(value){
+  const code = String(value || '').trim().toUpperCase();
+  const labels = {
+    GP: 'GP',
+    ROBI: 'ROBI',
+    AIRTEL: 'AIRTEL',
+    BL: 'BANGLALINK',
+    TT: 'TELETALK',
+  };
+
+  return {
+    code: code || 'UNKNOWN',
+    label: labels[code] || code || 'UNKNOWN',
+  };
+}
+
+function operatorCurrency(countryCode){
+  const country = (state.topupCountries || []).find(item => String(item.code || '') === String(countryCode || ''));
+  return String(country?.currency || '').trim();
+}
+
 function renderOperators(){
   const countryBody = document.getElementById('topupCountriesTableBody');
-  const tbody = document.getElementById('operatorsTableBody');
+  const operatorGrid = document.getElementById('operatorsTableBody');
 
   if (countryBody) {
     const countries = state.topupCountries || [];
     if (!countries.length) {
-      countryBody.innerHTML = '<tr><td colspan="7" class="empty">No country data yet.</td></tr>';
+      countryBody.innerHTML = '<div class="operator-empty-state">No country data yet.</div>';
     } else {
       countryBody.innerHTML = countries.map(item => `
-        <tr>
-          <td><strong>${esc(item.code || '-')}</strong></td>
-          <td>${esc(item.name || '-')}</td>
-          <td>${esc(item.currency || '-')}</td>
-          <td>${esc(item.dial_code || '-')}</td>
-          <td>${statusPill(item.active ? 'ACTIVE' : 'INACTIVE')}</td>
-          <td>${Number(item.sort_order || 0)}</td>
-          <td><button class="mini-btn" onclick="editTopupCountry('${esc(item.code || '')}')">Edit</button></td>
-        </tr>
+        <article class="operator-country-card">
+          <div class="operator-country-primary">
+            <span class="operator-code-mark">${esc(item.code || '-')}</span>
+            <div>
+              <h5>${esc(item.name || '-')}</h5>
+              <p>${esc(item.currency || '-')} / ${esc(item.dial_code || '-')} / Sort ${Number(item.sort_order || 0)}</p>
+            </div>
+          </div>
+          <div class="operator-country-meta">
+            ${statusPill(item.active ? 'ACTIVE' : 'INACTIVE')}
+            <button class="mini-btn operator-edit-btn" type="button" onclick="editTopupCountry('${esc(item.code || '')}')">Edit</button>
+          </div>
+        </article>
       `).join('');
     }
   }
 
-  if (!tbody) return;
+  if (!operatorGrid) return;
 
   if (!state.operators.length){
-    tbody.innerHTML = '<tr><td colspan="9" class="empty">No operator found.</td></tr>';
+    operatorGrid.innerHTML = '<div class="operator-empty-state">No operator found.</div>';
     return;
   }
 
-  tbody.innerHTML = state.operators.map(item => `
-    <tr>
-      <td><strong>${esc(item.operator || '-')}</strong></td>
-      <td>${esc(item.country_code || '-')}<br><small>${esc(item.service_type || '-')}</small></td>
-      <td>${esc(item.name || '-')}</td>
-      <td>${statusPill(item.active ? 'ACTIVE' : 'INACTIVE')}</td>
-      <td>${Number(item.min_amount || 0).toFixed(2)} - ${Number(item.max_amount || 0).toFixed(2)}<br><small>Sort ${Number(item.sort_order || 0)}</small></td>
-      <td><small>Quick: ${esc(topupListText(item.quick_amounts) || '-')}</small><br><small>Prefixes: ${esc(topupListText(item.prefixes) || '-')}</small></td>
-      <td><code>${esc(item.masked_template || item.dial_template || '-')}</code></td>
-      <td>${item.requires_secret_pin ? 'Yes' : 'No'}</td>
-      <td>
-        <div class="row-actions">
-          <button class="mini-btn" onclick="editOperator('${esc(item.operator || '')}')">Edit</button>
+  operatorGrid.innerHTML = state.operators.map(item => {
+    const meta = operatorPresentationMeta(item.operator);
+    const currency = operatorCurrency(item.country_code);
+    const limits = `${currency ? `${esc(currency)} ` : ''}${Number(item.min_amount || 0).toFixed(2)} - ${Number(item.max_amount || 0).toFixed(2)}`;
+    const updated = Number(item.updated_at || 0) > 0 ? fmtTs(item.updated_at) : 'Not recorded';
+
+    return `
+      <article class="operator-card" data-operator-code="${esc(meta.code)}">
+        <header class="operator-card-head">
+          <div class="operator-card-title">
+            <span class="operator-code-mark">${esc(meta.code)}</span>
+            <div>
+              <h5>${esc(meta.label)}</h5>
+              <p>${esc(item.name || meta.label)} / ${esc(item.country_code || '-')}</p>
+            </div>
+          </div>
+          ${statusPill(item.active ? 'ACTIVE' : 'INACTIVE')}
+        </header>
+        <div class="operator-card-body">
+          <div class="operator-detail">
+            <span>Runtime</span>
+            <strong>${item.execution_ready ? 'Queue Ready' : 'Catalog Only'}</strong>
+          </div>
+          <div class="operator-detail">
+            <span>Service</span>
+            <strong>${esc(item.service_type || '-')}</strong>
+          </div>
+          <div class="operator-detail operator-detail-wide">
+            <span>Amount Limits</span>
+            <strong>${limits} / Sort ${Number(item.sort_order || 0)}</strong>
+          </div>
+          <div class="operator-detail">
+            <span>Quick Amounts</span>
+            <strong>${esc(topupListText(item.quick_amounts) || '-')}</strong>
+          </div>
+          <div class="operator-detail">
+            <span>Prefixes</span>
+            <strong>${esc(topupListText(item.prefixes) || '-')}</strong>
+          </div>
+          <div class="operator-detail operator-detail-wide">
+            <span>Masked Template</span>
+            <code>${esc(item.masked_template || 'Not configured')}</code>
+          </div>
+          <div class="operator-detail operator-detail-wide">
+            <span>Protected Credential Required</span>
+            <strong>${item.requires_secret_pin ? 'Yes' : 'No'}</strong>
+          </div>
         </div>
-      </td>
-    </tr>
-  `).join('');
+        <footer class="operator-card-foot">
+          <span class="operator-updated">Updated ${esc(updated)}</span>
+          <button class="mini-btn operator-edit-btn" type="button" onclick="editOperator('${esc(item.operator || '')}')">Edit</button>
+        </footer>
+      </article>
+    `;
+  }).join('');
 }
 
 async function editTopupCountry(code){
@@ -3599,34 +3662,42 @@ async function editTopupCountry(code){
   openModal(
     `Edit Top-Up Country - ${esc(item.code || '')}`,
     `
-      <div class="form-grid">
-        <div>
-          <label>Code</label>
+      <div class="admin-settings-form">
+        <section class="admin-settings-group">
+          <div class="admin-settings-group-head">
+            <span class="settings-kicker">Market</span>
+            <h4>Country Availability</h4>
+          </div>
+          <div class="form-grid">
+        <label class="admin-settings-field">
+          <span>Code</span>
           <input class="input" id="topupCountryCode" value="${esc(item.code || '')}" readonly>
-        </div>
-        <div>
-          <label>Name</label>
+        </label>
+        <label class="admin-settings-field">
+          <span>Name</span>
           <input class="input" id="topupCountryName" value="${esc(item.name || '')}">
-        </div>
-        <div>
-          <label>Currency</label>
+        </label>
+        <label class="admin-settings-field">
+          <span>Currency</span>
           <input class="input" id="topupCountryCurrency" value="${esc(item.currency || '')}">
-        </div>
-        <div>
-          <label>Dial Code</label>
+        </label>
+        <label class="admin-settings-field">
+          <span>Dial Code</span>
           <input class="input" id="topupCountryDial" value="${esc(item.dial_code || '')}">
-        </div>
-        <div>
-          <label>Active</label>
+        </label>
+        <label class="admin-settings-field">
+          <span>Availability</span>
           <select id="topupCountryActive">
             <option value="true" ${item.active ? 'selected' : ''}>Active</option>
             <option value="false" ${!item.active ? 'selected' : ''}>Inactive</option>
           </select>
-        </div>
-        <div>
-          <label>Sort Order</label>
+        </label>
+        <label class="admin-settings-field">
+          <span>Sort Order</span>
           <input class="input" id="topupCountrySort" type="number" step="1" value="${esc(String(item.sort_order ?? 999))}">
-        </div>
+        </label>
+          </div>
+        </section>
       </div>
     `,
     `
@@ -3634,6 +3705,7 @@ async function editTopupCountry(code){
       <button class="btn brand" onclick="saveTopupCountry()">Save Country</button>
     `
   );
+  setModalPresentationScope('operator-country');
 }
 
 async function saveTopupCountry(){
@@ -3665,90 +3737,121 @@ async function editOperator(operator){
     openModal(
       `Edit Operator • ${operator}`,
       `
-        <div class="form-grid">
-          <div>
-            <label>Operator</label>
+        <div class="admin-settings-form operator-settings-form">
+          <section class="admin-settings-group">
+            <div class="admin-settings-group-head">
+              <span class="settings-kicker">General</span>
+              <h4>Operator Identity</h4>
+            </div>
+            <div class="form-grid">
+          <label class="admin-settings-field">
+            <span>Operator</span>
             <input class="input" id="opOperator" value="${esc(data.operator || '')}" readonly>
-          </div>
+          </label>
 
-          <div>
-            <label>Name</label>
+          <label class="admin-settings-field">
+            <span>Name</span>
             <input class="input" id="opName" value="${esc(data.name || '')}">
-          </div>
+          </label>
 
-          <div>
-            <label>Country</label>
+          <label class="admin-settings-field">
+            <span>Country</span>
             <input class="input" id="opCountryCode" value="${esc(data.country_code || '')}" readonly>
-          </div>
+          </label>
 
-          <div>
-            <label>Service Type</label>
+          <label class="admin-settings-field">
+            <span>Service Type</span>
             <select id="opServiceType">
               <option value="PREPAID" selected>PREPAID</option>
             </select>
-          </div>
+          </label>
 
-          <div>
-            <label>Active</label>
+          <label class="admin-settings-field">
+            <span>Availability</span>
             <select id="opActive">
               <option value="true" ${data.active ? 'selected' : ''}>Active</option>
               <option value="false" ${!data.active ? 'selected' : ''}>Inactive</option>
             </select>
-          </div>
+          </label>
 
-          <div>
-            <label>Requires Secret PIN</label>
+          <label class="admin-settings-field">
+            <span>Protected Credential Required</span>
             <select id="opRequiresPin">
               <option value="true" ${data.requires_secret_pin ? 'selected' : ''}>Yes</option>
               <option value="false" ${!data.requires_secret_pin ? 'selected' : ''}>No</option>
             </select>
-          </div>
+          </label>
+            </div>
+          </section>
 
-          <div>
-            <label>Min Amount</label>
+          <section class="admin-settings-group">
+            <div class="admin-settings-group-head">
+              <span class="settings-kicker">Catalog</span>
+              <h4>Limits and Routing</h4>
+            </div>
+            <div class="form-grid">
+          <label class="admin-settings-field">
+            <span>Minimum Amount</span>
             <input class="input" id="opMinAmount" type="number" step="0.01" min="0" value="${esc(String(data.min_amount ?? 20))}">
-          </div>
+          </label>
 
-          <div>
-            <label>Max Amount</label>
+          <label class="admin-settings-field">
+            <span>Maximum Amount</span>
             <input class="input" id="opMaxAmount" type="number" step="0.01" min="0" value="${esc(String(data.max_amount ?? 1000))}">
-          </div>
+          </label>
 
-          <div>
-            <label>Quick Amounts</label>
+          <label class="admin-settings-field">
+            <span>Quick Amounts</span>
             <input class="input" id="opQuickAmounts" placeholder="20,50,100" value="${esc(quickAmounts)}">
-          </div>
+          </label>
 
-          <div>
-            <label>Prefixes</label>
+          <label class="admin-settings-field">
+            <span>Prefixes</span>
             <input class="input" id="opPrefixes" placeholder="017,013" value="${esc(prefixes)}">
-          </div>
+          </label>
 
-          <div>
-            <label>Sort Order</label>
+          <label class="admin-settings-field">
+            <span>Sort Order</span>
             <input class="input" id="opSortOrder" type="number" step="1" value="${esc(String(data.sort_order ?? 999))}">
-          </div>
+          </label>
 
-          <div>
-            <label>Execution</label>
+          <label class="admin-settings-field">
+            <span>Runtime Status</span>
             <input class="input" value="${data.execution_ready ? 'Live queue ready' : 'Catalog only / not ready'}" readonly>
-          </div>
+          </label>
+            </div>
+          </section>
 
-          <div class="form-full">
-            <label>Dial Template</label>
+          <section class="admin-settings-group">
+            <div class="admin-settings-group-head">
+              <span class="settings-kicker">Runtime</span>
+              <h4>Worker Templates</h4>
+            </div>
+            <div class="form-grid">
+          <label class="admin-settings-field form-full">
+            <span>Dial Template</span>
             <textarea class="input" id="opDialTemplate" rows="4">${esc(data.dial_template || '')}</textarea>
-          </div>
+          </label>
 
-          <div class="form-full">
-            <label>Masked Template</label>
+          <label class="admin-settings-field form-full">
+            <span>Masked Template</span>
             <textarea class="input" id="opMaskedTemplate" rows="3">${esc(data.masked_template || '')}</textarea>
-          </div>
+          </label>
+            </div>
+          </section>
 
-          <div class="form-full">
-            <label>Retailer Secret PIN</label>
-            <input class="input" id="opRetailerPin" value="" placeholder="${data.retailer_secret_pin_set ? 'Leave blank to keep existing PIN' : 'Enter retailer secret PIN'}">
-            <div class="hint">${data.retailer_secret_pin_set ? `Current PIN: ${esc(data.retailer_secret_pin_masked || '********')}` : 'PIN is stored privately and never displayed.'}</div>
-          </div>
+          <section class="admin-settings-group">
+            <div class="admin-settings-group-head">
+              <span class="settings-kicker">Private runtime</span>
+              <h4>Worker Credential</h4>
+              <p>${data.retailer_secret_pin_set ? 'A private credential is configured.' : 'No private credential is configured.'}</p>
+            </div>
+            <label class="admin-settings-field">
+              <span>Replace Credential</span>
+              <input class="input" id="opRetailerPin" type="password" autocomplete="new-password" value="" placeholder="${data.retailer_secret_pin_set ? 'Leave blank to keep existing credential' : 'Enter a new credential'}">
+              <small class="settings-field-note">Existing private values are never displayed.</small>
+            </label>
+          </section>
         </div>
       `,
       `
@@ -3756,6 +3859,7 @@ async function editOperator(operator){
         <button class="btn brand" onclick="saveOperator()">Save Operator</button>
       `
     );
+    setModalPresentationScope('operator-settings');
   }catch(err){
     alert(err.message || 'Failed to load operator');
   }
@@ -4295,72 +4399,120 @@ async function openAppConfigModal(){
     openModal(
       'System Settings',
       `
-        <div class="form-grid">
-          <div>
-            <label>Topup Service</label>
-            <select id="cfgTopupEnabled">
-              <option value="true" ${data.topup_enabled ? 'selected' : ''}>Enabled</option>
-              <option value="false" ${!data.topup_enabled ? 'selected' : ''}>Disabled</option>
-            </select>
-          </div>
+        <div class="admin-settings-form system-settings-form">
+          <section class="admin-settings-group">
+            <div class="admin-settings-group-head">
+              <span class="settings-kicker">Availability</span>
+              <h4>Services</h4>
+            </div>
+            <div class="settings-toggle-grid">
+              <label class="settings-toggle-card">
+                <span>
+                  <strong>Top-Up Service</strong>
+                  <small>Current service state</small>
+                </span>
+                <select id="cfgTopupEnabled">
+                  <option value="true" ${data.topup_enabled ? 'selected' : ''}>Enabled</option>
+                  <option value="false" ${!data.topup_enabled ? 'selected' : ''}>Disabled</option>
+                </select>
+              </label>
 
-          <div>
-            <label>Bundle Service</label>
-            <select id="cfgBundleEnabled">
-              <option value="true" ${data.bundle_enabled ? 'selected' : ''}>Enabled</option>
-              <option value="false" ${!data.bundle_enabled ? 'selected' : ''}>Disabled</option>
-            </select>
-          </div>
+              <label class="settings-toggle-card">
+                <span>
+                  <strong>Bundle Service</strong>
+                  <small>Current service state</small>
+                </span>
+                <select id="cfgBundleEnabled">
+                  <option value="true" ${data.bundle_enabled ? 'selected' : ''}>Enabled</option>
+                  <option value="false" ${!data.bundle_enabled ? 'selected' : ''}>Disabled</option>
+                </select>
+              </label>
+            </div>
+          </section>
 
-          <div class="form-full">
-            <label>Maintenance Mode</label>
-            <select id="cfgMaintenanceMode">
-              <option value="false" ${!data.maintenance_mode ? 'selected' : ''}>Off</option>
-              <option value="true" ${data.maintenance_mode ? 'selected' : ''}>On</option>
-            </select>
-          </div>
+          <section class="admin-settings-group">
+            <div class="admin-settings-group-head">
+              <span class="settings-kicker">Transaction rules</span>
+              <h4>Service Limits</h4>
+            </div>
+            <div class="settings-limit-grid">
+              <div class="settings-limit-block">
+                <h5>Top-Up Limits</h5>
+                <div class="form-grid">
+                  <label class="admin-settings-field">
+                    <span>Minimum Amount</span>
+                    <input class="input" id="cfgMinTopupAmount" type="number" step="0.01" min="0" value="${esc(data.min_topup_amount ?? 0)}">
+                  </label>
+                  <label class="admin-settings-field">
+                    <span>Maximum Amount</span>
+                    <input class="input" id="cfgMaxTopupAmount" type="number" step="0.01" min="0" value="${esc(data.max_topup_amount ?? 0)}">
+                  </label>
+                </div>
+              </div>
 
-          <div>
-            <label>Min Topup Amount</label>
-            <input class="input" id="cfgMinTopupAmount" type="number" step="0.01" min="0" value="${esc(data.min_topup_amount ?? 0)}">
-          </div>
+              <div class="settings-limit-block">
+                <h5>Bundle Limits</h5>
+                <div class="form-grid">
+                  <label class="admin-settings-field">
+                    <span>Minimum Amount</span>
+                    <input class="input" id="cfgMinBundleAmount" type="number" step="0.01" min="0" value="${esc(data.min_bundle_amount ?? 0)}">
+                  </label>
+                  <label class="admin-settings-field">
+                    <span>Maximum Amount</span>
+                    <input class="input" id="cfgMaxBundleAmount" type="number" step="0.01" min="0" value="${esc(data.max_bundle_amount ?? 0)}">
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
 
-          <div>
-            <label>Max Topup Amount</label>
-            <input class="input" id="cfgMaxTopupAmount" type="number" step="0.01" min="0" value="${esc(data.max_topup_amount ?? 0)}">
-          </div>
+          <section class="admin-settings-group">
+            <div class="admin-settings-group-head">
+              <span class="settings-kicker">Public information</span>
+              <h4>Legal Links</h4>
+            </div>
+            <div class="form-grid">
+              <label class="admin-settings-field form-full">
+                <span>Privacy Policy URL</span>
+                <input class="input" id="cfgPrivacyPolicyUrl" type="url" inputmode="url" placeholder="https://example.com/privacy-policy" value="${esc(data.privacy_policy_url || '')}">
+              </label>
 
-          <div>
-            <label>Min Bundle Amount</label>
-            <input class="input" id="cfgMinBundleAmount" type="number" step="0.01" min="0" value="${esc(data.min_bundle_amount ?? 0)}">
-          </div>
+              <label class="admin-settings-field form-full">
+                <span>Terms &amp; Conditions URL</span>
+                <input class="input" id="cfgTermsConditionsUrl" type="url" inputmode="url" placeholder="https://example.com/terms" value="${esc(data.terms_conditions_url || '')}">
+              </label>
+            </div>
+          </section>
 
-          <div>
-            <label>Max Bundle Amount</label>
-            <input class="input" id="cfgMaxBundleAmount" type="number" step="0.01" min="0" value="${esc(data.max_bundle_amount ?? 0)}">
-          </div>
+          <section class="admin-settings-group settings-maintenance-card">
+            <div class="admin-settings-group-head">
+              <span class="settings-kicker">System state</span>
+              <h4>Maintenance</h4>
+            </div>
+            <label class="settings-toggle-card">
+              <span>
+                <strong>Maintenance Mode</strong>
+                <small>Current application state</small>
+              </span>
+              <select id="cfgMaintenanceMode">
+                <option value="false" ${!data.maintenance_mode ? 'selected' : ''}>Off</option>
+                <option value="true" ${data.maintenance_mode ? 'selected' : ''}>On</option>
+              </select>
+            </label>
+          </section>
 
-          <div class="form-full">
-            <label>Privacy Policy URL</label>
-            <input class="input" id="cfgPrivacyPolicyUrl" type="url" inputmode="url" placeholder="https://example.com/privacy-policy" value="${esc(data.privacy_policy_url || '')}">
-          </div>
-
-          <div class="form-full">
-            <label>Terms &amp; Conditions URL</label>
-            <input class="input" id="cfgTermsConditionsUrl" type="url" inputmode="url" placeholder="https://example.com/terms" value="${esc(data.terms_conditions_url || '')}">
-          </div>
-
-          <div class="form-full">
-            <label>Last Updated</label>
-            <input class="input" value="${esc(fmtTs(data.updated_at || 0))}" readonly>
+          <div class="settings-updated-row">
+            <span>Last Updated</span>
+            <strong>${esc(fmtTs(data.updated_at || 0))}</strong>
           </div>
         </div>
       `,
       `
-        <button class="btn ghost" onclick="closeModal()">Cancel</button>
-        <button class="btn brand" onclick="saveAppConfig()">Save Settings</button>
+        <button class="btn ghost" id="configCancelBtn" onclick="closeModal()">Cancel</button>
+        <button class="btn brand" id="configSaveBtn" onclick="saveAppConfig()">Save Settings</button>
       `
     );
+    setModalPresentationScope('system-settings');
   }catch(err){
     alert(err.message || 'Failed to load system settings');
   }

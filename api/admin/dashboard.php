@@ -19,6 +19,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/admin/assets/admin-operations.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-operations.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-transactions.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-transactions.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-support.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-support.css') ?: 1)) ?>">
+  <link rel="stylesheet" href="/api/admin/assets/admin-settings.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-settings.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
@@ -787,54 +788,36 @@ header('Pragma: no-cache');
         </div>
       </section>
 
-      <section class="section" id="operatorsSection">
-        <div class="card">
-          <div class="panel-head">
+      <section class="section operators-admin-section" id="operatorsSection">
+        <div class="card operator-management-card">
+          <div class="panel-head operator-panel-head">
             <div>
               <h3>Operators</h3>
-              <p>Edit country availability, operator limits, prefixes, templates and retailer secret pin.</p>
+              <p>Manage country availability, operator limits, prefixes and runtime configuration.</p>
             </div>
-            <button class="btn ghost" id="reloadOperatorsBtn">Reload Operators</button>
+            <button class="btn ghost operator-reload-btn" id="reloadOperatorsBtn" type="button">Reload Operators</button>
           </div>
 
-          <div class="table-wrap" style="margin-bottom:18px;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Country</th>
-                  <th>Name</th>
-                  <th>Currency</th>
-                  <th>Dial</th>
-                  <th>Active</th>
-                  <th>Sort</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody id="topupCountriesTableBody">
-                <tr><td colspan="7" class="empty">No country data yet.</td></tr>
-              </tbody>
-            </table>
-          </div>
+          <div class="operator-content">
+            <div class="operator-subsection-head">
+              <div>
+                <span class="operator-kicker">Market availability</span>
+                <h4>Top-Up Countries</h4>
+              </div>
+            </div>
+            <div class="operator-country-grid" id="topupCountriesTableBody" aria-live="polite">
+              <div class="operator-empty-state">No country data yet.</div>
+            </div>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Operator</th>
-                  <th>Country</th>
-                  <th>Name</th>
-                  <th>Active</th>
-                  <th>Limits</th>
-                  <th>Quick / Prefixes</th>
-                  <th>Masked Template</th>
-                  <th>PIN</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody id="operatorsTableBody">
-                <tr><td colspan="9" class="empty">No data yet.</td></tr>
-              </tbody>
-            </table>
+            <div class="operator-subsection-head operator-list-heading">
+              <div>
+                <span class="operator-kicker">Runtime catalog</span>
+                <h4>Operator Configuration</h4>
+              </div>
+            </div>
+            <div class="operators-grid" id="operatorsTableBody" aria-live="polite">
+              <div class="operator-empty-state">No data yet.</div>
+            </div>
           </div>
         </div>
       </section>
