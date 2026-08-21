@@ -1376,7 +1376,9 @@ switch ($action) {
         proxy_require_method('GET');
         proxy_forward_admin_get('mfs/pending.php', [
             'page' => (int)($_GET['page'] ?? 1),
-            'limit' => (int)($_GET['limit'] ?? 50),
+            'limit' => 10,
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
+            'query' => trim((string)($_GET['query'] ?? '')),
             'service' => trim((string)($_GET['service'] ?? '')),
             'service_type' => trim((string)($_GET['service_type'] ?? '')),
             'country' => trim((string)($_GET['country'] ?? '')),
@@ -1389,7 +1391,9 @@ switch ($action) {
         proxy_require_method('GET');
         proxy_forward_admin_get('mfs/processing.php', [
             'page' => (int)($_GET['page'] ?? 1),
-            'limit' => (int)($_GET['limit'] ?? 50),
+            'limit' => 10,
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
+            'query' => trim((string)($_GET['query'] ?? '')),
             'service' => trim((string)($_GET['service'] ?? '')),
             'service_type' => trim((string)($_GET['service_type'] ?? '')),
             'country' => trim((string)($_GET['country'] ?? '')),
@@ -1402,7 +1406,9 @@ switch ($action) {
         proxy_require_method('GET');
         proxy_forward_admin_get('mfs/done.php', [
             'page' => (int)($_GET['page'] ?? 1),
-            'limit' => (int)($_GET['limit'] ?? 50),
+            'limit' => 10,
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
+            'query' => trim((string)($_GET['query'] ?? '')),
             'service' => trim((string)($_GET['service'] ?? '')),
             'service_type' => trim((string)($_GET['service_type'] ?? '')),
             'country' => trim((string)($_GET['country'] ?? '')),
@@ -1440,7 +1446,11 @@ switch ($action) {
         proxy_require_method('GET');
         proxy_forward_admin_get('bundle/offers.php', [
             'include_inactive' => trim((string)($_GET['include_inactive'] ?? '1')),
+            'include_deleted' => trim((string)($_GET['include_deleted'] ?? '0')),
             'status' => trim((string)($_GET['status'] ?? '')),
+            'query' => trim((string)($_GET['query'] ?? '')),
+            'page' => max(1, (int)($_GET['page'] ?? 1)),
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
         ]);
         break;
 
@@ -1470,7 +1480,8 @@ switch ($action) {
         proxy_require_method('GET');
         proxy_forward_admin_get('users/list.php', [
             'page' => max(1, (int)($_GET['page'] ?? 1)),
-            'limit' => max(1, min(100, (int)($_GET['limit'] ?? 50))),
+            'limit' => 10,
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
             'search' => trim((string)($_GET['search'] ?? '')),
             'role' => trim((string)($_GET['role'] ?? '')),
             'status' => trim((string)($_GET['status'] ?? '')),
@@ -1625,17 +1636,24 @@ switch ($action) {
         proxy_require_method('GET');
         proxy_require_admin_login(true);
 
-        $limit = max(1, min(300, (int)($_GET['limit'] ?? 150)));
+        $limit = 10;
+        $cursor = trim((string)($_GET['cursor'] ?? ''));
+        $pageNumber = max(1, (int)($_GET['page'] ?? 1));
         $filters = [
             'status' => trim((string)($_GET['status'] ?? '')),
             'country' => trim((string)($_GET['country'] ?? '')),
             'method' => trim((string)($_GET['method'] ?? '')),
         ];
 
+        $page = add_money_list_admin_page($filters, $cursor, $limit);
+        $pagination = (array)($page['pagination'] ?? []);
+        $pagination['page'] = $pageNumber;
+
         proxy_response(true, 'SUCCESS', 'Add money requests loaded', [
-            'items' => add_money_list_admin($filters, $limit),
+            'items' => (array)($page['items'] ?? []),
             'filters' => $filters,
             'limit' => $limit,
+            'pagination' => $pagination,
         ]);
         break;
 
@@ -1679,7 +1697,9 @@ switch ($action) {
         proxy_forward_admin_get('support/list.php', [
             'status' => trim((string)($_GET['status'] ?? '')),
             'query' => trim((string)($_GET['query'] ?? '')),
-            'limit' => (int)($_GET['limit'] ?? 100),
+            'limit' => 10,
+            'page' => max(1, (int)($_GET['page'] ?? 1)),
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
         ]);
         break;
 

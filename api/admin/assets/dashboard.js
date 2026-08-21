@@ -7,9 +7,12 @@ const state = {
   topups: [],
   bundles: [],
   bundleOffers: [],
+  bundleOffersPagination: { page:1, limit:10, cursor:'', next_cursor:'', has_more:false, history:[''] },
   addMoney: [],
+  addMoneyPagination: { page:1, limit:10, cursor:'', next_cursor:'', has_more:false, history:[''] },
   addMoneyPaymentAccounts: [],
   supportTickets: [],
+  supportPagination: { page:1, limit:10, cursor:'', next_cursor:'', has_more:false, history:[''] },
   supportCategories: [],
   supportConfig: {},
   supportOpenTicketId: '',
@@ -18,11 +21,13 @@ const state = {
   users: [],
   usersPagination: {
     page: 1,
-    limit: 50,
-    total: 0,
-    total_pages: 1,
-    has_more: false
+    limit: 10,
+    cursor: '',
+    next_cursor: '',
+    has_more: false,
+    history: ['']
   },
+  usersStatus: 'ACTIVE',
   workers: [],
   operators: [],
 
@@ -75,6 +80,51 @@ const state = {
 const submitLocks = {};
 let usersSearchTimer = null;
 let supportSearchTimer = null;
+let bundleOfferSearchTimer = null;
+
+function resetCursorPagination(pagination){
+  pagination.page = 1;
+  pagination.cursor = '';
+  pagination.next_cursor = '';
+  pagination.has_more = false;
+  pagination.history = [''];
+}
+
+function applyCursorPagination(pagination, incoming = {}, requestedPage = 1){
+  pagination.page = Math.max(1, Number(incoming.page || requestedPage || 1));
+  pagination.limit = 10;
+  pagination.cursor = String(incoming.cursor ?? pagination.cursor ?? '');
+  pagination.next_cursor = String(incoming.next_cursor || '');
+  pagination.has_more = !!incoming.has_more;
+  if (!Array.isArray(pagination.history) || !pagination.history.length) pagination.history = [''];
+}
+
+function renderCursorPagination(prefix, pagination, count, noun){
+  const text = document.getElementById(`${prefix}PaginationText`);
+  const prev = document.getElementById(`${prefix}PrevBtn`);
+  const next = document.getElementById(`${prefix}NextBtn`);
+  if (text) text.textContent = `Page ${pagination.page} • ${count} ${noun}`;
+  if (prev) prev.disabled = pagination.page <= 1;
+  if (next) next.disabled = !pagination.has_more || !pagination.next_cursor;
+}
+
+function cursorNext(pagination, loader){
+  if (!pagination.has_more || !pagination.next_cursor) return;
+  pagination.history = Array.isArray(pagination.history) ? pagination.history : [''];
+  pagination.history.push(pagination.next_cursor);
+  pagination.page += 1;
+  pagination.cursor = pagination.next_cursor;
+  loader().catch(() => {});
+}
+
+function cursorPrevious(pagination, loader){
+  if (pagination.page <= 1) return;
+  pagination.history = Array.isArray(pagination.history) ? pagination.history : [''];
+  pagination.history.pop();
+  pagination.page = Math.max(1, pagination.page - 1);
+  pagination.cursor = String(pagination.history[pagination.history.length - 1] || '');
+  loader().catch(() => {});
+}
 
 /* =========================
    BASIC HELPERS
@@ -1821,10 +1871,16 @@ async function loadBundleOffers(options = {}){
   try{
     const data = await proxyGet('bundle_offers', {
       include_inactive: '1',
-      include_deleted: '0'
+      include_deleted: '0',
+      status: document.getElementById('bundleOfferStatusFilter')?.value || '',
+      query: document.getElementById('bundleOfferSearch')?.value.trim() || '',
+      page: state.bundleOffersPagination.page,
+      cursor: state.bundleOffersPagination.cursor,
+      limit: 10
     }, options);
 
     state.bundleOffers = data.items || [];
+    applyCursorPagination(state.bundleOffersPagination, data.pagination || {}, state.bundleOffersPagination.page);
     state.loaded.bundleOffers = true;
 
     renderBundleOffers();
@@ -1846,26 +1902,8 @@ function renderBundleOffers(){
   const tbody = document.getElementById('bundleOffersTableBody');
   if (!tbody) return;
 
-  const q = document.getElementById('bundleOfferSearch')?.value.trim().toLowerCase() || '';
-  const filterStatus = String(document.getElementById('bundleOfferStatusFilter')?.value || '').toUpperCase();
-
-  const rows = (state.bundleOffers || []).filter(item => {
-    const status = getBundleOfferStatus(item);
-
-    if (status === 'DELETED' && filterStatus !== 'DELETED') {
-      return false;
-    }
-
-    if (filterStatus && status !== filterStatus) {
-      return false;
-    }
-
-    if (q && !JSON.stringify(item).toLowerCase().includes(q)) {
-      return false;
-    }
-
-    return true;
-  });
+  const rows = state.bundleOffers || [];
+  renderCursorPagination('bundleOffers', state.bundleOffersPagination, rows.length, 'offers');
 
   if (!rows.length){
     tbody.innerHTML = '<tr><td colspan="8" class="empty">No bundle offer found.</td></tr>';
@@ -2348,7 +2386,7 @@ function resetUserRoleFields(role = 'USER'){
 
 async function loadUsers(options = {}){
   const tbody = document.getElementById('usersTableBody');
-  const page = Math.max(1, Number(options.page || state.usersPagination.page || 1));
+  const page = Math.max(1, Number(state.usersPagination.page || 1));
   const search = document.getElementById('usersSearch')?.value.trim() || '';
 
   if (tbody) {
@@ -2359,18 +2397,13 @@ async function loadUsers(options = {}){
     const data = await proxyGet('users', {
       page,
       limit: state.usersPagination.limit,
-      search
+      cursor: state.usersPagination.cursor,
+      search,
+      status: state.usersStatus
     }, options);
 
     state.users = Array.isArray(data.items) ? data.items : [];
-    state.usersPagination = {
-      ...state.usersPagination,
-      ...(data.pagination || {}),
-      page: Number(data.pagination?.page || page),
-      total: Number(data.pagination?.total || 0),
-      total_pages: Number(data.pagination?.total_pages || 1),
-      has_more: !!data.pagination?.has_more
-    };
+    applyCursorPagination(state.usersPagination, data.pagination || {}, page);
     state.loaded.users = true;
 
     renderUsers();
@@ -2380,7 +2413,9 @@ async function loadUsers(options = {}){
     const dashBalanceTotal = document.getElementById('dashBalanceTotal');
     const summary = data.summary || {};
 
-    if (dashUsersCount) dashUsersCount.textContent = String(summary.total_users ?? state.usersPagination.total);
+    if (dashUsersCount && Number.isFinite(Number(summary.total_users)) && summary.total_users !== null) {
+      dashUsersCount.textContent = String(summary.total_users);
+    }
     if (dashBalanceTotal) dashBalanceTotal.textContent = money(summary.total_available_balance || 0);
 
     if (!options.silentLog) log('Loaded users list.');
@@ -2466,16 +2501,19 @@ function renderUsersPagination(){
   const next = document.getElementById('usersNextBtn');
 
   if (text) {
-    text.textContent = `${pagination.total} users • Page ${pagination.page} of ${pagination.total_pages}`;
+    text.textContent = `Page ${pagination.page} • ${state.users.length} users`;
   }
   if (prev) prev.disabled = pagination.page <= 1;
-  if (next) next.disabled = pagination.page >= pagination.total_pages || !pagination.has_more;
+  if (next) next.disabled = !pagination.has_more || !pagination.next_cursor;
 }
 
 function loadUsersPage(page){
-  const target = Math.max(1, Math.min(Number(page || 1), state.usersPagination.total_pages || 1));
-  if (target === state.usersPagination.page && state.loaded.users) return;
-  loadUsers({ page: target, busyText: 'Loading users...' }).catch(() => {});
+  const target = Math.max(1, Number(page || 1));
+  if (target > state.usersPagination.page) {
+    cursorNext(state.usersPagination, () => loadUsers({ busyText:'Loading users...' }));
+  } else if (target < state.usersPagination.page) {
+    cursorPrevious(state.usersPagination, () => loadUsers({ busyText:'Loading users...' }));
+  }
 }
 
 async function viewUser(uid){
@@ -4663,7 +4701,9 @@ function supportFilters(){
   return {
     status: document.getElementById('supportStatusFilter')?.value || '',
     query: document.getElementById('supportSearch')?.value || '',
-    limit: 150
+    page: state.supportPagination.page,
+    cursor: state.supportPagination.cursor,
+    limit: 10
   };
 }
 
@@ -4696,6 +4736,7 @@ async function loadSupportAdmin(options = {}){
 async function loadSupportTickets(options = {}){
   const data = await proxyGet('support_list', supportFilters(), options);
   state.supportTickets = Array.isArray(data.tickets) ? data.tickets : [];
+  applyCursorPagination(state.supportPagination, data.pagination || {}, state.supportPagination.page);
   renderSupportTickets();
 }
 
@@ -4754,6 +4795,7 @@ function supportStatusBadge(row){
 function renderSupportTickets(){
   const tbody = document.getElementById('supportTicketsTableBody');
   if (!tbody) return;
+  renderCursorPagination('support', state.supportPagination, state.supportTickets.length, 'tickets');
   if (!state.supportTickets.length) {
     tbody.innerHTML = '<tr><td colspan="8" class="empty support-ticket-state">No support ticket found.</td></tr>';
     return;
@@ -5099,7 +5141,9 @@ function addMoneyFilters(){
     status: document.getElementById('addMoneyStatusFilter')?.value || '',
     country: document.getElementById('addMoneyCountryFilter')?.value || '',
     method: document.getElementById('addMoneyMethodFilter')?.value || '',
-    limit: 150
+    page: state.addMoneyPagination.page,
+    cursor: state.addMoneyPagination.cursor,
+    limit: 10
   };
 }
 
@@ -5112,6 +5156,7 @@ async function loadAddMoneyRequests(options = {}){
   try {
     const data = await proxyGet('add_money_requests', addMoneyFilters(), options);
     state.addMoney = Array.isArray(data.items) ? data.items : [];
+    applyCursorPagination(state.addMoneyPagination, data.pagination || {}, state.addMoneyPagination.page);
     state.loaded.addMoney = true;
     renderAddMoneyRequests();
   } catch (err) {
@@ -5129,6 +5174,7 @@ function addMoneyAmount(row){
 function renderAddMoneyRequests(){
   const tbody = document.getElementById('addMoneyTableBody');
   if (!tbody) return;
+  renderCursorPagination('addMoney', state.addMoneyPagination, state.addMoney.length, 'requests');
 
   if (!state.addMoney.length) {
     tbody.innerHTML = '<tr><td colspan="9" class="empty add-money-state-cell">No Add Money requests found.</td></tr>';
@@ -5277,6 +5323,12 @@ async function submitAddMoneyAction(requestId, action){
     state.loaded.addMoney = false;
     state.loaded.users = false;
     await loadAddMoneyRequests({ busy:false, silentLog:true });
+    if (!state.addMoney.length && state.addMoneyPagination.page > 1) {
+      state.addMoneyPagination.history.pop();
+      state.addMoneyPagination.page -= 1;
+      state.addMoneyPagination.cursor = String(state.addMoneyPagination.history[state.addMoneyPagination.history.length - 1] || '');
+      await loadAddMoneyRequests({ busy:false, silentLog:true });
+    }
   } catch (err) {
     showToast(err.message || 'Action failed', 'error');
   }
@@ -5496,9 +5548,9 @@ document.getElementById('topupSearch')?.addEventListener('input', renderTopups);
 document.getElementById('usersSearch')?.addEventListener('input', () => {
   clearTimeout(usersSearchTimer);
   usersSearchTimer = setTimeout(() => {
-    state.usersPagination.page = 1;
+    resetCursorPagination(state.usersPagination);
     state.loaded.users = false;
-    loadUsers({ page: 1, busy:false, silentLog:true }).catch(() => {});
+    loadUsers({ busy:false, silentLog:true }).catch(() => {});
   }, 350);
 });
 
@@ -5507,29 +5559,66 @@ document.getElementById('reloadTopupBtn')?.addEventListener('click', () => loadT
 document.getElementById('reloadBundleBtn')?.addEventListener('click', () => loadBundles({ busyText:'Reloading bundles...' }));
 document.getElementById('reloadAddMoneyBtn')?.addEventListener('click', () => loadAddMoneyRequests({ busyText:'Reloading add money requests...' }));
 document.getElementById('addMoneySettingsBtn')?.addEventListener('click', openAddMoneySettings);
-document.getElementById('addMoneyStatusFilter')?.addEventListener('change', () => loadAddMoneyRequests({ busyText:'Filtering add money requests...' }));
-document.getElementById('addMoneyCountryFilter')?.addEventListener('change', () => loadAddMoneyRequests({ busyText:'Filtering add money requests...' }));
-document.getElementById('addMoneyMethodFilter')?.addEventListener('change', () => loadAddMoneyRequests({ busyText:'Filtering add money requests...' }));
+['addMoneyStatusFilter','addMoneyCountryFilter','addMoneyMethodFilter'].forEach(id => {
+  document.getElementById(id)?.addEventListener('change', () => {
+    resetCursorPagination(state.addMoneyPagination);
+    loadAddMoneyRequests({ busyText:'Filtering add money requests...' }).catch(() => {});
+  });
+});
 document.getElementById('reloadSupportBtn')?.addEventListener('click', () => loadSupportAdmin({ busyText:'Reloading support center...' }));
-document.getElementById('supportStatusFilter')?.addEventListener('change', () => loadSupportTickets({ busyText:'Filtering support tickets...' }));
+document.getElementById('supportStatusFilter')?.addEventListener('change', () => {
+  resetCursorPagination(state.supportPagination);
+  loadSupportTickets({ busyText:'Filtering support tickets...' }).catch(() => {});
+});
 document.getElementById('supportSearch')?.addEventListener('input', () => {
   clearTimeout(supportSearchTimer);
-  supportSearchTimer = setTimeout(() => loadSupportTickets({ busy:false, silentLog:true }).catch(() => {}), 350);
+  supportSearchTimer = setTimeout(() => {
+    resetCursorPagination(state.supportPagination);
+    loadSupportTickets({ busy:false, silentLog:true }).catch(() => {});
+  }, 350);
 });
 document.getElementById('saveSupportConfigBtn')?.addEventListener('click', saveSupportConfig);
 document.getElementById('supportCategoryAddBtn')?.addEventListener('click', () => openSupportCategoryModal(''));
 
 document.getElementById('createBundleOfferBtn')?.addEventListener('click', () => openBundleOfferModal(''));
 document.getElementById('reloadBundleOffersBtn')?.addEventListener('click', () => loadBundleOffers({ busyText:'Reloading bundle offers...' }));
-document.getElementById('bundleOfferSearch')?.addEventListener('input', renderBundleOffers);
-document.getElementById('bundleOfferStatusFilter')?.addEventListener('change', renderBundleOffers);
+document.getElementById('bundleOfferSearch')?.addEventListener('input', () => {
+  clearTimeout(bundleOfferSearchTimer);
+  bundleOfferSearchTimer = setTimeout(() => {
+    resetCursorPagination(state.bundleOffersPagination);
+    loadBundleOffers({ busy:false, silentLog:true }).catch(() => {});
+  }, 350);
+});
+document.getElementById('bundleOfferStatusFilter')?.addEventListener('change', () => {
+  resetCursorPagination(state.bundleOffersPagination);
+  loadBundleOffers({ busyText:'Filtering bundle offers...' }).catch(() => {});
+});
 
 document.getElementById('reloadUsersBtn')?.addEventListener('click', () => {
-  state.usersPagination.page = 1;
-  loadUsers({ page: 1, busyText:'Reloading users...' }).catch(() => {});
+  resetCursorPagination(state.usersPagination);
+  loadUsers({ busyText:'Reloading users...' }).catch(() => {});
 });
 document.getElementById('usersPrevBtn')?.addEventListener('click', () => loadUsersPage(state.usersPagination.page - 1));
 document.getElementById('usersNextBtn')?.addEventListener('click', () => loadUsersPage(state.usersPagination.page + 1));
+document.querySelectorAll('[data-user-status]').forEach(button => {
+  button.addEventListener('click', () => {
+    state.usersStatus = String(button.dataset.userStatus || 'ACTIVE').toUpperCase();
+    document.querySelectorAll('[data-user-status]').forEach(item => {
+      const active = item === button;
+      item.classList.toggle('active', active);
+      item.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+    resetCursorPagination(state.usersPagination);
+    state.loaded.users = false;
+    loadUsers({ busyText:'Filtering users...' }).catch(() => {});
+  });
+});
+document.getElementById('bundleOffersPrevBtn')?.addEventListener('click', () => cursorPrevious(state.bundleOffersPagination, () => loadBundleOffers({ busyText:'Loading bundle offers...' })));
+document.getElementById('bundleOffersNextBtn')?.addEventListener('click', () => cursorNext(state.bundleOffersPagination, () => loadBundleOffers({ busyText:'Loading bundle offers...' })));
+document.getElementById('addMoneyPrevBtn')?.addEventListener('click', () => cursorPrevious(state.addMoneyPagination, () => loadAddMoneyRequests({ busyText:'Loading Add Money requests...' })));
+document.getElementById('addMoneyNextBtn')?.addEventListener('click', () => cursorNext(state.addMoneyPagination, () => loadAddMoneyRequests({ busyText:'Loading Add Money requests...' })));
+document.getElementById('supportPrevBtn')?.addEventListener('click', () => cursorPrevious(state.supportPagination, () => loadSupportTickets({ busyText:'Loading support tickets...' })));
+document.getElementById('supportNextBtn')?.addEventListener('click', () => cursorNext(state.supportPagination, () => loadSupportTickets({ busyText:'Loading support tickets...' })));
 document.getElementById('walletHistoryBtn')?.addEventListener('click', openWalletTransferHistory);
 document.getElementById('reloadOperatorsBtn')?.addEventListener('click', () => loadOperators({ busyText:'Reloading operators...' }));
 document.getElementById('reloadWorkersBtn')?.addEventListener('click', () => loadWorkersStatus({ busyText:'Reloading workers...' }));

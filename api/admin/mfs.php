@@ -291,6 +291,11 @@ header('Pragma: no-cache');
         </div>
 
         <div class="admin-mfs-mobile-list" id="mfsMobileList"></div>
+        <div class="admin-mfs-pagination" id="mfsPagination">
+          <button class="btn ghost" id="mfsPrevBtn" type="button">Previous</button>
+          <span id="mfsPaginationText">Page 1</span>
+          <button class="btn ghost" id="mfsNextBtn" type="button">Next</button>
+        </div>
         <div id="mfsPageMsg" class="mfs-msg">Ready.</div>
       </section>
     </main>

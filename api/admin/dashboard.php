@@ -70,9 +70,9 @@ header('Pragma: no-cache');
 
       <div class="nav">
         <div class="nav-title">Main</div>
+        <button class="nav-btn active" data-section="dashboardSection">Dashboard <span>›</span></button>
         <button class="nav-btn" data-section="addMoneySection">Add Money <span>&rsaquo;</span></button>
         <button class="nav-btn" data-section="supportSection">Support <span>&rsaquo;</span></button>
-        <button class="nav-btn active" data-section="dashboardSection">Dashboard <span>›</span></button>
         <button class="nav-btn" data-section="topupSection">Topup Requests <span>›</span></button>
         <button class="nav-btn" data-section="bundleSection">Bundles <span>›</span></button>
         <a id="zpayAdminMfsNav" class="nav-btn zpay-admin-mfs-link" href="/admin/mfs.php">bKash / Nagad <span>›</span></a>
@@ -500,6 +500,11 @@ header('Pragma: no-cache');
         </tbody>
       </table>
     </div>
+    <div class="admin-pagination-bar" id="bundleOffersPagination">
+      <button class="btn ghost" id="bundleOffersPrevBtn" type="button">Previous</button>
+      <span id="bundleOffersPaginationText">Page 1</span>
+      <button class="btn ghost" id="bundleOffersNextBtn" type="button">Next</button>
+    </div>
   </div>
 </section>
       
@@ -568,6 +573,11 @@ header('Pragma: no-cache');
               </tbody>
             </table>
           </div>
+          <div class="admin-pagination-bar" id="addMoneyPagination">
+            <button class="btn ghost" id="addMoneyPrevBtn" type="button">Previous</button>
+            <span id="addMoneyPaginationText">Page 1</span>
+            <button class="btn ghost" id="addMoneyNextBtn" type="button">Next</button>
+          </div>
         </div>
       </section>
 
@@ -621,6 +631,11 @@ header('Pragma: no-cache');
                 <tr><td colspan="8" class="empty support-ticket-state">No support ticket loaded yet.</td></tr>
               </tbody>
             </table>
+          </div>
+          <div class="admin-pagination-bar" id="supportPagination">
+            <button class="btn ghost" id="supportPrevBtn" type="button">Previous</button>
+            <span id="supportPaginationText">Page 1</span>
+            <button class="btn ghost" id="supportNextBtn" type="button">Next</button>
           </div>
         </div>
 
@@ -756,6 +771,14 @@ header('Pragma: no-cache');
               <button class="btn blue" id="walletHistoryBtn" type="button">Balance History</button>
               <button class="btn ghost" id="reloadUsersBtn" type="button">Reload Users</button>
             </div>
+          </div>
+
+          <div class="users-status-tabs" id="usersStatusTabs" role="tablist" aria-label="Filter users by account status">
+            <button class="users-status-tab active" type="button" role="tab" aria-selected="true" data-user-status="ACTIVE">Active</button>
+            <button class="users-status-tab" type="button" role="tab" aria-selected="false" data-user-status="REVIEW">Review</button>
+            <button class="users-status-tab" type="button" role="tab" aria-selected="false" data-user-status="REJECTED">Rejected</button>
+            <button class="users-status-tab" type="button" role="tab" aria-selected="false" data-user-status="BLOCKED_INACTIVE">Blocked / Inactive</button>
+            <button class="users-status-tab" type="button" role="tab" aria-selected="false" data-user-status="ALL">All</button>
           </div>
 
           <div class="table-wrap users-table-wrap">

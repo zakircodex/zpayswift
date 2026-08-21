@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
+require_once dirname(__DIR__, 2) . '/lib/admin_pagination.php';
 
 function admin_users_list_currency(array $user, array $wallet, string $country): string
 {
@@ -313,127 +314,138 @@ api_require_method('GET');
 auth_require_admin_session();
 
 $page = max(1, (int)($_GET['page'] ?? 1));
-$limit = max(1, min(100, (int)($_GET['limit'] ?? 50)));
+$limit = 10;
+$cursor = trim((string)($_GET['cursor'] ?? ''));
 $searchRaw = trim((string)($_GET['search'] ?? ''));
 $search = strtolower($searchRaw);
 $roleFilter = strtoupper(trim((string)($_GET['role'] ?? '')));
-$statusFilter = strtoupper(trim((string)($_GET['status'] ?? '')));
+$statusFilter = strtoupper(trim((string)($_GET['status'] ?? 'ACTIVE')));
+$statusFilter = $statusFilter === '' ? 'ACTIVE' : $statusFilter;
+$allowedStatuses = ['ACTIVE', 'REVIEW', 'REJECTED', 'BLOCKED_INACTIVE', 'ALL'];
+
+if (!in_array($statusFilter, $allowedStatuses, true)) {
+    api_response(false, 'VALIDATION_ERROR', 'Invalid user status filter', [
+        'allowed_status' => $allowedStatuses,
+    ], 422);
+}
 
 $items = [];
 $totalAvailableBalance = 0.0;
-$searchLimited = false;
-$searchMode = $search !== '' ? 'index' : 'page';
+$searchMode = $search !== '' ? 'bounded_name_scan' : 'cursor';
+$directSearchKeys = $search !== '' ? admin_users_list_lookup_search_uids($searchRaw) : [];
 
-$allKeys = admin_users_list_shallow_keys();
-$candidateKeys = $allKeys;
-
-if ($search !== '') {
-    $candidateKeys = admin_users_list_lookup_search_uids($searchRaw);
-
-    if ($candidateKeys === []) {
-        $searchLimited = true;
-        $searchMode = 'bounded_name_scan';
-        $scanLimit = min(300, count($allKeys));
-        $candidateKeys = array_slice($allKeys, 0, $scanLimit);
+$matchesStatus = static function (array $user) use ($statusFilter): bool {
+    if ($statusFilter === 'ALL') {
+        return true;
     }
+    $status = strtoupper(trim((string)($user['account_status'] ?? $user['status'] ?? 'ACTIVE')));
+    if ($statusFilter === 'BLOCKED_INACTIVE') {
+        return in_array($status, ['BLOCKED', 'INACTIVE'], true);
+    }
+    return $status === $statusFilter;
+};
+
+$matchesUser = static function (array $user, string $uid) use ($roleFilter, $search, $matchesStatus): bool {
+    $role = strtoupper(trim((string)($user['role'] ?? 'USER')));
+    if ($roleFilter !== '' && $role !== $roleFilter) {
+        return false;
+    }
+    if (!$matchesStatus($user)) {
+        return false;
+    }
+    if ($search === '') {
+        return true;
+    }
+
+    $haystack = strtolower(implode(' ', [
+        $uid,
+        (string)($user['name'] ?? ''),
+        (string)($user['phone'] ?? ''),
+        (string)($user['email'] ?? ''),
+        $role,
+        (string)($user['status'] ?? ''),
+        (string)($user['account_status'] ?? ''),
+    ]));
+    return str_contains($haystack, $search);
+};
+
+if ($directSearchKeys !== []) {
+    rsort($directSearchKeys, SORT_STRING);
+    $directRows = admin_users_list_multi_get(array_map(
+        static fn(string $uid): string => 'USERS/' . $uid,
+        $directSearchKeys
+    ));
+    $pageUserRows = [];
+    foreach ($directSearchKeys as $uid) {
+        $row = $directRows['USERS/' . $uid] ?? null;
+        if (is_array($row) && $matchesUser($row, $uid)) {
+            $row['_admin_uid'] = $uid;
+            $pageUserRows[] = $row;
+        }
+    }
+    $pageData = [
+        'items' => array_slice($pageUserRows, 0, $limit),
+        'pagination' => [
+            'limit' => $limit,
+            'count' => min($limit, count($pageUserRows)),
+            'has_more' => count($pageUserRows) > $limit,
+            'cursor' => '',
+            'next_cursor' => '',
+            'scanned' => count($directSearchKeys),
+            'scan_limited' => false,
+        ],
+    ];
+    $searchMode = 'index';
+} else {
+    $pageData = admin_firebase_cursor_page(
+        'USERS',
+        $limit,
+        $cursor,
+        $matchesUser,
+        static function (array $user, string $uid): array {
+            $user['_admin_uid'] = $uid;
+            return $user;
+        }
+    );
 }
 
-$total = count($search !== '' && !$searchLimited ? $candidateKeys : $allKeys);
-$totalPages = max(1, (int)ceil($total / $limit));
-
-if ($page > $totalPages) {
-    $page = $totalPages;
-}
-
-$offset = ($page - 1) * $limit;
-$pageKeys = $search === ''
-    ? array_slice($candidateKeys, $offset, $limit)
-    : $candidateKeys;
-
-$pageUsers = admin_users_list_multi_get(array_map(
-    static fn(string $uid): string => 'USERS/' . $uid,
-    $pageKeys
-));
+$pageUserRows = (array)($pageData['items'] ?? []);
+$pageKeys = array_values(array_filter(array_map(
+    static fn(array $row): string => trim((string)($row['_admin_uid'] ?? $row['uid'] ?? '')),
+    $pageUserRows
+)));
 $pageWallets = admin_users_list_multi_get(array_map(
     static fn(string $uid): string => 'USER_WALLETS/' . $uid,
     $pageKeys
 ));
 
-foreach ($pageKeys as $uid) {
-    $uid = (string)$uid;
-    $userPath = 'USERS/' . $uid;
+foreach ($pageUserRows as $user) {
+    $uid = trim((string)($user['_admin_uid'] ?? $user['uid'] ?? ''));
+    if ($uid === '') {
+        continue;
+    }
     $walletPath = 'USER_WALLETS/' . $uid;
-    $user = is_array($pageUsers[$userPath] ?? null) ? $pageUsers[$userPath] : [];
-
-    if (!is_array($user)) {
-        continue;
-    }
-
-    if ($user === []) {
-        continue;
-    }
-
+    unset($user['_admin_uid']);
     $wallet = is_array($pageWallets[$walletPath] ?? null) ? $pageWallets[$walletPath] : [];
-    $role = strtoupper(trim((string)($user['role'] ?? 'USER')));
-    $status = strtoupper(trim((string)($user['status'] ?? 'ACTIVE')));
-
-    if ($roleFilter !== '' && $role !== $roleFilter) {
-        continue;
-    }
-
-    if ($statusFilter !== '' && $status !== $statusFilter) {
-        continue;
-    }
-
-    if ($search !== '' && $searchLimited) {
-        $haystack = strtolower(implode(' ', [
-            $uid,
-            (string)($user['name'] ?? ''),
-            (string)($user['phone'] ?? ''),
-            (string)($user['email'] ?? ''),
-            $role,
-            $status,
-        ]));
-        if (!str_contains($haystack, $search)) {
-            continue;
-        }
-    }
-
     $item = admin_users_list_make_item($uid, $user, $wallet);
-
     $totalAvailableBalance += (float)$item['available_balance'];
     $items[] = $item;
-
-    if ($search !== '' && count($items) >= $limit) {
-        break;
-    }
 }
 
-usort($items, static function (array $a, array $b): int {
-    return (int)$b['created_at'] <=> (int)$a['created_at'];
-});
-
-$pageItems = array_values($items);
-
-if ($search !== '') {
-    $total = count($pageItems);
-    $totalPages = 1;
-    $page = 1;
-}
+$pagination = (array)($pageData['pagination'] ?? []);
+$pagination['page'] = $page;
+$pagination['total'] = null;
+$pagination['total_pages'] = null;
 
 api_response(true, 'SUCCESS', 'User list loaded', [
-    'items' => $pageItems,
-    'pagination' => [
-        'page' => $page,
-        'limit' => $limit,
-        'total' => $total,
-        'total_pages' => $totalPages,
-        'has_more' => $page < $totalPages,
-    ],
+    'items' => array_values($items),
+    'pagination' => $pagination,
     'summary' => [
-        'total_users' => $total,
+        'total_users' => null,
+        'page_count' => count($items),
         'total_available_balance' => round($totalAvailableBalance, 2),
         'search_mode' => $searchMode,
-        'search_limited' => $searchLimited,
+        'search_limited' => !empty($pagination['scan_limited']),
+        'status' => $statusFilter,
     ],
 ]);

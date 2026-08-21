@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
 require_once dirname(__DIR__, 2) . '/lib/bundle.php';
+require_once dirname(__DIR__, 2) . '/lib/admin_pagination.php';
 
 api_require_method('GET');
 auth_require_admin_session(true);
@@ -124,16 +125,6 @@ function admin_bundle_offer_with_normal_fields(array $row, int $now): array
     return $row;
 }
 
-/*
-|--------------------------------------------------------------------------
-| First expire old offers in Firebase, if bundle.php supports it.
-|--------------------------------------------------------------------------
-| এটা delete না, শুধু expired status করবে।
-*/
-if (function_exists('bundle_expire_old_offers')) {
-    bundle_expire_old_offers();
-}
-
 $includeInactiveRaw = strtolower(trim((string)($_GET['include_inactive'] ?? '1')));
 $includeInactive = !in_array($includeInactiveRaw, ['0', 'false', 'no', 'off'], true);
 
@@ -141,6 +132,9 @@ $includeDeletedRaw = strtolower(trim((string)($_GET['include_deleted'] ?? '0')))
 $includeDeleted = in_array($includeDeletedRaw, ['1', 'true', 'yes', 'on'], true);
 
 $statusFilter = strtoupper(trim((string)($_GET['status'] ?? '')));
+$searchQuery = strtolower(trim((string)($_GET['query'] ?? '')));
+$cursor = trim((string)($_GET['cursor'] ?? ''));
+$pageNumber = max(1, (int)($_GET['page'] ?? 1));
 $allowedStatusFilters = ['', 'ACTIVE', 'INACTIVE', 'EXPIRED', 'DELETED'];
 
 if (!in_array($statusFilter, $allowedStatusFilters, true)) {
@@ -149,129 +143,75 @@ if (!in_array($statusFilter, $allowedStatusFilters, true)) {
     ], 422);
 }
 
-/*
-|--------------------------------------------------------------------------
-| Load offers
-|--------------------------------------------------------------------------
-*/
-$items = [];
-
-if (function_exists('bundle_admin_list_offers')) {
-    $items = bundle_admin_list_offers(true);
-} else {
-    $raw = fb_get('BUNDLE_OFFERS');
-    if (is_array($raw)) {
-        foreach ($raw as $offerId => $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-
-            $row['offer_id'] = (string)($row['offer_id'] ?? $offerId);
-            $items[] = $row;
-        }
-    }
-}
-
-if (!is_array($items)) {
-    $items = [];
-}
-
 $now = admin_bundle_offer_now();
+$page = admin_firebase_cursor_page(
+    'BUNDLE_OFFERS',
+    10,
+    $cursor,
+    static function (array $row, string $offerId) use (
+        $now,
+        $includeInactive,
+        $includeDeleted,
+        $statusFilter,
+        $searchQuery
+    ): bool {
+        $row['offer_id'] = (string)($row['offer_id'] ?? $offerId);
+        $row = admin_bundle_offer_with_normal_fields($row, $now);
+        $status = strtoupper(trim((string)($row['status'] ?? 'ACTIVE')));
 
+        if ($status === 'DELETED' && !$includeDeleted && $statusFilter !== 'DELETED') {
+            return false;
+        }
+        if (!$includeInactive && $status !== 'ACTIVE') {
+            return false;
+        }
+        if ($statusFilter !== '' && $status !== $statusFilter) {
+            return false;
+        }
+        if ($searchQuery !== '') {
+            $haystack = strtolower(implode(' ', [
+                $row['offer_id'] ?? '',
+                $row['bundle_name'] ?? '',
+                $row['package_name'] ?? '',
+                $row['plan_name'] ?? '',
+                $row['name'] ?? '',
+                $row['operator'] ?? '',
+                $row['status'] ?? '',
+            ]));
+            if (!str_contains($haystack, $searchQuery)) {
+                return false;
+            }
+        }
+
+        return true;
+    },
+    static function (array $row, string $offerId) use ($now): array {
+        $row['offer_id'] = (string)($row['offer_id'] ?? $offerId);
+        return admin_bundle_offer_with_normal_fields($row, $now);
+    }
+);
+
+$visibleItems = (array)($page['items'] ?? []);
+$pagination = (array)($page['pagination'] ?? []);
+$pagination['page'] = $pageNumber;
 $summary = [
-    'total' => 0,
-    'visible_total' => 0,
-    'active' => 0,
-    'inactive' => 0,
-    'expired' => 0,
-    'deleted' => 0,
+    'total' => count($visibleItems),
+    'visible_total' => count($visibleItems),
+    'active' => count(array_filter($visibleItems, static fn(array $row): bool => ($row['status'] ?? '') === 'ACTIVE')),
+    'inactive' => count(array_filter($visibleItems, static fn(array $row): bool => ($row['status'] ?? '') === 'INACTIVE')),
+    'expired' => count(array_filter($visibleItems, static fn(array $row): bool => ($row['status'] ?? '') === 'EXPIRED')),
+    'deleted' => count(array_filter($visibleItems, static fn(array $row): bool => ($row['status'] ?? '') === 'DELETED')),
+    'bounded' => true,
 ];
-
-$visibleItems = [];
-
-foreach ($items as $row) {
-    if (!is_array($row)) {
-        continue;
-    }
-
-    $row = admin_bundle_offer_with_normal_fields($row, $now);
-
-    $offerId = trim((string)($row['offer_id'] ?? $row['id'] ?? ''));
-    if ($offerId === '') {
-        continue;
-    }
-
-    $row['offer_id'] = $offerId;
-
-    $status = strtoupper(trim((string)($row['status'] ?? 'ACTIVE')));
-
-    $summary['total']++;
-
-    if ($status === 'DELETED') {
-        $summary['deleted']++;
-    } elseif ($status === 'EXPIRED') {
-        $summary['expired']++;
-    } elseif ($status === 'ACTIVE') {
-        $summary['active']++;
-    } else {
-        $summary['inactive']++;
-    }
-
-    /*
-     * Deleted offer normal list এ show করবে না।
-     * শুধু include_deleted=1 অথবা status=DELETED দিলে দেখা যাবে।
-     */
-    if ($status === 'DELETED' && !$includeDeleted && $statusFilter !== 'DELETED') {
-        continue;
-    }
-
-    /*
-     * include_inactive=0 হলে only ACTIVE offer show করবে।
-     * Expired offer edit করার জন্য default include_inactive=1 রাখা হয়েছে।
-     */
-    if (!$includeInactive && $status !== 'ACTIVE') {
-        continue;
-    }
-
-    if ($statusFilter !== '' && $status !== $statusFilter) {
-        continue;
-    }
-
-    $visibleItems[] = $row;
-}
-
-usort($visibleItems, static function (array $a, array $b): int {
-    $aStatus = strtoupper(trim((string)($a['status'] ?? '')));
-    $bStatus = strtoupper(trim((string)($b['status'] ?? '')));
-
-    $rank = [
-        'ACTIVE' => 1,
-        'INACTIVE' => 2,
-        'EXPIRED' => 3,
-        'DELETED' => 4,
-    ];
-
-    $aRank = $rank[$aStatus] ?? 9;
-    $bRank = $rank[$bStatus] ?? 9;
-
-    if ($aRank !== $bRank) {
-        return $aRank <=> $bRank;
-    }
-
-    $aTime = (int)(($a['updated_at'] ?? 0) ?: ($a['created_at'] ?? 0));
-    $bTime = (int)(($b['updated_at'] ?? 0) ?: ($b['created_at'] ?? 0));
-
-    return $bTime <=> $aTime;
-});
-
-$summary['visible_total'] = count($visibleItems);
 
 api_response(true, 'SUCCESS', 'Bundle offers loaded', [
     'items' => array_values($visibleItems),
+    'pagination' => $pagination,
     'summary' => $summary,
     'filters' => [
         'include_inactive' => $includeInactive,
         'include_deleted' => $includeDeleted,
         'status' => $statusFilter,
+        'query' => $searchQuery,
     ],
 ]);

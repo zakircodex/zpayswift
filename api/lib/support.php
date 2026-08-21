@@ -9,6 +9,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 require_once __DIR__ . '/telegram.php';
 require_once __DIR__ . '/fcm.php';
 require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/admin_pagination.php';
 
 function support_now(): int
 {
@@ -2466,18 +2467,23 @@ function support_reply(array $auth, string $ticketId, string $message, array $fi
     return ['ok' => true, 'message_id' => $messageId] + support_details_payload($ticket);
 }
 
-function support_admin_list(string $status = '', string $query = '', int $limit = 50): array
+function support_admin_page(
+    string $status = '',
+    string $query = '',
+    string $cursor = '',
+    int $limit = 10
+): array
 {
-    $rows = fb_get('SUPPORT_TICKETS');
-    $rows = is_array($rows) ? $rows : [];
-    $out = [];
+    $status = support_clean_code($status);
     $query = strtoupper(trim($query));
-    foreach ($rows as $row) {
-        if (!is_array($row)) {
-            continue;
-        }
+
+    return admin_firebase_cursor_page(
+        'SUPPORT_TICKETS',
+        $limit,
+        $cursor,
+        static function (array $row) use ($status, $query): bool {
         if ($status !== '' && support_clean_code($row['status'] ?? '') !== support_clean_code($status)) {
-            continue;
+                return false;
         }
         $haystack = strtoupper(implode(' ', [
             $row['ticket_id'] ?? '',
@@ -2488,12 +2494,22 @@ function support_admin_list(string $status = '', string $query = '', int $limit 
             $row['related_request_id'] ?? '',
         ]));
         if ($query !== '' && strpos($haystack, $query) === false) {
-            continue;
+                return false;
         }
-        $out[] = support_public_ticket($row);
-    }
-    usort($out, static fn($a, $b) => ((int)$b['last_message_at'] <=> (int)$a['last_message_at']));
-    return array_slice($out, 0, max(1, min(200, $limit)));
+
+            return true;
+        },
+        static function (array $row, string $ticketId): array {
+            $row['ticket_id'] = (string)($row['ticket_id'] ?? $ticketId);
+            return support_public_ticket($row);
+        }
+    );
+}
+
+function support_admin_list(string $status = '', string $query = '', int $limit = 10, string $cursor = ''): array
+{
+    $page = support_admin_page($status, $query, $cursor, $limit);
+    return (array)($page['items'] ?? []);
 }
 
 function support_admin_set_status(string $ticketId, string $status, array $actor = []): array

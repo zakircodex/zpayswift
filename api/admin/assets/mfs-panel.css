@@ -1066,3 +1066,22 @@
     width:100%;
   }
 }
+.admin-mfs-pagination{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:10px;
+  padding-top:12px;
+  color:var(--muted,#9eb0c8);
+  font-size:13px;
+}
+.admin-mfs-pagination span{
+  min-width:125px;
+  text-align:center;
+  font-weight:700;
+}
+@media(max-width:430px){
+  .admin-mfs-pagination{justify-content:space-between;gap:6px}
+  .admin-mfs-pagination span{min-width:0;flex:1;font-size:12px}
+  .admin-mfs-pagination .btn{min-width:78px;padding-inline:9px}
+}

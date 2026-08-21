@@ -18,8 +18,15 @@
     sessionRedirecting:false,
     settings:null,
     settingsLoading:false,
-    viewReceiptUrl:''
+    viewReceiptUrl:'',
+    pages:{
+      pending:{page:1,cursor:'',next_cursor:'',has_more:false,history:['']},
+      processing:{page:1,cursor:'',next_cursor:'',has_more:false,history:['']},
+      done:{page:1,cursor:'',next_cursor:'',has_more:false,history:['']},
+      failed:{page:1,cursor:'',next_cursor:'',has_more:false,history:['']}
+    }
   };
+  var mfsSearchTimer=null;
 
   function el(id){ return document.getElementById(id); }
   function all(selector){ return Array.prototype.slice.call(document.querySelectorAll(selector)); }
@@ -38,7 +45,28 @@
     return '<span class="pill mfs-status-pill '+cls+' status-'+esc(status.toLowerCase())+'">'+esc(label)+'</span>';
   }
   function normalizeRows(data){ return Array.isArray(data.items)?data.items:Array.isArray(data.rows)?data.rows:Array.isArray(data.requests)?data.requests:[]; }
-  function totalRows(data){ var total=Number(data&&data.pagination&&data.pagination.total); return Number.isFinite(total)?total:normalizeRows(data||{}).length; }
+  function totalRows(data){
+    var raw=data&&data.pagination?data.pagination.total:null;
+    if(raw!==null&&raw!==undefined&&raw!==''&&Number.isFinite(Number(raw)))return Number(raw);
+    var count=normalizeRows(data||{}).length;
+    return data&&data.pagination&&data.pagination.has_more?String(count)+'+':count;
+  }
+  function currentPage(){ return state.pages[state.tab]||state.pages.pending; }
+  function resetAllPages(){ Object.keys(state.pages).forEach(function(tab){var p=state.pages[tab];p.page=1;p.cursor='';p.next_cursor='';p.has_more=false;p.history=[''];}); }
+  function applyPage(data){
+    var p=currentPage();var incoming=data&&data.pagination?data.pagination:{};
+    p.page=Math.max(1,Number(incoming.page||p.page||1));
+    p.cursor=String(incoming.cursor===undefined?p.cursor:incoming.cursor||'');
+    p.next_cursor=String(incoming.next_cursor||'');
+    p.has_more=!!incoming.has_more;
+    if(!Array.isArray(p.history)||!p.history.length)p.history=[''];
+  }
+  function renderPagination(){
+    var p=currentPage();
+    el('mfsPaginationText').textContent='Page '+p.page+' • '+state.rows.length+' requests';
+    el('mfsPrevBtn').disabled=state.loading||p.page<=1;
+    el('mfsNextBtn').disabled=state.loading||!p.has_more||!p.next_cursor;
+  }
   function rowNumber(r){ return r.receiver_number||r.number||r.mfs_number||r.to_number||'-'; }
   function isRemittance(r){ return String(r.service_mode||'').toUpperCase()==='REMITTANCE'||String(r.country_code||r.country||'').toUpperCase()==='MY'||Number(r.amount_rm||r.amount_myr||0)>0; }
   function rmAmount(r){
@@ -380,6 +408,8 @@
     all('.admin-mfs-tab').forEach(function(button){button.disabled=busy;});
     el('mfsReloadBtn').disabled=busy;
     el('mfsApplyFilterBtn').disabled=busy;
+    el('mfsPrevBtn').disabled=busy||currentPage().page<=1;
+    el('mfsNextBtn').disabled=busy||!currentPage().has_more||!currentPage().next_cursor;
   }
 
   async function ensureCsrf(){
@@ -394,9 +424,12 @@
   }
 
   function listParams(){
+    var page=currentPage();
     var params={
-      page:1,
-      limit:100,
+      page:page.page,
+      cursor:page.cursor,
+      limit:10,
+      query:el('mfsSearch').value||'',
       service_type:el('mfsService').value||'',
       uid:el('mfsUid').value||'',
       number:el('mfsNumber').value||''
@@ -407,9 +440,7 @@
   }
 
   function filterRows(rows){
-    var q=String(el('mfsSearch').value||'').toLowerCase().trim();
-    if(!q)return rows;
-    return rows.filter(function(r){return JSON.stringify(r).toLowerCase().indexOf(q)>=0;});
+    return rows;
   }
 
   function actionButtons(r){
@@ -426,6 +457,7 @@
     var rows=filterRows(state.rows);
     var body=el('mfsTableBody');
     var mobile=el('mfsMobileList');
+    renderPagination();
     if(!rows.length){
       body.innerHTML='<tr><td colspan="8" class="empty">No MFS requests found.</td></tr>';
       mobile.innerHTML='<div class="empty">No MFS requests found.</div>';
@@ -451,6 +483,7 @@
     try{
       var data=await get(actionForTab(),listParams());
       state.rows=normalizeRows(data);
+      applyPage(data);
       render();
       msg('Loaded '+state.rows.length+' '+state.tab+' request(s).','good');
     }catch(err){
@@ -507,6 +540,7 @@
     all('.admin-mfs-tab').forEach(function(button){
       button.classList.toggle('active',button.getAttribute('data-mfs-tab')===state.tab);
     });
+    renderPagination();
   }
 
   function setSection(section){
@@ -1020,8 +1054,19 @@
     el('mfsSettingsReloadBtn').addEventListener('click',function(){loadSettings(el('mfsSettingsReloadBtn'),true);});
     ['mfsCreateUid','mfsCreateProvider','mfsCreateReceiver','mfsCreateAmountBdt','mfsCreateAmountRm'].forEach(function(id){el(id).addEventListener('input',updateCreatePreview); el(id).addEventListener('change',updateCreatePreview);});
     el('mfsReloadBtn').addEventListener('click',function(){load(el('mfsReloadBtn'),true);});
-    el('mfsApplyFilterBtn').addEventListener('click',function(){load(el('mfsApplyFilterBtn'),true);});
-    el('mfsSearch').addEventListener('input',render);
+    el('mfsApplyFilterBtn').addEventListener('click',function(){resetAllPages();load(el('mfsApplyFilterBtn'),true);});
+    el('mfsSearch').addEventListener('input',function(){
+      clearTimeout(mfsSearchTimer);
+      mfsSearchTimer=setTimeout(function(){resetAllPages();load(null,true);},350);
+    });
+    el('mfsPrevBtn').addEventListener('click',function(){
+      var p=currentPage();if(p.page<=1||state.loading)return;
+      p.history.pop();p.page=Math.max(1,p.page-1);p.cursor=String(p.history[p.history.length-1]||'');load(el('mfsPrevBtn'),true);
+    });
+    el('mfsNextBtn').addEventListener('click',function(){
+      var p=currentPage();if(!p.has_more||!p.next_cursor||state.loading)return;
+      p.history.push(p.next_cursor);p.page+=1;p.cursor=p.next_cursor;load(el('mfsNextBtn'),true);
+    });
     el('mfsTableBody').addEventListener('click',onAction);
     el('mfsMobileList').addEventListener('click',onAction);
     el('mfsSuccessCancelBtn').addEventListener('click',closeSuccess);

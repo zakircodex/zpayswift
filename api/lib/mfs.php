@@ -3709,6 +3709,81 @@ function mfs_mark_failed(string $requestId, string $message = 'Transaction faile
    Admin List / Filter / Pagination Helpers
 ========================================================= */
 
+function mfs_admin_normalize_row(array $row, string $requestId, string $bucket): array
+{
+    $row['request_id'] = (string)($row['request_id'] ?? $requestId);
+    $row['_bucket'] = $bucket;
+    $row['request_type'] = 'MFS';
+
+    if (empty($row['provider_name']) && !empty($row['provider'])) {
+        $row['provider_name'] = mfs_provider_name((string)$row['provider']);
+    }
+    if (empty($row['service_name']) && !empty($row['service_type'])) {
+        $row['service_name'] = mfs_service_name((string)$row['service_type']);
+    }
+    if (empty($row['number']) && !empty($row['receiver_number'])) {
+        $row['number'] = (string)$row['receiver_number'];
+    }
+
+    return $row;
+}
+
+function mfs_read_bucket_page(
+    string $bucket,
+    array $filters = [],
+    string $cursor = '',
+    int $limit = 10
+): array {
+    $bucket = mfs_normalize_bucket($bucket);
+    $path = mfs_bucket_path($bucket);
+    if ($path === '' || !function_exists('admin_firebase_cursor_page')) {
+        return [
+            'items' => [],
+            'pagination' => [
+                'limit' => 10,
+                'count' => 0,
+                'has_more' => false,
+                'cursor' => '',
+                'next_cursor' => '',
+                'scanned' => 0,
+                'scan_limited' => false,
+            ],
+        ];
+    }
+
+    $query = strtolower(trim((string)($filters['query'] ?? '')));
+
+    return admin_firebase_cursor_page(
+        $path,
+        $limit,
+        $cursor,
+        static function (array $row, string $requestId) use ($bucket, $filters, $query): bool {
+            $normalized = mfs_admin_normalize_row($row, $requestId, $bucket);
+            if (mfs_apply_filters([$normalized], $filters) === []) {
+                return false;
+            }
+            if ($query === '') {
+                return true;
+            }
+
+            $haystack = strtolower(implode(' ', [
+                $normalized['request_id'] ?? '',
+                $normalized['uid'] ?? '',
+                $normalized['user_name'] ?? '',
+                $normalized['user_phone'] ?? '',
+                $normalized['receiver_number'] ?? '',
+                $normalized['number'] ?? '',
+                $normalized['provider'] ?? '',
+                $normalized['provider_name'] ?? '',
+                $normalized['reference'] ?? '',
+                $normalized['trx_id'] ?? '',
+            ]));
+            return str_contains($haystack, $query);
+        },
+        static fn(array $row, string $requestId): array => mfs_admin_normalize_row($row, $requestId, $bucket)
+    );
+}
+
 function mfs_read_bucket(string $bucket): array
 {
     $bucket = mfs_normalize_bucket($bucket);
@@ -3731,23 +3806,7 @@ function mfs_read_bucket(string $bucket): array
             continue;
         }
 
-        $row['request_id'] = (string)($row['request_id'] ?? $requestId);
-        $row['_bucket'] = $bucket;
-        $row['request_type'] = 'MFS';
-
-        if (empty($row['provider_name']) && !empty($row['provider'])) {
-            $row['provider_name'] = mfs_provider_name((string)$row['provider']);
-        }
-
-        if (empty($row['service_name']) && !empty($row['service_type'])) {
-            $row['service_name'] = mfs_service_name((string)$row['service_type']);
-        }
-
-        if (empty($row['number']) && !empty($row['receiver_number'])) {
-            $row['number'] = (string)$row['receiver_number'];
-        }
-
-        $items[] = $row;
+        $items[] = mfs_admin_normalize_row($row, (string)$requestId, $bucket);
     }
 
     usort($items, static function (array $a, array $b): int {

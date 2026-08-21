@@ -8,6 +8,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 
 require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/admin_pagination.php';
 
 function add_money_now(): int
 {
@@ -1471,41 +1472,44 @@ function add_money_public_request_rows(array $rows): array
     );
 }
 
-function add_money_list_admin(array $filters = [], int $limit = 200): array
+function add_money_list_admin_page(array $filters = [], string $cursor = '', int $limit = 10): array
 {
-    $rows = fb_get('ADD_MONEY_REQUESTS');
-    $rows = is_array($rows) ? $rows : [];
-    $items = [];
-
     $status = strtoupper(trim((string)($filters['status'] ?? '')));
     $country = strtoupper(trim((string)($filters['country'] ?? '')));
     $method = strtoupper(trim((string)($filters['method'] ?? '')));
 
-    foreach ($rows as $id => $row) {
-        if (!is_array($row)) {
-            continue;
-        }
-
-        $row['request_id'] = (string)($row['request_id'] ?? $id);
+    return admin_firebase_cursor_page(
+        'ADD_MONEY_REQUESTS',
+        $limit,
+        $cursor,
+        static function (array $row) use ($status, $country, $method): bool {
         $rowStatus = strtoupper(trim((string)($row['status'] ?? 'PENDING')));
         $rowCountry = strtoupper(trim((string)($row['pricing_country'] ?? '')));
         $rowMethod = strtoupper(trim((string)($row['method'] ?? '')));
 
         if ($status !== '' && $status !== 'ALL' && $rowStatus !== $status) {
-            continue;
+                return false;
         }
         if ($country !== '' && $country !== 'ALL' && $rowCountry !== $country) {
-            continue;
+                return false;
         }
         if ($method !== '' && $method !== 'ALL' && $rowMethod !== $method) {
-            continue;
+                return false;
         }
 
-        $items[] = $row;
-    }
+            return true;
+        },
+        static function (array $row, string $id): array {
+            $row['request_id'] = (string)($row['request_id'] ?? $id);
+            return $row;
+        }
+    );
+}
 
-    usort($items, static fn(array $a, array $b): int => (int)($b['created_at'] ?? 0) <=> (int)($a['created_at'] ?? 0));
-    return array_slice($items, 0, max(1, min(500, $limit)));
+function add_money_list_admin(array $filters = [], int $limit = 10, string $cursor = ''): array
+{
+    $page = add_money_list_admin_page($filters, $cursor, $limit);
+    return (array)($page['items'] ?? []);
 }
 
 function add_money_repair_approved_operation(array $row): bool

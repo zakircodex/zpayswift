@@ -614,3 +614,37 @@
     justify-content:flex-start;
   }
 }
+.users-status-tabs{
+  display:flex;
+  gap:7px;
+  padding:0 16px 14px;
+  overflow-x:auto;
+  scrollbar-width:thin;
+}
+.users-status-tab{
+  min-height:38px;
+  flex:0 0 auto;
+  padding:8px 13px;
+  border:1px solid rgba(126,162,205,.24);
+  border-radius:10px;
+  background:rgba(7,24,48,.72);
+  color:var(--muted,#9eb0c8);
+  font:inherit;
+  font-size:12px;
+  font-weight:750;
+  cursor:pointer;
+}
+.users-status-tab:hover,
+.users-status-tab:focus-visible{
+  border-color:rgba(40,211,124,.56);
+  color:#eef7ff;
+  outline:none;
+}
+.users-status-tab.active{
+  border-color:rgba(40,211,124,.7);
+  background:rgba(20,112,78,.3);
+  color:#65e6a3;
+}
+@media(max-width:430px){
+  .users-status-tabs{padding-inline:12px}
+}
