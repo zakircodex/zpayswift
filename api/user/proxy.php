@@ -499,6 +499,17 @@ function user_proxy_finalize_login_with_session_token(string $sessionToken): arr
     ]);
 
     if (!$sessionRes['ok']) {
+        $json = is_array($sessionRes['json'] ?? null) ? $sessionRes['json'] : [];
+        if (strtoupper((string)($json['code'] ?? '')) === 'MAINTENANCE') {
+            user_proxy_response(
+                false,
+                'MAINTENANCE',
+                system_maintenance_message(),
+                [],
+                503
+            );
+        }
+
         user_proxy_response(false, 'SESSION_EXPIRED', 'Failed to verify session', [], 401);
     }
 
@@ -519,6 +530,8 @@ function user_proxy_finalize_login_with_session_token(string $sessionToken): arr
         user_proxy_response(false, 'FORBIDDEN', 'Account is inactive', [], 403);
     }
 
+    system_require_user_service_available($user);
+
     user_proxy_store_session($sessionToken, $user);
 
     return $user;
@@ -536,6 +549,8 @@ function user_proxy_require_login(bool $touch = true, bool $forceVerify = false)
         $freshUser = user_proxy_session_user_if_fresh();
 
         if ($freshUser) {
+            system_require_user_service_available($freshUser);
+
             if ($touch && user_proxy_get_csrf() === '') {
                 $_SESSION['user_csrf'] = bin2hex(random_bytes(32));
             }
@@ -550,9 +565,20 @@ function user_proxy_require_login(bool $touch = true, bool $forceVerify = false)
     ]);
 
     if (!$res['ok']) {
+        $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+        if (strtoupper((string)($json['code'] ?? '')) === 'MAINTENANCE') {
+            user_proxy_response(
+                false,
+                'MAINTENANCE',
+                system_maintenance_message(),
+                [],
+                503
+            );
+        }
+
         user_proxy_clear_session();
 
-        $msg = $res['json']['message'] ?? 'Session expired';
+        $msg = $json['message'] ?? 'Session expired';
         user_proxy_response(false, 'SESSION_EXPIRED', (string)$msg, [], 401);
     }
 
@@ -569,6 +595,8 @@ function user_proxy_require_login(bool $touch = true, bool $forceVerify = false)
         user_proxy_clear_session();
         user_proxy_response(false, 'FORBIDDEN', 'Account is inactive', [], 403);
     }
+
+    system_require_user_service_available($data);
 
     if ($touch) {
         $_SESSION['user_user'] = [
@@ -3801,6 +3829,15 @@ function user_proxy_forward_auth_multipart(
 $action = trim((string)($_GET['action'] ?? ''));
 
 switch ($action) {
+    case 'maintenance_status':
+        user_proxy_require_method('POST');
+        system_require_user_service_available();
+
+        user_proxy_response(true, 'SUCCESS', 'User service is available', [
+            'maintenance_mode' => false,
+        ]);
+        break;
+
     case 'country_defaults':
         user_proxy_require_method('POST');
 
@@ -3872,6 +3909,11 @@ switch ($action) {
         ]);
 
         if (!$trustedRes['ok']) {
+            $trustedJson = is_array($trustedRes['json'] ?? null) ? $trustedRes['json'] : [];
+            if (strtoupper((string)($trustedJson['code'] ?? '')) === 'MAINTENANCE') {
+                user_proxy_response(false, 'MAINTENANCE', system_maintenance_message(), [], 503);
+            }
+
             user_proxy_response(true, 'TRUSTED_LOGIN_UNAVAILABLE', 'Trusted login is not available', [
                 'trusted_login_available' => false,
             ]);

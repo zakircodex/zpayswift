@@ -119,6 +119,8 @@ function auth_app_guard_user_login(array $user): void
     if (!auth_app_allowed_role($role)) {
         api_response(false, 'FORBIDDEN', 'User app access required', [], 403);
     }
+
+    system_require_user_service_available($user);
 }
 
 function auth_app_public_user(string $uid, array $user): array
@@ -197,6 +199,8 @@ function auth_app_get_valid_preauth(string $preAuthToken): array
 
 function auth_app_issue_session(array $user, string $uid, string $deviceId, string $deviceName, array $meta = []): array
 {
+    system_require_user_service_available($user);
+
     $token = random_token(32);
     $hash = session_hash($token);
     $now = now_ts();
@@ -355,6 +359,10 @@ function auth_app_quick_login_context(array $body): array
         return auth_app_quick_login_error('ACCOUNT_NOT_FOUND', 'Account not found.', 404);
     }
 
+    if (system_user_service_is_blocked($user)) {
+        return auth_app_quick_login_error('MAINTENANCE', system_maintenance_message(), 503);
+    }
+
     $activeDeviceId = auth_clean_string($user['active_device_id'] ?? $user['ACTIVE_DEVICE_ID'] ?? '');
     if ($activeDeviceId === '' || $activeDeviceId !== $deviceId) {
         return auth_app_quick_login_error(
@@ -417,6 +425,11 @@ function auth_app_complete_quick_login_session(
 ): array {
     if (empty($context['ok'])) {
         return auth_app_quick_login_error('SESSION_EXPIRED', 'Session expired. Please sign in again.', 401);
+    }
+
+    $user = is_array($context['user'] ?? null) ? $context['user'] : [];
+    if (system_user_service_is_blocked($user)) {
+        return auth_app_quick_login_error('MAINTENANCE', system_maintenance_message(), 503);
     }
 
     $uid = auth_clean_string($context['uid'] ?? '');

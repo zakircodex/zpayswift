@@ -27,8 +27,32 @@
     pinInFlight: false,
     otpSendInFlight: false,
     verifyInFlight: false,
-    resendInFlight: false
+    resendInFlight: false,
+    maintenance: false,
+    serviceCheckInFlight: false
   };
+
+  function isMaintenanceError(error) {
+    return String(error?.code || '').toUpperCase() === 'MAINTENANCE';
+  }
+
+  function showMaintenance() {
+    state.maintenance = true;
+    clearOtpTimer();
+    closeFeedback();
+    resetLoginLoading();
+    $('loginCard').hidden = true;
+    $('loginMaintenanceView').hidden = false;
+    document.body.classList.remove('user-login-checking');
+    window.setTimeout(() => $('retryLoginMaintenance')?.focus(), 0);
+  }
+
+  function showLoginSurface() {
+    state.maintenance = false;
+    $('loginMaintenanceView').hidden = true;
+    $('loginCard').hidden = false;
+    document.body.classList.remove('user-login-checking');
+  }
 
   function isFeedbackOpen() {
     return $('loginFeedbackModal')?.classList.contains('show') === true;
@@ -162,6 +186,10 @@
         requestError.code = String(json?.code || 'REQUEST_FAILED');
         requestError.status = response.status;
         requestError.data = json?.data || {};
+        if (isMaintenanceError(requestError)) {
+          showMaintenance();
+          requestError.name = 'AbortError';
+        }
         throw requestError;
       }
       return json.data || {};
@@ -588,7 +616,9 @@
     } catch (error) {
       state.countryReady = false;
       $('loginCountryDisplay').textContent = 'Country: Unavailable';
-      showFeedback(safeErrorMessage(error, 'Phone country could not be detected. Please reload the page.'));
+      if (error?.name !== 'AbortError') {
+        showFeedback(safeErrorMessage(error, 'Phone country could not be detected. Please reload the page.'));
+      }
     }
   }
 
@@ -615,7 +645,8 @@
         : 'Country: Detecting...';
       showStep('pin', { history: 'replace' });
       return true;
-    } catch (_) {
+    } catch (error) {
+      if (isMaintenanceError(error)) return false;
       return false;
     } finally {
       state.trustedLookupInFlight = false;
@@ -623,11 +654,29 @@
   }
 
   async function bootstrapLogin() {
-    showStep('phone', { history: 'replace', focus: false });
-    const trusted = await resolveTrustedAccount();
-    if (trusted || state.navigationStarted) return;
-    await loadCountryDefault();
-    focusVisible($('loginPhone'));
+    if (state.serviceCheckInFlight || state.navigationStarted) return;
+    state.serviceCheckInFlight = true;
+    $('retryLoginMaintenance').disabled = true;
+    document.body.classList.add('user-login-checking');
+
+    try {
+      await post('maintenance_status', {}, 'Checking service...');
+      showLoginSurface();
+      resetAccountState();
+      showStep('phone', { history: 'replace', focus: false });
+      const trusted = await resolveTrustedAccount();
+      if (trusted || state.navigationStarted || state.maintenance) return;
+      await loadCountryDefault();
+      if (!state.maintenance) focusVisible($('loginPhone'));
+    } catch (error) {
+      if (!isMaintenanceError(error) && error?.name !== 'AbortError') {
+        showLoginSurface();
+        showFeedback(safeErrorMessage(error, 'Z-Pay Swift could not be reached. Please try again.'));
+      }
+    } finally {
+      state.serviceCheckInFlight = false;
+      $('retryLoginMaintenance').disabled = false;
+    }
   }
 
   async function useAnotherAccount() {
@@ -704,6 +753,7 @@
   $('resendLoginOtpBtn').addEventListener('click', resendOtp);
   $('loginStepBack').addEventListener('click', () => history.back());
   $('loginFeedbackOk').addEventListener('click', closeFeedback);
+  $('retryLoginMaintenance').addEventListener('click', bootstrapLogin);
   $('loginFeedbackModal').addEventListener('click', (event) => {
     if (event.target === $('loginFeedbackModal')) closeFeedback();
   });

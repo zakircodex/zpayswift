@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/system_maintenance.php';
+
 function auth_clean_string($value): string
 {
     $s = trim((string)$value);
@@ -885,6 +887,15 @@ function auth_issue_website_user_session(
     string $deviceName,
     array $requestMeta = []
 ): array {
+    if (system_user_service_is_blocked($user)) {
+        return [
+            'ok' => false,
+            'code' => 'MAINTENANCE',
+            'message' => system_maintenance_message(),
+            'http_status' => 503,
+        ];
+    }
+
     $uid = auth_clean_string($uid);
     $deviceId = auth_clean_string($deviceId);
     $deviceName = auth_clean_string($deviceName);
@@ -1066,6 +1077,8 @@ function auth_require_user(bool $touchSession = true): array
     $user['status'] = $userStatus;
     $user['account_status'] = $accountStatus;
     $user['role'] = auth_status_value($user['role'] ?? '');
+
+    system_require_user_service_available($user);
 
     auth_enforce_active_device_for_user($user, $session);
 

@@ -16,7 +16,9 @@
     drawerScrollY: 0,
     logoutDialogOpen: false,
     logoutOpener: null,
-    ready: false
+    ready: false,
+    maintenance: false,
+    bootstrapInFlight: false
   };
 
   const proxyUrl = window.USER_PROXY_URL || '/api/user/proxy.php';
@@ -54,6 +56,10 @@
       .includes(String(error?.code || '').toUpperCase()) || Number(error?.status || 0) === 401;
   }
 
+  function isMaintenanceError(error) {
+    return String(error?.code || '').toUpperCase() === 'MAINTENANCE';
+  }
+
   function setBusy(on, label = 'Loading...') {
     const wrap = $('loadingWrap');
     if (!wrap) return;
@@ -70,6 +76,40 @@
     node.textContent = String(message || '');
     wrap.appendChild(node);
     window.setTimeout(() => node.remove(), 2800);
+  }
+
+  function showMaintenanceState() {
+    state.maintenance = true;
+    setBusy(false);
+    syncDrawer(false);
+    const view = $('userMaintenanceView');
+    const app = $('appView');
+    document.body.classList.remove('user-service-checking');
+    document.body.classList.add('user-maintenance-active');
+    if (view) {
+      view.classList.remove('hidden');
+      view.setAttribute('aria-hidden', 'false');
+    }
+    if (app) {
+      app.setAttribute('aria-hidden', 'true');
+      app.inert = true;
+    }
+    window.setTimeout(() => $('retryUserMaintenance')?.focus(), 0);
+  }
+
+  function hideMaintenanceState() {
+    state.maintenance = false;
+    const view = $('userMaintenanceView');
+    const app = $('appView');
+    document.body.classList.remove('user-service-checking', 'user-maintenance-active');
+    if (view) {
+      view.classList.add('hidden');
+      view.setAttribute('aria-hidden', 'true');
+    }
+    if (app) {
+      app.removeAttribute('aria-hidden');
+      app.inert = false;
+    }
   }
 
   async function readJson(response) {
@@ -116,7 +156,9 @@
       if (json.data?.csrf) state.csrf = String(json.data.csrf);
       return json.data || {};
     } catch (error) {
-      if (isSessionError(error)) {
+      if (isMaintenanceError(error)) {
+        showMaintenanceState();
+      } else if (isSessionError(error)) {
         window.location.replace(loginUrl);
       }
       throw error;
@@ -397,6 +439,7 @@
     });
     $('cancelUserLogout')?.addEventListener('click', () => closeLogoutDialog());
     $('confirmUserLogout')?.addEventListener('click', logout);
+    $('retryUserMaintenance')?.addEventListener('click', attemptBootstrap);
     $('userLogoutDialog')?.addEventListener('click', (event) => {
       if (event.target === $('userLogoutDialog')) closeLogoutDialog();
     });
@@ -469,21 +512,47 @@
     rejectReady = reject;
   });
 
-  async function boot() {
-    bindShell();
-    syncDrawer(false);
+  async function attemptBootstrap() {
+    if (state.bootstrapInFlight) return;
+    state.bootstrapInFlight = true;
+    const retryButton = $('retryUserMaintenance');
+    if (retryButton) {
+      retryButton.disabled = true;
+      retryButton.textContent = 'Checking...';
+    }
+
     try {
       await bootstrapSession();
-      state.ready = true;
-      resolveReady(state);
-      document.dispatchEvent(new CustomEvent('zpay:user-ready', { detail: state }));
-      loadUnread();
+      hideMaintenanceState();
+      if (!state.ready) {
+        state.ready = true;
+        resolveReady(state);
+        document.dispatchEvent(new CustomEvent('zpay:user-ready', { detail: state }));
+        loadUnread();
+      }
     } catch (error) {
-      if (!isSessionError(error)) {
+      if (isMaintenanceError(error)) {
+        showMaintenanceState();
+      } else {
+        hideMaintenanceState();
+      }
+      if (!isSessionError(error) && !isMaintenanceError(error)) {
         toast(error.message || 'Unable to load your account.', 'error');
       }
-      rejectReady(error);
+      if (!isMaintenanceError(error) && !state.ready) rejectReady(error);
+    } finally {
+      state.bootstrapInFlight = false;
+      if (retryButton) {
+        retryButton.disabled = false;
+        retryButton.textContent = 'Retry';
+      }
     }
+  }
+
+  function boot() {
+    bindShell();
+    syncDrawer(false);
+    attemptBootstrap();
   }
 
   window.userState = state;
@@ -499,6 +568,7 @@
     toast,
     escapeHtml,
     isSessionError,
+    isMaintenanceError,
     closeDrawer
   };
   window.proxyGet = get;

@@ -26,9 +26,17 @@ $loginJsVersion = (string)(filemtime(__DIR__ . '/assets/pages/login-page.js') ?:
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
   <link rel="stylesheet" href="/api/user/assets/pages/login-page.css?v=<?= htmlspecialchars($loginCssVersion, ENT_QUOTES, 'UTF-8') ?>">
 </head>
-<body class="user-login-page">
+<body class="user-login-page user-login-checking">
 <main class="login-wrap" id="loginPageRoot">
-  <section class="login-card" aria-labelledby="loginStepTitle">
+  <section id="loginMaintenanceView" class="login-maintenance-view" aria-labelledby="loginMaintenanceTitle" hidden>
+    <img class="login-maintenance-logo brand-icon" src="/assets/brand/zpay-icon.png" alt="" aria-hidden="true">
+    <p class="login-maintenance-brand">Z-Pay Swift</p>
+    <h1 id="loginMaintenanceTitle">Maintenance</h1>
+    <p>Z-Pay Swift is temporarily under maintenance. Please try again later.</p>
+    <button id="retryLoginMaintenance" class="login-primary" type="button">Retry</button>
+  </section>
+
+  <section id="loginCard" class="login-card" aria-labelledby="loginStepTitle">
     <button id="loginStepBack" class="login-step-back" type="button" aria-label="Back" hidden>&larr;</button>
 
     <header class="login-brand">

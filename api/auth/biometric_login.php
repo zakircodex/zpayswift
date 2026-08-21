@@ -6,6 +6,7 @@ require_once __DIR__ . '/../lib/auth_android.php';
 
 api_require_method('POST');
 api_require_app_key();
+system_require_user_service_available();
 
 function biometric_login_has_valid_trusted_cookie(string $uid, string $cookieValue): bool
 {

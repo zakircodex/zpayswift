@@ -5,6 +5,7 @@ require_once dirname(__DIR__) . '/bootstrap.php';
 
 api_require_method('POST');
 api_require_app_key();
+system_require_user_service_available();
 
 $body = api_read_json_body();
 
@@ -143,7 +144,16 @@ $otpOwner = (string)($otpClaim['owner_token'] ?? '');
 $sessionResult = user_verify_issue_session($user, $uid, $deviceId, $deviceName, $preAuthRow);
 if (empty($sessionResult['ok'])) {
     auth_otp_release_verification($otpRequestId, $otpOwner, now_ts());
-    api_response(false, 'SERVER_ERROR', 'Failed to create session', [], 500);
+    $sessionCode = (string)($sessionResult['code'] ?? 'SERVER_ERROR');
+    api_response(
+        false,
+        $sessionCode,
+        $sessionCode === 'MAINTENANCE'
+            ? system_maintenance_message()
+            : 'Failed to create session',
+        [],
+        (int)($sessionResult['http_status'] ?? 500)
+    );
 }
 
 $sessionToken = (string)($sessionResult['session_token'] ?? '');

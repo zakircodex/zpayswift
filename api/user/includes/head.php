@@ -21,7 +21,16 @@ $pageCss = basename((string)$userPage['page_css']);
   <link rel="stylesheet" href="/api/user/assets/user-components.css?v=<?= user_page_asset_version('user-components.css') ?>">
   <link rel="stylesheet" href="/api/user/assets/pages/<?= htmlspecialchars($pageCss, ENT_QUOTES, 'UTF-8') ?>?v=<?= user_page_asset_version('pages/' . $pageCss) ?>">
 </head>
-<body class="user-authenticated <?= $bodyClass ?>" data-user-page="<?= $pageKey ?>" data-active-section="<?= $sectionId ?>">
+<body class="user-authenticated user-service-checking <?= $bodyClass ?>" data-user-page="<?= $pageKey ?>" data-active-section="<?= $sectionId ?>">
+<section id="userMaintenanceView" class="user-maintenance-view hidden" aria-labelledby="userMaintenanceTitle" aria-hidden="true">
+  <div class="user-maintenance-card">
+    <img src="/assets/brand/zpay-icon.png" alt="" aria-hidden="true">
+    <p class="user-maintenance-brand">Z-Pay Swift</p>
+    <h1 id="userMaintenanceTitle">Maintenance</h1>
+    <p>Z-Pay Swift is temporarily under maintenance. Please try again later.</p>
+    <button id="retryUserMaintenance" type="button">Retry</button>
+  </div>
+</section>
 <div id="appView">
   <div id="sidebarOverlay" class="sidebar-overlay"></div>
   <div class="app-shell">

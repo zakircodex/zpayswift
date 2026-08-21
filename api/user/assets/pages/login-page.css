@@ -45,6 +45,49 @@ button:disabled { cursor: not-allowed; opacity: .55; }
     linear-gradient(180deg, #071b35 0%, #06142a 58%, #051225 100%);
 }
 
+.user-login-page.user-login-checking .login-card {
+  visibility: hidden;
+}
+.user-login-page .login-maintenance-view {
+  width: min(100%, 430px);
+  padding: 30px 24px 26px;
+  border: 1px solid var(--login-line);
+  border-radius: 24px;
+  text-align: center;
+  background: rgba(10, 38, 78, .9);
+  box-shadow: var(--login-shadow);
+}
+.user-login-page .login-maintenance-view[hidden] { display: none; }
+.user-login-page .login-maintenance-logo {
+  display: block;
+  width: 68px !important;
+  height: 68px !important;
+  margin: 0 auto;
+  border-radius: 16px !important;
+  object-fit: contain;
+}
+.user-login-page .login-maintenance-brand {
+  margin: 12px 0 0;
+  color: var(--login-green);
+  font-size: 18px;
+  font-weight: 900;
+}
+.user-login-page .login-maintenance-view h1 {
+  margin: 8px 0 10px;
+  font-size: 28px;
+  line-height: 1.15;
+}
+.user-login-page .login-maintenance-view > p:last-of-type {
+  margin: 0;
+  color: var(--login-muted);
+  font-size: 15px;
+  line-height: 1.55;
+}
+.user-login-page .login-maintenance-view .login-primary {
+  width: min(100%, 220px);
+  margin: 22px auto 0;
+}
+
 .user-login-page.login-keyboard-open .login-wrap {
   align-items: flex-start;
 }
