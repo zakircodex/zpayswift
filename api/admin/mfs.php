@@ -172,63 +172,109 @@ header('Pragma: no-cache');
         <div class="mfs-panel-head">
           <div>
             <div class="mfs-section-kicker">Admin Only</div>
-            <h2>MFS Fee &amp; Rate Settings</h2>
-            <p>Configure MYR/BDT conversion and bKash/Nagad MFS fees.</p>
+            <h2>MFS Settings</h2>
+            <p>Update the live MYR/BDT rate independently from bKash and Nagad fees.</p>
           </div>
-          <span class="mfs-limit-pill">Saved in MFS_SETTINGS</span>
+          <span class="mfs-limit-pill">Live configuration</span>
         </div>
 
-        <form id="mfsSettingsForm" class="admin-mfs-settings-grid" novalidate>
-          <label class="mfs-field">
-            <span>MYR to BDT Rate</span>
-            <input class="input" id="mfsRateMyrBdt" type="number" min="0.01" step="0.01" placeholder="31.00">
-          </label>
-
-          <div class="admin-mfs-fee-card admin-mfs-my-fee-card">
-            <h3>Malaysia bKash Role Fee</h3>
-            <div class="admin-mfs-fee-grid admin-mfs-role-fees">
-              <label class="mfs-field"><span>USER Fee RM</span><input class="input" id="mfsMyBkashUserFee" type="number" min="0" step="0.01" placeholder="5.00"></label>
-              <label class="mfs-field"><span>RETAILER Fee RM</span><input class="input" id="mfsMyBkashRetailerFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
-              <label class="mfs-field"><span>SUBADMIN Fee RM</span><input class="input" id="mfsMyBkashSubadminFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
+        <div class="admin-mfs-settings-layout">
+          <section class="admin-mfs-rate-card" aria-labelledby="mfsRateHeading">
+            <div class="admin-mfs-rate-head">
+              <div>
+                <div class="mfs-section-kicker">Current Live Rate</div>
+                <h3 id="mfsRateHeading">Today's Rate</h3>
+                <p>This rate stays active until an Admin or authorized Telegram action updates it.</p>
+              </div>
+              <div class="admin-mfs-live-rate" aria-live="polite">
+                <span>MYR to BDT</span>
+                <strong id="mfsLiveRateValue">RM 1 = BDT --</strong>
+                <small id="mfsRateUpdatedAt">Last update unavailable</small>
+              </div>
             </div>
-          </div>
+            <form id="mfsRateForm" class="admin-mfs-rate-form" novalidate>
+              <label class="mfs-field">
+                <span>Current Rate <small>RM 1 = BDT</small></span>
+                <input class="input" id="mfsRateMyrBdt" type="number" min="20" max="50" step="0.01" placeholder="31.00">
+              </label>
+              <div class="admin-mfs-rate-actions">
+                <button class="btn brand" id="mfsRateSaveBtn" type="submit">Update Today's Rate</button>
+                <button class="btn ghost" id="mfsRateReloadBtn" type="button">Reload Rate</button>
+              </div>
+            </form>
+          </section>
 
-          <div class="admin-mfs-fee-card admin-mfs-my-fee-card">
-            <h3>Malaysia Nagad Role Fee</h3>
-            <div class="admin-mfs-fee-grid admin-mfs-role-fees">
-              <label class="mfs-field"><span>USER Fee RM</span><input class="input" id="mfsMyNagadUserFee" type="number" min="0" step="0.01" placeholder="5.00"></label>
-              <label class="mfs-field"><span>RETAILER Fee RM</span><input class="input" id="mfsMyNagadRetailerFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
-              <label class="mfs-field"><span>SUBADMIN Fee RM</span><input class="input" id="mfsMyNagadSubadminFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
+          <form id="mfsSettingsForm" class="admin-mfs-settings-grid" novalidate>
+            <div class="admin-mfs-settings-subhead">
+              <div>
+                <div class="mfs-section-kicker">Fee Configuration</div>
+                <h3>MFS Fee Settings</h3>
+                <p>Fee changes do not update the current live exchange rate.</p>
+              </div>
             </div>
-          </div>
 
-          <div class="admin-mfs-fee-card">
-            <h3>Bangladesh bKash Fee</h3>
-            <div class="admin-mfs-fee-grid">
-              <label class="mfs-field"><span>Type</span><select class="input" id="mfsBdBkashType"><option value="fixed">Fixed</option><option value="percent">Percent</option></select></label>
-              <label class="mfs-field"><span>Fixed BDT</span><input class="input" id="mfsBdBkashFixed" type="number" min="0" step="0.01"></label>
-              <label class="mfs-field"><span>Percent</span><input class="input" id="mfsBdBkashPercent" type="number" min="0" step="0.01"></label>
-              <label class="mfs-field"><span>Min Fee</span><input class="input" id="mfsBdBkashMin" type="number" min="0" step="0.01"></label>
-              <label class="mfs-field"><span>Max Fee</span><input class="input" id="mfsBdBkashMax" type="number" min="0" step="0.01"></label>
+            <section class="admin-mfs-fee-group" aria-labelledby="mfsMalaysiaFeesHeading">
+              <div class="admin-mfs-fee-group-head">
+                <h3 id="mfsMalaysiaFeesHeading">Malaysia Fees</h3>
+                <p>Fixed RM fee by account role.</p>
+              </div>
+              <div class="admin-mfs-fee-group-grid">
+                <div class="admin-mfs-fee-card admin-mfs-my-fee-card">
+                  <h4>Malaysia bKash</h4>
+                  <div class="admin-mfs-fee-grid admin-mfs-role-fees">
+                    <label class="mfs-field"><span>USER Fee RM</span><input class="input" id="mfsMyBkashUserFee" type="number" min="0" step="0.01" placeholder="5.00"></label>
+                    <label class="mfs-field"><span>RETAILER Fee RM</span><input class="input" id="mfsMyBkashRetailerFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
+                    <label class="mfs-field"><span>SUBADMIN Fee RM</span><input class="input" id="mfsMyBkashSubadminFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
+                  </div>
+                </div>
+
+                <div class="admin-mfs-fee-card admin-mfs-my-fee-card">
+                  <h4>Malaysia Nagad</h4>
+                  <div class="admin-mfs-fee-grid admin-mfs-role-fees">
+                    <label class="mfs-field"><span>USER Fee RM</span><input class="input" id="mfsMyNagadUserFee" type="number" min="0" step="0.01" placeholder="5.00"></label>
+                    <label class="mfs-field"><span>RETAILER Fee RM</span><input class="input" id="mfsMyNagadRetailerFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
+                    <label class="mfs-field"><span>SUBADMIN Fee RM</span><input class="input" id="mfsMyNagadSubadminFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="admin-mfs-fee-group" aria-labelledby="mfsBangladeshFeesHeading">
+              <div class="admin-mfs-fee-group-head">
+                <h3 id="mfsBangladeshFeesHeading">Bangladesh Fees</h3>
+                <p>Provider fee rule in BDT.</p>
+              </div>
+              <div class="admin-mfs-fee-group-grid">
+                <div class="admin-mfs-fee-card">
+                  <h4>Bangladesh bKash</h4>
+                  <div class="admin-mfs-fee-grid">
+                    <label class="mfs-field"><span>Type</span><select class="input" id="mfsBdBkashType"><option value="fixed">Fixed</option><option value="percent">Percent</option></select></label>
+                    <label class="mfs-field"><span>Fixed BDT</span><input class="input" id="mfsBdBkashFixed" type="number" min="0" step="0.01"></label>
+                    <label class="mfs-field"><span>Percent</span><input class="input" id="mfsBdBkashPercent" type="number" min="0" step="0.01"></label>
+                    <label class="mfs-field"><span>Min Fee</span><input class="input" id="mfsBdBkashMin" type="number" min="0" step="0.01"></label>
+                    <label class="mfs-field"><span>Max Fee</span><input class="input" id="mfsBdBkashMax" type="number" min="0" step="0.01"></label>
+                  </div>
+                </div>
+
+                <div class="admin-mfs-fee-card">
+                  <h4>Bangladesh Nagad</h4>
+                  <div class="admin-mfs-fee-grid">
+                    <label class="mfs-field"><span>Type</span><select class="input" id="mfsBdNagadType"><option value="fixed">Fixed</option><option value="percent">Percent</option></select></label>
+                    <label class="mfs-field"><span>Fixed BDT</span><input class="input" id="mfsBdNagadFixed" type="number" min="0" step="0.01"></label>
+                    <label class="mfs-field"><span>Percent</span><input class="input" id="mfsBdNagadPercent" type="number" min="0" step="0.01"></label>
+                    <label class="mfs-field"><span>Min Fee</span><input class="input" id="mfsBdNagadMin" type="number" min="0" step="0.01"></label>
+                    <label class="mfs-field"><span>Max Fee</span><input class="input" id="mfsBdNagadMax" type="number" min="0" step="0.01"></label>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div class="admin-mfs-submit admin-mfs-settings-actions">
+              <button class="btn brand" id="mfsSettingsSaveBtn" type="submit">Save Fee Settings</button>
+              <button class="btn ghost" id="mfsSettingsReloadBtn" type="button">Reload Fees</button>
             </div>
-          </div>
-
-          <div class="admin-mfs-fee-card">
-            <h3>Bangladesh Nagad Fee</h3>
-            <div class="admin-mfs-fee-grid">
-              <label class="mfs-field"><span>Type</span><select class="input" id="mfsBdNagadType"><option value="fixed">Fixed</option><option value="percent">Percent</option></select></label>
-              <label class="mfs-field"><span>Fixed BDT</span><input class="input" id="mfsBdNagadFixed" type="number" min="0" step="0.01"></label>
-              <label class="mfs-field"><span>Percent</span><input class="input" id="mfsBdNagadPercent" type="number" min="0" step="0.01"></label>
-              <label class="mfs-field"><span>Min Fee</span><input class="input" id="mfsBdNagadMin" type="number" min="0" step="0.01"></label>
-              <label class="mfs-field"><span>Max Fee</span><input class="input" id="mfsBdNagadMax" type="number" min="0" step="0.01"></label>
-            </div>
-          </div>
-
-          <div class="admin-mfs-submit admin-mfs-settings-actions">
-            <button class="btn brand" id="mfsSettingsSaveBtn" type="submit">Save Settings</button>
-            <button class="btn ghost" id="mfsSettingsReloadBtn" type="button">Reload</button>
-          </div>
-        </form>
+          </form>
+        </div>
       </section>
 
       <section class="mfs-panel-card" id="mfsManageSection" data-mfs-view="manage">

@@ -68,7 +68,7 @@ admin_transactions_ui_expect(str_contains($mfsPage, "filemtime(__DIR__ . '/asset
 admin_transactions_ui_expect(str_contains($mfsPage, 'class="admin-mfs-table"'), 'MFS operational table hook is missing');
 admin_transactions_ui_expect(str_contains($mfsPage, 'class="admin-mfs-details-grid" id="mfsViewDetails"'), 'MFS grouped details container is missing');
 
-foreach (['mfsCreateUid', 'mfsCreateProvider', 'mfsCreateReceiver', 'mfsCreateAmountBdt', 'mfsCreateAmountRm', 'mfsCreateReference', 'mfsCreateNote', 'mfsRateMyrBdt', 'mfsSettingsSaveBtn', 'mfsSettingsReloadBtn'] as $id) {
+foreach (['mfsCreateUid', 'mfsCreateProvider', 'mfsCreateReceiver', 'mfsCreateAmountBdt', 'mfsCreateAmountRm', 'mfsCreateReference', 'mfsCreateNote', 'mfsRateForm', 'mfsRateMyrBdt', 'mfsRateSaveBtn', 'mfsRateReloadBtn', 'mfsSettingsSaveBtn', 'mfsSettingsReloadBtn'] as $id) {
     admin_transactions_ui_expect(str_contains($mfsPage, 'id="' . $id . '"'), "Existing MFS form/settings ID is missing: {$id}");
 }
 
@@ -76,7 +76,7 @@ foreach (['USER Fee RM', 'RETAILER Fee RM', 'SUBADMIN Fee RM'] as $label) {
     admin_transactions_ui_expect(str_contains($mfsPage, $label), "MFS role fee label changed: {$label}");
 }
 
-foreach (["get('mfs_pending'", "get('mfs_processing'", "get('mfs_done'", "get('mfs_get'", "post('mfs_create'", "post('mfs_settings_save'", "post('mfs_success'"] as $contract) {
+foreach (["get('mfs_pending'", "get('mfs_processing'", "get('mfs_done'", "get('mfs_get'", "post('mfs_create'", "get('mfs_rate_get'", "post('mfs_rate_save'", "get('mfs_fees_get'", "post('mfs_fees_save'", "post('mfs_success'"] as $contract) {
     admin_transactions_ui_expect(str_contains($mfsJs, $contract), "Existing MFS API action changed: {$contract}");
 }
 

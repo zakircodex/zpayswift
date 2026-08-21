@@ -5,6 +5,7 @@ require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/mfs.php';
 require_once dirname(__DIR__) . '/lib/add_money.php';
 require_once dirname(__DIR__) . '/lib/rates.php';
+require_once dirname(__DIR__) . '/lib/mfs_admin_settings.php';
 require_once dirname(__DIR__) . '/lib/currency_conversion.php';
 require_once dirname(__DIR__) . '/lib/support.php';
 
@@ -870,59 +871,6 @@ function proxy_mfs_float($value, float $default = 0.0): float
     return is_numeric($value) ? round((float)$value, 2) : $default;
 }
 
-function proxy_mfs_role_fee(array $row, string $role, float $default): float
-{
-    $role = strtoupper(trim($role));
-    $value = $row[$role] ?? null;
-
-    if (is_array($value)) {
-        $value = $value['fee_rm'] ?? $value['fixed'] ?? $value['amount'] ?? $value['rm'] ?? null;
-    }
-
-    return max(0.0, proxy_mfs_float($value, $default));
-}
-
-function proxy_mfs_fee_row(array $body, string $country, string $provider): array
-{
-    $country = strtoupper(trim($country));
-    $provider = mfs_normalize_provider($provider);
-    $key = strtolower($country . '_' . $provider);
-    $row = is_array($body[$country][$provider] ?? null)
-        ? (array)$body[$country][$provider]
-        : (is_array($body[$key] ?? null) ? (array)$body[$key] : []);
-
-    if ($country === 'MY') {
-        $legacy = proxy_mfs_float($row['fixed'] ?? $row['fee_rm'] ?? $row['amount'] ?? -1.0, -1.0);
-        $userFee = proxy_mfs_role_fee($row, 'USER', $legacy >= 0 ? $legacy : 5.00);
-        $retailerFee = proxy_mfs_role_fee($row, 'RETAILER', 2.00);
-        $subadminFee = proxy_mfs_role_fee($row, 'SUBADMIN', 2.00);
-        $adminFee = proxy_mfs_role_fee($row, 'ADMIN', 0.00);
-
-        return [
-            'type' => 'fixed',
-            'fixed' => $userFee,
-            'fee_rm' => $userFee,
-            'USER' => $userFee,
-            'RETAILER' => $retailerFee,
-            'SUBADMIN' => $subadminFee,
-            'ADMIN' => $adminFee,
-        ];
-    }
-
-    $type = strtolower(trim((string)($row['type'] ?? 'fixed')));
-    if (!in_array($type, ['fixed', 'percent'], true)) {
-        $type = 'fixed';
-    }
-
-    return [
-        'type' => $type,
-        'fixed' => max(0.0, proxy_mfs_float($row['fixed'] ?? $row['fixed_fee'] ?? 0.0)),
-        'percent' => max(0.0, proxy_mfs_float($row['percent'] ?? $row['percent_fee'] ?? 0.0)),
-        'min_fee' => max(0.0, proxy_mfs_float($row['min_fee'] ?? 0.0)),
-        'max_fee' => max(0.0, proxy_mfs_float($row['max_fee'] ?? 0.0)),
-    ];
-}
-
 function proxy_mfs_target_uid_from_body(array $body): string
 {
     $target = trim((string)($body['uid'] ?? $body['target_uid'] ?? $body['phone'] ?? $body['target_phone'] ?? $body['number'] ?? ''));
@@ -1319,56 +1267,69 @@ switch ($action) {
         ]);
         break;
 
+    case 'mfs_rate_get':
+        proxy_require_method('GET');
+        proxy_require_admin_login(true);
+
+        $rateState = mfs_admin_rate_state();
+        proxy_response(true, 'SUCCESS', 'Current Ringgit rate loaded', [
+            'rate' => $rateState,
+            'rate_myr_bdt' => (float)($rateState['rate_myr_bdt'] ?? 0),
+        ]);
+        break;
+
+    case 'mfs_rate_save':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+        $adminUser = proxy_require_admin_login(true);
+        $body = proxy_read_json_body();
+        $rate = proxy_mfs_float($body['rate_myr_bdt'] ?? $body['myr_to_bdt_rate'] ?? 0.0, 0.0);
+        $rateSave = mfs_admin_save_rate($rate, (string)($adminUser['uid'] ?? ''));
+
+        if (empty($rateSave['ok'])) {
+            $code = (string)($rateSave['code'] ?? 'RATE_SAVE_FAILED');
+            $httpStatus = in_array($code, ['INVALID_RATE', 'INVALID_RATE_RANGE'], true) ? 422 : 500;
+            proxy_response(false, $code, (string)($rateSave['message'] ?? 'Failed to save Ringgit rate'), ['field' => 'rate_myr_bdt'], $httpStatus);
+        }
+
+        proxy_response(true, 'SUCCESS', 'Current Ringgit rate updated', [
+            'rate' => (array)($rateSave['data']['rate_state'] ?? mfs_admin_rate_state()),
+            'rate_notification' => (array)($rateSave['data']['notification'] ?? []),
+        ]);
+        break;
+
+    case 'mfs_fees_get':
+        proxy_require_method('GET');
+        proxy_require_admin_login(true);
+
+        $fees = mfs_admin_fee_state();
+        proxy_response(true, 'SUCCESS', 'MFS fee settings loaded', [
+            'fees' => $fees,
+            'settings' => ['fees' => $fees],
+        ]);
+        break;
+
+    case 'mfs_fees_save':
     case 'save_mfs_settings':
     case 'save_mfs_fee_rate_settings':
     case 'mfs_settings_save':
         proxy_require_method('POST');
         proxy_require_csrf();
-        $adminUser = proxy_require_admin_login(true);
+        proxy_require_admin_login(true);
         $body = proxy_read_json_body();
+        $feeSave = mfs_admin_save_fees($body);
 
-        $rate = proxy_mfs_float($body['rate_myr_bdt'] ?? $body['myr_to_bdt_rate'] ?? 31.00, 31.00);
-        $rateValidation = zpay_validate_myr_to_bdt_rate($rate);
-        if (empty($rateValidation['ok'])) {
-            proxy_response(false, (string)$rateValidation['code'], (string)$rateValidation['message'], ['field' => 'rate_myr_bdt'], 422);
+        if (empty($feeSave['ok'])) {
+            $code = (string)($feeSave['code'] ?? 'FEE_SAVE_FAILED');
+            $httpStatus = in_array($code, ['INVALID_FEE', 'INVALID_FEE_TYPE'], true) ? 422 : 500;
+            proxy_response(false, $code, (string)($feeSave['message'] ?? 'Failed to save MFS fee settings'), (array)($feeSave['data'] ?? []), $httpStatus);
         }
 
-        $feesBody = is_array($body['fees'] ?? null) ? (array)$body['fees'] : $body;
-        $settings = [
-            'rate_myr_bdt' => $rate,
-            'myr_to_bdt_rate' => $rate,
-            'fees' => [
-                'MY' => [
-                    'BKASH' => proxy_mfs_fee_row($feesBody, 'MY', 'BKASH'),
-                    'NAGAD' => proxy_mfs_fee_row($feesBody, 'MY', 'NAGAD'),
-                ],
-                'BD' => [
-                    'BKASH' => proxy_mfs_fee_row($feesBody, 'BD', 'BKASH'),
-                    'NAGAD' => proxy_mfs_fee_row($feesBody, 'BD', 'NAGAD'),
-                ],
-            ],
-            'updated_at' => time(),
-            'updated_by_uid' => (string)($adminUser['uid'] ?? ''),
-            'updated_by_role' => 'ADMIN',
-        ];
-
-        $rateSave = zpay_save_myr_to_bdt_rate($rate, (string)($adminUser['uid'] ?? ''), 'ADMIN_PANEL');
-        if (empty($rateSave['ok'])) {
-            proxy_response(false, (string)($rateSave['code'] ?? 'RATE_SAVE_FAILED'), (string)($rateSave['message'] ?? 'Failed to save Ringgit rate'), [], 500);
-        }
-
-        if (!fb_patch('MFS_SETTINGS', $settings)) {
-            proxy_response(false, 'SERVER_ERROR', 'Failed to save MFS settings', [], 500);
-        }
-
-        if (function_exists('mfs_config')) {
-            mfs_config(true);
-        }
-
-        proxy_response(true, 'SUCCESS', 'MFS settings saved', [
-            'settings' => function_exists('mfs_public_settings') ? mfs_public_settings() : $settings,
-            'raw' => $settings,
-            'rate_notification' => (array)($rateSave['data']['notification'] ?? []),
+        $fees = (array)($feeSave['data']['fees'] ?? mfs_admin_fee_state());
+        proxy_response(true, 'SUCCESS', 'MFS fee settings saved', [
+            'fees' => $fees,
+            'settings' => ['fees' => $fees],
+            'raw' => ['fees' => $fees],
         ]);
         break;
 

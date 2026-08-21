@@ -17,7 +17,13 @@
     feedbackReceiptUrl:'',
     sessionRedirecting:false,
     settings:null,
-    settingsLoading:false,
+    rate:null,
+    rateLoaded:false,
+    feesLoaded:false,
+    rateLoading:false,
+    feesLoading:false,
+    rateMutating:false,
+    feesMutating:false,
     viewReceiptUrl:'',
     pages:{
       pending:{page:1,cursor:'',next_cursor:'',has_more:false,history:['']},
@@ -551,17 +557,41 @@
     all('[data-mfs-view-target]').forEach(function(button){
       button.classList.toggle('active',button.getAttribute('data-mfs-view-target')===state.section);
     });
-    if(state.section==='settings'&&!state.settings)loadSettings(null,false);
+    if(state.section==='settings'){
+      if(!state.rateLoaded)loadRate(null,false);
+      if(!state.feesLoaded)loadFees(null,false);
+    }
     toggleSidebar(false);
   }
 
-  function populateSettings(settings){
+  function populateRate(rateState){
+    rateState=rateState||{};
+    var rate=Number(rateState.rate_myr_bdt||rateState.rate||0);
+    if(!Number.isFinite(rate)||rate<=0)return;
+    state.rate={
+      rate_myr_bdt:rate,
+      updated_at:Number(rateState.updated_at||0),
+      updated_source:String(rateState.updated_source||'').trim()
+    };
+    state.rateLoaded=true;
+    state.settings=state.settings||{};
+    state.settings.rate_myr_bdt=rate;
+    el('mfsRateMyrBdt').value=money(rate);
+    el('mfsLiveRateValue').textContent='RM 1 = BDT '+money(rate);
+    var updated=state.rate.updated_at>0?'Last updated '+ts(state.rate.updated_at):'Last update unavailable';
+    if(state.rate.updated_source)updated+=' • '+state.rate.updated_source.replace(/_/g,' ');
+    el('mfsRateUpdatedAt').textContent=updated;
+    updateCreatePreview();
+  }
+
+  function populateFees(settings){
     settings=settings||{};
-    state.settings=settings;
-    var fees=settings.fees||{};
+    var fees=settings.fees||settings||{};
+    state.settings=state.settings||{};
+    state.settings.fees=fees;
+    state.feesLoaded=true;
     var bd=fees.BD||{};
     var my=fees.MY||{};
-    el('mfsRateMyrBdt').value=money(settings.rate_myr_bdt||31);
     [['Bkash','BKASH'],['Nagad','NAGAD']].forEach(function(pair){
       var suffix=pair[0], provider=pair[1], row=my[provider]||{};
       setVal('mfsMy'+suffix+'UserFee',roleFee(row,'USER',5));
@@ -579,26 +609,42 @@
     updateCreatePreview();
   }
 
-  async function loadSettings(button,notify){
-    if(state.settingsLoading)return;
-    state.settingsLoading=true;
+  async function loadRate(button,notify){
+    if(state.rateLoading)return;
+    state.rateLoading=true;
     setButtonBusy(button,true,'Loading...');
     try{
-      var data=await get('mfs_settings_get',{});
-      populateSettings(data.settings||data.raw||{});
-      if(notify)showFeedback('success','Settings loaded','MFS fee and rate settings loaded.');
+      var data=await get('mfs_rate_get',{});
+      populateRate(data.rate||data);
+      if(notify)showFeedback('success','Rate loaded',"Today's live rate was reloaded.");
     }catch(err){
       if(handleSessionExpired(err))return;
-      if(notify!==false)showFeedback('error','Unable to load settings',friendlyError(err));
+      if(notify!==false)showFeedback('error','Unable to load rate',friendlyError(err));
     }finally{
       setButtonBusy(button,false);
-      state.settingsLoading=false;
+      state.rateLoading=false;
     }
   }
 
-  function settingsPayload(){
+  async function loadFees(button,notify){
+    if(state.feesLoading)return;
+    state.feesLoading=true;
+    setButtonBusy(button,true,'Loading...');
+    try{
+      var data=await get('mfs_fees_get',{});
+      populateFees(data.settings||{fees:data.fees||{}});
+      if(notify)showFeedback('success','Fees loaded','MFS fee settings were reloaded.');
+    }catch(err){
+      if(handleSessionExpired(err))return;
+      if(notify!==false)showFeedback('error','Unable to load fees',friendlyError(err));
+    }finally{
+      setButtonBusy(button,false);
+      state.feesLoading=false;
+    }
+  }
+
+  function feesPayload(){
     return {
-      rate_myr_bdt:num('mfsRateMyrBdt')||31,
       fees:{
         MY:{
           BKASH:{type:'fixed',fixed:numDefault('mfsMyBkashUserFee',5),fee_rm:numDefault('mfsMyBkashUserFee',5),USER:numDefault('mfsMyBkashUserFee',5),RETAILER:numDefault('mfsMyBkashRetailerFee',2),SUBADMIN:numDefault('mfsMyBkashSubadminFee',2),ADMIN:0},
@@ -612,25 +658,43 @@
     };
   }
 
-  async function saveSettings(e){
+  async function saveRate(e){
     e.preventDefault();
-    if(state.mutating)return;
-    var button=el('mfsSettingsSaveBtn');
-    state.mutating=true;
-    setButtonBusy(button,true,'Saving...');
-    setPageBusy(true,'Saving MFS fee and rate settings...');
+    if(state.rateMutating)return;
+    var button=el('mfsRateSaveBtn');
+    state.rateMutating=true;
+    setButtonBusy(button,true,'Updating...');
     try{
       await ensureCsrf();
-      var data=await post('mfs_settings_save',settingsPayload());
-      populateSettings(data.settings||{});
-      showFeedback('success','Settings saved','MFS fee and MYR/BDT rate settings saved.');
+      var data=await post('mfs_rate_save',{rate_myr_bdt:num('mfsRateMyrBdt')});
+      populateRate(data.rate||{});
+      showFeedback('success','Rate updated',"Today's live MYR/BDT rate was updated.");
     }catch(err){
       if(handleSessionExpired(err))return;
-      showFeedback('error','Unable to save settings',friendlyError(err));
+      showFeedback('error','Unable to update rate',friendlyError(err));
     }finally{
-      setPageBusy(false);
       setButtonBusy(button,false);
-      state.mutating=false;
+      state.rateMutating=false;
+    }
+  }
+
+  async function saveFeeSettings(e){
+    e.preventDefault();
+    if(state.feesMutating)return;
+    var button=el('mfsSettingsSaveBtn');
+    state.feesMutating=true;
+    setButtonBusy(button,true,'Saving...');
+    try{
+      await ensureCsrf();
+      var data=await post('mfs_fees_save',feesPayload());
+      populateFees(data.settings||{fees:data.fees||{}});
+      showFeedback('success','Fees saved','MFS fee settings were saved.');
+    }catch(err){
+      if(handleSessionExpired(err))return;
+      showFeedback('error','Unable to save fees',friendlyError(err));
+    }finally{
+      setButtonBusy(button,false);
+      state.feesMutating=false;
     }
   }
 
@@ -1050,8 +1114,10 @@
     el('mfsCreateForm').addEventListener('submit',openCreateReview);
     el('mfsCreateReviewCancelBtn').addEventListener('click',closeCreateReview);
     el('mfsCreateReviewConfirmBtn').addEventListener('click',confirmCreateRequest);
-    el('mfsSettingsForm').addEventListener('submit',saveSettings);
-    el('mfsSettingsReloadBtn').addEventListener('click',function(){loadSettings(el('mfsSettingsReloadBtn'),true);});
+    el('mfsRateForm').addEventListener('submit',saveRate);
+    el('mfsRateReloadBtn').addEventListener('click',function(){loadRate(el('mfsRateReloadBtn'),true);});
+    el('mfsSettingsForm').addEventListener('submit',saveFeeSettings);
+    el('mfsSettingsReloadBtn').addEventListener('click',function(){loadFees(el('mfsSettingsReloadBtn'),true);});
     ['mfsCreateUid','mfsCreateProvider','mfsCreateReceiver','mfsCreateAmountBdt','mfsCreateAmountRm'].forEach(function(id){el(id).addEventListener('input',updateCreatePreview); el(id).addEventListener('change',updateCreatePreview);});
     el('mfsReloadBtn').addEventListener('click',function(){load(el('mfsReloadBtn'),true);});
     el('mfsApplyFilterBtn').addEventListener('click',function(){resetAllPages();load(el('mfsApplyFilterBtn'),true);});
@@ -1099,7 +1165,8 @@
     bind();
     setSection('manage');
     setActiveTab('pending');
-    loadSettings(null,false);
+    loadRate(null,false);
+    loadFees(null,false);
     load(null,true);
     ensureCsrf().catch(function(){});
   }
