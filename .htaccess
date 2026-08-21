@@ -91,6 +91,11 @@ DirectoryIndex index.html
   RewriteCond %{HTTPS} !=on
   RewriteRule ^ https://zpayswift.com%{REQUEST_URI} [R=301,L,NE]
 
+  # Retired Z Builder surfaces must stay unavailable even if an older deploy
+  # left stale files on the server.
+  RewriteRule ^(?:z-builder|z-builder-worker|my-site)(?:/|$) - [G,L,NC]
+  RewriteRule ^api/my_site(?:/|$) - [G,L,NC]
+
   RewriteRule ^(?:\.git|\.env|\.svn|\.hg)(?:/|$) - [F,L]
   RewriteRule ^api/lib(?:/|$) - [F,L]
 
