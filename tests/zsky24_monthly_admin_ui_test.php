@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $jsPath = $root . '/api/admin/assets/zsky24-admin.js';
+$cssPath = $root . '/api/admin/assets/zsky24-admin.css';
 $gatewayPath = $root . '/api/admin/zsky24_creator_admin.php';
 $assertions = 0;
 
@@ -17,10 +18,13 @@ function monthly_ui_expect(bool $condition, string $message): void
 }
 
 monthly_ui_expect(is_file($jsPath), 'Z Sky admin JavaScript is missing');
+monthly_ui_expect(is_file($cssPath), 'Z Sky admin stylesheet is missing');
 monthly_ui_expect(is_file($gatewayPath), 'Z Sky admin gateway is missing');
 $js = file_get_contents($jsPath);
+$css = file_get_contents($cssPath);
 $gateway = file_get_contents($gatewayPath);
 monthly_ui_expect(is_string($js), 'Z Sky admin JavaScript could not be read');
+monthly_ui_expect(is_string($css), 'Z Sky admin stylesheet could not be read');
 monthly_ui_expect(is_string($gateway), 'Z Sky admin gateway could not be read');
 
 // Existing creator and weekly screens must remain available.
@@ -35,7 +39,7 @@ foreach ([
     monthly_ui_expect(str_contains($js, $required), 'existing creator/weekly UI contract is missing: ' . $required);
 }
 
-// Monthly UI is a third, equal primary control and is explicitly read-only.
+// Monthly UI remains an equal primary control in the completed Admin workspace and is explicitly read-only.
 foreach ([
     'data-zsky-mode="MONTHLY"',
     'Monthly summary',
@@ -43,7 +47,6 @@ foreach ([
     'id="zskyMonthlySelect"',
     'id="zskyMonthlyReadOnly"',
     'Read-only preview',
-    'grid-template-columns:repeat(3,minmax(0,1fr))',
     'Approved eligible views',
     'Reviews approved',
     'Traffic share',
@@ -52,6 +55,9 @@ foreach ([
 ] as $required) {
     monthly_ui_expect(str_contains($js, $required), 'monthly admin UI contract is missing: ' . $required);
 }
+monthly_ui_expect(str_contains($css, '.zsky-primary-tabs{display:grid;grid-template-columns:repeat(7,minmax(105px,1fr))'), 'completed desktop Admin tabs are not equal-width');
+monthly_ui_expect(str_contains($css, '.zsky-primary-tabs{grid-template-columns:repeat(3,minmax(0,1fr))'), 'tablet Admin tabs are not responsive');
+monthly_ui_expect(str_contains($css, '.zsky-primary-tabs{grid-template-columns:1fr 1fr'), 'mobile Admin tabs are not responsive');
 
 // Monthly screen must use only the GET-only preview endpoints and must not expose a settlement write action.
 monthly_ui_expect(str_contains($js, "request('monthly_periods'"), 'monthly period GET is not used');

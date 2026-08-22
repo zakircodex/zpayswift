@@ -3,14 +3,26 @@
 
   const ENDPOINT = '/api/admin/zsky24_creator_admin.php';
   const BATCH_LIMIT = 5;
+  const PAGE_SIZE = 10;
   const zskyState = {
     loaded: false,
     loading: false,
     loadPromise: null,
-    mode: 'CREATORS',
+    mode: 'OVERVIEW',
+    moderationType: 'POSTS',
+    postRows: [],
+    commentRows: [],
+    moderationLoading: false,
+    moderationPages: {
+      POSTS: {cursor:'', stack:[], next:'', hasMore:false, page:1},
+      COMMENTS: {cursor:'', stack:[], next:'', hasMore:false, page:1},
+    },
+    selectedPost: null,
+    selectedComment: null,
     activeStatus: 'ACTIVE',
     activeCreators: [],
     blockedCreators: [],
+    creatorPage: 1,
     selected: new Set(),
     weeklyPeriodsLoaded: false,
     weeklyPeriods: [],
@@ -18,12 +30,16 @@
     selectedPeriodId: '',
     weeklyReview: null,
     weeklyLoading: false,
+    weeklyPage: 1,
     monthlyPeriodsLoaded: false,
     monthlyPeriods: [],
     defaultMonth: null,
     selectedMonthId: '',
     monthlyPreview: null,
     monthlyLoading: false,
+    monthlyPage: 1,
+    policy: null,
+    policyLoading: false,
   };
 
   const $ = id => document.getElementById(id);
@@ -83,20 +99,56 @@
       <div class="zsky-admin-shell">
         <div class="zsky-admin-hero">
           <div>
-            <span class="zsky-admin-kicker">Z SKY 24 • CREATOR CONTROL</span>
-            <h3>Creator management</h3>
-            <p>Manage creator access, review verified engagement and preview payout eligibility. This screen never credits a wallet.</p>
+            <span class="zsky-admin-kicker">Z SKY 24 OPERATIONS</span>
+            <h3 id="zsky24AdminTitle">Z Sky 24 Admin</h3>
+            <p>Moderate publishing, manage creator access and review fixed-calendar performance from one protected workspace.</p>
           </div>
           <button class="btn blue" id="zsky24RefreshBtn" type="button">Refresh</button>
         </div>
 
-        <div class="zsky-admin-tabs zsky-primary-tabs" role="tablist" aria-label="Z Sky creator administration" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr))">
-          <button class="zsky-admin-tab active" type="button" role="tab" aria-selected="true" data-zsky-mode="CREATORS">Creator accounts</button>
+        <div class="zsky-admin-tabs zsky-primary-tabs" role="tablist" aria-label="Z Sky 24 administration">
+          <button class="zsky-admin-tab active" type="button" role="tab" aria-selected="true" data-zsky-mode="OVERVIEW">Overview</button>
+          <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="MODERATION">Posts / Moderation</button>
+          <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="CREATORS">Creator accounts</button>
           <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="WEEKLY">Weekly reviews</button>
           <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="MONTHLY">Monthly summary</button>
+          <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="PAYOUT">Payout / transfers</button>
+          <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="POLICY">Settings</button>
         </div>
 
-        <section id="zskyCreatorAdminView">
+        <section id="zskyOverviewView">
+          <div class="zsky-admin-metrics" aria-label="Z Sky 24 overview">
+            <div class="zsky-admin-metric warning"><span>Posts on current queue page</span><strong id="zskyPendingPostCount">0</strong></div>
+            <div class="zsky-admin-metric warning"><span>Comments on current queue page</span><strong id="zskyPendingCommentCount">0</strong></div>
+            <div class="zsky-admin-metric"><span>Active creators loaded</span><strong id="zskyActiveCreatorCountOverview">0</strong></div>
+            <div class="zsky-admin-metric danger"><span>Blocked creators loaded</span><strong id="zskyBlockedCreatorCountOverview">0</strong></div>
+          </div>
+          <div class="zsky-overview-grid">
+            <article class="card zsky-overview-card"><span class="zsky-admin-kicker">PUBLISHING</span><h3>Moderation queue</h3><p>Review pending posts and comments with canonical version and idempotency controls.</p><button class="btn ghost" type="button" data-zsky-open-mode="MODERATION">Open moderation</button></article>
+            <article class="card zsky-overview-card"><span class="zsky-admin-kicker">CREATORS</span><h3>Creator access</h3><p>Inspect active and blocked creator registrations without exposing private account data.</p><button class="btn ghost" type="button" data-zsky-open-mode="CREATORS">Open creators</button></article>
+            <article class="card zsky-overview-card"><span class="zsky-admin-kicker">PERFORMANCE</span><h3>Calendar review</h3><p>Generate completed period reviews and inspect the read-only monthly aggregation.</p><button class="btn ghost" type="button" data-zsky-open-mode="WEEKLY">Open reviews</button></article>
+            <article class="card zsky-overview-card"><span class="zsky-admin-kicker">POLICY</span><h3>Current settings</h3><p>Inspect the canonical public creator policy. No browser-side setting or payout value is created here.</p><button class="btn ghost" type="button" data-zsky-open-mode="POLICY">Open settings</button></article>
+          </div>
+          <div class="zsky-retired-note"><strong>Current payout contract</strong><span>Creator balances and creator-initiated withdrawal requests are retired. This Admin panel exposes eligibility preview only and never calculates a payable value in the browser.</span></div>
+        </section>
+
+        <section id="zskyModerationView" hidden>
+          <div class="zsky-admin-tabs zsky-secondary-tabs" role="tablist" aria-label="Moderation type">
+            <button class="zsky-admin-tab active" type="button" role="tab" aria-selected="true" data-zsky-moderation-tab="POSTS">Posts</button>
+            <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-moderation-tab="COMMENTS">Comments</button>
+          </div>
+          <div class="card zsky-admin-panel">
+            <div class="panel-head"><div><h3 id="zskyModerationTitle">Posts awaiting review</h3><p id="zskyModerationSubtitle">Newest pending posts first. Decisions use the stored version and canonical moderation service.</p></div></div>
+            <div id="zskyModerationList" class="zsky-admin-list" aria-live="polite"><div class="empty">Loading moderation queue...</div></div>
+            <div class="zsky-pagination" id="zskyModerationPagination" aria-label="Moderation pagination">
+              <button class="btn ghost" id="zskyModerationPrevious" type="button" disabled>Previous</button>
+              <span id="zskyModerationPage">Page 1</span>
+              <button class="btn ghost" id="zskyModerationNext" type="button" disabled>Next</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="zskyCreatorAdminView" hidden>
           <div class="zsky-admin-metrics" aria-label="Creator summary">
             <div class="zsky-admin-metric"><span>Active creators</span><strong id="zskyActiveCreatorCount">0</strong></div>
             <div class="zsky-admin-metric danger"><span>Blocked creators</span><strong id="zskyBlockedCreatorCount">0</strong></div>
@@ -111,9 +163,14 @@
 
           <div class="card zsky-admin-panel">
             <div class="panel-head">
-              <div><h3 id="zskyCreatorListTitle">Active creators</h3><p id="zskyCreatorListSubtitle">Select up to five creators for a payout eligibility preview.</p></div>
+              <div><h3 id="zskyCreatorListTitle">Active creators</h3><p id="zskyCreatorListSubtitle">Manage creator access using public registry fields only.</p></div>
             </div>
             <div id="zskyCreatorList" class="zsky-admin-list" aria-live="polite"><div class="empty">Loading creators…</div></div>
+            <div class="zsky-pagination" id="zskyCreatorPagination" aria-label="Creator pagination">
+              <button class="btn ghost" id="zskyCreatorPrevious" type="button" disabled>Previous</button>
+              <span id="zskyCreatorPage">Page 1</span>
+              <button class="btn ghost" id="zskyCreatorNext" type="button" disabled>Next</button>
+            </div>
           </div>
 
           <div class="zsky-payout-dock" id="zskyPayoutDock">
@@ -140,6 +197,11 @@
           <div class="card zsky-admin-panel">
             <div class="panel-head"><div><h3 id="zskyWeeklyTitle">Calendar creator review</h3><p id="zskyWeeklySubtitle">Select a period to view live or completed creator performance.</p></div></div>
             <div id="zskyWeeklyList" class="zsky-admin-list" aria-live="polite"><div class="empty">Select a review period.</div></div>
+            <div class="zsky-pagination" id="zskyWeeklyPagination" aria-label="Creator review pagination">
+              <button class="btn ghost" id="zskyWeeklyPrevious" type="button" disabled>Previous</button>
+              <span id="zskyWeeklyPage">Page 1</span>
+              <button class="btn ghost" id="zskyWeeklyNext" type="button" disabled>Next</button>
+            </div>
           </div>
         </section>
 
@@ -161,6 +223,18 @@
           <div class="card zsky-admin-panel">
             <div class="panel-head"><div><h3 id="zskyMonthlyTitle">Monthly creator performance</h3><p id="zskyMonthlySubtitle">Select a month to inspect approved review aggregation.</p></div></div>
             <div id="zskyMonthlyList" class="zsky-admin-list" aria-live="polite"><div class="empty">Select a month.</div></div>
+            <div class="zsky-pagination" id="zskyMonthlyPagination" aria-label="Monthly performance pagination">
+              <button class="btn ghost" id="zskyMonthlyPrevious" type="button" disabled>Previous</button>
+              <span id="zskyMonthlyPage">Page 1</span>
+              <button class="btn ghost" id="zskyMonthlyNext" type="button" disabled>Next</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="zskyPolicyView" hidden>
+          <div class="card zsky-admin-panel">
+            <div class="panel-head"><div><span class="zsky-admin-kicker">READ-ONLY SETTINGS</span><h3>Current creator policy</h3><p>Values come from the existing canonical Z Sky 24 policy endpoint. This screen does not save or override configuration.</p></div></div>
+            <div id="zskyPolicyBody" class="zsky-admin-list" aria-live="polite"><div class="empty">Loading policy...</div></div>
           </div>
         </section>
       </div>`;
@@ -173,15 +247,236 @@
   function updateMetrics(){
     if ($('zskyActiveCreatorCount')) $('zskyActiveCreatorCount').textContent = String(zskyState.activeCreators.length);
     if ($('zskyBlockedCreatorCount')) $('zskyBlockedCreatorCount').textContent = String(zskyState.blockedCreators.length);
+    if ($('zskyActiveCreatorCountOverview')) $('zskyActiveCreatorCountOverview').textContent = String(zskyState.activeCreators.length);
+    if ($('zskyBlockedCreatorCountOverview')) $('zskyBlockedCreatorCountOverview').textContent = String(zskyState.blockedCreators.length);
     if ($('zskySelectedCreatorCount')) $('zskySelectedCreatorCount').textContent = String(zskyState.selected.size);
     if ($('zskyPayoutSelectedText')) $('zskyPayoutSelectedText').textContent = String(zskyState.selected.size);
     const hasSelection = zskyState.selected.size > 0;
     if ($('zskyPayoutPreflightBtn')) $('zskyPayoutPreflightBtn').disabled = !hasSelection;
     if ($('zskyClearCreatorSelection')) $('zskyClearCreatorSelection').disabled = !hasSelection;
-    if ($('zskyPayoutDock')) $('zskyPayoutDock').hidden = zskyState.activeStatus !== 'ACTIVE';
+    if ($('zskyPayoutDock')) $('zskyPayoutDock').hidden = zskyState.mode !== 'PAYOUT' || zskyState.activeStatus !== 'ACTIVE';
   }
 
   function empty(message){ return `<div class="empty">${safe(message)}</div>`; }
+
+  function actionKey(prefix){
+    const random = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    return `${prefix}-${random}`;
+  }
+
+  function humanValue(value, fallback='-'){
+    const text = String(value ?? '').trim();
+    return text || fallback;
+  }
+
+  function statusClass(status){
+    const value = String(status || '').toUpperCase();
+    if (['ACTIVE','APPROVED','PAID','COMPLETED','SUCCESSFUL','DONE'].includes(value)) return 'is-success';
+    if (['REJECTED','BLOCKED','FAILED','REMOVED','HELD'].includes(value)) return 'is-danger';
+    if (['REVIEW','PENDING','UNDER_REVIEW','PROCESSING'].includes(value)) return 'is-warning';
+    return 'is-neutral';
+  }
+
+  function statusBadge(status){
+    const value = humanValue(status, 'PENDING').toUpperCase();
+    return `<span class="zsky-status-badge ${statusClass(value)}">${safe(humanStatus(value))}</span>`;
+  }
+
+  function pageRows(rows, page){
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const maxPage = Math.max(1, Math.ceil(safeRows.length / PAGE_SIZE));
+    const current = Math.max(1, Math.min(Number(page) || 1, maxPage));
+    return {items:safeRows.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE), page:current, maxPage};
+  }
+
+  function updateClientPager(prefix, page, maxPage){
+    const current = Math.max(1, Number(page) || 1);
+    if ($(prefix + 'Page')) $(prefix + 'Page').textContent = `Page ${current} of ${Math.max(1, maxPage)}`;
+    if ($(prefix + 'Previous')) $(prefix + 'Previous').disabled = current <= 1;
+    if ($(prefix + 'Next')) $(prefix + 'Next').disabled = current >= maxPage;
+  }
+
+  function moderationState(){ return zskyState.moderationPages[zskyState.moderationType]; }
+
+  function moderationRows(){
+    return zskyState.moderationType === 'COMMENTS' ? zskyState.commentRows : zskyState.postRows;
+  }
+
+  function postRow(row){
+    const postId = humanValue(row.post_id || row.id, 'Unknown post');
+    const creator = humanValue(row.creator_name || row.author_name || row.name || row.creator_uid, 'Z-Pay creator');
+    const title = humanValue(row.title || row.headline, 'Untitled post');
+    const status = row.moderation_status || row.status || 'REVIEW';
+    return `<article class="zsky-admin-row zsky-moderation-row">
+      <div class="zsky-admin-row-main"><strong>${safe(title)}</strong><span>${safe(creator)} · ${safe(postId)}</span><small>${safe(timestamp(row.created_at))}</small></div>
+      <div class="zsky-admin-cell"><small>Status</small>${statusBadge(status)}</div>
+      <div class="zsky-admin-cell"><small>Engagement</small><strong>${safe(row.view_count || row.views || 0)} views</strong></div>
+      <div class="zsky-admin-actions"><button class="btn ghost" type="button" data-zsky-view-post="${safe(postId)}">View</button></div>
+    </article>`;
+  }
+
+  function commentRow(row){
+    const postId = humanValue(row.post_id, 'Unknown post');
+    const commentId = humanValue(row.comment_id || row.id, 'Unknown comment');
+    const creator = humanValue(row.creator_name || row.author_name || row.name || row.creator_uid, 'Z-Pay user');
+    const message = humanValue(row.text || row.comment || row.body || row.content, 'Comment awaiting review');
+    const status = row.moderation_status || row.status || 'REVIEW';
+    return `<article class="zsky-admin-row zsky-moderation-row">
+      <div class="zsky-admin-row-main"><strong>${safe(message)}</strong><span>${safe(creator)} · ${safe(commentId)}</span><small>Post ${safe(postId)} · ${safe(timestamp(row.created_at))}</small></div>
+      <div class="zsky-admin-cell"><small>Status</small>${statusBadge(status)}</div>
+      <div class="zsky-admin-actions"><button class="btn ghost" type="button" data-zsky-view-comment="${safe(commentId)}" data-post-id="${safe(postId)}">View</button></div>
+    </article>`;
+  }
+
+  function renderModeration(){
+    const type = zskyState.moderationType;
+    const rows = moderationRows();
+    const pager = moderationState();
+    if ($('zskyModerationTitle')) $('zskyModerationTitle').textContent = type === 'COMMENTS' ? 'Comments awaiting review' : 'Posts awaiting review';
+    if ($('zskyModerationSubtitle')) $('zskyModerationSubtitle').textContent = type === 'COMMENTS'
+      ? 'Newest pending comments first. Decisions use the canonical comment moderation service.'
+      : 'Newest pending posts first. Decisions use the stored version and canonical moderation service.';
+    if ($('zskyModerationList')) $('zskyModerationList').innerHTML = rows.length
+      ? rows.map(type === 'COMMENTS' ? commentRow : postRow).join('')
+      : empty(type === 'COMMENTS' ? 'No comments are awaiting review.' : 'No posts are awaiting review.');
+    if ($('zskyModerationPage')) $('zskyModerationPage').textContent = `Page ${pager.page}`;
+    if ($('zskyModerationPrevious')) $('zskyModerationPrevious').disabled = pager.stack.length === 0;
+    if ($('zskyModerationNext')) $('zskyModerationNext').disabled = !pager.hasMore || !pager.next;
+    if ($('zskyPendingPostCount')) $('zskyPendingPostCount').textContent = String(zskyState.postRows.length);
+    if ($('zskyPendingCommentCount')) $('zskyPendingCommentCount').textContent = String(zskyState.commentRows.length);
+  }
+
+  async function loadModeration(force=false){
+    if (zskyState.moderationLoading && !force) return;
+    zskyState.moderationLoading = true;
+    const type = zskyState.moderationType;
+    const pager = zskyState.moderationPages[type];
+    if ($('zskyModerationList')) $('zskyModerationList').innerHTML = empty(`Loading ${type === 'COMMENTS' ? 'comments' : 'posts'}...`);
+    try {
+      const data = await request(type === 'COMMENTS' ? 'comments_queue' : 'posts_queue', {
+        params:{limit:PAGE_SIZE, cursor:pager.cursor}, busy:false,
+      });
+      if (type === 'COMMENTS') zskyState.commentRows = Array.isArray(data.items) ? data.items.slice(0, PAGE_SIZE) : [];
+      else zskyState.postRows = Array.isArray(data.items) ? data.items.slice(0, PAGE_SIZE) : [];
+      pager.next = String(data.next_cursor || '');
+      pager.hasMore = Boolean(data.has_more && pager.next);
+      renderModeration();
+    } catch (error) {
+      if ($('zskyModerationList')) $('zskyModerationList').innerHTML = empty('Moderation queue could not be loaded. Please retry.');
+      throw error;
+    } finally {
+      zskyState.moderationLoading = false;
+    }
+  }
+
+  async function moveModerationPage(direction){
+    const pager = moderationState();
+    if (direction > 0) {
+      if (!pager.hasMore || !pager.next) return;
+      pager.stack.push(pager.cursor);
+      pager.cursor = pager.next;
+      pager.page += 1;
+    } else {
+      if (!pager.stack.length) return;
+      pager.cursor = pager.stack.pop() || '';
+      pager.page = Math.max(1, pager.page - 1);
+    }
+    await loadModeration(true);
+  }
+
+  function detailRows(rows){
+    return `<div class="zsky-admin-detail-grid">${rows.map(([label, value]) => `<div class="zsky-admin-detail"><small>${safe(label)}</small><strong>${safe(humanValue(value))}</strong></div>`).join('')}</div>`;
+  }
+
+  async function openPostDetails(postId){
+    try {
+      const data = await request('post_details', {params:{post_id:postId}, busyText:'Loading post details...'});
+      const post = data.post || {};
+      zskyState.selectedPost = post;
+      const body = `${detailRows([
+        ['Post ID', post.post_id || postId], ['Creator', post.creator_name || post.author_name || post.creator_uid],
+        ['Status', post.moderation_status || post.status], ['Created', timestamp(post.created_at)],
+        ['Updated', timestamp(post.updated_at)], ['Views', post.view_count || post.views || 0],
+      ])}<div class="zsky-content-preview"><small>Title</small><strong>${safe(humanValue(post.title || post.headline, 'Untitled post'))}</strong><small>Post text</small><p>${safe(humanValue(post.body || post.text || post.content, 'No text content.'))}</p></div>`;
+      const reviewable = String(post.status || '').toUpperCase() === 'REVIEW' || String(post.moderation_status || '').toUpperCase() === 'PENDING';
+      const foot = reviewable
+        ? '<button class="btn ghost" type="button" onclick="closeDrawer()">Close</button><button class="btn danger" type="button" data-zsky-post-decision="REJECT">Reject</button><button class="btn brand" type="button" data-zsky-post-decision="APPROVE">Approve</button>'
+        : '<button class="btn ghost" type="button" onclick="closeDrawer()">Close</button>';
+      openDrawer('Post moderation', humanValue(post.title || post.headline, 'Post details'), body, foot);
+    } catch (error) { showToast(error.message || 'Post details could not be loaded.', 'error'); }
+  }
+
+  function decidePost(decision){
+    const post = zskyState.selectedPost || {};
+    if (!post.post_id || !post.updated_at) return showToast('Reload the post before moderating it.', 'error');
+    const approve = decision === 'APPROVE';
+    const options = approve
+      ? '<option value="CLEAR">Clear</option><option value="ORIGINAL_CONFIRMED">Original confirmed</option><option value="LICENSED">Licensed</option>'
+      : '<option value="POLICY_REJECTED">Policy rejected</option><option value="COPYRIGHT_MATCH">Copyright match</option><option value="PLAGIARISM">Plagiarism</option><option value="OTHER">Other</option>';
+    openModal(
+      approve ? 'Approve post' : 'Reject post',
+      `<label for="zskyPostVerdict">Copyright verdict</label><select class="input" id="zskyPostVerdict">${options}</select><label for="zskyPostDecisionNote">${approve ? 'Admin note (optional)' : 'Reason'}</label><textarea class="input zsky-admin-reason" id="zskyPostDecisionNote" maxlength="${approve ? 1000 : 500}" ${approve ? '' : 'required'}></textarea>`,
+      `<button class="btn ghost" type="button" onclick="closeModal()">Cancel</button><button class="btn ${approve ? 'brand' : 'danger'}" type="button" id="zskyConfirmPostDecision">${approve ? 'Approve' : 'Reject'}</button>`
+    );
+    $('zskyConfirmPostDecision')?.addEventListener('click', async event => {
+      const note = $('zskyPostDecisionNote')?.value.trim() || '';
+      if (!approve && !note) return showToast('A rejection reason is required.', 'error');
+      event.currentTarget.disabled = true;
+      try {
+        await request('post_decision', {method:'POST', body:{
+          post_id:post.post_id, expected_updated_at:Number(post.updated_at), decision,
+          copyright_verdict:$('zskyPostVerdict')?.value || (approve ? 'CLEAR' : 'POLICY_REJECTED'),
+          [approve ? 'note' : 'reason']:note, idempotency_key:actionKey(`post-${decision.toLowerCase()}`),
+        }, busyText:`${approve ? 'Approving' : 'Rejecting'} post...`});
+        closeModal(); closeDrawer();
+        await loadModeration(true);
+        showToast(approve ? 'Post approved.' : 'Post rejected.', 'success');
+      } catch (error) { closeModal(); showToast(error.message || 'Post decision failed.', 'error'); }
+    }, {once:true});
+  }
+
+  async function openCommentDetails(postId, commentId){
+    try {
+      const data = await request('comment_details', {params:{post_id:postId, comment_id:commentId}, busyText:'Loading comment details...'});
+      const comment = data.comment || {};
+      zskyState.selectedComment = comment;
+      const body = `${detailRows([
+        ['Comment ID', comment.comment_id || commentId], ['Post ID', comment.post_id || postId],
+        ['Author', comment.creator_name || comment.author_name || comment.creator_uid], ['Status', comment.moderation_status || comment.status],
+        ['Created', timestamp(comment.created_at)], ['Updated', timestamp(comment.updated_at)],
+      ])}<div class="zsky-content-preview"><small>Comment</small><p>${safe(humanValue(comment.text || comment.comment || comment.body || comment.content, 'No text content.'))}</p></div>`;
+      const reviewable = String(comment.status || '').toUpperCase() === 'REVIEW' || String(comment.moderation_status || '').toUpperCase() === 'PENDING';
+      const foot = reviewable
+        ? '<button class="btn ghost" type="button" onclick="closeDrawer()">Close</button><button class="btn danger" type="button" data-zsky-comment-decision="REJECT">Reject</button><button class="btn brand" type="button" data-zsky-comment-decision="APPROVE">Approve</button>'
+        : '<button class="btn ghost" type="button" onclick="closeDrawer()">Close</button>';
+      openDrawer('Comment moderation', `Comment ${humanValue(comment.comment_id || commentId)}`, body, foot);
+    } catch (error) { showToast(error.message || 'Comment details could not be loaded.', 'error'); }
+  }
+
+  function decideComment(decision){
+    const comment = zskyState.selectedComment || {};
+    if (!comment.post_id || !comment.comment_id || !comment.updated_at) return showToast('Reload the comment before moderating it.', 'error');
+    const approve = decision === 'APPROVE';
+    openModal(
+      approve ? 'Approve comment' : 'Reject comment',
+      `<label for="zskyCommentDecisionNote">${approve ? 'Admin note (optional)' : 'Reason'}</label><textarea class="input zsky-admin-reason" id="zskyCommentDecisionNote" maxlength="500" ${approve ? '' : 'required'}></textarea>`,
+      `<button class="btn ghost" type="button" onclick="closeModal()">Cancel</button><button class="btn ${approve ? 'brand' : 'danger'}" type="button" id="zskyConfirmCommentDecision">${approve ? 'Approve' : 'Reject'}</button>`
+    );
+    $('zskyConfirmCommentDecision')?.addEventListener('click', async event => {
+      const note = $('zskyCommentDecisionNote')?.value.trim() || '';
+      if (!approve && !note) return showToast('A rejection reason is required.', 'error');
+      event.currentTarget.disabled = true;
+      try {
+        await request('comment_decision', {method:'POST', body:{
+          post_id:comment.post_id, comment_id:comment.comment_id, expected_updated_at:Number(comment.updated_at), decision,
+          [approve ? 'note' : 'reason']:note, idempotency_key:actionKey(`comment-${decision.toLowerCase()}`),
+        }, busyText:`${approve ? 'Approving' : 'Rejecting'} comment...`});
+        closeModal(); closeDrawer();
+        await loadModeration(true);
+        showToast(approve ? 'Comment approved.' : 'Comment rejected.', 'success');
+      } catch (error) { closeModal(); showToast(error.message || 'Comment decision failed.', 'error'); }
+    }, {once:true});
+  }
 
   function creatorRow(row){
     const uid = String(row.creator_uid || row.zpay_uid || '').trim();
@@ -195,7 +490,7 @@
       : `Blocked: ${timestamp(row.blocked_at)}${row.block_reason ? ` • ${safe(row.block_reason)}` : ''}`;
     return `
       <article class="zsky-admin-row zsky-creator-row ${selected ? 'selected' : ''}" data-creator-uid="${safe(uid)}">
-        <div class="zsky-creator-select">${active ? `<input type="checkbox" aria-label="Select ${safe(row.name || 'creator')}" data-zsky-select-creator="${safe(uid)}" ${selected ? 'checked' : ''}>` : '<span class="zsky-blocked-mark" aria-hidden="true">×</span>'}</div>
+        <div class="zsky-creator-select">${active && zskyState.mode === 'PAYOUT' ? `<input type="checkbox" aria-label="Select ${safe(row.name || 'creator')}" data-zsky-select-creator="${safe(uid)}" ${selected ? 'checked' : ''}>` : `<span class="${active ? 'zsky-active-mark' : 'zsky-blocked-mark'}" aria-hidden="true">${active ? '✓' : '×'}</span>`}</div>
         <div class="zsky-admin-row-main"><strong>${safe(row.name || 'Z-Pay creator')}</strong><span>${safe(account)} • ${safe(uid)}</span><small>${secondary}</small></div>
         <div class="zsky-admin-cell"><small>Wallet snapshot</small><strong>${safe(currency)}</strong></div>
         <div class="zsky-admin-cell"><small>Creator status</small><strong class="${active ? 'zsky-status-active' : 'zsky-flag'}">${safe(status)}</strong></div>
@@ -209,52 +504,143 @@
     ensureUi();
     const status = zskyState.activeStatus;
     const rows = creatorsForStatus(status);
-    if ($('zskyCreatorListTitle')) $('zskyCreatorListTitle').textContent = status === 'ACTIVE' ? 'Active creators' : 'Blocked creators';
+    const paged = pageRows(rows, zskyState.creatorPage);
+    zskyState.creatorPage = paged.page;
+    if ($('zskyCreatorListTitle')) $('zskyCreatorListTitle').textContent = zskyState.mode === 'PAYOUT'
+      ? 'Payout eligibility preview'
+      : (status === 'ACTIVE' ? 'Active creators' : 'Blocked creators');
     if ($('zskyCreatorListSubtitle')) $('zskyCreatorListSubtitle').textContent = status === 'ACTIVE'
-      ? 'Select up to five creators for a payout eligibility preview.'
+      ? (zskyState.mode === 'PAYOUT' ? 'Select up to five active creators. No amount is calculated or transferred here.' : 'Manage creator access using public registry fields only.')
       : 'Blocked creators cannot publish, manage posts or receive payout.';
-    if ($('zskyCreatorList')) $('zskyCreatorList').innerHTML = rows.length
-      ? rows.map(creatorRow).join('')
+    if ($('zskyCreatorList')) $('zskyCreatorList').innerHTML = paged.items.length
+      ? paged.items.map(creatorRow).join('')
       : empty(status === 'ACTIVE' ? 'No active creator is registered yet.' : 'No creator is currently blocked.');
+    updateClientPager('zskyCreator', paged.page, paged.maxPage);
     updateMetrics();
   }
 
+  function yesNo(value){ return value ? 'Enabled' : 'Disabled'; }
+
+  function renderPolicy(){
+    const policy = zskyState.policy || {};
+    if (!$('zskyPolicyBody')) return;
+    if (!zskyState.policy) {
+      $('zskyPolicyBody').innerHTML = empty('Current policy could not be loaded. Please retry.');
+      return;
+    }
+    $('zskyPolicyBody').innerHTML = `
+      ${detailRows([
+        ['Revenue mode', policy.revenue_mode],
+        ['Performance review', `${humanValue(policy.performance_review_days, '7')} days`],
+        ['Payout cycle', policy.payout_cycle],
+        ['Payout destination', policy.payout_destination],
+        ['Creator pool', `${humanValue(policy.creator_pool_percent_of_net, '0')}% of net`],
+        ['Platform share', `${humanValue(policy.platform_share_percent_of_net, '0')}% of net`],
+        ['Safety reserve', `${humanValue(policy.safety_reserve_percent, '0')}%`],
+        ['Batch limit', policy.payout_batch_limit],
+        ['Creator balance', yesNo(Boolean(policy.creator_balance_enabled))],
+        ['Withdrawal requests', yesNo(Boolean(policy.withdraw_request_enabled))],
+        ['Automatic per-ad credit', yesNo(Boolean(policy.automatic_per_ad_credit_enabled))],
+        ['Wallet currencies', Array.isArray(policy.supported_wallet_currencies) ? policy.supported_wallet_currencies.join(', ') : '-'],
+      ])}
+      <div class="zsky-retired-note"><strong>Server authoritative</strong><span>Creator/account eligibility and review-period rules remain enforced by the existing backend. No financial amount is accepted from this screen.</span></div>`;
+  }
+
+  async function loadPolicy(force=false){
+    if (zskyState.policy && !force) { renderPolicy(); return; }
+    if (zskyState.policyLoading) return;
+    zskyState.policyLoading = true;
+    if ($('zskyPolicyBody')) $('zskyPolicyBody').innerHTML = empty('Loading policy...');
+    try {
+      const response = await fetch('/api/znews/public/policy.php', {
+        method:'GET', credentials:'same-origin', cache:'no-store', headers:{'Accept':'application/json'},
+      });
+      const json = readJson(await response.text());
+      if (!response.ok || !json.ok || !json.data) throw new Error('Current policy could not be loaded.');
+      zskyState.policy = json.data;
+      renderPolicy();
+    } catch (error) {
+      zskyState.policy = null;
+      renderPolicy();
+      throw error;
+    } finally {
+      zskyState.policyLoading = false;
+    }
+  }
+
   function setMode(mode){
-    zskyState.mode = mode === 'WEEKLY' ? 'WEEKLY' : mode === 'MONTHLY' ? 'MONTHLY' : 'CREATORS';
+    const allowed = ['OVERVIEW','MODERATION','CREATORS','WEEKLY','MONTHLY','PAYOUT','POLICY'];
+    zskyState.mode = allowed.includes(mode) ? mode : 'OVERVIEW';
     document.querySelectorAll('[data-zsky-mode]').forEach(node => {
       const active = node.dataset.zskyMode === zskyState.mode;
       node.classList.toggle('active', active);
       node.setAttribute('aria-selected', String(active));
     });
-    if ($('zskyCreatorAdminView')) $('zskyCreatorAdminView').hidden = zskyState.mode !== 'CREATORS';
+    if ($('zskyOverviewView')) $('zskyOverviewView').hidden = zskyState.mode !== 'OVERVIEW';
+    if ($('zskyModerationView')) $('zskyModerationView').hidden = zskyState.mode !== 'MODERATION';
+    if ($('zskyCreatorAdminView')) $('zskyCreatorAdminView').hidden = !['CREATORS','PAYOUT'].includes(zskyState.mode);
     if ($('zskyWeeklyReviewView')) $('zskyWeeklyReviewView').hidden = zskyState.mode !== 'WEEKLY';
     if ($('zskyMonthlyView')) $('zskyMonthlyView').hidden = zskyState.mode !== 'MONTHLY';
+    if ($('zskyPolicyView')) $('zskyPolicyView').hidden = zskyState.mode !== 'POLICY';
+    const blockedTab = document.querySelector('[data-zsky-creator-tab="BLOCKED"]');
+    if (blockedTab) blockedTab.hidden = zskyState.mode === 'PAYOUT';
+    if (zskyState.mode === 'PAYOUT') {
+      zskyState.activeStatus = 'ACTIVE';
+      zskyState.creatorPage = 1;
+      document.querySelectorAll('[data-zsky-creator-tab]').forEach(node => {
+        const active = node.dataset.zskyCreatorTab === 'ACTIVE';
+        node.classList.toggle('active', active);
+        node.setAttribute('aria-selected', String(active));
+      });
+    }
     if (zskyState.mode === 'WEEKLY') {
       loadWeekly().catch(error => showToast(error.message || 'Weekly reviews could not be loaded.', 'error'));
     } else if (zskyState.mode === 'MONTHLY') {
       loadMonthly().catch(error => showToast(error.message || 'Monthly performance could not be loaded.', 'error'));
-    } else {
+    } else if (zskyState.mode === 'MODERATION') {
+      loadModeration().catch(error => showToast(error.message || 'Moderation queue could not be loaded.', 'error'));
+    } else if (zskyState.mode === 'POLICY') {
+      loadPolicy().catch(error => showToast(error.message || 'Z Sky settings could not be loaded.', 'error'));
+    } else if (['CREATORS','PAYOUT'].includes(zskyState.mode)) {
       renderCreators();
+    } else {
+      updateMetrics();
+      renderModeration();
     }
   }
 
   async function load(force=false){
     ensureUi();
-    if (zskyState.loaded && !force) { renderCreators(); return; }
+    if (zskyState.loaded && !force) { setMode(zskyState.mode); return; }
     if (zskyState.loading && zskyState.loadPromise) return zskyState.loadPromise;
     zskyState.loading = true;
     if ($('zskyCreatorList') && !zskyState.loaded) $('zskyCreatorList').innerHTML = empty('Loading creators…');
     zskyState.loadPromise = (async () => {
-      const [active, blocked] = await Promise.all([
+      const postPager = zskyState.moderationPages.POSTS;
+      const commentPager = zskyState.moderationPages.COMMENTS;
+      const results = await Promise.allSettled([
         request('creators_list', {params:{status:'ACTIVE', limit:100}, busy:false}),
         request('creators_list', {params:{status:'BLOCKED', limit:100}, busy:false}),
+        request('posts_queue', {params:{limit:PAGE_SIZE, cursor:postPager.cursor}, busy:false}),
+        request('comments_queue', {params:{limit:PAGE_SIZE, cursor:commentPager.cursor}, busy:false}),
       ]);
+      if (results.every(result => result.status === 'rejected')) throw results[0].reason;
+      const [active, blocked, posts, comments] = results.map(result => result.status === 'fulfilled' ? result.value : {});
       zskyState.activeCreators = Array.isArray(active.items) ? active.items : [];
       zskyState.blockedCreators = Array.isArray(blocked.items) ? blocked.items : [];
+      zskyState.postRows = Array.isArray(posts.items) ? posts.items.slice(0, PAGE_SIZE) : [];
+      zskyState.commentRows = Array.isArray(comments.items) ? comments.items.slice(0, PAGE_SIZE) : [];
+      postPager.next = String(posts.next_cursor || '');
+      postPager.hasMore = Boolean(posts.has_more && postPager.next);
+      commentPager.next = String(comments.next_cursor || '');
+      commentPager.hasMore = Boolean(comments.has_more && commentPager.next);
       const activeIds = new Set(zskyState.activeCreators.map(row => String(row.creator_uid || '')));
       [...zskyState.selected].forEach(uid => { if (!activeIds.has(uid)) zskyState.selected.delete(uid); });
       zskyState.loaded = true;
       renderCreators();
+      renderModeration();
+      setMode(zskyState.mode);
+      if (results.some(result => result.status === 'rejected')) showToast('Some Z Sky 24 data could not be loaded. Retry this view.', 'error');
     })().finally(() => {
       zskyState.loading = false;
       zskyState.loadPromise = null;
@@ -480,6 +866,8 @@
     const lifecycle = String(period.lifecycle_status || selected?.lifecycle_status || '').toUpperCase();
     const readOnly = Boolean(data?.read_only || period.live_preview || lifecycle === 'LIVE' || lifecycle === 'UPCOMING');
     const rows = Array.isArray(data?.items) ? data.items : [];
+    const paged = pageRows(rows, zskyState.weeklyPage);
+    zskyState.weeklyPage = paged.page;
 
     configurePeriodAction({...selected, ...period}, data);
 
@@ -520,8 +908,8 @@
     }
 
     if ($('zskyWeeklyList')) {
-      if (rows.length) {
-        $('zskyWeeklyList').innerHTML = rows.map(row => weeklyRow(row, {readOnly})).join('');
+      if (paged.items.length) {
+        $('zskyWeeklyList').innerHTML = paged.items.map(row => weeklyRow(row, {readOnly})).join('');
       } else if (lifecycle === 'UPCOMING') {
         $('zskyWeeklyList').innerHTML = empty('This period has not started yet. Live metrics will appear automatically when it begins.');
       } else if (lifecycle === 'LIVE') {
@@ -530,6 +918,7 @@
         $('zskyWeeklyList').innerHTML = empty(data ? 'No registered creators were found for this period.' : 'Generate this completed period to create review snapshots.');
       }
     }
+    updateClientPager('zskyWeekly', paged.page, paged.maxPage);
   }
 
   async function loadWeeklyPeriods(force=false){
@@ -543,6 +932,7 @@
   }
 
   async function loadWeeklyReview(periodId){
+    zskyState.weeklyPage = 1;
     if (!periodId) { zskyState.weeklyReview = null; renderWeekly(); return; }
     const meta = periodMeta(periodId);
     if (String(meta?.lifecycle_status || '').toUpperCase() === 'UPCOMING') {
@@ -720,6 +1110,8 @@
     const month = data?.month || monthlyMeta() || zskyState.defaultMonth || {};
     const summary = data?.summary || {};
     const rows = Array.isArray(data?.items) ? data.items : [];
+    const paged = pageRows(rows, zskyState.monthlyPage);
+    zskyState.monthlyPage = paged.page;
     const expected = Number(summary.expected_period_count || month.expected_period_count || 4);
     const generated = Number(summary.generated_period_count || 0);
 
@@ -741,12 +1133,13 @@
     }
 
     if ($('zskyMonthlyList')) {
-      $('zskyMonthlyList').innerHTML = rows.length
-        ? rows.map(monthlyRow).join('')
+      $('zskyMonthlyList').innerHTML = paged.items.length
+        ? paged.items.map(monthlyRow).join('')
         : empty(String(month.lifecycle_status || '').toUpperCase() === 'UPCOMING'
           ? 'This month has not started yet.'
           : 'No registered creator performance is available for this month.');
     }
+    updateClientPager('zskyMonthly', paged.page, paged.maxPage);
   }
 
   async function loadMonthlyPeriods(force=false){
@@ -760,6 +1153,7 @@
   }
 
   async function loadMonthlyPreview(monthId){
+    zskyState.monthlyPage = 1;
     if (!monthId) { zskyState.monthlyPreview = null; renderMonthly(); return; }
     zskyState.monthlyPreview = await request('monthly_preview', {params:{month_id:monthId}, busy:false});
     renderMonthly();
@@ -779,10 +1173,25 @@
   document.addEventListener('click', event => {
     const mode = event.target.closest('[data-zsky-mode]');
     if (mode) { setMode(mode.dataset.zskyMode); return; }
+    const openMode = event.target.closest('[data-zsky-open-mode]');
+    if (openMode) { setMode(openMode.dataset.zskyOpenMode); return; }
+
+    const moderationTab = event.target.closest('[data-zsky-moderation-tab]');
+    if (moderationTab) {
+      zskyState.moderationType = moderationTab.dataset.zskyModerationTab === 'COMMENTS' ? 'COMMENTS' : 'POSTS';
+      document.querySelectorAll('[data-zsky-moderation-tab]').forEach(node => {
+        const active = node === moderationTab;
+        node.classList.toggle('active', active);
+        node.setAttribute('aria-selected', String(active));
+      });
+      renderModeration();
+      return;
+    }
 
     const tab = event.target.closest('[data-zsky-creator-tab]');
     if (tab) {
       zskyState.activeStatus = tab.dataset.zskyCreatorTab === 'BLOCKED' ? 'BLOCKED' : 'ACTIVE';
+      zskyState.creatorPage = 1;
       document.querySelectorAll('[data-zsky-creator-tab]').forEach(node => {
         const active = node === tab;
         node.classList.toggle('active', active);
@@ -791,6 +1200,15 @@
       renderCreators();
       return;
     }
+
+    const viewPost = event.target.closest('[data-zsky-view-post]');
+    if (viewPost) { openPostDetails(viewPost.dataset.zskyViewPost); return; }
+    const viewComment = event.target.closest('[data-zsky-view-comment]');
+    if (viewComment) { openCommentDetails(viewComment.dataset.postId, viewComment.dataset.zskyViewComment); return; }
+    const postDecision = event.target.closest('[data-zsky-post-decision]');
+    if (postDecision) { decidePost(postDecision.dataset.zskyPostDecision); return; }
+    const commentDecision = event.target.closest('[data-zsky-comment-decision]');
+    if (commentDecision) { decideComment(commentDecision.dataset.zskyCommentDecision); return; }
 
     const block = event.target.closest('[data-zsky-block-creator]');
     if (block) { blockCreator(block.dataset.zskyBlockCreator, block.dataset.creatorName || 'Creator'); return; }
@@ -804,10 +1222,21 @@
     const hold = event.target.closest('[data-zsky-weekly-hold]');
     if (hold && !hold.disabled) { holdWeeklyReview(hold.dataset.zskyWeeklyHold, hold.dataset.creatorName || 'Creator'); return; }
 
+    if (event.target.closest('#zskyModerationPrevious')) { moveModerationPage(-1).catch(error => showToast(error.message || 'Previous page could not be loaded.', 'error')); return; }
+    if (event.target.closest('#zskyModerationNext')) { moveModerationPage(1).catch(error => showToast(error.message || 'Next page could not be loaded.', 'error')); return; }
+    if (event.target.closest('#zskyCreatorPrevious')) { zskyState.creatorPage = Math.max(1, zskyState.creatorPage - 1); renderCreators(); return; }
+    if (event.target.closest('#zskyCreatorNext')) { zskyState.creatorPage += 1; renderCreators(); return; }
+    if (event.target.closest('#zskyWeeklyPrevious')) { zskyState.weeklyPage = Math.max(1, zskyState.weeklyPage - 1); renderWeekly(); return; }
+    if (event.target.closest('#zskyWeeklyNext')) { zskyState.weeklyPage += 1; renderWeekly(); return; }
+    if (event.target.closest('#zskyMonthlyPrevious')) { zskyState.monthlyPage = Math.max(1, zskyState.monthlyPage - 1); renderMonthly(); return; }
+    if (event.target.closest('#zskyMonthlyNext')) { zskyState.monthlyPage += 1; renderMonthly(); return; }
+
     if (event.target.closest('#zsky24RefreshBtn')) {
       if (zskyState.mode === 'WEEKLY') loadWeekly(true).catch(error => showToast(error.message || 'Weekly refresh failed.', 'error'));
       else if (zskyState.mode === 'MONTHLY') loadMonthly(true).catch(error => showToast(error.message || 'Monthly refresh failed.', 'error'));
-      else load(true).catch(error => showToast(error.message || 'Creator refresh failed.', 'error'));
+      else if (zskyState.mode === 'MODERATION') loadModeration(true).catch(error => showToast(error.message || 'Moderation refresh failed.', 'error'));
+      else if (zskyState.mode === 'POLICY') loadPolicy(true).catch(error => showToast(error.message || 'Settings refresh failed.', 'error'));
+      else load(true).catch(error => showToast(error.message || 'Z Sky 24 refresh failed.', 'error'));
       return;
     }
     if (event.target.closest('#zskyClearCreatorSelection')) {

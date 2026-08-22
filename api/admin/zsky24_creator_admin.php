@@ -70,11 +70,54 @@ require_once dirname(__DIR__) . '/znews/lib/creator_payout_batches.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_weekly_reviews.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_calendar_reviews.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_monthly_performance.php';
+require_once dirname(__DIR__) . '/znews/lib/moderation_media.php';
+require_once dirname(__DIR__) . '/znews/lib/post_media_attach.php';
+require_once dirname(__DIR__) . '/znews/lib/comments.php';
 
 $auth = auth_require_admin_session(true);
 $admin = is_array($auth['user'] ?? null) ? (array)$auth['user'] : [];
 $adminUid = trim((string)($admin['uid'] ?? ''));
 $action = strtolower(trim((string)($_GET['action'] ?? '')));
+
+if ($action === 'posts_queue') {
+    if ($method !== 'GET') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Post moderation queue is GET-only.', [], 405);
+    }
+    $limit = max(1, min(10, (int)($_GET['limit'] ?? 10)));
+    $cursor = trim((string)($_GET['cursor'] ?? ''));
+    zsky24_admin_gateway_response(true, 'ZNEWS_MODERATION_QUEUE_OK', 'Post moderation queue loaded.', znews_admin_queue($limit, $cursor));
+}
+
+if ($action === 'post_details') {
+    if ($method !== 'GET') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Post moderation details are GET-only.', [], 405);
+    }
+    $postId = znews_firebase_key($_GET['post_id'] ?? '', 'post_id');
+    $data = znews_admin_post_details($postId);
+    $rawPost = fb_get(znews_path_post($postId));
+    if (is_array($rawPost)) {
+        $data['post'] = znews_post_format_with_media($rawPost, true, true);
+    }
+    zsky24_admin_gateway_response(true, 'ZNEWS_ADMIN_POST_DETAILS_OK', 'Post moderation details loaded.', $data);
+}
+
+if ($action === 'comments_queue') {
+    if ($method !== 'GET') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Comment moderation queue is GET-only.', [], 405);
+    }
+    $limit = max(1, min(10, (int)($_GET['limit'] ?? 10)));
+    $cursor = znews_comment_cursor_decode($_GET['cursor'] ?? '');
+    zsky24_admin_gateway_response(true, 'ZNEWS_ADMIN_COMMENT_QUEUE_OK', 'Comment moderation queue loaded.', znews_admin_comment_queue($limit, $cursor));
+}
+
+if ($action === 'comment_details') {
+    if ($method !== 'GET') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Comment moderation details are GET-only.', [], 405);
+    }
+    $postId = znews_firebase_key($_GET['post_id'] ?? '', 'post_id');
+    $commentId = znews_firebase_key($_GET['comment_id'] ?? '', 'comment_id');
+    zsky24_admin_gateway_response(true, 'ZNEWS_ADMIN_COMMENT_DETAILS_OK', 'Comment details loaded.', znews_admin_comment_details($postId, $commentId));
+}
 
 if ($action === 'creators_list') {
     if ($method !== 'GET') {
@@ -164,6 +207,84 @@ $raw = file_get_contents('php://input');
 $body = trim((string)$raw) === '' ? [] : json_decode((string)$raw, true);
 if (!is_array($body)) {
     zsky24_admin_gateway_response(false, 'INVALID_JSON', 'Request body must be valid JSON.', [], 400);
+}
+
+if ($action === 'post_decision') {
+    if ($method !== 'POST') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Post moderation decision is POST-only.', [], 405);
+    }
+    $postId = znews_firebase_key($body['post_id'] ?? '', 'post_id');
+    $expectedUpdatedAt = filter_var($body['expected_updated_at'] ?? null, FILTER_VALIDATE_INT);
+    if ($expectedUpdatedAt === false || $expectedUpdatedAt <= 0) {
+        zsky24_admin_gateway_response(false, 'ZNEWS_EXPECTED_UPDATED_AT_REQUIRED', 'Post version is required.', [], 422);
+    }
+    $decision = strtoupper(trim((string)($body['decision'] ?? '')));
+    if (!in_array($decision, ['APPROVE', 'REJECT'], true)) {
+        zsky24_admin_gateway_response(false, 'ZNEWS_INVALID_ACTION', 'Approve or Reject is required.', [], 422);
+    }
+    $approve = $decision === 'APPROVE';
+    $verdict = znews_copyright_verdict($body['copyright_verdict'] ?? '', $approve);
+    $note = znews_moderation_note($body[$approve ? 'note' : 'reason'] ?? '', !$approve, $approve ? 1000 : 500);
+    $idempotencyKey = znews_idempotency_key($body['idempotency_key'] ?? $body['client_request_id'] ?? '');
+    $result = znews_admin_moderate_post_with_media(
+        $auth,
+        $postId,
+        (int)$expectedUpdatedAt,
+        $idempotencyKey,
+        $decision,
+        $verdict,
+        $note
+    );
+    zsky24_admin_gateway_response(
+        !empty($result['ok']),
+        (string)($result['code'] ?? (!empty($result['ok']) ? 'ZNEWS_POST_MODERATED' : 'ZNEWS_POST_MODERATION_FAILED')),
+        !empty($result['ok']) ? ($approve ? 'Post approved.' : 'Post rejected.') : (string)($result['message'] ?? 'Post could not be moderated.'),
+        array_filter([
+            'post' => is_array($result['post'] ?? null) ? (array)$result['post'] : null,
+            'idempotent_replay' => isset($result['idempotent_replay']) ? (bool)$result['idempotent_replay'] : null,
+            'current_updated_at' => $result['data']['current_updated_at'] ?? null,
+        ], static fn($value): bool => $value !== null),
+        (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 500))
+    );
+}
+
+if ($action === 'comment_decision') {
+    if ($method !== 'POST') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Comment moderation decision is POST-only.', [], 405);
+    }
+    $postId = znews_firebase_key($body['post_id'] ?? '', 'post_id');
+    $commentId = znews_firebase_key($body['comment_id'] ?? '', 'comment_id');
+    $expectedUpdatedAt = filter_var($body['expected_updated_at'] ?? null, FILTER_VALIDATE_INT);
+    if ($expectedUpdatedAt === false || $expectedUpdatedAt <= 0) {
+        zsky24_admin_gateway_response(false, 'ZNEWS_EXPECTED_UPDATED_AT_REQUIRED', 'Comment version is required.', [], 422);
+    }
+    $decision = strtoupper(trim((string)($body['decision'] ?? '')));
+    if (!in_array($decision, ['APPROVE', 'REJECT'], true)) {
+        zsky24_admin_gateway_response(false, 'ZNEWS_INVALID_ACTION', 'Approve or Reject is required.', [], 422);
+    }
+    $approve = $decision === 'APPROVE';
+    $note = znews_comment_moderation_note($body[$approve ? 'note' : 'reason'] ?? '', !$approve);
+    $idempotencyKey = znews_idempotency_key($body['idempotency_key'] ?? $body['client_request_id'] ?? '');
+    $result = znews_admin_moderate_comment(
+        $auth,
+        $postId,
+        $commentId,
+        (int)$expectedUpdatedAt,
+        $idempotencyKey,
+        $decision,
+        $note
+    );
+    zsky24_admin_gateway_response(
+        !empty($result['ok']),
+        (string)($result['code'] ?? (!empty($result['ok']) ? 'ZNEWS_COMMENT_MODERATED' : 'ZNEWS_COMMENT_MODERATION_FAILED')),
+        !empty($result['ok']) ? ($approve ? 'Comment approved.' : 'Comment rejected.') : (string)($result['message'] ?? 'Comment could not be moderated.'),
+        array_filter([
+            'comment' => is_array($result['comment'] ?? null) ? (array)$result['comment'] : null,
+            'idempotent_replay' => isset($result['idempotent_replay']) ? (bool)$result['idempotent_replay'] : null,
+            'details' => is_array($result['data'] ?? null) ? (array)$result['data'] : null,
+        ], static fn($value): bool => $value !== null),
+        (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 500))
+    );
 }
 
 if ($action === 'creator_status') {

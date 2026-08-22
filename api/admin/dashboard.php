@@ -862,31 +862,14 @@ header('Pragma: no-cache');
           <div class="zsky-admin-hero">
             <div>
               <span class="zsky-admin-kicker">Z SKY 24 OPERATIONS</span>
-              <h3 id="zsky24AdminTitle">Creator credit control</h3>
-              <p>Review verified ad revenue and creator transfer requests without changing settlement values in the browser.</p>
+              <h3 id="zsky24AdminTitle">Z Sky 24 Admin</h3>
+              <p>Moderation, creator access and fixed-calendar performance review.</p>
             </div>
             <button class="btn blue" id="zsky24RefreshBtn" type="button">Refresh</button>
           </div>
-
-          <div class="zsky-admin-metrics" aria-label="Z Sky 24 queue summary">
-            <div class="zsky-admin-metric"><span>Ready to settle</span><strong id="zskySettlementCount">0</strong></div>
-            <div class="zsky-admin-metric"><span>Transfer review</span><strong id="zskyTransferCount">0</strong></div>
-            <div class="zsky-admin-metric warning"><span>Ad review</span><strong id="zskyImpressionCount">0</strong></div>
-            <div class="zsky-admin-metric danger"><span>Reconciliation flags</span><strong id="zskyReconciliationCount">0</strong></div>
-          </div>
-
-          <div class="zsky-admin-tabs" role="tablist" aria-label="Creator credit queues">
-            <button class="zsky-admin-tab active" type="button" data-zsky-tab="settlements" role="tab" aria-selected="true">Creator credits</button>
-            <button class="zsky-admin-tab" type="button" data-zsky-tab="transfers" role="tab" aria-selected="false">Transfer requests</button>
-            <button class="zsky-admin-tab" type="button" data-zsky-tab="impressions" role="tab" aria-selected="false">Ad verification</button>
-          </div>
-
           <div class="card zsky-admin-panel">
-            <div class="panel-head">
-              <div><h3 id="zskyQueueTitle">Verified revenue</h3><p id="zskyQueueSubtitle">Only provider-verified impressions can be settled.</p></div>
-            </div>
-            <div id="zskyQueueBody" class="zsky-admin-list" aria-live="polite">
-              <div class="empty">Open Z Sky 24 to load creator credit data.</div>
+            <div class="zsky-admin-list" aria-live="polite">
+              <div class="empty">Loading Z Sky 24 Admin...</div>
             </div>
           </div>
         </div>
