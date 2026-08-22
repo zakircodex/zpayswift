@@ -2399,6 +2399,7 @@ async function loadUsers(options = {}){
       limit: state.usersPagination.limit,
       cursor: state.usersPagination.cursor,
       search,
+      role: document.getElementById('usersRoleFilter')?.value || '',
       status: state.usersStatus
     }, options);
 
@@ -5552,6 +5553,11 @@ document.getElementById('usersSearch')?.addEventListener('input', () => {
     state.loaded.users = false;
     loadUsers({ busy:false, silentLog:true }).catch(() => {});
   }, 350);
+});
+document.getElementById('usersRoleFilter')?.addEventListener('change', () => {
+  resetCursorPagination(state.usersPagination);
+  state.loaded.users = false;
+  loadUsers({ busyText:'Filtering users...' }).catch(() => {});
 });
 
 document.getElementById('refreshBtn')?.addEventListener('click', () => refreshCurrentView(false));

@@ -23,6 +23,15 @@
   background:rgba(7,23,38,.34);
 }
 
+#usersSection .users-filter-controls{
+  display:grid;
+  grid-template-columns:minmax(220px,440px) minmax(140px,180px);
+  align-items:end;
+  gap:10px;
+  flex:1 1 560px;
+  min-width:0;
+}
+
 #usersSection .users-search-wrap{
   display:grid;
   flex:1 1 360px;
@@ -38,6 +47,22 @@
 
 #usersSection #usersSearch{
   width:min(440px,100%);
+  height:48px;
+  min-height:48px;
+  border-radius:12px;
+}
+
+#usersSection .users-role-filter-wrap{
+  display:grid;
+  gap:5px;
+  min-width:0;
+  color:#9fb2ca;
+  font-size:11px;
+  font-weight:700;
+}
+
+#usersSection #usersRoleFilter{
+  width:100%;
   height:48px;
   min-height:48px;
   border-radius:12px;
@@ -416,7 +441,8 @@
   }
 
   #usersSection .users-search-wrap,
-  #usersSection #usersSearch{
+  #usersSection #usersSearch,
+  #usersSection .users-filter-controls{
     width:100%;
   }
 
@@ -437,6 +463,10 @@
 
   #usersSection .users-search-wrap{
     min-width:0;
+  }
+
+  #usersSection .users-filter-controls{
+    grid-template-columns:1fr;
   }
 
   #usersSection .users-toolbar-actions{

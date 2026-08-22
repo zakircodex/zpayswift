@@ -146,6 +146,18 @@ function admin_users_list_uid_from_index(mixed $row): string
     return '';
 }
 
+function admin_users_list_account_status(array $user): string
+{
+    foreach ([$user['account_status'] ?? '', $user['status'] ?? ''] as $candidate) {
+        $status = strtoupper(trim((string)$candidate));
+        if ($status !== '') {
+            return $status;
+        }
+    }
+
+    return 'ACTIVE';
+}
+
 function admin_users_list_lookup_search_uids(string $search): array
 {
     $search = trim($search);
@@ -258,8 +270,8 @@ function admin_users_list_multi_get(array $paths): array
 function admin_users_list_make_item(string $uid, array $user, array $wallet): array
 {
     $role = strtoupper(trim((string)($user['role'] ?? 'USER')));
-    $status = strtoupper(trim((string)($user['status'] ?? 'ACTIVE')));
-    $accountStatus = strtoupper(trim((string)($user['account_status'] ?? $status)));
+    $status = strtoupper(trim((string)($user['status'] ?? 'ACTIVE'))) ?: 'ACTIVE';
+    $accountStatus = admin_users_list_account_status($user);
     $country = admin_users_list_country_code($user, $wallet, [], []);
     $currency = admin_users_list_currency($user, $wallet, $country);
     $availableBalance = (float)($wallet['available_balance'] ?? 0);
@@ -338,7 +350,7 @@ $matchesStatus = static function (array $user) use ($statusFilter): bool {
     if ($statusFilter === 'ALL') {
         return true;
     }
-    $status = strtoupper(trim((string)($user['account_status'] ?? $user['status'] ?? 'ACTIVE')));
+    $status = admin_users_list_account_status($user);
     if ($statusFilter === 'BLOCKED_INACTIVE') {
         return in_array($status, ['BLOCKED', 'INACTIVE'], true);
     }

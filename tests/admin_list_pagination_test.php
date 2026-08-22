@@ -109,9 +109,25 @@ $offers = (string)file_get_contents($root . '/api/admin/bundle/offers.php');
 $users = (string)file_get_contents($root . '/api/admin/users/list.php');
 $mfs = (string)file_get_contents($root . '/api/lib/mfs.php');
 
-$dashboardPos = strpos($dashboard, 'data-section="dashboardSection"');
-$addMoneyPos = strpos($dashboard, 'data-section="addMoneySection"');
-pagination_expect($dashboardPos !== false && $addMoneyPos !== false && $dashboardPos < $addMoneyPos, 'Dashboard must be the first MAIN sidebar destination');
+$sidebarDestinations = [
+    'data-section="dashboardSection"',
+    'data-section="addMoneySection"',
+    'data-section="supportSection"',
+    'data-section="topupSection"',
+    'data-section="bundleSection"',
+    'id="zpayAdminMfsNav"',
+    'data-section="bundleOffersSection"',
+    'data-section="usersSection"',
+    'data-section="operatorsSection"',
+    'data-section="zsky24Section"',
+];
+$lastSidebarPosition = -1;
+foreach ($sidebarDestinations as $destination) {
+    $position = strpos($dashboard, $destination);
+    pagination_expect($position !== false, 'Missing MAIN sidebar destination: ' . $destination);
+    pagination_expect($position > $lastSidebarPosition, 'MAIN sidebar destination order is incorrect at: ' . $destination);
+    $lastSidebarPosition = $position;
+}
 
 foreach (['bundleOffersPrevBtn', 'bundleOffersNextBtn', 'addMoneyPrevBtn', 'addMoneyNextBtn', 'supportPrevBtn', 'supportNextBtn', 'usersPrevBtn', 'usersNextBtn'] as $id) {
     pagination_expect(str_contains($dashboard, 'id="' . $id . '"'), 'Missing Admin pagination control: ' . $id);
@@ -121,8 +137,17 @@ foreach (['ACTIVE', 'REVIEW', 'REJECTED', 'BLOCKED_INACTIVE', 'ALL'] as $status)
 }
 pagination_expect(str_contains($dashboardJs, "usersStatus: 'ACTIVE'"), 'Users default status must remain Active');
 pagination_expect(str_contains($dashboardJs, 'status: state.usersStatus'), 'Users status must be sent to the server before pagination');
+pagination_expect(str_contains($dashboard, 'id="usersRoleFilter"'), 'Users role filter control is missing');
+pagination_expect(str_contains($dashboardJs, "role: document.getElementById('usersRoleFilter')?.value || ''"), 'Users role filter must be sent to the backend');
+pagination_expect(str_contains($dashboardJs, "document.getElementById('usersRoleFilter')?.addEventListener('change'"), 'Users role changes must reset pagination');
 pagination_expect(str_contains($users, "admin_firebase_cursor_page(\n        'USERS'"), 'Users endpoint must use bounded Firebase cursor pagination');
 pagination_expect(!str_contains($users, 'admin_users_list_shallow_keys();'), 'Users endpoint must not inventory the full key tree for a page');
+pagination_expect(str_contains($users, 'admin_users_list_account_status($user)'), 'Users status grouping must use the canonical non-empty status fallback');
+pagination_expect(
+    strpos($users, '$matchesUser') < strpos($users, "admin_firebase_cursor_page(\n        'USERS'"),
+    'Users status/search/role predicate must be prepared before cursor pagination'
+);
+pagination_expect(str_contains($users, "if (\$roleFilter !== '' && \$role !== \$roleFilter)"), 'Users role filter must run inside the backend page predicate');
 
 pagination_expect(str_contains($addMoney, "admin_firebase_cursor_page(\n        'ADD_MONEY_REQUESTS'"), 'Add Money must use bounded Firebase pagination');
 pagination_expect(!str_contains($addMoney, "fb_get('ADD_MONEY_REQUESTS')"), 'Add Money Admin list must not fetch the full request tree');

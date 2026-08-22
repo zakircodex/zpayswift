@@ -762,9 +762,21 @@ header('Pragma: no-cache');
           </div>
 
           <div class="toolbar users-toolbar">
-            <div class="toolbar-left users-search-wrap">
-              <label class="users-search-label" for="usersSearch">Search Users</label>
-              <input class="input md" id="usersSearch" placeholder="Search UID / phone / email / recent name" autocomplete="off">
+            <div class="toolbar-left users-filter-controls">
+              <div class="users-search-wrap">
+                <label class="users-search-label" for="usersSearch">Search Users</label>
+                <input class="input md" id="usersSearch" placeholder="Search UID / phone / email / recent name" autocomplete="off">
+              </div>
+              <label class="users-role-filter-wrap" for="usersRoleFilter">
+                <span>Role</span>
+                <select class="input md" id="usersRoleFilter">
+                  <option value="">All Roles</option>
+                  <option value="USER">User</option>
+                  <option value="RETAILER">Retailer</option>
+                  <option value="SUBADMIN">Subadmin</option>
+                  <option value="ADMIN">Admin</option>
+                </select>
+              </label>
             </div>
             <div class="row-actions user-head-actions users-toolbar-actions">
               <button class="btn brand" id="createUserBtn" type="button">Create User</button>
