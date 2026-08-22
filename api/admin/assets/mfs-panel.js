@@ -51,12 +51,6 @@
     return '<span class="pill mfs-status-pill '+cls+' status-'+esc(status.toLowerCase())+'">'+esc(label)+'</span>';
   }
   function normalizeRows(data){ return Array.isArray(data.items)?data.items:Array.isArray(data.rows)?data.rows:Array.isArray(data.requests)?data.requests:[]; }
-  function totalRows(data){
-    var raw=data&&data.pagination?data.pagination.total:null;
-    if(raw!==null&&raw!==undefined&&raw!==''&&Number.isFinite(Number(raw)))return Number(raw);
-    var count=normalizeRows(data||{}).length;
-    return data&&data.pagination&&data.pagination.has_more?String(count)+'+':count;
-  }
   function currentPage(){ return state.pages[state.tab]||state.pages.pending; }
   function resetAllPages(){ Object.keys(state.pages).forEach(function(tab){var p=state.pages[tab];p.page=1;p.cursor='';p.next_cursor='';p.has_more=false;p.history=[''];}); }
   function applyPage(data){
@@ -502,16 +496,12 @@
   async function loadSummary(){
     ['mfsSummaryPending','mfsSummaryProcessing','mfsSummaryDone','mfsSummaryFailed'].forEach(function(id){el(id).textContent='...';});
     try{
-      var data=await Promise.all([
-        get('mfs_pending',{page:1,limit:1}),
-        get('mfs_processing',{page:1,limit:1}),
-        get('mfs_done',{page:1,limit:1,status:'SUCCESSFUL'}),
-        get('mfs_done',{page:1,limit:1,status:'FAILED'})
-      ]);
-      el('mfsSummaryPending').textContent=String(totalRows(data[0]));
-      el('mfsSummaryProcessing').textContent=String(totalRows(data[1]));
-      el('mfsSummaryDone').textContent=String(totalRows(data[2]));
-      el('mfsSummaryFailed').textContent=String(totalRows(data[3]));
+      var data=await get('mfs_status_counts',{});
+      var counts=data&&data.counts?data.counts:{};
+      el('mfsSummaryPending').textContent=String(Number(counts.pending||0));
+      el('mfsSummaryProcessing').textContent=String(Number(counts.processing||0));
+      el('mfsSummaryDone').textContent=String(Number(counts.done||0));
+      el('mfsSummaryFailed').textContent=String(Number(counts.failed||0));
     }catch(err){
       ['mfsSummaryPending','mfsSummaryProcessing','mfsSummaryDone','mfsSummaryFailed'].forEach(function(id){el(id).textContent='-';});
       throw err;

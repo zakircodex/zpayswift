@@ -3,6 +3,12 @@ const state = {
   me: null,
 
   topupTab: 'pending',
+  topupPagination: {
+    pending: { page:1, limit:10, cursor:'', next_cursor:'', has_more:false, history:[''] },
+    claimed: { page:1, limit:10, cursor:'', next_cursor:'', has_more:false, history:[''] },
+    processing: { page:1, limit:10, cursor:'', next_cursor:'', has_more:false, history:[''] },
+    done: { page:1, limit:10, cursor:'', next_cursor:'', has_more:false, history:[''] }
+  },
 
   topups: [],
   bundles: [],
@@ -16,6 +22,7 @@ const state = {
   supportCategories: [],
   supportConfig: {},
   supportOpenTicketId: '',
+  supportTab: 'tickets',
   doneTopups: [],
   doneBundles: [],
   users: [],
@@ -28,6 +35,7 @@ const state = {
     history: ['']
   },
   usersStatus: 'ACTIVE',
+  usersRequestSerial: 0,
   workers: [],
   operators: [],
 
@@ -79,6 +87,7 @@ const state = {
 
 const submitLocks = {};
 let usersSearchTimer = null;
+let topupSearchTimer = null;
 let supportSearchTimer = null;
 let bundleOfferSearchTimer = null;
 
@@ -124,6 +133,10 @@ function cursorPrevious(pagination, loader){
   pagination.page = Math.max(1, pagination.page - 1);
   pagination.cursor = String(pagination.history[pagination.history.length - 1] || '');
   loader().catch(() => {});
+}
+
+function currentTopupPagination(){
+  return state.topupPagination[state.topupTab] || state.topupPagination.pending;
 }
 
 /* =========================
@@ -1430,23 +1443,27 @@ async function loadCounts(options = {}){
 }
 
 async function loadTopups(options = {}){
+  const pagination = currentTopupPagination();
   const data = await proxyGet('topups', {
     bucket: state.topupTab,
-    page: 1,
-    limit: 50
+    page: pagination.page,
+    limit: 10,
+    cursor: pagination.cursor,
+    query: document.getElementById('topupSearch')?.value.trim() || ''
   }, options);
 
   state.topups = data.items || [];
+  applyCursorPagination(pagination, data.pagination || {}, pagination.page);
   state.loaded.topups = true;
 
   renderTopups();
+  renderCursorPagination('topup', pagination, state.topups.length, 'requests');
 
   if (!options.silentLog) log(`Loaded ${state.topupTab} topup requests.`);
 }
 
 function renderTopups(){
-  const q = document.getElementById('topupSearch')?.value.trim().toLowerCase() || '';
-  const rows = state.topups.filter(item => !q || JSON.stringify(item).toLowerCase().includes(q));
+  const rows = state.topups;
   const tbody = document.getElementById('topupTableBody');
 
   if (!tbody) return;
@@ -2385,6 +2402,7 @@ function resetUserRoleFields(role = 'USER'){
 }
 
 async function loadUsers(options = {}){
+  const requestSerial = ++state.usersRequestSerial;
   const tbody = document.getElementById('usersTableBody');
   const page = Math.max(1, Number(state.usersPagination.page || 1));
   const search = document.getElementById('usersSearch')?.value.trim() || '';
@@ -2402,6 +2420,8 @@ async function loadUsers(options = {}){
       role: document.getElementById('usersRoleFilter')?.value || '',
       status: state.usersStatus
     }, options);
+
+    if (requestSerial !== state.usersRequestSerial) return;
 
     state.users = Array.isArray(data.items) ? data.items : [];
     applyCursorPagination(state.usersPagination, data.pagination || {}, page);
@@ -2421,6 +2441,7 @@ async function loadUsers(options = {}){
 
     if (!options.silentLog) log('Loaded users list.');
   } catch (err) {
+    if (requestSerial !== state.usersRequestSerial) return;
     state.loaded.users = false;
     if (tbody) {
       tbody.innerHTML = `<tr><td colspan="9" class="empty users-state-cell users-error-state">${esc(err.message || 'Unable to load users.')}</td></tr>`;
@@ -4190,7 +4211,7 @@ async function loadDoneTopupsSummary(options = {}){
   const data = await proxyGet('topups', {
     bucket: 'done',
     page: 1,
-    limit: 30
+    limit: 10
   }, options);
 
   state.doneTopups = data.items || [];
@@ -4697,6 +4718,22 @@ function setActionBtnLoading(buttonId, isLoading, loadingText = 'Processing...')
 /* =========================
    SUPPORT CENTER
 ========================= */
+
+function setSupportAdminTab(tab){
+  const allowed = ['tickets', 'contact', 'categories'];
+  const next = allowed.includes(String(tab || '').toLowerCase()) ? String(tab).toLowerCase() : 'tickets';
+  state.supportTab = next;
+
+  document.querySelectorAll('[data-support-tab]').forEach(button => {
+    const active = button.dataset.supportTab === next;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', active ? 'true' : 'false');
+    button.tabIndex = active ? 0 : -1;
+  });
+  document.querySelectorAll('[data-support-panel]').forEach(panel => {
+    panel.hidden = panel.dataset.supportPanel !== next;
+  });
+}
 
 function supportFilters(){
   return {
@@ -5539,13 +5576,21 @@ document.querySelectorAll('[data-topup-tab]').forEach(btn => {
     btn.classList.add('active');
 
     state.topupTab = btn.dataset.topupTab;
+    resetCursorPagination(currentTopupPagination());
     state.loaded.topups = false;
 
     await loadTopups({ busyText:'Loading topup list...' });
   });
 });
 
-document.getElementById('topupSearch')?.addEventListener('input', renderTopups);
+document.getElementById('topupSearch')?.addEventListener('input', () => {
+  clearTimeout(topupSearchTimer);
+  topupSearchTimer = setTimeout(() => {
+    resetCursorPagination(currentTopupPagination());
+    state.loaded.topups = false;
+    loadTopups({ busy:false, silentLog:true }).catch(() => {});
+  }, 350);
+});
 document.getElementById('usersSearch')?.addEventListener('input', () => {
   clearTimeout(usersSearchTimer);
   usersSearchTimer = setTimeout(() => {
@@ -5555,6 +5600,7 @@ document.getElementById('usersSearch')?.addEventListener('input', () => {
   }, 350);
 });
 document.getElementById('usersRoleFilter')?.addEventListener('change', () => {
+  clearTimeout(usersSearchTimer);
   resetCursorPagination(state.usersPagination);
   state.loaded.users = false;
   loadUsers({ busyText:'Filtering users...' }).catch(() => {});
@@ -5572,6 +5618,10 @@ document.getElementById('addMoneySettingsBtn')?.addEventListener('click', openAd
   });
 });
 document.getElementById('reloadSupportBtn')?.addEventListener('click', () => loadSupportAdmin({ busyText:'Reloading support center...' }));
+document.querySelectorAll('[data-support-tab]').forEach(button => {
+  button.addEventListener('click', () => setSupportAdminTab(button.dataset.supportTab));
+});
+setSupportAdminTab('tickets');
 document.getElementById('supportStatusFilter')?.addEventListener('change', () => {
   resetCursorPagination(state.supportPagination);
   loadSupportTickets({ busyText:'Filtering support tickets...' }).catch(() => {});
@@ -5606,8 +5656,11 @@ document.getElementById('reloadUsersBtn')?.addEventListener('click', () => {
 });
 document.getElementById('usersPrevBtn')?.addEventListener('click', () => loadUsersPage(state.usersPagination.page - 1));
 document.getElementById('usersNextBtn')?.addEventListener('click', () => loadUsersPage(state.usersPagination.page + 1));
+document.getElementById('topupPrevBtn')?.addEventListener('click', () => cursorPrevious(currentTopupPagination(), () => loadTopups({ busyText:'Loading Top-Up requests...' })));
+document.getElementById('topupNextBtn')?.addEventListener('click', () => cursorNext(currentTopupPagination(), () => loadTopups({ busyText:'Loading Top-Up requests...' })));
 document.querySelectorAll('[data-user-status]').forEach(button => {
   button.addEventListener('click', () => {
+    clearTimeout(usersSearchTimer);
     state.usersStatus = String(button.dataset.userStatus || 'ACTIVE').toUpperCase();
     document.querySelectorAll('[data-user-status]').forEach(item => {
       const active = item === button;

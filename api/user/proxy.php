@@ -3636,7 +3636,7 @@ function user_proxy_create_mfs_request(string $uid, array $body): array
         'completed_at' => 0,
     ];
 
-    $ok = fb_put('MFS_REQUESTS/PENDING/' . $requestId, $row);
+    $ok = mfs_move_request_bucket($requestId, '', 'PENDING', $row);
 
     if (!$ok) {
         wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'MFS request could not be saved after wallet hold', [

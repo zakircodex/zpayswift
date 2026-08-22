@@ -76,7 +76,7 @@ foreach (['USER Fee RM', 'RETAILER Fee RM', 'SUBADMIN Fee RM'] as $label) {
     admin_transactions_ui_expect(str_contains($mfsPage, $label), "MFS role fee label changed: {$label}");
 }
 
-foreach (["get('mfs_pending'", "get('mfs_processing'", "get('mfs_done'", "get('mfs_get'", "post('mfs_create'", "get('mfs_rate_get'", "post('mfs_rate_save'", "get('mfs_fees_get'", "post('mfs_fees_save'", "post('mfs_success'"] as $contract) {
+foreach (["'mfs_pending'", "'mfs_processing'", "'mfs_done'", "get('mfs_status_counts'", "get('mfs_get'", "post('mfs_create'", "get('mfs_rate_get'", "post('mfs_rate_save'", "get('mfs_fees_get'", "post('mfs_fees_save'", "post('mfs_success'"] as $contract) {
     admin_transactions_ui_expect(str_contains($mfsJs, $contract), "Existing MFS API action changed: {$contract}");
 }
 

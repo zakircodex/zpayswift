@@ -102,6 +102,27 @@ function fb_put(string $path, $data): bool
 
 function fb_patch(string $path, array $data): bool
 {
+    global $failNextDonePut, $failNextPendingPut;
+    if ($path === '') {
+        foreach (array_keys($data) as $updatePath) {
+            if ($failNextDonePut && str_starts_with((string)$updatePath, 'MFS_REQUESTS/DONE/')) {
+                $failNextDonePut = false;
+                return false;
+            }
+            if ($failNextPendingPut && str_starts_with((string)$updatePath, 'MFS_REQUESTS/PENDING/')) {
+                $failNextPendingPut = false;
+                return false;
+            }
+        }
+        foreach ($data as $updatePath => $value) {
+            if ($value === null) {
+                test_store_delete((string)$updatePath);
+            } else {
+                test_store_set((string)$updatePath, $value);
+            }
+        }
+        return true;
+    }
     test_store_patch($path, $data);
     return true;
 }

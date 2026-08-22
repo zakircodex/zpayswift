@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/admin_pagination.php';
+
 function admin_topup_read_bucket(string $bucket): array
 {
     $bucket = strtoupper(trim($bucket));
@@ -75,8 +77,9 @@ function admin_topup_apply_filters(array $items, array $filters): array
     $operator = normalize_operator($filters['operator'] ?? '');
     $number = normalize_bd_topup_number($filters['topup_number'] ?? '');
     $deviceId = trim((string)($filters['assigned_device_id'] ?? ''));
+    $query = strtolower(trim((string)($filters['query'] ?? $filters['search'] ?? '')));
 
-    return array_values(array_filter($items, static function (array $row) use ($requestId, $uid, $operator, $number, $deviceId): bool {
+    return array_values(array_filter($items, static function (array $row) use ($requestId, $uid, $operator, $number, $deviceId, $query): bool {
         if ($requestId !== '' && (string)($row['request_id'] ?? '') !== $requestId) {
             return false;
         }
@@ -97,8 +100,62 @@ function admin_topup_apply_filters(array $items, array $filters): array
             return false;
         }
 
+        if ($query !== '') {
+            $haystack = strtolower(implode(' ', [
+                (string)($row['request_id'] ?? ''),
+                (string)($row['uid'] ?? ''),
+                (string)($row['user_name'] ?? $row['name'] ?? ''),
+                (string)($row['user_phone'] ?? $row['phone'] ?? ''),
+                (string)($row['topup_number'] ?? $row['number'] ?? ''),
+                (string)($row['operator'] ?? ''),
+                (string)($row['assigned_device_id'] ?? ''),
+                (string)($row['status'] ?? ''),
+            ]));
+            if (!str_contains($haystack, $query)) {
+                return false;
+            }
+        }
+
         return true;
     }));
+}
+
+function admin_topup_read_bucket_page(
+    string $bucket,
+    array $filters = [],
+    string $cursor = '',
+    int $limit = 10
+): array {
+    $bucket = strtoupper(trim($bucket));
+    if (!in_array($bucket, ['PENDING', 'CLAIMED', 'PROCESSING', 'DONE'], true)) {
+        return [
+            'items' => [],
+            'pagination' => [
+                'limit' => 10,
+                'count' => 0,
+                'has_more' => false,
+                'cursor' => '',
+                'next_cursor' => '',
+                'scanned' => 0,
+                'scan_limited' => false,
+            ],
+        ];
+    }
+
+    return admin_firebase_cursor_page(
+        'TOPUP_REQUESTS/' . $bucket,
+        $limit,
+        $cursor,
+        static function (array $row, string $requestId) use ($filters): bool {
+            $row['request_id'] = (string)($row['request_id'] ?? $requestId);
+            return admin_topup_apply_filters([$row], $filters) !== [];
+        },
+        static function (array $row, string $requestId) use ($bucket): array {
+            $row['request_id'] = (string)($row['request_id'] ?? $requestId);
+            $row['_bucket'] = $bucket;
+            return $row;
+        }
+    );
 }
 
 function admin_topup_paginate(array $items, int $page, int $limit): array

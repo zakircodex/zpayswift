@@ -7,13 +7,10 @@ require_once dirname(__DIR__, 2) . '/lib/admin_topup.php';
 api_require_method('GET');
 auth_require_admin_session();
 
-$page = (int)($_GET['page'] ?? 1);
-$limit = (int)($_GET['limit'] ?? 20);
-
-$items = admin_topup_read_bucket('PROCESSING');
-$items = admin_topup_apply_filters($items, $_GET);
-
-$result = admin_topup_paginate($items, $page, $limit);
+$page = max(1, (int)($_GET['page'] ?? 1));
+$cursor = trim((string)($_GET['cursor'] ?? ''));
+$result = admin_topup_read_bucket_page('PROCESSING', $_GET, $cursor, 10);
+$result['pagination']['page'] = $page;
 
 api_response(true, 'SUCCESS', 'Processing topup requests loaded', [
     'bucket' => 'PROCESSING',

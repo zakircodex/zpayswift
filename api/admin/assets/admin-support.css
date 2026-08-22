@@ -13,6 +13,55 @@
   gap:14px;
 }
 
+#supportSection .support-section-tabs{
+  display:flex;
+  align-items:center;
+  width:max-content;
+  max-width:100%;
+  gap:6px;
+  padding:5px;
+  overflow-x:auto;
+  border:1px solid rgba(125,166,216,.18);
+  border-radius:14px;
+  background:rgba(8,24,41,.86);
+  scrollbar-width:none;
+}
+
+#supportSection .support-section-tabs::-webkit-scrollbar{
+  display:none;
+}
+
+#supportSection .support-section-tab{
+  min-height:40px;
+  padding:0 15px;
+  border:1px solid transparent;
+  border-radius:10px;
+  background:transparent;
+  color:#9fb2c9;
+  font:inherit;
+  font-size:12.5px;
+  font-weight:800;
+  white-space:nowrap;
+  cursor:pointer;
+}
+
+#supportSection .support-section-tab:hover,
+#supportSection .support-section-tab:focus-visible{
+  border-color:rgba(125,166,216,.24);
+  color:#f5f9fd;
+  outline:none;
+}
+
+#supportSection .support-section-tab.active{
+  border-color:rgba(44,226,141,.34);
+  background:rgba(44,226,141,.12);
+  color:#6ff0b1;
+}
+
+#supportSection [data-support-panel][hidden]{
+  display:none !important;
+}
+
 #supportSection .support-admin-card,
 #supportSection .support-config-card,
 #supportSection .support-categories-card{
@@ -830,6 +879,15 @@
 }
 
 @media(max-width:600px){
+  #supportSection .support-section-tabs{
+    width:100%;
+  }
+
+  #supportSection .support-section-tab{
+    flex:1 0 auto;
+    padding-inline:12px;
+  }
+
   .admin-premium-body .support-chat-head{
     display:grid;
   }

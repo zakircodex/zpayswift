@@ -409,6 +409,11 @@ header('Pragma: no-cache');
               </tbody>
             </table>
           </div>
+          <div class="admin-pagination-bar" id="topupPagination">
+            <button class="btn ghost" id="topupPrevBtn" type="button">Previous</button>
+            <span id="topupPaginationText">Page 1</span>
+            <button class="btn ghost" id="topupNextBtn" type="button">Next</button>
+          </div>
         </div>
       </section>
 
@@ -582,7 +587,13 @@ header('Pragma: no-cache');
       </section>
 
       <section class="section" id="supportSection">
-        <div class="card support-admin-card">
+        <div class="support-section-tabs" id="supportSectionTabs" role="tablist" aria-label="Support administration views">
+          <button class="support-section-tab active" id="supportTicketsTab" type="button" role="tab" aria-selected="true" aria-controls="supportTicketsPanel" data-support-tab="tickets">Tickets</button>
+          <button class="support-section-tab" id="supportContactTab" type="button" role="tab" aria-selected="false" aria-controls="supportContactPanel" data-support-tab="contact">Contact Settings</button>
+          <button class="support-section-tab" id="supportCategoriesTab" type="button" role="tab" aria-selected="false" aria-controls="supportCategoriesPanel" data-support-tab="categories">Categories</button>
+        </div>
+
+        <div class="card support-admin-card" id="supportTicketsPanel" role="tabpanel" aria-labelledby="supportTicketsTab" data-support-panel="tickets">
           <div class="panel-head support-panel-head">
             <div>
               <h3>Support Tickets</h3>
@@ -639,7 +650,7 @@ header('Pragma: no-cache');
           </div>
         </div>
 
-        <div class="card support-config-card">
+        <div class="card support-config-card" id="supportContactPanel" role="tabpanel" aria-labelledby="supportContactTab" data-support-panel="contact" hidden>
           <div class="panel-head support-panel-head">
             <div>
               <h3>Contact Us Settings</h3>
@@ -723,7 +734,7 @@ header('Pragma: no-cache');
           </div>
         </div>
 
-        <div class="card support-categories-card">
+        <div class="card support-categories-card" id="supportCategoriesPanel" role="tabpanel" aria-labelledby="supportCategoriesTab" data-support-panel="categories" hidden>
           <div class="panel-head support-panel-head">
             <div>
               <h3>Support Categories</h3>
@@ -773,7 +784,7 @@ header('Pragma: no-cache');
                   <option value="">All Roles</option>
                   <option value="USER">User</option>
                   <option value="RETAILER">Retailer</option>
-                  <option value="SUBADMIN">Subadmin</option>
+                  <option value="SUBADMIN">Subadmin / Partner</option>
                   <option value="ADMIN">Admin</option>
                 </select>
               </label>

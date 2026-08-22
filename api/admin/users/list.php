@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
 require_once dirname(__DIR__, 2) . '/lib/admin_pagination.php';
+require_once dirname(__DIR__, 2) . '/lib/admin_user_filters.php';
 
 function admin_users_list_currency(array $user, array $wallet, string $country): string
 {
@@ -144,18 +145,6 @@ function admin_users_list_uid_from_index(mixed $row): string
     }
 
     return '';
-}
-
-function admin_users_list_account_status(array $user): string
-{
-    foreach ([$user['account_status'] ?? '', $user['status'] ?? ''] as $candidate) {
-        $status = strtoupper(trim((string)$candidate));
-        if ($status !== '') {
-            return $status;
-        }
-    }
-
-    return 'ACTIVE';
 }
 
 function admin_users_list_lookup_search_uids(string $search): array
@@ -334,10 +323,16 @@ $roleFilter = strtoupper(trim((string)($_GET['role'] ?? '')));
 $statusFilter = strtoupper(trim((string)($_GET['status'] ?? 'ACTIVE')));
 $statusFilter = $statusFilter === '' ? 'ACTIVE' : $statusFilter;
 $allowedStatuses = ['ACTIVE', 'REVIEW', 'REJECTED', 'BLOCKED_INACTIVE', 'ALL'];
+$allowedRoles = ['', 'USER', 'RETAILER', 'SUBADMIN', 'ADMIN'];
 
 if (!in_array($statusFilter, $allowedStatuses, true)) {
     api_response(false, 'VALIDATION_ERROR', 'Invalid user status filter', [
         'allowed_status' => $allowedStatuses,
+    ], 422);
+}
+if (!in_array($roleFilter, $allowedRoles, true)) {
+    api_response(false, 'VALIDATION_ERROR', 'Invalid user role filter', [
+        'allowed_role' => $allowedRoles,
     ], 422);
 }
 
@@ -346,39 +341,8 @@ $totalAvailableBalance = 0.0;
 $searchMode = $search !== '' ? 'bounded_name_scan' : 'cursor';
 $directSearchKeys = $search !== '' ? admin_users_list_lookup_search_uids($searchRaw) : [];
 
-$matchesStatus = static function (array $user) use ($statusFilter): bool {
-    if ($statusFilter === 'ALL') {
-        return true;
-    }
-    $status = admin_users_list_account_status($user);
-    if ($statusFilter === 'BLOCKED_INACTIVE') {
-        return in_array($status, ['BLOCKED', 'INACTIVE'], true);
-    }
-    return $status === $statusFilter;
-};
-
-$matchesUser = static function (array $user, string $uid) use ($roleFilter, $search, $matchesStatus): bool {
-    $role = strtoupper(trim((string)($user['role'] ?? 'USER')));
-    if ($roleFilter !== '' && $role !== $roleFilter) {
-        return false;
-    }
-    if (!$matchesStatus($user)) {
-        return false;
-    }
-    if ($search === '') {
-        return true;
-    }
-
-    $haystack = strtolower(implode(' ', [
-        $uid,
-        (string)($user['name'] ?? ''),
-        (string)($user['phone'] ?? ''),
-        (string)($user['email'] ?? ''),
-        $role,
-        (string)($user['status'] ?? ''),
-        (string)($user['account_status'] ?? ''),
-    ]));
-    return str_contains($haystack, $search);
+$matchesUser = static function (array $user, string $uid) use ($roleFilter, $statusFilter, $search): bool {
+    return admin_users_list_matches($user, $uid, $roleFilter, $statusFilter, $search);
 };
 
 if ($directSearchKeys !== []) {

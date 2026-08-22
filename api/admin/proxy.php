@@ -1167,7 +1167,9 @@ switch ($action) {
 
         proxy_forward_admin_get($allowed[$bucket], [
             'page' => (int)($_GET['page'] ?? 1),
-            'limit' => (int)($_GET['limit'] ?? 50),
+            'limit' => 10,
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
+            'query' => trim((string)($_GET['query'] ?? '')),
         ]);
         break;
 
@@ -1377,6 +1379,11 @@ switch ($action) {
             'number' => trim((string)($_GET['number'] ?? '')),
             'status' => trim((string)($_GET['status'] ?? '')),
         ]);
+        break;
+
+    case 'mfs_status_counts':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('mfs/status_counts.php');
         break;
 
     case 'mfs_get':

@@ -107,6 +107,7 @@ $addMoney = (string)file_get_contents($root . '/api/lib/add_money.php');
 $support = (string)file_get_contents($root . '/api/lib/support.php');
 $offers = (string)file_get_contents($root . '/api/admin/bundle/offers.php');
 $users = (string)file_get_contents($root . '/api/admin/users/list.php');
+$userFilters = (string)file_get_contents($root . '/api/lib/admin_user_filters.php');
 $mfs = (string)file_get_contents($root . '/api/lib/mfs.php');
 
 $sidebarDestinations = [
@@ -142,12 +143,13 @@ pagination_expect(str_contains($dashboardJs, "role: document.getElementById('use
 pagination_expect(str_contains($dashboardJs, "document.getElementById('usersRoleFilter')?.addEventListener('change'"), 'Users role changes must reset pagination');
 pagination_expect(str_contains($users, "admin_firebase_cursor_page(\n        'USERS'"), 'Users endpoint must use bounded Firebase cursor pagination');
 pagination_expect(!str_contains($users, 'admin_users_list_shallow_keys();'), 'Users endpoint must not inventory the full key tree for a page');
-pagination_expect(str_contains($users, 'admin_users_list_account_status($user)'), 'Users status grouping must use the canonical non-empty status fallback');
+pagination_expect(str_contains($users, 'admin_users_list_matches($user, $uid, $roleFilter, $statusFilter, $search)'), 'Users endpoint must use the canonical combined filter helper');
+pagination_expect(str_contains($userFilters, 'admin_users_list_account_status($user)'), 'Users status grouping must use the canonical effective status helper');
 pagination_expect(
     strpos($users, '$matchesUser') < strpos($users, "admin_firebase_cursor_page(\n        'USERS'"),
     'Users status/search/role predicate must be prepared before cursor pagination'
 );
-pagination_expect(str_contains($users, "if (\$roleFilter !== '' && \$role !== \$roleFilter)"), 'Users role filter must run inside the backend page predicate');
+pagination_expect(str_contains($userFilters, "if (\$roleFilter !== '' && \$role !== \$roleFilter)"), 'Users role filter must run inside the backend page predicate');
 
 pagination_expect(str_contains($addMoney, "admin_firebase_cursor_page(\n        'ADD_MONEY_REQUESTS'"), 'Add Money must use bounded Firebase pagination');
 pagination_expect(!str_contains($addMoney, "fb_get('ADD_MONEY_REQUESTS')"), 'Add Money Admin list must not fetch the full request tree');
