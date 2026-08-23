@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/mfs_fee_tiers.php';
+
 function mfs_admin_settings_float($value, float $default = 0.0): float
 {
     if (is_string($value)) {
@@ -58,6 +60,76 @@ function mfs_admin_settings_validate_number($value, string $field): array
     }
 
     return ['ok' => true];
+}
+
+function mfs_admin_settings_tier_input(array $body): array
+{
+    $fees = is_array($body['fees'] ?? null) ? (array)$body['fees'] : $body;
+    $my = is_array($fees['MY'] ?? null) ? (array)$fees['MY'] : $fees;
+    $tiers = $my['TIERS'] ?? $my['tiers'] ?? $body['tiers'] ?? [];
+    return is_array($tiers) ? $tiers : [];
+}
+
+function mfs_admin_settings_build_my_tiers(array $body): array
+{
+    $input = mfs_admin_settings_tier_input($body);
+    $storage = [];
+
+    foreach (array_keys(mfs_my_fee_tier_boundaries()) as $tierId) {
+        $row = $input[$tierId]
+            ?? $input[strtolower($tierId)]
+            ?? $input[str_replace('TIER', 'TIER_', $tierId)]
+            ?? null;
+        if (!is_array($row)) {
+            return [
+                'ok' => false,
+                'code' => 'INVALID_FEE_TIER',
+                'message' => 'All Malaysia remittance fee tiers are required',
+                'data' => ['field' => 'fees.MY.TIERS.' . $tierId],
+            ];
+        }
+
+        foreach (['USER', 'RETAILER', 'SUBADMIN'] as $role) {
+            if (!array_key_exists($role, $row)) {
+                return [
+                    'ok' => false,
+                    'code' => 'INVALID_FEE_TIER',
+                    'message' => 'Every Malaysia fee tier requires USER, RETAILER and SUBADMIN values',
+                    'data' => ['field' => 'fees.MY.TIERS.' . $tierId . '.' . $role],
+                ];
+            }
+            $valid = mfs_admin_settings_validate_number(
+                mfs_admin_settings_role_value($row, $role),
+                'fees.MY.TIERS.' . $tierId . '.' . $role
+            );
+            if (empty($valid['ok'])) {
+                return $valid;
+            }
+        }
+
+        $storage[$tierId] = [
+            'USER' => mfs_admin_settings_float(mfs_admin_settings_role_value($row, 'USER')),
+            'RETAILER' => mfs_admin_settings_float(mfs_admin_settings_role_value($row, 'RETAILER')),
+            'SUBADMIN' => mfs_admin_settings_float(mfs_admin_settings_role_value($row, 'SUBADMIN')),
+            'ADMIN' => 0.00,
+        ];
+    }
+
+    return ['ok' => true, 'code' => 'SUCCESS', 'tiers' => $storage];
+}
+
+function mfs_admin_settings_legacy_my_fee_row(array $tiers): array
+{
+    $tier1 = mfs_normalize_my_fee_tiers($tiers)['TIER1'];
+    return [
+        'type' => 'fixed',
+        'fixed' => (float)$tier1['USER'],
+        'fee_rm' => (float)$tier1['USER'],
+        'USER' => (float)$tier1['USER'],
+        'RETAILER' => (float)$tier1['RETAILER'],
+        'SUBADMIN' => (float)$tier1['SUBADMIN'],
+        'ADMIN' => 0.00,
+    ];
 }
 
 function mfs_admin_settings_validate_fee_row(array $row, string $country, string $provider): array
@@ -153,32 +225,26 @@ function mfs_admin_settings_build_fees(array $body): array
 {
     $feesBody = is_array($body['fees'] ?? null) ? (array)$body['fees'] : $body;
 
-    foreach (['MY', 'BD'] as $country) {
-        foreach (['BKASH', 'NAGAD'] as $provider) {
-            $valid = mfs_admin_settings_validate_fee_row(
-                mfs_admin_settings_fee_input_row($feesBody, $country, $provider),
-                $country,
-                $provider
-            );
-            if (empty($valid['ok'])) {
-                return $valid;
-            }
+    foreach (['BKASH', 'NAGAD'] as $provider) {
+        $valid = mfs_admin_settings_validate_fee_row(
+            mfs_admin_settings_fee_input_row($feesBody, 'BD', $provider),
+            'BD',
+            $provider
+        );
+        if (empty($valid['ok'])) {
+            return $valid;
         }
     }
+
+    $fees = [
+        'BKASH' => mfs_admin_settings_fee_row($feesBody, 'BD', 'BKASH'),
+        'NAGAD' => mfs_admin_settings_fee_row($feesBody, 'BD', 'NAGAD'),
+    ];
 
     return [
         'ok' => true,
         'code' => 'SUCCESS',
-        'fees' => [
-            'MY' => [
-                'BKASH' => mfs_admin_settings_fee_row($feesBody, 'MY', 'BKASH'),
-                'NAGAD' => mfs_admin_settings_fee_row($feesBody, 'MY', 'NAGAD'),
-            ],
-            'BD' => [
-                'BKASH' => mfs_admin_settings_fee_row($feesBody, 'BD', 'BKASH'),
-                'NAGAD' => mfs_admin_settings_fee_row($feesBody, 'BD', 'NAGAD'),
-            ],
-        ],
+        'fees' => $fees,
     ];
 }
 
@@ -196,13 +262,22 @@ function mfs_admin_rate_state(): array
 
 function mfs_admin_fee_state(): array
 {
+    $stored = fb_get('MFS_SETTINGS/fees');
+    $stored = is_array($stored) ? $stored : [];
+
     if (function_exists('mfs_public_settings')) {
         $settings = mfs_public_settings();
-        return is_array($settings['fees'] ?? null) ? (array)$settings['fees'] : [];
+        $fees = is_array($settings['fees'] ?? null) ? (array)$settings['fees'] : [];
+    } else {
+        $fees = [];
     }
 
-    $fees = fb_get('MFS_SETTINGS/fees');
-    return is_array($fees) ? $fees : [];
+    $fees = array_replace_recursive($fees, $stored);
+
+    $my = is_array($fees['MY'] ?? null) ? (array)$fees['MY'] : [];
+    $fees['MY'] = $my;
+    $fees['MY']['TIERS'] = mfs_normalize_my_fee_tiers($my);
+    return $fees;
 }
 
 function mfs_admin_save_rate(float $rate, string $changedBy): array
@@ -229,7 +304,7 @@ function mfs_admin_save_fees(array $body): array
         return $built;
     }
 
-    if (!fb_patch('MFS_SETTINGS', ['fees' => (array)$built['fees']])) {
+    if (!fb_patch('MFS_SETTINGS/fees/BD', (array)$built['fees'])) {
         return ['ok' => false, 'code' => 'FEE_SAVE_FAILED', 'message' => 'Failed to save MFS fee settings'];
     }
 
@@ -242,5 +317,37 @@ function mfs_admin_save_fees(array $body): array
         'code' => 'SUCCESS',
         'message' => 'MFS fee settings saved',
         'data' => ['fees' => mfs_admin_fee_state()],
+    ];
+}
+
+function mfs_admin_save_my_fee_tiers(array $body): array
+{
+    $built = mfs_admin_settings_build_my_tiers($body);
+    if (empty($built['ok'])) {
+        return $built;
+    }
+
+    $tiers = (array)$built['tiers'];
+    $legacy = mfs_admin_settings_legacy_my_fee_row($tiers);
+    if (!fb_patch('MFS_SETTINGS/fees/MY', [
+        'TIERS' => $tiers,
+        'BKASH' => $legacy,
+        'NAGAD' => $legacy,
+    ])) {
+        return ['ok' => false, 'code' => 'FEE_TIER_SAVE_FAILED', 'message' => 'Failed to save Malaysia remittance fee tiers'];
+    }
+
+    if (function_exists('mfs_config')) {
+        mfs_config(true);
+    }
+
+    return [
+        'ok' => true,
+        'code' => 'SUCCESS',
+        'message' => 'Malaysia remittance fee tiers saved',
+        'data' => [
+            'tiers' => mfs_normalize_my_fee_tiers($tiers),
+            'fees' => mfs_admin_fee_state(),
+        ],
     ];
 }

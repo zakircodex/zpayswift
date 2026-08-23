@@ -393,6 +393,50 @@
   gap:14px;
 }
 
+.admin-mfs-tier-form{
+  padding:16px;
+  border:1px solid rgba(34,197,94,.2);
+  border-radius:18px;
+  background:rgba(10,34,48,.56);
+}
+
+.admin-mfs-tier-table{
+  display:grid;
+  gap:7px;
+}
+
+.admin-mfs-tier-row{
+  display:grid;
+  grid-template-columns:minmax(220px,1.35fr) repeat(3,minmax(130px,1fr));
+  align-items:end;
+  gap:9px;
+  padding:10px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:13px;
+  background:rgba(255,255,255,.025);
+}
+
+.admin-mfs-tier-row > strong{
+  align-self:center;
+  color:#dbeafe;
+  font-size:13px;
+  overflow-wrap:anywhere;
+}
+
+.admin-mfs-tier-head{
+  align-items:center;
+  border-color:rgba(96,165,250,.18);
+  background:rgba(59,130,246,.07);
+  color:var(--muted);
+  font-size:11px;
+  font-weight:850;
+  text-transform:uppercase;
+}
+
+.admin-mfs-tier-row .mfs-field > span{
+  display:none;
+}
+
 .admin-mfs-settings-subhead{
   padding:2px 2px 0;
 }
@@ -1097,6 +1141,28 @@
   .admin-mfs-rate-form,
   .admin-mfs-fee-grid{
     grid-template-columns:1fr;
+  }
+
+  .admin-mfs-tier-form{
+    padding:12px;
+  }
+
+  .admin-mfs-tier-head{
+    display:none;
+  }
+
+  .admin-mfs-tier-row{
+    grid-template-columns:1fr;
+    align-items:stretch;
+    padding:12px;
+  }
+
+  .admin-mfs-tier-row > strong{
+    padding-bottom:3px;
+  }
+
+  .admin-mfs-tier-row .mfs-field > span{
+    display:block;
   }
 
   .admin-mfs-rate-actions{

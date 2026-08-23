@@ -9,6 +9,7 @@ $mfsSettingsWrites = [];
 $mfsFcmSends = 0;
 $mfsRateLogSequence = 0;
 $mfsNow = 1700000000;
+$mfsFailNextPatch = false;
 
 function mfs_settings_expect(bool $condition, string $message): void
 {
@@ -67,8 +68,12 @@ function fb_put(string $path, $value): bool
 
 function fb_patch(string $path, array $data): bool
 {
-    global $mfsSettingsWrites;
+    global $mfsSettingsWrites, $mfsFailNextPatch;
     $mfsSettingsWrites[] = ['method' => 'PATCH', 'path' => $path, 'data' => $data];
+    if ($mfsFailNextPatch) {
+        $mfsFailNextPatch = false;
+        return false;
+    }
     $current = fb_get($path);
     $current = is_array($current) ? $current : [];
     mfs_settings_put_path($path, array_merge($current, $data));
@@ -116,6 +121,11 @@ require_once dirname(__DIR__) . '/api/lib/mfs_admin_settings.php';
 
 $initialFees = [
     'MY' => [
+        'TIERS' => [
+            'TIER1' => ['USER' => 5.0, 'RETAILER' => 2.0, 'SUBADMIN' => 2.0, 'ADMIN' => 0.0],
+            'TIER2' => ['USER' => 7.0, 'RETAILER' => 3.0, 'SUBADMIN' => 3.0, 'ADMIN' => 0.0],
+            'TIER3' => ['USER' => 10.0, 'RETAILER' => 4.0, 'SUBADMIN' => 4.0, 'ADMIN' => 0.0],
+        ],
         'BKASH' => ['type' => 'fixed', 'fixed' => 5.0, 'fee_rm' => 5.0, 'USER' => 5.0, 'RETAILER' => 2.0, 'SUBADMIN' => 2.0, 'ADMIN' => 0.0],
         'NAGAD' => ['type' => 'fixed', 'fixed' => 6.0, 'fee_rm' => 6.0, 'USER' => 6.0, 'RETAILER' => 2.5, 'SUBADMIN' => 2.25, 'ADMIN' => 0.0],
     ],
@@ -156,12 +166,19 @@ mfs_settings_expect(count((array)fb_get('ADMIN_NOTICE_BROADCASTS')) === 1, 'Cano
 mfs_settings_expect($mfsFcmSends === 0, 'Rate test unexpectedly attempted a real recipient push');
 mfs_settings_expect((float)mfs_public_settings()['rate_myr_bdt'] === 32.25, 'MFS preview/config reader did not see the newly saved rate');
 
-$feePayload = [
+$tierPayload = [
     'fees' => [
         'MY' => [
-            'BKASH' => ['USER' => 7.0, 'RETAILER' => 3.0, 'SUBADMIN' => 2.75, 'ADMIN' => 0],
-            'NAGAD' => ['USER' => 8.0, 'RETAILER' => 3.5, 'SUBADMIN' => 3.0, 'ADMIN' => 0],
+            'TIERS' => [
+                'TIER1' => ['USER' => 5.5, 'RETAILER' => 2.5, 'SUBADMIN' => 2.25],
+                'TIER2' => ['USER' => 7.5, 'RETAILER' => 3.5, 'SUBADMIN' => 3.25],
+                'TIER3' => ['USER' => 10.5, 'RETAILER' => 4.5, 'SUBADMIN' => 4.25],
+            ],
         ],
+    ],
+];
+$bdFeePayload = [
+    'fees' => [
         'BD' => [
             'BKASH' => ['type' => 'fixed', 'fixed' => 6.0, 'percent' => 0.0, 'min_fee' => 1.0, 'max_fee' => 12.0],
             'NAGAD' => ['type' => 'percent', 'fixed' => 0.0, 'percent' => 1.75, 'min_fee' => 2.0, 'max_fee' => 22.0],
@@ -184,23 +201,36 @@ foreach ($ratePaths as $path) {
 $writesBeforeFeeSave = count($mfsSettingsWrites);
 $notificationsBeforeFeeSave = count((array)fb_get('ADMIN_NOTICE_BROADCASTS'));
 $logsBeforeFeeSave = count((array)fb_get('RATE_CHANGE_LOG'));
-$feeResult = mfs_admin_save_fees($feePayload);
-mfs_settings_expect(!empty($feeResult['ok']), 'Fee Save failed');
+$tierResult = mfs_admin_save_my_fee_tiers($tierPayload);
+mfs_settings_expect(!empty($tierResult['ok']), 'Malaysia tier Save failed');
 foreach ($rateSnapshot as $path => $value) {
-    mfs_settings_expect(fb_get($path) === $value, "Fee Save changed rate path: {$path}");
+    mfs_settings_expect(fb_get($path) === $value, "Tier Save changed rate path: {$path}");
 }
-mfs_settings_expect(count((array)fb_get('ADMIN_NOTICE_BROADCASTS')) === $notificationsBeforeFeeSave, 'Fee Save emitted a rate notification');
-mfs_settings_expect(count((array)fb_get('RATE_CHANGE_LOG')) === $logsBeforeFeeSave, 'Fee Save wrote a rate change log');
-$feeWrites = array_slice($mfsSettingsWrites, $writesBeforeFeeSave);
-mfs_settings_expect(count($feeWrites) === 1, 'Fee Save must perform one fee-only database patch');
-mfs_settings_expect($feeWrites[0]['method'] === 'PATCH' && $feeWrites[0]['path'] === 'MFS_SETTINGS', 'Fee Save used an unexpected Firebase path');
-mfs_settings_expect(array_keys((array)$feeWrites[0]['data']) === ['fees'], 'Fee Save database payload included non-fee fields');
+mfs_settings_expect(count((array)fb_get('ADMIN_NOTICE_BROADCASTS')) === $notificationsBeforeFeeSave, 'Tier Save emitted a rate notification');
+mfs_settings_expect(count((array)fb_get('RATE_CHANGE_LOG')) === $logsBeforeFeeSave, 'Tier Save wrote a rate change log');
+$tierWrites = array_slice($mfsSettingsWrites, $writesBeforeFeeSave);
+mfs_settings_expect(count($tierWrites) === 1, 'Tier Save must perform one atomic database patch');
+mfs_settings_expect($tierWrites[0]['method'] === 'PATCH' && $tierWrites[0]['path'] === 'MFS_SETTINGS/fees/MY', 'Tier Save used an unexpected Firebase path');
+mfs_settings_expect(array_keys((array)$tierWrites[0]['data']) === ['TIERS', 'BKASH', 'NAGAD'], 'Tier Save payload did not preserve compatibility mirrors atomically');
 
 $savedFees = (array)fb_get('MFS_SETTINGS/fees');
-mfs_settings_expect((float)$savedFees['MY']['BKASH']['USER'] === 7.0, 'MY bKash USER fee changed semantics');
-mfs_settings_expect((float)$savedFees['MY']['BKASH']['RETAILER'] === 3.0, 'MY bKash RETAILER fee changed semantics');
-mfs_settings_expect((float)$savedFees['MY']['BKASH']['SUBADMIN'] === 2.75, 'MY bKash SUBADMIN fee changed semantics');
-mfs_settings_expect((float)$savedFees['MY']['NAGAD']['USER'] === 8.0 && (float)$savedFees['MY']['NAGAD']['RETAILER'] === 3.5, 'MY Nagad role fees changed semantics');
+mfs_settings_expect((float)$savedFees['MY']['TIERS']['TIER1']['USER'] === 5.5, 'Tier 1 USER fee was not saved');
+mfs_settings_expect((float)$savedFees['MY']['TIERS']['TIER2']['RETAILER'] === 3.5, 'Tier 2 RETAILER fee was not saved');
+mfs_settings_expect((float)$savedFees['MY']['TIERS']['TIER3']['SUBADMIN'] === 4.25, 'Tier 3 SUBADMIN fee was not saved');
+mfs_settings_expect((float)$savedFees['MY']['TIERS']['TIER3']['ADMIN'] === 0.0, 'ADMIN fee semantics changed');
+mfs_settings_expect($savedFees['MY']['BKASH'] === $savedFees['MY']['NAGAD'], 'Provider compatibility mirrors diverged');
+mfs_settings_expect((float)$savedFees['MY']['BKASH']['USER'] === 5.5, 'Legacy provider mirror did not use Tier 1');
+
+$tiersBeforeBdSave = $savedFees['MY'];
+$writesBeforeBdSave = count($mfsSettingsWrites);
+$feeResult = mfs_admin_save_fees($bdFeePayload);
+mfs_settings_expect(!empty($feeResult['ok']), 'Bangladesh Fee Save failed');
+$bdWrites = array_slice($mfsSettingsWrites, $writesBeforeBdSave);
+mfs_settings_expect(count($bdWrites) === 1, 'Bangladesh Fee Save must perform one fee-only database patch');
+mfs_settings_expect($bdWrites[0]['method'] === 'PATCH' && $bdWrites[0]['path'] === 'MFS_SETTINGS/fees/BD', 'Bangladesh Fee Save used an unexpected Firebase path');
+mfs_settings_expect(array_keys((array)$bdWrites[0]['data']) === ['BKASH', 'NAGAD'], 'Bangladesh Fee Save payload included unrelated settings');
+$savedFees = (array)fb_get('MFS_SETTINGS/fees');
+mfs_settings_expect($savedFees['MY'] === $tiersBeforeBdSave, 'Bangladesh Fee Save changed Malaysia tiers');
 mfs_settings_expect($savedFees['BD']['BKASH']['type'] === 'fixed' && (float)$savedFees['BD']['BKASH']['fixed'] === 6.0, 'BD bKash fee rule changed semantics');
 mfs_settings_expect($savedFees['BD']['NAGAD']['type'] === 'percent' && (float)$savedFees['BD']['NAGAD']['percent'] === 1.75, 'BD Nagad fee rule changed semantics');
 
@@ -210,9 +240,25 @@ mfs_settings_expect(empty($invalidRate['ok']) && ($invalidRate['code'] ?? '') ==
 mfs_settings_expect($mfsSettingsDb === $beforeInvalidRate, 'Invalid rate mutated Firebase');
 
 $beforeInvalidFee = $mfsSettingsDb;
-$invalidFee = mfs_admin_save_fees(['fees' => ['MY' => ['BKASH' => ['USER' => -1]]]]);
+$invalidFee = mfs_admin_save_my_fee_tiers(['fees' => ['MY' => ['TIERS' => [
+    'TIER1' => ['USER' => -1, 'RETAILER' => 2, 'SUBADMIN' => 2],
+    'TIER2' => ['USER' => 7, 'RETAILER' => 3, 'SUBADMIN' => 3],
+    'TIER3' => ['USER' => 10, 'RETAILER' => 4, 'SUBADMIN' => 4],
+]]]]);
 mfs_settings_expect(empty($invalidFee['ok']) && ($invalidFee['code'] ?? '') === 'INVALID_FEE', 'Negative fee was not rejected');
 mfs_settings_expect($mfsSettingsDb === $beforeInvalidFee, 'Invalid fee mutated Firebase');
+
+$incompleteFee = mfs_admin_save_my_fee_tiers(['fees' => ['MY' => ['TIERS' => [
+    'TIER1' => ['USER' => 5, 'RETAILER' => 2, 'SUBADMIN' => 2],
+]]]]);
+mfs_settings_expect(empty($incompleteFee['ok']) && ($incompleteFee['code'] ?? '') === 'INVALID_FEE_TIER', 'Incomplete tier configuration was not rejected');
+mfs_settings_expect($mfsSettingsDb === $beforeInvalidFee, 'Incomplete tier configuration mutated Firebase');
+
+$beforeFailedTierSave = $mfsSettingsDb;
+$mfsFailNextPatch = true;
+$failedTierSave = mfs_admin_save_my_fee_tiers($tierPayload);
+mfs_settings_expect(empty($failedTierSave['ok']) && ($failedTierSave['code'] ?? '') === 'FEE_TIER_SAVE_FAILED', 'Atomic Firebase failure was not reported');
+mfs_settings_expect($mfsSettingsDb === $beforeFailedTierSave, 'Failed atomic tier save partially mutated Firebase');
 
 $root = dirname(__DIR__);
 $proxy = (string)file_get_contents($root . '/api/admin/proxy.php');
@@ -225,20 +271,21 @@ $topup = (string)file_get_contents($root . '/api/lib/topup.php');
 $telegramRate = (string)file_get_contents($root . '/api/telegram/rate_webhook.php');
 $telegramNotification = (string)file_get_contents($root . '/api/telegram/notification_webhook.php');
 
-foreach (["case 'mfs_rate_get':", "case 'mfs_rate_save':", "case 'mfs_fees_get':", "case 'mfs_fees_save':"] as $action) {
+foreach (["case 'mfs_rate_get':", "case 'mfs_rate_save':", "case 'mfs_fees_get':", "case 'mfs_fees_save':", "case 'mfs_my_fee_tiers_save':"] as $action) {
     mfs_settings_expect(str_contains($proxy, $action), "Separated proxy action is missing: {$action}");
 }
 mfs_settings_expect(str_contains($proxy, 'proxy_require_csrf();') && str_contains($proxy, 'proxy_require_admin_login(true);'), 'Admin proxy auth/CSRF contract changed');
 mfs_settings_expect(str_contains($helper, "zpay_save_myr_to_bdt_rate(\$rate, trim(\$changedBy), 'ADMIN_PANEL')"), 'Admin Rate Save does not use the canonical helper');
-mfs_settings_expect(str_contains($helper, "fb_patch('MFS_SETTINGS', ['fees' => (array)\$built['fees']])"), 'Fee Save is not scoped to the existing fees child');
+mfs_settings_expect(str_contains($helper, "fb_patch('MFS_SETTINGS/fees/BD', (array)\$built['fees'])"), 'Bangladesh Fee Save is not isolated from Malaysia tiers');
+mfs_settings_expect(str_contains($helper, "fb_patch('MFS_SETTINGS/fees/MY'"), 'Tier Save is not scoped to one atomic Malaysia fee patch');
 mfs_settings_expect(str_contains($telegramRate, 'zpay_save_myr_to_bdt_rate(') && str_contains($telegramNotification, 'zpay_save_myr_to_bdt_rate('), 'Telegram rate helper compatibility changed');
 mfs_settings_expect(str_contains($mfs, '$rate = mfs_myr_to_bdt_rate();'), 'MFS financial preview no longer reads the canonical live rate');
 mfs_settings_expect(str_contains($topup, "foreach (['MFS_SETTINGS', 'MFS_CONFIG'] as \$node)"), 'Top-Up rate mirror compatibility changed');
 
-foreach (['mfsRateForm', 'mfsRateMyrBdt', 'mfsRateSaveBtn', 'mfsRateReloadBtn', 'mfsLiveRateValue', 'mfsRateUpdatedAt', 'mfsSettingsForm', 'mfsSettingsSaveBtn', 'mfsSettingsReloadBtn'] as $id) {
+foreach (['mfsRateForm', 'mfsRateMyrBdt', 'mfsRateSaveBtn', 'mfsRateReloadBtn', 'mfsLiveRateValue', 'mfsRateUpdatedAt', 'mfsTierFeesForm', 'mfsTierFeesSaveBtn', 'mfsTierFeesReloadBtn', 'mfsSettingsForm', 'mfsSettingsSaveBtn'] as $id) {
     mfs_settings_expect(str_contains($page, 'id="' . $id . '"'), "Separated MFS settings control is missing: {$id}");
 }
-foreach (["get('mfs_rate_get'", "post('mfs_rate_save'", "get('mfs_fees_get'", "post('mfs_fees_save'"] as $call) {
+foreach (["get('mfs_rate_get'", "post('mfs_rate_save'", "get('mfs_fees_get'", "post('mfs_my_fee_tiers_save'", "post('mfs_fees_save'"] as $call) {
     mfs_settings_expect(str_contains($js, $call), "Separated MFS settings call is missing: {$call}");
 }
 $feesPayloadStart = strpos($js, 'function feesPayload()');
@@ -246,7 +293,11 @@ $feesPayloadEnd = strpos($js, 'async function saveRate', $feesPayloadStart === f
 mfs_settings_expect($feesPayloadStart !== false && $feesPayloadEnd !== false, 'Unable to isolate Fee Save payload');
 $feesPayloadSource = substr($js, (int)$feesPayloadStart, (int)$feesPayloadEnd - (int)$feesPayloadStart);
 mfs_settings_expect(!str_contains($feesPayloadSource, 'rate_myr_bdt') && !str_contains($feesPayloadSource, 'mfsRateMyrBdt'), 'Fee Save frontend payload still contains the rate');
-mfs_settings_expect(str_contains($js, 'rateMutating:false') && str_contains($js, 'feesMutating:false'), 'Rate and fee loading states are not independent');
+mfs_settings_expect(str_contains($js, 'rateMutating:false') && str_contains($js, 'feesMutating:false') && str_contains($js, 'tierFeesMutating:false'), 'Rate and fee loading states are not independent');
+mfs_settings_expect(str_contains($page, 'BDT 500 - 50,000') && str_contains($page, 'BDT 50,000.01 - 70,000') && str_contains($page, 'BDT 70,000.01 - 100,000'), 'Tier range labels are incomplete');
+foreach (['mfsMyTier1UserFee', 'mfsMyTier1RetailerFee', 'mfsMyTier1SubadminFee', 'mfsMyTier2UserFee', 'mfsMyTier2RetailerFee', 'mfsMyTier2SubadminFee', 'mfsMyTier3UserFee', 'mfsMyTier3RetailerFee', 'mfsMyTier3SubadminFee'] as $tierId) {
+    mfs_settings_expect(str_contains($page, 'id="' . $tierId . '"'), "Tier fee input is missing: {$tierId}");
+}
 mfs_settings_expect(str_contains($css, 'align-items:end') && str_contains($css, '.admin-mfs-rate-actions'), 'Desktop rate action alignment is missing');
 mfs_settings_expect(str_contains($css, '@media(max-width:600px)') && str_contains($css, 'grid-template-columns:repeat(2,minmax(0,1fr))'), 'Mobile settings actions are not responsive');
 mfs_settings_expect(str_contains($css, '@media(max-width:360px)') && str_contains($css, '.admin-mfs-rate-actions'), 'Narrow settings action fallback is missing');

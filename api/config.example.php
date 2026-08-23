@@ -123,11 +123,7 @@ define('MYR_TO_BDT_RATE', 31.00);
 define('MFS_PROVIDER_BKASH_ENABLED', true);
 define('MFS_PROVIDER_NAGAD_ENABLED', true);
 define('MFS_MIN_AMOUNT_BDT', 500.00);
-define('MFS_MAX_AMOUNT_BDT', 50000.00);
-define('MY_REMITTANCE_FEE_ADMIN_RM', 0.00);
-define('MY_REMITTANCE_FEE_SUBADMIN_RM', 2.00);
-define('MY_REMITTANCE_FEE_RETAILER_RM', 2.00);
-define('MY_REMITTANCE_FEE_USER_RM', 5.00);
+define('MFS_MAX_AMOUNT_BDT', 100000.00);
 
 /*
 Firebase runtime config keys used by the code. These are database nodes,
@@ -162,14 +158,22 @@ MFS_CONFIG:
 - fees.BD.BKASH.CASH_OUT
 - fees.BD.NAGAD.SEND_MONEY
 - fees.BD.NAGAD.CASH_OUT
-- fees.MY.ADMIN.fee_rm
-- fees.MY.SUBADMIN.fee_rm
-- fees.MY.RETAILER.fee_rm
-- fees.MY.USER.fee_rm
 - MY.rate
-- MY.remittance_fee_rm
 - REMITTANCE.rate
-- REMITTANCE.fee_rm
+
+MFS_SETTINGS:
+- rate_myr_bdt
+- fees.MY.TIERS.TIER1.USER
+- fees.MY.TIERS.TIER1.RETAILER
+- fees.MY.TIERS.TIER1.SUBADMIN
+- fees.MY.TIERS.TIER2.USER
+- fees.MY.TIERS.TIER2.RETAILER
+- fees.MY.TIERS.TIER2.SUBADMIN
+- fees.MY.TIERS.TIER3.USER
+- fees.MY.TIERS.TIER3.RETAILER
+- fees.MY.TIERS.TIER3.SUBADMIN
+- fees.BD.BKASH
+- fees.BD.NAGAD
 
 Server/request values read by the code include:
 

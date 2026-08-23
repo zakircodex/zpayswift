@@ -2408,8 +2408,8 @@ function buildMfsPreviewPayload(){
     throw new Error('Amount BDT or Amount RM is required');
   }
 
-  if (amount > 0 && (amount < 500 || amount > 50000)) {
-    throw new Error('Amount BDT must be between BDT 500 and BDT 50,000');
+  if (amount > 0 && (amount < 500 || amount > 100000)) {
+    throw new Error('Amount BDT must be between BDT 500 and BDT 100,000');
   }
 
   return {

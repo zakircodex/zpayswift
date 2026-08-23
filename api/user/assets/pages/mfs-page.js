@@ -623,8 +623,8 @@
       return false;
     }
     const value = numberValue(byId('mfsAmountBdt')?.value);
-    if (value < 500 || value > 50000) {
-      openError('Invalid Amount', 'Amount must be between BDT 500 and BDT 50,000.', byId('mfsAmountContinue'));
+    if (value < 500 || value > 100000) {
+      openError('Invalid Amount', 'Amount must be between BDT 500 and BDT 100,000.', byId('mfsAmountContinue'));
       return false;
     }
     state.amountBdt = value;

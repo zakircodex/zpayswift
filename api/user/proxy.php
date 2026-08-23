@@ -3072,68 +3072,10 @@ function user_proxy_mfs_rate_myr_to_bdt(): float
     return 31.00;
 }
 
-function user_proxy_mfs_my_fee_myr(string $role, string $provider = ''): float
+function user_proxy_mfs_my_fee_myr(string $role, string $provider = '', float $amountBdt = 500.00): float
 {
-    $role = strtoupper(trim($role));
-    $provider = user_proxy_mfs_provider($provider);
-
-    $paths = [
-        'MFS_SETTINGS/fees/MY/' . $provider . '/' . $role,
-        'MFS_CONFIG/MY_FEES/' . $provider . '/' . $role,
-        'MFS_CONFIG/REMITTANCE_FEES/' . $provider . '/' . $role,
-    ];
-
-    if ($role === 'USER') {
-        $paths[] = 'MFS_SETTINGS/fees/MY/' . $provider . '/fee_rm';
-        $paths[] = 'MFS_SETTINGS/fees/MY/' . $provider . '/fixed';
-        $paths[] = 'MFS_SETTINGS/fees/MY/' . $provider . '/fixed_fee';
-    }
-
-    $paths[] = 'MFS_CONFIG/MY_FEES/' . $role;
-    $paths[] = 'MFS_CONFIG/REMITTANCE_FEES/' . $role;
-    $paths[] = 'APP_CONFIG/MFS/MY_FEES/' . $role;
-
-    foreach ($paths as $path) {
-        if (strpos($path, '//') !== false) {
-            continue;
-        }
-
-        $value = fb_get($path);
-
-        if (is_numeric($value)) {
-            return user_proxy_round_money($value);
-        }
-
-        if (is_array($value)) {
-            foreach (['fee_myr', 'fee', 'amount', 'rm'] as $key) {
-                if (isset($value[$key]) && is_numeric($value[$key])) {
-                    return user_proxy_round_money($value[$key]);
-                }
-            }
-        }
-    }
-
-    if ($role === 'SUBADMIN' && defined('MY_REMITTANCE_FEE_SUBADMIN_RM')) {
-        return user_proxy_round_money(MY_REMITTANCE_FEE_SUBADMIN_RM);
-    }
-
-    if ($role === 'RETAILER' && defined('MY_REMITTANCE_FEE_RETAILER_RM')) {
-        return user_proxy_round_money(MY_REMITTANCE_FEE_RETAILER_RM);
-    }
-
-    if (defined('MY_REMITTANCE_FEE_USER_RM')) {
-        return user_proxy_round_money(MY_REMITTANCE_FEE_USER_RM);
-    }
-
-    if ($role === 'SUBADMIN' || $role === 'RETAILER') {
-        return 2.00;
-    }
-
-    if ($role === 'ADMIN') {
-        return 0.00;
-    }
-
-    return 5.00;
+    $resolved = mfs_resolve_my_fee_tier($amountBdt, $role, mfs_current_my_fee_tiers());
+    return !empty($resolved['ok']) ? user_proxy_round_money($resolved['fee_rm']) : 0.00;
 }
 
 function user_proxy_mfs_bd_fee_bdt(string $provider, string $mfsType, float $amountBdt): float
@@ -3256,11 +3198,14 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
             $amountBdt = user_proxy_round_money($amountMyr * $rate);
         }
 
-        if ($amountBdt < 500 || $amountBdt > 50000 || $amountMyr <= 0) {
-            return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Amount must be between BDT 500 and BDT 50,000', 'data' => []];
+        $limitCheck = mfs_validate_bdt_transfer_amount($amountBdt);
+        if (empty($limitCheck['ok']) || $amountMyr <= 0) {
+            return empty($limitCheck['ok'])
+                ? $limitCheck
+                : ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Valid MYR or BDT amount is required', 'data' => []];
         }
 
-        $feeMyr = user_proxy_mfs_my_fee_myr($role, $provider);
+        $feeMyr = user_proxy_mfs_my_fee_myr($role, $provider, $amountBdt);
         $feeBdt = user_proxy_round_money($feeMyr * $rate);
         $totalPayMyr = user_proxy_round_money($amountMyr + $feeMyr);
         $totalPayBdt = user_proxy_round_money($amountBdt + $feeBdt);
@@ -3268,8 +3213,9 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
     } else {
         $amountBdt = $amountBdtInput > 0 ? $amountBdtInput : user_proxy_round_money($amountMyrInput * $rate);
 
-        if ($amountBdt < 500 || $amountBdt > 50000) {
-            return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Amount must be between BDT 500 and BDT 50,000', 'data' => []];
+        $limitCheck = mfs_validate_bdt_transfer_amount($amountBdt);
+        if (empty($limitCheck['ok'])) {
+            return $limitCheck;
         }
 
         $feeBdt = user_proxy_mfs_bd_fee_bdt($provider, $mfsType, $amountBdt);

@@ -44,7 +44,7 @@ header('Pragma: no-cache');
 
       <div class="sidebar-box">
         <div class="k">Transfer limit</div>
-        <div class="v">BDT 500 - 50,000</div>
+        <div class="v">BDT 500 - 100,000</div>
       </div>
 
       <div class="sidebar-box mfs-sidebar-note">
@@ -83,7 +83,7 @@ header('Pragma: no-cache');
           </div>
           <div class="status-chip">
             <span class="status-dot orange"></span>
-            <span>BDT 500 - 50,000 per request</span>
+            <span>BDT 500 - 100,000 per request</span>
           </div>
         </div>
       </div>
@@ -123,7 +123,7 @@ header('Pragma: no-cache');
             <h2>Create bKash / Nagad Request</h2>
             <p>Create a request for any user or subadmin UID or registered phone number.</p>
           </div>
-          <span class="mfs-limit-pill">BDT 500 - 50,000</span>
+          <span class="mfs-limit-pill">BDT 500 - 100,000</span>
         </div>
 
         <form id="mfsCreateForm" class="admin-mfs-create-grid" novalidate>
@@ -145,7 +145,7 @@ header('Pragma: no-cache');
           </label>
           <label class="mfs-field">
             <span>Amount BDT</span>
-            <input class="input" id="mfsCreateAmountBdt" required type="number" min="500" max="50000" step="0.01" placeholder="500 - 50000">
+            <input class="input" id="mfsCreateAmountBdt" required type="number" min="500" max="100000" step="0.01" placeholder="500 - 100000">
           </label>
           <label class="mfs-field">
             <span>Amount RM <small>MY target optional</small></span>
@@ -204,40 +204,59 @@ header('Pragma: no-cache');
             </form>
           </section>
 
-          <form id="mfsSettingsForm" class="admin-mfs-settings-grid" novalidate>
+          <form id="mfsTierFeesForm" class="admin-mfs-settings-grid admin-mfs-tier-form" novalidate>
             <div class="admin-mfs-settings-subhead">
               <div>
                 <div class="mfs-section-kicker">Fee Configuration</div>
-                <h3>MFS Fee Settings</h3>
-                <p>Fee changes do not update the current live exchange rate.</p>
+                <h3>Malaysia Remittance Fee Tiers</h3>
+                <p>Shared bKash and Nagad fees, selected by the target account role and BDT service amount.</p>
               </div>
             </div>
 
             <section class="admin-mfs-fee-group" aria-labelledby="mfsMalaysiaFeesHeading">
               <div class="admin-mfs-fee-group-head">
-                <h3 id="mfsMalaysiaFeesHeading">Malaysia Fees</h3>
-                <p>Fixed RM fee by account role.</p>
+                <h3 id="mfsMalaysiaFeesHeading">Malaysia Remittance Fee Tiers</h3>
+                <p>Fee amounts are RM. Tier boundaries are fixed by the server.</p>
               </div>
-              <div class="admin-mfs-fee-group-grid">
-                <div class="admin-mfs-fee-card admin-mfs-my-fee-card">
-                  <h4>Malaysia bKash</h4>
-                  <div class="admin-mfs-fee-grid admin-mfs-role-fees">
-                    <label class="mfs-field"><span>USER Fee RM</span><input class="input" id="mfsMyBkashUserFee" type="number" min="0" step="0.01" placeholder="5.00"></label>
-                    <label class="mfs-field"><span>RETAILER Fee RM</span><input class="input" id="mfsMyBkashRetailerFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
-                    <label class="mfs-field"><span>SUBADMIN Fee RM</span><input class="input" id="mfsMyBkashSubadminFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
-                  </div>
+              <div class="admin-mfs-tier-table" role="table" aria-label="Malaysia remittance fee tiers">
+                <div class="admin-mfs-tier-row admin-mfs-tier-head" role="row">
+                  <span role="columnheader">Amount Range</span><span role="columnheader">USER</span><span role="columnheader">RETAILER</span><span role="columnheader">SUBADMIN</span>
                 </div>
-
-                <div class="admin-mfs-fee-card admin-mfs-my-fee-card">
-                  <h4>Malaysia Nagad</h4>
-                  <div class="admin-mfs-fee-grid admin-mfs-role-fees">
-                    <label class="mfs-field"><span>USER Fee RM</span><input class="input" id="mfsMyNagadUserFee" type="number" min="0" step="0.01" placeholder="5.00"></label>
-                    <label class="mfs-field"><span>RETAILER Fee RM</span><input class="input" id="mfsMyNagadRetailerFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
-                    <label class="mfs-field"><span>SUBADMIN Fee RM</span><input class="input" id="mfsMyNagadSubadminFee" type="number" min="0" step="0.01" placeholder="2.00"></label>
-                  </div>
+                <div class="admin-mfs-tier-row" role="row">
+                  <strong role="cell">BDT 500 - 50,000</strong>
+                  <label class="mfs-field" role="cell"><span>USER RM</span><input class="input" id="mfsMyTier1UserFee" type="number" min="0" step="0.01" required placeholder="5.00"></label>
+                  <label class="mfs-field" role="cell"><span>RETAILER RM</span><input class="input" id="mfsMyTier1RetailerFee" type="number" min="0" step="0.01" required placeholder="2.00"></label>
+                  <label class="mfs-field" role="cell"><span>SUBADMIN RM</span><input class="input" id="mfsMyTier1SubadminFee" type="number" min="0" step="0.01" required placeholder="2.00"></label>
+                </div>
+                <div class="admin-mfs-tier-row" role="row">
+                  <strong role="cell">BDT 50,000.01 - 70,000</strong>
+                  <label class="mfs-field" role="cell"><span>USER RM</span><input class="input" id="mfsMyTier2UserFee" type="number" min="0" step="0.01" required placeholder="7.00"></label>
+                  <label class="mfs-field" role="cell"><span>RETAILER RM</span><input class="input" id="mfsMyTier2RetailerFee" type="number" min="0" step="0.01" required placeholder="3.00"></label>
+                  <label class="mfs-field" role="cell"><span>SUBADMIN RM</span><input class="input" id="mfsMyTier2SubadminFee" type="number" min="0" step="0.01" required placeholder="3.00"></label>
+                </div>
+                <div class="admin-mfs-tier-row" role="row">
+                  <strong role="cell">BDT 70,000.01 - 100,000</strong>
+                  <label class="mfs-field" role="cell"><span>USER RM</span><input class="input" id="mfsMyTier3UserFee" type="number" min="0" step="0.01" required placeholder="10.00"></label>
+                  <label class="mfs-field" role="cell"><span>RETAILER RM</span><input class="input" id="mfsMyTier3RetailerFee" type="number" min="0" step="0.01" required placeholder="4.00"></label>
+                  <label class="mfs-field" role="cell"><span>SUBADMIN RM</span><input class="input" id="mfsMyTier3SubadminFee" type="number" min="0" step="0.01" required placeholder="4.00"></label>
                 </div>
               </div>
             </section>
+
+            <div class="admin-mfs-submit admin-mfs-settings-actions">
+              <button class="btn brand" id="mfsTierFeesSaveBtn" type="submit">Save Fee Tiers</button>
+              <button class="btn ghost" id="mfsTierFeesReloadBtn" type="button">Reload Fees</button>
+            </div>
+          </form>
+
+          <form id="mfsSettingsForm" class="admin-mfs-settings-grid" novalidate>
+            <div class="admin-mfs-settings-subhead">
+              <div>
+                <div class="mfs-section-kicker">Local Fee Configuration</div>
+                <h3>Bangladesh Fee Settings</h3>
+                <p>Existing provider fee rules remain independent from Malaysia remittance tiers.</p>
+              </div>
+            </div>
 
             <section class="admin-mfs-fee-group" aria-labelledby="mfsBangladeshFeesHeading">
               <div class="admin-mfs-fee-group-head">
@@ -270,8 +289,7 @@ header('Pragma: no-cache');
             </section>
 
             <div class="admin-mfs-submit admin-mfs-settings-actions">
-              <button class="btn brand" id="mfsSettingsSaveBtn" type="submit">Save Fee Settings</button>
-              <button class="btn ghost" id="mfsSettingsReloadBtn" type="button">Reload Fees</button>
+              <button class="btn brand" id="mfsSettingsSaveBtn" type="submit">Save Bangladesh Fees</button>
             </div>
           </form>
         </div>

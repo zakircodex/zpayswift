@@ -6,6 +6,9 @@ $_SERVER['SCRIPT_FILENAME'] = __FILE__;
 if (!defined('WALLET_FINANCIAL_OPERATION_LEASE_SECONDS')) {
     define('WALLET_FINANCIAL_OPERATION_LEASE_SECONDS', 60);
 }
+if (!defined('MFS_MAX_AMOUNT_BDT')) {
+    define('MFS_MAX_AMOUNT_BDT', 50000.00);
+}
 
 $store = [];
 $versions = [];
@@ -378,35 +381,154 @@ assert_true(!wallet_financial_operation_mark_applied($active['claim'], ['old_own
 assert_true(history_count($uid) >= 5, 'MFS history should use deterministic request ids');
 assert_true(notification_count($uid) >= 5, 'MFS notifications should use existing idempotent notification rows');
 
-function put_mfs_create_user(string $uid, string $country, string $currency): void
+function put_mfs_create_user(
+    string $uid,
+    string $country,
+    string $currency,
+    string $role = 'USER',
+    string $phoneCountry = ''
+): void
 {
     fb_put('USERS/' . $uid, [
         'uid' => $uid,
         'full_name' => 'MFS Create Test',
         'name' => 'MFS Create Test',
         'phone' => $country === 'MY' ? '60123456789' : '01700000001',
-        'role' => 'USER',
+        'role' => $role,
         'status' => 'ACTIVE',
         'pricing_country' => $country,
+        'phone_country' => $phoneCountry !== '' ? $phoneCountry : $country,
         'wallet_currency' => $currency,
         'pin_hash' => password_hash('1234', PASSWORD_DEFAULT),
     ]);
-    put_wallet($uid, 1000.00, 0.00, $currency);
+    put_wallet($uid, 10000.00, 0.00, $currency);
 }
 
-function mfs_create_body(string $provider, string $idempotencyKey): array
+function mfs_create_body(string $provider, string $idempotencyKey, float $amountBdt = 620.00): array
 {
     return [
         'provider' => $provider,
         'service_type' => 'SEND_MONEY',
         'account_type' => 'PERSONAL',
         'receiver_number' => '01700000000',
-        'amount_bdt' => 620.00,
+        'amount_bdt' => $amountBdt,
         'currency' => 'BDT',
         'pin' => '1234',
         'idempotency_key' => $idempotencyKey,
     ];
 }
+
+fb_put('MFS_SETTINGS', [
+    'rate_myr_bdt' => 31.00,
+    'fees' => [
+        'MY' => [
+            'TIERS' => mfs_my_fee_tier_storage(),
+        ],
+    ],
+]);
+mfs_config(true);
+$publicFeeSettings = mfs_public_settings();
+assert_true(!isset($publicFeeSettings['fees']['MY']['TIERS']), 'Public MFS settings must not expose the Admin tier matrix');
+
+$roleCases = [
+    ['MFS_TIER_USER', 'USER', 50000.01, 7.00],
+    ['MFS_TIER_RETAILER', 'RETAILER', 70000.01, 4.00],
+    ['MFS_TIER_SUBADMIN', 'SUBADMIN', 50001.00, 3.00],
+    ['MFS_TIER_ADMIN', 'ADMIN', 100000.00, 0.00],
+];
+foreach ($roleCases as [$tierUid, $role, $amountBdt, $expectedFee]) {
+    put_mfs_create_user($tierUid, 'MY', 'MYR', $role, 'BD');
+    $tierPreview = mfs_preview_payload($tierUid, array_merge(
+        mfs_create_body('BKASH', 'PREVIEW_' . $tierUid, $amountBdt),
+        [
+            'role' => 'USER',
+            'fee' => 0,
+            'tier' => 'TIER1',
+            'pricing_country' => 'BD',
+            'wallet_currency' => 'BDT',
+            'rate' => 1,
+        ]
+    ));
+    assert_true(!empty($tierPreview['ok']), "{$role} tier preview should succeed");
+    assert_true((float)($tierPreview['data']['fee_rm'] ?? -1) === $expectedFee, "{$role} fee must come from canonical account role and BDT tier");
+    assert_true((string)($tierPreview['data']['country_code'] ?? '') === 'MY', "{$role} phone_country/client input must not override pricing_country");
+}
+
+$untrustedAmountsPreview = mfs_preview_payload('MFS_TIER_USER', array_merge(
+    mfs_create_body('BKASH', 'PREVIEW_UNTRUSTED_AMOUNTS', 50000.01),
+    ['amount_rm' => 1.00, 'amount_myr' => 1.00, 'currency' => 'BDT', 'rate' => 1]
+));
+assert_true(!empty($untrustedAmountsPreview['ok']), 'Canonical-rate preview should accept a valid BDT service amount');
+assert_true((float)$untrustedAmountsPreview['data']['amount_rm'] === round(50000.01 / 31.00, 2), 'Client MYR amount/rate must not override the canonical rate conversion');
+assert_true((float)$untrustedAmountsPreview['data']['fee_rm'] === 7.00, 'Tier fee must use the canonical BDT service amount');
+
+put_mfs_create_user('MFS_TIER_BD_MARKET', 'BD', 'BDT', 'USER', 'MY');
+$bdMarketPreview = mfs_preview_payload('MFS_TIER_BD_MARKET', mfs_create_body('BKASH', 'PREVIEW_BD_MARKET', 70000.01));
+assert_true(!empty($bdMarketPreview['ok']), 'BD market preview should remain available at the new maximum');
+assert_true((string)($bdMarketPreview['data']['country_code'] ?? '') === 'BD', 'phone_country must not switch a BD pricing account into MY fees');
+assert_true((float)($bdMarketPreview['data']['fee_rm'] ?? -1) === 0.00, 'BD local fee rules must not receive an MY fee');
+
+$maximumPreview = mfs_preview_payload('MFS_TIER_USER', mfs_create_body('BKASH', 'PREVIEW_MAX', 100000.00));
+assert_true(!empty($maximumPreview['ok']), 'BDT 100,000 must be accepted');
+$overMaximumPreview = mfs_preview_payload('MFS_TIER_USER', mfs_create_body('BKASH', 'PREVIEW_OVER_MAX', 100000.01));
+assert_true(empty($overMaximumPreview['ok']) && (float)($overMaximumPreview['data']['maximum_amount_bdt'] ?? 0) === 100000.00, 'Amount above BDT 100,000 must be rejected');
+
+put_mfs_create_user('MFS_TIER_PREVIEW_SUBMIT', 'MY', 'MYR', 'USER');
+$tierSubmitBody = mfs_create_body('BKASH', 'MFS_TIER_PREVIEW_SUBMIT_ONCE', 50000.01);
+$tierSubmitPreview = mfs_preview_payload('MFS_TIER_PREVIEW_SUBMIT', $tierSubmitBody);
+$tierSubmit = mfs_create_request('MFS_TIER_PREVIEW_SUBMIT', $tierSubmitBody, 'ADMIN_PANEL', 'PANEL', [
+    'uid' => 'ADMIN_TEST',
+    'role' => 'ADMIN',
+    'skip_pin_validation' => true,
+]);
+assert_true(!empty($tierSubmitPreview['ok']) && !empty($tierSubmit['ok']), 'Tier 2 preview and submit must both succeed');
+assert_true((float)$tierSubmitPreview['data']['fee_rm'] === (float)$tierSubmit['data']['fee_rm'], 'Preview and submit must calculate the same tier fee');
+assert_true((float)$tierSubmit['data']['fee_rm'] === 7.00, 'Admin-created request must use the target USER role, not the Admin actor role');
+
+$retailerSubmit = mfs_create_request(
+    'MFS_TIER_RETAILER',
+    mfs_create_body('NAGAD', 'MFS_TIER_RETAILER_SUBMIT', 50000.01),
+    'USER_PANEL',
+    'PANEL',
+    ['uid' => 'MFS_TIER_RETAILER', 'role' => 'RETAILER']
+);
+assert_true(!empty($retailerSubmit['ok']) && (float)$retailerSubmit['data']['fee_rm'] === 3.00, 'Retailer submit must use the canonical Tier 2 RETAILER fee');
+
+$subadminSubmit = mfs_create_request(
+    'MFS_TIER_SUBADMIN',
+    mfs_create_body('BKASH', 'MFS_TIER_SUBADMIN_SUBMIT', 70000.01),
+    'SUBADMIN_PANEL',
+    'PANEL',
+    ['uid' => 'MFS_TIER_SUBADMIN', 'role' => 'SUBADMIN']
+);
+assert_true(!empty($subadminSubmit['ok']) && (float)$subadminSubmit['data']['fee_rm'] === 4.00, 'Subadmin submit must use the canonical Tier 3 SUBADMIN fee');
+
+put_mfs_create_user('MFS_TIER_SNAPSHOT', 'MY', 'MYR', 'USER');
+$snapshotBody = mfs_create_body('BKASH', 'MFS_TIER_SNAPSHOT_ONCE', 70000.01);
+$snapshotPreview = mfs_preview_payload('MFS_TIER_SNAPSHOT', $snapshotBody);
+assert_true(!empty($snapshotPreview['ok']) && (float)$snapshotPreview['data']['fee_rm'] === 10.00, 'Snapshot setup must use the original Tier 3 fee');
+$snapshotStartingBalance = (float)fb_get('USER_WALLETS/MFS_TIER_SNAPSHOT')['available_balance'];
+$changedTiers = mfs_my_fee_tier_storage();
+$changedTiers['TIER3']['USER'] = 25.00;
+fb_put('MFS_SETTINGS/fees/MY/TIERS', $changedTiers);
+mfs_config(true);
+$snapshotCreate = mfs_create_request('MFS_TIER_SNAPSHOT', $snapshotBody, 'USER_API', 'PANEL', [
+    'uid' => 'MFS_TIER_SNAPSHOT',
+    'role' => 'USER',
+    'preview_data' => (array)$snapshotPreview['data'],
+]);
+assert_true(!empty($snapshotCreate['ok']), 'Request creation from the original preview snapshot must succeed after a fee update');
+assert_true((float)$snapshotCreate['data']['fee_rm'] === 10.00, 'Existing preview/request snapshot must not be repriced after an Admin fee change');
+$snapshotRequestId = (string)$snapshotCreate['data']['request_id'];
+$snapshotHeld = (float)$snapshotCreate['data']['total_debit'];
+$snapshotFailure = mfs_mark_failed($snapshotRequestId, 'test refund');
+assert_true(!empty($snapshotFailure['ok']), 'Snapshot request failure must finalize');
+$snapshotWallet = (array)fb_get('USER_WALLETS/MFS_TIER_SNAPSHOT');
+assert_true((float)$snapshotWallet['available_balance'] === $snapshotStartingBalance, 'Failed request must refund the exact original tiered MYR debit');
+assert_true((float)$snapshotWallet['hold_balance'] === 0.00 && $snapshotHeld > 0, 'Failed request must release the exact original hold');
+
+fb_put('MFS_SETTINGS/fees/MY/TIERS', mfs_my_fee_tier_storage());
+mfs_config(true);
 
 function mfs_confirm_from_preview(string $uid, string $provider, string $idempotencyKey): array
 {

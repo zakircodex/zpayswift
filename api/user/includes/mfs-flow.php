@@ -83,7 +83,7 @@ window.USER_MFS_CONFIG = <?= json_encode([
             <span>BDT Amount</span>
             <span class="mfs-money-shell">
               <b>BDT</b>
-              <input id="mfsAmountBdt" type="number" inputmode="decimal" autocomplete="off" min="500" max="50000" step="0.01" placeholder="0.00">
+              <input id="mfsAmountBdt" type="number" inputmode="decimal" autocomplete="off" min="500" max="100000" step="0.01" placeholder="0.00">
             </span>
           </label>
           <p class="mfs-minimum-hint">Minimum send money amount is 500 BDT.</p>

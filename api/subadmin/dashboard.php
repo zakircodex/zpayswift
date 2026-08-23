@@ -404,7 +404,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 
                 <div class="field">
                   <label>Amount BDT</label>
-                  <input id="subMfsAmountBdt" class="input" type="number" step="0.01" min="500" max="50000" placeholder="500 - 50000">
+                  <input id="subMfsAmountBdt" class="input" type="number" step="0.01" min="500" max="100000" placeholder="500 - 100000">
                 </div>
 
                 <div class="field" id="subMfsAmountRmField">
@@ -428,7 +428,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                 </div>
               </div>
 
-              <p class="muted tiny-note mt-10">Minimum BDT 500 and maximum BDT 50,000 per request. Failed requests refund the same subadmin wallet.</p>
+              <p class="muted tiny-note mt-10">Minimum BDT 500 and maximum BDT 100,000 per request. Failed requests refund the same subadmin wallet.</p>
 
               <div class="actions mt-10">
                 <button class="btn green" id="subMfsCreateBtn" type="button">Next</button>

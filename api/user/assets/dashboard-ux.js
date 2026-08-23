@@ -509,9 +509,9 @@
       setMfsAmountNotice('Amount is required');
       return false;
     }
-    if (d.amount_bdt > 0 && (d.amount_bdt < 500 || d.amount_bdt > 50000)) {
-      if (typeof showToast === 'function') showToast('Amount must be between BDT 500 and BDT 50,000', 'error');
-      setMfsAmountNotice('Amount must be between BDT 500 and BDT 50,000');
+    if (d.amount_bdt > 0 && (d.amount_bdt < 500 || d.amount_bdt > 100000)) {
+      if (typeof showToast === 'function') showToast('Amount must be between BDT 500 and BDT 100,000', 'error');
+      setMfsAmountNotice('Amount must be between BDT 500 and BDT 100,000');
       return false;
     }
     setMfsAmountNotice('');

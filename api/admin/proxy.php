@@ -1311,6 +1311,25 @@ switch ($action) {
         ]);
         break;
 
+    case 'mfs_my_fee_tiers_save':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+        proxy_require_admin_login(true);
+        $body = proxy_read_json_body();
+        $tierSave = mfs_admin_save_my_fee_tiers($body);
+
+        if (empty($tierSave['ok'])) {
+            $code = (string)($tierSave['code'] ?? 'FEE_TIER_SAVE_FAILED');
+            $httpStatus = in_array($code, ['INVALID_FEE', 'INVALID_FEE_TIER'], true) ? 422 : 500;
+            proxy_response(false, $code, (string)($tierSave['message'] ?? 'Failed to save Malaysia fee tiers'), (array)($tierSave['data'] ?? []), $httpStatus);
+        }
+
+        proxy_response(true, 'SUCCESS', 'Malaysia remittance fee tiers saved', [
+            'tiers' => (array)($tierSave['data']['tiers'] ?? []),
+            'fees' => (array)($tierSave['data']['fees'] ?? mfs_admin_fee_state()),
+        ]);
+        break;
+
     case 'mfs_fees_save':
     case 'save_mfs_settings':
     case 'save_mfs_fee_rate_settings':

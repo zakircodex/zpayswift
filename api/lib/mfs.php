@@ -8,6 +8,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/wallet.php';
+require_once __DIR__ . '/mfs_fee_tiers.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -588,12 +589,9 @@ function mfs_const_bool(string $name, bool $default = false): bool
 
 function mfs_bdt_transfer_limits(): array
 {
-    $minimum = mfs_const_float('MFS_MIN_AMOUNT_BDT', 500.00);
-    $maximum = mfs_const_float('MFS_MAX_AMOUNT_BDT', 50000.00);
-
     return [
-        'minimum' => max(0.01, mfs_round_money($minimum)),
-        'maximum' => max($minimum, mfs_round_money($maximum)),
+        'minimum' => 500.00,
+        'maximum' => 100000.00,
     ];
 }
 
@@ -1285,94 +1283,20 @@ function mfs_fee_roles(): array
     return ['USER', 'RETAILER', 'SUBADMIN', 'ADMIN'];
 }
 
-function mfs_default_my_fee_rm(string $role): float
+function mfs_current_my_fee_tiers(): array
 {
-    $role = strtoupper(trim($role));
+    $configured = mfs_config_first([
+        'fees.MY.TIERS',
+        'fees.MY.tiers',
+    ], []);
 
-    if ($role === 'SUBADMIN') {
-        return mfs_const_float('MY_REMITTANCE_FEE_SUBADMIN_RM', 2.00);
-    }
-
-    if ($role === 'RETAILER') {
-        return mfs_const_float('MY_REMITTANCE_FEE_RETAILER_RM', 2.00);
-    }
-
-    if ($role === 'ADMIN') {
-        return mfs_const_float('MY_REMITTANCE_FEE_ADMIN_RM', 0.00);
-    }
-
-    return mfs_const_float('MY_REMITTANCE_FEE_USER_RM', 5.00);
+    return mfs_normalize_my_fee_tiers(is_array($configured) ? $configured : []);
 }
 
-function mfs_pick_role_fee_from_row(array $row, string $role): float
+function mfs_remittance_fee_rm(string $role, string $provider = '', float $amountBdt = 500.00): float
 {
-    $roleFee = mfs_nested_value($row, $role, null);
-
-    if (is_numeric($roleFee)) {
-        return mfs_round_money($roleFee);
-    }
-
-    if (is_array($roleFee)) {
-        $pickedRoleFee = mfs_pick_fee_float($roleFee, ['fee_rm', 'fixed', 'fixed_fee', 'amount', 'rm'], -1.0);
-        if ($pickedRoleFee >= 0) {
-            return mfs_round_money($pickedRoleFee);
-        }
-    }
-
-    return -1.0;
-}
-
-function mfs_remittance_fee_rm(string $role, string $provider = ''): float
-{
-    $role = strtoupper(trim($role));
-    if (!in_array($role, mfs_fee_roles(), true)) {
-        $role = 'USER';
-    }
-
-    $provider = mfs_normalize_provider($provider);
-
-    $paths = [];
-
-    if ($provider !== '') {
-        $providerFee = mfs_config_first(['fees.MY.' . $provider], null);
-
-        if (is_array($providerFee)) {
-            $pickedRoleFee = mfs_pick_role_fee_from_row($providerFee, $role);
-            if ($pickedRoleFee >= 0) {
-                return mfs_round_money($pickedRoleFee);
-            }
-
-            $pickedProviderFee = $role === 'USER'
-                ? mfs_pick_fee_float($providerFee, ['fee_rm', 'fixed', 'fixed_fee', 'amount', 'rm'], -1.0)
-                : -1.0;
-            if ($pickedProviderFee >= 0) {
-                return mfs_round_money($pickedProviderFee);
-            }
-        }
-
-        $paths[] = 'MY.' . $provider . '.remittance_fee_rm.' . $role;
-        $paths[] = 'REMITTANCE.' . $provider . '.fee_rm.' . $role;
-        $paths[] = 'fees.MY.' . $provider . '.' . $role;
-        if ($role === 'USER') {
-            $paths[] = 'fees.MY.' . $provider . '.fee_rm';
-            $paths[] = 'fees.MY.' . $provider . '.fixed';
-            $paths[] = 'fees.MY.' . $provider . '.fixed_fee';
-            $paths[] = 'fees.MY.' . $provider . '.amount';
-        }
-    }
-
-    $paths[] = 'MY.remittance_fee_rm.' . $role;
-    $paths[] = 'REMITTANCE.fee_rm.' . $role;
-    $paths[] = 'remittance_fee_rm.' . $role;
-    $paths[] = 'fees.MY.' . $role;
-
-    $fee = mfs_config_float($paths, -1.0);
-
-    if ($fee >= 0) {
-        return mfs_round_money($fee);
-    }
-
-    return mfs_default_my_fee_rm($role);
+    $resolved = mfs_resolve_my_fee_tier($amountBdt, $role, mfs_current_my_fee_tiers());
+    return !empty($resolved['ok']) ? mfs_round_money((float)$resolved['fee_rm']) : 0.00;
 }
 
 function mfs_country_label(string $countryCode): string
@@ -1410,15 +1334,15 @@ function mfs_public_settings(): array
         ];
 
         $myRow = mfs_config_first(['fees.MY.' . $provider], null);
-        $userFee = mfs_remittance_fee_rm('USER', $provider);
+        $userFee = mfs_remittance_fee_rm('USER', $provider, 500.00);
         $fees['MY'][$provider] = [
             'type' => is_array($myRow) ? (string)($myRow['type'] ?? 'fixed') : 'fixed',
             'fixed' => $userFee,
             'fee_rm' => $userFee,
-            'USER' => mfs_remittance_fee_rm('USER', $provider),
-            'RETAILER' => mfs_remittance_fee_rm('RETAILER', $provider),
-            'SUBADMIN' => mfs_remittance_fee_rm('SUBADMIN', $provider),
-            'ADMIN' => mfs_remittance_fee_rm('ADMIN', $provider),
+            'USER' => mfs_remittance_fee_rm('USER', $provider, 500.00),
+            'RETAILER' => mfs_remittance_fee_rm('RETAILER', $provider, 500.00),
+            'SUBADMIN' => mfs_remittance_fee_rm('SUBADMIN', $provider, 500.00),
+            'ADMIN' => mfs_remittance_fee_rm('ADMIN', $provider, 500.00),
         ];
     }
 
@@ -1519,19 +1443,23 @@ function mfs_calculate_amounts(array $user, array $wallet, string $provider, str
     }
 
     if ($countryCode === 'MY') {
-        if ($amountRm <= 0 && $amount > 0 && $inputCurrency === 'MYR') {
-            $amountRm = $amount;
-        }
-
-        if ($amountBdt <= 0 && $amount > 0 && $inputCurrency !== 'MYR') {
-            $amountBdt = $amount;
-        }
-
-        if ($amountRm > 0 && $amountBdt <= 0) {
+        $useMyrInput = $inputCurrency === 'MYR';
+        if ($useMyrInput) {
+            if ($amountRm <= 0 && $amount > 0) {
+                $amountRm = $amount;
+            }
+            $amountRm = mfs_round_money($amountRm);
             $amountBdt = mfs_round_money($amountRm * $rate);
-        }
-
-        if ($amountBdt > 0 && $amountRm <= 0) {
+        } else {
+            if ($amountBdt <= 0 && $amount > 0) {
+                $amountBdt = $amount;
+            }
+            if ($amountBdt <= 0 && $amountRm > 0) {
+                $amountRm = mfs_round_money($amountRm);
+                $amountBdt = mfs_round_money($amountRm * $rate);
+            } else {
+                $amountBdt = mfs_round_money($amountBdt);
+            }
             $amountRm = mfs_round_money($amountBdt / $rate);
         }
 
@@ -1544,7 +1472,17 @@ function mfs_calculate_amounts(array $user, array $wallet, string $provider, str
             return $limitCheck;
         }
 
-        $feeRm = mfs_remittance_fee_rm($role, $provider);
+        $feeTier = mfs_resolve_my_fee_tier($amountBdt, $role, mfs_current_my_fee_tiers());
+        if (empty($feeTier['ok'])) {
+            return [
+                'ok' => false,
+                'code' => (string)($feeTier['code'] ?? 'VALIDATION_ERROR'),
+                'message' => (string)($feeTier['message'] ?? 'Invalid remittance amount'),
+                'data' => (array)($feeTier['data'] ?? []),
+            ];
+        }
+
+        $feeRm = mfs_round_money((float)$feeTier['fee_rm']);
         $feeBdt = mfs_round_money($feeRm * $rate);
         $totalDebitRm = mfs_round_money($amountRm + $feeRm);
         $totalDebitBdt = mfs_round_money($amountBdt + $feeBdt);
@@ -1562,6 +1500,11 @@ function mfs_calculate_amounts(array $user, array $wallet, string $provider, str
 
             'fee_bdt' => $feeBdt,
             'fee_rm' => $feeRm,
+
+            'fee_tier_id' => (string)$feeTier['tier_id'],
+            'fee_tier_min_bdt' => (float)$feeTier['min_bdt'],
+            'fee_tier_max_bdt' => (float)$feeTier['max_bdt'],
+            'fee_role' => (string)$feeTier['role'],
 
             'total_debit_bdt' => $totalDebitBdt,
             'total_debit_rm' => $totalDebitRm,

@@ -24,6 +24,7 @@
     feesLoading:false,
     rateMutating:false,
     feesMutating:false,
+    tierFeesMutating:false,
     viewReceiptUrl:'',
     pages:{
       pending:{page:1,cursor:'',next_cursor:'',has_more:false,history:['']},
@@ -173,6 +174,9 @@
     if((value===undefined||value===null||value==='')&&role==='USER')value=row.fee_rm||row.fixed||row.amount;
     var n=Number(value);
     return Number.isFinite(n)?n:def;
+  }
+  function tierRoleFee(tiers,tier,role,def){
+    return roleFee((tiers||{})[tier]||{},role,def);
   }
 
   function countryName(value){
@@ -582,11 +586,16 @@
     state.feesLoaded=true;
     var bd=fees.BD||{};
     var my=fees.MY||{};
-    [['Bkash','BKASH'],['Nagad','NAGAD']].forEach(function(pair){
-      var suffix=pair[0], provider=pair[1], row=my[provider]||{};
-      setVal('mfsMy'+suffix+'UserFee',roleFee(row,'USER',5));
-      setVal('mfsMy'+suffix+'RetailerFee',roleFee(row,'RETAILER',2));
-      setVal('mfsMy'+suffix+'SubadminFee',roleFee(row,'SUBADMIN',2));
+    var tiers=my.TIERS||my.tiers||{};
+    [
+      ['Tier1','TIER1',{USER:5,RETAILER:2,SUBADMIN:2}],
+      ['Tier2','TIER2',{USER:7,RETAILER:3,SUBADMIN:3}],
+      ['Tier3','TIER3',{USER:10,RETAILER:4,SUBADMIN:4}]
+    ].forEach(function(entry){
+      ['USER','RETAILER','SUBADMIN'].forEach(function(role){
+        var suffix=role==='USER'?'User':role==='RETAILER'?'Retailer':'Subadmin';
+        setVal('mfsMy'+entry[0]+suffix+'Fee',tierRoleFee(tiers,entry[1],role,entry[2][role]));
+      });
     });
     [['Bkash','BKASH'],['Nagad','NAGAD']].forEach(function(pair){
       var suffix=pair[0], provider=pair[1], row=bd[provider]||{};
@@ -636,16 +645,20 @@
   function feesPayload(){
     return {
       fees:{
-        MY:{
-          BKASH:{type:'fixed',fixed:numDefault('mfsMyBkashUserFee',5),fee_rm:numDefault('mfsMyBkashUserFee',5),USER:numDefault('mfsMyBkashUserFee',5),RETAILER:numDefault('mfsMyBkashRetailerFee',2),SUBADMIN:numDefault('mfsMyBkashSubadminFee',2),ADMIN:0},
-          NAGAD:{type:'fixed',fixed:numDefault('mfsMyNagadUserFee',5),fee_rm:numDefault('mfsMyNagadUserFee',5),USER:numDefault('mfsMyNagadUserFee',5),RETAILER:numDefault('mfsMyNagadRetailerFee',2),SUBADMIN:numDefault('mfsMyNagadSubadminFee',2),ADMIN:0}
-        },
         BD:{
           BKASH:{type:el('mfsBdBkashType').value,fixed:num('mfsBdBkashFixed'),percent:num('mfsBdBkashPercent'),min_fee:num('mfsBdBkashMin'),max_fee:num('mfsBdBkashMax')},
           NAGAD:{type:el('mfsBdNagadType').value,fixed:num('mfsBdNagadFixed'),percent:num('mfsBdNagadPercent'),min_fee:num('mfsBdNagadMin'),max_fee:num('mfsBdNagadMax')}
         }
       }
     };
+  }
+
+  function tierFeesPayload(){
+    return {fees:{MY:{TIERS:{
+      TIER1:{USER:numDefault('mfsMyTier1UserFee',5),RETAILER:numDefault('mfsMyTier1RetailerFee',2),SUBADMIN:numDefault('mfsMyTier1SubadminFee',2)},
+      TIER2:{USER:numDefault('mfsMyTier2UserFee',7),RETAILER:numDefault('mfsMyTier2RetailerFee',3),SUBADMIN:numDefault('mfsMyTier2SubadminFee',3)},
+      TIER3:{USER:numDefault('mfsMyTier3UserFee',10),RETAILER:numDefault('mfsMyTier3RetailerFee',4),SUBADMIN:numDefault('mfsMyTier3SubadminFee',4)}
+    }}}};
   }
 
   async function saveRate(e){
@@ -688,6 +701,26 @@
     }
   }
 
+  async function saveTierFees(e){
+    e.preventDefault();
+    if(state.tierFeesMutating)return;
+    var button=el('mfsTierFeesSaveBtn');
+    state.tierFeesMutating=true;
+    setButtonBusy(button,true,'Saving...');
+    try{
+      await ensureCsrf();
+      var data=await post('mfs_my_fee_tiers_save',tierFeesPayload());
+      populateFees({fees:data.fees||{MY:{TIERS:data.tiers||{}}}});
+      showFeedback('success','Fee tiers saved','Malaysia remittance fee tiers were saved.');
+    }catch(err){
+      if(handleSessionExpired(err))return;
+      showFeedback('error','Unable to save fee tiers',friendlyError(err));
+    }finally{
+      setButtonBusy(button,false);
+      state.tierFeesMutating=false;
+    }
+  }
+
   function bdFeeFor(provider,amount){
     var row=fee(state.settings,'BD',provider);
     var fixed=Number(row.fixed||0);
@@ -711,14 +744,10 @@
     if(amountBdt<=0&&amountRm>0)amountBdt=amountRm*rate;
     if(amountRm<=0&&amountBdt>0)amountRm=amountBdt/rate;
     var bdFee=bdFeeFor(provider,amountBdt);
-    var myRow=fee(settings,'MY',provider)||{};
-    var myFeeUser=roleFee(myRow,'USER',5);
-    var myFeeRetailer=roleFee(myRow,'RETAILER',2);
-    var myFeeSubadmin=roleFee(myRow,'SUBADMIN',2);
     box.textContent=[
       'Backend will use the target account country/currency for the final hold.',
       'BD target: LOCAL, Amount BDT '+money(amountBdt)+', Fee BDT '+money(bdFee)+', Total Paid BDT '+money(amountBdt+bdFee),
-      'MY target: REMITTANCE, Rate RM 1 = BDT '+money(rate)+', Role fee USER RM '+money(myFeeUser)+', RETAILER RM '+money(myFeeRetailer)+', SUBADMIN RM '+money(myFeeSubadmin)+'.',
+      'MY target: REMITTANCE, Rate RM 1 = BDT '+money(rate)+'. The backend will resolve the target account role and amount tier.',
       'Create Request will open a review modal before any wallet hold.'
     ].join('\n');
   }
@@ -859,7 +888,7 @@
     if(['BKASH','NAGAD'].indexOf(provider)<0)return 'Please select bKash or Nagad.';
     if(!/^01[3-9]\d{8}$/.test(receiver))return 'Receiver number must be a valid 11 digit BD mobile number.';
     if((!Number.isFinite(amount)||amount<=0)&&(!Number.isFinite(amountRm)||amountRm<=0))return 'Amount BDT or Amount RM is required.';
-    if(Number.isFinite(amount)&&amount>0&&(amount<500||amount>50000))return 'Amount BDT must be between BDT 500 and BDT 50,000.';
+    if(Number.isFinite(amount)&&amount>0&&(amount<500||amount>100000))return 'Amount BDT must be between BDT 500 and BDT 100,000.';
     return '';
   }
 
@@ -1106,8 +1135,9 @@
     el('mfsCreateReviewConfirmBtn').addEventListener('click',confirmCreateRequest);
     el('mfsRateForm').addEventListener('submit',saveRate);
     el('mfsRateReloadBtn').addEventListener('click',function(){loadRate(el('mfsRateReloadBtn'),true);});
+    el('mfsTierFeesForm').addEventListener('submit',saveTierFees);
+    el('mfsTierFeesReloadBtn').addEventListener('click',function(){loadFees(el('mfsTierFeesReloadBtn'),true);});
     el('mfsSettingsForm').addEventListener('submit',saveFeeSettings);
-    el('mfsSettingsReloadBtn').addEventListener('click',function(){loadFees(el('mfsSettingsReloadBtn'),true);});
     ['mfsCreateUid','mfsCreateProvider','mfsCreateReceiver','mfsCreateAmountBdt','mfsCreateAmountRm'].forEach(function(id){el(id).addEventListener('input',updateCreatePreview); el(id).addEventListener('change',updateCreatePreview);});
     el('mfsReloadBtn').addEventListener('click',function(){load(el('mfsReloadBtn'),true);});
     el('mfsApplyFilterBtn').addEventListener('click',function(){resetAllPages();load(el('mfsApplyFilterBtn'),true);});

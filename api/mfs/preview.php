@@ -442,62 +442,6 @@ function mfs_preview_mfs_enabled(array $config): bool
     return true;
 }
 
-function mfs_preview_my_fee_rm(array $config, string $role, string $provider = ''): float
-{
-    $role = strtoupper(trim($role));
-    $provider = mfs_preview_normalize_provider($provider);
-
-    $paths = [
-        ['fees', 'MY', $provider, $role],
-        ['fees', 'MY', $provider, $role, 'fee_rm'],
-        ['fees', 'MY', $provider, $role, 'fixed'],
-        ['fees', 'MY', $role, 'fee_rm'],
-        ['fees', 'MY', $role, 'amount'],
-        ['fees', 'MY', $role],
-        ['my_remittance_fees', $role],
-        ['my_fees', $role],
-        ['remittance_fees', 'MY', $role],
-    ];
-
-    foreach ($paths as $path) {
-        $value = mfs_preview_config_path($config, $path, null);
-
-        if (is_array($value)) {
-            foreach (['fee_rm', 'amount', 'fee'] as $key) {
-                if (isset($value[$key]) && is_numeric($value[$key])) {
-                    return mfs_preview_round($value[$key]);
-                }
-            }
-        }
-
-        if (is_numeric($value)) {
-            return mfs_preview_round($value);
-        }
-    }
-
-    if ($role === 'SUBADMIN' && defined('MY_REMITTANCE_FEE_SUBADMIN_RM')) {
-        return mfs_preview_round((float)MY_REMITTANCE_FEE_SUBADMIN_RM);
-    }
-
-    if ($role === 'RETAILER' && defined('MY_REMITTANCE_FEE_RETAILER_RM')) {
-        return mfs_preview_round((float)MY_REMITTANCE_FEE_RETAILER_RM);
-    }
-
-    if (defined('MY_REMITTANCE_FEE_USER_RM')) {
-        return mfs_preview_round((float)MY_REMITTANCE_FEE_USER_RM);
-    }
-
-    if ($role === 'SUBADMIN' || $role === 'RETAILER') {
-        return 2.00;
-    }
-
-    if ($role === 'ADMIN') {
-        return 0.00;
-    }
-
-    return 5.00;
-}
-
 function mfs_preview_fee_from_rule($rule, float $amount): float
 {
     if ($rule === null || $rule === '' || $rule === false) {
@@ -793,8 +737,9 @@ if ($countryCode === 'BD') {
     }
 }
 
-if ($amountBdt < 500 || $amountBdt > 50000) {
-    api_response(false, 'VALIDATION_ERROR', 'Amount must be between BDT 500 and BDT 50,000', [], 422);
+$limitCheck = mfs_validate_bdt_transfer_amount($amountBdt);
+if (empty($limitCheck['ok'])) {
+    api_response(false, (string)$limitCheck['code'], (string)$limitCheck['message'], (array)($limitCheck['data'] ?? []), 422);
 }
 
 if ($countryCode === 'MY' && ($amountBdt <= 0 || $amountRm <= 0)) {
@@ -811,7 +756,11 @@ if ($countryCode === 'BD') {
     $feeRm = 0.0;
     $totalDebit = mfs_preview_round($amountBdt + $feeBdt);
 } else {
-    $feeRm = mfs_preview_my_fee_rm($config, $userRole, $provider);
+    $feeTier = mfs_resolve_my_fee_tier($amountBdt, $userRole, mfs_current_my_fee_tiers());
+    if (empty($feeTier['ok'])) {
+        api_response(false, (string)$feeTier['code'], (string)$feeTier['message'], (array)($feeTier['data'] ?? []), 422);
+    }
+    $feeRm = mfs_preview_round((float)$feeTier['fee_rm']);
     $feeBdt = mfs_preview_round($feeRm * $exchangeRate);
     $totalDebit = $walletCurrency === 'MYR'
         ? mfs_preview_round($amountRm + $feeRm)
