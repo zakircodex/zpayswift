@@ -177,11 +177,105 @@ function wallet_ledger_actor_can_access_target(array $actor, array $target): boo
     return false;
 }
 
+function wallet_ledger_cursor_decode(string $cursor): array
+{
+    $cursor = trim($cursor);
+    if ($cursor === '' || preg_match('/^[A-Za-z0-9_-]{1,1024}$/', $cursor) !== 1) {
+        return ['month' => '', 'row_cursor' => ''];
+    }
+    $padding = strlen($cursor) % 4;
+    if ($padding > 0) $cursor .= str_repeat('=', 4 - $padding);
+    $json = base64_decode(strtr($cursor, '-_', '+/'), true);
+    $row = is_string($json) ? json_decode($json, true) : null;
+    $month = is_array($row) ? trim((string)($row['month'] ?? '')) : '';
+    $rowCursor = is_array($row) ? trim((string)($row['row_cursor'] ?? '')) : '';
+    if (preg_match('/^\d{4}-\d{2}$/', $month) !== 1) $month = '';
+    if ($rowCursor !== '' && preg_match('/^[A-Za-z0-9_-]{1,512}$/', $rowCursor) !== 1) $rowCursor = '';
+    return ['month' => $month, 'row_cursor' => $rowCursor];
+}
+
+function wallet_ledger_cursor_encode(string $month, string $rowCursor): string
+{
+    $json = json_encode(['month' => $month, 'row_cursor' => $rowCursor], JSON_UNESCAPED_SLASHES);
+    return is_string($json) ? rtrim(strtr(base64_encode($json), '+/', '-_'), '=') : '';
+}
+
+function wallet_ledger_subadmin_page(string $uid, string $cursor = '', int $limit = 10): array
+{
+    $limit = min(10, max(1, $limit));
+    $monthRows = fb_get('WALLET_LEDGER/' . $uid, ['shallow' => 'true']);
+    $months = array_values(array_filter(array_map('strval', array_keys(is_array($monthRows) ? $monthRows : [])),
+        static fn(string $month): bool => preg_match('/^\d{4}-\d{2}$/', $month) === 1
+    ));
+    rsort($months, SORT_STRING);
+    $state = wallet_ledger_cursor_decode($cursor);
+    $monthIndex = 0;
+    if ($state['month'] !== '') {
+        $found = array_search($state['month'], $months, true);
+        if ($found !== false) $monthIndex = (int)$found;
+    }
+
+    $items = [];
+    $nextCursor = '';
+    $rowCursor = (string)$state['row_cursor'];
+    while ($monthIndex < count($months) && count($items) < $limit) {
+        $month = $months[$monthIndex];
+        $remaining = $limit - count($items);
+        $page = admin_firebase_cursor_page(
+            'WALLET_LEDGER/' . $uid . '/' . $month,
+            $remaining,
+            $rowCursor,
+            null,
+            static function (array $row, string $ledgerId) use ($uid, $month): array {
+                return [
+                    'ledger_id' => (string)($row['ledger_id'] ?? $ledgerId),
+                    'uid' => (string)($row['uid'] ?? $uid),
+                    'type' => (string)($row['type'] ?? ''),
+                    'direction' => (string)($row['direction'] ?? ''),
+                    'amount' => (float)($row['amount'] ?? 0),
+                    'currency' => (string)($row['currency'] ?? 'BDT'),
+                    'before_available' => (float)($row['before_available'] ?? 0),
+                    'after_available' => (float)($row['after_available'] ?? 0),
+                    'before_hold' => (float)($row['before_hold'] ?? 0),
+                    'after_hold' => (float)($row['after_hold'] ?? 0),
+                    'ref_id' => (string)($row['ref_id'] ?? ''),
+                    'note' => (string)($row['note'] ?? ''),
+                    'created_at' => (int)($row['created_at'] ?? 0),
+                    'created_by_uid' => (string)($row['created_by_uid'] ?? ''),
+                    'created_by_role' => (string)($row['created_by_role'] ?? ''),
+                    'month_bucket' => $month,
+                ];
+            }
+        );
+        $items = array_merge($items, (array)($page['items'] ?? []));
+
+        if (!empty($page['pagination']['has_more'])) {
+            $nextCursor = wallet_ledger_cursor_encode($month, (string)($page['pagination']['next_cursor'] ?? ''));
+            break;
+        }
+
+        $monthIndex++;
+        $rowCursor = '';
+        if ($monthIndex < count($months)) {
+            $nextCursor = wallet_ledger_cursor_encode($months[$monthIndex], '');
+        }
+    }
+
+    return ['items' => array_values($items), 'pagination' => [
+        'limit' => $limit,
+        'count' => count($items),
+        'has_more' => $nextCursor !== '',
+        'cursor' => $cursor,
+        'next_cursor' => $nextCursor,
+    ]];
+}
+
 wallet_ledger_require_method('GET');
 $actor = wallet_ledger_require_actor();
 
 $targetUid = trim((string)($_GET['uid'] ?? ''));
 $limit = (int)($_GET['limit'] ?? 100);
+$cursor = trim((string)($_GET['cursor'] ?? ''));
 
 if ($targetUid === '') {
     wallet_ledger_response(false, 'VALIDATION_ERROR', 'Target user ID is required', [], 422);
@@ -202,6 +296,22 @@ if (!in_array($targetRole, ['USER', 'RETAILER'], true)) {
 
 if (!wallet_ledger_actor_can_access_target($actor, $targetUser)) {
     wallet_ledger_response(false, 'FORBIDDEN', 'You cannot access this account', [], 403);
+}
+
+if (strtoupper(trim((string)($actor['role'] ?? ''))) === 'SUBADMIN') {
+    $page = wallet_ledger_subadmin_page($targetUid, $cursor, min(10, max(1, $limit)));
+    $wallet = fb_get('USER_WALLETS/' . $targetUid);
+    $wallet = is_array($wallet) ? $wallet : [];
+    wallet_ledger_response(true, 'SUCCESS', 'Wallet ledger loaded successfully', [
+        'target_uid' => $targetUid,
+        'target_name' => (string)($targetUser['name'] ?? ''),
+        'target_phone' => (string)($targetUser['phone'] ?? ''),
+        'target_role' => (string)($targetUser['role'] ?? ''),
+        'available_balance' => (float)($wallet['available_balance'] ?? 0),
+        'hold_balance' => (float)($wallet['hold_balance'] ?? 0),
+        'items' => (array)($page['items'] ?? []),
+        'pagination' => (array)($page['pagination'] ?? []),
+    ]);
 }
 
 $allMonths = fb_get('WALLET_LEDGER/' . $targetUid);

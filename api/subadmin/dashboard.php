@@ -64,13 +64,23 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="bundleOffersSection" data-icon="B">
-            <span>Bundle Offers</span>
+          <button class="side-btn" data-page-section="usersSection" data-icon="U">
+            <span>Users</span>
+            <span>›</span>
+          </button>
+
+          <button class="side-btn" data-page-section="createUserSection" data-icon="C">
+            <span>Create User</span>
             <span>›</span>
           </button>
 
           <button class="side-btn" data-page-section="panelTopupSection" data-icon="T">
             <span>Panel Topup</span>
+            <span>›</span>
+          </button>
+
+          <button class="side-btn" data-page-section="bundleOffersSection" data-icon="B">
+            <span>Bundle Offers</span>
             <span>›</span>
           </button>
 
@@ -84,11 +94,6 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="apiKeysSection" data-icon="K">
-            <span>API Keys</span>
-            <span>›</span>
-          </button>
-
           <button class="side-btn" data-page-section="addMoneySection" data-icon="+">
             <span>Add Money</span>
             <span>&rsaquo;</span>
@@ -99,13 +104,8 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
             <span>›</span>
           </button>
 
-          <button class="side-btn" data-page-section="usersSection" data-icon="U">
-            <span>Users</span>
-            <span>›</span>
-          </button>
-
-          <button class="side-btn" data-page-section="createUserSection" data-icon="C">
-            <span>Create User</span>
+          <button class="side-btn" data-page-section="apiKeysSection" data-icon="K">
+            <span>API Keys</span>
             <span>›</span>
           </button>
 
@@ -181,9 +181,9 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
             </div>
 
             <div class="card">
-              <div class="metric-title">History Logs</div>
+              <div class="metric-title">Recent History</div>
               <div class="metric-value" id="requestLogCount">0</div>
-              <div class="metric-sub">Requests and received balance</div>
+              <div class="metric-sub">Current 10-item page</div>
             </div>
           </div>
 
@@ -211,8 +211,8 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
             <div class="card request-chart-card">
               <div class="chart-head">
                 <div>
-                  <h3>Request Performance</h3>
-                  <p>Success, failed and pending request summary</p>
+                  <h3>Recent Request Page</h3>
+                  <p>Breakdown of the currently loaded history page</p>
                 </div>
               </div>
 
@@ -277,6 +277,11 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                 <strong>No bundle offers loaded yet</strong>
                 <span>Click Refresh Offers to load active bundle offers.</span>
               </div>
+            </div>
+            <div class="list-pager" id="bundleOffersPager">
+              <button class="btn ghost" id="bundleOffersPrevBtn" type="button" disabled>Previous</button>
+              <span id="bundleOffersPageState">Page 1</span>
+              <button class="btn ghost" id="bundleOffersNextBtn" type="button" disabled>Next</button>
             </div>
           </div>
         </div>
@@ -495,6 +500,11 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
               </div>
 
               <div id="subMfsMobileList" class="sub-mfs-mobile-list"></div>
+              <div class="list-pager" id="subMfsPager">
+                <button class="btn ghost" id="subMfsPrevBtn" type="button" disabled>Previous</button>
+                <span id="subMfsPageState">Page 1</span>
+                <button class="btn ghost" id="subMfsNextBtn" type="button" disabled>Next</button>
+              </div>
 
               <div class="box mt-14">
                 <label>Details</label>
@@ -568,6 +578,11 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                 <strong>Loading add money settings...</strong>
               </div>
             </div>
+            <div class="list-pager" id="addMoneyPager">
+              <button class="btn ghost" id="addMoneyPrevBtn" type="button" disabled>Previous</button>
+              <span id="addMoneyPageState">Page 1</span>
+              <button class="btn ghost" id="addMoneyNextBtn" type="button" disabled>Next</button>
+            </div>
           </div>
         </div>
 
@@ -608,6 +623,11 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
               </table>
             </div>
             <div id="historyLogsMobileList" class="history-logs-mobile-list"></div>
+            <div class="list-pager" id="historyLogsPager">
+              <button class="btn ghost" id="historyLogsPrevBtn" type="button" disabled>Previous</button>
+              <span id="historyLogsPageState">Page 1</span>
+              <button class="btn ghost" id="historyLogsNextBtn" type="button" disabled>Next</button>
+            </div>
           </div>
         </div>
 
@@ -617,6 +637,7 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
             <p>View your own users and convert user to retailer</p>
 
             <div class="actions mb-16">
+              <input id="usersSearchInput" class="input filter-input" type="search" placeholder="Search name, phone, email or UID">
               <select id="usersRoleFilter" class="input filter-input">
                 <option value="">All Roles</option>
                 <option value="USER">USER</option>
@@ -626,6 +647,9 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
               <select id="usersStatusFilter" class="input filter-input">
                 <option value="">All Status</option>
                 <option value="ACTIVE">ACTIVE</option>
+                <option value="REVIEW">REVIEW</option>
+                <option value="REJECTED">REJECTED</option>
+                <option value="BLOCKED">BLOCKED</option>
                 <option value="INACTIVE">INACTIVE</option>
                 <option value="DISABLED">DISABLED</option>
               </select>
@@ -653,6 +677,11 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
                   <tr><td colspan="9" class="muted">No users loaded yet.</td></tr>
                 </tbody>
               </table>
+            </div>
+            <div class="list-pager" id="usersPager">
+              <button class="btn ghost" id="usersPrevBtn" type="button" disabled>Previous</button>
+              <span id="usersPageState">Page 1</span>
+              <button class="btn ghost" id="usersNextBtn" type="button" disabled>Next</button>
             </div>
           </div>
         </div>
@@ -1199,6 +1228,9 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
 
     <div class="actions mt-14">
       <button id="reloadWalletLedgerBtn" class="btn blue">Reload Ledger</button>
+      <button id="walletLedgerPrevBtn" class="btn ghost" type="button" disabled>Previous</button>
+      <span id="walletLedgerPageState" class="pager-state">Page 1</span>
+      <button id="walletLedgerNextBtn" class="btn ghost" type="button" disabled>Next</button>
       <button id="closeWalletLedgerModalBtn2" class="btn ghost">Close</button>
     </div>
   </div>
@@ -1245,6 +1277,9 @@ if (empty($_SESSION['subadmin_session_token']) || empty($_SESSION['subadmin_user
     </div>
 
     <div class="actions mt-14">
+      <button id="transferHistoryPrevBtn" class="btn ghost" type="button" disabled>Previous</button>
+      <span id="transferHistoryPageState" class="pager-state">Page 1</span>
+      <button id="transferHistoryNextBtn" class="btn ghost" type="button" disabled>Next</button>
       <button id="closeTransferHistoryModalBtn2" class="btn ghost">Close</button>
     </div>
   </div>

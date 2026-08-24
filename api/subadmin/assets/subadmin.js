@@ -13,6 +13,43 @@ const APP_API_BASE = (() => {
   return window.location.origin + '/api';
 })();
 
+function createCursorPager(){
+  return {page: 1, cursor: '', nextCursor: '', stack: [], hasMore: false};
+}
+
+function resetCursorPager(pager){
+  Object.assign(pager, createCursorPager());
+}
+
+function updateCursorPager(pager, pagination = {}){
+  pager.nextCursor = String(pagination.next_cursor || '');
+  pager.hasMore = Boolean(pagination.has_more && pager.nextCursor);
+}
+
+function renderCursorPager(prefix, pager){
+  const prev = el(prefix + 'PrevBtn');
+  const next = el(prefix + 'NextBtn');
+  const stateLabel = el(prefix + 'PageState');
+  if (prev) prev.disabled = pager.page <= 1;
+  if (next) next.disabled = !pager.hasMore;
+  if (stateLabel) stateLabel.textContent = `Page ${pager.page}`;
+}
+
+async function cursorPagerNext(pager, loader){
+  if (!pager.hasMore || !pager.nextCursor) return;
+  pager.stack.push(pager.cursor);
+  pager.cursor = pager.nextCursor;
+  pager.page += 1;
+  await loader();
+}
+
+async function cursorPagerPrevious(pager, loader){
+  if (pager.page <= 1) return;
+  pager.cursor = String(pager.stack.pop() || '');
+  pager.page = Math.max(1, pager.page - 1);
+  await loader();
+}
+
 const state = window.subadminState = {
   csrf: '',
   me: null,
@@ -32,6 +69,12 @@ const state = window.subadminState = {
       failed: 0
     },
     rows: [],
+    pages: {
+      pending: createCursorPager(),
+      processing: createCursorPager(),
+      done: createCursorPager(),
+      failed: createCursorPager()
+    },
     loaded: false
   },
   mfsCreateReview: null,
@@ -80,6 +123,15 @@ bundleRenderToken: '',
     targetName: '',
     targetPhone: '',
     targetCurrency: 'BDT'
+  },
+
+  pagination: {
+    bundleOffers: createCursorPager(),
+    logs: createCursorPager(),
+    users: createCursorPager(),
+    addMoney: createCursorPager(),
+    walletLedger: createCursorPager(),
+    transferHistory: createCursorPager()
   },
 
   walletLedger: {
@@ -739,13 +791,19 @@ function openAddMoneySubmitModal(){
 
 async function ensureAddMoneyLoaded(force = false){
   if (force || !state.loaded.addMoney) {
-    const data = await proxyGet('add_money_settings', {}, 'Loading add money...');
+    const pager = state.pagination.addMoney;
+    const data = await proxyGet('add_money_settings', {
+      cursor: pager.cursor,
+      limit: 10
+    }, 'Loading add money...');
     state.addMoneyProfile = data.profile || null;
     state.addMoneyHistory = Array.isArray(data.history) ? data.history : [];
+    updateCursorPager(pager, data.pagination || {});
     state.loaded.addMoney = true;
   }
 
   renderAddMoneyPage();
+  renderCursorPager('addMoney', state.pagination.addMoney);
 }
 
 async function loadSectionData(sectionId, force = false){
@@ -950,7 +1008,7 @@ async function readJsonSafe(res){
   try{
     return JSON.parse(text);
   }catch(_){
-    throw new Error(text.length > 400 ? text.slice(0, 400) : text);
+    throw new Error('Invalid server response. Please try again.');
   }
 }
 
@@ -1537,6 +1595,8 @@ function resetWalletLedgerState(){
     targetName: '',
     targetPhone: ''
   };
+  resetCursorPager(state.pagination.walletLedger);
+  renderCursorPager('walletLedger', state.pagination.walletLedger);
 
   if (el('ledgerTargetName')) el('ledgerTargetName').textContent = '-';
   if (el('ledgerTargetPhone')) el('ledgerTargetPhone').textContent = '-';
@@ -1578,9 +1638,11 @@ function renderWalletLedgerRows(items){
 }
 
 async function loadWalletLedger(uid){
+  const pager = state.pagination.walletLedger;
   const data = await proxyGet('wallet_ledger_list', {
     uid,
-    limit: 100
+    cursor: pager.cursor,
+    limit: 10
   }, 'Loading wallet ledger...');
 
   if (el('ledgerTargetName')) el('ledgerTargetName').textContent = data.target_name || '-';
@@ -1589,6 +1651,8 @@ async function loadWalletLedger(uid){
   if (el('ledgerHoldBalance')) el('ledgerHoldBalance').textContent = money(data.hold_balance || 0);
 
   renderWalletLedgerRows(data.items || []);
+  updateCursorPager(pager, data.pagination || {});
+  renderCursorPager('walletLedger', pager);
 }
 
 async function openWalletLedgerModal(uid){
@@ -1645,6 +1709,7 @@ async function loadTransferHistory(){
   const receiver = el('transferHistoryReceiver')?.value.trim() || '';
   const receiverRole = el('transferHistoryRole')?.value || '';
   const tbody = el('transferHistoryTableBody');
+  const pager = state.pagination.transferHistory;
 
   if (tbody) {
     tbody.innerHTML = '<tr><td colspan="7" class="muted">Loading transfer history...</td></tr>';
@@ -1655,10 +1720,13 @@ async function loadTransferHistory(){
       month,
       receiver,
       receiver_role: receiverRole,
-      limit: 300
+      cursor: pager.cursor,
+      limit: 10
     }, 'Loading transfer history...');
 
     renderTransferHistoryRows(data.items || []);
+    updateCursorPager(pager, data.pagination || {});
+    renderCursorPager('transferHistory', pager);
   }catch(err){
     if (tbody) {
       tbody.innerHTML = `<tr><td colspan="7" class="muted">${esc(err.message || 'Failed to load transfer history')}</td></tr>`;
@@ -1672,6 +1740,8 @@ function openTransferHistoryModal(){
     el('transferHistoryMonth').value = new Date().toISOString().slice(0, 7);
   }
 
+  resetCursorPager(state.pagination.transferHistory);
+  renderCursorPager('transferHistory', state.pagination.transferHistory);
   el('transferHistoryModalWrap')?.classList.add('open');
   loadTransferHistory();
 }
@@ -2288,17 +2358,20 @@ async function loadMfsList(){
   renderMfsLoading();
 
   const filters = getSubMfsFilters();
+  const pager = state.mfs.pages[state.mfs.tab] || state.mfs.pages.pending;
   const data = await proxyGet('mfs_list', {
     tab: state.mfs.tab || 'pending',
-    page: 1,
-    limit: 50,
+    cursor: pager.cursor,
+    limit: 10,
     search: filters.search,
     number: filters.number,
     service: filters.service
   }, 'Loading MFS requests...');
 
   state.mfs.rows = normalizeSubMfsRows(data.items || []);
+  updateCursorPager(pager, data.pagination || {});
   renderMfsRows();
+  renderCursorPager('subMfs', pager);
 }
 
 async function loadMfsSummaryPanel(force = false){
@@ -3243,16 +3316,22 @@ async function loadBundleOffers(){
   ensureBundlePanelUi();
 
   try{
-    const data = await proxyGet('bundle_offers_panel', {}, 'Loading bundle offers...');
+    const pager = state.pagination.bundleOffers;
+    const data = await proxyGet('bundle_offers_panel', {
+      cursor: pager.cursor,
+      limit: 10
+    }, 'Loading bundle offers...');
     const items = getBundleOfferItemsFromResponse(data);
 
     state.bundleOffers = Array.isArray(items) ? items : [];
+    updateCursorPager(pager, data.pagination || {});
     state.loaded.bundleOffers = true;
 
     renderBundleOffers();
+    renderCursorPager('bundleOffers', pager);
 
     setBoxMessage('bundleOffersOutput', 'ok', 'Bundle Offers Loaded', [
-      `Total offers: ${state.bundleOffers.length}`,
+      `Offers on this page: ${state.bundleOffers.length}`,
       'Offers loaded from your subadmin session. No API key needed.'
     ]);
 
@@ -3956,14 +4035,18 @@ async function resendCreateUserOtp(){
    Logs / navigation
 ========================= */
 
-function setRequestLogFilter(filter){
+async function setRequestLogFilter(filter){
   state.requestLogFilter = String(filter || 'ALL').toUpperCase();
 
   document.querySelectorAll('.log-filter-btn').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.logFilter === state.requestLogFilter);
   });
 
+  resetCursorPager(state.pagination.logs);
+  state.loaded.logs = false;
+  await loadLogs();
   renderLogs();
+  renderPanelTopupRequests();
 }
 
 function viewRequestLog(requestId){
@@ -4163,26 +4246,37 @@ async function loadKeys(){
 }
 
 async function loadLogs(){
+  const pager = state.pagination.logs;
   const data = await proxyGet('request_logs', {
-    limit: 100,
+    limit: 10,
+    cursor: pager.cursor,
+    status: state.requestLogFilter,
     month: new Date().toISOString().slice(0, 7)
   }, 'Loading history logs...');
   state.requestLogs = data.items || [];
+  updateCursorPager(pager, data.pagination || {});
   state.loaded.logs = true;
+  renderCursorPager('historyLogs', pager);
 }
 
 async function loadUsers(){
   const role = el('usersRoleFilter')?.value || '';
   const status = el('usersStatusFilter')?.value || '';
+  const search = el('usersSearchInput')?.value.trim() || '';
+  const pager = state.pagination.users;
 
   const data = await proxyGet('users_list', {
     role,
     status,
-    limit: 300
+    search,
+    cursor: pager.cursor,
+    limit: 10
   }, 'Loading users...');
 
   state.users = data.items || [];
+  updateCursorPager(pager, data.pagination || {});
   state.loaded.users = true;
+  renderCursorPager('users', pager);
 }
 
 
@@ -4729,6 +4823,7 @@ el('reloadKeysBtn')?.addEventListener('click', async () => {
 });
 
 el('reloadLogsBtn')?.addEventListener('click', async () => {
+  resetCursorPager(state.pagination.logs);
   await loadLogs();
   renderSummary();
   renderLogs();
@@ -4737,6 +4832,7 @@ el('reloadLogsBtn')?.addEventListener('click', async () => {
 });
 
 el('reloadAddMoneyBtn')?.addEventListener('click', async () => {
+  resetCursorPager(state.pagination.addMoney);
   state.loaded.addMoney = false;
   await ensureAddMoneyLoaded(true);
   showToast('Add money reloaded', 'info');
@@ -4811,7 +4907,10 @@ el('subMfsAmountBdt')?.addEventListener('input', () => syncSubMfsAmounts('bdt'))
 el('subMfsAmountRm')?.addEventListener('input', () => syncSubMfsAmounts('rm'));
 el('subMfsRefreshBtn')?.addEventListener('click', (e) => refreshMfsSummaryFromButton(e.currentTarget, true));
 el('subMfsListRefreshBtn')?.addEventListener('click', (e) => refreshMfsRequestsFromButton(e.currentTarget, true));
-el('subMfsApplyFilterBtn')?.addEventListener('click', (e) => refreshMfsRequestsFromButton(e.currentTarget, true));
+el('subMfsApplyFilterBtn')?.addEventListener('click', async (e) => {
+  Object.values(state.mfs.pages).forEach(resetCursorPager);
+  await refreshMfsRequestsFromButton(e.currentTarget, true);
+});
 
 document.querySelectorAll('.sub-mfs-tab').forEach(btn => {
   btn.addEventListener('click', async () => {
@@ -4836,7 +4935,10 @@ function handleSubMfsViewClick(e){
 el('subMfsTableBody')?.addEventListener('click', handleSubMfsViewClick);
 el('subMfsMobileList')?.addEventListener('click', handleSubMfsViewClick);
 
-el('loadBundleOffersBtn')?.addEventListener('click', loadBundleOffers);
+el('loadBundleOffersBtn')?.addEventListener('click', async () => {
+  resetCursorPager(state.pagination.bundleOffers);
+  await loadBundleOffers();
+});
 el('runBundleApiTestBtn')?.addEventListener('click', runBundleApiTest);
 
 el('clearBundleApiOutputBtn')?.addEventListener('click', () => {
@@ -4859,6 +4961,7 @@ el('logModalWrap')?.addEventListener('click', (e) => {
 });
 
 el('reloadUsersBtn')?.addEventListener('click', async () => {
+  resetCursorPager(state.pagination.users);
   await loadUsers();
   renderUsers();
   showToast('Users reloaded', 'info');
@@ -4877,7 +4980,10 @@ el('addBalanceModalWrap')?.addEventListener('click', (e) => {
 el('closeWalletLedgerModalBtn')?.addEventListener('click', closeWalletLedgerModal);
 el('closeWalletLedgerModalBtn2')?.addEventListener('click', closeWalletLedgerModal);
 el('transferHistoryBtn')?.addEventListener('click', openTransferHistoryModal);
-el('reloadTransferHistoryBtn')?.addEventListener('click', loadTransferHistory);
+el('reloadTransferHistoryBtn')?.addEventListener('click', async () => {
+  resetCursorPager(state.pagination.transferHistory);
+  await loadTransferHistory();
+});
 el('closeTransferHistoryModalBtn')?.addEventListener('click', closeTransferHistoryModal);
 el('closeTransferHistoryModalBtn2')?.addEventListener('click', closeTransferHistoryModal);
 
@@ -4886,6 +4992,7 @@ el('reloadWalletLedgerBtn')?.addEventListener('click', async () => {
   if (!uid) return;
 
   try{
+    resetCursorPager(state.pagination.walletLedger);
     await loadWalletLedger(uid);
     showToast('Wallet ledger reloaded', 'info');
   }catch(err){
@@ -4900,14 +5007,89 @@ el('walletLedgerModalWrap')?.addEventListener('click', (e) => {
 });
 
 el('usersRoleFilter')?.addEventListener('change', async () => {
+  resetCursorPager(state.pagination.users);
   await loadUsers();
   renderUsers();
 });
 
 el('usersStatusFilter')?.addEventListener('change', async () => {
+  resetCursorPager(state.pagination.users);
   await loadUsers();
   renderUsers();
 });
+
+let usersSearchTimer = 0;
+el('usersSearchInput')?.addEventListener('input', () => {
+  window.clearTimeout(usersSearchTimer);
+  usersSearchTimer = window.setTimeout(async () => {
+    resetCursorPager(state.pagination.users);
+    await loadUsers();
+    renderUsers();
+  }, 300);
+});
+
+el('bundleOffersNextBtn')?.addEventListener('click', () => cursorPagerNext(
+  state.pagination.bundleOffers,
+  loadBundleOffers
+));
+el('bundleOffersPrevBtn')?.addEventListener('click', () => cursorPagerPrevious(
+  state.pagination.bundleOffers,
+  loadBundleOffers
+));
+
+el('subMfsNextBtn')?.addEventListener('click', () => cursorPagerNext(
+  state.mfs.pages[state.mfs.tab],
+  loadMfsList
+));
+el('subMfsPrevBtn')?.addEventListener('click', () => cursorPagerPrevious(
+  state.mfs.pages[state.mfs.tab],
+  loadMfsList
+));
+
+el('historyLogsNextBtn')?.addEventListener('click', () => cursorPagerNext(
+  state.pagination.logs,
+  async () => { await loadLogs(); renderLogs(); renderPanelTopupRequests(); }
+));
+el('historyLogsPrevBtn')?.addEventListener('click', () => cursorPagerPrevious(
+  state.pagination.logs,
+  async () => { await loadLogs(); renderLogs(); renderPanelTopupRequests(); }
+));
+
+el('usersNextBtn')?.addEventListener('click', () => cursorPagerNext(
+  state.pagination.users,
+  async () => { await loadUsers(); renderUsers(); }
+));
+el('usersPrevBtn')?.addEventListener('click', () => cursorPagerPrevious(
+  state.pagination.users,
+  async () => { await loadUsers(); renderUsers(); }
+));
+
+el('addMoneyNextBtn')?.addEventListener('click', () => cursorPagerNext(
+  state.pagination.addMoney,
+  async () => { state.loaded.addMoney = false; await ensureAddMoneyLoaded(true); }
+));
+el('addMoneyPrevBtn')?.addEventListener('click', () => cursorPagerPrevious(
+  state.pagination.addMoney,
+  async () => { state.loaded.addMoney = false; await ensureAddMoneyLoaded(true); }
+));
+
+el('walletLedgerNextBtn')?.addEventListener('click', () => cursorPagerNext(
+  state.pagination.walletLedger,
+  () => loadWalletLedger(state.walletLedger.targetUid)
+));
+el('walletLedgerPrevBtn')?.addEventListener('click', () => cursorPagerPrevious(
+  state.pagination.walletLedger,
+  () => loadWalletLedger(state.walletLedger.targetUid)
+));
+
+el('transferHistoryNextBtn')?.addEventListener('click', () => cursorPagerNext(
+  state.pagination.transferHistory,
+  loadTransferHistory
+));
+el('transferHistoryPrevBtn')?.addEventListener('click', () => cursorPagerPrevious(
+  state.pagination.transferHistory,
+  loadTransferHistory
+));
 
 el('createUserBtn')?.addEventListener('click', createSubadminUser);
 el('clearCreateUserBtn')?.addEventListener('click', clearCreateUserForm);

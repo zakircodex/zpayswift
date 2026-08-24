@@ -6,6 +6,7 @@ require_once __DIR__ . '/lib/roles.php';
 require_once __DIR__ . '/lib/wallet.php';
 require_once __DIR__ . '/lib/mfs.php';
 require_once __DIR__ . '/lib/users_admin.php';
+require_once __DIR__ . '/lib/admin_pagination.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -169,14 +170,34 @@ $actor = admin_users_api_require_admin_actor();
 
 $role = trim((string)($_GET['role'] ?? ''));
 $status = trim((string)($_GET['status'] ?? ''));
-$limit = (int)($_GET['limit'] ?? 200);
+$requestedLimit = (int)($_GET['limit'] ?? 0);
+$cursor = trim((string)($_GET['cursor'] ?? ''));
+$search = trim((string)($_GET['search'] ?? ''));
 
-if ($limit <= 0) {
-    $limit = 200;
+if (strtoupper(trim((string)($actor['role'] ?? ''))) === 'SUBADMIN') {
+    $limit = min(10, max(1, $requestedLimit > 0 ? $requestedLimit : 10));
+    $page = admin_users_subadmin_page(
+        (string)($actor['uid'] ?? ''),
+        $role,
+        $status,
+        $search,
+        $cursor,
+        $limit
+    );
+
+    admin_users_api_response(true, 'SUCCESS', 'Users loaded successfully', [
+        'items' => (array)($page['items'] ?? []),
+        'count' => count((array)($page['items'] ?? [])),
+        'pagination' => (array)($page['pagination'] ?? []),
+        'actor' => [
+            'uid' => (string)($actor['uid'] ?? ''),
+            'name' => (string)($actor['name'] ?? ''),
+            'role' => (string)($actor['role'] ?? ''),
+        ],
+    ]);
 }
-if ($limit > 500) {
-    $limit = 500;
-}
+
+$limit = $requestedLimit > 0 ? min(500, $requestedLimit) : 200;
 
 $items = admin_users_list_users(
     $role,

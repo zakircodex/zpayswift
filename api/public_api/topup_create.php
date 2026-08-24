@@ -28,7 +28,9 @@ if (!$topupEnabled) {
 
 $body = api_read_json_body();
 
-$countryCode = topup_country_code($body['country_code'] ?? $body['country'] ?? 'BD');
+// Top-Up is a Bangladesh-denominated service. Account pricing/currency is
+// resolved server-side from the authenticated API owner, never from input.
+$countryCode = 'BD';
 $topupNumber = topup_normalize_number_for_country($countryCode, $body['topup_number'] ?? $body['number'] ?? '');
 $operator = normalize_operator($body['operator'] ?? $body['operator_code'] ?? '');
 $amount = (float)($body['amount'] ?? 0);

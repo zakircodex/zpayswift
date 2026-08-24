@@ -1442,6 +1442,36 @@ function add_money_list_user_history(string $uid, int $limit = 100): array
     return array_slice($items, 0, max(1, min(300, $limit)));
 }
 
+function add_money_list_user_history_page(
+    string $uid,
+    string $cursor = '',
+    int $limit = 10,
+    string $status = ''
+): array {
+    $uid = trim($uid);
+    $status = strtoupper(trim($status));
+    if ($uid === '' || !function_exists('admin_firebase_cursor_page')) {
+        return ['items' => [], 'pagination' => ['limit' => 10, 'count' => 0, 'has_more' => false, 'next_cursor' => '']];
+    }
+
+    $page = admin_firebase_cursor_page(
+        'ADD_MONEY_BY_USER/' . $uid,
+        $limit,
+        $cursor,
+        static function (array $row) use ($status): bool {
+            $rowStatus = strtoupper(trim((string)($row['status'] ?? 'PENDING')));
+            return $status === '' || $status === 'ALL' || $rowStatus === $status;
+        },
+        static function (array $row, string $requestId): array {
+            $row['request_id'] = (string)($row['request_id'] ?? $requestId);
+            return add_money_public_request_row($row);
+        }
+    );
+
+    $page['items'] = add_money_public_request_rows((array)($page['items'] ?? []));
+    return $page;
+}
+
 function add_money_public_request_row(array $row): array
 {
     foreach ([

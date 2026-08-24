@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/admin_pagination.php';
+
 function get_user_wallet(string $uid): ?array
 {
     $wallet = fb_get('USER_WALLETS/' . $uid);
@@ -1245,6 +1247,48 @@ function wallet_list_transfer_history(string $month, array $filters = [], int $l
     return array_slice($items, 0, max(1, min(500, $limit)));
 }
 
+function wallet_list_transfer_history_page(
+    string $month,
+    array $filters = [],
+    string $cursor = '',
+    int $limit = 10
+): array {
+    $month = wallet_valid_month_key($month);
+    $receiverQuery = strtolower(trim((string)($filters['receiver'] ?? '')));
+    $senderRole = wallet_normalize_role($filters['sender_role'] ?? '', '');
+    $receiverRole = wallet_normalize_role($filters['receiver_role'] ?? '', '');
+    $type = strtoupper(trim((string)($filters['type'] ?? '')));
+    $senderUid = trim((string)($filters['sender_uid'] ?? ''));
+    $receiverUid = trim((string)($filters['receiver_uid'] ?? ''));
+
+    return admin_firebase_cursor_page(
+        'WALLET_TRANSFERS/' . $month,
+        $limit,
+        $cursor,
+        static function (array $row) use ($receiverQuery, $senderRole, $receiverRole, $type, $senderUid, $receiverUid): bool {
+            if ($senderUid !== '' && (string)($row['sender_uid'] ?? '') !== $senderUid) return false;
+            if ($receiverUid !== '' && (string)($row['receiver_uid'] ?? '') !== $receiverUid) return false;
+            if ($senderRole !== '' && wallet_normalize_role($row['sender_role'] ?? '', '') !== $senderRole) return false;
+            if ($receiverRole !== '' && wallet_normalize_role($row['receiver_role'] ?? '', '') !== $receiverRole) return false;
+            if ($type !== '' && strtoupper((string)($row['type'] ?? '')) !== $type) return false;
+            if ($receiverQuery !== '') {
+                $haystack = strtolower(implode(' ', [
+                    (string)($row['receiver_uid'] ?? ''),
+                    (string)($row['receiver_name'] ?? ''),
+                    (string)($row['receiver_phone'] ?? ''),
+                ]));
+                if (!str_contains($haystack, $receiverQuery)) return false;
+            }
+            return true;
+        },
+        static function (array $row, string $transferId): array {
+            $row['transfer_id'] = (string)($row['transfer_id'] ?? $transferId);
+            return $row;
+        },
+        12
+    );
+}
+
 function wallet_list_user_history(string $uid, string $month, int $limit = 100): array
 {
     $month = wallet_valid_month_key($month);
@@ -1265,6 +1309,22 @@ function wallet_list_user_history(string $uid, string $month, int $limit = 100):
     );
 
     return array_slice($items, 0, max(1, min(500, $limit)));
+}
+
+function wallet_list_user_history_page(string $uid, string $month, string $cursor = '', int $limit = 10): array
+{
+    $uid = trim($uid);
+    $month = wallet_valid_month_key($month);
+    return admin_firebase_cursor_page(
+        'USER_WALLET_HISTORY/' . $uid . '/' . $month,
+        $limit,
+        $cursor,
+        null,
+        static function (array $row, string $transferId): array {
+            $row['transfer_id'] = (string)($row['transfer_id'] ?? $transferId);
+            return $row;
+        }
+    );
 }
 
 function create_wallet_ledger(

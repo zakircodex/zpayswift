@@ -1334,72 +1334,239 @@ function sub_proxy_mfs_send_telegram(string $requestId, array $row): array
     return $telegram;
 }
 
-function sub_proxy_mfs_filter_uid(array $items, string $uid): array
-{
-    $uid = trim($uid);
-
-    return array_values(array_filter($items, static function (array $row) use ($uid): bool {
-        return $uid !== '' && (string)($row['uid'] ?? '') === $uid;
-    }));
-}
-
-function sub_proxy_mfs_rows(string $uid, string $tab, array $filters = []): array
+function sub_proxy_mfs_page(string $uid, string $tab, array $filters = [], string $cursor = '', int $limit = 10): array
 {
     $tab = strtolower(trim($tab));
     $bucket = $tab === 'processing' ? 'PROCESSING' : ($tab === 'done' || $tab === 'failed' ? 'DONE' : 'PENDING');
-
-    $items = function_exists('mfs_read_bucket') ? mfs_read_bucket($bucket) : [];
-    $items = sub_proxy_mfs_filter_uid($items, $uid);
-
+    $filters['uid'] = trim($uid);
+    $filters['query'] = trim((string)($filters['search'] ?? $filters['query'] ?? ''));
+    if (!empty($filters['service']) && empty($filters['provider'])) {
+        $filters['provider'] = (string)$filters['service'];
+    }
     if ($tab === 'done') {
         $filters['status'] = 'SUCCESSFUL';
     } elseif ($tab === 'failed') {
         $filters['status'] = 'FAILED';
     }
 
-    if (function_exists('mfs_apply_filters')) {
-        $items = mfs_apply_filters($items, $filters);
-    }
-
-    $search = strtolower(trim((string)($filters['search'] ?? '')));
-    if ($search !== '') {
-        $items = array_values(array_filter($items, static function (array $row) use ($search): bool {
-            $encoded = json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            return is_string($encoded) && strpos(strtolower($encoded), $search) !== false;
-        }));
-    }
-
-    return $items;
+    return mfs_read_bucket_page($bucket, $filters, $cursor, min(10, max(1, $limit)));
 }
 
-function sub_proxy_mfs_summary(string $uid): array
+function sub_proxy_history_cursor_decode(string $cursor): array
 {
-    return [
-        'pending' => count(sub_proxy_mfs_rows($uid, 'pending')),
-        'processing' => count(sub_proxy_mfs_rows($uid, 'processing')),
-        'done' => count(sub_proxy_mfs_rows($uid, 'done')),
-        'failed' => count(sub_proxy_mfs_rows($uid, 'failed')),
-    ];
-}
-
-function sub_proxy_mfs_paginate(array $items, int $page, int $limit): array
-{
-    if (function_exists('mfs_paginate')) {
-        return mfs_paginate($items, $page, $limit);
+    $state = ['api' => '', 'wallet' => '', 'add_money' => ''];
+    $cursor = trim($cursor);
+    if ($cursor === '' || preg_match('/^[A-Za-z0-9_-]{1,2048}$/', $cursor) !== 1) {
+        return $state;
     }
 
-    $page = max(1, $page);
-    $limit = max(1, min(100, $limit));
-    $total = count($items);
-    $offset = ($page - 1) * $limit;
+    $padding = strlen($cursor) % 4;
+    if ($padding > 0) {
+        $cursor .= str_repeat('=', 4 - $padding);
+    }
+    $json = base64_decode(strtr($cursor, '-_', '+/'), true);
+    $decoded = is_string($json) ? json_decode($json, true) : null;
+    if (!is_array($decoded)) {
+        return $state;
+    }
+
+    foreach (array_keys($state) as $key) {
+        $value = trim((string)($decoded[$key] ?? ''));
+        if ($value === '' || preg_match('/^[A-Za-z0-9_-]{1,512}$/', $value) === 1) {
+            $state[$key] = $value;
+        }
+    }
+
+    return $state;
+}
+
+function sub_proxy_history_cursor_encode(array $state): string
+{
+    $json = json_encode([
+        'api' => (string)($state['api'] ?? ''),
+        'wallet' => (string)($state['wallet'] ?? ''),
+        'add_money' => (string)($state['add_money'] ?? ''),
+    ], JSON_UNESCAPED_SLASHES);
+    return is_string($json) ? rtrim(strtr(base64_encode($json), '+/', '-_'), '=') : '';
+}
+
+function sub_proxy_history_status_matches(string $actual, string $wanted): bool
+{
+    $actual = strtoupper(trim($actual));
+    $wanted = strtoupper(trim($wanted));
+    if ($wanted === '' || $wanted === 'ALL') {
+        return true;
+    }
+    if ($wanted === 'SUCCESS') {
+        return in_array($actual, ['SUCCESS', 'SUCCESSFUL', 'DONE', 'COMPLETED', 'APPROVED'], true);
+    }
+    if ($wanted === 'FAILED') {
+        return in_array($actual, ['FAILED', 'REJECTED', 'CANCELLED', 'REFUNDED'], true);
+    }
+    if ($wanted === 'PENDING') {
+        return in_array($actual, ['PENDING', 'PROCESSING', 'WAITING_ADMIN', 'WAITING_APPROVAL'], true);
+    }
+    return $actual === $wanted;
+}
+
+function sub_proxy_history_page(string $uid, string $month, string $status, string $cursor, int $limit = 10): array
+{
+    $limit = min(10, max(1, $limit));
+    $cursorState = sub_proxy_history_cursor_decode($cursor);
+    $pages = [];
+
+    $pages['api'] = admin_firebase_cursor_page(
+        'USER_API_REQUESTS/' . $uid,
+        $limit,
+        $cursorState['api'],
+        static fn(array $row): bool => sub_proxy_history_status_matches((string)($row['status'] ?? ''), $status),
+        static function (array $row, string $requestId) use ($uid): array {
+            return [
+                'request_id' => (string)($row['request_id'] ?? $requestId),
+                'uid' => (string)($row['uid'] ?? $uid),
+                'key_id' => (string)($row['key_id'] ?? ''),
+                'action' => (string)($row['action'] ?? ''),
+                'request_type' => (string)($row['request_type'] ?? ''),
+                'status' => (string)($row['status'] ?? ''),
+                'operator' => (string)($row['operator'] ?? ''),
+                'topup_number' => (string)($row['topup_number'] ?? $row['bundle_number'] ?? $row['number'] ?? ''),
+                'bundle_number' => (string)($row['bundle_number'] ?? $row['topup_number'] ?? $row['number'] ?? ''),
+                'offer_id' => (string)($row['offer_id'] ?? ''),
+                'bundle_name' => (string)($row['bundle_name'] ?? ''),
+                'amount' => (float)($row['amount'] ?? 0),
+                'message' => (string)($row['message'] ?? ''),
+                'created_at' => (int)($row['created_at'] ?? 0),
+                'updated_at' => (int)($row['updated_at'] ?? 0),
+                '_source' => 'api',
+                '_source_key' => $requestId,
+            ];
+        }
+    );
+
+    $pages['wallet'] = admin_firebase_cursor_page(
+        'USER_WALLET_HISTORY/' . $uid . '/' . $month,
+        $limit,
+        $cursorState['wallet'],
+        static function (array $row) use ($uid, $status): bool {
+            $direction = strtoupper(trim((string)($row['direction'] ?? '')));
+            $receiverUid = trim((string)($row['receiver_uid'] ?? ''));
+            return $direction === 'CREDIT'
+                && ($receiverUid === '' || $receiverUid === $uid)
+                && sub_proxy_history_status_matches('SUCCESS', $status);
+        },
+        static function (array $row, string $transferId) use ($uid): array {
+            $currency = wallet_normalize_currency_code($row['currency'] ?? '', 'BDT');
+            $note = trim((string)($row['note'] ?? ''));
+            return [
+                'request_id' => (string)($row['transfer_id'] ?? $row['ledger_id'] ?? $transferId),
+                'uid' => $uid,
+                'key_id' => 'WALLET',
+                'action' => 'BALANCE_RECEIVED',
+                'request_type' => 'WALLET',
+                'status' => 'SUCCESS',
+                'amount' => (float)($row['amount'] ?? 0),
+                'currency' => $currency,
+                'message' => $note !== '' ? $note : 'Balance received',
+                'created_at' => (int)($row['created_at'] ?? 0),
+                'updated_at' => (int)($row['updated_at'] ?? $row['created_at'] ?? 0),
+                'is_wallet_history' => true,
+                'service' => 'Balance Received',
+                'sender_uid' => (string)($row['sender_uid'] ?? ''),
+                'sender_name' => (string)($row['sender_name'] ?? ''),
+                'sender_phone' => (string)($row['sender_phone'] ?? ''),
+                'sender_role' => wallet_normalize_role($row['sender_role'] ?? '', 'ADMIN'),
+                'receiver_uid' => (string)($row['receiver_uid'] ?? $uid),
+                'receiver_role' => (string)($row['receiver_role'] ?? 'SUBADMIN'),
+                'before_balance' => (float)($row['before_available'] ?? $row['before_balance'] ?? 0),
+                'after_balance' => (float)($row['after_available'] ?? $row['after_balance'] ?? 0),
+                'note' => $note,
+                'reference' => (string)($row['reference'] ?? $row['ref_id'] ?? ''),
+                'transfer_id' => (string)($row['transfer_id'] ?? $transferId),
+                'ledger_id' => (string)($row['ledger_id'] ?? ''),
+                '_source' => 'wallet',
+                '_source_key' => $transferId,
+            ];
+        }
+    );
+
+    $pages['add_money'] = admin_firebase_cursor_page(
+        'ADD_MONEY_BY_USER/' . $uid,
+        $limit,
+        $cursorState['add_money'],
+        static fn(array $row): bool => sub_proxy_history_status_matches((string)($row['status'] ?? 'PENDING'), $status),
+        static function (array $row, string $requestId) use ($uid): array {
+            $row = add_money_public_request_row($row);
+            return [
+                'request_id' => (string)($row['request_id'] ?? $requestId),
+                'uid' => $uid,
+                'key_id' => 'ADD_MONEY',
+                'action' => 'ADD_MONEY',
+                'request_type' => 'ADD_MONEY',
+                'status' => (string)($row['status'] ?? 'PENDING'),
+                'operator' => (string)($row['method'] ?? ''),
+                'topup_number' => (string)($row['sender_number'] ?? ''),
+                'amount' => (float)($row['amount'] ?? 0),
+                'currency' => (string)($row['currency'] ?? 'BDT'),
+                'message' => (string)($row['reject_reason'] ?? $row['note'] ?? ''),
+                'created_at' => (int)($row['created_at'] ?? 0),
+                'updated_at' => (int)($row['updated_at'] ?? 0),
+                'is_add_money_history' => true,
+                'service' => 'Add Money',
+                'method' => (string)($row['method'] ?? ''),
+                'transaction_id' => (string)($row['transaction_id'] ?? ''),
+                'sender_number' => (string)($row['sender_number'] ?? ''),
+                'receipt_url' => (string)($row['receipt_url'] ?? ''),
+                'approved_at' => (int)($row['approved_at'] ?? 0),
+                'rejected_at' => (int)($row['rejected_at'] ?? 0),
+                'reject_reason' => (string)($row['reject_reason'] ?? ''),
+                '_source' => 'add_money',
+                '_source_key' => $requestId,
+            ];
+        }
+    );
+
+    $candidates = [];
+    foreach ($pages as $sourcePage) {
+        foreach ((array)($sourcePage['items'] ?? []) as $row) {
+            if (is_array($row)) $candidates[] = $row;
+        }
+    }
+    usort($candidates, static function (array $a, array $b): int {
+        $time = (int)($b['created_at'] ?? 0) <=> (int)($a['created_at'] ?? 0);
+        return $time !== 0 ? $time : strcmp((string)($b['request_id'] ?? ''), (string)($a['request_id'] ?? ''));
+    });
+    $selected = array_slice($candidates, 0, $limit);
+
+    $nextState = $cursorState;
+    $consumed = ['api' => 0, 'wallet' => 0, 'add_money' => 0];
+    foreach ($selected as &$row) {
+        $source = (string)($row['_source'] ?? '');
+        $sourceKey = (string)($row['_source_key'] ?? '');
+        if (isset($nextState[$source]) && $sourceKey !== '') {
+            $nextState[$source] = admin_pagination_encode_cursor($sourceKey, true);
+            $consumed[$source]++;
+        }
+        unset($row['_source'], $row['_source_key']);
+    }
+    unset($row);
+
+    $hasMore = false;
+    foreach ($pages as $source => $sourcePage) {
+        $sourceCount = count((array)($sourcePage['items'] ?? []));
+        if ($sourceCount > ($consumed[$source] ?? 0) || !empty($sourcePage['pagination']['has_more'])) {
+            $hasMore = true;
+            break;
+        }
+    }
 
     return [
-        'items' => array_values(array_slice($items, $offset, $limit)),
+        'items' => array_values($selected),
         'pagination' => [
-            'page' => $page,
             'limit' => $limit,
-            'total' => $total,
-            'has_more' => ($offset + $limit) < $total,
+            'count' => count($selected),
+            'has_more' => $hasMore,
+            'cursor' => $cursor,
+            'next_cursor' => $hasMore ? sub_proxy_history_cursor_encode($nextState) : '',
         ],
     ];
 }
@@ -1661,7 +1828,7 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
                 false,
                 'INVALID_INTERNAL_RESPONSE',
                 'OTP sent but reset token data missing from recovery API',
-                $data,
+                [],
                 500
             );
         }
@@ -1827,7 +1994,7 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
                 false,
                 'INVALID_INTERNAL_RESPONSE',
                 'OTP resent but token data missing from recovery API',
-                $data,
+                [],
                 500
             );
         }
@@ -2046,153 +2213,24 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
 
         $user = sub_proxy_require_login(true);
         $uid = trim((string) ($user['uid'] ?? ''));
-        $limit = (int) ($_GET['limit'] ?? 100);
+        $limit = min(10, max(1, (int)($_GET['limit'] ?? 10)));
         $month = wallet_valid_month_key((string)($_GET['month'] ?? ''));
-
-        if ($limit <= 0) $limit = 100;
-        if ($limit > 500) $limit = 500;
-
-        if (!function_exists('subapi_list_request_logs')) {
-            sub_proxy_response(false, 'SERVER_ERROR', 'Missing subapi_list_request_logs helper', [], 500);
-        }
-
-        $items = subapi_list_request_logs($uid);
-        $out = [];
-
-        foreach ($items as $requestId => $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-
-            $out[] = [
-                'request_id' => (string) ($row['request_id'] ?? $requestId),
-                'uid' => (string) ($row['uid'] ?? $uid),
-                'key_id' => (string) ($row['key_id'] ?? ''),
-                'action' => (string) ($row['action'] ?? ''),
-                'request_type' => (string) ($row['request_type'] ?? ''),
-                'status' => (string) ($row['status'] ?? ''),
-                'operator' => (string) ($row['operator'] ?? ''),
-                'topup_number' => (string) ($row['topup_number'] ?? $row['bundle_number'] ?? $row['number'] ?? ''),
-                'bundle_number' => (string) ($row['bundle_number'] ?? $row['topup_number'] ?? $row['number'] ?? ''),
-                'offer_id' => (string) ($row['offer_id'] ?? ''),
-                'bundle_name' => (string) ($row['bundle_name'] ?? ''),
-                'amount' => (float) ($row['amount'] ?? 0),
-                'message' => (string) ($row['message'] ?? ''),
-                'created_at' => (int) ($row['created_at'] ?? 0),
-                'updated_at' => (int) ($row['updated_at'] ?? 0),
-            ];
-        }
-
-        $walletHistory = array_values(array_filter(
-            wallet_list_user_history($uid, $month, $limit),
-            static function (array $row) use ($uid): bool {
-                $direction = strtoupper(trim((string)($row['direction'] ?? '')));
-                $receiverUid = trim((string)($row['receiver_uid'] ?? ''));
-                return $direction === 'CREDIT' && ($receiverUid === '' || $receiverUid === $uid);
-            }
-        ));
-
-        foreach ($walletHistory as $row) {
-            $transferId = trim((string)($row['transfer_id'] ?? $row['ledger_id'] ?? ''));
-            if ($transferId === '') {
-                continue;
-            }
-
-            $currency = wallet_normalize_currency_code($row['currency'] ?? '', 'BDT');
-            $senderRole = wallet_normalize_role($row['sender_role'] ?? '', 'ADMIN');
-            $senderName = trim((string)($row['sender_name'] ?? ''));
-            $senderPhone = trim((string)($row['sender_phone'] ?? ''));
-            $note = trim((string)($row['note'] ?? ''));
-            $reference = trim((string)($row['reference'] ?? $row['ref_id'] ?? ''));
-
-            $out[] = [
-                'request_id' => $transferId,
-                'uid' => $uid,
-                'key_id' => 'WALLET',
-                'action' => 'BALANCE_RECEIVED',
-                'request_type' => 'WALLET',
-                'status' => 'SUCCESS',
-                'operator' => '',
-                'topup_number' => $senderPhone,
-                'bundle_number' => '',
-                'offer_id' => '',
-                'bundle_name' => '',
-                'amount' => (float)($row['amount'] ?? 0),
-                'currency' => $currency,
-                'message' => $note !== '' ? $note : 'Balance received',
-                'created_at' => (int)($row['created_at'] ?? 0),
-                'updated_at' => (int)($row['updated_at'] ?? $row['created_at'] ?? 0),
-                'is_wallet_history' => true,
-                'service' => 'Balance Received',
-                'sender_uid' => (string)($row['sender_uid'] ?? ''),
-                'sender_name' => $senderName,
-                'sender_phone' => $senderPhone,
-                'sender_role' => $senderRole,
-                'receiver_uid' => (string)($row['receiver_uid'] ?? $uid),
-                'receiver_role' => (string)($row['receiver_role'] ?? 'SUBADMIN'),
-                'before_balance' => (float)($row['before_available'] ?? $row['before_balance'] ?? 0),
-                'after_balance' => (float)($row['after_available'] ?? $row['after_balance'] ?? 0),
-                'note' => $note,
-                'reference' => $reference,
-                'transfer_id' => $transferId,
-                'ledger_id' => (string)($row['ledger_id'] ?? ''),
-            ];
-        }
-
-        $addMoneyHistory = add_money_list_user_history($uid, $limit);
-        foreach ($addMoneyHistory as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-
-            $requestId = trim((string)($row['request_id'] ?? ''));
-            if ($requestId === '') {
-                continue;
-            }
-
-            $out[] = [
-                'request_id' => $requestId,
-                'uid' => $uid,
-                'key_id' => 'ADD_MONEY',
-                'action' => 'ADD_MONEY',
-                'request_type' => 'ADD_MONEY',
-                'status' => (string)($row['status'] ?? 'PENDING'),
-                'operator' => (string)($row['method'] ?? ''),
-                'topup_number' => (string)($row['sender_number'] ?? ''),
-                'bundle_number' => '',
-                'offer_id' => '',
-                'bundle_name' => '',
-                'amount' => (float)($row['amount'] ?? 0),
-                'currency' => (string)($row['currency'] ?? 'BDT'),
-                'message' => (string)($row['reject_reason'] ?? $row['note'] ?? ''),
-                'created_at' => (int)($row['created_at'] ?? 0),
-                'updated_at' => (int)($row['updated_at'] ?? 0),
-                'is_add_money_history' => true,
-                'service' => 'Add Money',
-                'method' => (string)($row['method'] ?? ''),
-                'transaction_id' => (string)($row['transaction_id'] ?? ''),
-                'sender_number' => (string)($row['sender_number'] ?? ''),
-                'receipt_url' => (string)($row['receipt_url'] ?? ''),
-                'approved_at' => (int)($row['approved_at'] ?? 0),
-                'rejected_at' => (int)($row['rejected_at'] ?? 0),
-                'reject_reason' => (string)($row['reject_reason'] ?? ''),
-            ];
-        }
-
-        usort($out, static function (array $a, array $b): int {
-            return (int) ($b['created_at'] ?? 0) <=> (int) ($a['created_at'] ?? 0);
-        });
-
-        if (count($out) > $limit) {
-            $out = array_slice($out, 0, $limit);
-        }
+        $historyPage = sub_proxy_history_page(
+            $uid,
+            $month,
+            (string)($_GET['status'] ?? 'ALL'),
+            (string)($_GET['cursor'] ?? ''),
+            $limit
+        );
+        $out = (array)($historyPage['items'] ?? []);
 
         sub_proxy_response(true, 'SUCCESS', 'History logs loaded', [
             'uid' => $uid,
             'month' => $month,
             'items' => array_values($out),
-            'wallet_history' => $walletHistory,
-            'add_money_history' => $addMoneyHistory,
+            'wallet_history' => array_values(array_filter($out, static fn(array $row): bool => !empty($row['is_wallet_history']))),
+            'add_money_history' => array_values(array_filter($out, static fn(array $row): bool => !empty($row['is_add_money_history']))),
+            'pagination' => (array)($historyPage['pagination'] ?? []),
         ]);
         break;
 
@@ -2261,7 +2299,13 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
             sub_proxy_response(false, 'SERVER_ERROR', 'Missing subapi_panel_bundle_offers helper', [], 500);
         }
 
-        $res = subapi_panel_bundle_offers($uid);
+        $res = subapi_panel_bundle_offers(
+            $uid,
+            (string)($_GET['operator'] ?? ''),
+            (string)($_GET['status'] ?? 'ACTIVE'),
+            (string)($_GET['cursor'] ?? ''),
+            min(10, max(1, (int)($_GET['limit'] ?? 10)))
+        );
 
         if (!($res['ok'] ?? false)) {
             $code = (string)($res['code'] ?? 'SERVER_ERROR');
@@ -2561,6 +2605,7 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
         }
 
         $data = (array)($res['data'] ?? []);
+        unset($data['receipt_token'], $data['preview_token_hash']);
         $requestId = trim((string)($data['request_id'] ?? ''));
         $row = $requestId !== '' && function_exists('mfs_find_request') ? mfs_find_request($requestId) : [];
         if (!$row) {
@@ -2588,9 +2633,14 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
         $user = sub_proxy_require_login(true);
         $uid = trim((string)($user['uid'] ?? ''));
 
+        $counterResult = mfs_user_status_counts($uid);
+        if (empty($counterResult['ok'])) {
+            sub_proxy_response(false, 'SERVER_ERROR', 'MFS summary is temporarily unavailable', [], 500);
+        }
+
         sub_proxy_response(true, 'SUCCESS', 'MFS summary loaded', [
             'uid' => $uid,
-            'summary' => sub_proxy_mfs_summary($uid),
+            'summary' => (array)($counterResult['counts'] ?? []),
         ]);
         break;
 
@@ -2600,25 +2650,23 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
         $user = sub_proxy_require_login(true);
         $uid = trim((string)($user['uid'] ?? ''));
         $tab = strtolower(trim((string)($_GET['tab'] ?? 'pending')));
-        $page = (int)($_GET['page'] ?? 1);
-        $limit = (int)($_GET['limit'] ?? 50);
+        $cursor = trim((string)($_GET['cursor'] ?? ''));
+        $limit = min(10, max(1, (int)($_GET['limit'] ?? 10)));
 
         if (!in_array($tab, ['pending', 'processing', 'done', 'failed'], true)) {
             sub_proxy_response(false, 'VALIDATION_ERROR', 'Invalid MFS tab', [], 422);
         }
 
-        $items = sub_proxy_mfs_rows($uid, $tab, $_GET);
-        $paginated = sub_proxy_mfs_paginate($items, $page, $limit);
+        $paginated = sub_proxy_mfs_page($uid, $tab, $_GET, $cursor, $limit);
 
         sub_proxy_response(true, 'SUCCESS', 'MFS requests loaded', [
             'uid' => $uid,
             'tab' => $tab,
             'items' => $paginated['items'] ?? [],
             'pagination' => $paginated['pagination'] ?? [
-                'page' => $page,
                 'limit' => $limit,
-                'total' => 0,
                 'has_more' => false,
+                'next_cursor' => '',
             ],
         ]);
         break;
@@ -2663,14 +2711,13 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
 
         $role = trim((string) ($_GET['role'] ?? ''));
         $status = trim((string) ($_GET['status'] ?? ''));
-        $limit = (int) ($_GET['limit'] ?? 200);
-
-        if ($limit <= 0) $limit = 200;
-        if ($limit > 500) $limit = 500;
+        $limit = min(10, max(1, (int)($_GET['limit'] ?? 10)));
 
         $qs = http_build_query([
             'role' => $role,
             'status' => $status,
+            'search' => trim((string)($_GET['search'] ?? '')),
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
             'limit' => $limit,
         ], '', '&', PHP_QUERY_RFC3986);
 
@@ -2774,18 +2821,16 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
         sub_proxy_require_login(true);
 
         $uid = trim((string) ($_GET['uid'] ?? ''));
-        $limit = (int) ($_GET['limit'] ?? 100);
+        $limit = min(10, max(1, (int)($_GET['limit'] ?? 10)));
 
         if ($uid === '') {
             sub_proxy_response(false, 'VALIDATION_ERROR', 'User ID is required', [], 422);
         }
 
-        if ($limit <= 0) $limit = 100;
-        if ($limit > 500) $limit = 500;
-
         $qs = http_build_query([
             'uid' => $uid,
             'limit' => $limit,
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
         ], '', '&', PHP_QUERY_RFC3986);
 
         sub_proxy_forward_internal_get(
@@ -2802,24 +2847,26 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
         $actor = sub_proxy_require_login(true);
         $actorUid = trim((string)($actor['uid'] ?? ''));
         $month = wallet_valid_month_key((string)($_GET['month'] ?? ''));
-        $limit = (int)($_GET['limit'] ?? 200);
+        $limit = min(10, max(1, (int)($_GET['limit'] ?? 10)));
 
         if ($actorUid === '') {
             sub_proxy_response(false, 'SESSION_EXPIRED', 'Subadmin session not found', [], 401);
         }
 
-        $items = wallet_list_transfer_history($month, [
+        $historyPage = wallet_list_transfer_history_page($month, [
             'sender_uid' => $actorUid,
             'receiver' => trim((string)($_GET['receiver'] ?? '')),
             'receiver_role' => trim((string)($_GET['receiver_role'] ?? '')),
             'type' => 'SUBADMIN_BALANCE_TRANSFER',
-        ], $limit);
+        ], trim((string)($_GET['cursor'] ?? '')), $limit);
+        $items = (array)($historyPage['items'] ?? []);
 
         sub_proxy_response(true, 'SUCCESS', 'Transfer history loaded', [
             'uid' => $actorUid,
             'month' => $month,
             'items' => $items,
             'count' => count($items),
+            'pagination' => (array)($historyPage['pagination'] ?? []),
         ]);
         break;
 
@@ -2834,9 +2881,16 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
         }
         $walletRow = sub_proxy_load_wallet_row($uid);
 
+        $historyPage = add_money_list_user_history_page(
+            $uid,
+            trim((string)($_GET['cursor'] ?? '')),
+            min(10, max(1, (int)($_GET['limit'] ?? 10)))
+        );
+
         sub_proxy_response(true, 'SUCCESS', 'Add money settings loaded', [
             'profile' => add_money_user_payload($userRow, $walletRow),
-            'history' => add_money_list_user_history($uid, 25),
+            'history' => (array)($historyPage['items'] ?? []),
+            'pagination' => (array)($historyPage['pagination'] ?? []),
         ]);
         break;
 
@@ -2845,11 +2899,18 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
 
         $actor = sub_proxy_require_login(true);
         $uid = trim((string)($actor['uid'] ?? ''));
-        $limit = max(1, min(100, (int)($_GET['limit'] ?? 50)));
+        $limit = min(10, max(1, (int)($_GET['limit'] ?? 10)));
+        $historyPage = add_money_list_user_history_page(
+            $uid,
+            trim((string)($_GET['cursor'] ?? '')),
+            $limit,
+            (string)($_GET['status'] ?? '')
+        );
 
         sub_proxy_response(true, 'SUCCESS', 'Add money history loaded', [
             'uid' => $uid,
-            'items' => add_money_list_user_history($uid, $limit),
+            'items' => (array)($historyPage['items'] ?? []),
+            'pagination' => (array)($historyPage['pagination'] ?? []),
         ]);
         break;
 
@@ -2892,7 +2953,13 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
             sub_proxy_response(false, $code, (string)($res['message'] ?? 'Failed to submit add money request'), (array)($res['data'] ?? []), $httpStatus);
         }
 
-        sub_proxy_response(true, 'SUCCESS', 'Add money request submitted. Please wait for approval.', (array)($res['data'] ?? []));
+        $responseData = (array)($res['data'] ?? []);
+        if (is_array($responseData['request'] ?? null)) {
+            $responseData['request'] = add_money_public_request_row((array)$responseData['request']);
+        }
+        unset($responseData['telegram_sent']);
+
+        sub_proxy_response(true, 'SUCCESS', 'Add money request submitted. Please wait for approval.', $responseData);
         break;
 
     case 'user_create_send_otp':

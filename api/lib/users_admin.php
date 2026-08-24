@@ -79,7 +79,133 @@ function admin_users_normalize_role(?string $role): string
 function admin_users_normalize_status(?string $status): string
 {
     $status = strtoupper(trim((string)$status));
-    return in_array($status, ['ACTIVE', 'INACTIVE', 'DISABLED'], true) ? $status : 'ACTIVE';
+    return in_array($status, ['ACTIVE', 'REVIEW', 'REJECTED', 'BLOCKED', 'INACTIVE', 'DISABLED'], true)
+        ? $status
+        : 'ACTIVE';
+}
+
+function admin_users_subadmin_page(
+    string $actorUid,
+    string $roleFilter = '',
+    string $statusFilter = '',
+    string $search = '',
+    string $cursor = '',
+    int $limit = 10
+): array {
+    $actorUid = trim($actorUid);
+    $roleFilter = strtoupper(trim($roleFilter));
+    $statusFilter = strtoupper(trim($statusFilter));
+    $search = strtolower(trim($search));
+
+    if ($actorUid === '' || !function_exists('admin_firebase_cursor_page')) {
+        return ['items' => [], 'pagination' => ['limit' => 10, 'count' => 0, 'has_more' => false, 'next_cursor' => '']];
+    }
+
+    $page = admin_firebase_cursor_page(
+        'USERS',
+        $limit,
+        $cursor,
+        static function (array $row) use ($actorUid, $roleFilter, $statusFilter, $search): bool {
+            if (!admin_users_actor_can_access_user($row, $actorUid, 'SUBADMIN')) {
+                return false;
+            }
+
+            $role = admin_users_normalize_role((string)($row['role'] ?? 'USER'));
+            $status = admin_users_normalize_status((string)($row['status'] ?? 'ACTIVE'));
+            if ($roleFilter !== '' && $role !== $roleFilter) {
+                return false;
+            }
+            if ($statusFilter !== '' && $status !== $statusFilter) {
+                return false;
+            }
+            if ($search !== '') {
+                $haystack = strtolower(implode(' ', [
+                    (string)($row['uid'] ?? ''),
+                    (string)($row['name'] ?? ''),
+                    (string)($row['phone'] ?? ''),
+                    (string)($row['email'] ?? ''),
+                ]));
+                if (!str_contains($haystack, $search)) {
+                    return false;
+                }
+            }
+
+            return true;
+        },
+        static function (array $row, string $uid): array {
+            $row['_page_uid'] = $uid;
+            return $row;
+        },
+        12
+    );
+
+    $sourceRows = [];
+    $uids = [];
+    foreach ((array)($page['items'] ?? []) as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $uid = trim((string)($row['_page_uid'] ?? $row['uid'] ?? ''));
+        unset($row['_page_uid']);
+        if ($uid === '') {
+            continue;
+        }
+        $sourceRows[$uid] = $row;
+        $uids[] = $uid;
+    }
+
+    $walletRows = admin_users_multi_get(array_map(static fn(string $uid): string => 'USER_WALLETS/' . $uid, $uids));
+    $settingsRows = admin_users_multi_get(array_map(static fn(string $uid): string => 'USER_ROLE_SETTINGS/' . $uid, $uids));
+    $items = [];
+
+    foreach ($uids as $uid) {
+        $row = $sourceRows[$uid] ?? [];
+        $wallet = $walletRows['USER_WALLETS/' . $uid] ?? [];
+        $wallet = is_array($wallet) ? $wallet : [];
+        $role = admin_users_normalize_role((string)($row['role'] ?? 'USER'));
+        $status = admin_users_normalize_status((string)($row['status'] ?? 'ACTIVE'));
+        $storedSettings = $settingsRows['USER_ROLE_SETTINGS/' . $uid] ?? [];
+        $roleSettings = is_array($storedSettings)
+            ? (function_exists('role_settings_with_defaults')
+                ? role_settings_with_defaults($storedSettings, $role)
+                : array_replace(admin_users_role_default($role), $storedSettings))
+            : admin_users_role_default($role);
+        $walletDisplay = function_exists('mfs_wallet_display_payload') ? mfs_wallet_display_payload($row, $wallet) : [];
+        $pricingCountry = admin_users_country_code($row, $wallet);
+
+        $items[] = [
+            'uid' => (string)($row['uid'] ?? $uid),
+            'name' => (string)($row['name'] ?? ''),
+            'phone' => (string)($row['phone'] ?? ''),
+            'email' => (string)($row['email'] ?? ''),
+            'role' => $role,
+            'status' => $status,
+            'phone_country' => function_exists('auth_phone_country_from_user') ? auth_phone_country_from_user($row) : '',
+            'pricing_country' => $pricingCountry,
+            'market_country' => $pricingCountry,
+            'country_code' => $pricingCountry,
+            'currency' => (string)($walletDisplay['currency'] ?? $wallet['currency'] ?? $wallet['wallet_currency'] ?? 'BDT'),
+            'wallet_currency' => (string)($walletDisplay['wallet_currency'] ?? $wallet['wallet_currency'] ?? $wallet['currency'] ?? 'BDT'),
+            'available_balance' => (float)($wallet['available_balance'] ?? 0),
+            'hold_balance' => (float)($wallet['hold_balance'] ?? 0),
+            'display_available_balance' => (float)($walletDisplay['display_available_balance'] ?? $wallet['available_balance'] ?? 0),
+            'display_hold_balance' => (float)($walletDisplay['display_hold_balance'] ?? $wallet['hold_balance'] ?? 0),
+            'commission_per_1000' => (float)($roleSettings['commission_per_1000'] ?? 0),
+            'api_enabled' => (bool)($roleSettings['api_enabled'] ?? false),
+            'topup_enabled' => (bool)($roleSettings['topup_enabled'] ?? false),
+            'bundle_enabled' => (bool)($roleSettings['bundle_enabled'] ?? false),
+            'min_amount' => (float)($roleSettings['min_amount'] ?? 0),
+            'max_amount' => (float)($roleSettings['max_amount'] ?? 0),
+            'parent_subadmin_uid' => (string)($row['parent_subadmin_uid'] ?? ''),
+            'created_by_uid' => (string)($row['created_by_uid'] ?? ''),
+            'created_at' => (int)($row['created_at'] ?? 0),
+            'updated_at' => (int)($row['updated_at'] ?? 0),
+            'can_convert_to_retailer' => $role === 'USER' && $status === 'ACTIVE',
+        ];
+    }
+
+    $page['items'] = $items;
+    return $page;
 }
 
 function admin_users_normalize_country(?string $country): string

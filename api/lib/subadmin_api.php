@@ -14,6 +14,7 @@ $__subapi_bundle_file = __DIR__ . '/bundle.php';
 if (file_exists($__subapi_bundle_file) && !function_exists('bundle_load_offer')) {
     require_once $__subapi_bundle_file;
 }
+require_once __DIR__ . '/admin_pagination.php';
 
 function subapi_now(): int
 {
@@ -169,7 +170,20 @@ function subapi_store_key_record(string $uid, array $record): bool
         return false;
     }
 
-    return fb_put('USER_API_KEYS/' . trim($uid) . '/' . $keyId, $record);
+    $uid = trim($uid);
+    $keyHash = trim((string)($record['key_hash'] ?? ''));
+    if ($uid === '' || $keyHash === '') {
+        return false;
+    }
+
+    return fb_patch('', [
+        'USER_API_KEYS/' . $uid . '/' . $keyId => $record,
+        'USER_API_KEY_INDEX/' . $keyHash => [
+            'uid' => $uid,
+            'key_id' => $keyId,
+            'created_at' => (int)($record['created_at'] ?? subapi_now()),
+        ],
+    ]);
 }
 
 function subapi_list_keys(string $uid): array
@@ -352,30 +366,43 @@ function subapi_find_key_by_plain(string $plainKey): array
     }
 
     $hash = subapi_hash_key($plainKey);
-    $all = fb_get('USER_API_KEYS');
+    $index = fb_get('USER_API_KEY_INDEX/' . $hash);
+    if (is_array($index)) {
+        $uid = trim((string)($index['uid'] ?? ''));
+        $keyId = trim((string)($index['key_id'] ?? ''));
+        $row = ($uid !== '' && $keyId !== '')
+            ? fb_get('USER_API_KEYS/' . $uid . '/' . $keyId)
+            : null;
 
-    if (!is_array($all)) {
-        return [];
-    }
-
-    foreach ($all as $uid => $userKeys) {
-        if (!is_array($userKeys)) {
-            continue;
-        }
-
-        foreach ($userKeys as $keyId => $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-
-            if ((string)($row['key_hash'] ?? '') !== $hash) {
-                continue;
-            }
-
+        if (is_array($row) && hash_equals($hash, (string)($row['key_hash'] ?? ''))) {
             $row['uid'] = (string)($row['uid'] ?? $uid);
             $row['key_id'] = (string)($row['key_id'] ?? $keyId);
             return $row;
         }
+    }
+
+    // Legacy keys embed their owner UID. Read only that owner's small key set,
+    // then backfill the hash index without ever scanning USER_API_KEYS globally.
+    if (preg_match('/^ztsa_([a-z0-9]+)_[a-f0-9]{32}$/i', $plainKey, $matches) !== 1) {
+        return [];
+    }
+
+    $uid = strtoupper((string)$matches[1]);
+    $userKeys = fb_get('USER_API_KEYS/' . $uid);
+    foreach (is_array($userKeys) ? $userKeys : [] as $keyId => $row) {
+        if (!is_array($row) || !hash_equals($hash, (string)($row['key_hash'] ?? ''))) {
+            continue;
+        }
+
+        $keyId = (string)$keyId;
+        @fb_put('USER_API_KEY_INDEX/' . $hash, [
+            'uid' => $uid,
+            'key_id' => $keyId,
+            'created_at' => (int)($row['created_at'] ?? subapi_now()),
+        ]);
+        $row['uid'] = (string)($row['uid'] ?? $uid);
+        $row['key_id'] = (string)($row['key_id'] ?? $keyId);
+        return $row;
     }
 
     return [];
@@ -498,7 +525,6 @@ function subapi_authenticate_request(): array
         'user' => $user,
         'role_settings' => $roleSettings,
         'wallet' => subapi_load_wallet($uid),
-        'plain_key' => $plainKey,
         'key_row' => $keyRow,
     ];
 }
@@ -519,6 +545,34 @@ function subapi_is_topup_hold_request(array $request): bool
 function subapi_is_already_settled(array $request): bool
 {
     return !empty($request['hold_settled_at']);
+}
+
+function subapi_list_request_logs_page(
+    string $uid,
+    string $status = '',
+    string $cursor = '',
+    int $limit = 10
+): array {
+    $uid = trim($uid);
+    $status = strtoupper(trim($status));
+    if ($uid === '' || !function_exists('admin_firebase_cursor_page')) {
+        return ['items' => [], 'pagination' => ['limit' => 10, 'count' => 0, 'has_more' => false, 'next_cursor' => '']];
+    }
+
+    return admin_firebase_cursor_page(
+        'USER_API_REQUESTS/' . $uid,
+        $limit,
+        $cursor,
+        static function (array $row) use ($status): bool {
+            $rowStatus = strtoupper(trim((string)($row['status'] ?? '')));
+            return $status === '' || $status === 'ALL' || $rowStatus === $status;
+        },
+        static function (array $row, string $requestId) use ($uid): array {
+            $row['request_id'] = (string)($row['request_id'] ?? $requestId);
+            $row['uid'] = (string)($row['uid'] ?? $uid);
+            return $row;
+        }
+    );
 }
 
 function subapi_topup_numeric_first(array $row, array $keys): float
@@ -1258,7 +1312,9 @@ function subapi_panel_bundle_offer_detail(string $uid, string $offerId): array
 function subapi_panel_bundle_offers(
     string $uid,
     string $operatorFilter = '',
-    string $statusFilter = 'ACTIVE'
+    string $statusFilter = 'ACTIVE',
+    string $cursor = '',
+    int $limit = 10
 ): array {
     $uid = trim($uid);
 
@@ -1324,10 +1380,6 @@ function subapi_panel_bundle_offers(
         ];
     }
 
-    if (function_exists('bundle_expire_old_offers')) {
-        bundle_expire_old_offers();
-    }
-
     $operatorFilter = subapi_bundle_normalize_operator($operatorFilter);
     $statusFilter = strtoupper(trim($statusFilter));
     if ($statusFilter === '') {
@@ -1336,61 +1388,44 @@ function subapi_panel_bundle_offers(
 
     $visibleUser = subapi_bundle_panel_visible_user($uid, $user);
 
-    $items = fb_get('BUNDLE_OFFERS');
-    if (!is_array($items)) {
-        $items = [];
-    }
-
-    $out = [];
     $now = function_exists('bundle_now') ? bundle_now() : subapi_now();
-
-    foreach ($items as $offerKey => $baseOffer) {
-        if (!is_array($baseOffer)) {
-            continue;
-        }
-
-        $baseOffer['offer_id'] = (string)($baseOffer['offer_id'] ?? $offerKey);
-
-        if (function_exists('bundle_is_active_offer') && !bundle_is_active_offer($baseOffer, $now)) {
-            continue;
-        }
-
-        $visible = bundle_build_visible_offer_for_user($baseOffer, $visibleUser);
-        $row = subapi_bundle_offer_public_row($visible);
-
-        $offerId = trim((string)($row['offer_id'] ?? ''));
-        $operator = subapi_bundle_normalize_operator((string)($row['operator'] ?? ''));
-        $rowStatus = strtoupper(trim((string)($row['status'] ?? 'ACTIVE')));
-        $active = (bool)($row['active'] ?? true);
-        $expiresAt = (int)($row['expires_at'] ?? 0);
-        $expired = $expiresAt > 0 && $expiresAt <= $now;
-
-        if ($offerId === '') {
-            continue;
-        }
-
-        if ($operatorFilter !== '' && $operator !== $operatorFilter) {
-            continue;
-        }
-
-        if ($statusFilter !== 'ALL' && $rowStatus !== $statusFilter) {
-            continue;
-        }
-
-        if (!$active || $rowStatus !== 'ACTIVE' || $expired) {
-            continue;
-        }
-
-        $row['operator'] = $operator;
-        $row['expired'] = $expired;
-        $out[] = $row;
+    if (!function_exists('admin_firebase_cursor_page')) {
+        return [
+            'ok' => false,
+            'code' => 'SERVER_ERROR',
+            'message' => 'Pagination helper not loaded',
+            'data' => [],
+        ];
     }
 
-    usort($out, static function (array $a, array $b): int {
-        $aTime = (int)(($a['updated_at'] ?? 0) ?: ($a['created_at'] ?? 0));
-        $bTime = (int)(($b['updated_at'] ?? 0) ?: ($b['created_at'] ?? 0));
-        return $bTime <=> $aTime;
-    });
+    $page = admin_firebase_cursor_page(
+        'BUNDLE_OFFERS',
+        $limit,
+        $cursor,
+        static function (array $baseOffer) use ($operatorFilter, $statusFilter, $now): bool {
+            $operator = subapi_bundle_normalize_operator((string)($baseOffer['operator'] ?? ''));
+            $rowStatus = strtoupper(trim((string)($baseOffer['status'] ?? 'ACTIVE')));
+            if ($operatorFilter !== '' && $operator !== $operatorFilter) {
+                return false;
+            }
+            if ($statusFilter !== 'ALL' && $rowStatus !== $statusFilter) {
+                return false;
+            }
+            return !function_exists('bundle_is_active_offer') || bundle_is_active_offer($baseOffer, $now);
+        },
+        static function (array $baseOffer, string $offerKey) use ($visibleUser, $now): array {
+            $baseOffer['offer_id'] = (string)($baseOffer['offer_id'] ?? $offerKey);
+            $visible = bundle_build_visible_offer_for_user($baseOffer, $visibleUser);
+            $row = subapi_bundle_offer_public_row($visible);
+            $row['operator'] = subapi_bundle_normalize_operator((string)($row['operator'] ?? ''));
+            $expiresAt = (int)($row['expires_at'] ?? 0);
+            $row['expired'] = $expiresAt > 0 && $expiresAt <= $now;
+            return $row;
+        },
+        12
+    );
+
+    $out = array_values((array)($page['items'] ?? []));
 
     return [
         'ok' => true,
@@ -1400,6 +1435,7 @@ function subapi_panel_bundle_offers(
             'uid' => $uid,
             'total' => count($out),
             'items' => array_values($out),
+            'pagination' => (array)($page['pagination'] ?? []),
             'wallet' => [
                 'available_balance' => (float)($wallet['available_balance'] ?? 0),
                 'hold_balance' => (float)($wallet['hold_balance'] ?? 0),

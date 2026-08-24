@@ -9,6 +9,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/mfs_fee_tiers.php';
+require_once __DIR__ . '/admin_pagination.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -433,9 +434,10 @@ function mfs_status_counter_status(string $status, string $bucket = ''): string
     return '';
 }
 
-function mfs_status_counter_updates(string $requestId, string $status): array
+function mfs_status_counter_updates(string $requestId, string $status, string $uid = ''): array
 {
     $requestId = trim($requestId);
+    $uid = trim($uid);
     $status = mfs_status_counter_status($status);
     if ($requestId === '' || $status === '') {
         return [];
@@ -444,9 +446,130 @@ function mfs_status_counter_updates(string $requestId, string $status): array
     $updates = [];
     foreach (['PENDING', 'PROCESSING', 'SUCCESSFUL', 'FAILED'] as $candidate) {
         $updates['MFS_STATUS_COUNTERS/' . $candidate . '/' . $requestId] = $candidate === $status ? true : null;
+        if ($uid !== '') {
+            $updates['MFS_USER_STATUS_COUNTERS/' . $uid . '/' . $candidate . '/' . $requestId] = $candidate === $status ? true : null;
+        }
     }
 
     return $updates;
+}
+
+function mfs_user_status_counts_snapshot(string $uid): array
+{
+    $uid = trim($uid);
+    $counts = [];
+    foreach (['PENDING', 'PROCESSING', 'SUCCESSFUL', 'FAILED'] as $status) {
+        $rows = $uid !== ''
+            ? mfs_fb_get('MFS_USER_STATUS_COUNTERS/' . $uid . '/' . $status, ['shallow' => 'true'])
+            : [];
+        $counts[strtolower($status)] = is_array($rows) ? count($rows) : 0;
+    }
+
+    return [
+        'pending' => (int)($counts['pending'] ?? 0),
+        'processing' => (int)($counts['processing'] ?? 0),
+        'done' => (int)($counts['successful'] ?? 0),
+        'failed' => (int)($counts['failed'] ?? 0),
+    ];
+}
+
+function mfs_user_status_query_rows(string $bucket, string $uid): array
+{
+    $path = 'MFS_REQUESTS/' . mfs_normalize_bucket($bucket);
+    $query = [
+        'orderBy' => json_encode('uid'),
+        'equalTo' => json_encode($uid),
+    ];
+
+    if (function_exists('fb_request')) {
+        try {
+            $response = fb_request('GET', $path, null, $query);
+        } catch (Throwable $e) {
+            return ['ok' => false, 'rows' => []];
+        }
+
+        if (empty($response['ok'])) {
+            return ['ok' => false, 'rows' => []];
+        }
+
+        return [
+            'ok' => true,
+            'rows' => is_array($response['json'] ?? null) ? (array)$response['json'] : [],
+        ];
+    }
+
+    // Test/minimal runtimes may expose only the public Firebase GET wrapper.
+    $rows = mfs_fb_get($path, $query);
+    return ['ok' => true, 'rows' => is_array($rows) ? $rows : []];
+}
+
+function mfs_user_status_counts_rebuild(string $uid, int $maxAttempts = 3): array
+{
+    $uid = trim($uid);
+    if ($uid === '' || !function_exists('fb_get_with_etag') || !function_exists('fb_put_if_match')) {
+        return ['ok' => false, 'code' => 'COUNTER_STORAGE_UNAVAILABLE', 'counts' => []];
+    }
+
+    $maxAttempts = max(1, min(5, $maxAttempts));
+    for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+        $snapshot = fb_get_with_etag('MFS_USER_STATUS_COUNTERS/' . $uid);
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+            return ['ok' => false, 'code' => 'COUNTER_STORAGE_UNAVAILABLE', 'counts' => []];
+        }
+
+        $rebuilt = [
+            'PENDING' => [],
+            'PROCESSING' => [],
+            'SUCCESSFUL' => [],
+            'FAILED' => [],
+        ];
+        foreach (['PENDING', 'PROCESSING', 'DONE'] as $bucket) {
+            $queryResult = mfs_user_status_query_rows($bucket, $uid);
+            if (empty($queryResult['ok'])) {
+                return ['ok' => false, 'code' => 'COUNTER_SOURCE_QUERY_FAILED', 'counts' => []];
+            }
+            $rows = (array)($queryResult['rows'] ?? []);
+            foreach (is_array($rows) ? $rows : [] as $requestId => $row) {
+                if (!is_array($row) || !hash_equals($uid, (string)($row['uid'] ?? ''))) {
+                    continue;
+                }
+                $status = mfs_status_counter_status((string)($row['status'] ?? ''), $bucket);
+                if (isset($rebuilt[$status])) {
+                    $rebuilt[$status][(string)$requestId] = true;
+                }
+            }
+        }
+        $rebuilt['_meta'] = [
+            'rebuilt_at' => mfs_now(),
+            'version' => 1,
+        ];
+
+        $saved = fb_put_if_match('MFS_USER_STATUS_COUNTERS/' . $uid, $rebuilt, (string)$snapshot['etag']);
+        if (!empty($saved['ok'])) {
+            return ['ok' => true, 'code' => 'SUCCESS', 'counts' => [
+                'pending' => count($rebuilt['PENDING']),
+                'processing' => count($rebuilt['PROCESSING']),
+                'done' => count($rebuilt['SUCCESSFUL']),
+                'failed' => count($rebuilt['FAILED']),
+            ], 'rebuilt' => true];
+        }
+        if ((int)($saved['status'] ?? 0) !== 412) {
+            return ['ok' => false, 'code' => 'COUNTER_REBUILD_FAILED', 'counts' => []];
+        }
+    }
+
+    return ['ok' => false, 'code' => 'COUNTER_REBUILD_CONFLICT', 'counts' => []];
+}
+
+function mfs_user_status_counts(string $uid): array
+{
+    $uid = trim($uid);
+    $meta = $uid !== '' ? mfs_fb_get('MFS_USER_STATUS_COUNTERS/' . $uid . '/_meta') : null;
+    if (!is_array($meta) || (int)($meta['rebuilt_at'] ?? 0) <= 0) {
+        return mfs_user_status_counts_rebuild($uid);
+    }
+
+    return ['ok' => true, 'code' => 'SUCCESS', 'counts' => mfs_user_status_counts_snapshot($uid), 'rebuilt' => false];
 }
 
 function mfs_status_counts_snapshot(): array
@@ -3244,7 +3367,7 @@ function mfs_move_request_bucket(string $requestId, string $fromBucket, string $
     if ($fromBucket !== '' && $fromBucket !== $toBucket && in_array($fromBucket, mfs_allowed_buckets(), true)) {
         $updates['MFS_REQUESTS/' . $fromBucket . '/' . $requestId] = null;
     }
-    $updates += mfs_status_counter_updates($requestId, $status);
+    $updates += mfs_status_counter_updates($requestId, $status, (string)($saveRow['uid'] ?? ''));
 
     return mfs_fb_patch('', $updates);
 }
