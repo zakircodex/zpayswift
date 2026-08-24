@@ -205,6 +205,7 @@ function auth_app_issue_session(array $user, string $uid, string $deviceId, stri
     $hash = session_hash($token);
     $now = now_ts();
 
+    $authSessionEpoch = auth_session_epoch_from_user($user);
     $session = [
         'session_id' => make_session_id(),
         'uid' => $uid,
@@ -217,7 +218,7 @@ function auth_app_issue_session(array $user, string $uid, string $deviceId, stri
         'created_at' => $now,
         'expires_at' => $now + SESSION_TTL_SECONDS,
         'last_seen_at' => $now,
-        'auth_session_epoch' => auth_session_epoch_from_user($user),
+        'auth_session_epoch' => $authSessionEpoch,
     ];
 
     if (!fb_put('USER_SESSIONS/' . $hash, $session)) {
@@ -238,6 +239,7 @@ function auth_app_issue_session(array $user, string $uid, string $deviceId, stri
     return [
         'session_token' => $token,
         'session_hash' => $hash,
+        'auth_session_epoch' => $authSessionEpoch,
     ];
 }
 

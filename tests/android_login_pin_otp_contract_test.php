@@ -24,6 +24,10 @@ function android_login_contract_expect(bool $condition, string $message): void
 
 $verifyPin = android_login_contract_source($root . '/api/auth/verify_pin.php');
 $sendOtp = android_login_contract_source($root . '/api/auth/login_send_otp.php');
+$verifyOtp = android_login_contract_source($root . '/api/auth/user_login_verify_otp.php');
+$biometricLogin = android_login_contract_source($root . '/api/auth/biometric_login.php');
+$auth = android_login_contract_source($root . '/api/lib/auth.php');
+$authAndroid = android_login_contract_source($root . '/api/lib/auth_android.php');
 $authSms = android_login_contract_source($root . '/api/lib/auth_sms.php');
 $sms360 = android_login_contract_source($root . '/api/lib/sms_smss360.php');
 $bulkSms = android_login_contract_source($root . '/api/lib/sms_bulksmsbd.php');
@@ -75,6 +79,32 @@ android_login_contract_expect(
 android_login_contract_expect(
     !preg_match('/RewriteRule\s+\^api\/auth\/(?:verify_pin|login_send_otp)/i', $rewrite),
     'Canonical Android auth endpoints must not be redirected by a route rule'
+);
+android_login_contract_expect(
+    str_contains($verifyPin, 'auth_issue_trusted_device_cookie(')
+        && str_contains($verifyPin, "'trusted_device_cookie'"),
+    'trusted PIN login must issue a fresh canonical trusted-device cookie'
+);
+android_login_contract_expect(
+    str_contains($verifyPin, "'TRUSTED_DEVICE_CREDENTIAL_FAILED'")
+        && str_contains($verifyPin, "@fb_delete('USER_SESSIONS/' . \$sessionHash)"),
+    'trusted PIN login must fail closed and remove the unreturned session when cookie persistence fails'
+);
+android_login_contract_expect(
+    str_contains($verifyOtp, 'auth_issue_trusted_device_cookie(')
+        && !str_contains($verifyOtp, 'function user_verify_create_trusted_device('),
+    'OTP and trusted PIN login must share canonical cookie issuance'
+);
+android_login_contract_expect(
+    !str_contains($biometricLogin, 'function biometric_login_has_valid_trusted_cookie(')
+        && str_contains($biometricLogin, 'auth_trusted_browser_cookie_context('),
+    'biometric login must use canonical device, epoch and revocation validation'
+);
+android_login_contract_expect(
+    str_contains($auth, 'function auth_issue_trusted_device_cookie(')
+        && str_contains($auth, "'token_hash' => hash('sha256', \$rawToken)")
+        && str_contains($authAndroid, "'auth_session_epoch' => \$authSessionEpoch"),
+    'canonical cookie issuance must hash the token and bind the issued session epoch'
 );
 
 echo "Android PIN-to-OTP backend contract tests passed ({$assertions} assertions).\n";

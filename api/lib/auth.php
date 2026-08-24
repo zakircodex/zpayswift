@@ -1152,6 +1152,60 @@ function auth_device_is_trusted(string $uid, string $deviceId): bool
         && in_array($status, ['', 'ACTIVE', 'TRUSTED'], true);
 }
 
+function auth_issue_trusted_device_cookie(
+    string $uid,
+    string $deviceId,
+    string $deviceName,
+    string $authSessionEpoch
+): array {
+    $uid = auth_clean_string($uid);
+    $deviceId = auth_clean_string($deviceId);
+    $deviceName = auth_clean_string($deviceName);
+    $authSessionEpoch = auth_clean_string($authSessionEpoch);
+    if ($uid === '' || $deviceId === '' || $authSessionEpoch === '') {
+        return ['ok' => false, 'code' => 'TRUSTED_DEVICE_INPUT_INVALID'];
+    }
+
+    try {
+        $selector = bin2hex(random_bytes(8));
+        $rawToken = bin2hex(random_bytes(24));
+        $now = now_ts();
+        $expiresAt = $now + (60 * 60 * 24 * 30);
+        $stored = fb_put('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector, [
+            'selector' => $selector,
+            'token_hash' => hash('sha256', $rawToken),
+            'uid' => $uid,
+            'device_id' => $deviceId,
+            'device_name' => $deviceName,
+            'auth_session_epoch' => $authSessionEpoch,
+            'trusted' => true,
+            'otp_verified' => true,
+            'manual_logout' => false,
+            'revoked' => false,
+            'status' => 'ACTIVE',
+            'created_at' => $now,
+            'updated_at' => $now,
+            'last_used_at' => $now,
+            'expires_at' => $expiresAt,
+        ]);
+    } catch (Throwable $exception) {
+        return ['ok' => false, 'code' => 'TRUSTED_DEVICE_WRITE_FAILED'];
+    }
+
+    if (!$stored) {
+        return ['ok' => false, 'code' => 'TRUSTED_DEVICE_WRITE_FAILED'];
+    }
+
+    return [
+        'ok' => true,
+        'uid' => $uid,
+        'selector' => $selector,
+        'token' => $rawToken,
+        'cookie_value' => $selector . ':' . $rawToken,
+        'expires_at' => $expiresAt,
+    ];
+}
+
 function auth_trusted_browser_cookie_parts(string $cookieValue): array
 {
     $cookieValue = trim($cookieValue);
@@ -1229,12 +1283,12 @@ function auth_trusted_browser_cookie_context(
     if (
         $storedHash === ''
         || !hash_equals($storedHash, hash('sha256', $token))
-        || auth_clean_string($row['uid'] ?? $uid) !== $uid
+        || auth_clean_string($row['uid'] ?? '') !== $uid
         || empty($row['trusted'])
         || empty($row['otp_verified'])
         || !empty($row['manual_logout'])
         || !empty($row['revoked'])
-        || !in_array($status, ['', 'ACTIVE', 'TRUSTED'], true)
+        || !in_array($status, ['ACTIVE', 'TRUSTED'], true)
         || $expiresAt <= now_ts()
         || ($expectedDeviceId !== '' && $rowDeviceId !== $expectedDeviceId)
     ) {

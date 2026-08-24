@@ -30,54 +30,6 @@ function user_verify_issue_session(array $user, string $uid, string $deviceId, s
     return auth_issue_website_user_session($user, $uid, $deviceId, $deviceName, $preAuthRow);
 }
 
-function user_verify_create_trusted_device(
-    string $uid,
-    string $deviceId,
-    string $deviceName,
-    string $authSessionEpoch
-): array
-{
-    $selector = bin2hex(random_bytes(8));
-    $rawToken = bin2hex(random_bytes(24));
-    $now = now_ts();
-    $expiresAt = $now + (60 * 60 * 24 * 30);
-
-    $row = [
-        'selector'     => $selector,
-        'token_hash'   => hash('sha256', $rawToken),
-        'uid'          => $uid,
-        'device_id'    => $deviceId,
-        'device_name'  => $deviceName,
-        'created_at'   => $now,
-        'updated_at'   => $now,
-        'last_used_at' => $now,
-        'expires_at'   => $expiresAt,
-        'auth_session_epoch' => $authSessionEpoch,
-        'trusted'      => true,
-        'otp_verified' => true,
-        'manual_logout' => false,
-        'revoked'      => false,
-        'status'       => 'ACTIVE',
-    ];
-
-    if (!fb_put('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector, $row)) {
-        return [
-            'ok' => false,
-            'selector' => '',
-            'token' => '',
-            'expires_at' => 0,
-        ];
-    }
-
-    return [
-        'ok' => true,
-        'uid' => $uid,
-        'selector' => $selector,
-        'token' => $rawToken,
-        'expires_at' => $expiresAt,
-    ];
-}
-
 $preAuthToken = trim((string)($body['pre_auth_token'] ?? ''));
 $otpRequestId = trim((string)($body['otp_request_id'] ?? ''));
 $otp = trim((string)($body['otp'] ?? ''));
@@ -178,7 +130,7 @@ if (!auth_otp_complete_verification($otpRequestId, $otpOwner, $now)) {
 $trustedDeviceCookie = null;
 
 if ($trustDevice) {
-    $trusted = user_verify_create_trusted_device(
+    $trusted = auth_issue_trusted_device_cookie(
         $uid,
         $deviceId,
         $deviceName,

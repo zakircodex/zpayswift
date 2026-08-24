@@ -8,46 +8,6 @@ api_require_method('POST');
 api_require_app_key();
 system_require_user_service_available();
 
-function biometric_login_has_valid_trusted_cookie(string $uid, string $cookieValue): bool
-{
-    $cookieValue = trim($cookieValue);
-    if ($uid === '' || $cookieValue === '' || strpos($cookieValue, ':') === false) {
-        return false;
-    }
-
-    [$selector, $token] = explode(':', $cookieValue, 2);
-    $selector = trim($selector);
-    $token = trim($token);
-
-    if ($selector === '' || $token === '') {
-        return false;
-    }
-
-    $row = fb_get('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector);
-    if (!is_array($row)) {
-        return false;
-    }
-
-    $storedHash = trim((string)($row['token_hash'] ?? ''));
-    $status = strtoupper(trim((string)($row['status'] ?? '')));
-    $expiresAt = (int)($row['expires_at'] ?? 0);
-
-    if ($storedHash === '' || $status !== 'ACTIVE' || $expiresAt < now_ts()) {
-        return false;
-    }
-
-    if (!hash_equals($storedHash, hash('sha256', $token))) {
-        return false;
-    }
-
-    @fb_patch('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector, [
-        'last_used_at' => now_ts(),
-        'updated_at' => now_ts(),
-    ]);
-
-    return true;
-}
-
 $body = api_read_json_body();
 $deviceId = auth_app_device_id($body);
 $deviceName = auth_app_device_name($body);
@@ -95,7 +55,14 @@ if ($preAuthToken !== '') {
     $meta = auth_request_metadata($body);
 }
 
-if (!biometric_login_has_valid_trusted_cookie($uid, $trustedDeviceCookie)) {
+$trustedCookieContext = auth_trusted_browser_cookie_context(
+    $uid,
+    $trustedDeviceCookie,
+    $deviceId,
+    $user,
+    true
+);
+if (empty($trustedCookieContext['ok'])) {
     api_response(false, 'DEVICE_REPLACED', 'This account is logged in on another device.', [], 401);
 }
 

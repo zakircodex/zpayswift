@@ -7,6 +7,7 @@ $testNow = 1700000000;
 $store = [];
 $readPaths = [];
 $writePaths = [];
+$failTrustedDevicePut = false;
 
 function trusted_test_parts(string $path): array
 {
@@ -58,6 +59,10 @@ function fb_patch(string $path, array $data): bool
 
 function fb_put(string $path, $data): bool
 {
+    global $failTrustedDevicePut;
+    if ($failTrustedDevicePut && str_starts_with($path, 'AUTH_TRUSTED_DEVICES/')) {
+        return false;
+    }
     trusted_test_set($path, $data);
     return true;
 }
@@ -140,6 +145,47 @@ trusted_test_set('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $selector, [
     'status' => 'ACTIVE',
     'expires_at' => now_ts() + 3600,
 ]);
+
+$issued = auth_issue_trusted_device_cookie($uid, $deviceId, 'Trusted Test Device', $epoch);
+trusted_expect(!empty($issued['ok']), 'canonical trusted-cookie issuance must succeed');
+$issuedSelector = (string)($issued['selector'] ?? '');
+$issuedToken = (string)($issued['token'] ?? '');
+$issuedRow = trusted_test_get('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $issuedSelector);
+trusted_expect(is_array($issuedRow), 'trusted cookie must persist at the canonical selector path');
+trusted_expect(($issuedRow['uid'] ?? '') === $uid, 'trusted cookie must bind the canonical uid');
+trusted_expect(($issuedRow['device_id'] ?? '') === $deviceId, 'trusted cookie must bind the current device');
+trusted_expect(($issuedRow['auth_session_epoch'] ?? '') === $epoch, 'trusted cookie must bind the current auth session epoch');
+trusted_expect(!empty($issuedRow['trusted']) && !empty($issuedRow['otp_verified']), 'trusted cookie must preserve OTP trust flags');
+trusted_expect(empty($issuedRow['manual_logout']) && empty($issuedRow['revoked']), 'new trusted cookie must not be revoked');
+trusted_expect(($issuedRow['status'] ?? '') === 'ACTIVE', 'new trusted cookie must be ACTIVE');
+trusted_expect(($issuedRow['token_hash'] ?? '') === hash('sha256', $issuedToken), 'trusted token must be hashed at rest');
+trusted_expect(!in_array($issuedToken, $issuedRow, true), 'raw trusted token must not be stored in Firebase');
+trusted_expect(
+    !empty(auth_trusted_browser_cookie_context(
+        $uid,
+        $issuedSelector . ':' . $issuedToken,
+        $deviceId,
+        [],
+        false
+    )['ok']),
+    'new canonical trusted cookie must pass full validation'
+);
+trusted_expect(
+    empty(auth_trusted_browser_cookie_context(
+        $uid,
+        $issuedSelector . ':' . $issuedToken,
+        'OTHER_DEVICE',
+        [],
+        false
+    )['ok']),
+    'trusted cookie must not validate on another device'
+);
+
+$failTrustedDevicePut = true;
+$failedIssue = auth_issue_trusted_device_cookie($uid, $deviceId, 'Trusted Test Device', $epoch);
+$failTrustedDevicePut = false;
+trusted_expect(empty($failedIssue['ok']), 'trusted-cookie persistence failure must be reported');
+trusted_expect(!array_key_exists('token', $failedIssue), 'failed trusted-cookie issuance must not return a raw token');
 
 $readPaths = [];
 $valid = auth_trusted_browser_cookie_context($uid, $cookie, $deviceId);

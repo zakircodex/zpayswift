@@ -103,8 +103,33 @@ $data = [
 
 if ($trusted) {
     $session = auth_app_issue_session($user, $uid, $deviceId, $deviceName, $preAuthRow);
+    $trustedCredential = auth_issue_trusted_device_cookie(
+        $uid,
+        $deviceId,
+        $deviceName,
+        (string)($session['auth_session_epoch'] ?? '')
+    );
+    if (empty($trustedCredential['ok'])) {
+        $sessionHash = trim((string)($session['session_hash'] ?? ''));
+        if ($sessionHash !== '') {
+            @fb_delete('USER_SESSIONS/' . $sessionHash);
+        }
+        api_response(
+            false,
+            'TRUSTED_DEVICE_CREDENTIAL_FAILED',
+            'Unable to secure trusted login. Please try again.',
+            [],
+            500
+        );
+    }
     $patch['verified_at'] = $now;
     $data['session_token'] = (string)$session['session_token'];
+    $data['trusted_device_cookie'] = [
+        'uid' => (string)($trustedCredential['uid'] ?? ''),
+        'selector' => (string)($trustedCredential['selector'] ?? ''),
+        'token' => (string)($trustedCredential['token'] ?? ''),
+        'expires_at' => (int)($trustedCredential['expires_at'] ?? 0),
+    ];
     $data['user'] = auth_app_user_payload($uid, $user);
 }
 
