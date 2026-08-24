@@ -1349,41 +1349,6 @@ function auth_mark_other_devices_replaced(string $uid, string $activeDeviceId): 
     }
 }
 
-function auth_revoke_other_user_sessions(string $uid, string $activeDeviceId, string $exceptSessionHash = ''): void
-{
-    $uid = auth_clean_string($uid);
-    $activeDeviceId = auth_clean_string($activeDeviceId);
-    if ($uid === '') {
-        return;
-    }
-
-    $sessions = fb_get('USER_SESSIONS');
-    if (!is_array($sessions)) {
-        return;
-    }
-
-    foreach ($sessions as $hash => $session) {
-        if (!is_array($session)) {
-            continue;
-        }
-        if ((string)($session['uid'] ?? '') !== $uid) {
-            continue;
-        }
-        if ($exceptSessionHash !== '' && (string)$hash === $exceptSessionHash) {
-            continue;
-        }
-        if ($activeDeviceId !== '' && (string)($session['device_id'] ?? '') === $activeDeviceId) {
-            continue;
-        }
-
-        @fb_patch('USER_SESSIONS/' . $hash, [
-            'status' => 'DEVICE_REPLACED',
-            'replaced_by_device_id' => $activeDeviceId,
-            'updated_at' => now_ts(),
-        ]);
-    }
-}
-
 function auth_activate_user_device(string $uid, string $deviceId, string $deviceName = '', string $appVersion = '', string $sessionHash = ''): void
 {
     $uid = auth_clean_string($uid);
@@ -1394,7 +1359,7 @@ function auth_activate_user_device(string $uid, string $deviceId, string $device
 
     auth_mark_device_trusted($uid, $deviceId, $deviceName, $appVersion);
     auth_mark_other_devices_replaced($uid, $deviceId);
-    auth_revoke_other_user_sessions($uid, $deviceId, $sessionHash);
+    // Old-device sessions are rejected and patched by direct hash on their next request.
 
     @fb_patch('USERS/' . $uid, [
         'active_device_id' => $deviceId,

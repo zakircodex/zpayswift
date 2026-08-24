@@ -383,7 +383,7 @@ test_set('USERS/U4', [
 ]);
 $firebaseDelayUs = ['USER_SESSIONS' => 120000];
 $getPaths = [];
-$legacyStartedAt = microtime(true);
+$sessionIssueStartedAt = microtime(true);
 auth_app_issue_session(
     (array)test_get('USERS/U4'),
     'U4',
@@ -391,10 +391,10 @@ auth_app_issue_session(
     'Android Legacy Test',
     ['app_version' => '1.0.0']
 );
-$legacyDurationMs = (microtime(true) - $legacyStartedAt) * 1000;
+$sessionIssueDurationMs = (microtime(true) - $sessionIssueStartedAt) * 1000;
 $firebaseDelayUs = [];
-assert_true(in_array('USER_SESSIONS', $getPaths, true), 'legacy Android session issuance demonstrates the global session scan root cause');
-assert_true($legacyDurationMs >= 100, 'controlled legacy timing must include the simulated global-node delay');
+assert_true(!in_array('USER_SESSIONS', $getPaths, true), 'Android session issuance must not scan the global session node');
+assert_true($sessionIssueDurationMs < 50, 'in-memory Android session issuance must remain bounded');
 $requestHeaders = [];
 
 $ownerQueryRows = [
@@ -411,6 +411,7 @@ $userVerify = (string)file_get_contents($root . '/api/auth/user_login_verify_otp
 $pinLogin = (string)file_get_contents($root . '/api/auth/pin_login.php');
 $biometricLogin = (string)file_get_contents($root . '/api/auth/biometric_login.php');
 $authAndroid = (string)file_get_contents($root . '/api/lib/auth_android.php');
+$authLib = (string)file_get_contents($root . '/api/lib/auth.php');
 $adminProxy = (string)file_get_contents($root . '/api/admin/proxy.php');
 $mfsPending = (string)file_get_contents($root . '/api/admin/mfs/pending.php');
 $htaccess = (string)file_get_contents($root . '/.htaccess');
@@ -441,6 +442,7 @@ assert_true(!str_contains($pinLogin, 'auth_app_issue_session'), 'PIN quick login
 assert_true(str_contains($biometricLogin, 'auth_app_quick_login_context'), 'Biometric quick login must load the saved session directly');
 assert_true(str_contains($biometricLogin, 'auth_app_complete_quick_login_session'), 'Biometric quick login must reuse the saved session');
 assert_true(str_contains($authAndroid, "get_session_by_token(\$token)"), 'Quick login helper must use the direct hashed session lookup');
+assert_true(!str_contains($authLib, "fb_get('USER_SESSIONS')"), 'Auth helpers must never read the growing global session root');
 assert_true(!str_contains($adminProxy, "'internal_url' =>"), 'admin proxy must not expose internal URLs');
 assert_true(str_contains($adminProxy, "case 'logout':") && str_contains($adminProxy, 'proxy_require_csrf();'), 'admin logout must require CSRF');
 assert_true(!str_contains($mfsPending, 'getMessage()'), 'admin MFS errors must not expose exception details');
@@ -485,8 +487,8 @@ foreach ([
 }
 
 printf(
-    "quick login controlled timing: legacy %.2f ms, direct %.2f ms\n",
-    $legacyDurationMs,
+    "auth controlled timing: session issue %.2f ms, quick login %.2f ms\n",
+    $sessionIssueDurationMs,
     $quickDurationMs
 );
 echo "website auth and panel security tests passed\n";
