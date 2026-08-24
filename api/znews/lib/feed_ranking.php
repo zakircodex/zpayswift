@@ -18,6 +18,12 @@ function znews_feed_creator_cap(): int { return znews_feed_cfg('ZNEWS_FEED_CREAT
 function znews_feed_creator_block_size(): int { return znews_feed_cfg('ZNEWS_FEED_CREATOR_BLOCK_SIZE', 20, 10, 50); }
 function znews_feed_impression_batch_max(): int { return znews_feed_cfg('ZNEWS_FEED_IMPRESSION_BATCH_MAX', 12, 1, 30); }
 
+function znews_feed_candidate_window(int $pageSize): int
+{
+    $pageSize = max(1, min(30, $pageSize));
+    return min(znews_feed_candidate_limit(), $pageSize * 5);
+}
+
 function znews_feed_session_path(string $sessionId): string
 {
     return 'ZNEWS_FEED_SESSIONS/' . znews_firebase_key($sessionId, 'feed_session_id');
@@ -127,19 +133,20 @@ function znews_feed_tie(string $seed, string $postId): string
     return znews_view_hmac('feed-tie|' . $seed . '|' . $postId);
 }
 
-function znews_feed_public_candidates(int $snapshotAt, string $seed): array
+function znews_feed_public_candidates(
+    int $snapshotAt,
+    string $seed,
+    int $pageSize
+): array
 {
-    $index = fb_get('ZNEWS_PUBLIC_FEED');
+    $index = fb_get('ZNEWS_PUBLIC_FEED', [
+        'orderBy' => json_encode('created_at'),
+        'endAt' => json_encode($snapshotAt),
+        'limitToLast' => znews_feed_candidate_window($pageSize),
+    ]);
     if (!is_array($index)) {
         return [];
     }
-
-    $postsRoot = fb_get('ZNEWS_POSTS');
-    $postsRoot = is_array($postsRoot) ? $postsRoot : [];
-    $analyticsRoot = fb_get('ZNEWS_ANALYTICS');
-    $analyticsRoot = is_array($analyticsRoot) ? $analyticsRoot : [];
-    $exposureRoot = fb_get('ZNEWS_FEED_EXPOSURE');
-    $exposureRoot = is_array($exposureRoot) ? $exposureRoot : [];
 
     $rows = [];
     foreach ($index as $postKey => $row) {
@@ -148,34 +155,34 @@ function znews_feed_public_candidates(int $snapshotAt, string $seed): array
         if ($postId === '') {
             continue;
         }
+        if (strtoupper(trim((string)($row['status'] ?? 'ACTIVE'))) !== 'ACTIVE'
+            || strtoupper(trim((string)($row['visibility'] ?? 'PUBLIC'))) !== 'PUBLIC') {
+            continue;
+        }
         $createdAt = max(0, (int)($row['created_at'] ?? 0));
         if ($createdAt > $snapshotAt) {
             continue;
         }
-        $rows[] = ['post_id' => $postId, 'created_at' => $createdAt];
+        $rows[] = [
+            'post_id' => $postId,
+            'creator_uid' => trim((string)($row['creator_uid'] ?? '')),
+            'created_at' => $createdAt,
+        ];
     }
     znews_sort_index_rows_desc($rows);
-    if (count($rows) > znews_feed_candidate_limit()) {
-        $rows = array_slice($rows, 0, znews_feed_candidate_limit());
-    }
 
     $candidates = [];
     foreach ($rows as $row) {
         $postId = znews_firebase_key((string)$row['post_id'], 'post_id');
-        $post = is_array($postsRoot[$postId] ?? null)
-            ? (array)$postsRoot[$postId]
-            : znews_post_load($postId);
-        if (!is_array($post) || !znews_post_is_public($post)) {
-            continue;
-        }
-
-        $creatorUid = trim((string)($post['creator_uid'] ?? ''));
+        $creatorUid = trim((string)($row['creator_uid'] ?? ''));
         if ($creatorUid === '') {
             $creatorUid = 'UNKNOWN_' . substr(hash('sha256', $postId), 0, 16);
         }
-        $analytics = is_array($analyticsRoot[$postId] ?? null) ? (array)$analyticsRoot[$postId] : [];
-        $exposure = is_array($exposureRoot[$postId] ?? null) ? (array)$exposureRoot[$postId] : [];
-        $createdAt = max(0, (int)($post['created_at'] ?? $row['created_at'] ?? 0));
+        $analytics = fb_get('ZNEWS_ANALYTICS/' . $postId);
+        $analytics = is_array($analytics) ? $analytics : [];
+        $exposure = fb_get(znews_feed_exposure_path($postId));
+        $exposure = is_array($exposure) ? $exposure : [];
+        $createdAt = max(0, (int)($row['created_at'] ?? 0));
         $ageDays = max(0.0, ($snapshotAt - $createdAt) / 86400);
         $impressions = max(0, (int)($exposure['impressions'] ?? 0));
         $uniqueImpressions = max(0, (int)($exposure['unique_viewers'] ?? 0));
@@ -306,12 +313,12 @@ function znews_feed_session_order(array $session): array
     ), static fn(string $value): bool => $value !== ''));
 }
 
-function znews_feed_create_session(array $viewer): array
+function znews_feed_create_session(array $viewer, int $pageSize): array
 {
     $now = znews_now();
     $sessionId = 'ZFS' . strtoupper(bin2hex(random_bytes(16)));
     $expiresAt = $now + znews_feed_session_ttl();
-    $candidates = znews_feed_public_candidates($now, $sessionId);
+    $candidates = znews_feed_public_candidates($now, $sessionId, $pageSize);
     $ranked = znews_feed_rank_candidates($candidates, $sessionId);
     $order = [];
     foreach ($ranked as $index => $postId) {
@@ -355,10 +362,8 @@ function znews_feed_load_session(string $sessionId, array $viewer): array
     return $session;
 }
 
-function znews_feed_overlay_counts(array $post, array $engagementRoot): array
+function znews_feed_overlay_counts(array $post, array $counts): array
 {
-    $postId = trim((string)($post['post_id'] ?? ''));
-    $counts = is_array($engagementRoot[$postId] ?? null) ? (array)$engagementRoot[$postId] : [];
     $post['like_count'] = max(0, (int)($counts['like_count'] ?? 0));
     $post['comment_count'] = max(0, (int)($counts['comment_count'] ?? 0));
     $post['share_count'] = max(0, (int)($counts['share_count'] ?? 0));
@@ -367,36 +372,34 @@ function znews_feed_overlay_counts(array $post, array $engagementRoot): array
 
 function znews_fair_feed_page(int $limit, $cursorValue = ''): array
 {
+    $limit = max(1, min(30, $limit));
     $viewer = znews_feed_viewer_context();
     $cursor = znews_feed_cursor_decode($cursorValue);
     if ($cursor) {
         $session = znews_feed_load_session((string)$cursor['session_id'], $viewer);
         $offset = (int)$cursor['offset'];
     } else {
-        $session = znews_feed_create_session($viewer);
+        $session = znews_feed_create_session($viewer, $limit);
         $offset = 0;
     }
 
     $order = znews_feed_session_order($session);
-    $slice = array_slice($order, $offset, $limit);
-    $postsRoot = fb_get('ZNEWS_POSTS');
-    $postsRoot = is_array($postsRoot) ? $postsRoot : [];
-    $engagementRoot = fb_get('ZNEWS_ENGAGEMENT');
-    $engagementRoot = is_array($engagementRoot) ? $engagementRoot : [];
     $items = [];
+    $nextOffset = $offset;
 
-    foreach ($slice as $postIdRaw) {
+    while ($nextOffset < count($order) && count($items) < $limit) {
+        $postIdRaw = $order[$nextOffset];
+        $nextOffset++;
         $postId = znews_firebase_key($postIdRaw, 'post_id');
-        $post = is_array($postsRoot[$postId] ?? null)
-            ? (array)$postsRoot[$postId]
-            : znews_post_load($postId);
+        $post = znews_post_load($postId);
         if (!is_array($post) || !znews_post_is_public($post)) {
             continue;
         }
-        $items[] = znews_feed_overlay_counts(znews_format_post($post), $engagementRoot);
+        $engagement = fb_get('ZNEWS_ENGAGEMENT/' . $postId);
+        $engagement = is_array($engagement) ? $engagement : [];
+        $items[] = znews_feed_overlay_counts(znews_format_post($post), $engagement);
     }
 
-    $nextOffset = $offset + count($slice);
     $hasMore = $nextOffset < count($order);
     $nextCursor = $hasMore
         ? znews_feed_cursor_encode((string)$session['session_id'], $nextOffset, (int)$session['expires_at'])
