@@ -12,7 +12,7 @@ api_require_app_key();
 $auth = znews_require_creator(true);
 $user = is_array($auth['user'] ?? null) ? $auth['user'] : [];
 $uid = znews_firebase_key((string)($user['uid'] ?? ''), 'uid');
-$limit = znews_limit($_GET['limit'] ?? 20, 20, 50);
+$limit = znews_limit($_GET['limit'] ?? 10, 10, 10);
 $cursor = znews_cursor_decode($_GET['cursor'] ?? '');
 $includeDeleted = znews_bool($_GET['include_deleted'] ?? false, false);
 

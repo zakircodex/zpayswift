@@ -211,6 +211,21 @@ function znews_creator_view_gate(
     string $idempotencyKey
 ): array {
     $viewerUid = trim($viewerUid);
+    $userAgent = strtolower(trim((string)($_SERVER['HTTP_USER_AGENT'] ?? '')));
+    if (str_starts_with($userAgent, 'zpayswift-android-znews/')) {
+        return [
+            'viewer_class' => $viewerUid !== '' ? 'CREATOR' : 'ANDROID_APP',
+            'ad_eligible' => false,
+            'revenue_share_eligible' => false,
+            'spam' => false,
+            'count' => 0,
+            'limit' => znews_guest_view_window_limit(),
+            'window_seconds' => znews_guest_view_window_seconds(),
+            'next_allowed_at' => 0,
+            'reason' => 'ANDROID_APP_NO_ADS',
+            'idempotent_replay' => false,
+        ];
+    }
     if ($viewerUid !== '') {
         return [
             'viewer_class' => 'CREATOR',

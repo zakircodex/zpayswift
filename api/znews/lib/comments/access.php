@@ -13,17 +13,30 @@ function znews_public_comments_page(
 ): array {
     $postId = znews_firebase_key($postId, 'post_id');
     znews_engagement_require_public_post($postId);
-    $rows = fb_get('ZNEWS_COMMENTS/' . $postId);
+    $candidateWindow = max($limit + 1, min(63, ($limit + 1) * 3));
+    $query = [
+        'orderBy' => json_encode('created_at'),
+        'limitToFirst' => $candidateWindow,
+    ];
+    if ($cursor) {
+        $query['startAt'] = json_encode(max(0, (int)($cursor['created_at'] ?? 0)));
+    }
+    $rows = fb_get('ZNEWS_COMMENTS/' . $postId, $query);
     $comments = [];
+    $scanned = [];
 
     if (is_array($rows)) {
         foreach ($rows as $commentId => $row) {
-            if (!is_array($row) || !znews_comment_is_public($row)) {
+            if (!is_array($row)) {
                 continue;
             }
             $row['comment_id'] = (string)($row['comment_id'] ?? $commentId);
             $formatted = znews_comment_format($row, false);
             if (!znews_comment_after_cursor($formatted, $cursor)) {
+                continue;
+            }
+            $scanned[] = $formatted;
+            if (!znews_comment_is_public($row)) {
                 continue;
             }
             $comments[] = $formatted;
@@ -49,6 +62,19 @@ function znews_public_comments_page(
         $nextCursor = znews_comment_cursor_encode(
             (int)$last['created_at'],
             (string)$last['comment_id']
+        );
+    } elseif (is_array($rows) && count($rows) >= $candidateWindow && $scanned) {
+        usort($scanned, static function (array $a, array $b): int {
+            $timeCompare = ((int)$a['created_at']) <=> ((int)$b['created_at']);
+            return $timeCompare !== 0
+                ? $timeCompare
+                : strcmp((string)$a['comment_id'], (string)$b['comment_id']);
+        });
+        $lastScanned = $scanned[count($scanned) - 1];
+        $hasMore = true;
+        $nextCursor = znews_comment_cursor_encode(
+            (int)$lastScanned['created_at'],
+            (string)$lastScanned['comment_id']
         );
     }
 

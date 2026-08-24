@@ -77,9 +77,10 @@
       <section class="profile-card card"><div class="avatar large" id="sidebarAvatar">Z</div><div><strong id="sidebarName">Guest reader</strong><p id="sidebarMeta">Public stories and community updates.</p></div></section>
       <nav class="desktop-nav">
         <button class="side-nav-item active" type="button" data-route="feed"><span>⌂</span>News feed</button>
-        <button class="side-nav-item" type="button" data-route="create"><span>＋</span>Create post</button>
-        <button class="side-nav-item" type="button" data-route="mine"><span>▤</span>My posts</button>
-        <button class="side-nav-item" type="button" data-route="balance"><span>◈</span>Weekly performance</button>
+        <button class="side-nav-item" type="button" data-route="create" data-auth-only hidden><span>＋</span>Create post</button>
+        <button class="side-nav-item" type="button" data-route="mine" data-auth-only hidden><span>▤</span>My posts</button>
+        <button class="side-nav-item" type="button" data-route="balance" data-auth-only hidden><span>◈</span>Weekly performance</button>
+        <a class="side-nav-item" href="https://zpayswift.com/user" data-guest-only data-zpay-login><span>＋</span>Sign in / Join Z-Pay</a>
         <button class="side-nav-item" type="button" data-route="policy"><span>ⓘ</span>Creator policy</button>
       </nav>
       <p class="privacy-note">Public posts and comments can be viewed without a Z-Pay account. Creator access opens only from the Z-Pay dashboard.</p>
@@ -156,6 +157,7 @@
       <section id="mineView" class="view" data-view="mine" data-auth-only hidden>
         <div class="section-heading"><div><h1>My posts</h1><p>Manage published posts and anything held for a safety review.</p></div></div>
         <div id="mineList" class="post-list"></div>
+        <button class="load-more" id="mineLoadMoreButton" type="button" hidden>Load more</button>
       </section>
 
       <section id="balanceView" class="view" data-view="balance" data-auth-only hidden>

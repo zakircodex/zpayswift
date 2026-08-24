@@ -49,6 +49,9 @@
     document.querySelectorAll('[data-auth-only]').forEach((element) => {
       setHidden(element, !authenticated);
     });
+    document.querySelectorAll('[data-guest-only]').forEach((element) => {
+      setHidden(element, authenticated);
+    });
 
     const authDialog = document.querySelector('#authDialog');
     if (authDialog && typeof authDialog.close === 'function' && authDialog.open) {

@@ -255,6 +255,13 @@
       });
     }
 
+    likeStatus(postId) {
+      return this.request('znews/likes/status.php', {
+        params: { post_id: postId },
+        authenticated: true
+      });
+    }
+
     recordShare(postId, channel = 'COPY_LINK') {
       return this.request('znews/shares/create.php', {
         method: 'POST',

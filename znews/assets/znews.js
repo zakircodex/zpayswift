@@ -8,6 +8,9 @@
     feedCursor: '',
     feedHasMore: false,
     feedLoading: false,
+    mineCursor: '',
+    mineHasMore: false,
+    mineLoading: false,
     currentPostId: '',
     openingPostId: '',
     viewStartingPostId: '',
@@ -26,6 +29,7 @@
   const els = {
     feedList: $('#feedList'),
     mineList: $('#mineList'),
+    mineLoadMore: $('#mineLoadMoreButton'),
     ledgerList: $('#ledgerList'),
     loadMore: $('#loadMoreButton'),
     sessionButton: $('#sessionButton'),
@@ -369,6 +373,10 @@
       ? `<span class="status-chip ${status === 'REVIEW' ? 'pending' : status === 'BLOCKED' ? 'blocked' : ''}">${escapeHtml(status)}${moderation ? ` • ${escapeHtml(moderation)}` : ''}</span>`
       : '';
     const liked = state.localLikes.has(id);
+    const creatorActions = api.isAuthenticated()
+      ? `<button class="post-action ${liked ? 'active' : ''}" type="button" data-action="like">${liked ? '♥ Unlike' : '♡ Like'}</button>
+          <button class="post-action" type="button" data-action="comment">◯ Comment</button>`
+      : '';
 
     return `
       <article class="post-card card" data-post-id="${escapeHtml(id)}">
@@ -382,8 +390,7 @@
         ${image ? `<div class="post-media-frame" data-action="open"><img class="post-media-backdrop" src="${escapeHtml(image)}" alt="" aria-hidden="true" loading="lazy"><img class="post-media" src="${escapeHtml(image)}" alt="Image shared by ${escapeHtml(name)}" loading="lazy"></div>` : ''}
         <div class="post-meta"><span>${Number(post.like_count || 0)} likes</span><span>${Number(post.comment_count || 0)} comments • ${Number(post.share_count || 0)} shares</span></div>
         <div class="post-actions">
-          <button class="post-action ${liked ? 'active' : ''}" type="button" data-action="like">♡ Like</button>
-          <button class="post-action" type="button" data-action="comment">◯ Comment</button>
+          ${creatorActions}
           <button class="post-action" type="button" data-action="share">↗ Share</button>
         </div>
       </article>`;
@@ -391,7 +398,10 @@
 
   function bindPostActions(root) {
     $$('[data-post-id]', root).forEach((card) => {
+      if (card.dataset.postActionsBound === 'true') return;
+      card.dataset.postActionsBound = 'true';
       const postId = card.dataset.postId;
+      if (api.isAuthenticated()) hydrateLikeState(card, postId);
       card.addEventListener('click', async (event) => {
         const action = event.target.closest('[data-action]')?.dataset.action;
         if (!action) return;
@@ -403,6 +413,26 @@
         }
       });
     });
+  }
+
+  async function hydrateLikeState(card, postId) {
+    const button = $('[data-action="like"]', card);
+    if (!button || card.dataset.likeStateLoading === 'true') return;
+    card.dataset.likeStateLoading = 'true';
+    button.disabled = true;
+    try {
+      const result = await api.likeStatus(postId);
+      const liked = result.data?.liked === true;
+      if (liked) state.localLikes.add(postId); else state.localLikes.delete(postId);
+      button.classList.toggle('active', liked);
+      button.textContent = liked ? '♥ Unlike' : '♡ Like';
+      card.dataset.likeStateLoaded = 'true';
+    } catch (_error) {
+      button.textContent = 'Retry Like';
+    } finally {
+      card.dataset.likeStateLoading = 'false';
+      button.disabled = false;
+    }
   }
 
   function renderSkeletons(container, count = 3) {
@@ -456,13 +486,18 @@
 
   async function toggleLike(card, postId, button) {
     if (!requireSession()) return;
+    if (card.dataset.likeStateLoaded !== 'true') {
+      await hydrateLikeState(card, postId);
+      if (card.dataset.likeStateLoaded !== 'true') return;
+    }
     const liked = !state.localLikes.has(postId);
     setBusy(button, true, '…');
     try {
       const result = await api.setLike(postId, liked);
-      if (liked) state.localLikes.add(postId); else state.localLikes.delete(postId);
-      button.classList.toggle('active', liked);
-      button.textContent = '♡ Like';
+      const canonicalLiked = result.data?.liked === true;
+      if (canonicalLiked) state.localLikes.add(postId); else state.localLikes.delete(postId);
+      button.classList.toggle('active', canonicalLiked);
+      button.textContent = canonicalLiked ? '♥ Unlike' : '♡ Like';
       const count = Number(result.data?.counts?.like_count ?? 0);
       const meta = $('.post-meta span', card);
       if (meta) meta.textContent = `${count} likes`;
@@ -470,7 +505,7 @@
       toast(errorMessage(error), 'error');
     } finally {
       setBusy(button, false);
-      button.textContent = '♡ Like';
+      button.textContent = state.localLikes.has(postId) ? '♥ Unlike' : '♡ Like';
     }
   }
 
@@ -686,18 +721,30 @@
     }
   }
 
-  async function loadMyPosts() {
-    if (!api.isAuthenticated()) return;
-    renderSkeletons(els.mineList, 2);
+  async function loadMyPosts({ append = false } = {}) {
+    if (!api.isAuthenticated() || state.mineLoading) return;
+    state.mineLoading = true;
+    if (!append) renderSkeletons(els.mineList, 2);
+    setBusy(els.mineLoadMore, true, 'Loading…');
     try {
-      const result = await api.myPosts();
+      const result = await api.myPosts(append ? state.mineCursor : '');
       const items = Array.isArray(result.data?.items) ? result.data.items : [];
-      els.mineList.innerHTML = items.length
-        ? items.map((post) => postMarkup(post, { creatorMode: true })).join('')
-        : '<div class="empty-state card"><strong>No posts yet</strong>Create your first Z Sky 24 post.</div>';
+      if (!append) els.mineList.textContent = '';
+      if (items.length) {
+        els.mineList.insertAdjacentHTML('beforeend', items.map((post) => postMarkup(post, { creatorMode: true })).join(''));
+      } else if (!append) {
+        els.mineList.innerHTML = '<div class="empty-state card"><strong>No posts yet</strong>Create your first Z Sky 24 post.</div>';
+      }
       bindPostActions(els.mineList);
+      state.mineCursor = text(result.data?.next_cursor);
+      state.mineHasMore = result.data?.has_more === true;
+      els.mineLoadMore.hidden = !state.mineHasMore || !state.mineCursor;
     } catch (error) {
-      els.mineList.innerHTML = `<div class="empty-state card"><strong>Posts could not be loaded</strong>${escapeHtml(errorMessage(error))}</div>`;
+      if (!append) els.mineList.innerHTML = `<div class="empty-state card"><strong>Posts could not be loaded</strong>${escapeHtml(errorMessage(error))}</div>`;
+      else toast(errorMessage(error), 'error');
+    } finally {
+      state.mineLoading = false;
+      setBusy(els.mineLoadMore, false);
     }
   }
 
@@ -858,6 +905,7 @@
     $('#refreshButton').addEventListener('click', () => loadFeed());
     $('#feedRefreshInline').addEventListener('click', () => loadFeed());
     els.loadMore.addEventListener('click', () => loadFeed({ append: true }));
+    els.mineLoadMore.addEventListener('click', () => loadMyPosts({ append: true }));
     $('#composerTrigger').addEventListener('click', () => routeTo('create'));
     $('#composerMediaTrigger').addEventListener('click', () => {
       if (!requireSession()) return;

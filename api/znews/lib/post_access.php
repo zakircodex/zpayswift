@@ -29,6 +29,7 @@ function znews_format_owned_post(array $post): array
     $formatted = znews_format_post($post);
     $status = znews_normalize_status($post['status'] ?? 'REVIEW', 'REVIEW');
 
+    $formatted['image_media_id'] = trim((string)($post['image_media_id'] ?? ''));
     $formatted['deleted_at'] = (int)($post['deleted_at'] ?? 0);
     $formatted['can_edit'] = in_array($status, ['ACTIVE', 'REVIEW'], true);
     $formatted['can_delete'] = $status !== 'DELETED';
@@ -153,7 +154,16 @@ function znews_owned_posts_page(
     bool $includeDeleted = false
 ): array {
     $uid = znews_firebase_key($uid, 'uid');
-    $index = fb_get('ZNEWS_USER_POSTS/' . $uid);
+    $candidateWindow = max($limit + 1, min(33, ($limit + 1) * 3));
+    $query = [
+        'orderBy' => json_encode('created_at'),
+        'limitToLast' => $candidateWindow,
+    ];
+    if ($cursor) {
+        $query['endAt'] = json_encode(max(0, (int)($cursor['created_at'] ?? 0)));
+    }
+
+    $index = fb_get('ZNEWS_USER_POSTS/' . $uid, $query);
     if (!is_array($index)) {
         return [
             'items' => [],
@@ -182,6 +192,7 @@ function znews_owned_posts_page(
     znews_sort_index_rows_desc($rows);
 
     $items = [];
+    $lastScanned = null;
     foreach ($rows as $row) {
         $postId = znews_firebase_key((string)$row['post_id'], 'post_id');
         $createdAt = (int)$row['created_at'];
@@ -189,6 +200,7 @@ function znews_owned_posts_page(
         if (!znews_item_is_after_cursor($createdAt, $postId, $cursor)) {
             continue;
         }
+        $lastScanned = $row;
 
         $post = znews_post_load($postId);
         if (!is_array($post)) {
@@ -217,6 +229,12 @@ function znews_owned_posts_page(
         $nextCursor = znews_cursor_encode(
             (int)($last['created_at'] ?? 0),
             (string)($last['post_id'] ?? '')
+        );
+    } elseif (count($index) >= $candidateWindow && is_array($lastScanned)) {
+        $hasMore = true;
+        $nextCursor = znews_cursor_encode(
+            (int)($lastScanned['created_at'] ?? 0),
+            (string)($lastScanned['post_id'] ?? '')
         );
     }
 
