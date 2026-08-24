@@ -493,14 +493,16 @@ function auth_app_preauth_user(array $preAuthRow): array
     ];
 }
 
-function auth_app_trusted_login_allowed(string $uid, string $deviceId): bool
+function auth_app_trusted_login_allowed(string $uid, string $deviceId, array $user = []): bool
 {
     $deviceId = auth_clean_string($deviceId);
     if ($uid === '' || $deviceId === '') {
         return false;
     }
 
-    $user = fb_get('USERS/' . $uid);
+    if (!$user) {
+        $user = fb_get('USERS/' . $uid);
+    }
     if (!is_array($user)) {
         return false;
     }

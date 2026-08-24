@@ -266,6 +266,16 @@ $requestHeaders = ['x-session-token' => $androidToken];
 $repair = auth_app_repair_device_trust_from_current_session('U2', 'ANDROID_DEV', 'Android App Test', '1.0.0');
 assert_true(!empty($repair['ok']) && !empty($repair['repaired']), 'Android quick login must repair missing device-trust row from same active session');
 assert_true(auth_app_trusted_login_allowed('U2', 'ANDROID_DEV'), 'repaired Android device must pass trusted quick-login check');
+$getPaths = [];
+$loadedAndroidUser = (array)test_get('USERS/U2');
+assert_true(
+    auth_app_trusted_login_allowed('U2', 'ANDROID_DEV', $loadedAndroidUser),
+    'trusted login must accept the canonical user already loaded by PIN verification'
+);
+assert_true(
+    !in_array('USERS/U2', $getPaths, true),
+    'PIN verification must not re-read an already loaded canonical user'
+);
 
 $sessionCountBeforeQuickLogin = count((array)test_get('USER_SESSIONS'));
 $getPaths = [];

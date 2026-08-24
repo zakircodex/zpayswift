@@ -86,7 +86,7 @@ if ($trustedBrowserPreauth) {
     }
     $trusted = true;
 } else {
-    $trusted = !$forceOtp && auth_app_trusted_login_allowed($uid, $deviceId);
+    $trusted = !$forceOtp && auth_app_trusted_login_allowed($uid, $deviceId, $user);
 }
 $now = now_ts();
 $patch = [
