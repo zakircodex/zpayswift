@@ -355,7 +355,7 @@ function worker_claim_payload(array $claimed): ?array
         'uid' => (string)($claimed['uid'] ?? ''),
         'topup_number' => (string)($claimed['topup_number'] ?? ''),
         'operator' => $operator,
-        'amount' => (float)($claimed['amount'] ?? 0),
+        'amount' => (float)($claimed['topup_amount_bdt'] ?? $claimed['amount_bdt'] ?? $claimed['amount'] ?? 0),
         'assigned_slot' => (string)($claimed['assigned_slot'] ?? ''),
         'assigned_device_id' => (string)($claimed['assigned_device_id'] ?? ''),
         'dial_template' => (string)($runtime['dial_template'] ?? ''),

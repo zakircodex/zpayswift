@@ -927,7 +927,7 @@ function subapi_create_panel_topup(
     $wallet = subapi_load_wallet($uid);
     $availableBalance = subapi_round_money((float)($wallet['available_balance'] ?? 0));
     $holdBalance = subapi_round_money((float)($wallet['hold_balance'] ?? 0));
-    $financials = topup_calculate_payment_context($uid, $amount, $user, $wallet, $roleSettings);
+    $financials = topup_calculate_payment_context($uid, $amount, $user, $wallet, $roleSettings, $countryCode);
     if (empty($financials['ok'])) {
         return [
             'ok' => false,
@@ -1044,6 +1044,7 @@ function subapi_create_panel_topup(
         'topup_currency' => (string)($financials['topup_currency'] ?? 'BDT'),
         'amount_bdt' => (float)($financials['amount_bdt'] ?? $amount),
         'topup_amount_bdt' => (float)($financials['topup_amount_bdt'] ?? $amount),
+        'service_amount_bdt' => (float)($financials['service_amount_bdt'] ?? $financials['topup_amount_bdt'] ?? $amount),
         'amount_myr' => (float)($financials['amount_myr'] ?? 0),
         'topup_amount_myr' => (float)($financials['topup_amount_myr'] ?? 0),
         'account_country' => (string)($financials['account_country'] ?? ''),

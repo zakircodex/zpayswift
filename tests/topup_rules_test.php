@@ -30,7 +30,7 @@ function assert_true(bool $condition, string $message): void
 
 assert_true(topup_effective_min_amount('BD', 20.0) === 20.0, 'BD effective minimum must be BDT 20');
 assert_true(topup_effective_min_amount('BD', 500.0) === 20.0, 'stale configured BD minimum must normalize to BDT 20');
-assert_true(topup_effective_min_amount('MY', 5.0) === 5.0, 'MY configured minimum must remain unchanged');
+assert_true(topup_effective_min_amount('MY', 5.0) === 20.0, 'all Top-Up service amounts must enforce the BDT 20 minimum');
 
 $bdOperator = topup_normalize_operator_row([
     'code' => 'GP',
@@ -51,8 +51,10 @@ $atMinimum = topup_amount_validation('BD', 'GP', 20.00);
 assert_true(!empty($atMinimum['ok']), 'BD amount BDT 20 must be accepted inclusively');
 $legacyPreset = topup_amount_validation('BD', 'GP', 500.00);
 assert_true(!empty($legacyPreset['ok']), 'BD amount BDT 500 must remain accepted');
-$myMinimum = topup_amount_validation('MY', 'DIGI', 5.00);
-assert_true(!empty($myMinimum['ok']), 'MY configured minimum must remain accepted');
+$myBelowMinimum = topup_amount_validation('MY', 'DIGI', 5.00);
+assert_true(empty($myBelowMinimum['ok']) && ($myBelowMinimum['code'] ?? '') === 'TOPUP_AMOUNT_MIN', 'MY destination must not restore the retired MYR 5 minimum');
+$myMinimum = topup_amount_validation('MY', 'DIGI', 20.00);
+assert_true(!empty($myMinimum['ok']), 'MY destination amount is BDT and must accept BDT 20');
 
 if (!defined('MYR_TO_BDT_RATE')) {
     define('MYR_TO_BDT_RATE', 31.0);
@@ -71,6 +73,8 @@ assert_true(!empty($myFinancials['ok']), 'MY account BDT 20 top-up calculation m
 assert_true((float)$myFinancials['wallet_debit_amount'] === 0.65, 'MY wallet debit must use backend BDT-to-MYR rate');
 assert_true((float)$myFinancials['amount_bdt'] === 20.0, 'MY account worker amount must remain original BDT 20');
 assert_true((string)$myFinancials['wallet_debit_currency'] === 'MYR', 'MY account wallet debit currency must remain MYR');
+assert_true((string)$myFinancials['topup_currency'] === 'BDT', 'MY account Top-Up service currency must remain BDT');
+assert_true((string)$myFinancials['calculation_version'] === 'TOPUP_BDT_SERVICE_V4', 'new Top-Up calculations must use the BDT service version');
 
 $bdFinancials = topup_calculate_payment_context(
     'TOPUP_BD_TEST',

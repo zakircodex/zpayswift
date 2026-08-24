@@ -134,6 +134,16 @@ function normalize_operator($value): string
     return strtoupper(trim((string)$value));
 }
 
+function get_operator_runtime(string $operator): array
+{
+    return ['dial_template' => '*123*{NUMBER}*{AMOUNT}#', 'masked_template' => '*123*...#'];
+}
+
+function get_operator_private_config(string $operator): array
+{
+    return ['retailer_secret_pin' => 'fixture-pin'];
+}
+
 function update_request_status(string $requestId, string $status, string $message, array $extra = []): bool
 {
     return true;
@@ -155,12 +165,17 @@ $pending = [
     'status' => 'PENDING',
     'operator' => 'GP',
     'amount' => 500,
+    'topup_amount_bdt' => 500,
+    'wallet_debit_amount' => 16.13,
+    'wallet_debit_currency' => 'MYR',
 ];
 test_set('TOPUP_REQUESTS/PENDING/REQ_MAIN', $pending);
 $mainClaim = worker_claim_pending_request('REQ_MAIN', 'DEVICE_A', 'SIM1', 'MAIN');
 assert_true(is_array($mainClaim), 'main worker should claim a normal pending request');
 assert_true(test_get('TOPUP_REQUESTS/PENDING/REQ_MAIN') === null, 'claimed pending row should be owner-checked deleted');
 assert_true(is_array(test_get('TOPUP_REQUESTS/CLAIMED/REQ_MAIN')), 'claimed row should be persisted');
+$mainPayload = worker_claim_payload($mainClaim);
+assert_true((float)($mainPayload['amount'] ?? 0) === 500.0, 'worker payload must receive the original BDT service amount, not the MYR wallet debit');
 assert_true(worker_claim_pending_request('REQ_MAIN', 'DEVICE_B', 'SIM1', 'MAIN') === null, 'duplicate worker claim must not win');
 
 $builder = array_merge($pending, [

@@ -25,10 +25,7 @@ function topup_country_code($value): string
 
 function topup_effective_min_amount(string $countryCode, float $configuredMin): float
 {
-    $configuredMin = topup_money($configuredMin);
-    return topup_country_code($countryCode) === 'BD'
-        ? 20.0
-        : $configuredMin;
+    return 20.0;
 }
 
 function topup_clean_text($value, int $max = 80): string
@@ -117,19 +114,19 @@ function topup_default_config(): array
             [
                 'code' => 'MY',
                 'name' => 'Malaysia',
-                'currency' => 'MYR',
+                'currency' => 'BDT',
                 'dial_code' => '+60',
                 'active' => true,
                 'sort_order' => 20,
                 'operators' => [
-                    topup_default_operator('MY', 'CELCOM_XPAX', 'Celcom Xpax', [], 10, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'DIGI', 'Digi', [], 20, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'HOTLINK', 'Hotlink', [], 30, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'MAXIS', 'Maxis', [], 40, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'UMOBILE', 'U Mobile', [], 50, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'XOX', 'XOX', [], 60, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'TUNETALK', 'Tune Talk', [], 70, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
-                    topup_default_operator('MY', 'YES', 'YES Prepaid', [], 80, true, 5.0, 200.0, [5, 10, 20, 30, 50, 100]),
+                    topup_default_operator('MY', 'CELCOM_XPAX', 'Celcom Xpax', [], 10),
+                    topup_default_operator('MY', 'DIGI', 'Digi', [], 20),
+                    topup_default_operator('MY', 'HOTLINK', 'Hotlink', [], 30),
+                    topup_default_operator('MY', 'MAXIS', 'Maxis', [], 40),
+                    topup_default_operator('MY', 'UMOBILE', 'U Mobile', [], 50),
+                    topup_default_operator('MY', 'XOX', 'XOX', [], 60),
+                    topup_default_operator('MY', 'TUNETALK', 'Tune Talk', [], 70),
+                    topup_default_operator('MY', 'YES', 'YES Prepaid', [], 80),
                 ],
             ],
         ],
@@ -346,7 +343,7 @@ function topup_normalize_country_row(array $row, array $fallback = [], bool $mer
 
     $result['code'] = $countryCode;
     $result['name'] = topup_clean_text($row['name'] ?? $fallback['name'] ?? $countryCode, 80);
-    $result['currency'] = strtoupper(topup_clean_text($row['currency'] ?? $fallback['currency'] ?? ($countryCode === 'MY' ? 'MYR' : 'BDT'), 10));
+    $result['currency'] = 'BDT';
     $result['dial_code'] = topup_clean_text($row['dial_code'] ?? $fallback['dial_code'] ?? ($countryCode === 'MY' ? '+60' : '+880'), 10);
     $result['active'] = topup_bool($row['active'] ?? $fallback['active'] ?? true, true);
     $result['sort_order'] = topup_int($row['sort_order'] ?? $fallback['sort_order'] ?? 999, 999);
@@ -584,7 +581,7 @@ function topup_amount_validation(string $countryCode, string $operator, float $a
     $config = (array)$operatorResult['operator'];
     $min = topup_effective_min_amount($countryCode, topup_money($config['min_amount'] ?? 20));
     $max = topup_money($config['max_amount'] ?? 1000);
-    $currency = (string)(((array)($operatorResult['country'] ?? []))['currency'] ?? 'BDT');
+    $currency = 'BDT';
 
     if ($amount <= 0) {
         $error = topup_validation_error('TOPUP_AMOUNT_REQUIRED', 'Please enter top-up amount.', [

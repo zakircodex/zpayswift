@@ -18,12 +18,12 @@ function topup_now(): int
 
 function topup_calculation_version(): string
 {
-    return 'TOPUP_DESTINATION_CURRENCY_V3';
+    return 'TOPUP_BDT_SERVICE_V4';
 }
 
 function topup_destination_currency(string $countryCode): string
 {
-    return topup_country_code($countryCode) === 'MY' ? 'MYR' : 'BDT';
+    return 'BDT';
 }
 
 function topup_legacy_financials(float $amount, array $user = [], array $wallet = [], string $topupCountryCode = 'BD'): array
@@ -33,8 +33,8 @@ function topup_legacy_financials(float $amount, array $user = [], array $wallet 
     $currency = in_array($currency, ['MYR', 'BDT'], true) ? $currency : 'BDT';
     $topupCountryCode = topup_country_code($topupCountryCode);
     $topupCurrency = topup_destination_currency($topupCountryCode);
-    $amountBdt = $topupCurrency === 'BDT' ? $amount : 0.0;
-    $amountMyr = $topupCurrency === 'MYR' ? $amount : 0.0;
+    $amountBdt = $amount;
+    $amountMyr = 0.0;
 
     return [
         'ok' => false,
@@ -50,6 +50,7 @@ function topup_legacy_financials(float $amount, array $user = [], array $wallet 
         'topup_amount' => $amount,
         'amount_bdt' => $amountBdt,
         'topup_amount_bdt' => $amountBdt,
+        'service_amount_bdt' => $amountBdt,
         'amount_myr' => $amountMyr,
         'topup_amount_myr' => $amountMyr,
         'commission_per_1000' => 0.0,
@@ -312,41 +313,30 @@ function topup_calculate_payment_context(
     $accountCountry = (string)$context['account_country'];
     $balanceBefore = round((float)$context['balance_before'], 2);
 
-    $commissionApplicable = false;
-    $commissionType = 'NONE';
-    $commissionValue = 0.0;
-    $commissionAmount = 0.0;
+    $commission = topup_commission_from_settings($amount, $role, (array)$context['role_settings']);
+    if (empty($commission['ok'])) {
+        return array_merge($base, $commission, [
+            'account_country' => $accountCountry,
+            'wallet_currency' => $walletCurrency,
+        ]);
+    }
+
+    $commissionType = (string)$commission['commission_type'];
+    $commissionValue = round((float)$commission['commission_value'], 2);
+    $commissionAmount = round((float)$commission['commission_amount'], 2);
+    $commissionApplicable = $commissionAmount > 0;
     $commissionCredit = 0.0;
     $feeAmount = 0.0;
     $rateApplicable = false;
     $rateSnapshot = null;
     $convertedAmount = 0.0;
-    $walletDebit = $amount;
-    $walletDebitBdt = $topupCurrency === 'BDT' ? $amount : 0.0;
-    $walletDebitMyr = $topupCurrency === 'MYR' ? $amount : 0.0;
-    $topupAmountBdt = $topupCurrency === 'BDT' ? $amount : 0.0;
-    $topupAmountMyr = $topupCurrency === 'MYR' ? $amount : 0.0;
+    $walletDebitBdt = round(max(0, $amount - $commissionAmount), 2);
+    $walletDebit = $walletDebitBdt;
+    $walletDebitMyr = 0.0;
+    $topupAmountBdt = $amount;
+    $topupAmountMyr = 0.0;
 
-    if ($topupCountryCode === 'MY') {
-        if ($accountCountry !== 'MY' || $walletCurrency !== 'MYR') {
-            return array_merge($base, [
-                'ok' => false,
-                'code' => 'ACCOUNT_CURRENCY_INVALID',
-                'message' => 'Your account currency could not be verified.',
-                'account_country' => $accountCountry,
-                'wallet_currency' => $walletCurrency,
-                'topup_country_code' => $topupCountryCode,
-                'topup_currency' => $topupCurrency,
-            ]);
-        }
-
-        $rateApplicable = false;
-        $rateSnapshot = null;
-        $convertedAmount = 0.0;
-        $walletDebit = $amount;
-        $walletDebitBdt = 0.0;
-        $walletDebitMyr = $amount;
-    } elseif ($accountCountry === 'MY' && $walletCurrency === 'MYR') {
+    if ($accountCountry === 'MY' && $walletCurrency === 'MYR') {
         $rate = topup_configured_myr_to_bdt_rate();
         if ($rate <= 0) {
             return array_merge($base, [
@@ -372,24 +362,10 @@ function topup_calculate_payment_context(
         $rateApplicable = true;
         $rateSnapshot = round($rate, 2);
         $convertedAmount = round($amount / $rateSnapshot, 2);
-        $walletDebit = $convertedAmount;
-        $walletDebitBdt = $amount;
-        $walletDebitMyr = $convertedAmount;
+        $walletDebitMyr = round($walletDebitBdt / $rateSnapshot, 2);
+        $walletDebit = $walletDebitMyr;
         $topupAmountMyr = $convertedAmount;
     } elseif ($accountCountry === 'BD' && $walletCurrency === 'BDT') {
-        $commission = topup_commission_from_settings($amount, $role, (array)$context['role_settings']);
-        if (empty($commission['ok'])) {
-            return array_merge($base, $commission, [
-                'account_country' => $accountCountry,
-                'wallet_currency' => $walletCurrency,
-            ]);
-        }
-
-        $commissionType = (string)$commission['commission_type'];
-        $commissionValue = round((float)$commission['commission_value'], 2);
-        $commissionAmount = round((float)$commission['commission_amount'], 2);
-        $commissionApplicable = $commissionAmount > 0;
-        $walletDebitBdt = round(max(0, $amount - $commissionAmount), 2);
         $walletDebit = $walletDebitBdt;
     } else {
         return array_merge($base, [
@@ -419,6 +395,7 @@ function topup_calculate_payment_context(
         'topup_amount' => $amount,
         'amount_bdt' => $topupAmountBdt,
         'topup_amount_bdt' => $topupAmountBdt,
+        'service_amount_bdt' => $topupAmountBdt,
         'amount_myr' => $topupAmountMyr,
         'topup_amount_myr' => $topupAmountMyr,
         'rate_applicable' => $rateApplicable,
@@ -959,6 +936,7 @@ function topup_pending_request_row(
     $financials = array_replace([
         'amount_bdt' => $amount,
         'topup_amount_bdt' => $amount,
+        'service_amount_bdt' => $amount,
         'amount_myr' => 0,
         'topup_amount_myr' => 0,
         'topup_amount' => $amount,
@@ -1013,6 +991,7 @@ function topup_pending_request_row(
         'TOPUP_CURRENCY' => (string)$financials['topup_currency'],
         'amount_bdt' => (float)$financials['amount_bdt'],
         'topup_amount_bdt' => (float)$financials['topup_amount_bdt'],
+        'service_amount_bdt' => (float)($financials['service_amount_bdt'] ?? $financials['topup_amount_bdt']),
         'TOPUP_AMOUNT_BDT' => (float)$financials['topup_amount_bdt'],
         'amount_myr' => (float)$financials['amount_myr'],
         'topup_amount_myr' => (float)$financials['topup_amount_myr'],
@@ -1190,6 +1169,7 @@ function topup_normalized_history_fields(array $row): array
         'operator_code' => (string)($row['operator_code'] ?? $row['operator'] ?? ''),
         'amount_bdt' => $amountBdt,
         'topup_amount_bdt' => $amountBdt,
+        'service_amount_bdt' => $amountBdt,
         'amount_myr' => $amountMyr,
         'topup_amount_myr' => $amountMyr,
         'wallet_currency' => $walletCurrency,
@@ -1234,6 +1214,7 @@ function topup_write_history(array $done): bool
         'topup_currency' => (string)($done['topup_currency'] ?? $done['currency'] ?? 'BDT'),
         'amount_bdt' => $normalized['amount_bdt'],
         'topup_amount_bdt' => $normalized['topup_amount_bdt'],
+        'service_amount_bdt' => $normalized['service_amount_bdt'],
         'amount_myr' => $normalized['amount_myr'],
         'topup_amount_myr' => $normalized['topup_amount_myr'],
         'account_country' => (string)($done['account_country'] ?? ''),
