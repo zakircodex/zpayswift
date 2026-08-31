@@ -50,6 +50,22 @@ function fb_get(string $path, array $query = []): mixed
     return is_array($value) ? completion_query_rows($value, $query) : $value;
 }
 
+function fb_get_with_etag(string $path): array
+{
+    global $fixture;
+    return [
+        'ok' => true,
+        'status' => 200,
+        'etag' => '"fixture-etag"',
+        'value' => $fixture[$path] ?? null,
+    ];
+}
+
+function api_response(bool $ok, string $code, string $message, array $data = [], int $httpStatus = 200): void
+{
+    throw new RuntimeException($code . '|' . $httpStatus);
+}
+
 function znews_engagement_require_public_post(string $postId): array
 {
     return ['post_id' => $postId, 'status' => 'ACTIVE'];
@@ -125,10 +141,17 @@ $commentsSecond = znews_public_comments_page('POST100', 20, znews_comment_cursor
 completion_expect(count($commentsSecond['items']) === 20, 'Public comments second page must contain 20 rows.');
 completion_expect($commentsFirst['items'][19]['comment_id'] !== $commentsSecond['items'][0]['comment_id'], 'Comment pages must not repeat the cursor row.');
 
-$formatted = znews_format_post($fixture['ZNEWS_POSTS/POST100']);
-foreach (['balance', 'wallet', 'available_balance', 'credit', 'phone', 'email'] as $privateField) {
+$formatted = znews_format_public_post($fixture['ZNEWS_POSTS/POST100']);
+foreach ([
+    'balance', 'wallet', 'available_balance', 'credit', 'phone', 'email',
+    'pricing_country', 'gps', 'ip', 'session', 'device', 'image_media_id',
+    'moderation_status', 'copyright_status',
+] as $privateField) {
     completion_expect(!array_key_exists($privateField, $formatted), "Public post payload leaked {$privateField}.");
 }
+$publicComment = znews_comment_format($fixture['ZNEWS_COMMENTS/POST100']['COMMENT001'], false);
+completion_expect(!array_key_exists('status', $publicComment), 'Public comment exposed its internal status.');
+completion_expect(!array_key_exists('moderation_status', $publicComment), 'Public comment exposed moderation status.');
 
 $mutationFiles = [
     'posts/create.php', 'posts/update.php', 'posts/delete.php', 'posts/mine.php',
@@ -140,6 +163,15 @@ foreach ($mutationFiles as $relative) {
 }
 $ownershipSource = (string)file_get_contents($root . '/api/znews/lib/post_access.php');
 completion_expect(str_contains($ownershipSource, 'znews_post_owner_snapshot') && str_contains($ownershipSource, 'hash_equals'), 'Post update/delete ownership must remain server enforced.');
+$ownerSnapshot = znews_post_owner_snapshot('U1', 'POST100');
+completion_expect(($ownerSnapshot['post_id'] ?? '') === 'POST100', 'Canonical owner could not load their own post snapshot.');
+$crossOwnerDenied = false;
+try {
+    znews_post_owner_snapshot('U2', 'POST100');
+} catch (RuntimeException $exception) {
+    $crossOwnerDenied = str_starts_with($exception->getMessage(), 'ZNEWS_POST_FORBIDDEN|403');
+}
+completion_expect($crossOwnerDenied, 'Another creator could load the post mutation snapshot.');
 
 $oldAgent = $_SERVER['HTTP_USER_AGENT'] ?? null;
 $_SERVER['HTTP_USER_AGENT'] = 'ZPaySwift-Android-ZNews/1.0';

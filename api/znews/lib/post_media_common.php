@@ -248,7 +248,7 @@ function znews_post_create_claim_v2(
 
 function znews_post_format_with_media(array $post, bool $owned = false, bool $admin = false): array
 {
-    $formatted = $owned ? znews_format_owned_post($post) : znews_format_post($post);
+    $formatted = $owned ? znews_format_owned_post($post) : znews_format_public_post($post);
     $mediaId = trim((string)($post['image_media_id'] ?? ''));
 
     $formatted['image_media_id'] = $mediaId;

@@ -44,6 +44,13 @@ function znews_format_post(array $post): array
     ];
 }
 
+function znews_format_public_post(array $post): array
+{
+    $formatted = znews_format_post($post);
+    unset($formatted['moderation_status'], $formatted['copyright_status']);
+    return $formatted;
+}
+
 function znews_idempotency_claim(
     string $uid,
     string $idempotencyKey,

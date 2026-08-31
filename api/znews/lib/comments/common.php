@@ -97,14 +97,14 @@ function znews_comment_format(array $comment, bool $ownerView = false): array
         'author_name' => trim((string)($comment['author_name'] ?? 'Z-Pay User')),
         'author_photo_url' => trim((string)($comment['author_photo_url'] ?? '')),
         'text' => (string)($comment['text'] ?? ''),
-        'status' => strtoupper(trim((string)($comment['status'] ?? 'REVIEW'))),
-        'moderation_status' => strtoupper(trim((string)($comment['moderation_status'] ?? 'PENDING'))),
         'created_at' => max(0, (int)($comment['created_at'] ?? 0)),
         'updated_at' => max(0, (int)($comment['updated_at'] ?? 0)),
     ];
 
     if ($ownerView) {
-        $status = $out['status'];
+        $status = strtoupper(trim((string)($comment['status'] ?? 'REVIEW')));
+        $out['status'] = $status;
+        $out['moderation_status'] = strtoupper(trim((string)($comment['moderation_status'] ?? 'PENDING')));
         $out['deleted_at'] = max(0, (int)($comment['deleted_at'] ?? 0));
         $out['moderation_note'] = trim((string)($comment['moderation_note'] ?? ''));
         $out['can_edit'] = in_array($status, ['ACTIVE', 'REVIEW'], true);

@@ -397,7 +397,7 @@ function znews_fair_feed_page(int $limit, $cursorValue = ''): array
         }
         $engagement = fb_get('ZNEWS_ENGAGEMENT/' . $postId);
         $engagement = is_array($engagement) ? $engagement : [];
-        $items[] = znews_feed_overlay_counts(znews_format_post($post), $engagement);
+        $items[] = znews_feed_overlay_counts(znews_format_public_post($post), $engagement);
     }
 
     $hasMore = $nextOffset < count($order);

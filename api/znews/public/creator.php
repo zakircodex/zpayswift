@@ -60,7 +60,7 @@ foreach ($rows as $row) {
         continue;
     }
 
-    $formatted = znews_engagement_overlay(znews_format_post($post));
+    $formatted = znews_engagement_overlay(znews_format_public_post($post));
     if (!$items) {
         $creator = [
             'uid' => $creatorUid,

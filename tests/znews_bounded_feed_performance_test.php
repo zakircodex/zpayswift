@@ -85,6 +85,11 @@ function znews_format_post(array $post): array
     ];
 }
 
+function znews_format_public_post(array $post): array
+{
+    return znews_format_post($post);
+}
+
 function fb_get(string $path, array $query = []): mixed
 {
     $GLOBALS['znewsPerfReads'][] = ['path' => $path, 'query' => $query];

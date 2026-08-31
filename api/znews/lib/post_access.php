@@ -252,7 +252,7 @@ function znews_public_post_by_id(string $postId): ?array
         return null;
     }
 
-    return znews_format_post($post);
+    return znews_format_public_post($post);
 }
 
 function znews_public_feed_page(int $limit, array $cursor = []): array
@@ -296,7 +296,7 @@ function znews_public_feed_page(int $limit, array $cursor = []): array
             continue;
         }
 
-        $items[] = znews_format_post($post);
+        $items[] = znews_format_public_post($post);
         if (count($items) > $limit) {
             break;
         }

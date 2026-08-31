@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.zpayswift.app",
+      "sha256_cert_fingerprints": [
+        "52:4C:8C:47:60:48:E8:3F:57:73:0C:A6:E1:82:0B:F2:BE:02:1B:22:54:F4:F0:0D:2B:73:C0:8F:97:26:3F:C9"
+      ]
+    }
+  }
+]

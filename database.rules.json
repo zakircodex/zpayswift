@@ -1,0 +1,19 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "ZNEWS_PUBLIC_FEED": {
+      ".indexOn": ["created_at"]
+    },
+    "ZNEWS_USER_POSTS": {
+      "$uid": {
+        ".indexOn": ["created_at"]
+      }
+    },
+    "ZNEWS_COMMENTS": {
+      "$post_id": {
+        ".indexOn": ["created_at"]
+      }
+    }
+  }
+}
