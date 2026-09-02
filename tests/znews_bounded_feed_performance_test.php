@@ -77,17 +77,33 @@ function znews_format_post(array $post): array
     return [
         'post_id' => (string)($post['post_id'] ?? ''),
         'creator_uid' => (string)($post['creator_uid'] ?? ''),
+        'creator_name' => (string)($post['creator_name'] ?? 'Z-Pay User'),
+        'creator_photo_url' => (string)($post['creator_photo_url'] ?? ''),
         'title' => (string)($post['title'] ?? ''),
         'text' => (string)($post['text'] ?? ''),
+        'image_url' => (string)($post['image_url'] ?? ''),
+        'content_type' => (string)($post['content_type'] ?? 'TEXT'),
         'status' => (string)($post['status'] ?? ''),
         'visibility' => (string)($post['visibility'] ?? ''),
+        'like_count' => max(0, (int)($post['like_count'] ?? 0)),
+        'comment_count' => max(0, (int)($post['comment_count'] ?? 0)),
+        'share_count' => max(0, (int)($post['share_count'] ?? 0)),
         'created_at' => (int)($post['created_at'] ?? 0),
+        'updated_at' => (int)($post['updated_at'] ?? 0),
     ];
 }
 
 function znews_format_public_post(array $post): array
 {
     return znews_format_post($post);
+}
+
+function znews_feed_overlay_counts_for_test(array $post, array $counts): array
+{
+    $post['like_count'] = max(0, (int)($counts['like_count'] ?? 0));
+    $post['comment_count'] = max(0, (int)($counts['comment_count'] ?? 0));
+    $post['share_count'] = max(0, (int)($counts['share_count'] ?? 0));
+    return $post;
 }
 
 function fb_get(string $path, array $query = []): mixed
@@ -167,19 +183,47 @@ function perf_fixture(int $size): void
         $index[$postId] = [
             'post_id' => $postId,
             'creator_uid' => 'CREATOR_' . ($i % 25),
-            'status' => 'ACTIVE',
+            'creator_name' => 'Creator ' . ($i % 25),
+            'creator_photo_url' => 'https://cdn.example.test/avatar-' . ($i % 25) . '.jpg',
+            'title' => 'Post ' . $i,
+            'text' => 'Fixture post body.',
+            'image_url' => $i % 2 === 0 ? 'https://cdn.example.test/post-' . $i . '.jpg' : '',
+            'content_type' => $i % 2 === 0 ? 'IMAGE' : 'TEXT',
+            'status' => $i === $size ? 'DELETED' : 'ACTIVE',
             'visibility' => 'PUBLIC',
             'created_at' => $createdAt,
+            'updated_at' => $createdAt + 1,
+            'engagement_snapshot' => [
+                'like_count' => $i % 9,
+                'comment_count' => $i % 5,
+                'share_count' => $i % 3,
+                'source_revision' => $i,
+                'updated_at' => $createdAt + 1,
+            ],
+            'ranking_metrics' => [
+                'impressions' => $i % 23,
+                'unique_impressions' => $i % 11,
+                'valid_views' => $i % 17,
+                'unique_views' => $i % 13,
+                'total_opens' => $i % 19,
+                'last_shown_at' => $i % 7 === 0 ? znews_now() - 60 : 0,
+                'updated_at' => znews_now() - 30,
+            ],
         ];
         $posts[$postId] = [
             'post_id' => $postId,
             'creator_uid' => 'CREATOR_' . ($i % 25),
+            'creator_name' => 'Creator ' . ($i % 25),
+            'creator_photo_url' => 'https://cdn.example.test/avatar-' . ($i % 25) . '.jpg',
             'title' => 'Post ' . $i,
             'text' => 'Fixture post body.',
+            'image_url' => $i % 2 === 0 ? 'https://cdn.example.test/post-' . $i . '.jpg' : '',
+            'content_type' => $i % 2 === 0 ? 'IMAGE' : 'TEXT',
             'status' => $i === $size ? 'DELETED' : 'ACTIVE',
             'visibility' => 'PUBLIC',
             'deleted_at' => 0,
             'created_at' => $createdAt,
+            'updated_at' => $createdAt + 1,
         ];
         $analytics[$postId] = [
             'valid_views' => $i % 17,
@@ -203,6 +247,43 @@ function perf_fixture(int $size): void
     $GLOBALS['znewsPerfReads'] = [];
 }
 
+function perf_legacy_candidates(int $pageSize, string $seed): array
+{
+    $rows = array_values($GLOBALS['znewsPerfData']['index']);
+    znews_sort_index_rows_desc($rows);
+    $rows = array_slice($rows, 0, znews_feed_candidate_window($pageSize));
+    $candidates = [];
+    foreach ($rows as $row) {
+        if (strtoupper((string)($row['status'] ?? '')) !== 'ACTIVE'
+            || strtoupper((string)($row['visibility'] ?? '')) !== 'PUBLIC') {
+            continue;
+        }
+        $postId = (string)$row['post_id'];
+        $analytics = $GLOBALS['znewsPerfData']['analytics'][$postId] ?? [];
+        $exposure = $GLOBALS['znewsPerfData']['exposure'][$postId] ?? [];
+        $createdAt = (int)$row['created_at'];
+        $ageDays = max(0.0, (znews_now() - $createdAt) / 86400);
+        $impressions = max(0, (int)($exposure['impressions'] ?? 0));
+        $uniqueImpressions = max(0, (int)($exposure['unique_viewers'] ?? 0));
+        $validViews = max(0, (int)($analytics['valid_views'] ?? 0));
+        $uniqueViews = max(0, (int)($analytics['unique_viewers'] ?? 0));
+        $totalOpens = max(0, (int)($analytics['total_opens'] ?? 0));
+        $weight = ($uniqueImpressions * 12) + ($impressions * 2)
+            + ($uniqueViews * 8) + ($validViews * 3) + $totalOpens;
+        $candidates[] = [
+            'post_id' => $postId,
+            'creator_uid' => (string)$row['creator_uid'],
+            'created_at' => $createdAt,
+            'fair_score' => $weight / max(1.0, min(30.0, $ageDays + 1.0)),
+            'impressions' => $impressions,
+            'unique_impressions' => $uniqueImpressions,
+            'last_shown_at' => max(0, (int)($exposure['last_shown_at'] ?? 0)),
+            'tie' => znews_feed_tie($seed, $postId),
+        ];
+    }
+    return $candidates;
+}
+
 function perf_read_count(string $prefix): int
 {
     return count(array_filter(
@@ -221,24 +302,44 @@ foreach ([100, 1000, 10000] as $fixtureSize) {
     perf_expect(!empty($first['has_more']), "{$fixtureSize}-post fixture must expose a next page.");
     perf_expect((string)($first['next_cursor'] ?? '') !== '', 'First page must return a signed cursor.');
     perf_expect(perf_read_count('ZNEWS_PUBLIC_FEED') === 1, 'A new session must use one bounded index query.');
-    perf_expect(perf_read_count('ZNEWS_POSTS/') <= 50, 'Canonical post reads must remain within the bounded session window.');
-    perf_expect(perf_read_count('ZNEWS_ANALYTICS/') <= 50, 'Analytics reads must remain candidate-specific and bounded.');
-    perf_expect(perf_read_count('ZNEWS_FEED_EXPOSURE/') <= 50, 'Exposure reads must remain candidate-specific and bounded.');
-    perf_expect(perf_read_count('ZNEWS_ENGAGEMENT/') === 10, 'Only returned posts may load engagement counters.');
+    perf_expect(perf_read_count('ZNEWS_POSTS/') === 0, 'First-page rendering must not load canonical posts per item.');
+    perf_expect(perf_read_count('ZNEWS_ANALYTICS/') === 0, 'Ranking must not read candidate analytics rows.');
+    perf_expect(perf_read_count('ZNEWS_FEED_EXPOSURE/') === 0, 'Ranking must not read candidate exposure rows.');
+    perf_expect(perf_read_count('ZNEWS_ENGAGEMENT/') === 0, 'First-page rendering must not load engagement per item.');
+    perf_expect(count($GLOBALS['znewsPerfReads']) === 1, 'First page must use one bounded data read.');
 
     $firstIds = array_column((array)$first['items'], 'post_id');
     perf_expect(count($firstIds) === count(array_unique($firstIds)), 'First page must not contain duplicate post IDs.');
     $staleDeletedId = 'ZNP' . str_pad((string)$fixtureSize, 12, '0', STR_PAD_LEFT);
     perf_expect(!in_array($staleDeletedId, $firstIds, true), 'A stale index row must not expose a deleted canonical post.');
+    foreach ((array)$first['items'] as $item) {
+        $postId = (string)($item['post_id'] ?? '');
+        $legacy = znews_feed_overlay_counts_for_test(
+            znews_format_public_post((array)$GLOBALS['znewsPerfData']['posts'][$postId]),
+            (array)$GLOBALS['znewsPerfData']['engagement'][$postId]
+        );
+        perf_expect($item === $legacy, 'Projection response must match the previous public post and engagement response.');
+        perf_expect(!array_key_exists('ranking_metrics', $item), 'Ranking internals must not leak into feed items.');
+        perf_expect(!array_key_exists('engagement_snapshot', $item), 'Engagement snapshot internals must not leak into feed items.');
+    }
     $firstPageReadCounts[$fixtureSize] = count($GLOBALS['znewsPerfReads']);
 
     $newPostId = 'ZNP_CONCURRENT_' . $fixtureSize;
     $GLOBALS['znewsPerfData']['index'][$newPostId] = [
         'post_id' => $newPostId,
         'creator_uid' => 'CREATOR_NEW',
+        'creator_name' => 'New Creator',
+        'creator_photo_url' => '',
+        'title' => 'Concurrent post',
+        'text' => 'Must not enter an existing signed session.',
+        'image_url' => '',
+        'content_type' => 'TEXT',
         'status' => 'ACTIVE',
         'visibility' => 'PUBLIC',
         'created_at' => znews_now(),
+        'updated_at' => znews_now(),
+        'engagement_snapshot' => znews_public_projection_engagement_defaults(),
+        'ranking_metrics' => znews_ranking_metrics_defaults(),
     ];
     $GLOBALS['znewsPerfData']['posts'][$newPostId] = [
         'post_id' => $newPostId,
@@ -258,14 +359,40 @@ foreach ([100, 1000, 10000] as $fixtureSize) {
     perf_expect(count(array_intersect($firstIds, $secondIds)) === 0, 'Adjacent pages must not repeat post IDs.');
     perf_expect(!in_array($staleDeletedId, $secondIds, true), 'A deleted canonical post must stay excluded on later pages.');
     perf_expect(!in_array($newPostId, $secondIds, true), 'A concurrent new post must not corrupt an existing session cursor.');
-    perf_expect(perf_read_count('ZNEWS_PUBLIC_FEED') === 0, 'A next page must reuse the bounded server-side session.');
-    perf_expect(perf_read_count('ZNEWS_POSTS/') === 10, 'A next page may read only its selected posts.');
-    perf_expect(perf_read_count('ZNEWS_ENGAGEMENT/') === 10, 'A next page may read only its selected engagement rows.');
+    perf_expect(perf_read_count('ZNEWS_PUBLIC_FEED') === 1, 'A next page must refresh one bounded projection window.');
+    perf_expect(perf_read_count('ZNEWS_POSTS/') === 0, 'A next page must not load selected canonical posts.');
+    perf_expect(perf_read_count('ZNEWS_ENGAGEMENT/') === 0, 'A next page must not load selected engagement rows.');
     perf_expect(perf_read_count('ZNEWS_ANALYTICS/') === 0, 'A next page must not rescan analytics.');
     perf_expect(perf_read_count('ZNEWS_FEED_EXPOSURE/') === 0, 'A next page must not rescan exposure counters.');
 
     $nextPageReadCounts[$fixtureSize] = count($GLOBALS['znewsPerfReads']);
 }
+
+perf_fixture(100);
+$equivalenceSeed = 'ZFS' . str_repeat('E', 32);
+$legacyOrder = znews_feed_rank_candidates(perf_legacy_candidates(10, $equivalenceSeed), $equivalenceSeed);
+$GLOBALS['znewsPerfReads'] = [];
+$snapshotOrder = znews_feed_rank_candidates(
+    znews_feed_public_candidates(znews_now(), $equivalenceSeed, 10),
+    $equivalenceSeed
+);
+perf_expect($snapshotOrder === $legacyOrder, 'Ranking snapshots must preserve the previous FRESH_FAIR_V1 order.');
+perf_expect(perf_read_count('ZNEWS_ANALYTICS/') === 0, 'Equivalence ranking must not read canonical analytics.');
+perf_expect(perf_read_count('ZNEWS_FEED_EXPOSURE/') === 0, 'Equivalence ranking must not read canonical exposure.');
+
+$latestId = 'ZNP' . str_pad('99', 12, '0', STR_PAD_LEFT);
+unset($GLOBALS['znewsPerfData']['index'][$latestId]['ranking_metrics']);
+$GLOBALS['znewsPerfReads'] = [];
+$missingSnapshotCandidates = znews_feed_public_candidates(znews_now(), $equivalenceSeed, 10);
+$missingSnapshot = array_values(array_filter(
+    $missingSnapshotCandidates,
+    static fn(array $row): bool => ($row['post_id'] ?? '') === $latestId
+));
+perf_expect(count($missingSnapshot) === 1, 'A legacy row without ranking_metrics must remain eligible.');
+perf_expect((float)$missingSnapshot[0]['fair_score'] === 0.0, 'Missing ranking_metrics must default to zero.');
+perf_expect((int)$missingSnapshot[0]['last_shown_at'] === 0, 'Missing last_shown_at must default to zero.');
+perf_expect(perf_read_count('ZNEWS_ANALYTICS/') === 0, 'Legacy fallback must not restore analytics N+1 reads.');
+perf_expect(perf_read_count('ZNEWS_FEED_EXPOSURE/') === 0, 'Legacy fallback must not restore exposure N+1 reads.');
 
 perf_expect(count(array_unique(array_values($firstPageReadCounts))) === 1, 'First-page database work must not grow with dataset size.');
 perf_expect(count(array_unique(array_values($nextPageReadCounts))) === 1, 'Next-page database work must not grow with dataset size.');
@@ -277,6 +404,8 @@ foreach (['ZNEWS_PUBLIC_FEED', 'ZNEWS_POSTS', 'ZNEWS_ANALYTICS', 'ZNEWS_FEED_EXP
 }
 perf_expect(str_contains($source, "'orderBy' => json_encode('created_at')"), 'The public-feed query must use the created_at index.');
 perf_expect(str_contains($source, "'limitToLast' => znews_feed_candidate_window"), 'The candidate query must enforce its bounded window.');
+perf_expect(!str_contains($source, "fb_get('ZNEWS_ANALYTICS/' . \$postId)"), 'Per-candidate analytics reads must be removed.');
+perf_expect(!str_contains($source, 'fb_get(znews_feed_exposure_path($postId))'), 'Per-candidate exposure reads must be removed.');
 
 $assertions = (int)($GLOBALS['znewsPerfAssertions'] ?? 0);
 echo "PASS: {$assertions} bounded Z Sky feed assertions; 100/1000/10000 first-page reads="

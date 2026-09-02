@@ -152,13 +152,11 @@ $publicFeed = znews_social_read($root . '/api/znews/public/feed.php');
 $feedRanking = znews_social_read($root . '/api/znews/lib/feed_ranking.php');
 znews_social_expect(str_contains($publicFeed, 'znews_fair_feed_page'), 'public feed is not delegated to the fair ranking page');
 znews_social_expect(
-    str_contains($feedRanking, "fb_get('ZNEWS_ENGAGEMENT/' . \$postId)")
-    && !str_contains($feedRanking, "fb_get('ZNEWS_ENGAGEMENT')")
-    && str_contains($feedRanking, 'znews_feed_overlay_counts')
-    && str_contains($feedRanking, "'like_count'")
-    && str_contains($feedRanking, "'comment_count'")
-    && str_contains($feedRanking, "'share_count'"),
-    'fair feed does not overlay canonical engagement counts with bounded per-post reads'
+    !str_contains($feedRanking, "fb_get('ZNEWS_ENGAGEMENT/' . \$postId)")
+    && !str_contains($feedRanking, 'znews_post_load($postId)')
+    && str_contains($feedRanking, 'znews_feed_session_projection_map')
+    && str_contains($feedRanking, 'znews_public_projection_item'),
+    'fair feed must render from the bounded public projection without per-item reads'
 );
 
 $summary = znews_social_read($root . '/api/znews/engagement/summary.php');

@@ -111,7 +111,7 @@ instant_expect(str_contains($policySource, 'REPETITIVE_SPAM'), 'repetitive-spam 
 instant_expect(str_contains($createService, 'znews_post_publication_decision($mediaRow, trim($title . "\n" . $text))'), 'create service does not check the headline and post text');
 instant_expect(str_contains($createService, 'znews_path_public_feed($postId)'), 'create service lacks public-feed write');
 instant_expect(str_contains($updateService, 'znews_post_publication_decision($newMediaRow, trim($targetTitle . "\n" . $text))'), 'edited headline and text are not rechecked');
-instant_expect(str_contains($updateService, 'znews_public_feed_index_for_post($updated)'), 'update service lacks dynamic feed decision');
+instant_expect(str_contains($updateService, 'znews_public_feed_index_updates_for_post($updated)'), 'update service lacks preserving dynamic feed decision');
 instant_expect(str_contains($updateService, 'expectedUpdatedAt'), 'edit version protection is missing');
 instant_expect(str_contains($mediaPolicy, "'AUTO_CLEARED'"), 'strict public media policy rejects auto-cleared media');
 instant_expect(str_contains($createEndpoint, 'published_immediately'), 'create endpoint does not disclose publication state');

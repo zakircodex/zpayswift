@@ -68,7 +68,7 @@ znews_attach_expect(str_contains($attach, "status'] = 'ATTACHED'"), 'final media
 znews_attach_expect(str_contains($attach, "status'] = 'DETACHED'"), 'replaced media detachment state missing');
 znews_attach_expect(str_contains($attach, 'ZNEWS_MEDIA_NOT_AVAILABLE'), 'single-use media guard missing');
 znews_attach_expect(str_contains($attach, 'image_media_id'), 'post-media reference missing');
-znews_attach_expect(str_contains($attach, 'znews_public_feed_index_for_post($updated)'), 'edited post publication index is not policy-driven');
+znews_attach_expect(str_contains($attach, 'znews_public_feed_index_updates_for_post($updated)'), 'edited post publication index is not policy-driven or cache-preserving');
 znews_attach_expect(str_contains($attach, 'znews_post_publication_decision'), 'instant publication decision is missing');
 znews_attach_expect(str_contains($attach, 'AUTOMATED_RISK_REVIEW'), 'near-duplicate safety fallback is missing');
 znews_attach_expect(str_contains($attach, 'expectedUpdatedAt'), 'version protection missing');
