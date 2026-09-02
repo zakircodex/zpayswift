@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/public_projection.php';
+
 function znews_feed_cfg(string $name, int $default, int $min, int $max): int
 {
     $value = defined($name) ? (int)constant($name) : $default;
@@ -136,7 +138,8 @@ function znews_feed_tie(string $seed, string $postId): string
 function znews_feed_public_candidates(
     int $snapshotAt,
     string $seed,
-    int $pageSize
+    int $pageSize,
+    ?array &$projectionMap = null
 ): array
 {
     $index = fb_get('ZNEWS_PUBLIC_FEED', [
@@ -149,14 +152,15 @@ function znews_feed_public_candidates(
     }
 
     $rows = [];
+    $projectionMap = [];
     foreach ($index as $postKey => $row) {
         $row = is_array($row) ? $row : [];
         $postId = trim((string)($row['post_id'] ?? $postKey));
         if ($postId === '') {
             continue;
         }
-        if (strtoupper(trim((string)($row['status'] ?? 'ACTIVE'))) !== 'ACTIVE'
-            || strtoupper(trim((string)($row['visibility'] ?? 'PUBLIC'))) !== 'PUBLIC') {
+        $publicItem = znews_public_projection_item($row);
+        if ($publicItem === null) {
             continue;
         }
         $createdAt = max(0, (int)($row['created_at'] ?? 0));
@@ -167,7 +171,9 @@ function znews_feed_public_candidates(
             'post_id' => $postId,
             'creator_uid' => trim((string)($row['creator_uid'] ?? '')),
             'created_at' => $createdAt,
+            'ranking_metrics' => znews_ranking_metrics_from_index_row($row),
         ];
+        $projectionMap[$postId] = $publicItem;
     }
     znews_sort_index_rows_desc($rows);
 
@@ -178,17 +184,16 @@ function znews_feed_public_candidates(
         if ($creatorUid === '') {
             $creatorUid = 'UNKNOWN_' . substr(hash('sha256', $postId), 0, 16);
         }
-        $analytics = fb_get('ZNEWS_ANALYTICS/' . $postId);
-        $analytics = is_array($analytics) ? $analytics : [];
-        $exposure = fb_get(znews_feed_exposure_path($postId));
-        $exposure = is_array($exposure) ? $exposure : [];
+        $metrics = is_array($row['ranking_metrics'] ?? null)
+            ? (array)$row['ranking_metrics']
+            : znews_ranking_metrics_defaults();
         $createdAt = max(0, (int)($row['created_at'] ?? 0));
         $ageDays = max(0.0, ($snapshotAt - $createdAt) / 86400);
-        $impressions = max(0, (int)($exposure['impressions'] ?? 0));
-        $uniqueImpressions = max(0, (int)($exposure['unique_viewers'] ?? 0));
-        $validViews = max(0, (int)($analytics['valid_views'] ?? 0));
-        $uniqueViews = max(0, (int)($analytics['unique_viewers'] ?? 0));
-        $totalOpens = max(0, (int)($analytics['total_opens'] ?? 0));
+        $impressions = max(0, (int)($metrics['impressions'] ?? 0));
+        $uniqueImpressions = max(0, (int)($metrics['unique_impressions'] ?? 0));
+        $validViews = max(0, (int)($metrics['valid_views'] ?? 0));
+        $uniqueViews = max(0, (int)($metrics['unique_views'] ?? 0));
+        $totalOpens = max(0, (int)($metrics['total_opens'] ?? 0));
         $exposureWeight = ($uniqueImpressions * 12) + ($impressions * 2)
             + ($uniqueViews * 8) + ($validViews * 3) + $totalOpens;
         $ageDivisor = max(1.0, min(30.0, $ageDays + 1.0));
@@ -200,7 +205,7 @@ function znews_feed_public_candidates(
             'fair_score' => $exposureWeight / $ageDivisor,
             'impressions' => $impressions,
             'unique_impressions' => $uniqueImpressions,
-            'last_shown_at' => max(0, (int)($exposure['last_shown_at'] ?? 0)),
+            'last_shown_at' => max(0, (int)($metrics['last_shown_at'] ?? 0)),
             'tie' => znews_feed_tie($seed, $postId),
         ];
     }
@@ -318,7 +323,8 @@ function znews_feed_create_session(array $viewer, int $pageSize): array
     $now = znews_now();
     $sessionId = 'ZFS' . strtoupper(bin2hex(random_bytes(16)));
     $expiresAt = $now + znews_feed_session_ttl();
-    $candidates = znews_feed_public_candidates($now, $sessionId, $pageSize);
+    $projectionMap = [];
+    $candidates = znews_feed_public_candidates($now, $sessionId, $pageSize, $projectionMap);
     $ranked = znews_feed_rank_candidates($candidates, $sessionId);
     $order = [];
     foreach ($ranked as $index => $postId) {
@@ -337,11 +343,13 @@ function znews_feed_create_session(array $viewer, int $pageSize): array
         'created_at' => $now,
         'expires_at' => $expiresAt,
         'total' => count($ranked),
+        'candidate_window' => znews_feed_candidate_window($pageSize),
         'order' => $order,
     ];
     if (!fb_patch('', [znews_feed_session_path($sessionId) => $session])) {
         api_response(false, 'ZNEWS_FEED_SESSION_CREATE_FAILED', 'Feed could not be prepared.', [], 503);
     }
+    $session['_projection_map'] = $projectionMap;
     return $session;
 }
 
@@ -362,12 +370,40 @@ function znews_feed_load_session(string $sessionId, array $viewer): array
     return $session;
 }
 
-function znews_feed_overlay_counts(array $post, array $counts): array
+function znews_feed_session_projection_map(array $session): array
 {
-    $post['like_count'] = max(0, (int)($counts['like_count'] ?? 0));
-    $post['comment_count'] = max(0, (int)($counts['comment_count'] ?? 0));
-    $post['share_count'] = max(0, (int)($counts['share_count'] ?? 0));
-    return $post;
+    if (is_array($session['_projection_map'] ?? null)) {
+        return (array)$session['_projection_map'];
+    }
+
+    $snapshotAt = max(0, (int)($session['snapshot_at'] ?? 0));
+    $candidateWindow = max(1, min(
+        znews_feed_candidate_limit(),
+        (int)($session['candidate_window'] ?? $session['total'] ?? 1)
+    ));
+    $index = fb_get('ZNEWS_PUBLIC_FEED', [
+        'orderBy' => json_encode('created_at'),
+        'endAt' => json_encode($snapshotAt),
+        'limitToLast' => $candidateWindow,
+    ]);
+    if (!is_array($index)) {
+        return [];
+    }
+
+    $allowed = array_fill_keys(znews_feed_session_order($session), true);
+    $projectionMap = [];
+    foreach ($index as $postKey => $row) {
+        $row = is_array($row) ? $row : [];
+        $postId = trim((string)($row['post_id'] ?? $postKey));
+        if ($postId === '' || !isset($allowed[$postId])) {
+            continue;
+        }
+        $publicItem = znews_public_projection_item($row);
+        if ($publicItem !== null) {
+            $projectionMap[$postId] = $publicItem;
+        }
+    }
+    return $projectionMap;
 }
 
 function znews_fair_feed_page(int $limit, $cursorValue = ''): array
@@ -384,6 +420,7 @@ function znews_fair_feed_page(int $limit, $cursorValue = ''): array
     }
 
     $order = znews_feed_session_order($session);
+    $projectionMap = znews_feed_session_projection_map($session);
     $items = [];
     $nextOffset = $offset;
 
@@ -391,13 +428,10 @@ function znews_fair_feed_page(int $limit, $cursorValue = ''): array
         $postIdRaw = $order[$nextOffset];
         $nextOffset++;
         $postId = znews_firebase_key($postIdRaw, 'post_id');
-        $post = znews_post_load($postId);
-        if (!is_array($post) || !znews_post_is_public($post)) {
+        if (!is_array($projectionMap[$postId] ?? null)) {
             continue;
         }
-        $engagement = fb_get('ZNEWS_ENGAGEMENT/' . $postId);
-        $engagement = is_array($engagement) ? $engagement : [];
-        $items[] = znews_feed_overlay_counts(znews_format_public_post($post), $engagement);
+        $items[] = (array)$projectionMap[$postId];
     }
 
     $hasMore = $nextOffset < count($order);
@@ -431,7 +465,10 @@ function znews_feed_claim_once(string $path, array $payload): bool
             usleep(50000);
             continue;
         }
-        return !empty($write['ok']);
+        if (empty($write['ok'])) {
+            return false;
+        }
+        return true;
     }
     return false;
 }
@@ -455,7 +492,11 @@ function znews_feed_increment_exposure(string $postId, bool $unique, int $now): 
             usleep(50000);
             continue;
         }
-        return !empty($write['ok']);
+        if (empty($write['ok'])) {
+            return false;
+        }
+        znews_ranking_metrics_mirror_exposure($postId, $row);
+        return true;
     }
     return false;
 }

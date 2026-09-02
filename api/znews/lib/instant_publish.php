@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/public_projection.php';
+
 function znews_instant_publish_enabled(): bool
 {
     if (!defined('ZNEWS_INSTANT_PUBLISH_ENABLED')) {
@@ -154,21 +156,18 @@ function znews_apply_publication_decision(array $post, array $decision, int $now
     return $post;
 }
 
-function znews_public_feed_index_for_post(array $post): ?array
+function znews_public_feed_index_for_post(
+    array $post,
+    array $existingIndex = [],
+    ?array $canonicalEngagement = null
+): ?array
 {
-    if (strtoupper(trim((string)($post['status'] ?? ''))) !== 'ACTIVE') {
-        return null;
-    }
+    return znews_public_projection_for_post($post, $existingIndex, $canonicalEngagement);
+}
 
-    return [
-        'post_id' => (string)($post['post_id'] ?? ''),
-        'creator_uid' => (string)($post['creator_uid'] ?? ''),
-        'status' => 'ACTIVE',
-        'visibility' => 'PUBLIC',
-        'created_at' => (int)($post['created_at'] ?? 0),
-        'updated_at' => (int)($post['updated_at'] ?? 0),
-        'published_at' => (int)($post['published_at'] ?? $post['updated_at'] ?? 0),
-    ];
+function znews_public_feed_index_updates_for_post(array $post): array
+{
+    return znews_public_projection_updates_for_post($post);
 }
 
 function znews_apply_media_publication_decision(array $row, array $decision, int $now): array

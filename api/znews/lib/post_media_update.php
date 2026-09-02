@@ -169,8 +169,8 @@ function znews_update_post_with_media(
             'updated_at' => $now,
             'published_at' => (int)($updated['published_at'] ?? 0),
         ],
-        znews_path_public_feed($postId) => znews_public_feed_index_for_post($updated),
     ];
+    $indexUpdates = array_merge($indexUpdates, znews_public_feed_index_updates_for_post($updated));
 
     if ($newMediaClaim) {
         $attached = znews_post_media_attached_row($newMediaClaim, $postId, $now);

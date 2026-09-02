@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/ranking_snapshot.php';
+
 function znews_view_cfg(string $name, int $default, int $min, int $max): int
 {
     $value = defined($name) ? (int)constant($name) : $default;
@@ -250,7 +252,9 @@ function znews_view_analytics_apply(string $postId, array $deltas): array
         $write = fb_put_if_match($path, $row, (string)$snapshot['etag']);
         if ((int)($write['status'] ?? 0) === 412) { usleep(60000); continue; }
         if (empty($write['ok'])) { return ['ok' => false, 'code' => 'ZNEWS_ANALYTICS_WRITE_FAILED']; }
-        return ['ok' => true, 'analytics' => znews_view_analytics_format($row)];
+        $analytics = znews_view_analytics_format($row);
+        znews_ranking_metrics_mirror_analytics($postId, $analytics);
+        return ['ok' => true, 'analytics' => $analytics];
     }
     return ['ok' => false, 'code' => 'ZNEWS_ANALYTICS_BUSY'];
 }

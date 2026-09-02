@@ -43,10 +43,12 @@ function znews_view_analytics_apply_once(
             ? (array)$row['applied_events']
             : [];
         if (isset($events[$eventKey])) {
+            $analytics = znews_view_analytics_format($row);
+            znews_ranking_metrics_mirror_analytics($postId, $analytics);
             return [
                 'ok' => true,
                 'idempotent_replay' => true,
-                'analytics' => znews_view_analytics_format($row),
+                'analytics' => $analytics,
             ];
         }
 
@@ -69,10 +71,12 @@ function znews_view_analytics_apply_once(
         if (empty($write['ok'])) {
             return ['ok' => false, 'code' => 'ZNEWS_ANALYTICS_WRITE_FAILED'];
         }
+        $analytics = znews_view_analytics_format($row);
+        znews_ranking_metrics_mirror_analytics($postId, $analytics);
         return [
             'ok' => true,
             'idempotent_replay' => false,
-            'analytics' => znews_view_analytics_format($row),
+            'analytics' => $analytics,
         ];
     }
 
