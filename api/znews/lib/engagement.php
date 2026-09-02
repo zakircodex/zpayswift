@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/public_projection.php';
+
 function znews_engagement_path(string $postId): string
 {
     return 'ZNEWS_ENGAGEMENT/' . znews_firebase_key($postId, 'post_id');
@@ -137,6 +139,7 @@ function znews_engagement_adjust_counter(
 
         $row[$field] = max(0, (int)$row[$field] + $delta);
         $row['post_id'] = $postId;
+        $row['revision'] = max(0, (int)($row['revision'] ?? 0)) + 1;
         $row['updated_at'] = znews_now();
 
         $write = fb_put_if_match($path, $row, (string)$snapshot['etag']);
@@ -154,9 +157,11 @@ function znews_engagement_adjust_counter(
             ];
         }
 
+        $counts = znews_engagement_counts($postId);
+        znews_public_projection_mirror_engagement($postId, $row);
         return [
             'ok' => true,
-            'counts' => znews_engagement_counts($postId),
+            'counts' => $counts,
         ];
     }
 
@@ -206,6 +211,7 @@ function znews_engagement_set_counter_exact(
 
         $row[$field] = max(0, $value);
         $row['post_id'] = $postId;
+        $row['revision'] = max(0, (int)($row['revision'] ?? 0)) + 1;
         $row['updated_at'] = znews_now();
 
         $write = fb_put_if_match($path, $row, (string)$snapshot['etag']);
@@ -223,9 +229,11 @@ function znews_engagement_set_counter_exact(
             ];
         }
 
+        $counts = znews_engagement_counts($postId);
+        znews_public_projection_mirror_engagement($postId, $row);
         return [
             'ok' => true,
-            'counts' => znews_engagement_counts($postId),
+            'counts' => $counts,
         ];
     }
 

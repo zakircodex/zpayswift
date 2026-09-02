@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/instant_publish.php';
+
 require_once __DIR__ . '/posts.php';
 require_once __DIR__ . '/post_access.php';
 
@@ -514,15 +516,15 @@ function znews_admin_moderate_post(
         'updated_at' => $now,
         'published_at' => $approve ? $now : 0,
     ];
-    $publicIndex = $approve ? [
-        'post_id' => $postId,
-        'creator_uid' => $creatorUid,
-        'status' => 'ACTIVE',
-        'visibility' => 'PUBLIC',
-        'created_at' => (int)($updated['created_at'] ?? $now),
-        'updated_at' => $now,
-        'published_at' => $now,
-    ] : null;
+    $existingPublicIndex = $approve ? fb_get(znews_path_public_feed($postId)) : null;
+    $canonicalEngagement = $approve ? fb_get('ZNEWS_ENGAGEMENT/' . $postId) : null;
+    $publicIndex = $approve
+        ? znews_public_feed_index_for_post(
+            $updated,
+            is_array($existingPublicIndex) ? (array)$existingPublicIndex : [],
+            is_array($canonicalEngagement) ? (array)$canonicalEngagement : null
+        )
+        : null;
 
     $indexOk = fb_patch('', [
         znews_path_user_post($creatorUid, $postId) => $userIndex,
