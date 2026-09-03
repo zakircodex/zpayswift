@@ -62,15 +62,15 @@ foreach ([
     composer_expect(str_contains($premium, $contract), "Compact composer style is missing: {$contract}");
 }
 
-composer_expect(str_contains($index, 'znews-premium.css?v=8'), 'Composer stylesheet cachebuster is missing.');
-composer_expect(str_contains($index, 'znews-bootstrap.js?v=20'), 'Reload-safe composer bootstrap cachebuster is missing.');
-composer_expect(str_contains($bootstrap, 'znews.js?v=18'), 'Latest composer behavior is not loaded.');
+composer_expect(str_contains($index, 'znews-premium.css?v=10'), 'Composer stylesheet cachebuster is missing.');
+composer_expect(str_contains($index, 'znews-bootstrap.js?v=22'), 'Reload-safe composer bootstrap cachebuster is missing.');
+composer_expect(str_contains($bootstrap, 'znews.js?v=20'), 'Latest composer behavior is not loaded.');
 composer_expect(str_contains($bootstrap, 'znews-creator.js?v=7'), 'Latest creator behavior is not loaded.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    composer_expect(str_contains($worker, 'znews-premium.css?v=8'), 'Latest composer stylesheet is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=20'), 'Latest reload-safe bootstrap is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews.js?v=18'), 'Latest app behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-premium.css?v=10'), 'Latest composer stylesheet is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=22'), 'Latest reload-safe bootstrap is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews.js?v=20'), 'Latest app behavior is missing from a PWA shell.');
     composer_expect(str_contains($worker, 'znews-creator.js?v=7'), 'Latest creator behavior is missing from a PWA shell.');
     composer_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'PWA shell must continue excluding API responses.');
     composer_expect(str_contains($worker, 'networkFirst(request'), 'PWA shell must refresh composer assets while online.');

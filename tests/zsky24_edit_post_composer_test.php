@@ -42,10 +42,10 @@ edit_composer_expect(str_contains($creator, '.creator-edit-topbar{position:fixed
 edit_composer_expect(str_contains($creator, '.creator-edit-bottom-action{position:fixed'), 'Mobile Save action is not fixed.');
 edit_composer_expect(str_contains($creator, 'object-fit:contain'), 'Edit photo preview may crop the selected photo.');
 edit_composer_expect(str_contains($bootstrap, 'znews-creator.js?v=7'), 'Latest edit composer behavior is not activated.');
-edit_composer_expect(str_contains($index, 'znews-bootstrap.js?v=20'), 'Reload-safe edit bootstrap is not activated.');
+edit_composer_expect(str_contains($index, 'znews-bootstrap.js?v=22'), 'Reload-safe edit bootstrap is not activated.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    edit_composer_expect(str_contains($worker, 'znews-bootstrap.js?v=20'), 'A PWA shell is missing the reload-safe edit bootstrap.');
+    edit_composer_expect(str_contains($worker, 'znews-bootstrap.js?v=22'), 'A PWA shell is missing the reload-safe edit bootstrap.');
     edit_composer_expect(str_contains($worker, 'znews-creator.js?v=7'), 'A PWA shell is missing the edit composer.');
     edit_composer_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'A PWA shell may cache API responses.');
     edit_composer_expect(str_contains($worker, 'networkFirst(request'), 'A PWA shell may serve stale edit assets while online.');

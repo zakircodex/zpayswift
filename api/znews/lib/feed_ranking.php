@@ -26,6 +26,12 @@ function znews_feed_candidate_window(int $pageSize): int
     return min(znews_feed_candidate_limit(), $pageSize * 5);
 }
 
+function znews_feed_session_candidate_page_size(int $responsePageSize): int
+{
+    // Keep the established Web ranking pool while allowing smaller response batches.
+    return max(12, min(30, $responsePageSize));
+}
+
 function znews_feed_session_path(string $sessionId): string
 {
     return 'ZNEWS_FEED_SESSIONS/' . znews_firebase_key($sessionId, 'feed_session_id');
@@ -323,8 +329,9 @@ function znews_feed_create_session(array $viewer, int $pageSize): array
     $now = znews_now();
     $sessionId = 'ZFS' . strtoupper(bin2hex(random_bytes(16)));
     $expiresAt = $now + znews_feed_session_ttl();
+    $candidatePageSize = znews_feed_session_candidate_page_size($pageSize);
     $projectionMap = [];
-    $candidates = znews_feed_public_candidates($now, $sessionId, $pageSize, $projectionMap);
+    $candidates = znews_feed_public_candidates($now, $sessionId, $candidatePageSize, $projectionMap);
     $ranked = znews_feed_rank_candidates($candidates, $sessionId);
     $order = [];
     foreach ($ranked as $index => $postId) {
@@ -343,7 +350,7 @@ function znews_feed_create_session(array $viewer, int $pageSize): array
         'created_at' => $now,
         'expires_at' => $expiresAt,
         'total' => count($ranked),
-        'candidate_window' => znews_feed_candidate_window($pageSize),
+        'candidate_window' => znews_feed_candidate_window($candidatePageSize),
         'order' => $order,
     ];
     if (!fb_patch('', [znews_feed_session_path($sessionId) => $session])) {

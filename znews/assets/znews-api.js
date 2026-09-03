@@ -196,10 +196,11 @@
       });
     }
 
-    publicFeed(cursor = '') {
+    publicFeed(cursor = '', limit = this.config.feedPageSize, options = {}) {
       return this.request('znews/public/feed.php', {
-        params: { limit: this.config.feedPageSize, cursor },
-        appKey: false
+        params: { limit, cursor },
+        appKey: false,
+        ...options
       });
     }
 
@@ -255,22 +256,25 @@
       });
     }
 
-    likeStatus(postId) {
+    likeStatus(postId, options = {}) {
       return this.request('znews/likes/status.php', {
         params: { post_id: postId },
-        authenticated: true
+        authenticated: true,
+        ...options
       });
     }
 
-    recordShare(postId, channel = 'COPY_LINK') {
+    recordShare(postId, channel = 'COPY_LINK', options = {}) {
+      const { idempotencyKey = '', ...requestOptions } = options;
       return this.request('znews/shares/create.php', {
         method: 'POST',
         authenticated: true,
         body: {
           post_id: postId,
           channel,
-          idempotency_key: this.idempotencyKey('share')
-        }
+          idempotency_key: idempotencyKey || this.idempotencyKey('share')
+        },
+        ...requestOptions
       });
     }
 
@@ -316,7 +320,7 @@
       });
     }
 
-    startView(postId, idempotencyKey = '') {
+    startView(postId, idempotencyKey = '', options = {}) {
       return this.request('znews/views/start.php', {
         method: 'POST',
         appKey: false,
@@ -324,23 +328,26 @@
         body: {
           post_id: postId,
           idempotency_key: idempotencyKey || this.idempotencyKey('view')
-        }
+        },
+        ...options
       });
     }
 
-    heartbeatView(viewId, viewToken) {
+    heartbeatView(viewId, viewToken, options = {}) {
       return this.request('znews/views/heartbeat.php', {
         method: 'POST',
         appKey: false,
-        body: { view_id: viewId, view_token: viewToken }
+        body: { view_id: viewId, view_token: viewToken },
+        ...options
       });
     }
 
-    completeView(viewId, viewToken) {
+    completeView(viewId, viewToken, options = {}) {
       return this.request('znews/views/complete.php', {
         method: 'POST',
         appKey: false,
-        body: { view_id: viewId, view_token: viewToken }
+        body: { view_id: viewId, view_token: viewToken },
+        ...options
       });
     }
 

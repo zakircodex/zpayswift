@@ -188,7 +188,7 @@ if ($oldAgent === null) {
 $web = (string)file_get_contents($root . '/znews/assets/znews.js');
 $index = (string)file_get_contents($root . '/znews/index.html');
 completion_expect(str_contains($web, 'const creatorActions = api.isAuthenticated()'), 'Web post controls must be selected before guest markup is rendered.');
-completion_expect(str_contains($web, "if (api.isAuthenticated())") && str_contains($web, 'await api.recordShare'), 'Guest Web Share must not depend on authenticated analytics.');
+completion_expect(str_contains($web, "if (api.isAuthenticated())") && str_contains($web, 'api.recordShare(postId, channel, { signal, idempotencyKey })') && str_contains($web, '.catch(() => {})'), 'Guest Web Share must not depend on authenticated analytics.');
 completion_expect(str_contains($index, 'id="postTitle"') && str_contains($web, 'title: postTitle'), 'Web Create title contract must remain present.');
 completion_expect(str_contains($index, 'id="mineLoadMoreButton"'), 'Web My Posts continuation control is missing.');
 

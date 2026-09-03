@@ -6,6 +6,8 @@
   if (!config || !ApiClient) return;
 
   const api = new ApiClient(config);
+  const requestScheduler = window.ZNEWS_REQUEST_SCHEDULER;
+  const analyticsPriority = window.ZNewsRequestScheduler?.PRIORITY?.ANALYTICS ?? 3;
   const fairFeed = window.ZNewsFairFeed && typeof window.ZNewsFairFeed === 'object'
     ? window.ZNewsFairFeed
     : {};
@@ -57,7 +59,7 @@
   const creatorLoadMore = document.querySelector('#creatorLoadMoreButton');
   if (!feedList || !feedLoadMore) return;
 
-  function createPager(list, button, { caughtUpText, activeViewSelector }) {
+  function createPager(list, button, { caughtUpText, activeViewSelector, progressive = false }) {
     button.classList.add('auto-load-source');
     button.setAttribute('aria-hidden', 'true');
     button.tabIndex = -1;
@@ -91,13 +93,19 @@
     }
 
     function updateStatus() {
-      const done = pageLoaded && !hasMore && hasRealCards() && viewIsActive();
+      const done = progressive
+        ? pageLoaded && button.dataset.feedDone === 'true' && hasRealCards() && viewIsActive()
+        : pageLoaded && !hasMore && hasRealCards() && viewIsActive();
       status.hidden = !done;
     }
 
     function requestNextPage() {
       updateStatus();
-      if (!intersecting || !viewIsActive() || button.hidden || button.disabled) return;
+      if (!intersecting
+        || !viewIsActive()
+        || button.hidden
+        || button.disabled
+        || button.dataset.autoLoadPaused === 'true') return;
       button.click();
     }
 
@@ -114,7 +122,10 @@
       updateStatus();
       window.setTimeout(requestNextPage, 30);
     });
-    mutationObserver.observe(button, { attributes: true, attributeFilter: ['hidden', 'disabled'] });
+    mutationObserver.observe(button, {
+      attributes: true,
+      attributeFilter: ['hidden', 'disabled', 'data-auto-load-paused', 'data-feed-done']
+    });
     mutationObserver.observe(list, { childList: true });
 
     return {
@@ -133,7 +144,8 @@
   }
 
   const feedPager = createPager(feedList, feedLoadMore, {
-    caughtUpText: 'You’re all caught up.'
+    caughtUpText: 'You’re all caught up.',
+    progressive: true
   });
 
   const creatorPager = creatorList && creatorLoadMore
@@ -145,6 +157,11 @@
 
   window.addEventListener('znews:feed-page', (event) => {
     feedPager.page({ more: event.detail?.hasMore === true });
+  });
+
+  window.addEventListener('znews:feed-progress', (event) => {
+    const detail = event.detail || {};
+    feedPager.page({ more: detail.canAdvance === true });
   });
 
   function actionAttribute(card) {
@@ -207,11 +224,20 @@
     if (!postIds.length) return;
 
     try {
-      await api.request('znews/public/impression.php', {
+      const request = ({ signal }) => api.request('znews/public/impression.php', {
         method: 'POST',
         body: { feed_session_id: sessionId, post_ids: postIds },
-        appKey: true
+        appKey: true,
+        signal
       });
+      if (requestScheduler && typeof requestScheduler.schedule === 'function') {
+        await requestScheduler.schedule(analyticsPriority, request, {
+          key: `feed-impression:${sessionId}:${postIds.join(',')}`,
+          preemptible: true
+        });
+      } else {
+        await request({ signal: undefined });
+      }
       postIds.forEach((postId) => fairFeed.sentImpressions.add(postId));
     } catch (_error) {
       // Telemetry is deliberately non-blocking; cards can be queued again after re-entering the viewport.

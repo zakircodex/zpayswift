@@ -62,6 +62,7 @@ html[data-znews-access="guest"] .desktop-nav [data-route="balance"]{border-color
 .see-more-button:hover,.see-more-button:focus-visible{color:#a5f5c6;text-decoration:underline;outline:none}
 #feedList .post-media,#creatorList .post-media,#postDetail .post-media{width:100%;height:auto;max-height:none;object-fit:contain;background:#020915}
 .auto-load-source{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
+.auto-load-source.feed-inline-retry{position:static!important;display:block!important;width:auto!important;height:auto!important;min-height:40px!important;margin:14px auto 4px!important;padding:9px 16px!important;overflow:visible!important;clip:auto!important;white-space:normal!important;border:1px solid #29466a!important;border-radius:8px!important;background:#0d213d!important;color:#dbeafe!important}
 .feed-scroll-sentinel{width:100%;height:2px;pointer-events:none}
 .feed-end-status{margin:18px 0 4px;padding:12px 14px;text-align:center;color:#8196b2;font-size:12px}
 .composer-card{max-width:680px;margin:0 auto;padding:0!important;overflow:hidden}
@@ -107,6 +108,12 @@ h2.post-title{cursor:pointer}
 button.post-title{width:100%;border:0;background:transparent;text-align:left;font:inherit;font-size:21px;font-weight:850;cursor:pointer}
 .composer-bottom-action{display:none}
 .post-media-frame{position:relative;width:100%;display:grid;place-items:center;overflow:hidden;background:#020915}
+.feed-media-frame{aspect-ratio:16/9;min-height:180px;contain-intrinsic-size:720px 405px}
+.feed-media-frame.media-pending::after,.feed-media-frame.media-failed::after{content:"";position:absolute;inset:0;display:grid;place-items:center;background:#071326;color:#8ea1bb;font-size:.82rem;z-index:0}
+.feed-media-frame.media-failed::after{content:"Image unavailable"}
+.feed-media-frame img:not([src]),.avatar img:not([src]){opacity:0}
+.feed-media-frame .post-media{width:100%;height:100%;object-fit:contain}
+.feed-retry-button{display:block;min-width:108px;min-height:40px;margin:14px auto 0;padding:9px 15px;border:1px solid #29466a;border-radius:8px;background:#0d213d;color:#dbeafe;font-weight:750;cursor:pointer}
 .post-media-frame .post-media-backdrop{position:absolute;inset:-18px;width:calc(100% + 36px);height:calc(100% + 36px);object-fit:cover;filter:blur(22px) brightness(.5);transform:scale(1.04);pointer-events:none}
 .post-media-frame .post-media{position:relative;z-index:1;width:100%;height:auto;max-height:none;object-fit:contain;background:transparent}
 .profile-post-media-button.post-media-frame{padding:0;border:0}

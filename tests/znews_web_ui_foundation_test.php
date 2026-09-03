@@ -129,7 +129,7 @@ check(str_contains($reader, 'lockUnderlyingPage()'), 'Underlying page scroll loc
 $app = contents($root . '/znews/assets/znews.js');
 check(str_contains($app, 'beginView(postId)'), 'Reader view lifecycle does not start');
 check(str_contains($app, 'window.setInterval(() => heartbeatView(), 10000)'), 'Periodic view heartbeat is missing');
-check(str_contains($app, 'api.startView(postId, idempotencyKey)'), 'Stable per-open view idempotency is missing');
+check(str_contains($app, 'api.startView(postId, idempotencyKey, { signal })'), 'Stable per-open view idempotency is missing');
 check(str_contains($app, 'await completeView()'), 'View completion guard is missing');
 
 $viewStart = contents($root . '/api/znews/views/start.php');

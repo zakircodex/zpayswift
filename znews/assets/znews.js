@@ -3,6 +3,11 @@
 
   const config = window.ZNEWS_CONFIG;
   const api = new window.ZNewsApiClient(config);
+  const requestScheduler = window.ZNEWS_REQUEST_SCHEDULER;
+  const requestPriority = window.ZNewsRequestScheduler?.PRIORITY || {
+    FEED: 0, MEDIA: 1, LIKE: 2, ANALYTICS: 3
+  };
+  const FEED_MEDIA_TIMEOUT_MS = 70000;
   const state = {
     route: 'feed',
     feedCursor: '',
@@ -71,6 +76,21 @@
     toastRegion: $('#toastRegion'),
     announcement: $('#announcement')
   };
+  let progressiveFeed = null;
+  let likeStateObserver = null;
+  let feedMediaObserver = null;
+  const observedLikeCards = new WeakSet();
+  const likeStateRequests = new WeakMap();
+  const observedMediaCards = new WeakSet();
+  const feedMediaCache = new Map();
+  const feedMediaObjectUrls = new Set();
+
+  function scheduleRequest(priority, task, options = {}) {
+    if (requestScheduler && typeof requestScheduler.schedule === 'function') {
+      return requestScheduler.schedule(priority, task, options);
+    }
+    return Promise.resolve().then(() => task({ signal: undefined, priority }));
+  }
 
   function text(value) {
     return String(value ?? '');
@@ -355,13 +375,22 @@
     return safeUrl(post.image_url || '');
   }
 
-  function avatarMarkup(name, photo) {
+  function deferredMediaAttributes(url, group, priority = false) {
+    return `data-media-src="${escapeHtml(url)}" data-media-group="${escapeHtml(group)}" loading="lazy" decoding="async"${priority ? ' fetchpriority="high"' : ''}`;
+  }
+
+  function avatarMarkup(name, photo, { deferred = false, group = 'avatar' } = {}) {
     const url = safeUrl(photo);
-    if (url) return `<span class="avatar"><img src="${escapeHtml(url)}" alt="" referrerpolicy="no-referrer"></span>`;
+    if (url) {
+      const source = deferred
+        ? deferredMediaAttributes(url, group)
+        : `src="${escapeHtml(url)}" loading="lazy" decoding="async"`;
+      return `<span class="avatar"><img ${source} alt="" width="44" height="44" referrerpolicy="no-referrer"></span>`;
+    }
     return `<span class="avatar">${escapeHtml(text(name).charAt(0).toUpperCase() || 'Z')}</span>`;
   }
 
-  function postMarkup(post, { detail = false, creatorMode = false } = {}) {
+  function postMarkup(post, { detail = false, creatorMode = false, feed = false, priority = false } = {}) {
     const id = text(post.post_id);
     const name = text(post.creator_name || 'Z Sky 24 creator');
     const image = postImage(post);
@@ -381,13 +410,13 @@
     return `
       <article class="post-card card" data-post-id="${escapeHtml(id)}">
         <header class="post-head">
-          ${avatarMarkup(name, post.creator_photo_url)}
+          ${avatarMarkup(name, post.creator_photo_url, { deferred: feed, group: `avatar-${id}` })}
           <div class="post-author"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(formatTime(post.created_at))}</span></div>
           ${chip}
         </header>
         ${title ? `<button class="post-title" type="button" data-action="open">${escapeHtml(title)}</button>` : ''}
         ${body ? `<div class="post-copy ${!detail && body.length > 700 ? 'truncated' : ''}" data-action="open">${escapeHtml(body)}</div>` : ''}
-        ${image ? `<div class="post-media-frame" data-action="open"><img class="post-media-backdrop" src="${escapeHtml(image)}" alt="" aria-hidden="true" loading="lazy"><img class="post-media" src="${escapeHtml(image)}" alt="Image shared by ${escapeHtml(name)}" loading="lazy"></div>` : ''}
+        ${image ? `<div class="post-media-frame${feed ? ' feed-media-frame media-pending' : ''}" data-action="open"><img class="post-media-backdrop" ${feed ? deferredMediaAttributes(image, `post-${id}`, priority) : `src="${escapeHtml(image)}" loading="lazy" decoding="async"`} alt="" aria-hidden="true"><img class="post-media" ${feed ? deferredMediaAttributes(image, `post-${id}`, priority) : `src="${escapeHtml(image)}" loading="${priority ? 'eager' : 'lazy'}" decoding="async"${priority ? ' fetchpriority="high"' : ''}`} alt="Image shared by ${escapeHtml(name)}" ${feed ? 'width="1280" height="720" ' : ''}></div>` : ''}
         <div class="post-meta"><span>${Number(post.like_count || 0)} likes</span><span>${Number(post.comment_count || 0)} comments • ${Number(post.share_count || 0)} shares</span></div>
         <div class="post-actions">
           ${creatorActions}
@@ -396,12 +425,147 @@
       </article>`;
   }
 
+  function abortError() {
+    const error = new Error('Request cancelled.');
+    error.name = 'AbortError';
+    return error;
+  }
+
+  function loadExternalImage(url, signal) {
+    return new Promise((resolve, reject) => {
+      const probe = new Image();
+      const cleanup = () => signal?.removeEventListener('abort', onAbort);
+      const onAbort = () => {
+        probe.src = '';
+        cleanup();
+        reject(abortError());
+      };
+      probe.onload = () => { cleanup(); resolve(url); };
+      probe.onerror = () => { cleanup(); reject(new Error('Image could not be loaded.')); };
+      if (signal?.aborted) return onAbort();
+      signal?.addEventListener('abort', onAbort, { once: true });
+      probe.referrerPolicy = 'no-referrer';
+      probe.src = url;
+    });
+  }
+
+  async function requestFeedMedia(url, signal) {
+    const target = new URL(url, window.location.origin);
+    if (target.origin !== window.location.origin) return loadExternalImage(target.toString(), signal);
+
+    const controller = new AbortController();
+    let timedOut = false;
+    const forwardAbort = () => controller.abort();
+    if (signal?.aborted) controller.abort();
+    else signal?.addEventListener('abort', forwardAbort, { once: true });
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, FEED_MEDIA_TIMEOUT_MS);
+    try {
+      const response = await fetch(target.toString(), {
+        credentials: 'same-origin',
+        cache: 'default',
+        signal: controller.signal
+      });
+      if (!response.ok) throw new Error('Image could not be loaded.');
+      const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+      if (!contentType.startsWith('image/')) throw new Error('Image response was invalid.');
+      const objectUrl = URL.createObjectURL(await response.blob());
+      feedMediaObjectUrls.add(objectUrl);
+      return objectUrl;
+    } catch (error) {
+      if (signal?.aborted) throw abortError();
+      if (timedOut) throw new Error('Image request timed out.');
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+      signal?.removeEventListener('abort', forwardAbort);
+    }
+  }
+
+  function resolveFeedMedia(url) {
+    const cached = feedMediaCache.get(url);
+    if (cached) return Promise.resolve(cached);
+    return scheduleRequest(
+      requestPriority.MEDIA,
+      ({ signal }) => requestFeedMedia(url, signal),
+      { key: `media:${url}`, preemptible: true }
+    ).then((resolvedUrl) => {
+      feedMediaCache.set(url, resolvedUrl);
+      return resolvedUrl;
+    });
+  }
+
+  function markMediaFailure(elements) {
+    elements.forEach((image) => {
+      image.classList.add('media-load-failed');
+      const frame = image.closest('.feed-media-frame');
+      if (frame) {
+        frame.classList.remove('media-pending');
+        frame.classList.add('media-failed');
+      } else {
+        image.hidden = true;
+      }
+    });
+  }
+
+  async function loadFeedCardMedia(card) {
+    const groups = new Map();
+    $$('img[data-media-src]', card).forEach((image) => {
+      const url = safeUrl(image.dataset.mediaSrc || '');
+      if (!url) return;
+      const group = image.dataset.mediaGroup || url;
+      const entry = groups.get(group) || { url, elements: [] };
+      entry.elements.push(image);
+      groups.set(group, entry);
+    });
+
+    for (const entry of groups.values()) {
+      try {
+        const resolvedUrl = await resolveFeedMedia(entry.url);
+        entry.elements.forEach((image) => {
+          if (!document.contains(image)) return;
+          image.src = resolvedUrl;
+          image.removeAttribute('data-media-src');
+          image.closest('.feed-media-frame')?.classList.remove('media-pending', 'media-failed');
+        });
+      } catch (_error) {
+        markMediaFailure(entry.elements);
+      }
+    }
+  }
+
+  function observeFeedMedia(card) {
+    if (observedMediaCards.has(card) || !card.querySelector('img[data-media-src]')) return;
+    observedMediaCards.add(card);
+    if (!('IntersectionObserver' in window)) {
+      void loadFeedCardMedia(card);
+      return;
+    }
+    if (!feedMediaObserver) {
+      feedMediaObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          feedMediaObserver.unobserve(entry.target);
+          void loadFeedCardMedia(entry.target);
+        });
+      }, { root: null, rootMargin: '96px 0px', threshold: 0.01 });
+    }
+    feedMediaObserver.observe(card);
+  }
+
   function bindPostActions(root) {
-    $$('[data-post-id]', root).forEach((card) => {
+    const cards = root?.matches?.('[data-post-id]')
+      ? [root]
+      : $$('[data-post-id]', root);
+    cards.forEach((card) => {
       if (card.dataset.postActionsBound === 'true') return;
       card.dataset.postActionsBound = 'true';
       const postId = card.dataset.postId;
-      if (api.isAuthenticated()) hydrateLikeState(card, postId);
+      observeLikeState(card, postId);
+      observeFeedMedia(card);
+      bindMediaFallback(card);
       card.addEventListener('click', async (event) => {
         const action = event.target.closest('[data-action]')?.dataset.action;
         if (!action) return;
@@ -415,72 +579,169 @@
     });
   }
 
+  function bindMediaFallback(card) {
+    $$('img', card).forEach((image) => {
+      if (image.dataset.mediaFallbackBound === 'true') return;
+      image.dataset.mediaFallbackBound = 'true';
+      image.addEventListener('error', () => {
+        if (image.classList.contains('post-media')) {
+          const frame = image.closest('.post-media-frame');
+          if (frame?.classList.contains('feed-media-frame')) {
+            image.hidden = true;
+            frame.classList.remove('media-pending');
+            frame.classList.add('media-failed');
+          } else if (frame) frame.hidden = true;
+        } else {
+          image.hidden = true;
+        }
+      }, { once: true });
+    });
+  }
+
+  function observeLikeState(card, postId) {
+    if (!api.isAuthenticated() || observedLikeCards.has(card)) return;
+    observedLikeCards.add(card);
+    if (!('IntersectionObserver' in window)) {
+      void hydrateLikeState(card, postId);
+      return;
+    }
+    if (!likeStateObserver) {
+      likeStateObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          likeStateObserver.unobserve(entry.target);
+          void hydrateLikeState(entry.target, entry.target.dataset.postId || '');
+        });
+      }, { root: null, rootMargin: '320px 0px', threshold: 0 });
+    }
+    likeStateObserver.observe(card);
+  }
+
   async function hydrateLikeState(card, postId) {
     const button = $('[data-action="like"]', card);
-    if (!button || card.dataset.likeStateLoading === 'true') return;
+    if (!button) return null;
+    if (card.dataset.likeStateLoading === 'true') return likeStateRequests.get(card) || null;
     card.dataset.likeStateLoading = 'true';
     button.disabled = true;
-    try {
-      const result = await api.likeStatus(postId);
+    const request = scheduleRequest(
+      requestPriority.LIKE,
+      ({ signal }) => api.likeStatus(postId, { signal }),
+      { key: `like-status:${postId}`, preemptible: true }
+    ).then((result) => {
       const liked = result.data?.liked === true;
       if (liked) state.localLikes.add(postId); else state.localLikes.delete(postId);
       button.classList.toggle('active', liked);
       button.textContent = liked ? '♥ Unlike' : '♡ Like';
       card.dataset.likeStateLoaded = 'true';
-    } catch (_error) {
+      return result;
+    }).catch((_error) => {
       button.textContent = 'Retry Like';
-    } finally {
+      return null;
+    }).finally(() => {
+      likeStateRequests.delete(card);
       card.dataset.likeStateLoading = 'false';
       button.disabled = false;
-    }
+    });
+    likeStateRequests.set(card, request);
+    return request;
   }
 
-  function renderSkeletons(container, count = 3) {
+  function renderSkeletons(container, count = 1) {
     container.textContent = '';
     const template = $('#postSkeletonTemplate');
     for (let i = 0; i < count; i += 1) container.appendChild(template.content.cloneNode(true));
   }
 
-  async function loadFeed({ append = false } = {}) {
-    if (state.feedLoading) return;
-    state.feedLoading = true;
-    if (!append) renderSkeletons(els.feedList);
-    setBusy(els.loadMore, true, 'Loading…');
+  function appendFeedPost(post, index) {
+    if (index === 0) els.feedList.textContent = '';
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = postMarkup(post, { feed: true, priority: index === 0 });
+    const card = wrapper.firstElementChild;
+    if (!card) return;
+    els.feedList.appendChild(card);
+    if ((index + 1) % 4 === 0) {
+      const ad = document.createElement('div');
+      ad.className = 'ad-slot';
+      ad.dataset.znewsAdSlot = 'post_inline';
+      ad.dataset.format = 'mobile_banner';
+      els.feedList.appendChild(ad);
+    }
+    bindPostActions(card);
+    window.ZNewsAds.mountAll(els.feedList);
+    showAnnouncement('');
+  }
 
-    try {
-      const result = await api.publicFeed(append ? state.feedCursor : '');
-      const items = Array.isArray(result.data?.items) ? result.data.items : [];
-      if (!append) els.feedList.textContent = '';
-      const fragment = document.createDocumentFragment();
+  function renderInitialFeedError(error) {
+    els.feedList.innerHTML = `<div class="empty-state card"><strong>Feed could not be loaded</strong>${escapeHtml(errorMessage(error))}<button class="feed-retry-button" type="button" data-feed-retry>Retry</button></div>`;
+  }
 
-      items.forEach((post, index) => {
-        const wrapper = document.createElement('div');
-        wrapper.innerHTML = postMarkup(post);
-        fragment.appendChild(wrapper.firstElementChild);
-        if ((index + 1) % 4 === 0) {
-          const ad = document.createElement('div');
-          ad.className = 'ad-slot';
-          ad.dataset.znewsAdSlot = 'post_inline';
-          ad.dataset.format = 'mobile_banner';
-          fragment.appendChild(ad);
-        }
+  function syncFeedProgress(snapshot) {
+    state.feedCursor = text(snapshot.cursor);
+    state.feedHasMore = snapshot.hasMore === true;
+    state.feedLoading = snapshot.loading === true;
+
+    const hasBufferedPost = Number(snapshot.bufferSize || 0) > 0;
+    const retryReady = Boolean(snapshot.error)
+      && Number(snapshot.renderedCount || 0) > 0
+      && !hasBufferedPost
+      && !snapshot.loading;
+    const canAutoAdvance = hasBufferedPost || (!snapshot.error && snapshot.hasMore === true);
+    els.loadMore.hidden = !(canAutoAdvance || retryReady);
+    els.loadMore.disabled = snapshot.loading === true && !hasBufferedPost;
+    els.loadMore.dataset.autoLoadPaused = retryReady ? 'true' : 'false';
+    els.loadMore.dataset.feedDone = snapshot.done === true ? 'true' : 'false';
+    els.loadMore.classList.toggle('feed-inline-retry', retryReady);
+    els.loadMore.setAttribute('aria-hidden', retryReady ? 'false' : 'true');
+    els.loadMore.tabIndex = retryReady ? 0 : -1;
+    els.loadMore.textContent = retryReady ? 'Retry loading posts' : 'Load next post';
+
+    if (snapshot.done === true
+      && Number(snapshot.renderedCount || 0) === 0
+      && !snapshot.error
+      && !els.feedList.querySelector('.empty-state')) {
+      els.feedList.innerHTML = '<div class="empty-state card"><strong>No public posts yet</strong>New approved stories will appear here.</div>';
+    }
+    window.dispatchEvent(new CustomEvent('znews:feed-progress', { detail: snapshot }));
+  }
+
+  function progressiveFeedInstance() {
+    if (progressiveFeed) return progressiveFeed;
+    const Controller = window.ZNewsProgressiveFeed;
+    if (typeof Controller !== 'function') {
+      throw new window.ZNewsApiError('Progressive feed is unavailable.', {
+        code: 'ZNEWS_PROGRESSIVE_FEED_UNAVAILABLE'
       });
-      els.feedList.appendChild(fragment);
-      if (!els.feedList.children.length) {
-        els.feedList.innerHTML = '<div class="empty-state card"><strong>No public posts yet</strong>New approved stories will appear here.</div>';
+    }
+    progressiveFeed = new Controller({
+      batchSize: config.feedPageSize,
+      lowWatermark: config.feedBufferLowWatermark,
+      fetchPage: async (cursor, limit) => {
+        const result = await scheduleRequest(
+          requestPriority.FEED,
+          ({ signal }) => api.publicFeed(cursor, limit, { signal }),
+          { key: `feed:${cursor || 'initial'}`, preemptible: false }
+        );
+        return result.data || {};
+      },
+      renderItem: appendFeedPost,
+      onReset: () => renderSkeletons(els.feedList, 1),
+      onStateChange: syncFeedProgress,
+      onInitialError: renderInitialFeedError,
+      onPaginationError: () => {
+        // Existing posts stay visible; syncFeedProgress exposes a bottom retry when the buffer drains.
       }
-      bindPostActions(els.feedList);
-      window.ZNewsAds.mountAll(els.feedList);
-      state.feedCursor = text(result.data?.next_cursor);
-      state.feedHasMore = result.data?.has_more === true;
-      els.loadMore.hidden = !state.feedHasMore;
-      showAnnouncement('');
-    } catch (error) {
-      if (!append) els.feedList.innerHTML = `<div class="empty-state card"><strong>Feed could not be loaded</strong>${escapeHtml(errorMessage(error))}</div>`;
-      else toast(errorMessage(error), 'error');
-    } finally {
-      state.feedLoading = false;
-      setBusy(els.loadMore, false);
+    });
+    return progressiveFeed;
+  }
+
+  async function loadFeed({ append = false } = {}) {
+    try {
+      const controller = progressiveFeedInstance();
+      if (!append) await controller.start();
+      else if (controller.snapshot().error) await controller.retry();
+      else await controller.advance();
+    } catch (_error) {
+      // Controller callbacks own initial and pagination error presentation.
     }
   }
 
@@ -526,7 +787,12 @@
         toast('Post link copied.');
       }
       if (api.isAuthenticated()) {
-        await api.recordShare(postId, channel);
+        const idempotencyKey = api.idempotencyKey('share');
+        void scheduleRequest(
+          requestPriority.ANALYTICS,
+          ({ signal }) => api.recordShare(postId, channel, { signal, idempotencyKey }),
+          { key: `share:${idempotencyKey}`, preemptible: true }
+        ).catch(() => {});
       }
     } catch (error) {
       if (error?.name !== 'AbortError') toast(errorMessage(error), 'error');
@@ -617,7 +883,11 @@
     const idempotencyKey = api.idempotencyKey(`view-${postId}`);
     try {
       await completeView();
-      const result = await api.startView(postId, idempotencyKey);
+      const result = await scheduleRequest(
+        requestPriority.ANALYTICS,
+        ({ signal }) => api.startView(postId, idempotencyKey, { signal }),
+        { key: `view-start:${idempotencyKey}`, preemptible: true }
+      );
       const session = result.data?.session || {};
       if (!session.view_id || !session.view_token) return;
       const heartbeatDelay = Math.max(3000, Number(session.heartbeat_after_seconds || 5) * 1000);
@@ -646,7 +916,11 @@
   async function heartbeatView(session = state.viewSession) {
     if (!session || session.closing || document.visibilityState !== 'visible') return null;
     if (session.heartbeatPending) return session.heartbeatPending;
-    session.heartbeatPending = api.heartbeatView(session.id, session.token)
+    session.heartbeatPending = scheduleRequest(
+      requestPriority.ANALYTICS,
+      ({ signal }) => api.heartbeatView(session.id, session.token, { signal }),
+      { key: `view-heartbeat:${session.id}`, preemptible: true }
+    )
       .catch(() => null)
       .finally(() => { session.heartbeatPending = null; });
     return session.heartbeatPending;
@@ -667,7 +941,13 @@
         session.closing = true;
       }
       if (state.viewSession === session) state.viewSession = null;
-      try { await api.completeView(session.id, session.token); } catch (_error) { /* non-blocking */ }
+      try {
+        await scheduleRequest(
+          requestPriority.ANALYTICS,
+          ({ signal }) => api.completeView(session.id, session.token, { signal }),
+          { key: `view-complete:${session.id}`, preemptible: true }
+        );
+      } catch (_error) { /* non-blocking */ }
     })();
     return session.completionPending;
   }
@@ -905,6 +1185,9 @@
     $('#refreshButton').addEventListener('click', () => loadFeed());
     $('#feedRefreshInline').addEventListener('click', () => loadFeed());
     els.loadMore.addEventListener('click', () => loadFeed({ append: true }));
+    els.feedList.addEventListener('click', (event) => {
+      if (event.target.closest('[data-feed-retry]')) void loadFeed({ append: true });
+    });
     els.mineLoadMore.addEventListener('click', () => loadMyPosts({ append: true }));
     $('#composerTrigger').addEventListener('click', () => routeTo('create'));
     $('#composerMediaTrigger').addEventListener('click', () => {
@@ -950,7 +1233,13 @@
         routeTo(restoredView, { syncHistory: false });
       }
     });
-    window.addEventListener('pagehide', () => completeView());
+    window.addEventListener('pagehide', (event) => {
+      completeView();
+      if (event.persisted) return;
+      feedMediaObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+      feedMediaObjectUrls.clear();
+      feedMediaCache.clear();
+    });
     syncComposerState();
   }
 

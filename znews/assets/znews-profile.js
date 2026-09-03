@@ -174,7 +174,7 @@
       const result = await api.request('znews/public/creator.php', {
         params: {
           creator_uid: state.uid,
-          limit: config.feedPageSize || 20,
+          limit: config.creatorPublicPageSize || 12,
           cursor: append ? state.cursor : ''
         },
         appKey: false

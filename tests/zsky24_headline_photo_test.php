@@ -74,7 +74,7 @@ headline_expect(str_contains($premium, '.composer-bottom-submit{min-height:52px;
 headline_expect(str_contains($premium, '.composer-add-row{border-radius:18px'), 'Add photo control polish is missing.');
 headline_expect(str_contains($app, "behavior: next === 'create' ? 'auto' : 'smooth'"), 'Create route must align immediately without a smooth-scroll gap.');
 headline_expect(str_contains($app, "backdrop.className = 'composer-image-backdrop'"), 'Composer preview backdrop is missing.');
-headline_expect(str_contains($app, 'class="post-media-frame"'), 'Feed photo frame is missing.');
+headline_expect(str_contains($app, 'class="post-media-frame${feed ? \' feed-media-frame media-pending\' : \'\'}"'), 'Feed photo frame is missing.');
 headline_expect(str_contains($profile, 'post-media-button post-media-frame'), 'Creator profile photo frame is missing.');
 
 fwrite(STDOUT, "Z Sky 24 headline and single-photo audit passed.\n");

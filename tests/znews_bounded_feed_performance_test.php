@@ -294,6 +294,14 @@ function perf_read_count(string $prefix): int
 
 $firstPageReadCounts = [];
 $nextPageReadCounts = [];
+
+perf_expect(znews_feed_session_candidate_page_size(3) === 12, 'Three-item responses must preserve the established ranking pool size.');
+perf_expect(znews_feed_candidate_window(znews_feed_session_candidate_page_size(3)) === 60, 'Progressive Web feed must retain a 60-row candidate window.');
+perf_fixture(100);
+$progressivePage = znews_fair_feed_page(3);
+perf_expect(count($progressivePage['items'] ?? []) === 3, 'Progressive response must contain at most three posts.');
+perf_expect((int)($GLOBALS['znewsPerfReads'][0]['query']['limitToLast'] ?? 0) === 60, 'Small response batch must not shrink the candidate query.');
+
 foreach ([100, 1000, 10000] as $fixtureSize) {
     perf_fixture($fixtureSize);
     $first = znews_fair_feed_page(10);
