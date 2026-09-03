@@ -15,15 +15,15 @@
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link id="appManifest" rel="manifest" href="/znews/manifest.webmanifest">
   <link rel="stylesheet" href="/znews/assets/znews.css?v=4">
-  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=10">
+  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=11">
   <script defer src="/znews/assets/znews-config.js?v=8"></script>
-  <script defer src="/znews/assets/znews-api.js?v=9"></script>
+  <script defer src="/znews/assets/znews-api.js?v=10"></script>
   <script defer src="/znews/assets/znews-request-scheduler.js?v=1"></script>
-  <script defer src="/znews/assets/znews-progressive-feed.js?v=2"></script>
+  <script defer src="/znews/assets/znews-progressive-feed.js?v=3"></script>
   <script defer src="/znews/assets/znews-feed-ui.js?v=3"></script>
   <script defer src="/znews/assets/znews-ads.js?v=2"></script>
-  <script defer src="/znews/assets/znews-bootstrap.js?v=23"></script>
-  <script defer src="/znews/assets/znews.js?v=21"></script>
+  <script defer src="/znews/assets/znews-bootstrap.js?v=24"></script>
+  <script defer src="/znews/assets/znews.js?v=22"></script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -97,6 +97,13 @@
       <div class="znews-guest-note">You are reading as a guest. Create a Z-Pay account to publish posts and join conversations.</div>
 
       <section id="feedView" class="view active" data-view="feed">
+        <nav class="feed-categories" id="feedCategories" aria-label="Feed categories">
+          <button class="feed-category active" type="button" data-feed-category="" aria-pressed="true">News feed all</button>
+          <button class="feed-category" type="button" data-feed-category="INTERNATIONAL_NEWS" aria-pressed="false">International news</button>
+          <button class="feed-category" type="button" data-feed-category="BD_NEWS" aria-pressed="false">BD news</button>
+          <button class="feed-category" type="button" data-feed-category="MOBILE_PRICING" aria-pressed="false">Mobile pricing</button>
+          <button class="feed-category coming-soon" type="button" data-feed-category="MICRO_JOB" aria-disabled="true">Micro job <small>Coming soon</small></button>
+        </nav>
         <div class="composer-card card" data-auth-only hidden>
           <div class="avatar" id="composerAvatar">Z</div>
           <button class="composer-trigger" id="composerTrigger" type="button">Share a story or update…</button>
@@ -133,6 +140,15 @@
               </div>
             </div>
             <div class="composer-writing-fields">
+              <div class="composer-field composer-category-field">
+                <label for="postCategory">Category</label>
+                <select id="postCategory" name="category" required>
+                  <option value="">Choose a category</option>
+                  <option value="INTERNATIONAL_NEWS">International news</option>
+                  <option value="BD_NEWS">BD news</option>
+                  <option value="MOBILE_PRICING">Mobile pricing</option>
+                </select>
+              </div>
               <div class="composer-field composer-title-field">
                 <label for="postTitle">News headline</label>
                 <input id="postTitle" name="title" type="text" maxlength="160" placeholder="Add a clear headline" required aria-describedby="postTitleCount">

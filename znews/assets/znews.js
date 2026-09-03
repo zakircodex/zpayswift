@@ -16,6 +16,8 @@
     feedCursor: '',
     feedHasMore: false,
     feedLoading: false,
+    feedCategory: '',
+    feedDirty: false,
     mineCursor: '',
     mineHasMore: false,
     mineLoading: false,
@@ -56,6 +58,8 @@
     commentText: $('#commentText'),
     commentList: $('#commentList'),
     createPostForm: $('#createPostForm'),
+    feedCategories: $('#feedCategories'),
+    postCategory: $('#postCategory'),
     postTitle: $('#postTitle'),
     postTitleCount: $('#postTitleCount'),
     postText: $('#postText'),
@@ -370,6 +374,12 @@
     $$('[data-route]').forEach((button) => button.classList.toggle('active', button.dataset.route === next));
     window.scrollTo({ top: 0, behavior: next === 'create' ? 'auto' : 'smooth' });
     if (next === 'mine') loadMyPosts();
+    if (next === 'feed' && state.feedDirty) {
+      state.feedDirty = false;
+      progressiveFeed?.destroy?.();
+      progressiveFeed = null;
+      void loadFeed();
+    }
     if (next === 'balance') loadBalance();
     if (next === 'policy') loadCreatorPolicy();
     if (syncHistory) {
@@ -394,6 +404,14 @@
     return `data-media-src="${escapeHtml(url)}" data-media-group="${escapeHtml(group)}" loading="lazy" decoding="async"${priority ? ' fetchpriority="high"' : ''}`;
   }
 
+  function categoryLabel(category) {
+    return ({
+      INTERNATIONAL_NEWS: 'International news',
+      BD_NEWS: 'BD news',
+      MOBILE_PRICING: 'Mobile pricing'
+    })[text(category).toUpperCase()] || '';
+  }
+
   function avatarMarkup(name, photo, { deferred = false, group = 'avatar' } = {}) {
     const url = safeUrl(photo);
     if (url) {
@@ -411,6 +429,13 @@
     const image = postImage(post);
     const title = text(post.title).trim();
     const body = text(post.text);
+    const category = categoryLabel(post.category);
+    const imageWidth = Math.max(0, Number(post.image_width || 0));
+    const imageHeight = Math.max(0, Number(post.image_height || 0));
+    const hasImageRatio = imageWidth > 0 && imageHeight > 0;
+    const mediaFrameClass = hasImageRatio ? ' media-ratio-known' : ' media-ratio-unknown';
+    const mediaFrameStyle = hasImageRatio ? ` style="aspect-ratio:${imageWidth} / ${imageHeight}"` : '';
+    const mediaDimensions = hasImageRatio ? ` width="${imageWidth}" height="${imageHeight}"` : '';
     const status = text(post.status || 'ACTIVE').toUpperCase();
     const moderation = text(post.moderation_status || '').toUpperCase();
     const chip = creatorMode
@@ -429,9 +454,10 @@
           <div class="post-author"><strong>${escapeHtml(name)}</strong><span>${escapeHtml(formatTime(post.created_at))}</span></div>
           ${chip}
         </header>
+        ${category ? `<span class="post-category-label">${escapeHtml(category)}</span>` : ''}
         ${title ? `<button class="post-title" type="button" data-action="open">${escapeHtml(title)}</button>` : ''}
         ${body ? `<div class="post-copy ${!detail && body.length > 700 ? 'truncated' : ''}" data-action="open">${escapeHtml(body)}</div>` : ''}
-        ${image ? `<div class="post-media-frame${feed ? ' feed-media-frame media-pending' : ''}" data-action="open"><img class="post-media-backdrop" ${feed ? deferredMediaAttributes(image, `post-${id}`, priority) : `src="${escapeHtml(image)}" loading="lazy" decoding="async"`} alt="" aria-hidden="true"><img class="post-media" ${feed ? deferredMediaAttributes(image, `post-${id}`, priority) : `src="${escapeHtml(image)}" loading="${priority ? 'eager' : 'lazy'}" decoding="async"${priority ? ' fetchpriority="high"' : ''}`} alt="Image shared by ${escapeHtml(name)}" ${feed ? 'width="1280" height="720" ' : ''}></div>` : ''}
+        ${image ? `<div class="post-media-frame${feed ? ` feed-media-frame media-pending${mediaFrameClass}` : ''}"${mediaFrameStyle} data-action="open"><img class="post-media" ${feed ? deferredMediaAttributes(image, `post-${id}`, priority) : `src="${escapeHtml(image)}" loading="${priority ? 'eager' : 'lazy'}" decoding="async"${priority ? ' fetchpriority="high"' : ''}`} alt="Image shared by ${escapeHtml(name)}"${mediaDimensions}></div>` : ''}
         <div class="post-meta"><span>${Number(post.like_count || 0)} likes</span><span>${Number(post.comment_count || 0)} comments • ${Number(post.share_count || 0)} shares</span></div>
         <div class="post-actions">
           ${creatorActions}
@@ -543,6 +569,13 @@
         const resolvedUrl = await resolveFeedMedia(entry.url);
         entry.elements.forEach((image) => {
           if (!document.contains(image)) return;
+          image.addEventListener('load', () => {
+            const frame = image.closest('.feed-media-frame');
+            if (!frame || image.naturalWidth <= 0 || image.naturalHeight <= 0) return;
+            frame.style.aspectRatio = `${image.naturalWidth} / ${image.naturalHeight}`;
+            frame.classList.remove('media-ratio-unknown');
+            frame.classList.add('media-ratio-known');
+          }, { once: true });
           image.src = resolvedUrl;
           image.removeAttribute('data-media-src');
           image.closest('.feed-media-frame')?.classList.remove('media-pending', 'media-failed');
@@ -764,15 +797,16 @@
       batchSize: config.feedPageSize,
       lowWatermark: config.feedBufferLowWatermark,
       fetchPage: async (cursor, limit) => {
+        const category = state.feedCategory;
         const result = await scheduleRequest(
           requestPriority.FEED,
           async ({ signal }) => {
             if (!cursor) markBoot('feed_request_start');
-            const response = await api.publicFeed(cursor, limit, { signal });
+            const response = await api.publicFeed(cursor, limit, { signal, category });
             if (!cursor) markBoot('feed_response');
             return response;
           },
-          { key: `feed:${cursor || 'initial'}`, preemptible: false }
+          { key: `feed:${category || 'ALL'}:${cursor || 'initial'}`, preemptible: false }
         );
         return result.data || {};
       },
@@ -1022,24 +1056,37 @@
   async function submitPost(event) {
     event.preventDefault();
     if (!requireSession()) return;
-    const submit = $('button[type="submit"]', els.createPostForm);
+    if (els.createPostForm.getAttribute('aria-busy') === 'true') return;
+    const submits = $$('button[type="submit"]', els.createPostForm);
     const postTitle = els.postTitle.value.trim();
     const postText = els.postText.value.trim();
+    const category = text(els.postCategory?.value).trim();
     const file = els.postImage.files?.[0] || null;
     if (!postTitle) return toast('Add a news headline.', 'error');
+    if (!['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(category)) return toast('Choose a post category.', 'error');
     if (!postText && !file) return toast('Add post details or a photo.', 'error');
-    if (file && file.size > 5 * 1024 * 1024) return toast('Image must be 5 MB or smaller.', 'error');
+    if (file && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return toast('Choose a JPEG, PNG or WebP photo.', 'error');
+    if (file && file.size > 8 * 1024 * 1024) return toast('Image must be 8 MB or smaller.', 'error');
 
-    setBusy(submit, true, file ? 'Uploading…' : 'Submitting…');
+    els.createPostForm.setAttribute('aria-busy', 'true');
+    submits.forEach((button) => setBusy(button, true, file ? 'Optimizing photo...' : 'Submitting...'));
     try {
       let mediaId = '';
       if (file) {
-        const upload = await api.uploadMedia(file);
+        const optimizer = window.ZNewsImageOptimizer
+          || await window.ZNEWS_IMAGE_OPTIMIZER_READY?.();
+        if (!optimizer?.optimize) throw new window.ZNewsApiError('Photo optimization is unavailable. Reload and try again.');
+        const optimized = await optimizer.optimize(file, (label) => {
+          submits.forEach((button) => { button.textContent = label; });
+        });
+        submits.forEach((button) => { button.textContent = 'Uploading...'; });
+        const upload = await api.uploadMedia(optimized.file);
         mediaId = text(upload.data?.media?.media_id);
         if (!mediaId) throw new window.ZNewsApiError('Image upload did not return a media ID.');
-        submit.textContent = 'Submitting…';
+        submits.forEach((button) => { button.textContent = 'Submitting...'; });
       }
-      await api.createPost({ title: postTitle, text: postText, mediaId });
+      await api.createPost({ title: postTitle, text: postText, mediaId, category });
+      state.feedDirty = true;
       els.createPostForm.reset();
       els.imagePreview.hidden = true;
       els.imagePreview.textContent = '';
@@ -1050,7 +1097,9 @@
     } catch (error) {
       toast(errorMessage(error), 'error');
     } finally {
-      setBusy(submit, false);
+      els.createPostForm.removeAttribute('aria-busy');
+      submits.forEach((button) => setBusy(button, false));
+      syncComposerState();
     }
   }
 
@@ -1222,6 +1271,7 @@
     els.postText.style.height = `${Math.min(210, Math.max(112, els.postText.scrollHeight))}px`;
     const hasContent = Boolean(
       els.postTitle.value.trim()
+      && ['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(text(els.postCategory?.value))
       && (els.postText.value.trim() || els.postImage.files?.[0])
     );
     els.createPostForm.classList.toggle('has-media', Boolean(els.postImage.files?.[0]));
@@ -1260,9 +1310,33 @@
     });
     els.authForm.addEventListener('submit', submitAuth);
     els.createPostForm.addEventListener('submit', submitPost);
+    els.postCategory?.addEventListener('change', syncComposerState);
     els.postTitle.addEventListener('input', syncComposerState);
     els.postText.addEventListener('input', syncComposerState);
     els.postImage.addEventListener('change', previewImage);
+    els.feedCategories?.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-feed-category]');
+      if (!button) return;
+      const category = text(button.dataset.feedCategory).toUpperCase();
+      if (category === 'MICRO_JOB') {
+        toast('Micro job is coming soon.');
+        return;
+      }
+      if (category === state.feedCategory) return;
+      state.feedCategory = category;
+      $$('.feed-category', els.feedCategories).forEach((item) => {
+        const active = text(item.dataset.feedCategory).toUpperCase() === category;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+      progressiveFeed?.destroy?.();
+      progressiveFeed = null;
+      void loadFeed();
+    });
+    window.addEventListener('znews:creator-post-mutated', () => {
+      state.feedDirty = true;
+      if (state.route === 'feed') routeTo('feed', { syncHistory: false });
+    });
     els.commentForm.addEventListener('submit', submitComment);
     els.postDialogClose.addEventListener('click', closePost);
     els.postDialog.addEventListener('cancel', (event) => { event.preventDefault(); closePost(); });

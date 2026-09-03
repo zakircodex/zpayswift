@@ -84,6 +84,7 @@ check(!str_contains($config, 'persistentSessionStorageKey'), 'Standalone persist
 check(!preg_match('/(?:secret|private[_-]?key)\s*[:=]\s*[\'\"][^\'\"]{8,}/i', $config), 'Possible public secret detected');
 
 $api = contents($root . '/znews/assets/znews-api.js');
+$app = contents($root . '/znews/assets/znews.js');
 foreach ([
     'znews/auth/handoff.php',
     'znews/public/feed.php',
@@ -103,12 +104,13 @@ check(str_contains($api, "credentials: 'same-origin'"), 'Same-origin cookie poli
 check(!str_contains($api, 'verifyPassword(') && !str_contains($api, 'pinLogin('), 'Standalone login methods remain');
 
 $creator = contents($root . '/znews/assets/znews-creator.js');
-foreach (['znews/media/upload.php', 'znews/posts/create.php', 'znews/posts/update.php', 'znews/posts/delete.php'] as $endpoint) {
+foreach (['znews/media/upload.php', 'znews/posts/update.php', 'znews/posts/delete.php'] as $endpoint) {
     check(str_contains($creator, $endpoint), 'Creator endpoint missing: ' . $endpoint);
 }
 check(str_contains($creator, 'expected_updated_at'), 'Creator version guard is missing');
 check(str_contains($creator, 'idempotency_key'), 'Creator idempotency is missing');
-check(str_contains($creator, 'stopImmediatePropagation'), 'Duplicate creator submit protection is missing');
+check(!str_contains($creator, "form.addEventListener('submit'"), 'A competing Create submit handler remains in the creator module');
+check(str_contains($app, "els.createPostForm.getAttribute('aria-busy') === 'true'"), 'Canonical Create double-submit guard is missing');
 
 $access = contents($root . '/znews/assets/znews-access.js');
 check(str_contains($access, "['create', 'mine', 'balance']"), 'Guest creator-route guard is missing');
@@ -126,7 +128,6 @@ check(str_contains($reader, 'window.history.back()'), 'Reader Back behavior is m
 check(str_contains($reader, 'window.visualViewport?.addEventListener'), 'Visual viewport integration is missing');
 check(str_contains($reader, 'lockUnderlyingPage()'), 'Underlying page scroll lock is missing');
 
-$app = contents($root . '/znews/assets/znews.js');
 check(str_contains($app, 'beginView(postId)'), 'Reader view lifecycle does not start');
 check(str_contains($app, 'window.setInterval(() => heartbeatView(), 10000)'), 'Periodic view heartbeat is missing');
 check(str_contains($app, 'api.startView(postId, idempotencyKey, { signal })'), 'Stable per-open view idempotency is missing');

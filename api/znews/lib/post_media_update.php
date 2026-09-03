@@ -18,6 +18,8 @@ function znews_update_post_with_media(
     bool $textProvided,
     bool $mediaProvided,
     string $requestedMediaId,
+    string $category,
+    bool $categoryProvided,
     int $expectedUpdatedAt,
     string $idempotencyKey
 ): array {
@@ -53,6 +55,8 @@ function znews_update_post_with_media(
     $targetText = $textProvided ? $text : $currentText;
     $currentTitle = (string)($post['title'] ?? '');
     $targetTitle = $titleProvided ? znews_post_validate_title($title) : $currentTitle;
+    $currentCategory = strtoupper(trim((string)($post['category'] ?? '')));
+    $targetCategory = $categoryProvided ? znews_normalize_category($category, false) : $currentCategory;
     $currentMediaId = trim((string)($post['image_media_id'] ?? ''));
     $targetMediaId = $mediaProvided ? trim($requestedMediaId) : $currentMediaId;
     if ($targetMediaId !== '') {
@@ -76,6 +80,8 @@ function znews_update_post_with_media(
         'text_provided' => $textProvided,
         'media_provided' => $mediaProvided,
         'target_media_id' => $targetMediaId,
+        'category' => $targetCategory,
+        'category_provided' => $categoryProvided,
         'expected_updated_at' => $expectedUpdatedAt,
     ]);
 
@@ -110,12 +116,15 @@ function znews_update_post_with_media(
     $now = znews_now();
     $decision = znews_post_publication_decision($newMediaRow, trim($targetTitle . "\n" . $text));
     $updated = $post;
-    $updated['schema_version'] = max(4, (int)($post['schema_version'] ?? 1));
+    $updated['schema_version'] = max(5, (int)($post['schema_version'] ?? 1));
     $updated['title'] = $targetTitle;
     $updated['text'] = $text;
+    $updated['category'] = $targetCategory;
     $updated['image_media_id'] = $targetMediaId;
     $updated['image_url'] = znews_post_media_public_url($targetMediaId);
     $updated['content_type'] = $contentType;
+    $updated['image_width'] = max(0, (int)($newMediaRow['optimized_width'] ?? $newMediaRow['width'] ?? 0));
+    $updated['image_height'] = max(0, (int)($newMediaRow['optimized_height'] ?? $newMediaRow['height'] ?? 0));
     $updated['visibility'] = 'PUBLIC';
     $updated['media_duplicate_status'] = $targetMediaId !== ''
         ? strtoupper(trim((string)($newMediaRow['duplicate_status'] ?? 'CLEAR')))
@@ -164,6 +173,7 @@ function znews_update_post_with_media(
             'post_id' => $postId,
             'status' => (string)$updated['status'],
             'content_type' => $contentType,
+            'category' => $targetCategory,
             'has_image' => $targetMediaId !== '',
             'created_at' => (int)($updated['created_at'] ?? $now),
             'updated_at' => $now,

@@ -15,6 +15,9 @@ $content = znews_post_validate_content(
     $body['media_id'] ?? $body['image_media_id'] ?? ''
 );
 $title = znews_post_validate_title($body['title'] ?? '');
+$category = array_key_exists('category', $body)
+    ? znews_normalize_category($body['category'], false)
+    : '';
 $idempotencyKey = znews_idempotency_key(
     $body['idempotency_key']
     ?? $body['client_request_id']
@@ -27,6 +30,7 @@ $result = znews_create_post_with_media(
     (string)$content['text'],
     (string)$content['media_id'],
     (string)$content['content_type'],
+    $category,
     $idempotencyKey
 );
 

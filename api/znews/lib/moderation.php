@@ -512,6 +512,7 @@ function znews_admin_moderate_post(
     $userIndex = [
         'post_id' => $postId,
         'status' => $updated['status'],
+        'category' => strtoupper(trim((string)($updated['category'] ?? ''))),
         'created_at' => (int)($updated['created_at'] ?? $now),
         'updated_at' => $now,
         'published_at' => $approve ? $now : 0,

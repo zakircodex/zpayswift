@@ -15,12 +15,13 @@ function znews_create_post_with_media(
     string $text,
     string $mediaId,
     string $contentType,
+    string $category,
     string $idempotencyKey
 ): array {
     $user = is_array($auth['user'] ?? null) ? (array)$auth['user'] : [];
     $uid = znews_firebase_key((string)($user['uid'] ?? ''), 'uid');
     $creator = znews_public_creator_snapshot($user);
-    $payloadHash = znews_post_media_payload_hash($uid, $title, $text, $mediaId, $contentType);
+    $payloadHash = znews_post_media_payload_hash($uid, $title, $text, $mediaId, $contentType, $category);
     $postId = znews_deterministic_post_id($uid, $idempotencyKey);
 
     $claim = znews_post_create_claim_v2($uid, $idempotencyKey, $payloadHash, $postId);
@@ -48,17 +49,22 @@ function znews_create_post_with_media(
     }
 
     $now = znews_now();
+    $imageWidth = max(0, (int)($mediaRow['optimized_width'] ?? $mediaRow['width'] ?? 0));
+    $imageHeight = max(0, (int)($mediaRow['optimized_height'] ?? $mediaRow['height'] ?? 0));
     $decision = znews_post_publication_decision($mediaRow, trim($title . "\n" . $text));
     $post = [
-        'schema_version' => 4,
+        'schema_version' => 5,
         'post_id' => $postId,
         'creator_uid' => $uid,
         'creator_name' => (string)($creator['name'] ?? 'Z-Pay User'),
         'creator_photo_url' => (string)($creator['profile_photo_url'] ?? ''),
         'title' => $title,
         'text' => $text,
+        'category' => $category,
         'image_media_id' => $mediaId,
         'image_url' => znews_post_media_public_url($mediaId),
+        'image_width' => $imageWidth,
+        'image_height' => $imageHeight,
         'content_type' => $contentType,
         'visibility' => 'PUBLIC',
         'media_duplicate_status' => $mediaId !== ''

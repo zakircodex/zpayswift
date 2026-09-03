@@ -51,8 +51,8 @@ zsky_rules_expect(($rules['.write'] ?? null) === false, 'RTDB must deny direct w
 zsky_rules_no_client_grants($rules);
 
 zsky_rules_expect(
-    ($rules['ZNEWS_PUBLIC_FEED']['.indexOn'] ?? null) === ['created_at'],
-    'ZNEWS_PUBLIC_FEED created_at index is missing.'
+    ($rules['ZNEWS_PUBLIC_FEED']['.indexOn'] ?? null) === ['created_at', 'category_created_at'],
+    'ZNEWS_PUBLIC_FEED created_at/category_created_at indexes are missing.'
 );
 zsky_rules_expect(
     ($rules['ZNEWS_USER_POSTS']['$uid']['.indexOn'] ?? null) === ['created_at'],

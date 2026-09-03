@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/public_projection.php';
+require_once __DIR__ . '/categories.php';
 
 function znews_feed_cfg(string $name, int $default, int $min, int $max): int
 {
@@ -145,14 +146,24 @@ function znews_feed_public_candidates(
     int $snapshotAt,
     string $seed,
     int $pageSize,
-    ?array &$projectionMap = null
+    ?array &$projectionMap = null,
+    string $category = ''
 ): array
 {
-    $index = fb_get('ZNEWS_PUBLIC_FEED', [
-        'orderBy' => json_encode('created_at'),
-        'endAt' => json_encode($snapshotAt),
-        'limitToLast' => znews_feed_candidate_window($pageSize),
-    ]);
+    $category = znews_normalize_category($category, true);
+    $query = $category === ''
+        ? [
+            'orderBy' => json_encode('created_at'),
+            'endAt' => json_encode($snapshotAt),
+            'limitToLast' => znews_feed_candidate_window($pageSize),
+        ]
+        : [
+            'orderBy' => json_encode('category_created_at'),
+            'startAt' => json_encode(znews_category_query_start($category)),
+            'endAt' => json_encode(znews_category_query_end($category, $snapshotAt)),
+            'limitToLast' => znews_feed_candidate_window($pageSize),
+        ];
+    $index = fb_get('ZNEWS_PUBLIC_FEED', $query);
     if (!is_array($index)) {
         return [];
     }
@@ -171,6 +182,9 @@ function znews_feed_public_candidates(
         }
         $createdAt = max(0, (int)($row['created_at'] ?? 0));
         if ($createdAt > $snapshotAt) {
+            continue;
+        }
+        if ($category !== '' && !hash_equals($category, strtoupper(trim((string)($row['category'] ?? ''))))) {
             continue;
         }
         $rows[] = [
@@ -324,14 +338,15 @@ function znews_feed_session_order(array $session): array
     ), static fn(string $value): bool => $value !== ''));
 }
 
-function znews_feed_create_session(array $viewer, int $pageSize): array
+function znews_feed_create_session(array $viewer, int $pageSize, string $category = ''): array
 {
     $now = znews_now();
     $sessionId = 'ZFS' . strtoupper(bin2hex(random_bytes(16)));
     $expiresAt = $now + znews_feed_session_ttl();
     $candidatePageSize = znews_feed_session_candidate_page_size($pageSize);
     $projectionMap = [];
-    $candidates = znews_feed_public_candidates($now, $sessionId, $candidatePageSize, $projectionMap);
+    $category = znews_normalize_category($category, true);
+    $candidates = znews_feed_public_candidates($now, $sessionId, $candidatePageSize, $projectionMap, $category);
     $ranked = znews_feed_rank_candidates($candidates, $sessionId);
     $order = [];
     foreach ($ranked as $index => $postId) {
@@ -351,6 +366,7 @@ function znews_feed_create_session(array $viewer, int $pageSize): array
         'expires_at' => $expiresAt,
         'total' => count($ranked),
         'candidate_window' => znews_feed_candidate_window($candidatePageSize),
+        'category' => $category,
         'order' => $order,
     ];
     if (!fb_patch('', [znews_feed_session_path($sessionId) => $session])) {
@@ -360,7 +376,7 @@ function znews_feed_create_session(array $viewer, int $pageSize): array
     return $session;
 }
 
-function znews_feed_load_session(string $sessionId, array $viewer): array
+function znews_feed_load_session(string $sessionId, array $viewer, ?string $category = null): array
 {
     $sessionId = znews_firebase_key($sessionId, 'feed_session_id');
     $session = fb_get(znews_feed_session_path($sessionId));
@@ -373,6 +389,13 @@ function znews_feed_load_session(string $sessionId, array $viewer): array
     }
     if ((int)($session['expires_at'] ?? 0) < znews_now()) {
         api_response(false, 'ZNEWS_FEED_CURSOR_EXPIRED', 'This feed session has expired.', [], 409);
+    }
+    if ($category !== null) {
+        $sessionCategory = znews_normalize_category($session['category'] ?? '', true);
+        $requestedCategory = znews_normalize_category($category, true);
+        if (!hash_equals($sessionCategory, $requestedCategory)) {
+            api_response(false, 'ZNEWS_FEED_CATEGORY_CURSOR_MISMATCH', 'This cursor belongs to another feed category.', [], 409);
+        }
     }
     return $session;
 }
@@ -388,11 +411,20 @@ function znews_feed_session_projection_map(array $session): array
         znews_feed_candidate_limit(),
         (int)($session['candidate_window'] ?? $session['total'] ?? 1)
     ));
-    $index = fb_get('ZNEWS_PUBLIC_FEED', [
-        'orderBy' => json_encode('created_at'),
-        'endAt' => json_encode($snapshotAt),
-        'limitToLast' => $candidateWindow,
-    ]);
+    $category = znews_normalize_category($session['category'] ?? '', true);
+    $query = $category === ''
+        ? [
+            'orderBy' => json_encode('created_at'),
+            'endAt' => json_encode($snapshotAt),
+            'limitToLast' => $candidateWindow,
+        ]
+        : [
+            'orderBy' => json_encode('category_created_at'),
+            'startAt' => json_encode(znews_category_query_start($category)),
+            'endAt' => json_encode(znews_category_query_end($category, $snapshotAt)),
+            'limitToLast' => $candidateWindow,
+        ];
+    $index = fb_get('ZNEWS_PUBLIC_FEED', $query);
     if (!is_array($index)) {
         return [];
     }
@@ -413,16 +445,17 @@ function znews_feed_session_projection_map(array $session): array
     return $projectionMap;
 }
 
-function znews_fair_feed_page(int $limit, $cursorValue = ''): array
+function znews_fair_feed_page(int $limit, $cursorValue = '', string $category = ''): array
 {
     $limit = max(1, min(30, $limit));
+    $category = znews_normalize_category($category, true);
     $viewer = znews_feed_viewer_context();
     $cursor = znews_feed_cursor_decode($cursorValue);
     if ($cursor) {
-        $session = znews_feed_load_session((string)$cursor['session_id'], $viewer);
+        $session = znews_feed_load_session((string)$cursor['session_id'], $viewer, $category);
         $offset = (int)$cursor['offset'];
     } else {
-        $session = znews_feed_create_session($viewer, $limit);
+        $session = znews_feed_create_session($viewer, $limit, $category);
         $offset = 0;
     }
 
@@ -451,6 +484,7 @@ function znews_fair_feed_page(int $limit, $cursorValue = ''): array
         'ranking_mode' => 'FRESH_FAIR_V1',
         'fresh_ratio' => 70,
         'fair_ratio' => 30,
+        'category' => $category,
         'items' => $items,
         'next_cursor' => $nextCursor,
         'has_more' => $hasMore,

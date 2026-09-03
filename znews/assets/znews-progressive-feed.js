@@ -33,6 +33,7 @@
       this.batchSize = Math.max(2, Math.min(5, Number(batchSize) || 3));
       this.lowWatermark = Math.max(0, Math.min(this.batchSize - 1, Number(lowWatermark) || 0));
       this.generation = 0;
+      this.active = true;
       this.inFlight = null;
       this.resetState();
     }
@@ -62,11 +63,21 @@
     }
 
     notify() {
+      if (!this.active) return;
       this.onStateChange(this.snapshot());
+    }
+
+    destroy() {
+      this.active = false;
+      this.generation += 1;
+      this.buffer = [];
+      this.hasMore = false;
+      this.error = null;
     }
 
     start() {
       if (this.inFlight) return this.inFlight;
+      this.active = true;
       this.generation += 1;
       this.resetState();
       this.onReset();

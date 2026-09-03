@@ -10,6 +10,7 @@ require_once __DIR__ . '/media.php';
 require_once __DIR__ . '/posts.php';
 require_once __DIR__ . '/post_access.php';
 require_once __DIR__ . '/post_mutations.php';
+require_once __DIR__ . '/categories.php';
 
 function znews_post_media_public_url(string $mediaId): string
 {
@@ -104,7 +105,8 @@ function znews_post_media_payload_hash(
     string $title,
     string $text,
     string $mediaId,
-    string $contentType
+    string $contentType,
+    string $category = ''
 ): string {
     return hash('sha256', json_encode([
         'uid' => $uid,
@@ -112,6 +114,7 @@ function znews_post_media_payload_hash(
         'text' => $text,
         'media_id' => $mediaId,
         'content_type' => $contentType,
+        'category' => $category,
         'visibility' => 'PUBLIC',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 }
@@ -255,6 +258,8 @@ function znews_post_format_with_media(array $post, bool $owned = false, bool $ad
     $formatted['image_url'] = $mediaId !== ''
         ? znews_post_media_public_url($mediaId)
         : '';
+    $formatted['image_width'] = max(0, (int)($post['image_width'] ?? 0));
+    $formatted['image_height'] = max(0, (int)($post['image_height'] ?? 0));
     $formatted['media_duplicate_status'] = strtoupper(trim((string)(
         $post['media_duplicate_status'] ?? 'NONE'
     )));

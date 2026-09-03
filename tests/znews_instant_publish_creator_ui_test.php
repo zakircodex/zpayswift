@@ -95,6 +95,7 @@ $mediaPolicy = instant_read('api/znews/lib/media_policy.php');
 $webIndex = instant_read('znews/index.html');
 $webBootstrap = instant_read('znews/assets/znews-bootstrap.js');
 $webCreator = instant_read('znews/assets/znews-creator.js');
+$webApp = instant_read('znews/assets/znews.js');
 
 foreach ([$createService, $updateService, $policySource, $createEndpoint, $updateEndpoint, $mediaPolicy, $webCreator] as $source) {
     instant_expect(
@@ -119,13 +120,14 @@ instant_expect(str_contains($updateEndpoint, 'requires_review'), 'update endpoin
 
 instant_expect(str_contains($webIndex, 'Clean posts publish immediately'), 'web UI does not explain instant publishing');
 instant_expect(str_contains($webIndex, '>Post</button>'), 'compact web publish action label is missing');
-instant_expect(str_contains($webBootstrap, 'znews-creator.js?v=7'), 'web creator management module is not loaded by bootstrap');
+instant_expect(str_contains($webBootstrap, 'znews-creator.js?v=8'), 'web creator management module is not loaded by bootstrap');
 instant_expect(!str_contains($webIndex, 'Submit for review'), 'web UI still presents every post as pre-moderated');
 instant_expect(str_contains($webCreator, 'znews/posts/update.php'), 'web edit endpoint is missing');
 instant_expect(str_contains($webCreator, 'znews/posts/delete.php'), 'web delete endpoint is missing');
 instant_expect(str_contains($webCreator, 'expected_updated_at'), 'web edit/delete version protection is missing');
 instant_expect(str_contains($webCreator, 'published_immediately'), 'web creator UI ignores publication state');
-instant_expect(str_contains($webCreator, 'stopImmediatePropagation'), 'web creator handler does not prevent duplicate form submission');
+instant_expect(str_contains($webApp, "els.createPostForm.getAttribute('aria-busy') === 'true'"), 'web Create handler does not prevent duplicate form submission');
+instant_expect(str_contains($webCreator, "editForm.getAttribute('aria-busy') === 'true'"), 'web Edit handler does not prevent duplicate form submission');
 instant_expect(!preg_match('/(?:secret|private[_-]?key)\s*[:=]\s*[\'\"][^\'\"]{8,}/i', $webCreator), 'possible secret committed in creator browser module');
 
 $node = trim((string)shell_exec('command -v node 2>/dev/null'));

@@ -95,7 +95,10 @@ function znews_format_public_post(array $post): array
         'creator_photo_url' => trim((string)($post['creator_photo_url'] ?? '')),
         'title' => trim((string)($post['title'] ?? '')),
         'text' => (string)($post['text'] ?? ''),
+        'category' => strtoupper(trim((string)($post['category'] ?? ''))),
         'image_url' => trim((string)($post['image_url'] ?? '')),
+        'image_width' => max(0, (int)($post['image_width'] ?? 0)),
+        'image_height' => max(0, (int)($post['image_height'] ?? 0)),
         'content_type' => strtoupper(trim((string)($post['content_type'] ?? 'TEXT'))),
         'visibility' => 'PUBLIC',
         'status' => znews_normalize_status($post['status'] ?? 'REVIEW', 'REVIEW'),
@@ -176,7 +179,10 @@ function projection_post(string $postId, string $status = 'ACTIVE'): array
         'creator_photo_url' => 'https://cdn.example.test/avatar.jpg',
         'title' => 'Projection title',
         'text' => 'Projection body',
+        'category' => 'BD_NEWS',
         'image_url' => 'https://cdn.example.test/post.jpg',
+        'image_width' => 900,
+        'image_height' => 1600,
         'content_type' => 'IMAGE',
         'status' => $status,
         'visibility' => 'PUBLIC',
@@ -196,11 +202,17 @@ function projection_post(string $postId, string $status = 'ACTIVE'): array
 $post = projection_post('POST_A');
 $projection = znews_public_projection_for_post($post);
 projection_expect(is_array($projection) && znews_public_projection_is_complete($projection), 'Active post must produce a complete feed projection.');
+projection_expect(($projection['category'] ?? '') === 'BD_NEWS', 'Projection must retain the validated public category.');
+projection_expect(($projection['category_created_at'] ?? '') === znews_category_created_at('BD_NEWS', (int)$post['created_at']), 'Projection must maintain the bounded category index key.');
+projection_expect((int)($projection['image_width'] ?? 0) === 900 && (int)($projection['image_height'] ?? 0) === 1600, 'Projection must retain safe public image dimensions.');
 foreach (['email', 'wallet', 'moderation_note', 'image_media_id'] as $privateField) {
     projection_expect(!array_key_exists($privateField, $projection), "Projection leaked {$privateField}.");
 }
 $item = znews_public_projection_item((array)$projection);
 projection_expect(is_array($item) && ($item['title'] ?? '') === 'Projection title', 'Projection must render the canonical public title.');
+projection_expect(($item['category'] ?? '') === 'BD_NEWS', 'Public item must expose the safe category value.');
+projection_expect((int)($item['image_width'] ?? 0) === 900 && (int)($item['image_height'] ?? 0) === 1600, 'Public item must expose safe image dimensions for aspect-ratio reservation.');
+projection_expect(!array_key_exists('category_created_at', $item), 'Internal category index data leaked into the API item.');
 projection_expect(!array_key_exists('ranking_metrics', $item) && !array_key_exists('engagement_snapshot', $item), 'Internal projection metadata leaked into the API item.');
 
 $existing = (array)$projection;
@@ -214,9 +226,15 @@ $existing['engagement_snapshot'] = [
 ];
 $edited = $post;
 $edited['title'] = 'Edited title';
+$edited['category'] = 'MOBILE_PRICING';
+$edited['image_width'] = 1600;
+$edited['image_height'] = 900;
 $edited['updated_at']++;
 $refreshed = znews_public_projection_for_post($edited, $existing);
 projection_expect(($refreshed['title'] ?? '') === 'Edited title', 'Post edit must refresh public fields.');
+projection_expect(($refreshed['category'] ?? '') === 'MOBILE_PRICING', 'Post edit must refresh the public category.');
+projection_expect(($refreshed['category_created_at'] ?? '') === znews_category_created_at('MOBILE_PRICING', (int)$edited['created_at']), 'Post edit must refresh the category index key.');
+projection_expect((int)($refreshed['image_width'] ?? 0) === 1600 && (int)($refreshed['image_height'] ?? 0) === 900, 'Post edit must refresh public image dimensions.');
 projection_expect(($refreshed['ranking_metrics']['impressions'] ?? 0) === 8, 'Post edit must preserve ranking metrics.');
 projection_expect(($refreshed['engagement_snapshot']['like_count'] ?? 0) === 7, 'Post edit must preserve engagement snapshot.');
 $leafUpdates = znews_public_projection_updates_for_post($edited);

@@ -10,7 +10,9 @@
 
   const client = () => new window.ZNewsApiClient(config);
   const text = (value) => String(value ?? '');
-  let editPreviewUrl = '';
+  let currentImagePreviewUrl = '';
+  let replacementPreviewUrl = '';
+  let editLoadGeneration = 0;
 
   function safeUrl(value) {
     const raw = text(value).trim();
@@ -78,9 +80,13 @@
     return `znews-web-${prefix}-${random}`;
   }
 
-  async function uploadImage(api, file) {
+  async function uploadImage(api, file, onStatus = () => {}) {
+    const optimizer = window.ZNewsImageOptimizer
+      || await window.ZNEWS_IMAGE_OPTIMIZER_READY?.();
+    if (!optimizer?.optimize) throw new window.ZNewsApiError('Photo optimization is unavailable. Reload and try again.');
+    const optimized = await optimizer.optimize(file, onStatus);
     const body = new FormData();
-    body.append('image', file);
+    body.append('image', optimized.file);
     body.append('idempotency_key', idempotency('media'));
     const response = await api.request('znews/media/upload.php', {
       method: 'POST',
@@ -91,75 +97,6 @@
     if (!mediaId) throw new window.ZNewsApiError('Image upload did not return a media ID.');
     return mediaId;
   }
-
-  form.addEventListener('submit', async (event) => {
-    const api = client();
-    if (!api.isAuthenticated()) return;
-
-    event.preventDefault();
-    event.stopImmediatePropagation();
-
-    const submits = [...form.querySelectorAll('button[type="submit"]')];
-    const submit = submits[0];
-    const postTitle = text(document.querySelector('#postTitle')?.value).trim();
-    const postText = text(document.querySelector('#postText')?.value).trim();
-    const imageInput = document.querySelector('#postImage');
-    const file = imageInput?.files?.[0] || null;
-
-    if (!postTitle) return toast('Add a news headline.', 'error');
-    if (!postText && !file) return toast('Add post details or a photo.', 'error');
-    if (file && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-      return toast('Choose a JPEG, PNG or WebP photo.', 'error');
-    }
-    if (file && file.size > 5 * 1024 * 1024) return toast('Image must be 5 MB or smaller.', 'error');
-
-    submits.forEach((button) => setBusy(button, true, file ? 'Uploading…' : 'Publishing…'));
-    try {
-      let mediaId = '';
-      if (file) {
-        mediaId = await uploadImage(api, file);
-        submits.forEach((button) => { button.textContent = 'Publishing…'; });
-      }
-
-      const result = await api.request('znews/posts/create.php', {
-        method: 'POST',
-        authenticated: true,
-        body: {
-          title: postTitle,
-          text: postText,
-          media_id: mediaId,
-          idempotency_key: idempotency('post')
-        }
-      });
-
-      form.reset();
-      const preview = document.querySelector('#imagePreview');
-      if (preview) {
-        preview.hidden = true;
-        preview.textContent = '';
-      }
-      const counter = document.querySelector('#postTextCount');
-      if (counter) counter.textContent = '0 / 5000';
-      const titleCounter = document.querySelector('#postTitleCount');
-      if (titleCounter) titleCounter.textContent = '0 / 160';
-      document.querySelector('#postTitle')?.dispatchEvent(new Event('input'));
-      document.querySelector('#postText')?.dispatchEvent(new Event('input'));
-
-      toast(result.data?.published_immediately === true
-        ? 'Post published.'
-        : 'Post is being checked before it appears publicly.');
-
-      document.querySelector('[data-route="mine"]')?.click();
-    } catch (error) {
-      toast(errorMessage(error), 'error');
-    } finally {
-      submits.forEach((button) => setBusy(button, false));
-      const currentTitle = text(document.querySelector('#postTitle')?.value).trim();
-      const currentText = text(document.querySelector('#postText')?.value).trim();
-      const currentFile = document.querySelector('#postImage')?.files?.[0] || null;
-      submits.forEach((button) => { button.disabled = !currentTitle || (!currentText && !currentFile); });
-    }
-  }, true);
 
   async function postDetails(postId) {
     return client().request('znews/posts/details.php', {
@@ -190,6 +127,15 @@
           </div>
         </div>
         <div class="composer-writing-fields">
+          <div class="composer-field composer-category-field">
+            <label for="creatorEditCategory">Category</label>
+            <select id="creatorEditCategory" required>
+              <option value="">Choose a category</option>
+              <option value="INTERNATIONAL_NEWS">International news</option>
+              <option value="BD_NEWS">BD news</option>
+              <option value="MOBILE_PRICING">Mobile pricing</option>
+            </select>
+          </div>
           <div class="composer-field composer-title-field">
             <label for="creatorEditTitle">News headline</label>
             <input id="creatorEditTitle" type="text" maxlength="160" placeholder="Add a clear headline" required aria-describedby="creatorEditTitleCount">
@@ -224,7 +170,8 @@
       event.preventDefault();
       if (dialog.querySelector('#creatorEditForm')?.getAttribute('aria-busy') !== 'true') dialog.close();
     });
-    dialog.addEventListener('close', clearEditPreviewUrl);
+    dialog.addEventListener('close', () => resetEditor(dialog));
+    dialog.querySelector('#creatorEditCategory')?.addEventListener('change', () => syncEditor(dialog));
     dialog.querySelector('#creatorEditTitle')?.addEventListener('input', () => syncEditor(dialog));
     dialog.querySelector('#creatorEditText')?.addEventListener('input', () => syncEditor(dialog));
     dialog.querySelector('#creatorEditImage')?.addEventListener('change', () => {
@@ -235,10 +182,43 @@
     return dialog;
   }
 
-  function clearEditPreviewUrl() {
-    if (!editPreviewUrl) return;
-    URL.revokeObjectURL(editPreviewUrl);
-    editPreviewUrl = '';
+  function clearEditPreviewUrls() {
+    if (currentImagePreviewUrl) URL.revokeObjectURL(currentImagePreviewUrl);
+    if (replacementPreviewUrl) URL.revokeObjectURL(replacementPreviewUrl);
+    currentImagePreviewUrl = '';
+    replacementPreviewUrl = '';
+  }
+
+  function resetEditor(dialog) {
+    editLoadGeneration += 1;
+    clearEditPreviewUrls();
+    const editForm = dialog.querySelector('#creatorEditForm');
+    editForm?.reset();
+    editForm?.removeAttribute('aria-busy');
+    if (editForm) {
+      editForm.dataset.hasCurrentImage = 'false';
+      editForm.dataset.currentImageUrl = '';
+      editForm.dataset.postId = '';
+      editForm.dataset.updatedAt = '';
+    }
+    const preview = dialog.querySelector('#creatorEditPreview');
+    if (preview) {
+      preview.textContent = '';
+      preview.hidden = true;
+    }
+    const error = dialog.querySelector('#creatorEditError');
+    if (error) {
+      error.textContent = '';
+      error.hidden = true;
+    }
+    const photoLabel = dialog.querySelector('#creatorEditPhotoLabel');
+    if (photoLabel) photoLabel.textContent = 'Add photo';
+    const titleCount = dialog.querySelector('#creatorEditTitleCount');
+    if (titleCount) titleCount.textContent = '0 / 160';
+    const textCount = dialog.querySelector('#creatorEditTextCount');
+    if (textCount) textCount.textContent = '0 / 5000';
+    const creatorName = dialog.querySelector('#creatorEditName');
+    if (creatorName) creatorName.textContent = 'Z-Pay creator';
   }
 
   function renderEditPreview(dialog) {
@@ -247,14 +227,15 @@
     const input = dialog.querySelector('#creatorEditImage');
     const remove = dialog.querySelector('#creatorRemoveImage');
     const file = input.files?.[0] || null;
-    clearEditPreviewUrl();
+    if (replacementPreviewUrl) URL.revokeObjectURL(replacementPreviewUrl);
+    replacementPreviewUrl = '';
 
     let imageUrl = '';
     if (file) {
-      editPreviewUrl = URL.createObjectURL(file);
-      imageUrl = editPreviewUrl;
+      replacementPreviewUrl = URL.createObjectURL(file);
+      imageUrl = replacementPreviewUrl;
     } else if (!remove.checked) {
-      imageUrl = safeUrl(editForm.dataset.currentImageUrl);
+      imageUrl = currentImagePreviewUrl || safeUrl(editForm.dataset.currentImageUrl);
     }
 
     preview.textContent = '';
@@ -289,6 +270,7 @@
   function syncEditor(dialog) {
     const title = dialog.querySelector('#creatorEditTitle');
     const body = dialog.querySelector('#creatorEditText');
+    const category = dialog.querySelector('#creatorEditCategory');
     const formElement = dialog.querySelector('#creatorEditForm');
     const replacement = dialog.querySelector('#creatorEditImage').files?.[0] || null;
     const currentImageKept = formElement.dataset.hasCurrentImage === 'true'
@@ -297,7 +279,11 @@
     dialog.querySelector('#creatorEditTextCount').textContent = `${body.value.length} / 5000`;
     body.style.height = 'auto';
     body.style.height = `${Math.min(210, Math.max(112, body.scrollHeight))}px`;
-    const enabled = Boolean(title.value.trim() && (body.value.trim() || replacement || currentImageKept));
+    const enabled = Boolean(
+      title.value.trim()
+      && ['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(category.value)
+      && (body.value.trim() || replacement || currentImageKept)
+    );
     dialog.querySelectorAll('button[type="submit"]').forEach((button) => { button.disabled = !enabled; });
   }
 
@@ -377,6 +363,8 @@
 
   async function openEditor(postId) {
     const dialog = ensureEditor();
+    resetEditor(dialog);
+    const generation = ++editLoadGeneration;
     const editForm = dialog.querySelector('#creatorEditForm');
     const error = dialog.querySelector('#creatorEditError');
     error.hidden = true;
@@ -384,6 +372,7 @@
     showActionLoading('Loading post…', 'Preparing the editor.');
     try {
       const result = await postDetails(postId);
+      if (generation !== editLoadGeneration) return;
       const post = result.data?.post || {};
       const api = client();
       const creatorName = text(post.creator_name || api.profile.name || api.profile.NAME
@@ -392,6 +381,7 @@
         || api.profile.photo_url || api.profile.PROFILE);
       dialog.querySelector('#creatorEditTitle').value = text(post.title);
       dialog.querySelector('#creatorEditText').value = text(post.text);
+      dialog.querySelector('#creatorEditCategory').value = text(post.category).toUpperCase();
       dialog.querySelector('#creatorEditImage').value = '';
       dialog.querySelector('#creatorRemoveImage').checked = false;
       dialog.querySelector('#creatorEditName').textContent = creatorName;
@@ -404,7 +394,18 @@
       syncEditor(dialog);
       closeActionDialog();
       if (!dialog.open) dialog.showModal();
+      if (editForm.dataset.hasCurrentImage === 'true' && post.image_preview_url) {
+        try {
+          const blob = await api.authenticatedMedia(post.image_preview_url);
+          if (generation !== editLoadGeneration || !dialog.open) return;
+          currentImagePreviewUrl = URL.createObjectURL(blob);
+          renderEditPreview(dialog);
+        } catch (_error) {
+          // Active public posts can still use their public URL; edit remains usable without a preview.
+        }
+      }
     } catch (requestError) {
+      if (generation !== editLoadGeneration) return;
       closeActionDialog();
       toast(errorMessage(requestError), 'error');
     }
@@ -414,6 +415,7 @@
     const editForm = event.target.closest('#creatorEditForm');
     if (!editForm) return;
     event.preventDefault();
+    if (editForm.getAttribute('aria-busy') === 'true') return;
 
     const submits = [...editForm.querySelectorAll('button[type="submit"]')];
     const error = editForm.querySelector('#creatorEditError');
@@ -421,11 +423,17 @@
     const expectedUpdatedAt = Number(editForm.dataset.updatedAt || 0);
     const postTitle = text(editForm.querySelector('#creatorEditTitle').value).trim();
     const postText = text(editForm.querySelector('#creatorEditText').value).trim();
+    const category = text(editForm.querySelector('#creatorEditCategory').value).toUpperCase();
     const replacement = editForm.querySelector('#creatorEditImage').files?.[0] || null;
     const removeImage = editForm.querySelector('#creatorRemoveImage').checked;
 
     if (!postTitle) {
       error.textContent = 'Add a news headline.';
+      error.hidden = false;
+      return;
+    }
+    if (!['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(category)) {
+      error.textContent = 'Choose a post category.';
       error.hidden = false;
       return;
     }
@@ -439,8 +447,8 @@
       error.hidden = false;
       return;
     }
-    if (replacement && replacement.size > 5 * 1024 * 1024) {
-      error.textContent = 'Image must be 5 MB or smaller.';
+    if (replacement && replacement.size > 8 * 1024 * 1024) {
+      error.textContent = 'Image must be 8 MB or smaller.';
       error.hidden = false;
       return;
     }
@@ -454,13 +462,16 @@
         post_id: postId,
         title: postTitle,
         text: postText,
+        category,
         expected_updated_at: expectedUpdatedAt,
         idempotency_key: idempotency('post-edit')
       };
 
       if (replacement) {
-        body.media_id = await uploadImage(api, replacement);
-        submits.forEach((button) => { button.textContent = 'Saving…'; });
+        body.media_id = await uploadImage(api, replacement, (label) => {
+          submits.forEach((button) => { button.textContent = label; });
+        });
+        submits.forEach((button) => { button.textContent = 'Saving...'; });
       } else if (removeImage) {
         body.media_id = '';
       }
@@ -472,6 +483,7 @@
       });
 
       ensureEditor().close();
+      window.dispatchEvent(new CustomEvent('znews:creator-post-mutated', { detail: { postId, action: 'update' } }));
       toast(result.data?.published_immediately === true
         ? 'Post updated and published.'
         : 'Post update is being checked.');
@@ -501,6 +513,7 @@
           idempotency_key: idempotency('post-delete')
         }
       });
+      window.dispatchEvent(new CustomEvent('znews:creator-post-mutated', { detail: { postId, action: 'delete' } }));
       toast('Post deleted.');
       document.querySelector('[data-route="mine"]')?.click();
     } catch (error) {
@@ -545,9 +558,9 @@
     .creator-edit-dialog{width:min(100%,680px);max-width:680px;max-height:min(94dvh,920px);padding:0;border:0;border-radius:24px;background:#0a203b;color:#f3f7fd;overflow:hidden}
     .creator-edit-dialog::backdrop{background:rgba(0,10,24,.78);backdrop-filter:blur(6px)}
     .creator-edit-form{max-height:min(94dvh,920px);overflow-x:hidden;overflow-y:auto;padding-bottom:18px;overscroll-behavior:contain}
-    .creator-edit-form .image-preview{position:relative;width:min(calc(100% - 32px),420px);height:260px;margin:4px 16px 12px;overflow:hidden;border:1px solid rgba(142,177,226,.2);border-radius:13px;background:#020915}
-    .creator-edit-form .image-preview img{display:block;width:100%;height:100%;object-fit:contain}
-    .creator-edit-form .composer-image-backdrop{position:absolute;inset:-14px;width:calc(100% + 28px);height:calc(100% + 28px);object-fit:cover;filter:blur(18px) brightness(.52);transform:scale(1.05)}
+    .creator-edit-form .image-preview{position:relative;width:min(calc(100% - 32px),420px);margin:4px 16px 12px;overflow:hidden;border:1px solid rgba(142,177,226,.2);border-radius:13px;background:#020915}
+    .creator-edit-form .image-preview img{display:block;width:100%;height:auto;object-fit:contain}
+    .creator-edit-form .composer-image-backdrop{display:none}
     .creator-edit-form .composer-image-foreground{position:relative;z-index:1;object-fit:contain}
     .creator-edit-form .form-error{margin:8px 16px 0}
     .creator-edit-form[aria-busy="true"] [data-close]{opacity:.45;pointer-events:none}
@@ -568,7 +581,7 @@
       .creator-edit-topbar{position:fixed;inset:0 0 auto;z-index:90;width:100%;min-height:64px;background:rgba(8,25,47,.96);backdrop-filter:blur(16px)}
       .creator-edit-form .composer-author{padding:12px 22px 5px}
       .creator-edit-form .composer-writing-fields{padding:14px 22px}
-      .creator-edit-form .image-preview{width:calc(100% - 44px);height:clamp(220px,56vw,340px);margin:2px 22px 14px}
+      .creator-edit-form .image-preview{width:calc(100% - 44px);margin:2px 22px 14px}
       .creator-edit-form .composer-add-row{margin:0 22px;border-radius:18px}
       .creator-edit-form .composer-photo-action{border-radius:18px}
       .creator-edit-form .composer-review-note{margin:10px 24px 12px}

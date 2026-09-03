@@ -197,10 +197,11 @@
     }
 
     publicFeed(cursor = '', limit = this.config.feedPageSize, options = {}) {
+      const { category = '', ...requestOptions } = options;
       return this.request('znews/public/feed.php', {
-        params: { limit, cursor },
+        params: { limit, cursor, category },
         appKey: false,
-        ...options
+        ...requestOptions
       });
     }
 
@@ -231,7 +232,7 @@
       });
     }
 
-    createPost({ title = '', text = '', mediaId = '' }) {
+    createPost({ title = '', text = '', mediaId = '', category = '' }) {
       return this.request('znews/posts/create.php', {
         method: 'POST',
         authenticated: true,
@@ -239,6 +240,7 @@
           title,
           text,
           media_id: mediaId,
+          category,
           idempotency_key: this.idempotencyKey('post')
         }
       });
@@ -254,6 +256,43 @@
           idempotency_key: this.idempotencyKey(liked ? 'like' : 'unlike')
         }
       });
+    }
+
+    async authenticatedMedia(url, { timeoutMs = 30000 } = {}) {
+      const target = new URL(String(url || ''), window.location.origin);
+      if (target.origin !== window.location.origin || !target.pathname.startsWith('/api/znews/media/')) {
+        throw new ZNewsApiError('Image preview URL is invalid.', { code: 'ZNEWS_MEDIA_URL_INVALID' });
+      }
+      if (!this.sessionToken) {
+        throw new ZNewsApiError('Open Z Sky 24 from your Z-Pay dashboard.', {
+          code: 'ZNEWS_DASHBOARD_ACCESS_REQUIRED', status: 401
+        });
+      }
+      const headers = new Headers({ Accept: 'image/*' });
+      if (this.config.appKey) headers.set('X-APP-KEY', this.config.appKey);
+      headers.set('Authorization', `Bearer ${this.sessionToken}`);
+      headers.set('X-SESSION-TOKEN', this.sessionToken);
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), Math.max(1000, Number(timeoutMs) || 30000));
+      try {
+        const response = await fetch(target.toString(), {
+          method: 'GET', headers, credentials: 'same-origin', cache: 'default', signal: controller.signal
+        });
+        if (!response.ok || !String(response.headers.get('content-type') || '').startsWith('image/')) {
+          throw new ZNewsApiError('Current image preview could not be loaded.', {
+            code: 'ZNEWS_MEDIA_PREVIEW_FAILED', status: response.status
+          });
+        }
+        return response.blob();
+      } catch (error) {
+        if (error instanceof ZNewsApiError) throw error;
+        throw new ZNewsApiError(
+          error?.name === 'AbortError' ? 'Image preview timed out.' : 'Image preview could not be loaded.',
+          { code: error?.name === 'AbortError' ? 'REQUEST_TIMEOUT' : 'NETWORK_FAILURE' }
+        );
+      } finally {
+        window.clearTimeout(timeout);
+      }
     }
 
     likeStatus(postId, options = {}) {

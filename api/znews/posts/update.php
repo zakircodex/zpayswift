@@ -27,6 +27,10 @@ if ($expectedUpdatedAt === false || $expectedUpdatedAt <= 0) {
 
 $textProvided = array_key_exists('text', $body);
 $titleProvided = array_key_exists('title', $body);
+$categoryProvided = array_key_exists('category', $body);
+$category = $categoryProvided
+    ? znews_normalize_category($body['category'], false)
+    : '';
 $mediaProvided = array_key_exists('media_id', $body)
     || array_key_exists('image_media_id', $body);
 $requestedMediaId = $mediaProvided
@@ -48,6 +52,8 @@ $result = znews_update_post_with_media(
     $textProvided,
     $mediaProvided,
     $requestedMediaId,
+    $category,
+    $categoryProvided,
     (int)$expectedUpdatedAt,
     $idempotencyKey
 );

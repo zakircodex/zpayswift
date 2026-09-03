@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/media_optimizer.php';
+
 function znews_media_max_bytes(): int
 {
     $configured = defined('ZNEWS_MEDIA_MAX_BYTES') ? (int)constant('ZNEWS_MEDIA_MAX_BYTES') : 8 * 1024 * 1024;
@@ -73,7 +75,7 @@ function znews_media_storage_key(string $mediaId, string $extension, ?int $now =
 function znews_media_resolve_path(string $storageKey): string
 {
     $storageKey = trim(str_replace('\\', '/', $storageKey), '/');
-    if (preg_match('#^[0-9]{4}/(?:0[1-9]|1[0-2])/znews_[a-z0-9]+\.(?:jpg|png|webp)$#', $storageKey) !== 1) {
+    if (preg_match('#^[0-9]{4}/(?:0[1-9]|1[0-2])/znews_[a-z0-9]+(?:_web)?\.(?:jpg|png|webp)$#', $storageKey) !== 1) {
         throw new RuntimeException('Invalid Z Sky 24 media storage key.');
     }
 
@@ -519,6 +521,16 @@ function znews_media_create(array $auth, array $validated, string $idempotencyKe
     $nearDuplicates = znews_media_near_duplicates($dhash);
     $now = znews_now();
     $storageKey = znews_media_storage_key($mediaId, (string)$validated['extension'], $now);
+    $optimized = znews_media_optimize_file((string)$validated['tmp'], (string)$validated['mime']);
+    if (empty($optimized['ok'])) {
+        znews_media_mark_request_failed($requestClaim, $shaClaim, (string)($optimized['code'] ?? 'ZNEWS_MEDIA_OPTIMIZATION_FAILED'));
+        return [
+            'ok' => false,
+            'code' => (string)($optimized['code'] ?? 'ZNEWS_MEDIA_OPTIMIZATION_FAILED'),
+            'message' => 'Image could not be optimized safely.',
+            'http_status' => 503,
+        ];
+    }
 
     try {
         $targetDir = znews_media_ensure_storage_dir(dirname($storageKey));
@@ -529,13 +541,23 @@ function znews_media_create(array $auth, array $validated, string $idempotencyKe
     }
 
     if (!move_uploaded_file((string)$validated['tmp'], $target)) {
+        @unlink((string)($optimized['tmp'] ?? ''));
         znews_media_mark_request_failed($requestClaim, $shaClaim, 'ZNEWS_MEDIA_STORE_FAILED');
         return ['ok' => false, 'code' => 'ZNEWS_MEDIA_STORE_FAILED', 'message' => 'Image could not be stored.', 'http_status' => 503];
     }
     @chmod($target, 0640);
 
+    try {
+        $optimizedMetadata = znews_media_store_optimized($mediaId, $optimized, $now);
+    } catch (Throwable $e) {
+        @unlink($target);
+        @unlink((string)($optimized['tmp'] ?? ''));
+        znews_media_mark_request_failed($requestClaim, $shaClaim, 'ZNEWS_MEDIA_OPTIMIZATION_STORE_FAILED');
+        return ['ok' => false, 'code' => 'ZNEWS_MEDIA_OPTIMIZATION_STORE_FAILED', 'message' => 'Image could not be stored.', 'http_status' => 503];
+    }
+
     $row = [
-        'schema_version' => 1,
+        'schema_version' => 2,
         'media_id' => $mediaId,
         'owner_uid' => $uid,
         'status' => 'STAGED',
@@ -558,7 +580,7 @@ function znews_media_create(array $auth, array $validated, string $idempotencyKe
         'updated_at' => $now,
         'deleted_at' => 0,
         'source' => 'ZPAY_API',
-    ];
+    ] + $optimizedMetadata;
 
     $requestRow = (array)($requestClaim['claim'] ?? []);
     $requestRow['status'] = 'COMPLETED';
@@ -594,6 +616,10 @@ function znews_media_create(array $auth, array $validated, string $idempotencyKe
 
     if (!fb_patch('', $updates)) {
         @unlink($target);
+        try {
+            @unlink(znews_media_resolve_path((string)$optimizedMetadata['optimized_storage_key']));
+        } catch (Throwable $e) {
+        }
         znews_media_mark_request_failed($requestClaim, $shaClaim, 'ZNEWS_MEDIA_RECORD_FAILED');
         return ['ok' => false, 'code' => 'ZNEWS_MEDIA_RECORD_FAILED', 'message' => 'Image record could not be saved.', 'http_status' => 503];
     }
@@ -655,15 +681,19 @@ function znews_media_public_record(string $mediaId): array
     return $row;
 }
 
-function znews_media_stream(array $row, bool $publicCache): void
+function znews_media_stream(array $row, bool $publicCache, bool $preferOptimized = true): void
 {
-    $mime = strtolower(trim((string)($row['mime'] ?? '')));
+    $useOptimized = $preferOptimized
+        && trim((string)($row['optimized_storage_key'] ?? '')) !== '';
+    $mime = strtolower(trim((string)($useOptimized ? ($row['optimized_mime'] ?? '') : ($row['mime'] ?? ''))));
     if (!isset(znews_media_allowed_types()[$mime])) {
         api_response(false, 'ZNEWS_MEDIA_UNSUPPORTED', 'Image type is not supported.', [], 415);
     }
 
     try {
-        $path = znews_media_resolve_path((string)($row['storage_key'] ?? ''));
+        $path = znews_media_resolve_path((string)($useOptimized
+            ? ($row['optimized_storage_key'] ?? '')
+            : ($row['storage_key'] ?? '')));
     } catch (Throwable $e) {
         api_response(false, 'ZNEWS_MEDIA_NOT_FOUND', 'Image not found.', [], 404);
     }
@@ -672,14 +702,35 @@ function znews_media_stream(array $row, bool $publicCache): void
     }
 
     $size = filesize($path);
+    $sha256 = strtolower(trim((string)($useOptimized
+        ? ($row['optimized_sha256'] ?? '')
+        : ($row['sha256'] ?? ''))));
+    if (strlen($sha256) !== 64 || !ctype_xdigit($sha256)) {
+        $sha256 = (string)hash_file('sha256', $path);
+    }
+    $etag = '"' . $sha256 . '"';
+    $ifNoneMatch = trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
+    if ($publicCache && $ifNoneMatch !== '' && hash_equals($etag, $ifNoneMatch)) {
+        http_response_code(304);
+        header('ETag: ' . $etag);
+        header('Cache-Control: private, max-age=86400, must-revalidate');
+        header('Vary: Cookie, Authorization');
+        exit;
+    }
     header('Content-Type: ' . $mime);
     if ($size !== false) {
         header('Content-Length: ' . $size);
     }
-    header('Content-Disposition: inline; filename="znews-' . preg_replace('/[^A-Za-z0-9_-]+/', '_', (string)($row['media_id'] ?? 'image')) . '.' . (string)($row['extension'] ?? 'jpg') . '"');
+    $extension = (string)($useOptimized ? ($row['optimized_extension'] ?? 'webp') : ($row['extension'] ?? 'jpg'));
+    header('Content-Disposition: inline; filename="znews-' . preg_replace('/[^A-Za-z0-9_-]+/', '_', (string)($row['media_id'] ?? 'image')) . '.' . $extension . '"');
     header('X-Content-Type-Options: nosniff');
     header('Content-Security-Policy: default-src \'none\'; sandbox');
-    header($publicCache ? 'Cache-Control: public, max-age=3600, immutable' : 'Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
+    header('ETag: ' . $etag);
+    header($publicCache ? 'Cache-Control: private, max-age=86400, must-revalidate' : 'Cache-Control: private, no-store, no-cache, must-revalidate, max-age=0');
+    header('Vary: Cookie, Authorization');
+    while (ob_get_level() > 0) {
+        @ob_end_clean();
+    }
     readfile($path);
     exit;
 }

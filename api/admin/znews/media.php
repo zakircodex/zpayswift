@@ -32,4 +32,4 @@ if (!is_array($row)
     api_response(false, 'ZNEWS_MEDIA_NOT_FOUND', 'Image not found.', [], 404);
 }
 
-znews_media_stream($row, false);
+znews_media_stream($row, false, false);

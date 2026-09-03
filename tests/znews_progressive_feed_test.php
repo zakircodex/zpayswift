@@ -35,7 +35,7 @@ $endpoint = progressive_source('api/znews/public/feed.php');
 progressive_expect(str_contains($config, 'feedPageSize: 3'), 'Feed batch size is not three.');
 progressive_expect(str_contains($config, 'feedBufferLowWatermark: 1'), 'Feed low-watermark is missing.');
 progressive_expect(str_contains($api, 'publicFeed(cursor = \'\', limit = this.config.feedPageSize, options = {})'), 'API client does not accept a bounded feed batch and request signal.');
-progressive_expect(str_contains($api, 'params: { limit, cursor }'), 'Feed request does not send its bounded limit/cursor.');
+progressive_expect(str_contains($api, 'params: { limit, cursor, category }'), 'Feed request does not send its bounded limit/cursor/category.');
 progressive_expect(str_contains($scheduler, 'preemptBackground()'), 'Feed-priority background preemption is missing.');
 progressive_expect(str_contains($scheduler, 'this.queues = [[], [], [], []]'), 'Central priority queues are missing.');
 progressive_expect(str_contains($scheduler, 'this.active = null'), 'Single shared-origin active request guard is missing.');
@@ -64,7 +64,8 @@ progressive_expect(str_contains($feedUi, 'feed-impression:'), 'Feed impressions 
 progressive_expect(str_contains($app, 'loading="lazy" decoding="async"'), 'Lazy asynchronous media loading is missing.');
 progressive_expect(str_contains($app, 'fetchpriority="high"'), 'First-card media priority hint is missing.');
 progressive_expect(str_contains($app, "api.recordShare(postId, channel, { signal, idempotencyKey })"), 'Share analytics is not queued with stable idempotency.');
-progressive_expect(str_contains($css, '.feed-media-frame{aspect-ratio:16/9'), 'Feed media placeholder ratio is missing.');
+progressive_expect(str_contains($css, '.feed-media-frame.media-ratio-known'), 'Metadata-backed feed media ratio is missing.');
+progressive_expect(str_contains($css, '.feed-media-frame.media-ratio-unknown.media-pending{height:96px}'), 'Compact legacy-image placeholder is missing.');
 progressive_expect(str_contains($ranking, 'znews_feed_session_candidate_page_size'), 'Small responses can still shrink the ranking pool.');
 progressive_expect(str_contains($ranking, 'return max(12, min(30, $responsePageSize));'), 'Established 60-candidate Web ranking window is not preserved.');
 progressive_expect(str_contains($endpoint, "api_response(true, 'ZNEWS_PUBLIC_FEED_OK', 'Feed loaded.', \$page)"), 'Public feed response envelope changed.');

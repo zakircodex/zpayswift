@@ -81,7 +81,10 @@ function znews_format_post(array $post): array
         'creator_photo_url' => (string)($post['creator_photo_url'] ?? ''),
         'title' => (string)($post['title'] ?? ''),
         'text' => (string)($post['text'] ?? ''),
+        'category' => (string)($post['category'] ?? ''),
         'image_url' => (string)($post['image_url'] ?? ''),
+        'image_width' => max(0, (int)($post['image_width'] ?? 0)),
+        'image_height' => max(0, (int)($post['image_height'] ?? 0)),
         'content_type' => (string)($post['content_type'] ?? 'TEXT'),
         'status' => (string)($post['status'] ?? ''),
         'visibility' => (string)($post['visibility'] ?? ''),
@@ -115,17 +118,32 @@ function fb_get(string $path, array $query = []): mixed
         if ($query === []) {
             throw new RuntimeException('Unbounded public-feed root read detected.');
         }
-        perf_expect(($query['orderBy'] ?? '') === json_encode('created_at'), 'Public feed must be ordered by created_at.');
+        $orderBy = (string)($query['orderBy'] ?? '');
+        perf_expect(in_array($orderBy, [json_encode('created_at'), json_encode('category_created_at')], true), 'Public feed must use an approved index.');
         $limit = (int)($query['limitToLast'] ?? 0);
         perf_expect($limit > 0 && $limit <= 150, 'Candidate query must have a hard limit of at most 150.');
-        $endAt = (int)json_decode((string)($query['endAt'] ?? '0'), true);
-        $rows = array_filter(
-            $data['index'],
-            static fn(array $row): bool => (int)$row['created_at'] <= $endAt
-        );
-        uasort($rows, static function (array $a, array $b): int {
-            return ((int)$a['created_at']) <=> ((int)$b['created_at']);
-        });
+        if ($orderBy === json_encode('category_created_at')) {
+            $startAt = (string)json_decode((string)($query['startAt'] ?? '""'), true);
+            $endAt = (string)json_decode((string)($query['endAt'] ?? '""'), true);
+            perf_expect($startAt !== '' && $endAt !== '', 'Category query must have bounded string range endpoints.');
+            $rows = array_filter($data['index'], static function (array $row) use ($startAt, $endAt): bool {
+                $value = (string)($row['category_created_at'] ?? '');
+                return $value !== '' && strcmp($value, $startAt) >= 0 && strcmp($value, $endAt) <= 0;
+            });
+            uasort($rows, static fn(array $a, array $b): int => strcmp(
+                (string)($a['category_created_at'] ?? ''),
+                (string)($b['category_created_at'] ?? '')
+            ));
+        } else {
+            $endAt = (int)json_decode((string)($query['endAt'] ?? '0'), true);
+            $rows = array_filter(
+                $data['index'],
+                static fn(array $row): bool => (int)$row['created_at'] <= $endAt
+            );
+            uasort($rows, static function (array $a, array $b): int {
+                return ((int)$a['created_at']) <=> ((int)$b['created_at']);
+            });
+        }
         return array_slice($rows, -$limit, null, true);
     }
 
@@ -180,6 +198,12 @@ function perf_fixture(int $size): void
     for ($i = 1; $i <= $size; $i++) {
         $postId = 'ZNP' . str_pad((string)$i, 12, '0', STR_PAD_LEFT);
         $createdAt = $base + $i;
+        $category = match ($i % 4) {
+            1 => 'INTERNATIONAL_NEWS',
+            2 => 'BD_NEWS',
+            3 => 'MOBILE_PRICING',
+            default => '',
+        };
         $index[$postId] = [
             'post_id' => $postId,
             'creator_uid' => 'CREATOR_' . ($i % 25),
@@ -187,7 +211,11 @@ function perf_fixture(int $size): void
             'creator_photo_url' => 'https://cdn.example.test/avatar-' . ($i % 25) . '.jpg',
             'title' => 'Post ' . $i,
             'text' => 'Fixture post body.',
+            'category' => $category,
+            'category_created_at' => $category !== '' ? znews_category_created_at($category, $createdAt) : '',
             'image_url' => $i % 2 === 0 ? 'https://cdn.example.test/post-' . $i . '.jpg' : '',
+            'image_width' => $i % 2 === 0 ? 1200 : 0,
+            'image_height' => $i % 2 === 0 ? 800 : 0,
             'content_type' => $i % 2 === 0 ? 'IMAGE' : 'TEXT',
             'status' => $i === $size ? 'DELETED' : 'ACTIVE',
             'visibility' => 'PUBLIC',
@@ -217,7 +245,10 @@ function perf_fixture(int $size): void
             'creator_photo_url' => 'https://cdn.example.test/avatar-' . ($i % 25) . '.jpg',
             'title' => 'Post ' . $i,
             'text' => 'Fixture post body.',
+            'category' => $category,
             'image_url' => $i % 2 === 0 ? 'https://cdn.example.test/post-' . $i . '.jpg' : '',
+            'image_width' => $i % 2 === 0 ? 1200 : 0,
+            'image_height' => $i % 2 === 0 ? 800 : 0,
             'content_type' => $i % 2 === 0 ? 'IMAGE' : 'TEXT',
             'status' => $i === $size ? 'DELETED' : 'ACTIVE',
             'visibility' => 'PUBLIC',
@@ -294,6 +325,7 @@ function perf_read_count(string $prefix): int
 
 $firstPageReadCounts = [];
 $nextPageReadCounts = [];
+$categoryReadCounts = [];
 
 perf_expect(znews_feed_session_candidate_page_size(3) === 12, 'Three-item responses must preserve the established ranking pool size.');
 perf_expect(znews_feed_candidate_window(znews_feed_session_candidate_page_size(3)) === 60, 'Progressive Web feed must retain a 60-row candidate window.');
@@ -374,6 +406,17 @@ foreach ([100, 1000, 10000] as $fixtureSize) {
     perf_expect(perf_read_count('ZNEWS_FEED_EXPOSURE/') === 0, 'A next page must not rescan exposure counters.');
 
     $nextPageReadCounts[$fixtureSize] = count($GLOBALS['znewsPerfReads']);
+
+    perf_fixture($fixtureSize);
+    $categoryPage = znews_fair_feed_page(3, '', 'BD_NEWS');
+    perf_expect(count($categoryPage['items'] ?? []) === 3, "{$fixtureSize}-post category page must remain bounded and populated.");
+    foreach ((array)$categoryPage['items'] as $item) {
+        perf_expect(($item['category'] ?? '') === 'BD_NEWS', 'Category feed returned a post from another category.');
+    }
+    perf_expect(perf_read_count('ZNEWS_PUBLIC_FEED') === 1, 'Category feed must use one bounded projection query.');
+    perf_expect((string)($GLOBALS['znewsPerfReads'][0]['query']['orderBy'] ?? '') === json_encode('category_created_at'), 'Category feed must use the category_created_at index.');
+    perf_expect(perf_read_count('ZNEWS_POSTS/') === 0 && perf_read_count('ZNEWS_ENGAGEMENT/') === 0, 'Category feed restored render N+1 reads.');
+    $categoryReadCounts[$fixtureSize] = count($GLOBALS['znewsPerfReads']);
 }
 
 perf_fixture(100);
@@ -404,6 +447,26 @@ perf_expect(perf_read_count('ZNEWS_FEED_EXPOSURE/') === 0, 'Legacy fallback must
 
 perf_expect(count(array_unique(array_values($firstPageReadCounts))) === 1, 'First-page database work must not grow with dataset size.');
 perf_expect(count(array_unique(array_values($nextPageReadCounts))) === 1, 'Next-page database work must not grow with dataset size.');
+perf_expect(count(array_unique(array_values($categoryReadCounts))) === 1, 'Category-feed database work must not grow with dataset size.');
+
+perf_fixture(100);
+$legacyId = 'ZNP000000000100';
+$GLOBALS['znewsPerfData']['index'][$legacyId]['status'] = 'ACTIVE';
+$GLOBALS['znewsPerfData']['index'][$legacyId]['category'] = '';
+$GLOBALS['znewsPerfData']['index'][$legacyId]['category_created_at'] = '';
+$allCandidates = znews_feed_public_candidates(znews_now(), 'all-category-seed', 10);
+perf_expect(in_array($legacyId, array_column($allCandidates, 'post_id'), true), 'Legacy no-category post must remain in News feed all.');
+$filteredCandidates = znews_feed_public_candidates(znews_now(), 'filtered-seed', 10, $unusedProjection, 'BD_NEWS');
+perf_expect(!in_array($legacyId, array_column($filteredCandidates, 'post_id'), true), 'Legacy no-category post must not be guessed into an active category.');
+
+$filteredPage = znews_fair_feed_page(3, '', 'BD_NEWS');
+$cursorMismatchRejected = false;
+try {
+    znews_fair_feed_page(3, (string)$filteredPage['next_cursor'], 'MOBILE_PRICING');
+} catch (RuntimeException $error) {
+    $cursorMismatchRejected = str_contains($error->getMessage(), 'ZNEWS_FEED_CATEGORY_CURSOR_MISMATCH');
+}
+perf_expect($cursorMismatchRejected, 'A signed cursor must not cross category sessions.');
 
 $source = file_get_contents(dirname(__DIR__) . '/api/znews/lib/feed_ranking.php');
 perf_expect(is_string($source), 'Feed ranking source must be readable.');
@@ -411,6 +474,7 @@ foreach (['ZNEWS_PUBLIC_FEED', 'ZNEWS_POSTS', 'ZNEWS_ANALYTICS', 'ZNEWS_FEED_EXP
     perf_expect(!str_contains($source, "fb_get('{$root}')"), "Full {$root} read must not remain in feed ranking.");
 }
 perf_expect(str_contains($source, "'orderBy' => json_encode('created_at')"), 'The public-feed query must use the created_at index.');
+perf_expect(str_contains($source, "'orderBy' => json_encode('category_created_at')"), 'Category feed must use the category_created_at index.');
 perf_expect(str_contains($source, "'limitToLast' => znews_feed_candidate_window"), 'The candidate query must enforce its bounded window.');
 perf_expect(!str_contains($source, "fb_get('ZNEWS_ANALYTICS/' . \$postId)"), 'Per-candidate analytics reads must be removed.');
 perf_expect(!str_contains($source, 'fb_get(znews_feed_exposure_path($postId))'), 'Per-candidate exposure reads must be removed.');
@@ -418,4 +482,5 @@ perf_expect(!str_contains($source, 'fb_get(znews_feed_exposure_path($postId))'),
 $assertions = (int)($GLOBALS['znewsPerfAssertions'] ?? 0);
 echo "PASS: {$assertions} bounded Z Sky feed assertions; 100/1000/10000 first-page reads="
     . implode('/', array_values($firstPageReadCounts))
-    . '; next-page reads=' . implode('/', array_values($nextPageReadCounts)) . ".\n";
+    . '; next-page reads=' . implode('/', array_values($nextPageReadCounts))
+    . '; category reads=' . implode('/', array_values($categoryReadCounts)) . ".\n";

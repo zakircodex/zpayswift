@@ -3,7 +3,7 @@
     ".read": false,
     ".write": false,
     "ZNEWS_PUBLIC_FEED": {
-      ".indexOn": ["created_at"]
+      ".indexOn": ["created_at", "category_created_at"]
     },
     "ZNEWS_USER_POSTS": {
       "$uid": {
