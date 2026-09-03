@@ -45,10 +45,10 @@ foreach (['id="weeklyCurrentReview"', 'id="weeklyCurrentMetrics"', 'id="weeklyCu
 balance_policy_expect(str_contains($index, 'class="weekly-performance-compat" aria-hidden="true"'), 'Legacy compatibility content is not hidden.');
 balance_policy_expect(str_contains($config, "provider: 'NONE'"), 'Legacy ad provider remains active.');
 balance_policy_expect(str_contains($config, 'creatorBalanceEnabled: false'), 'Creator balance feature flag remains enabled.');
-balance_policy_expect(str_contains($bootstrap, 'znews.js?v=20'), 'Current feed application cache version is not active.');
+balance_policy_expect(str_contains($index, 'znews.js?v=21'), 'Current feed application cache version is not active.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    balance_policy_expect(str_contains($worker, 'znews.js?v=20'), 'A PWA shell is missing the current application asset.');
+    balance_policy_expect(str_contains($worker, 'znews.js?v=21'), 'A PWA shell is missing the current application asset.');
     balance_policy_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'A PWA shell may cache API responses.');
 }
 

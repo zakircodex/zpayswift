@@ -132,7 +132,7 @@
   });
 
   function syncAccessUi() {
-    const authenticated = api.isAuthenticated();
+    const authenticated = window.ZNewsAccess?.authenticated === true;
     form.hidden = !authenticated;
     form.setAttribute('aria-hidden', authenticated ? 'false' : 'true');
     if (guestCta) {

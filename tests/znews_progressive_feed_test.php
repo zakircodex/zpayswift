@@ -51,7 +51,7 @@ progressive_expect(str_contains($app, 'onPaginationError: () =>'), 'Pagination h
 progressive_expect(!str_contains($app, "else toast(errorMessage(error), 'error');\n    } finally {\n      state.feedLoading"), 'Automatic feed timeout still uses a global toast.');
 progressive_expect(str_contains($app, 'data-feed-retry'), 'Initial feed retry is missing.');
 progressive_expect(str_contains($app, 'feed-inline-retry'), 'Bottom pagination retry is missing.');
-progressive_expect(str_contains($app, "if (!api.isAuthenticated() || observedLikeCards.has(card)) return;"), 'Guest Like-status requests are not blocked.');
+progressive_expect(str_contains($app, "if (!hasVerifiedSession() || observedLikeCards.has(card)) return;"), 'Guest Like-status requests are not blocked.');
 progressive_expect(str_contains($app, "rootMargin: '320px 0px'"), 'Like status is not viewport-hydrated.');
 progressive_expect(str_contains($app, 'data-media-src='), 'Feed media is still started directly from src.');
 progressive_expect(str_contains($app, "rootMargin: '96px 0px'"), 'Feed media is not controlled by a near-viewport observer.');

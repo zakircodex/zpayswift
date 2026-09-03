@@ -138,6 +138,7 @@ $gateway = weekly_source('api/admin/zsky24_creator_admin.php');
 $adminJs = weekly_source('api/admin/assets/zsky24-admin.js');
 $adminCss = weekly_source('api/admin/assets/zsky24-admin.css');
 $index = weekly_source('znews/index.html');
+$bootstrap = weekly_source('znews/assets/znews-bootstrap.js');
 $weeklyJs = weekly_source('znews/assets/znews-weekly-review.js');
 $embeddedWorker = weekly_source('znews/sw.js');
 $standaloneWorker = weekly_source('znews/sw-root.js');
@@ -197,8 +198,8 @@ weekly_expect(str_contains($index, 'Z Sky 24 does not maintain a creator wallet'
 weekly_expect(!str_contains($index, '>Creator balance<'), 'Legacy creator balance label remains visible.');
 weekly_expect(!str_contains($index, 'Transfer to Z-Pay balance'), 'Legacy transfer action remains visible.');
 weekly_expect(!str_contains($index, '৳0.01–৳0.03'), 'Legacy per-ad credit promise remains visible.');
-weekly_expect(str_contains($index, 'znews-weekly-review.js?v=1'), 'Weekly creator report JavaScript is not loaded.');
-weekly_expect(str_contains($index, 'znews-weekly-review.css?v=1'), 'Weekly creator report stylesheet is not loaded.');
+weekly_expect(str_contains($bootstrap, 'znews-weekly-review.js?v=1'), 'Weekly creator report JavaScript is not loaded after creator authentication.');
+weekly_expect(str_contains($bootstrap, 'znews-weekly-review.css?v=1'), 'Weekly creator report stylesheet is not loaded after creator authentication.');
 
 weekly_expect(str_contains($weeklyJs, 'retiredBalanceSummary'), 'Legacy Z Sky balance request is not disabled.');
 weekly_expect(str_contains($weeklyJs, "znews/reviews/mine.php"), 'Creator weekly report endpoint is not wired.');
@@ -206,8 +207,8 @@ weekly_expect(str_contains($weeklyJs, 'Creator views excluded'), 'Creator exclus
 weekly_expect(str_contains($weeklyJs, 'No money or balance is calculated'), 'Creator UI does not explain the non-financial review.');
 
 foreach ([
-    [$embeddedWorker, 'zsky24-embedded-shell-v17'],
-    [$standaloneWorker, 'zsky24-standalone-shell-v17'],
+    [$embeddedWorker, 'zsky24-embedded-shell-v18'],
+    [$standaloneWorker, 'zsky24-standalone-shell-v18'],
 ] as [$worker, $cacheName]) {
     weekly_expect(str_contains($worker, $cacheName), "Weekly review service-worker generation is missing: {$cacheName}");
     weekly_expect(str_contains($worker, 'znews-weekly-review.js?v=1'), 'Weekly review JavaScript is missing from a service-worker shell.');

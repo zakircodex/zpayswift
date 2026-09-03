@@ -1,8 +1,11 @@
 (() => {
   'use strict';
 
+  if (window.ZNEWS_APP_INITIALIZED === true) return;
+  window.ZNEWS_APP_INITIALIZED = true;
+
   const config = window.ZNEWS_CONFIG;
-  const api = new window.ZNewsApiClient(config);
+  const api = window.ZNEWS_API_CLIENT || new window.ZNewsApiClient(config);
   const requestScheduler = window.ZNEWS_REQUEST_SCHEDULER;
   const requestPriority = window.ZNewsRequestScheduler?.PRIORITY || {
     FEED: 0, MEDIA: 1, LIKE: 2, ANALYTICS: 3
@@ -94,6 +97,14 @@
 
   function text(value) {
     return String(value ?? '');
+  }
+
+  function hasVerifiedSession() {
+    return window.ZNEWS_AUTH_VERIFIED === true && api.isAuthenticated();
+  }
+
+  function markBoot(name) {
+    window.ZNEWS_BOOTSTRAP?.mark?.(name);
   }
 
   function escapeHtml(value) {
@@ -192,7 +203,7 @@
   }
 
   function refreshSessionUi() {
-    const signedIn = api.isAuthenticated();
+    const signedIn = hasVerifiedSession();
     els.sessionButton.textContent = signedIn ? 'Sign out' : 'Sign in';
     const name = signedIn ? profileName() : 'Guest reader';
     els.sidebarName.textContent = name;
@@ -204,7 +215,7 @@
   }
 
   function requireSession() {
-    if (api.isAuthenticated()) return true;
+    if (hasVerifiedSession()) return true;
     openAuth();
     return false;
   }
@@ -295,6 +306,10 @@
 
   function finishAuth(sessionToken, profile) {
     api.setSession(sessionToken, profile || {});
+    window.ZNEWS_AUTH_VERIFIED = true;
+    window.dispatchEvent(new CustomEvent('znews:auth-ready', {
+      detail: { ready: true, authenticated: true, interactiveLogin: true }
+    }));
     refreshSessionUi();
     els.authDialog.close();
     toast('Signed in successfully.');
@@ -402,7 +417,7 @@
       ? `<span class="status-chip ${status === 'REVIEW' ? 'pending' : status === 'BLOCKED' ? 'blocked' : ''}">${escapeHtml(status)}${moderation ? ` • ${escapeHtml(moderation)}` : ''}</span>`
       : '';
     const liked = state.localLikes.has(id);
-    const creatorActions = api.isAuthenticated()
+    const creatorActions = hasVerifiedSession()
       ? `<button class="post-action ${liked ? 'active' : ''}" type="button" data-action="like">${liked ? '♥ Unlike' : '♡ Like'}</button>
           <button class="post-action" type="button" data-action="comment">◯ Comment</button>`
       : '';
@@ -445,6 +460,7 @@
       if (signal?.aborted) return onAbort();
       signal?.addEventListener('abort', onAbort, { once: true });
       probe.referrerPolicy = 'no-referrer';
+      markBoot('first_image_start');
       probe.src = url;
     });
   }
@@ -463,6 +479,7 @@
       controller.abort();
     }, FEED_MEDIA_TIMEOUT_MS);
     try {
+      markBoot('first_image_start');
       const response = await fetch(target.toString(), {
         credentials: 'same-origin',
         cache: 'default',
@@ -579,6 +596,27 @@
     });
   }
 
+  function syncPostCardAccess(root = document) {
+    const authenticated = hasVerifiedSession();
+    const cards = root?.matches?.('[data-post-id]') ? [root] : $$('[data-post-id]', root);
+    cards.forEach((card) => {
+      const actions = $('.post-actions', card);
+      if (!actions) return;
+      actions.querySelectorAll('[data-action="like"], [data-action="comment"]').forEach((button) => {
+        if (!authenticated) button.remove();
+      });
+      if (!authenticated || actions.querySelector('[data-action="like"]')) return;
+      const share = actions.querySelector('[data-action="share"]');
+      if (!share) return;
+      share.insertAdjacentHTML(
+        'beforebegin',
+        '<button class="post-action" type="button" data-action="like">♡ Like</button>'
+          + '<button class="post-action" type="button" data-action="comment">◯ Comment</button>'
+      );
+      observeLikeState(card, card.dataset.postId || '');
+    });
+  }
+
   function bindMediaFallback(card) {
     $$('img', card).forEach((image) => {
       if (image.dataset.mediaFallbackBound === 'true') return;
@@ -599,7 +637,7 @@
   }
 
   function observeLikeState(card, postId) {
-    if (!api.isAuthenticated() || observedLikeCards.has(card)) return;
+    if (!hasVerifiedSession() || observedLikeCards.has(card)) return;
     observedLikeCards.add(card);
     if (!('IntersectionObserver' in window)) {
       void hydrateLikeState(card, postId);
@@ -659,6 +697,13 @@
     const card = wrapper.firstElementChild;
     if (!card) return;
     els.feedList.appendChild(card);
+    if (index === 0) {
+      markBoot('first_card_dom_append');
+      window.dispatchEvent(new CustomEvent('znews:first-card', {
+        detail: { postId: text(post.post_id) }
+      }));
+      window.requestAnimationFrame(() => markBoot('first_text_paint'));
+    }
     if ((index + 1) % 4 === 0) {
       const ad = document.createElement('div');
       ad.className = 'ad-slot';
@@ -702,6 +747,9 @@
       els.feedList.innerHTML = '<div class="empty-state card"><strong>No public posts yet</strong>New approved stories will appear here.</div>';
     }
     window.dispatchEvent(new CustomEvent('znews:feed-progress', { detail: snapshot }));
+    if (!snapshot.loading && (snapshot.loaded || snapshot.error)) {
+      window.dispatchEvent(new CustomEvent('znews:feed-settled', { detail: snapshot }));
+    }
   }
 
   function progressiveFeedInstance() {
@@ -718,7 +766,12 @@
       fetchPage: async (cursor, limit) => {
         const result = await scheduleRequest(
           requestPriority.FEED,
-          ({ signal }) => api.publicFeed(cursor, limit, { signal }),
+          async ({ signal }) => {
+            if (!cursor) markBoot('feed_request_start');
+            const response = await api.publicFeed(cursor, limit, { signal });
+            if (!cursor) markBoot('feed_response');
+            return response;
+          },
           { key: `feed:${cursor || 'initial'}`, preemptible: false }
         );
         return result.data || {};
@@ -786,7 +839,7 @@
         await navigator.clipboard.writeText(url);
         toast('Post link copied.');
       }
-      if (api.isAuthenticated()) {
+      if (hasVerifiedSession()) {
         const idempotencyKey = api.idempotencyKey('share');
         void scheduleRequest(
           requestPriority.ANALYTICS,
@@ -1002,7 +1055,7 @@
   }
 
   async function loadMyPosts({ append = false } = {}) {
-    if (!api.isAuthenticated() || state.mineLoading) return;
+    if (!hasVerifiedSession() || state.mineLoading) return;
     state.mineLoading = true;
     if (!append) renderSkeletons(els.mineList, 2);
     setBusy(els.mineLoadMore, true, 'Loading…');
@@ -1060,7 +1113,7 @@
   }
 
   async function loadBalance() {
-    if (!api.isAuthenticated()) return;
+    if (!hasVerifiedSession()) return;
     els.balanceStatus.textContent = 'Loading balance…';
     els.ledgerList.innerHTML = '<div class="skeleton line"></div><div class="skeleton line"></div>';
     try {
@@ -1086,7 +1139,7 @@
   }
 
   async function loadMiniBalance() {
-    if (!api.isAuthenticated() || !els.miniBalance) return;
+    if (!hasVerifiedSession() || !els.miniBalance) return;
     els.miniBalance.textContent = 'Loading…';
     try {
       const summary = await api.balanceSummary();
@@ -1196,7 +1249,7 @@
       window.setTimeout(() => els.postImage.click(), 100);
     });
     els.sessionButton.addEventListener('click', () => {
-      if (!api.isAuthenticated()) return openAuth();
+      if (!hasVerifiedSession()) return openAuth();
       api.clearSession();
       state.balanceMicros = 0;
       els.balanceAmount.textContent = '৳0.00';
@@ -1240,6 +1293,11 @@
       feedMediaObjectUrls.clear();
       feedMediaCache.clear();
     });
+    window.addEventListener('znews:auth-ready', () => {
+      refreshSessionUi();
+      syncPostCardAccess();
+      if (hasVerifiedSession() && state.route !== 'balance') void loadMiniBalance();
+    });
     syncComposerState();
   }
 
@@ -1249,7 +1307,6 @@
     refreshSessionUi();
     bindEvents();
     window.ZNewsAds.mountAll();
-    if (api.isAuthenticated() && route.kind !== 'balance') await loadMiniBalance();
     if (route.kind !== 'policy') await loadFeed();
     if (route.kind === 'post') openPost(route.id, { syncHistory: false });
     if (route.kind === 'policy') routeTo('policy', { syncHistory: false });

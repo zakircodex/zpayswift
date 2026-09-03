@@ -6,7 +6,7 @@
   if (!config || !ApiClient) return;
 
   const api = new ApiClient(config);
-  const authenticated = api.isAuthenticated();
+  const authenticated = window.ZNEWS_AUTH_VERIFIED === true && api.isAuthenticated();
   const loginUrl = config.zpayLoginUrl;
 
   function goToLogin() {
