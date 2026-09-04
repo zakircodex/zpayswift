@@ -119,6 +119,21 @@
 
   const richText = window.ZNewsRichText;
   if (!richText) throw new Error('Z Sky rich-text module is unavailable.');
+  const uiFeedback = window.ZNewsUiFeedback || {
+    beginProgress: () => () => {},
+    setButtonLoading: (button, busy, label) => setBusy(button, busy, label)
+  };
+
+  function setCreateMutationState(busy, stage = 'posting') {
+    const labels = {
+      optimizing: ['OPTIMIZING…', 'Optimizing photo…'],
+      uploading: ['UPLOADING…', 'Uploading photo…'],
+      publishing: ['PUBLISHING…', 'Publishing…'],
+      posting: ['POSTING…', 'Posting…']
+    }[stage] || ['POSTING…', 'Posting…'];
+    uiFeedback.setButtonLoading(els.createPostSubmit, busy, labels[0], { spinner: false });
+    uiFeedback.setButtonLoading(els.createPostSubmitBottom, busy, labels[1], { spinner: true });
+  }
 
   function safeUrl(value) {
     const raw = text(value).trim();
@@ -1061,7 +1076,6 @@
     event.preventDefault();
     if (!requireSession()) return;
     if (els.createPostForm.getAttribute('aria-busy') === 'true') return;
-    const submits = $$('button[type="submit"]', els.createPostForm);
     const postTitle = els.postTitle.value.trim();
     const parsedText = richText.getEditorPayload(els.postText);
     const postText = parsedText.text;
@@ -1074,21 +1088,20 @@
     if (file && file.size > 8 * 1024 * 1024) return toast('Image must be 8 MB or smaller.', 'error');
 
     els.createPostForm.setAttribute('aria-busy', 'true');
-    submits.forEach((button) => setBusy(button, true, file ? 'Optimizing photo...' : 'Submitting...'));
+    const finishProgress = uiFeedback.beginProgress();
+    setCreateMutationState(true, file ? 'optimizing' : 'posting');
     try {
       let mediaId = '';
       if (file) {
         const optimizer = window.ZNewsImageOptimizer
           || await window.ZNEWS_IMAGE_OPTIMIZER_READY?.();
         if (!optimizer?.optimize) throw new window.ZNewsApiError('Photo optimization is unavailable. Reload and try again.');
-        const optimized = await optimizer.optimize(file, (label) => {
-          submits.forEach((button) => { button.textContent = label; });
-        });
-        submits.forEach((button) => { button.textContent = 'Uploading...'; });
+        const optimized = await optimizer.optimize(file, () => setCreateMutationState(true, 'optimizing'));
+        setCreateMutationState(true, 'uploading');
         const upload = await api.uploadMedia(optimized.file);
         mediaId = text(upload.data?.media?.media_id);
         if (!mediaId) throw new window.ZNewsApiError('Image upload did not return a media ID.');
-        submits.forEach((button) => { button.textContent = 'Submitting...'; });
+        setCreateMutationState(true, 'publishing');
       }
       await api.createPost({
         title: postTitle,
@@ -1111,8 +1124,9 @@
     } catch (error) {
       toast(errorMessage(error), 'error');
     } finally {
+      finishProgress();
       els.createPostForm.removeAttribute('aria-busy');
-      submits.forEach((button) => setBusy(button, false));
+      setCreateMutationState(false);
       syncComposerState();
     }
   }
@@ -1120,6 +1134,7 @@
   async function loadMyPosts({ append = false } = {}) {
     if (!hasVerifiedSession() || state.mineLoading) return;
     state.mineLoading = true;
+    const finishProgress = uiFeedback.beginProgress();
     let appendFailed = false;
     if (!append) renderSkeletons(els.mineList, 2);
     setBusy(els.mineLoadMore, true, 'Loading…');
@@ -1144,6 +1159,7 @@
         els.mineLoadMore.hidden = false;
       }
     } finally {
+      finishProgress();
       state.mineLoading = false;
       setBusy(els.mineLoadMore, false);
       els.mineLoadMore.textContent = appendFailed ? 'Retry' : 'Load more';

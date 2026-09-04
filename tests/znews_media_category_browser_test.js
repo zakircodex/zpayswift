@@ -106,6 +106,9 @@ async function main() {
       uploads: [],
       mode: 'ok',
       updateDelayMs: 0,
+      createDelayMs: 0,
+      uploadDelayMs: 0,
+      deleteDelayMs: 0,
       detailsDelayMs: 0,
       detailFailuresRemaining: 0,
       mineFailuresRemaining: 0,
@@ -177,6 +180,7 @@ async function main() {
         return new Response(svg, { status: 200, headers: { 'Content-Type': 'image/svg+xml' } });
       }
       if (url.pathname.endsWith('/znews/media/upload.php')) {
+        if (state.uploadDelayMs) await sleep(state.uploadDelayMs);
         if (state.mode === 'upload-fail') return fail('ZNEWS_MEDIA_UPLOAD_FAILED', 'Upload failed safely.', 503);
         const file = init.body?.get?.('image');
         state.uploads.push({ size: Number(file?.size || 0), type: String(file?.type || ''), name: String(file?.name || '') });
@@ -186,6 +190,7 @@ async function main() {
       if (url.pathname.endsWith('/znews/posts/create.php')) {
         const body = JSON.parse(String(init.body || '{}'));
         state.creates.push(body);
+        if (state.createDelayMs) await sleep(state.createDelayMs);
         return success('ZNEWS_POST_CREATED', { post: body, published_immediately: true });
       }
       if (url.pathname.endsWith('/znews/posts/update.php')) {
@@ -214,6 +219,7 @@ async function main() {
       }
       if (url.pathname.endsWith('/znews/posts/delete.php')) {
         const body = JSON.parse(String(init.body || '{}'));
+        if (state.deleteDelayMs) await sleep(state.deleteDelayMs);
         if (state.mode === 'delete-fail') return fail('ZNEWS_POST_DELETE_FAILED', 'Post could not be deleted.', 503);
         state.deletes.push(body);
         return success('ZNEWS_POST_DELETED');
@@ -323,17 +329,51 @@ async function main() {
       await page.locator('#creatorCardMenuDialog [data-menu-edit]').click();
       if (expectLoading) {
         await page.waitForSelector('#creatorActionDialog[open][data-mode="loading"]');
-        assert.match(await page.locator('#creatorActionDialog').textContent(), /Loading post.*Preparing the editor/is, 'Polished edit loading state is missing.');
+        assert.match(await page.locator('#creatorActionDialog').textContent(), /Loading post.*Preparing editor/is, 'Polished edit loading state is missing.');
+        const loadingAudit = await page.evaluate(() => ({
+          border: getComputedStyle(document.querySelector('#creatorActionDialog .creator-action-shell')).borderTopWidth,
+          progress: document.querySelector('#znewsTopProgress')?.classList.contains('active') === true,
+          spinner: !document.querySelector('#creatorActionDialog .creator-action-spinner')?.hidden
+        }));
+        assert.deepEqual(loadingAudit, { border: '0px', progress: true, spinner: true }, 'Edit loading does not use the shared borderless progress system.');
       }
       await page.waitForSelector('#creatorEditDialog[open]');
     };
 
     await page.locator('#mineList [data-post-id="POST_1"] [data-creator-menu]').click();
     assert.equal(await page.locator('#creatorCardMenuDialog[open]').count(), 1, 'Overflow did not open exactly one custom action menu.');
+    const menuAudit = await page.evaluate(() => {
+      const dialog = document.querySelector('#creatorCardMenuDialog');
+      const sheet = dialog.querySelector('.creator-card-menu-sheet');
+      const actions = [...dialog.querySelectorAll('.creator-card-menu-actions button')];
+      const sheetStyle = getComputedStyle(sheet);
+      const first = actions[0].getBoundingClientRect();
+      return {
+        openMenus: document.querySelectorAll('#creatorCardMenuDialog[open]').length,
+        role: dialog.getAttribute('role'),
+        fullRows: actions.every((button) => button.getBoundingClientRect().width >= first.width && button.getBoundingClientRect().height >= 48),
+        icons: dialog.querySelectorAll('.creator-card-menu-actions svg').length,
+        floatingClose: dialog.querySelectorAll('header [data-menu-close]').length,
+        borderWidth: sheetStyle.borderTopWidth,
+        nearBottom: Math.abs(window.innerHeight - dialog.getBoundingClientRect().bottom) < 2
+      };
+    });
+    assert.equal(menuAudit.openMenus, 1, 'Overflow did not keep exactly one action sheet open.');
+    assert.equal(menuAudit.role, 'dialog', 'Post options lacks dialog semantics.');
+    assert.equal(menuAudit.fullRows && menuAudit.icons === 2 && menuAudit.floatingClose === 0 && menuAudit.borderWidth === '0px', true, 'Post options lacks borderless full-width icon rows.');
+    assert.equal(menuAudit.nearBottom, true, 'Post options dialog is not anchored to the mobile viewport bottom.');
+    if (process.env.ZNEWS_UI_SCREENSHOT_DIR) {
+      fs.mkdirSync(process.env.ZNEWS_UI_SCREENSHOT_DIR, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.ZNEWS_UI_SCREENSHOT_DIR, 'post-options-390.png'), fullPage: true });
+    }
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('#creatorCardMenuDialog')?.open);
+    assert.equal(await page.evaluate(() => document.activeElement?.matches('#mineList [data-post-id="POST_1"] [data-creator-menu]')), true, 'Overflow menu did not return focus after Back/Escape.');
+    await page.locator('#mineList [data-post-id="POST_1"] [data-creator-menu]').click();
     await page.locator('#creatorCardMenuDialog').evaluate((dialog) => dialog.dispatchEvent(new MouseEvent('click', { bubbles: true })));
     await page.waitForFunction(() => !document.querySelector('#creatorCardMenuDialog')?.open);
     assert.equal(await page.evaluate(() => document.activeElement?.matches('#mineList [data-post-id="POST_1"] [data-creator-menu]')), true, 'Overflow menu did not return focus to its trigger.');
-    await page.evaluate(() => { window.__zskyMediaCategoryTest.detailsDelayMs = 120; });
+    await page.evaluate(() => { window.__zskyMediaCategoryTest.detailsDelayMs = 300; });
     await openEdit({ expectLoading: true });
     await page.evaluate(() => { window.__zskyMediaCategoryTest.detailsDelayMs = 0; });
     const initialEdit = await page.evaluate(() => ({
@@ -345,6 +385,9 @@ async function main() {
       savesDisabled: [...document.querySelectorAll('#creatorEditForm button[type="submit"]')].every((button) => button.disabled)
     }));
     assert.deepEqual(initialEdit, { title: 'Post title 1', text: 'Post body 1', category: 'INTERNATIONAL_NEWS', preview: true, previewImages: 1, savesDisabled: true }, 'Edit did not load current fields, exactly one image, or unchanged Save state.');
+    assert.equal(await page.locator('#creatorActionDialog[open]').count(), 0, 'Edit left a stale loading sheet open.');
+    await page.waitForTimeout(240);
+    assert.equal(await page.locator('#znewsTopProgress.active').count(), 0, 'Edit left the top progress indicator active.');
     if (process.env.ZNEWS_UI_SCREENSHOT_DIR) {
       fs.mkdirSync(process.env.ZNEWS_UI_SCREENSHOT_DIR, { recursive: true });
       await page.screenshot({ path: path.join(process.env.ZNEWS_UI_SCREENSHOT_DIR, 'edit-390.png'), fullPage: true });
@@ -444,9 +487,19 @@ async function main() {
       form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }));
       form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }));
     });
+    await page.waitForFunction(() => document.querySelector('#creatorEditSubmitTop')?.textContent === 'SAVING…');
+    const saveLoadingAudit = await page.evaluate(() => ({
+      top: document.querySelector('#creatorEditSubmitTop').textContent,
+      bottom: document.querySelector('#creatorEditSubmitBottom').textContent,
+      spinner: document.querySelector('#creatorEditSubmitBottom').classList.contains('znews-button-loading'),
+      bothDisabled: [...document.querySelectorAll('#creatorEditForm button[type="submit"]')].every((button) => button.disabled),
+      progress: document.querySelector('#znewsTopProgress')?.classList.contains('active') === true
+    }));
+    assert.deepEqual(saveLoadingAudit, { top: 'SAVING…', bottom: 'Saving…', spinner: true, bothDisabled: true, progress: true }, 'Top/bottom Edit save states are not synchronized.');
     await page.waitForFunction((expected) => window.__zskyMediaCategoryTest.updates.length === expected + 1, beforeDouble);
     assert.equal(await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length), beforeDouble + 1, 'Double submit produced duplicate updates.');
-    await page.waitForTimeout(300);
+    await page.waitForFunction(() => !document.querySelector('#znewsTopProgress')?.classList.contains('active'), null, { timeout: 1500 });
+    assert.equal(await page.locator('#znewsTopProgress.active').count(), 0, 'Save left the shared progress indicator active.');
 
     const openDelete = async () => {
       await page.locator('#mineList [data-post-id="POST_2"] [data-creator-menu]').click();
@@ -454,14 +507,32 @@ async function main() {
       await page.locator('#creatorCardMenuDialog [data-menu-delete]').click();
       await page.waitForSelector('#creatorActionDialog[open][data-mode="delete"]');
     };
-    await page.evaluate(() => { window.__zskyMediaCategoryTest.mode = 'delete-fail'; });
+    await page.evaluate(() => {
+      window.__zskyMediaCategoryTest.mode = 'delete-fail';
+      window.__zskyMediaCategoryTest.deleteDelayMs = 220;
+    });
     await openDelete();
-    const deleteButtonSizes = await page.locator('#creatorActionDialog .creator-action-buttons button').evaluateAll((buttons) => buttons.map((button) => Math.round(button.getBoundingClientRect().height)));
-    assert.deepEqual(deleteButtonSizes, [50, 50], 'Delete modal buttons are not equal height.');
+    await page.waitForTimeout(220);
+    const deleteButtonSizes = await page.locator('#creatorActionDialog .creator-action-buttons button').evaluateAll((buttons) => buttons.map((button) => ({
+      width: Math.round(button.getBoundingClientRect().width),
+      height: Math.round(button.getBoundingClientRect().height),
+      radius: getComputedStyle(button).borderRadius,
+      fontSize: getComputedStyle(button).fontSize
+    })));
+    assert.ok(deleteButtonSizes[0].height >= 48, 'Delete modal controls are shorter than the required touch target.');
+    assert.deepEqual(deleteButtonSizes[0], deleteButtonSizes[1], 'Delete modal buttons do not have equal dimensions and typography.');
     await page.locator('#creatorActionDialog [data-action-confirm]').evaluate((button) => {
       button.click();
       button.click();
     });
+    await page.waitForFunction(() => document.querySelector('#creatorActionDialog [data-action-confirm-label]')?.textContent === 'Deleting…');
+    const deletingAudit = await page.evaluate(() => ({
+      cancelDisabled: document.querySelector('#creatorActionDialog [data-action-cancel]').disabled,
+      deleteDisabled: document.querySelector('#creatorActionDialog [data-action-confirm]').disabled,
+      spinner: document.querySelector('#creatorActionDialog [data-action-confirm]').classList.contains('is-loading'),
+      progress: document.querySelector('#znewsTopProgress')?.classList.contains('active') === true
+    }));
+    assert.deepEqual(deletingAudit, { cancelDisabled: true, deleteDisabled: true, spinner: true, progress: true }, 'Delete loading state is incomplete.');
     await page.waitForSelector('#creatorActionError:not([hidden])');
     const failedDeleteAudit = await page.evaluate(() => ({
       requests: window.__zskyMediaCategoryTest.requests.filter((value) => value.includes('/posts/delete.php')).length,
@@ -471,7 +542,10 @@ async function main() {
     assert.deepEqual(failedDeleteAudit, { requests: 1, cardExists: true, confirmDisabled: false }, 'Delete failure did not recover safely or double-delete was not blocked.');
     await page.locator('#creatorActionDialog [data-action-cancel]').click();
 
-    await page.evaluate(() => { window.__zskyMediaCategoryTest.mode = 'ok'; });
+    await page.evaluate(() => {
+      window.__zskyMediaCategoryTest.mode = 'ok';
+      window.__zskyMediaCategoryTest.deleteDelayMs = 0;
+    });
     await openDelete();
     await page.locator('#creatorActionDialog [data-action-confirm]').click();
     await page.waitForFunction(() => window.__zskyMediaCategoryTest.deletes.length === 1);
@@ -490,6 +564,12 @@ async function main() {
       rich.toggleBold(textarea);
       rich.applyColor(textarea, 'red');
       const combined = rich.getEditorPayload(textarea);
+      const combinedPreview = {
+        styledText: document.querySelector('#createView .rich-editor-live-preview strong .znews-text-color-red')?.textContent || '',
+        boldState: document.querySelector('#postBoldButton').getAttribute('aria-pressed'),
+        colorLabel: document.querySelector('#postColorButton').getAttribute('aria-label'),
+        html: document.querySelector('#createView .rich-editor-live-preview')?.innerHTML || ''
+      };
       rich.toggleBold(textarea);
       const unbold = rich.getEditorPayload(textarea);
       rich.applyColor(textarea, 'green');
@@ -510,17 +590,51 @@ async function main() {
       textarea.setSelectionRange(emojiStart, emojiStart + '🎉'.length);
       rich.toggleBold(textarea);
       const emoji = rich.getEditorPayload(textarea);
+      rich.setEditorContent(textarea, 'Mixed text', [{ start: 0, end: 5, bold: true, color: 'green' }]);
+      textarea.setSelectionRange(0, 10);
+      rich.updateToolbar(textarea);
+      const mixed = {
+        bold: document.querySelector('#postBoldButton').getAttribute('aria-pressed'),
+        color: document.querySelector('#postColorButton').getAttribute('aria-label')
+      };
+      textarea.setSelectionRange(2, 2);
+      rich.updateToolbar(textarea);
+      const caret = {
+        bold: document.querySelector('#postBoldButton').getAttribute('aria-pressed'),
+        color: document.querySelector('#postColorButton').getAttribute('aria-label')
+      };
+      const finalText = 'Hi welcome to Malaysia';
+      rich.setEditorContent(textarea, finalText);
+      const malaysiaStart = finalText.indexOf('Malaysia');
+      textarea.setSelectionRange(malaysiaStart, finalText.length);
+      rich.toggleBold(textarea);
+      rich.applyColor(textarea, 'green');
+      const finalPayload = rich.getEditorPayload(textarea);
+      const livePreview = document.querySelector('#createView .rich-editor-live-preview').cloneNode(true);
+      livePreview.querySelector('.rich-editor-caret-space')?.remove();
+      const finalMatch = {
+        live: livePreview.innerHTML,
+        published: rich.formattedTextHtml(finalPayload.text, finalPayload.formattingRuns, finalPayload.boldRanges),
+        styledText: livePreview.querySelector('strong .znews-text-color-green')?.textContent || ''
+      };
       rich.setEditorContent(textarea, 'Legacy bold', [], [{ start: 7, end: 11 }]);
       const legacy = rich.getEditorPayload(textarea);
-      return { value: textarea.value, combined, unbold, recolored, sentence, partial, emoji, legacy };
+      return { value: textarea.value, combined, combinedPreview, unbold, recolored, sentence, partial, emoji, mixed, caret, finalMatch, legacy };
     });
     assert.equal(richEditorAudit.combined.text, 'বাংলা hello 🎉 রং', 'Bangla/emoji editor changed canonical text.');
     assert.deepEqual(richEditorAudit.combined.formattingRuns, [{ start: 6, end: 11, bold: true, color: 'red' }], 'Bold/color combination was not represented safely.');
+    assert.equal(richEditorAudit.combinedPreview.styledText, 'hello', `Selected text does not show immediate bold/color feedback (${richEditorAudit.combinedPreview.html}).`);
+    assert.equal(richEditorAudit.combinedPreview.boldState, 'true', 'Bold toolbar state did not activate for the selected text.');
+    assert.equal(richEditorAudit.combinedPreview.colorLabel, 'Text color: Red', 'Color toolbar state did not activate for the selected text.');
     assert.deepEqual(richEditorAudit.unbold.formattingRuns, [{ start: 6, end: 11, color: 'red' }], 'Bold toggle-off removed the wrong formatting.');
     assert.deepEqual(richEditorAudit.recolored.formattingRuns, [{ start: 6, end: 11, color: 'green' }], 'Text color change was not applied to the selected word.');
     assert.deepEqual(richEditorAudit.sentence.boldRanges, [{ start: 0, end: 21 }], 'A selected sentence was not made bold.');
     assert.deepEqual(richEditorAudit.partial.formattingRuns, [{ start: 1, end: 5, color: 'yellow' }], 'Partial text selection color was not preserved.');
     assert.deepEqual(richEditorAudit.emoji.boldRanges, [{ start: 2, end: 3 }], 'Emoji formatting did not use Unicode code-point ranges.');
+    assert.deepEqual(richEditorAudit.mixed, { bold: 'mixed', color: 'Text color: Mixed' }, 'Mixed formatting selection is not represented neutrally.');
+    assert.deepEqual(richEditorAudit.caret, { bold: 'true', color: 'Text color: Green' }, 'Caret inside formatted text does not restore toolbar state.');
+    assert.equal(richEditorAudit.finalMatch.live, richEditorAudit.finalMatch.published, 'Live editor formatting does not match the published renderer.');
+    assert.equal(richEditorAudit.finalMatch.styledText, 'Malaysia', 'Malaysia did not render bold and green in the live editor.');
     assert.deepEqual(richEditorAudit.legacy.boldRanges, [{ start: 7, end: 11 }], 'Legacy bold range was not preserved by the editor.');
     assert.equal(richEditorAudit.value, 'Legacy bold', 'Rich editor displayed formatting syntax.');
     await page.locator('#postCategoryButton').click();
@@ -557,6 +671,21 @@ async function main() {
       assert.deepEqual(composerLayout.toolbarTargets, [44, 44], `Formatting touch targets are too small at ${width}px.`);
       assert.ok(composerLayout.bottomHeight >= 48, `Sticky Post action is too short at ${width}px.`);
     }
+    await page.setViewportSize({ width: 390, height: 520 });
+    await page.locator('#postText').focus();
+    await page.locator('#postText').evaluate((element) => element.scrollIntoView({ block: 'center' }));
+    const keyboardViewportAudit = await page.evaluate(() => {
+      const toolbar = document.querySelector('#postFormatToolbar').getBoundingClientRect();
+      const bottom = document.querySelector('#createPostSubmitBottom').getBoundingClientRect();
+      const editor = document.querySelector('#postText').getBoundingClientRect();
+      return {
+        toolbarVisible: toolbar.top >= 0 && toolbar.bottom < window.innerHeight,
+        editorVisible: editor.top < bottom.top && editor.bottom > toolbar.bottom,
+        actionsSeparated: toolbar.bottom < bottom.top,
+        overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth
+      };
+    });
+    assert.deepEqual(keyboardViewportAudit, { toolbarVisible: true, editorVisible: true, actionsSeparated: true, overflow: false }, 'Compact keyboard viewport hides or overlaps the shared rich editor controls.');
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('#postTitle').fill('Created with category');
     await page.evaluate(() => window.ZNewsRichText.setEditorContent(document.querySelector('#postText'), 'Created middle bold text'));
@@ -568,20 +697,53 @@ async function main() {
     assert.equal(await page.locator('#postText').inputValue(), 'Created middle bold text', 'Bold toolbar exposed formatting markers in the editor.');
     await page.locator('#postColorButton').click();
     await page.locator('#postColorPalette [data-format-color="green"]').click();
+    const toolbarSelectionAudit = await page.evaluate(() => {
+      const textarea = document.querySelector('#postText');
+      const green = document.querySelector('#postColorPalette [data-format-color="green"]');
+      return {
+        start: textarea.selectionStart,
+        end: textarea.selectionEnd,
+        greenChecked: green.getAttribute('aria-checked'),
+        greenActive: green.classList.contains('active'),
+        circular: getComputedStyle(green.querySelector('.color-swatch')).borderRadius === '50%',
+        paletteClosed: document.querySelector('#postColorPalette').hidden
+      };
+    });
+    assert.deepEqual(toolbarSelectionAudit, { start: 8, end: 19, greenChecked: 'true', greenActive: true, circular: true, paletteClosed: true }, 'Color selection did not preserve text selection or update the active swatch.');
+    if (process.env.ZNEWS_UI_SCREENSHOT_DIR) {
+      await page.screenshot({ path: path.join(process.env.ZNEWS_UI_SCREENSHOT_DIR, 'rich-editor-390.png'), fullPage: true });
+    }
     assert.equal(await page.locator('#createPostSubmit').isEnabled(), true, 'Top Post action did not activate for valid content.');
     assert.equal(await page.locator('#createPostSubmitBottom').isEnabled(), true, 'Bottom Post action is not synchronized with top Post.');
     await page.locator('#postImage').setInputFiles({ name: 'create.png', mimeType: 'image/png', buffer: paddedPhoto });
+    await page.evaluate(() => {
+      window.__zskyMediaCategoryTest.uploadDelayMs = 250;
+      window.__zskyMediaCategoryTest.createDelayMs = 250;
+    });
     await page.locator('#createPostSubmit').click();
+    await page.waitForFunction(() => document.querySelector('#createPostSubmitBottom')?.textContent === 'Uploading photo…', null, { timeout: 10000 });
+    const uploadState = await page.evaluate(() => ({
+      top: document.querySelector('#createPostSubmit').textContent,
+      bottom: document.querySelector('#createPostSubmitBottom').textContent,
+      spinner: document.querySelector('#createPostSubmitBottom').classList.contains('znews-button-loading'),
+      progress: document.querySelector('#znewsTopProgress')?.classList.contains('active') === true
+    }));
+    assert.deepEqual(uploadState, { top: 'UPLOADING…', bottom: 'Uploading photo…', spinner: true, progress: true }, 'Create upload stage gives incomplete progress feedback.');
+    await page.waitForFunction(() => document.querySelector('#createPostSubmitBottom')?.textContent === 'Publishing…', null, { timeout: 10000 });
     await page.waitForFunction(() => window.__zskyMediaCategoryTest.creates.length === 1);
+    await page.waitForFunction(() => document.querySelector('#createPostForm')?.getAttribute('aria-busy') !== 'true');
+    await page.waitForFunction(() => !document.querySelector('#znewsTopProgress')?.classList.contains('active'), null, { timeout: 1500 });
     const createAudit = await page.evaluate(() => ({
       body: window.__zskyMediaCategoryTest.creates[0],
-      upload: window.__zskyMediaCategoryTest.uploads.at(-1)
+      upload: window.__zskyMediaCategoryTest.uploads.at(-1),
+      progressActive: document.querySelector('#znewsTopProgress')?.classList.contains('active') === true
     }));
     assert.equal(createAudit.body.category, 'MOBILE_PRICING', 'Create did not persist selected category.');
     assert.equal(createAudit.body.text, 'Created middle bold text', 'Create sent editor markers instead of canonical plain text.');
     assert.deepEqual(createAudit.body.bold_ranges, [{ start: 8, end: 19 }], 'Create did not send the selected middle bold range.');
     assert.deepEqual(createAudit.body.formatting_runs, [{ start: 8, end: 19, bold: true, color: 'green' }], 'Create did not send combined bold/color formatting.');
     assert.ok(createAudit.upload.size > 0 && createAudit.upload.size <= 700 * 1024, 'Create upload was not compressed below 700 KB.');
+    assert.equal(createAudit.progressActive, false, 'Create left the shared progress indicator active.');
 
     await page.evaluate(() => window.ZNEWS_IMAGE_OPTIMIZER_READY());
     const compressionSamples = await page.evaluate(async () => {

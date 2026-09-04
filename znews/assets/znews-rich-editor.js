@@ -18,6 +18,7 @@
   });
   const editorStates = new WeakMap();
   const pickerStates = new WeakMap();
+  const progressTokens = new Set();
 
   const text = (value) => String(value ?? '');
   const points = (value) => Array.from(text(value));
@@ -141,18 +142,22 @@
     ];
     state.text = textarea.value;
     updateToolbar(textarea);
+    renderEditorPreview(textarea);
   }
 
   function setEditorContent(textarea, content = '', formattingRuns = [], boldRanges = []) {
     if (!(textarea instanceof HTMLTextAreaElement)) return;
     const plain = text(content);
+    const current = editorStates.get(textarea);
     textarea.value = plain;
     editorStates.set(textarea, {
       text: plain,
       styles: stylesFor(plain, formattingRuns, boldRanges),
-      toolbar: editorStates.get(textarea)?.toolbar || null
+      toolbar: current?.toolbar || null,
+      preview: current?.preview || null
     });
     updateToolbar(textarea);
+    renderEditorPreview(textarea);
     textarea.dispatchEvent(new Event('znews:format-change', { bubbles: true }));
   }
 
@@ -194,6 +199,7 @@
     textarea.focus({ preventScroll: true });
     textarea.setSelectionRange(start, end);
     updateToolbar(textarea);
+    renderEditorPreview(textarea);
     textarea.dispatchEvent(new Event('znews:format-change', { bubbles: true }));
   }
 
@@ -213,13 +219,22 @@
   function selectedStyle(textarea) {
     const state = ensureState(textarea);
     const selection = selectionPoints(textarea);
-    const index = selection.start === selection.end ? Math.max(0, selection.start - 1) : selection.start;
     const selected = state.styles.slice(selection.start, selection.end);
+    if (!selected.length) {
+      const index = selection.start < state.styles.length
+        ? selection.start
+        : Math.max(0, state.styles.length - 1);
+      const caretStyle = state.styles[index] || { bold: false, color: 'default' };
+      return { bold: caretStyle.bold === true, boldMixed: false, color: caretStyle.color, colorMixed: false };
+    }
+    const allBold = selected.every((style) => style.bold === true);
+    const anyBold = selected.some((style) => style.bold === true);
+    const colors = new Set(selected.map((style) => style.color || 'default'));
     return {
-      bold: selected.length ? selected.every((style) => style.bold === true) : state.styles[index]?.bold === true,
-      color: selected.length && selected.every((style) => style.color === selected[0]?.color)
-        ? selected[0].color
-        : (state.styles[index]?.color || 'default')
+      bold: allBold,
+      boldMixed: anyBold && !allBold,
+      color: colors.size === 1 ? selected[0].color : 'default',
+      colorMixed: colors.size > 1
     };
   }
 
@@ -231,17 +246,49 @@
     const bold = toolbar.querySelector('[data-format-bold]');
     const color = toolbar.querySelector('[data-format-color-toggle]');
     bold?.classList.toggle('active', selected.bold);
-    bold?.setAttribute('aria-pressed', selected.bold ? 'true' : 'false');
+    bold?.classList.toggle('mixed', selected.boldMixed);
+    bold?.setAttribute('aria-pressed', selected.boldMixed ? 'mixed' : (selected.bold ? 'true' : 'false'));
     if (color) {
-      color.dataset.color = selected.color;
-      color.setAttribute('aria-label', `Text color: ${COLOR_LABELS[selected.color]}`);
-      color.querySelector('[data-color-name]')?.replaceChildren(document.createTextNode(COLOR_LABELS[selected.color]));
+      color.dataset.color = selected.colorMixed ? 'mixed' : selected.color;
+      color.classList.toggle('mixed', selected.colorMixed);
+      const colorLabel = selected.colorMixed ? 'Mixed' : COLOR_LABELS[selected.color];
+      color.setAttribute('aria-label', `Text color: ${colorLabel}`);
+      color.querySelector('[data-color-name]')?.replaceChildren(document.createTextNode(colorLabel));
     }
     toolbar.querySelectorAll('[data-format-color]').forEach((button) => {
-      const active = button.dataset.formatColor === selected.color;
+      const active = !selected.colorMixed && button.dataset.formatColor === selected.color;
       button.classList.toggle('active', active);
       button.setAttribute('aria-checked', active ? 'true' : 'false');
     });
+  }
+
+  function renderEditorPreview(textarea) {
+    const state = editorStates.get(textarea);
+    const preview = state?.preview;
+    if (!preview) return;
+    const value = textarea.value.replace(/\r\n?/g, '\n');
+    preview.innerHTML = value
+      ? `${formattedTextHtml(value, runsFromStyles(state.styles))}<span class="rich-editor-caret-space" aria-hidden="true">\u200b</span>`
+      : '';
+    preview.hidden = value === '';
+    preview.scrollTop = textarea.scrollTop;
+    preview.scrollLeft = textarea.scrollLeft;
+  }
+
+  function ensureVisualSurface(textarea) {
+    const state = ensureState(textarea);
+    if (state.preview?.isConnected) return state.preview;
+    const surface = document.createElement('div');
+    surface.className = 'rich-editor-surface';
+    const preview = document.createElement('div');
+    preview.className = 'rich-editor-live-preview';
+    preview.setAttribute('aria-hidden', 'true');
+    textarea.parentNode.insertBefore(surface, textarea);
+    surface.append(preview, textarea);
+    textarea.classList.add('rich-editor-input');
+    state.preview = preview;
+    renderEditorPreview(textarea);
+    return preview;
   }
 
   function closePalette(toolbar, { restore = false } = {}) {
@@ -257,6 +304,7 @@
     if (!(textarea instanceof HTMLTextAreaElement) || !(toolbar instanceof HTMLElement)) return;
     const state = ensureState(textarea);
     state.toolbar = toolbar;
+    ensureVisualSurface(textarea);
     toolbar.querySelectorAll('button').forEach((button) => {
       button.addEventListener('pointerdown', (event) => event.preventDefault());
     });
@@ -278,10 +326,12 @@
     });
     ['select', 'keyup', 'click', 'focus'].forEach((name) => textarea.addEventListener(name, () => updateToolbar(textarea)));
     textarea.addEventListener('input', () => reconcileInput(textarea));
+    textarea.addEventListener('scroll', () => renderEditorPreview(textarea), { passive: true });
     textarea.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closePalette(toolbar, { restore: true });
     });
     updateToolbar(textarea);
+    renderEditorPreview(textarea);
   }
 
   function formattedTextHtml(content, formattingRuns = [], boldRanges = []) {
@@ -358,6 +408,61 @@
     setCategory(input, input.value, { notify: false });
   }
 
+  function ensureTopProgress() {
+    let progress = document.querySelector('#znewsTopProgress');
+    if (progress) return progress;
+    progress = document.createElement('div');
+    progress.id = 'znewsTopProgress';
+    progress.className = 'znews-top-progress';
+    progress.setAttribute('role', 'progressbar');
+    progress.setAttribute('aria-label', 'Working');
+    progress.setAttribute('aria-valuemin', '0');
+    progress.setAttribute('aria-valuemax', '100');
+    progress.setAttribute('aria-valuetext', 'Working');
+    progress.innerHTML = '<span aria-hidden="true"></span>';
+    document.body.appendChild(progress);
+    return progress;
+  }
+
+  function beginProgress() {
+    const progress = ensureTopProgress();
+    const token = Symbol('znews-progress');
+    progressTokens.add(token);
+    progress.classList.remove('complete');
+    progress.classList.add('active');
+    return () => {
+      if (!progressTokens.delete(token) || progressTokens.size) return;
+      progress.classList.add('complete');
+      window.setTimeout(() => {
+        if (progressTokens.size) return;
+        progress.classList.remove('active', 'complete');
+      }, 220);
+    };
+  }
+
+  function setButtonLoading(button, busy, label, { spinner = true } = {}) {
+    if (!(button instanceof HTMLButtonElement)) return;
+    if (busy) {
+      if (button.dataset.znewsLoading !== 'true') {
+        button.dataset.znewsIdleLabel = button.textContent;
+        button.dataset.znewsWasDisabled = button.disabled ? 'true' : 'false';
+      }
+      button.dataset.znewsLoading = 'true';
+      button.textContent = label;
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      button.classList.toggle('znews-button-loading', spinner);
+      button.classList.toggle('znews-button-working', !spinner);
+      return;
+    }
+    button.textContent = button.dataset.znewsIdleLabel || button.textContent;
+    button.disabled = button.dataset.znewsWasDisabled === 'true';
+    button.removeAttribute('aria-busy');
+    button.classList.remove('znews-button-loading', 'znews-button-working');
+    delete button.dataset.znewsWasDisabled;
+    delete button.dataset.znewsLoading;
+  }
+
   document.addEventListener('pointerdown', (event) => {
     document.querySelectorAll('[data-format-palette]:not([hidden])').forEach((palette) => {
       const toolbar = palette.closest('.composer-format-toolbar');
@@ -378,4 +483,5 @@
     updateToolbar
   });
   window.ZNewsCategoryPicker = Object.freeze({ bind: bindCategoryPicker, set: setCategory, close: closeCategoryPicker });
+  window.ZNewsUiFeedback = Object.freeze({ beginProgress, setButtonLoading });
 })();

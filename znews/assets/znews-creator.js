@@ -15,6 +15,10 @@
     setEditorContent: (textarea, value) => { if (textarea) textarea.value = text(value); },
     bindToolbar: () => {}
   };
+  const uiFeedback = window.ZNewsUiFeedback || {
+    beginProgress: () => () => {},
+    setButtonLoading: (button, busy, label) => setBusy(button, busy, label)
+  };
   let currentImagePreviewUrl = '';
   let replacementPreviewUrl = '';
   let editLoadGeneration = 0;
@@ -127,7 +131,8 @@
     const optimizer = window.ZNewsImageOptimizer
       || await window.ZNEWS_IMAGE_OPTIMIZER_READY?.();
     if (!optimizer?.optimize) throw new window.ZNewsApiError('Photo optimization is unavailable. Reload and try again.');
-    const optimized = await optimizer.optimize(file, onStatus);
+    const optimized = await optimizer.optimize(file, (label) => onStatus('optimizing', label || 'Optimizing photo…'));
+    onStatus('uploading', 'Uploading photo…');
     const body = new FormData();
     body.append('image', optimized.file);
     body.append('idempotency_key', idempotency('media'));
@@ -139,6 +144,19 @@
     const mediaId = text(response.data?.media?.media_id).trim();
     if (!mediaId) throw new window.ZNewsApiError('Image upload did not return a media ID.');
     return mediaId;
+  }
+
+  function setEditMutationState(dialog, busy, stage = 'saving') {
+    const top = dialog.querySelector('#creatorEditSubmitTop');
+    const bottom = dialog.querySelector('#creatorEditSubmitBottom');
+    const labels = {
+      optimizing: ['OPTIMIZING…', 'Optimizing photo…'],
+      uploading: ['UPLOADING…', 'Uploading photo…'],
+      publishing: ['SAVING…', 'Saving…'],
+      saving: ['SAVING…', 'Saving…']
+    }[stage] || ['SAVING…', 'Saving…'];
+    uiFeedback.setButtonLoading(top, busy, labels[0], { spinner: false });
+    uiFeedback.setButtonLoading(bottom, busy, labels[1], { spinner: true });
   }
 
   async function postDetails(postId) {
@@ -393,12 +411,12 @@
     actionCleanup = null;
   }
 
-  function showActionLoading(title, message) {
+  function showActionLoading(title, message, returnFocus = null) {
     const dialog = ensureActionDialog();
     const confirm = dialog.querySelector('[data-action-confirm]');
     const cancel = dialog.querySelector('[data-action-cancel]');
     clearActionHandlers();
-    actionReturnFocus = null;
+    actionReturnFocus = returnFocus;
     dialog.dataset.mode = 'loading';
     dialog.querySelector('#creatorActionTitle').textContent = title;
     dialog.querySelector('#creatorActionMessage').textContent = message;
@@ -445,6 +463,9 @@
     const onCancel = () => closeActionDialog();
     const onRetry = () => {
       clearActionHandlers();
+      if (dialog.open) dialog.close();
+      dialog.removeAttribute('aria-busy');
+      actionReturnFocus = null;
       retry();
     };
     cancel.addEventListener('click', onCancel);
@@ -466,7 +487,12 @@
     const error = dialog.querySelector('#creatorEditError');
     error.hidden = true;
 
-    showActionLoading('Loading post…', 'Preparing the editor.');
+    const finishProgress = uiFeedback.beginProgress();
+    let loadingVisible = false;
+    const loadingTimer = window.setTimeout(() => {
+      loadingVisible = true;
+      showActionLoading('Loading post…', 'Preparing editor', returnFocus);
+    }, 180);
     try {
       const result = await postDetails(postId);
       if (generation !== editLoadGeneration) return;
@@ -499,7 +525,8 @@
       renderEditPreview(dialog);
       editForm.dataset.initialState = editorSnapshot(dialog);
       syncEditor(dialog);
-      closeActionDialog();
+      window.clearTimeout(loadingTimer);
+      if (loadingVisible) closeActionDialog();
       if (!dialog.open) dialog.showModal();
       editOpening = false;
       if (editForm.dataset.hasCurrentImage === 'true' && post.image_preview_url) {
@@ -514,8 +541,12 @@
       }
     } catch (requestError) {
       if (generation !== editLoadGeneration) return;
+      window.clearTimeout(loadingTimer);
       editOpening = false;
       showActionError(errorMessage(requestError), () => openEditor(postId, returnFocus), returnFocus);
+    } finally {
+      window.clearTimeout(loadingTimer);
+      finishProgress();
     }
   }
 
@@ -525,7 +556,6 @@
     event.preventDefault();
     if (editForm.getAttribute('aria-busy') === 'true') return;
 
-    const submits = [...editForm.querySelectorAll('button[type="submit"]')];
     const error = editForm.querySelector('#creatorEditError');
     const postId = text(editForm.dataset.postId);
     const expectedUpdatedAt = Number(editForm.dataset.updatedAt || 0);
@@ -564,7 +594,8 @@
 
     error.hidden = true;
     editForm.setAttribute('aria-busy', 'true');
-    submits.forEach((button) => setBusy(button, true, replacement ? 'Uploading…' : 'Saving…'));
+    const finishProgress = uiFeedback.beginProgress();
+    setEditMutationState(ensureEditor(), true, replacement ? 'optimizing' : 'saving');
     try {
       const api = client();
       const body = {
@@ -579,10 +610,10 @@
       };
 
       if (replacement) {
-        body.media_id = await uploadImage(api, replacement, (label) => {
-          submits.forEach((button) => { button.textContent = label; });
+        body.media_id = await uploadImage(api, replacement, (stage) => {
+          setEditMutationState(ensureEditor(), true, stage);
         });
-        submits.forEach((button) => { button.textContent = 'Saving...'; });
+        setEditMutationState(ensureEditor(), true, 'publishing');
       } else if (removeImage) {
         body.media_id = '';
       }
@@ -595,16 +626,15 @@
 
       ensureEditor().close();
       window.dispatchEvent(new CustomEvent('znews:creator-post-mutated', { detail: { postId, action: 'update' } }));
-      toast(result.data?.published_immediately === true
-        ? 'Post updated and published.'
-        : 'Post update is being checked.');
+      toast(result.data?.published_immediately === true ? 'Saved' : 'Saved and sent for review.');
       document.querySelector('[data-route="mine"]')?.click();
     } catch (requestError) {
       error.textContent = errorMessage(requestError);
       error.hidden = false;
     } finally {
+      finishProgress();
       editForm.removeAttribute('aria-busy');
-      submits.forEach((button) => setBusy(button, false));
+      setEditMutationState(ensureEditor(), false);
       syncEditor(ensureEditor());
     }
   });
@@ -645,6 +675,7 @@
       confirm.classList.add('is-loading');
       confirm.querySelector('[data-action-confirm-label]').textContent = 'Deleting…';
       error.hidden = true;
+      const finishProgress = uiFeedback.beginProgress();
       try {
         const details = await postDetails(postId);
         const post = details.data?.post || {};
@@ -666,7 +697,7 @@
           }
         }, 180);
         window.dispatchEvent(new CustomEvent('znews:creator-post-mutated', { detail: { postId, action: 'delete' } }));
-        toast('Post deleted.');
+        toast('Post deleted');
       } catch (requestError) {
         busy = false;
         dialog.removeAttribute('aria-busy');
@@ -676,6 +707,8 @@
         confirm.querySelector('[data-action-confirm-label]').textContent = 'Delete';
         error.textContent = errorMessage(requestError);
         error.hidden = false;
+      } finally {
+        finishProgress();
       }
     };
     cancel.addEventListener('click', onCancel);
@@ -692,12 +725,17 @@
     dialog = document.createElement('dialog');
     dialog.id = 'creatorCardMenuDialog';
     dialog.className = 'creator-card-menu-dialog';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
     dialog.setAttribute('aria-labelledby', 'creatorCardMenuTitle');
     dialog.innerHTML = `
       <div class="creator-card-menu-sheet">
-        <header><h2 id="creatorCardMenuTitle">Post options</h2><button type="button" data-menu-close aria-label="Close post options">×</button></header>
-        <button type="button" data-menu-edit>Edit post</button>
-        <button class="danger" type="button" data-menu-delete>Delete post</button>
+        <header><h2 id="creatorCardMenuTitle">Post options</h2></header>
+        <div class="creator-card-menu-actions" role="menu" aria-labelledby="creatorCardMenuTitle">
+          <button type="button" role="menuitem" data-menu-edit><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 16.5V20h3.5L18.8 8.7l-3.5-3.5L4 16.5Zm16.5-10.3a1 1 0 0 0 0-1.4l-1.3-1.3a1 1 0 0 0-1.4 0l-1.5 1.5 3.5 3.5 1.7-1.7Z"/></svg><span>Edit post</span></button>
+          <button class="danger" type="button" role="menuitem" data-menu-delete><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 20a2 2 0 0 1-2-2V7h14v11a2 2 0 0 1-2 2H7Zm1-3h2V10H8v7Zm4 0h2V10h-2v7Zm4 0h1V10h-1v7ZM8 5l1-2h6l1 2h4v2H4V5h4Z"/></svg><span>Delete post</span></button>
+        </div>
+        <button class="creator-card-menu-cancel" type="button" data-menu-close>Cancel</button>
       </div>`;
     document.body.appendChild(dialog);
     const close = ({ restore = true } = {}) => {
@@ -707,7 +745,7 @@
       dialog._trigger = null;
       if (restore && trigger?.isConnected) trigger.focus();
     };
-    dialog.querySelector('[data-menu-close]').addEventListener('click', () => close());
+    dialog.querySelectorAll('[data-menu-close]').forEach((button) => button.addEventListener('click', () => close()));
     dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
     dialog.addEventListener('click', (event) => { if (event.target === dialog) close(); });
     dialog._closeMenu = close;
@@ -745,7 +783,7 @@
       trigger.type = 'button';
       trigger.dataset.creatorMenu = '';
       trigger.setAttribute('aria-label', 'Post options');
-      trigger.setAttribute('aria-haspopup', 'dialog');
+      trigger.setAttribute('aria-haspopup', 'menu');
       trigger.setAttribute('aria-expanded', 'false');
       trigger.setAttribute('aria-controls', 'creatorCardMenuDialog');
       trigger.textContent = '⋮';
@@ -763,18 +801,22 @@
 
   const style = document.createElement('style');
   style.textContent = `
-    .creator-overflow-button{width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center;padding:0;border:0;border-radius:12px;background:transparent;color:#cbd9ea;font-size:27px;line-height:1;cursor:pointer}
+    .creator-overflow-button{width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center;margin-left:auto;padding:0;border:0;border-radius:12px;background:transparent;color:#cbd9ea;font-size:27px;line-height:1;cursor:pointer;touch-action:manipulation}
     .creator-overflow-button:hover,.creator-overflow-button:focus-visible{background:rgba(255,255,255,.07);color:#fff;outline:2px solid rgba(97,226,156,.52);outline-offset:1px}
+    .creator-overflow-button:active{transform:scale(.92);background:rgba(101,224,159,.12)}
     .creator-card-menu-dialog{width:min(92vw,360px);padding:0;border:0;background:transparent;color:#f4f8ff}
     .creator-card-menu-dialog::backdrop{background:rgba(0,8,20,.68);backdrop-filter:blur(5px)}
-    .creator-card-menu-sheet{display:grid;gap:7px;padding:14px;border:1px solid rgba(142,177,226,.2);border-radius:16px;background:#0a203a;box-shadow:0 24px 70px rgba(0,0,0,.46)}
-    .creator-card-menu-sheet header{display:flex;align-items:center;justify-content:space-between;padding:3px 4px 8px;border-bottom:1px solid rgba(142,177,226,.14)}
-    .creator-card-menu-sheet h2{margin:0;font-size:15px}
-    .creator-card-menu-sheet header button{width:40px;height:40px;padding:0;border:0;border-radius:10px;background:transparent;color:#b9c8db;font-size:24px;cursor:pointer}
-    .creator-card-menu-sheet>button{min-height:48px;padding:0 14px;border:1px solid transparent;border-radius:11px;background:rgba(255,255,255,.045);color:#eaf2fc;text-align:left;font:inherit;font-size:14px;font-weight:800;cursor:pointer}
-    .creator-card-menu-sheet>button:hover,.creator-card-menu-sheet>button:focus-visible{border-color:rgba(91,225,151,.35);background:rgba(91,225,151,.09);outline:none}
-    .creator-card-menu-sheet>button.danger{color:#ffadb7;background:rgba(173,45,66,.12)}
-    .creator-card-menu-sheet>button.danger:hover,.creator-card-menu-sheet>button.danger:focus-visible{border-color:rgba(255,102,122,.38);background:rgba(173,45,66,.22)}
+    .creator-card-menu-sheet{display:grid;gap:8px;padding:18px;border:0;border-radius:18px;background:rgba(8,29,53,.97);box-shadow:0 26px 76px rgba(0,0,0,.52);backdrop-filter:blur(22px);animation:creator-sheet-in .18s ease-out}
+    .creator-card-menu-sheet header{padding:2px 4px 10px;border-bottom:1px solid rgba(142,177,226,.12)}
+    .creator-card-menu-sheet h2{margin:0;font-size:16px;letter-spacing:0}
+    .creator-card-menu-actions{display:grid;gap:4px}
+    .creator-card-menu-actions button,.creator-card-menu-cancel{width:100%;min-height:54px;display:flex;align-items:center;gap:13px;padding:0 14px;border:0;border-radius:12px;background:transparent;color:#eaf2fc;text-align:left;font:inherit;font-size:15px;font-weight:800;cursor:pointer;touch-action:manipulation}
+    .creator-card-menu-actions button svg{width:21px;height:21px;flex:0 0 21px;fill:currentColor}
+    .creator-card-menu-actions button:hover,.creator-card-menu-actions button:focus-visible,.creator-card-menu-cancel:hover,.creator-card-menu-cancel:focus-visible{background:rgba(91,225,151,.09);outline:2px solid rgba(91,225,151,.34);outline-offset:-2px}
+    .creator-card-menu-actions button:active,.creator-card-menu-cancel:active{transform:scale(.985);background:rgba(91,225,151,.14)}
+    .creator-card-menu-actions button.danger{color:#ff8999}
+    .creator-card-menu-actions button.danger:hover,.creator-card-menu-actions button.danger:focus-visible{background:rgba(173,45,66,.18);outline-color:rgba(255,102,122,.32)}
+    .creator-card-menu-cancel{justify-content:center;border-top:1px solid rgba(142,177,226,.12);border-radius:0;color:#aebfd6;text-align:center}
     .creator-edit-dialog{width:min(100%,680px);max-width:680px;max-height:min(94dvh,920px);padding:0;border:0;border-radius:20px;background:#0a203b;color:#f3f7fd;overflow:hidden}
     .creator-edit-dialog::backdrop{background:rgba(0,10,24,.78);backdrop-filter:blur(6px)}
     .creator-edit-form{max-height:min(94dvh,920px);overflow-x:hidden;overflow-y:auto;padding-bottom:18px;overscroll-behavior:contain}
@@ -785,19 +827,20 @@
     .creator-edit-form[aria-busy="true"] [data-close]{opacity:.45;pointer-events:none}
     .creator-action-dialog{width:min(90vw,390px);padding:0;border:0;border-radius:18px;background:transparent;color:#f7fbff}
     .creator-action-dialog::backdrop{background:rgba(0,10,24,.72);backdrop-filter:blur(5px)}
-    .creator-action-shell{display:grid;justify-items:center;gap:12px;padding:26px 22px;border:1px solid rgba(151,190,235,.16);border-radius:18px;background:rgba(9,33,59,.97);box-shadow:0 24px 70px rgba(0,0,0,.48);text-align:center;backdrop-filter:blur(18px)}
+    .creator-action-shell{display:grid;justify-items:center;gap:12px;padding:26px 22px;border:0;border-radius:18px;background:rgba(9,33,59,.97);box-shadow:0 24px 70px rgba(0,0,0,.48);text-align:center;backdrop-filter:blur(18px);animation:creator-sheet-in .18s ease-out}
     .creator-action-shell h2,.creator-action-shell p{margin:0}
     .creator-action-shell p{color:#aebed4}
     .creator-action-spinner{width:42px;height:42px;border:4px solid rgba(116,231,168,.2);border-top-color:#74e7a8;border-radius:50%;animation:creator-action-spin .75s linear infinite}
     .creator-action-error{width:100%;padding:9px 11px;border-radius:9px;background:rgba(181,49,69,.14);color:#ffbdc6;font-size:12px}
-    .creator-action-buttons{display:grid;grid-template-columns:1fr 1fr;width:100%;gap:10px;margin-top:8px}
-    .creator-action-buttons button{width:100%;height:50px;min-height:50px;padding:0 14px;border-radius:12px}
+    .creator-action-buttons{display:flex;width:100%;gap:10px;margin-top:8px}
+    .creator-action-buttons button{box-sizing:border-box;flex:1 1 0;width:0;min-width:0;height:50px;min-height:50px;padding:0 14px;border:1px solid transparent;border-radius:12px;font-size:14px;line-height:1}
     .creator-action-buttons .danger{border-color:rgba(255,102,122,.38);background:#9f3044;color:#fff;box-shadow:none}
     .creator-action-buttons .danger:hover{background:#b63a50}
     .creator-action-buttons [data-action-confirm].is-loading{display:flex;align-items:center;justify-content:center;gap:8px}
     .creator-action-buttons [data-action-confirm].is-loading::before{content:"";width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:creator-action-spin .75s linear infinite}
     .creator-card-removing{opacity:0;transform:translateY(-8px);transition:opacity .18s ease,transform .18s ease}
     @keyframes creator-action-spin{to{transform:rotate(360deg)}}
+    @keyframes creator-sheet-in{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
     @media (prefers-reduced-motion:reduce){.creator-action-spinner{animation-duration:1.5s}}
     @media(max-width:780px){
       .creator-edit-dialog{inset:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border-radius:0;background:linear-gradient(180deg,#0c203b 0%,#07162a 100%)}
@@ -811,8 +854,10 @@
       .creator-edit-form .composer-review-note{margin:10px 24px 12px}
       .creator-edit-bottom-action{position:fixed;inset:auto 0 0;z-index:90;display:block;padding:10px 22px calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,rgba(7,22,42,.2),#07162a 28%);backdrop-filter:blur(14px)}
       .creator-edit-bottom-action .composer-bottom-submit{min-height:52px;border-radius:17px}
-      .creator-card-menu-dialog{inset:auto 0 0;width:100%;max-width:none;margin:0;border-radius:20px 20px 0 0}
-      .creator-card-menu-sheet{padding:16px 18px calc(18px + env(safe-area-inset-bottom,0px));border-radius:20px 20px 0 0}
+      .creator-card-menu-dialog{position:fixed;inset:auto 0 0;width:100%;max-width:none;margin:0;border-radius:22px 22px 0 0}
+      .creator-card-menu-sheet{width:100%;padding:18px 18px calc(14px + env(safe-area-inset-bottom,0px));border-radius:22px 22px 0 0}
+      .creator-action-dialog{position:fixed;inset:auto 0 0;width:100%;max-width:none;margin:0;border-radius:22px 22px 0 0}
+      .creator-action-shell{padding:25px 22px calc(22px + env(safe-area-inset-bottom,0px));border-radius:22px 22px 0 0}
     }
   `;
   document.head.appendChild(style);
