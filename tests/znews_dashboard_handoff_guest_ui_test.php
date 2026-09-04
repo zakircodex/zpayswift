@@ -64,14 +64,14 @@ znews_contract_expect(str_contains($index, 'id="commentGuestCta"'), 'Guest reade
 znews_contract_expect(str_contains($index, 'href="https://zpayswift.com/user" data-guest-only data-zpay-login'), 'Join Z-Pay must link directly to the Z-Pay login page.');
 znews_contract_expect(!str_contains($index, 'data-zpay-register'), 'The retired Join Z-Pay registration target must not remain in the page.');
 znews_contract_expect(str_contains($index, 'interactive-widget=resizes-content'), 'Android keyboard resize mode is missing.');
-znews_contract_expect(str_contains($index, 'znews-bootstrap.js?v=25'), 'Reload-safe handoff bootstrap must be activated.');
+znews_contract_expect(str_contains($index, 'znews-bootstrap.js?v=26'), 'Reload-safe handoff bootstrap must be activated.');
 znews_contract_expect(str_contains($bootstrap, 'znews-weekly-review.js?v=1'), 'Creator weekly report module must remain available after verified access.');
 znews_contract_expect(!str_contains($index, 'znews-quick-login.js'), 'Standalone Z News PIN login must not be loaded.');
 
 znews_contract_expect(str_contains($api, 'exchangeHandoff(code, options = {})'), 'API client must support one-time dashboard handoff exchange.');
 znews_contract_expect(str_contains($api, 'validateCreatorSession(options = {})'), 'API client must validate stored creator access.');
 znews_contract_expect(str_contains($api, 'znews/auth/session.php'), 'Creator validation endpoint is missing from the API client.');
-znews_contract_expect(str_contains($api, 'timeoutMs: 6000'), 'Stored creator validation must be time-bounded.');
+znews_contract_expect(str_contains($api, 'timeoutMs: 15000'), 'Stored creator validation must allow the bounded backend auth path to complete.');
 znews_contract_expect(!str_contains($api, 'verifyPassword('), 'Z News API client must not expose password login.');
 znews_contract_expect(!str_contains($api, 'pinLogin('), 'Z News API client must not expose standalone PIN login.');
 znews_contract_expect(!str_contains($api, 'localStorage.setItem'), 'Creator session must not be persisted as a standalone Z News login.');
@@ -79,6 +79,8 @@ znews_contract_expect(!str_contains($api, 'localStorage.setItem'), 'Creator sess
 znews_contract_expect(str_contains($bootstrap, 'const authReady = publicContentReady.then'), 'Handoff/session validation must start independently after public content.');
 znews_contract_expect(str_contains($bootstrap, 'window.ZNEWS_AUTH_VERIFIED = verified === true'), 'Creator access must require successful server validation.');
 znews_contract_expect(str_contains($bootstrap, "deferred: true"), 'Transient validation failures must not block the guest shell.');
+znews_contract_expect(str_contains($bootstrap, 'SESSION_VALIDATION_MAX_ATTEMPTS = 2'), 'Stored creator validation must retry at most once.');
+znews_contract_expect(str_contains($bootstrap, 'sessionValidationIsTerminal(error)'), 'Terminal auth failures must not be retried.');
 znews_contract_expect(str_contains($bootstrap, 'let pendingHandoffCode = handoffCode().trim()'), 'Handoff code must be captured before app history can remove the URL fragment.');
 znews_contract_expect(str_contains($bootstrap, "if (pendingHandoffCode) clearHandoffFragment()"), 'Captured handoff code must be removed from the visible URL immediately.');
 znews_contract_expect(str_contains($bootstrap, "pendingHandoffCode = ''"), 'One-time handoff code must be consumed from memory before exchange.');
@@ -89,7 +91,7 @@ znews_contract_expect(!str_contains($config, 'zpayRegisterUrl'), 'Guest navigati
 znews_contract_expect(str_contains($access, "['create', 'mine', 'balance']"), 'Guest-only route guard must cover creator sections.');
 znews_contract_expect(str_contains($access, 'config.zpayLoginUrl'), 'Guest join action must open the existing Z-Pay login page.');
 znews_contract_expect(str_contains($access, '[data-action="like"]'), 'Guest readers must not receive authenticated like controls.');
-znews_contract_expect(str_contains($serviceWorker, 'zsky24-embedded-shell-v20'), 'Current embedded PWA cache namespace is missing.');
+znews_contract_expect(str_contains($serviceWorker, 'zsky24-embedded-shell-v21'), 'Current embedded PWA cache namespace is missing.');
 znews_contract_expect(str_contains($serviceWorker, 'znews-reader.js?v=4'), 'Latest reader module must be cached.');
 znews_contract_expect(str_contains($serviceWorker, 'znews-weekly-review.js?v=1'), 'Creator weekly report module must be cached.');
 znews_contract_expect(str_contains($serviceWorker, "url.pathname.startsWith('/api/')"), 'Service worker must not cache API responses.');

@@ -40,6 +40,7 @@ const criticalPaths = [
 
 let requestLog = [];
 let sessionMode = 'guest';
+let sessionRequestCount = 0;
 let exchangedHandoffCode = '';
 
 function json(response, status, payload, delayMs = 0) {
@@ -109,13 +110,32 @@ const server = http.createServer((request, response) => {
     return;
   }
   if (url.pathname === '/api/znews/auth/session.php') {
-    if (sessionMode === 'valid') {
+    sessionRequestCount += 1;
+    if (sessionMode === 'transient-valid' && sessionRequestCount === 1) {
+      json(response, 503, {
+        ok: false,
+        code: 'ZNEWS_SESSION_TEMPORARILY_UNAVAILABLE',
+        message: 'Session validation is temporarily unavailable.',
+        data: {}
+      }, 100);
+      return;
+    }
+    if (sessionMode === 'transient-fail') {
+      json(response, 503, {
+        ok: false,
+        code: 'ZNEWS_SESSION_TEMPORARILY_UNAVAILABLE',
+        message: 'Session validation is temporarily unavailable.',
+        data: {}
+      }, 100);
+      return;
+    }
+    if (['valid', 'slow-valid', 'transient-valid'].includes(sessionMode)) {
       json(response, 200, {
         ok: true,
         code: 'ZNEWS_SESSION_OK',
         message: 'Session active.',
         data: { user: { uid: 'TEST_USER', name: 'Verified Creator', role: 'USER', status: 'ACTIVE' } }
-      }, 500);
+      }, sessionMode === 'slow-valid' ? 6500 : 500);
     } else {
       json(response, 401, {
         ok: false,
@@ -252,6 +272,7 @@ async function main() {
     }
 
     requestLog = [];
+    sessionRequestCount = 0;
     sessionMode = 'expired';
     const expired = await openApp(browser, baseUrl, { storedSession: true });
     assert.equal(expired.metrics.authHidden, true, 'Stored session exposed creator controls before validation.');
@@ -268,9 +289,11 @@ async function main() {
     assert.equal(expiredState.expired, true, 'Expired session state was not retained safely.');
     assert.equal(expiredState.token, null, 'Expired session token was not cleared.');
     assert.equal(expiredState.hidden, true, 'Expired session exposed creator controls.');
+    assert.equal(sessionRequestCount, 1, 'Terminal expired session was retried.');
     await expired.context.close();
 
     requestLog = [];
+    sessionRequestCount = 0;
     sessionMode = 'valid';
     const valid = await openApp(browser, baseUrl, { storedSession: true });
     assert.equal(valid.metrics.authHidden, true, 'Creator controls appeared before validation completed.');
@@ -289,9 +312,73 @@ async function main() {
     ));
     assert.equal(visibleCreatorControls, true, 'Verified creator controls were not enabled after validation.');
     assert.equal(await valid.page.evaluate(() => window.ZNEWS_APP_INITIALIZED), true, 'App initialization guard changed unexpectedly.');
+    assert.equal(sessionRequestCount, 1, 'Valid session required an unexpected retry.');
     await valid.context.close();
 
     requestLog = [];
+    sessionRequestCount = 0;
+    sessionMode = 'slow-valid';
+    const slowValid = await openApp(browser, baseUrl, { storedSession: true });
+    const slowValidState = await slowValid.page.evaluate(async () => {
+      await window.ZNEWS_AUTH_READY;
+      return {
+        verified: window.ZNEWS_AUTH_VERIFIED,
+        validation: { ...window.ZNEWS_SESSION_VALIDATION },
+        token: sessionStorage.getItem('znews_session_v1'),
+        firstPost: window.ZNEWS_BOOT_TIMINGS.first_card_dom_append,
+        authReady: window.ZNEWS_BOOT_TIMINGS.auth_ready
+      };
+    });
+    assert.equal(slowValidState.verified, true, 'A valid 6.5-second session response was treated as guest.');
+    assert.equal(slowValidState.validation.attempts, 1, 'Slow valid session was retried unexpectedly.');
+    assert.equal(slowValidState.token, 'test-session-token', 'Slow validation discarded the valid session token.');
+    assert.ok(slowValidState.firstPost < slowValidState.authReady, 'Slow session validation blocked the public feed.');
+    assert.equal(sessionRequestCount, 1, 'Slow valid session made more than one validation request.');
+    await slowValid.context.close();
+
+    requestLog = [];
+    sessionRequestCount = 0;
+    sessionMode = 'transient-valid';
+    const recovered = await openApp(browser, baseUrl, { storedSession: true });
+    assert.equal(recovered.metrics.authHidden, true, 'Transient validation exposed creator controls early.');
+    const recoveredState = await recovered.page.evaluate(async () => {
+      await window.ZNEWS_AUTH_READY;
+      return {
+        verified: window.ZNEWS_AUTH_VERIFIED,
+        validation: { ...window.ZNEWS_SESSION_VALIDATION },
+        token: sessionStorage.getItem('znews_session_v1')
+      };
+    });
+    assert.equal(recoveredState.verified, true, 'Transient session failure did not recover.');
+    assert.equal(recoveredState.validation.attempts, 2, 'Transient session did not use exactly one retry.');
+    assert.equal(recoveredState.validation.recovered, true, 'Recovered validation was not classified.');
+    assert.equal(recoveredState.token, 'test-session-token', 'Transient failure discarded the stored session.');
+    assert.equal(sessionRequestCount, 2, 'Transient validation retry count is not bounded to one retry.');
+    await recovered.context.close();
+
+    requestLog = [];
+    sessionRequestCount = 0;
+    sessionMode = 'transient-fail';
+    const deferred = await openApp(browser, baseUrl, { storedSession: true });
+    const deferredState = await deferred.page.evaluate(async () => {
+      await window.ZNEWS_AUTH_READY;
+      return {
+        verified: window.ZNEWS_AUTH_VERIFIED,
+        validation: { ...window.ZNEWS_SESSION_VALIDATION },
+        token: sessionStorage.getItem('znews_session_v1'),
+        hidden: [...document.querySelectorAll('[data-auth-only]')].every((element) => element.hidden)
+      };
+    });
+    assert.equal(deferredState.verified, false, 'Repeated transient failure was incorrectly verified.');
+    assert.equal(deferredState.validation.deferred, true, 'Repeated transient failure was not deferred safely.');
+    assert.equal(deferredState.validation.attempts, 2, 'Repeated transient failure exceeded the retry cap.');
+    assert.equal(deferredState.token, 'test-session-token', 'Transient outage destroyed a potentially valid session.');
+    assert.equal(deferredState.hidden, true, 'Deferred validation exposed creator controls.');
+    assert.equal(sessionRequestCount, 2, 'Validation retried more than once.');
+    await deferred.context.close();
+
+    requestLog = [];
+    sessionRequestCount = 0;
     exchangedHandoffCode = '';
     sessionMode = 'guest';
     const handoff = await openApp(browser, baseUrl, { handoff: 'ONE_TIME_HANDOFF_CODE' });
@@ -317,6 +404,34 @@ async function main() {
       requestLog.filter((entry) => entry.path === '/api/znews/auth/handoff.php').length,
       1,
       'One-time handoff was not exchanged exactly once.'
+    );
+
+    sessionMode = 'valid';
+    sessionRequestCount = 0;
+    await handoff.page.reload({ waitUntil: 'domcontentloaded' });
+    await handoff.page.waitForSelector('#feedList .post-card[data-post-id]', { timeout: 5000 });
+    const reloadedHandoffState = await handoff.page.evaluate(async () => {
+      await window.ZNEWS_AUTH_READY;
+      while (window.ZNEWS_POST_PAINT_MODULES?.ready !== true) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return {
+        verified: window.ZNEWS_AUTH_VERIFIED,
+        token: sessionStorage.getItem('znews_session_v1'),
+        creatorControlsVisible: [...document.querySelectorAll('[data-auth-only]')]
+          .some((element) => !element.hidden),
+        handoff: window.ZNEWS_AUTH_STATE?.handoff === true
+      };
+    });
+    assert.equal(reloadedHandoffState.verified, true, 'Dashboard handoff session became guest after reload.');
+    assert.equal(reloadedHandoffState.token, 'handoff-session-token', 'Reload discarded the handoff session token.');
+    assert.equal(reloadedHandoffState.creatorControlsVisible, true, 'Reload did not restore verified creator controls.');
+    assert.equal(reloadedHandoffState.handoff, false, 'Reload incorrectly reclassified stored validation as a handoff.');
+    assert.equal(sessionRequestCount, 1, 'Reload did not validate the stored handoff session exactly once.');
+    assert.equal(
+      requestLog.filter((entry) => entry.path === '/api/znews/auth/handoff.php').length,
+      1,
+      'Reload exchanged the one-time handoff more than once.'
     );
     await handoff.context.close();
 

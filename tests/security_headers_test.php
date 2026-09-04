@@ -82,9 +82,19 @@ security_headers_expect(
     !str_contains($htaccess, 'Access-Control-Allow-Origin'),
     'Root headers must not introduce global CORS.'
 );
+$swCacheBlock = preg_match(
+    '/<FilesMatch "\^\(\?:sw\|sw-root\)\\\.js\$">\s*Header always set Cache-Control "no-cache, no-store, must-revalidate, max-age=0"[\s\S]*?<\/FilesMatch>/',
+    $htaccess
+) === 1;
+$assetLinksCacheBlock = preg_match(
+    '/<Files "assetlinks\.json">\s*Header always set Content-Type "application\/json; charset=utf-8"\s*Header always set Cache-Control "public, max-age=3600, must-revalidate"\s*<\/Files>/',
+    $htaccess
+) === 1;
+security_headers_expect($swCacheBlock, 'Service-worker no-store policy must remain file-scoped.');
+security_headers_expect($assetLinksCacheBlock, 'Asset Links cache policy must remain file-scoped.');
 security_headers_expect(
-    substr_count($htaccess, 'Header always set Cache-Control') === 1,
-    'Static assets must not inherit a new global no-store policy.'
+    substr_count($htaccess, 'Header always set Cache-Control') === 2,
+    'Cache-Control headers must remain limited to the two audited file scopes.'
 );
 
 echo "security headers configuration test passed\n";

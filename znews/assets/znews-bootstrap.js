@@ -151,6 +151,40 @@
   let pendingHandoffCode = handoffCode().trim();
   if (pendingHandoffCode) clearHandoffFragment();
 
+  const SESSION_VALIDATION_TIMEOUT_MS = 15000;
+  const SESSION_VALIDATION_MAX_ATTEMPTS = 2;
+  const SESSION_VALIDATION_RETRY_DELAY_MS = 500;
+
+  function wait(milliseconds) {
+    return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+  }
+
+  function sessionValidationIsExpired(error) {
+    return error?.status === 401 || [
+      'ZNEWS_AUTH_REQUIRED',
+      'SESSION_EXPIRED',
+      'DEVICE_REPLACED'
+    ].includes(String(error?.code || ''));
+  }
+
+  function sessionValidationIsTerminal(error) {
+    const status = Number(error?.status || 0);
+    const code = String(error?.code || '');
+    return sessionValidationIsExpired(error)
+      || (status >= 400 && status < 500)
+      || code === 'MAINTENANCE';
+  }
+
+  function sessionValidationCanRetry(error) {
+    if (sessionValidationIsTerminal(error)) return false;
+    const status = Number(error?.status || 0);
+    return status >= 500 || status === 0 || [
+      'REQUEST_TIMEOUT',
+      'NETWORK_FAILURE',
+      'MALFORMED_RESPONSE'
+    ].includes(String(error?.code || ''));
+  }
+
   async function exchangeHandoff(api) {
     const code = pendingHandoffCode;
     pendingHandoffCode = '';
@@ -176,24 +210,51 @@
 
   async function validateStoredSession(api) {
     if (!api.isAuthenticated()) return false;
-    try {
-      const result = await api.validateCreatorSession({ timeoutMs: 6000 });
-      api.setSession(api.sessionToken, result.data?.user || api.profile || {});
-      window.ZNEWS_SESSION_VALIDATION = { ok: true };
-      return true;
-    } catch (error) {
-      if (error?.status === 401 || error?.code === 'ZNEWS_AUTH_REQUIRED') {
-        api.clearSession();
-        window.ZNEWS_SESSION_VALIDATION = { ok: false, expired: true };
+
+    for (let attempt = 1; attempt <= SESSION_VALIDATION_MAX_ATTEMPTS; attempt += 1) {
+      try {
+        const result = await api.validateCreatorSession({
+          timeoutMs: SESSION_VALIDATION_TIMEOUT_MS
+        });
+        api.setSession(api.sessionToken, result.data?.user || api.profile || {});
+        window.ZNEWS_SESSION_VALIDATION = {
+          ok: true,
+          attempts: attempt,
+          recovered: attempt > 1
+        };
+        return true;
+      } catch (error) {
+        if (sessionValidationIsTerminal(error)) {
+          const expired = sessionValidationIsExpired(error);
+          if (expired) api.clearSession();
+          window.ZNEWS_SESSION_VALIDATION = {
+            ok: false,
+            expired,
+            rejected: !expired,
+            attempts: attempt,
+            code: error?.code || 'ZNEWS_SESSION_VALIDATION_REJECTED'
+          };
+          return false;
+        }
+
+        if (attempt < SESSION_VALIDATION_MAX_ATTEMPTS
+          && api.isAuthenticated()
+          && sessionValidationCanRetry(error)) {
+          await wait(SESSION_VALIDATION_RETRY_DELAY_MS);
+          continue;
+        }
+
+        window.ZNEWS_SESSION_VALIDATION = {
+          ok: false,
+          deferred: true,
+          attempts: attempt,
+          code: error?.code || 'ZNEWS_SESSION_VALIDATION_DEFERRED'
+        };
         return false;
       }
-      window.ZNEWS_SESSION_VALIDATION = {
-        ok: false,
-        deferred: true,
-        code: error?.code || 'ZNEWS_SESSION_VALIDATION_DEFERRED'
-      };
-      return false;
     }
+
+    return false;
   }
 
   function waitForPublicContent() {

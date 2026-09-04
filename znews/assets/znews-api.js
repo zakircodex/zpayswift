@@ -191,7 +191,7 @@
       return this.request('znews/auth/session.php', {
         authenticated: true,
         appKey: true,
-        timeoutMs: 6000,
+        timeoutMs: 15000,
         ...options
       });
     }
