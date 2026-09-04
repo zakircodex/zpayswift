@@ -415,13 +415,15 @@ async function main() {
     await page.evaluate(() => { window.__zskyMediaCategoryTest.detailsDelayMs = 0; });
     const initialEdit = await page.evaluate(() => ({
       title: document.querySelector('#creatorEditTitle').value,
-      text: document.querySelector('#creatorEditText').value,
+      text: window.ZNewsRichText.getEditorPayload(document.querySelector('#creatorEditText')).text,
       category: document.querySelector('#creatorEditCategory').value,
       preview: !document.querySelector('#creatorEditPreview').hidden,
       previewImages: document.querySelectorAll('#creatorEditPreview img').length,
+      editableSurfaces: document.querySelectorAll('#creatorEditForm .composer-body-field [contenteditable="true"],#creatorEditForm .composer-body-field textarea').length,
+      textareas: document.querySelectorAll('#creatorEditForm .composer-body-field textarea').length,
       savesDisabled: [...document.querySelectorAll('#creatorEditForm button[type="submit"]')].every((button) => button.disabled)
     }));
-    assert.deepEqual(initialEdit, { title: 'Post title 1', text: 'Post body 1', category: 'INTERNATIONAL_NEWS', preview: true, previewImages: 1, savesDisabled: true }, 'Edit did not load current fields, exactly one image, or unchanged Save state.');
+    assert.deepEqual(initialEdit, { title: 'Post title 1', text: 'Post body 1', category: 'INTERNATIONAL_NEWS', preview: true, previewImages: 1, editableSurfaces: 1, textareas: 0, savesDisabled: true }, 'Edit did not load current fields, exactly one editor/image, or unchanged Save state.');
     assert.equal(await page.locator('#creatorActionDialog[open]').count(), 0, 'Edit left a stale loading sheet open.');
     await page.waitForTimeout(240);
     assert.equal(await page.locator('#znewsTopProgress.active').count(), 0, 'Edit left the top progress indicator active.');
@@ -618,63 +620,87 @@ async function main() {
 
     await page.locator('[data-route="create"]').first().dispatchEvent('click');
     const richEditorAudit = await page.evaluate(() => {
-      const textarea = document.querySelector('#postText');
+      const editor = document.querySelector('#postText');
       const rich = window.ZNewsRichText;
+      const setRange = (start, end = start) => {
+        const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+        const nodes = [];
+        let node;
+        while ((node = walker.nextNode())) nodes.push(node);
+        const point = (requested) => {
+          let remaining = requested;
+          for (let index = 0; index < nodes.length; index += 1) {
+            if (remaining < nodes[index].nodeValue.length) return [nodes[index], remaining];
+            if (remaining === nodes[index].nodeValue.length) return nodes[index + 1] ? [nodes[index + 1], 0] : [nodes[index], nodes[index].nodeValue.length];
+            remaining -= nodes[index].nodeValue.length;
+          }
+          return [editor, editor.childNodes.length];
+        };
+        const [startNode, startOffset] = point(start);
+        const [endNode, endOffset] = point(end);
+        const range = document.createRange();
+        range.setStart(startNode, startOffset);
+        range.setEnd(endNode, endOffset);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        editor.focus();
+        document.dispatchEvent(new Event('selectionchange'));
+      };
       const sample = 'বাংলা hello 🎉 রং';
-      rich.setEditorContent(textarea, sample);
+      rich.setEditorContent(editor, sample);
       const start = sample.indexOf('hello');
-      textarea.focus();
-      textarea.setSelectionRange(start, start + 5);
-      rich.toggleBold(textarea);
-      rich.applyColor(textarea, 'red');
-      const combined = rich.getEditorPayload(textarea);
+      setRange(start, start + 5);
+      rich.toggleBold(editor);
+      rich.applyColor(editor, 'red');
+      const combined = rich.getEditorPayload(editor);
       const combinedPreview = {
-        styledText: document.querySelector('#createView .rich-editor-live-preview strong .znews-text-color-red')?.textContent || '',
+        styledText: editor.querySelector('strong .znews-text-color-red')?.textContent || '',
         boldState: document.querySelector('#postBoldButton').getAttribute('aria-pressed'),
         colorLabel: document.querySelector('#postColorButton').getAttribute('aria-label'),
-        html: document.querySelector('#createView .rich-editor-live-preview')?.innerHTML || ''
+        html: editor.innerHTML
       };
-      rich.toggleBold(textarea);
-      const unbold = rich.getEditorPayload(textarea);
-      rich.applyColor(textarea, 'green');
-      const recolored = rich.getEditorPayload(textarea);
+      rich.toggleBold(editor);
+      const unbold = rich.getEditorPayload(editor);
+      rich.applyColor(editor, 'green');
+      const recolored = rich.getEditorPayload(editor);
       const sentenceText = 'Bold a full sentence.';
-      rich.setEditorContent(textarea, sentenceText);
-      textarea.setSelectionRange(0, sentenceText.length);
-      rich.toggleBold(textarea);
-      const sentence = rich.getEditorPayload(textarea);
+      rich.setEditorContent(editor, sentenceText);
+      setRange(0, sentenceText.length);
+      rich.toggleBold(editor);
+      const sentence = rich.getEditorPayload(editor);
       const partialText = 'Partial color';
-      rich.setEditorContent(textarea, partialText);
-      textarea.setSelectionRange(1, 5);
-      rich.applyColor(textarea, 'yellow');
-      const partial = rich.getEditorPayload(textarea);
+      rich.setEditorContent(editor, partialText);
+      setRange(1, 5);
+      rich.applyColor(editor, 'yellow');
+      const partial = rich.getEditorPayload(editor);
       const emojiText = 'A 🎉 B';
-      rich.setEditorContent(textarea, emojiText);
+      rich.setEditorContent(editor, emojiText);
       const emojiStart = emojiText.indexOf('🎉');
-      textarea.setSelectionRange(emojiStart, emojiStart + '🎉'.length);
-      rich.toggleBold(textarea);
-      const emoji = rich.getEditorPayload(textarea);
-      rich.setEditorContent(textarea, 'Mixed text', [{ start: 0, end: 5, bold: true, color: 'green' }]);
-      textarea.setSelectionRange(0, 10);
-      rich.updateToolbar(textarea);
+      setRange(emojiStart, emojiStart + '🎉'.length);
+      rich.toggleBold(editor);
+      const emoji = rich.getEditorPayload(editor);
+      rich.setEditorContent(editor, 'Mixed text', [{ start: 0, end: 5, bold: true, color: 'green' }]);
+      setRange(0, 10);
+      rich.updateToolbar(editor);
       const mixed = {
         bold: document.querySelector('#postBoldButton').getAttribute('aria-pressed'),
         color: document.querySelector('#postColorButton').getAttribute('aria-label')
       };
-      textarea.setSelectionRange(2, 2);
-      rich.updateToolbar(textarea);
+      setRange(2, 2);
+      rich.updateToolbar(editor);
       const caret = {
         bold: document.querySelector('#postBoldButton').getAttribute('aria-pressed'),
         color: document.querySelector('#postColorButton').getAttribute('aria-label')
       };
       const finalText = 'Hi welcome to Malaysia';
-      rich.setEditorContent(textarea, finalText);
+      rich.setEditorContent(editor, finalText);
       const malaysiaStart = finalText.indexOf('Malaysia');
-      textarea.setSelectionRange(malaysiaStart, finalText.length);
-      rich.toggleBold(textarea);
-      rich.applyColor(textarea, 'green');
-      const finalPayload = rich.getEditorPayload(textarea);
-      const livePreview = document.querySelector('#createView .rich-editor-live-preview').cloneNode(true);
+      setRange(malaysiaStart, finalText.length);
+      rich.toggleBold(editor);
+      rich.applyColor(editor, 'green');
+      const finalPayload = rich.getEditorPayload(editor);
+      const livePreview = editor.cloneNode(true);
       const publishedPreview = document.createElement('div');
       publishedPreview.innerHTML = rich.formattedTextHtml(finalPayload.text, finalPayload.formattingRuns, finalPayload.boldRanges);
       const finalMatch = {
@@ -683,9 +709,9 @@ async function main() {
         liveStyledText: livePreview.querySelector('strong .znews-text-color-green')?.textContent || '',
         publishedStyledText: publishedPreview.querySelector('strong .znews-text-color-green')?.textContent || ''
       };
-      rich.setEditorContent(textarea, 'Legacy bold', [], [{ start: 7, end: 11 }]);
-      const legacy = rich.getEditorPayload(textarea);
-      return { value: textarea.value, combined, combinedPreview, unbold, recolored, sentence, partial, emoji, mixed, caret, finalMatch, legacy };
+      rich.setEditorContent(editor, 'Legacy bold', [], [{ start: 7, end: 11 }]);
+      const legacy = rich.getEditorPayload(editor);
+      return { value: editor.textContent, combined, combinedPreview, unbold, recolored, sentence, partial, emoji, mixed, caret, finalMatch, legacy };
     });
     assert.equal(richEditorAudit.combined.text, 'বাংলা hello 🎉 রং', 'Bangla/emoji editor changed canonical text.');
     assert.deepEqual(richEditorAudit.combined.formattingRuns, [{ start: 6, end: 11, bold: true, color: 'red' }], 'Bold/color combination was not represented safely.');
@@ -705,39 +731,47 @@ async function main() {
     assert.deepEqual(richEditorAudit.legacy.boldRanges, [{ start: 7, end: 11 }], 'Legacy bold range was not preserved by the editor.');
     assert.equal(richEditorAudit.value, 'Legacy bold', 'Rich editor displayed formatting syntax.');
     const androidSelectionAudit = await page.evaluate(() => {
-      const textarea = document.querySelector('#postText');
+      const editor = document.querySelector('#postText');
       const bold = document.querySelector('#postBoldButton');
       const rich = window.ZNewsRichText;
+      const setRange = (start, end) => {
+        const node = editor.firstChild?.firstChild || editor.firstChild;
+        const range = document.createRange();
+        range.setStart(node, start);
+        range.setEnd(node, end);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        editor.focus();
+        document.dispatchEvent(new Event('selectionchange'));
+      };
       const sample = 'Select Malaysia safely';
       const start = sample.indexOf('Malaysia');
       const end = start + 'Malaysia'.length;
-      rich.setEditorContent(textarea, sample);
-      textarea.focus();
-      textarea.setSelectionRange(start, end);
-      textarea.dispatchEvent(new Event('select'));
+      rich.setEditorContent(editor, sample);
+      setRange(start, end);
       bold.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'touch' }));
-      textarea.blur();
-      textarea.setSelectionRange(end, end);
+      window.getSelection().removeAllRanges();
       bold.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-      const payload = rich.getEditorPayload(textarea);
-      const surface = document.querySelector('#createView .rich-editor-surface');
+      const payload = rich.getEditorPayload(editor);
       const toolbar = document.querySelector('#postFormatToolbar');
       return {
-        selection: [textarea.selectionStart, textarea.selectionEnd],
+        selectedText: window.getSelection().toString(),
         boldRanges: payload.boldRanges,
-        liveBold: document.querySelector('#createView .rich-editor-live-preview strong')?.textContent || '',
+        liveBold: editor.querySelector('strong')?.textContent || '',
         boldPressed: bold.getAttribute('aria-pressed'),
         boldBackground: getComputedStyle(bold).backgroundColor,
-        toolbarBeforeEditor: toolbar.compareDocumentPosition(surface) === Node.DOCUMENT_POSITION_FOLLOWING,
-        editorPaddingTop: Number.parseFloat(getComputedStyle(document.querySelector('#createView .rich-editor-input')).paddingTop)
+        toolbarBeforeEditor: toolbar.compareDocumentPosition(editor) === Node.DOCUMENT_POSITION_FOLLOWING,
+        editorPaddingTop: Number.parseFloat(getComputedStyle(editor).paddingTop),
+        activeSurfaces: document.querySelectorAll('#createView .composer-body-field [contenteditable="true"],#createView .composer-body-field textarea').length
       };
     });
-    assert.deepEqual(androidSelectionAudit.selection, [7, 15], 'Bold toolbar tap did not restore the Android text selection.');
+    assert.equal(androidSelectionAudit.selectedText, 'Malaysia', 'Bold toolbar tap did not restore the Android text selection.');
     assert.deepEqual(androidSelectionAudit.boldRanges, [{ start: 7, end: 15 }], 'Stored Android selection was not formatted.');
     assert.equal(androidSelectionAudit.liveBold, 'Malaysia', 'Bold was not visible immediately in the editor.');
     assert.equal(androidSelectionAudit.boldPressed, 'true', 'Bold active state is not exposed.');
     assert.notEqual(androidSelectionAudit.boldBackground, 'rgba(0, 0, 0, 0)', 'Bold active state has no strong filled background.');
-    assert.equal(androidSelectionAudit.toolbarBeforeEditor && androidSelectionAudit.editorPaddingTop >= 24, true, 'Formatting toolbar is not structurally separated from selected text.');
+    assert.equal(androidSelectionAudit.toolbarBeforeEditor && androidSelectionAudit.editorPaddingTop >= 12 && androidSelectionAudit.activeSurfaces === 1, true, 'Formatting toolbar is not structurally separated from the single editor surface.');
 
     await page.evaluate(() => {
       document.documentElement.style.setProperty('--znews-keyboard-inset', '300px');
@@ -758,13 +792,13 @@ async function main() {
     assert.equal(paletteLayout.bottom <= paletteLayout.visibleBottom && paletteLayout.toolbarOpen, true, 'Color palette overlaps the simulated Android keyboard area.');
     await page.locator('#postColorPalette [data-format-color="green"]').click();
     const androidColorAudit = await page.evaluate(() => ({
-      selection: [document.querySelector('#postText').selectionStart, document.querySelector('#postText').selectionEnd],
-      live: document.querySelector('#createView .rich-editor-live-preview .znews-text-color-green')?.textContent || '',
+      selection: window.getSelection().toString(),
+      live: document.querySelector('#postText .znews-text-color-green')?.textContent || '',
       colorPressed: document.querySelector('#postColorButton').getAttribute('aria-pressed'),
       colorLabel: document.querySelector('#postColorButton').getAttribute('aria-label'),
       paletteClosed: document.querySelector('#postColorPalette').hidden
     }));
-    assert.deepEqual(androidColorAudit, { selection: [7, 15], live: 'Malaysia', colorPressed: 'true', colorLabel: 'Text color: Green', paletteClosed: true }, 'Color toolbar did not restore selection and apply a live color safely.');
+    assert.deepEqual(androidColorAudit, { selection: 'Malaysia', live: 'Malaysia', colorPressed: 'true', colorLabel: 'Text color: Green', paletteClosed: true }, 'Color toolbar did not restore selection and apply a live color safely.');
     await page.evaluate(() => {
       document.documentElement.style.removeProperty('--znews-keyboard-inset');
       document.documentElement.style.removeProperty('--znews-visual-height');
@@ -804,12 +838,12 @@ async function main() {
       assert.ok(composerLayout.bottomHeight >= 48, `Sticky Post action is too short at ${width}px.`);
     }
     await page.setViewportSize({ width: 390, height: 520 });
-    await page.locator('#createView .rich-editor-input').focus();
-    await page.locator('#createView .rich-editor-input').evaluate((element) => element.scrollIntoView({ block: 'center' }));
+    await page.locator('#createView .rich-editor-editable').focus();
+    await page.locator('#createView .rich-editor-editable').evaluate((element) => element.scrollIntoView({ block: 'center' }));
     const keyboardViewportAudit = await page.evaluate(() => {
       const toolbar = document.querySelector('#postFormatToolbar').getBoundingClientRect();
       const bottom = document.querySelector('#createPostSubmitBottom').getBoundingClientRect();
-      const editor = document.querySelector('#createView .rich-editor-input').getBoundingClientRect();
+      const editor = document.querySelector('#createView .rich-editor-editable').getBoundingClientRect();
       return {
         toolbarVisible: toolbar.top >= 0 && toolbar.bottom < window.innerHeight,
         editorVisible: editor.top < bottom.top && editor.bottom > toolbar.bottom,
@@ -822,26 +856,31 @@ async function main() {
     await page.locator('#postTitle').fill('Created with category');
     await page.evaluate(() => window.ZNewsRichText.setEditorContent(document.querySelector('#postText'), 'Created middle bold text'));
     await page.locator('#postText').evaluate((element) => {
+      const node = element.firstChild?.firstChild || element.firstChild;
+      const range = document.createRange();
+      range.setStart(node, 8);
+      range.setEnd(node, 19);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
       element.focus();
-      element.setSelectionRange(8, 19);
+      document.dispatchEvent(new Event('selectionchange'));
     });
     await page.locator('#postBoldButton').click();
-    assert.equal(await page.locator('#postText').inputValue(), 'Created middle bold text', 'Bold toolbar exposed formatting markers in the editor.');
+    assert.equal(await page.locator('#postText').textContent(), 'Created middle bold text', 'Bold toolbar exposed formatting markers in the editor.');
     await page.locator('#postColorButton').click();
     await page.locator('#postColorPalette [data-format-color="green"]').click();
     const toolbarSelectionAudit = await page.evaluate(() => {
-      const textarea = document.querySelector('#postText');
       const green = document.querySelector('#postColorPalette [data-format-color="green"]');
       return {
-        start: textarea.selectionStart,
-        end: textarea.selectionEnd,
+        selection: window.getSelection().toString(),
         greenChecked: green.getAttribute('aria-checked'),
         greenActive: green.classList.contains('active'),
         circular: getComputedStyle(green.querySelector('.color-swatch')).borderRadius === '50%',
         paletteClosed: document.querySelector('#postColorPalette').hidden
       };
     });
-    assert.deepEqual(toolbarSelectionAudit, { start: 8, end: 19, greenChecked: 'true', greenActive: true, circular: true, paletteClosed: true }, 'Color selection did not preserve text selection or update the active swatch.');
+    assert.deepEqual(toolbarSelectionAudit, { selection: 'middle bold', greenChecked: 'true', greenActive: true, circular: true, paletteClosed: true }, 'Color selection did not preserve text selection or update the active swatch.');
     if (process.env.ZNEWS_UI_SCREENSHOT_DIR) {
       await page.screenshot({ path: path.join(process.env.ZNEWS_UI_SCREENSHOT_DIR, 'rich-editor-390.png'), fullPage: true });
     }

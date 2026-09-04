@@ -34,7 +34,7 @@ composer_expect(str_contains($index, 'class="composer-topbar"'), 'Compact compos
 composer_expect(str_contains($index, 'id="createComposerAvatar"'), 'Creator identity is missing from the composer.');
 composer_expect(str_contains($index, 'id="createComposerName"'), 'Creator name is missing from the composer.');
 composer_expect(str_contains($index, 'aria-label="Post audience: Public"'), 'Public audience context is missing.');
-composer_expect(str_contains($index, 'rows="4"'), 'Composer text area must start compact.');
+composer_expect(str_contains($index, 'id="postText" contenteditable="true"') && !str_contains($index, '<textarea id="postText"'), 'Create must use one native contenteditable surface without a textarea proxy.');
 composer_expect(str_contains($index, 'class="composer-add-row"'), 'Compact media action row is missing.');
 composer_expect(str_contains($index, 'id="createPostSubmit" type="submit" disabled'), 'Post action must start disabled.');
 composer_expect(str_contains($index, 'id="createPostSubmitBottom" type="submit" disabled'), 'Mobile bottom Post action is missing.');
@@ -47,10 +47,10 @@ composer_expect(str_contains($app, 'function syncComposerState()'), 'Composer st
 composer_expect(str_contains($index, 'id="postBoldButton"'), 'Composer middle-bold control is missing.');
 composer_expect(str_contains($app, 'getEditorPayload') && str_contains($app, 'formattingRuns: parsedText.formattingRuns'), 'Composer does not send canonical plain text with safe formatting runs.');
 composer_expect(str_contains($richEditor, 'toggleBold') && !str_contains($richEditor, 'textarea.value = `${value.slice(0, start)}**'), 'Composer still exposes markdown formatting markers.');
-composer_expect(str_contains($richEditor, "editor.contentEditable = 'true'") && str_contains($richEditor, "editor.addEventListener('compositionstart'") && str_contains($richEditor, "editor.addEventListener('compositionend'") && str_contains($richEditor, 'if (!editor || state.composing) return;'), 'Selected formatting is not using the composition-safe native editor.');
+composer_expect(str_contains($richEditor, 'function isEditorElement(editor)') && str_contains($richEditor, "editor.addEventListener('compositionstart'") && str_contains($richEditor, "editor.addEventListener('compositionend'") && !str_contains($richEditor, 'ensureVisualSurface'), 'Selected formatting is not using the single composition-safe native editor.');
 composer_expect(str_contains($richEditor, "boldMixed ? 'mixed'") && str_contains($richEditor, "colorLabel = selected.colorMixed ? 'Mixed'"), 'Caret/mixed formatting toolbar state is missing.');
 composer_expect(str_contains($richEditor, 'beginProgress') && str_contains($richEditor, 'setButtonLoading'), 'Shared Z Sky progress/button feedback is missing.');
-composer_expect(str_contains($app, 'Math.min(260, Math.max(84, els.postText.scrollHeight))'), 'Compact auto-growing composer bounds are missing.');
+composer_expect(str_contains($premium, 'min-height:156px;max-height:300px'), 'Stable native editor height bounds are missing.');
 composer_expect(str_contains($app, 'els.postTitle.value.trim()'), 'Headline-aware Post action is missing.');
 composer_expect(str_contains($app, 'document.documentElement.dataset.znewsRoute = next'), 'Route-aware mobile composer mode is missing.');
 composer_expect(str_contains($app, "remove.setAttribute('aria-label', 'Remove selected photo')"), 'Selected-photo removal is missing.');
@@ -60,9 +60,7 @@ composer_expect(str_contains($creator, 'syncEditor(ensureEditor())'), 'Edit subm
 
 foreach ([
     '.composer-card{max-width:680px',
-    '.composer-body-field textarea{min-height:84px;max-height:260px',
-    '.rich-editor-surface{position:relative',
-    '.rich-editor-live-preview.rich-editor-input{box-sizing:border-box;position:relative',
+    '.rich-editor-editable{box-sizing:border-box;display:block',
     '.znews-top-progress{position:fixed',
     '.znews-button-loading::before',
     '.composer-add-row{display:grid',
@@ -74,19 +72,19 @@ foreach ([
     composer_expect(str_contains($premium, $contract), "Compact composer style is missing: {$contract}");
 }
 
-composer_expect(str_contains($index, 'znews-premium.css?v=16'), 'Composer stylesheet cachebuster is missing.');
-composer_expect(str_contains($index, 'znews-bootstrap.js?v=31'), 'Reload-safe composer bootstrap cachebuster is missing.');
-composer_expect(str_contains($index, 'znews.js?v=26'), 'Latest composer behavior is not loaded.');
-composer_expect(str_contains($index, 'znews-rich-editor.js?v=4'), 'Composition-safe rich editor module is not loaded.');
-composer_expect(str_contains($bootstrap, 'znews-creator.js?v=13'), 'Latest creator behavior is not loaded.');
+composer_expect(str_contains($index, 'znews-premium.css?v=17'), 'Composer stylesheet cachebuster is missing.');
+composer_expect(str_contains($index, 'znews-bootstrap.js?v=32'), 'Reload-safe composer bootstrap cachebuster is missing.');
+composer_expect(str_contains($index, 'znews.js?v=27'), 'Latest composer behavior is not loaded.');
+composer_expect(str_contains($index, 'znews-rich-editor.js?v=5'), 'Single-surface rich editor module is not loaded.');
+composer_expect(str_contains($bootstrap, 'znews-creator.js?v=14'), 'Latest creator behavior is not loaded.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    composer_expect(str_contains($worker, 'znews-premium.css?v=16'), 'Latest composer stylesheet is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=31'), 'Latest reload-safe bootstrap is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews.js?v=26'), 'Latest app behavior is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-rich-editor.js?v=4'), 'Composition-safe rich editor is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-creator.js?v=13'), 'Latest creator behavior is missing from a PWA shell.');
-    composer_expect(str_contains($worker, "SHELL_REVISION = 'creator-csp-styles-1'"), 'Creator UI cache revision is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-premium.css?v=17'), 'Latest composer stylesheet is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=32'), 'Latest reload-safe bootstrap is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews.js?v=27'), 'Latest app behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-rich-editor.js?v=5'), 'Single-surface rich editor is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-creator.js?v=14'), 'Latest creator behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, "SHELL_REVISION = 'rich-editor-single-surface-1'"), 'Single-surface editor cache revision is missing from a PWA shell.');
     composer_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'PWA shell must continue excluding API responses.');
     composer_expect(str_contains($worker, 'networkFirst(request'), 'PWA shell must refresh composer assets while online.');
 }

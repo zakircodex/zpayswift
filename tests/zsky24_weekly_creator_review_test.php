@@ -207,8 +207,8 @@ weekly_expect(str_contains($weeklyJs, 'Creator views excluded'), 'Creator exclus
 weekly_expect(str_contains($weeklyJs, 'No money or balance is calculated'), 'Creator UI does not explain the non-financial review.');
 
 foreach ([
-    [$embeddedWorker, 'zsky24-embedded-shell-v26'],
-    [$standaloneWorker, 'zsky24-standalone-shell-v26'],
+    [$embeddedWorker, 'zsky24-embedded-shell-v27'],
+    [$standaloneWorker, 'zsky24-standalone-shell-v27'],
 ] as [$worker, $cacheName]) {
     weekly_expect(str_contains($worker, $cacheName), "Weekly review service-worker generation is missing: {$cacheName}");
     weekly_expect(str_contains($worker, 'znews-weekly-review.js?v=1'), 'Weekly review JavaScript is missing from a service-worker shell.');

@@ -35,6 +35,7 @@ foreach ([
 edit_composer_expect(str_contains($creator, 'renderEditPreview(dialog)'), 'Current/replacement photo preview is not wired.');
 edit_composer_expect(str_contains($creator, 'data-format-bold'), 'Edit middle-bold control is missing.');
 edit_composer_expect(str_contains($creator, 'richText.setEditorContent(') && str_contains($creator, 'post.formatting_runs'), 'Edit does not restore stored rich formatting without markers.');
+edit_composer_expect(str_contains($creator, 'id="creatorEditText" contenteditable="true"') && !str_contains($creator, '<textarea id="creatorEditText"'), 'Edit must use one contenteditable surface without a textarea proxy.');
 edit_composer_expect(str_contains($creator, 'bold_ranges: parsedText.boldRanges'), 'Edit does not submit validated bold ranges.');
 edit_composer_expect(str_contains($creator, 'formatting_runs: parsedText.formattingRuns'), 'Edit does not submit validated formatting runs.');
 edit_composer_expect(!str_contains($creator, "backdrop.className = 'composer-image-backdrop'"), 'Edit still creates a duplicate image backdrop.');
@@ -54,12 +55,12 @@ edit_composer_expect(str_contains($premium, '.creator-edit-topbar{position:fixed
 edit_composer_expect(str_contains($premium, '.creator-edit-bottom-action{position:fixed'), 'Mobile Save action is not fixed.');
 edit_composer_expect(str_contains($premium, 'object-fit:contain'), 'Edit photo preview may crop the selected photo.');
 edit_composer_expect(!str_contains($creator, "document.createElement('style')"), 'Edit UI styling must not violate the production style-src policy.');
-edit_composer_expect(str_contains($bootstrap, 'znews-creator.js?v=13'), 'Latest edit composer behavior is not activated.');
-edit_composer_expect(str_contains($index, 'znews-bootstrap.js?v=31'), 'Reload-safe edit bootstrap is not activated.');
+edit_composer_expect(str_contains($bootstrap, 'znews-creator.js?v=14'), 'Latest edit composer behavior is not activated.');
+edit_composer_expect(str_contains($index, 'znews-bootstrap.js?v=32'), 'Reload-safe edit bootstrap is not activated.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    edit_composer_expect(str_contains($worker, 'znews-bootstrap.js?v=31'), 'A PWA shell is missing the reload-safe edit bootstrap.');
-    edit_composer_expect(str_contains($worker, 'znews-creator.js?v=13'), 'A PWA shell is missing the edit composer.');
+    edit_composer_expect(str_contains($worker, 'znews-bootstrap.js?v=32'), 'A PWA shell is missing the reload-safe edit bootstrap.');
+    edit_composer_expect(str_contains($worker, 'znews-creator.js?v=14'), 'A PWA shell is missing the edit composer.');
     edit_composer_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'A PWA shell may cache API responses.');
     edit_composer_expect(str_contains($worker, 'networkFirst(request'), 'A PWA shell may serve stale edit assets while online.');
 }
