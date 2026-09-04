@@ -46,7 +46,11 @@ async function main() {
       response.end('Not Found');
       return;
     }
-    response.writeHead(200, { 'Content-Type': contentType(file), 'Cache-Control': 'no-store' });
+    response.writeHead(200, {
+      'Content-Type': contentType(file),
+      'Cache-Control': 'no-store',
+      'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'"
+    });
     fs.createReadStream(file).pipe(response);
   });
   await listen(server);
@@ -55,7 +59,12 @@ async function main() {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'block' });
   const page = await context.newPage();
+  const cspStyleErrors = [];
   page.on('pageerror', (error) => process.stderr.write(`PAGE_ERROR: ${error.message}\n`));
+  page.on('console', (message) => {
+    const value = message.text();
+    if (/content security policy/i.test(value) && /style-src|inline style/i.test(value)) cspStyleErrors.push(value);
+  });
 
   const posts = Array.from({ length: 12 }, (_value, index) => {
     const number = index + 1;
@@ -368,6 +377,25 @@ async function main() {
     assert.equal(menuAudit.role, 'dialog', 'Post options lacks dialog semantics.');
     assert.equal(menuAudit.fullRows && menuAudit.rowHeights.every((height) => height >= 52 && height <= 56) && menuAudit.icons === 2 && menuAudit.floatingClose === 0 && menuAudit.borderWidth === '0px', true, 'Post options lacks borderless full-width 52-56px icon rows.');
     assert.equal(menuAudit.nearBottom, true, 'Post options dialog is not anchored to the mobile viewport bottom.');
+    for (const width of [320, 360, 390, 412, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      const mobileSheet = await page.evaluate(() => {
+        const dialog = document.querySelector('#creatorCardMenuDialog');
+        const rows = [...dialog.querySelectorAll('.creator-card-menu-actions button')];
+        return {
+          width: Math.round(dialog.getBoundingClientRect().width),
+          viewport: window.innerWidth,
+          bottom: Math.round(window.innerHeight - dialog.getBoundingClientRect().bottom),
+          rowHeights: rows.map((row) => Math.round(row.getBoundingClientRect().height)),
+          overflow: document.documentElement.scrollWidth > window.innerWidth
+        };
+      });
+      assert.equal(mobileSheet.width, mobileSheet.viewport, `Post options is not full-width at ${width}px.`);
+      assert.equal(Math.abs(mobileSheet.bottom) <= 1, true, `Post options is not bottom-anchored at ${width}px.`);
+      assert.equal(mobileSheet.rowHeights.every((height) => height >= 52 && height <= 56), true, `Post option rows are not touch-safe at ${width}px.`);
+      assert.equal(mobileSheet.overflow, false, `Post options creates horizontal overflow at ${width}px.`);
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
     if (process.env.ZNEWS_UI_SCREENSHOT_DIR) {
       fs.mkdirSync(process.env.ZNEWS_UI_SCREENSHOT_DIR, { recursive: true });
       await page.screenshot({ path: path.join(process.env.ZNEWS_UI_SCREENSHOT_DIR, 'post-options-390.png'), fullPage: true });
@@ -878,6 +906,7 @@ async function main() {
       assert.ok(sample.finalBytes <= 700 * 1024, `${sample.size} MB client sample exceeds 700 KB.`);
       assert.ok(Math.max(sample.width, sample.height) <= 1600, `${sample.size} MB client sample exceeds 1600px.`);
     }
+    assert.deepEqual(cspStyleErrors, [], 'Creator UI attempted CSP-blocked inline styling.');
 
     process.stdout.write(`PASS: Z Sky media/category/Edit browser assertions; compression=${JSON.stringify(compressionSamples)}\n`);
   } finally {

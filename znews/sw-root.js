@@ -1,12 +1,12 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-standalone-shell-v25';
-const SHELL_REVISION = 'creator-interactions-3';
+const CACHE_NAME = 'zsky24-standalone-shell-v26';
+const SHELL_REVISION = 'creator-csp-styles-1';
 const SHELL = [
   '/',
   '/znews/index.html',
   '/znews/assets/znews.css?v=4',
-  '/znews/assets/znews-premium.css?v=15',
+  '/znews/assets/znews-premium.css?v=16',
   '/znews/assets/znews-reader.css?v=2',
   '/znews/assets/znews-weekly-review.css?v=1',
   '/znews/assets/znews-config.js?v=8',
@@ -14,7 +14,7 @@ const SHELL = [
   '/znews/assets/znews-weekly-review.js?v=1',
   '/znews/assets/znews-ads.js?v=2',
   '/znews/assets/znews-rich-editor.js?v=3',
-  '/znews/assets/znews-bootstrap.js?v=30',
+  '/znews/assets/znews-bootstrap.js?v=31',
   '/znews/assets/znews-access.js?v=3',
   '/znews/assets/znews-request-scheduler.js?v=1',
   '/znews/assets/znews-progressive-feed.js?v=3',
@@ -24,7 +24,7 @@ const SHELL = [
   '/znews/assets/znews.js?v=26',
   '/znews/assets/znews-image-optimizer.js?v=1',
   '/znews/assets/znews-header.js?v=2',
-  '/znews/assets/znews-creator.js?v=12',
+  '/znews/assets/znews-creator.js?v=13',
   '/znews/assets/znews-instant-comments.js?v=4',
   '/manifest.webmanifest'
 ];

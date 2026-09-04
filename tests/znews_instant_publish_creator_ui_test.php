@@ -120,7 +120,7 @@ instant_expect(str_contains($updateEndpoint, 'requires_review'), 'update endpoin
 
 instant_expect(str_contains($webIndex, 'Clean posts publish immediately'), 'web UI does not explain instant publishing');
 instant_expect(str_contains($webIndex, '>Post</button>'), 'compact web publish action label is missing');
-instant_expect(str_contains($webBootstrap, 'znews-creator.js?v=12'), 'web creator management module is not loaded by bootstrap');
+instant_expect(str_contains($webBootstrap, 'znews-creator.js?v=13'), 'web creator management module is not loaded by bootstrap');
 instant_expect(!str_contains($webIndex, 'Submit for review'), 'web UI still presents every post as pre-moderated');
 instant_expect(str_contains($webCreator, 'znews/posts/update.php'), 'web edit endpoint is missing');
 instant_expect(str_contains($webCreator, 'znews/posts/delete.php'), 'web delete endpoint is missing');
