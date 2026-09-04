@@ -94,6 +94,14 @@ function znews_public_projection_item(array $row): ?array
             $row['bold_ranges'] ?? [],
             (string)$row['text']
         ),
+        'formatting_runs' => znews_post_formatting_runs(
+            $row['formatting_runs']
+                ?? znews_post_formatting_runs_from_bold_ranges(
+                    znews_post_bold_ranges($row['bold_ranges'] ?? [], (string)$row['text']),
+                    (string)$row['text']
+                ),
+            (string)$row['text']
+        ),
         'category' => strtoupper(trim((string)($row['category'] ?? ''))),
         'image_url' => (string)$row['image_url'],
         'image_width' => max(0, (int)($row['image_width'] ?? 0)),
@@ -126,6 +134,14 @@ function znews_public_projection_format_public(array $post): array
         'text' => (string)($post['text'] ?? ''),
         'bold_ranges' => znews_post_bold_ranges(
             $post['bold_ranges'] ?? [],
+            (string)($post['text'] ?? '')
+        ),
+        'formatting_runs' => znews_post_formatting_runs(
+            $post['formatting_runs']
+                ?? znews_post_formatting_runs_from_bold_ranges(
+                    znews_post_bold_ranges($post['bold_ranges'] ?? [], (string)($post['text'] ?? '')),
+                    (string)($post['text'] ?? '')
+                ),
             (string)($post['text'] ?? '')
         ),
         'category' => strtoupper(trim((string)($post['category'] ?? ''))),
@@ -173,6 +189,7 @@ function znews_public_projection_for_post(
         'title' => (string)$formatted['title'],
         'text' => (string)$formatted['text'],
         'bold_ranges' => (array)($formatted['bold_ranges'] ?? []),
+        'formatting_runs' => (array)($formatted['formatting_runs'] ?? []),
         'category' => $category,
         'category_created_at' => $category !== ''
             ? znews_category_created_at($category, (int)$formatted['created_at'])

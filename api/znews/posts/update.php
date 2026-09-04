@@ -27,6 +27,7 @@ if ($expectedUpdatedAt === false || $expectedUpdatedAt <= 0) {
 
 $textProvided = array_key_exists('text', $body);
 $boldRangesProvided = array_key_exists('bold_ranges', $body);
+$formattingRunsProvided = array_key_exists('formatting_runs', $body);
 $titleProvided = array_key_exists('title', $body);
 $categoryProvided = array_key_exists('category', $body);
 $category = $categoryProvided
@@ -53,6 +54,8 @@ $result = znews_update_post_with_media(
     $textProvided,
     $body['bold_ranges'] ?? [],
     $boldRangesProvided,
+    $body['formatting_runs'] ?? [],
+    $formattingRunsProvided,
     $mediaProvided,
     $requestedMediaId,
     $category,

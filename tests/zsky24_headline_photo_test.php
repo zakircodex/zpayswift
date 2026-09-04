@@ -54,11 +54,12 @@ headline_expect(str_contains($posts, "'title' => trim((string)(\$post['title'] ?
 headline_expect(str_contains($createService, 'trim($title . "\\n" . $text)'), 'Headline is not included in create moderation.');
 headline_expect(str_contains($updateService, 'trim($targetTitle . "\\n" . $text)'), 'Headline is not included in update moderation.');
 
-headline_expect(str_contains($apiClient, "createPost({ title = '', text = '', boldRanges = [], mediaId = '', category = '' })"), 'Web API client does not send headlines/categories/formatting.');
+headline_expect(str_contains($apiClient, "createPost({ title = '', text = '', boldRanges = [], formattingRuns = [], mediaId = '', category = '' })"), 'Web API client does not send headlines/categories/formatting.');
 headline_expect(
     str_contains($app, 'title: postTitle')
     && str_contains($app, 'text: postText')
     && str_contains($app, 'boldRanges: parsedText.boldRanges')
+    && str_contains($app, 'formattingRuns: parsedText.formattingRuns')
     && str_contains($app, 'mediaId')
     && str_contains($app, 'category'),
     'Canonical Create request does not send the headline/category/formatting.'

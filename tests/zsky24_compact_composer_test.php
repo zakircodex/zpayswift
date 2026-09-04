@@ -23,6 +23,7 @@ function composer_expect(bool $condition, string $message): void
 $index = composer_source('znews/index.html');
 $app = composer_source('znews/assets/znews.js');
 $creator = composer_source('znews/assets/znews-creator.js');
+$richEditor = composer_source('znews/assets/znews-rich-editor.js');
 $premium = composer_source('znews/assets/znews-premium.css');
 $bootstrap = composer_source('znews/assets/znews-bootstrap.js');
 $embeddedWorker = composer_source('znews/sw.js');
@@ -44,8 +45,9 @@ composer_expect(!str_contains($index, 'class="upload-box" for="postImage"'), 'Le
 
 composer_expect(str_contains($app, 'function syncComposerState()'), 'Composer state synchronizer is missing.');
 composer_expect(str_contains($index, 'id="postBoldButton"'), 'Composer middle-bold control is missing.');
-composer_expect(str_contains($app, 'parseComposerText') && str_contains($app, 'boldRanges: parsedText.boldRanges'), 'Composer does not send canonical plain text with bold ranges.');
-composer_expect(str_contains($app, 'Math.min(210, Math.max(112, els.postText.scrollHeight))'), 'Auto-growing composer bounds are missing.');
+composer_expect(str_contains($app, 'getEditorPayload') && str_contains($app, 'formattingRuns: parsedText.formattingRuns'), 'Composer does not send canonical plain text with safe formatting runs.');
+composer_expect(str_contains($richEditor, 'toggleBold') && !str_contains($richEditor, 'textarea.value = `${value.slice(0, start)}**'), 'Composer still exposes markdown formatting markers.');
+composer_expect(str_contains($app, 'Math.min(260, Math.max(84, els.postText.scrollHeight))'), 'Compact auto-growing composer bounds are missing.');
 composer_expect(str_contains($app, 'els.postTitle.value.trim()'), 'Headline-aware Post action is missing.');
 composer_expect(str_contains($app, 'document.documentElement.dataset.znewsRoute = next'), 'Route-aware mobile composer mode is missing.');
 composer_expect(str_contains($app, "remove.setAttribute('aria-label', 'Remove selected photo')"), 'Selected-photo removal is missing.');
@@ -55,7 +57,7 @@ composer_expect(str_contains($creator, 'syncEditor(ensureEditor())'), 'Edit subm
 
 foreach ([
     '.composer-card{max-width:680px',
-    '.composer-body-field textarea{min-height:112px;max-height:210px',
+    '.composer-body-field textarea{min-height:84px;max-height:260px',
     '.composer-add-row{display:grid',
     '.composer-image-remove{position:absolute',
     'html[data-znews-route="create"] .app-header{display:none}',
@@ -65,16 +67,17 @@ foreach ([
     composer_expect(str_contains($premium, $contract), "Compact composer style is missing: {$contract}");
 }
 
-composer_expect(str_contains($index, 'znews-premium.css?v=12'), 'Composer stylesheet cachebuster is missing.');
-composer_expect(str_contains($index, 'znews-bootstrap.js?v=27'), 'Reload-safe composer bootstrap cachebuster is missing.');
-composer_expect(str_contains($index, 'znews.js?v=23'), 'Latest composer behavior is not loaded.');
-composer_expect(str_contains($bootstrap, 'znews-creator.js?v=9'), 'Latest creator behavior is not loaded.');
+composer_expect(str_contains($index, 'znews-premium.css?v=13'), 'Composer stylesheet cachebuster is missing.');
+composer_expect(str_contains($index, 'znews-bootstrap.js?v=28'), 'Reload-safe composer bootstrap cachebuster is missing.');
+composer_expect(str_contains($index, 'znews.js?v=24'), 'Latest composer behavior is not loaded.');
+composer_expect(str_contains($index, 'znews-rich-editor.js?v=1'), 'Safe rich editor module is not loaded.');
+composer_expect(str_contains($bootstrap, 'znews-creator.js?v=10'), 'Latest creator behavior is not loaded.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    composer_expect(str_contains($worker, 'znews-premium.css?v=12'), 'Latest composer stylesheet is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=27'), 'Latest reload-safe bootstrap is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews.js?v=23'), 'Latest app behavior is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-creator.js?v=9'), 'Latest creator behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-premium.css?v=13'), 'Latest composer stylesheet is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=28'), 'Latest reload-safe bootstrap is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews.js?v=24'), 'Latest app behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-creator.js?v=10'), 'Latest creator behavior is missing from a PWA shell.');
     composer_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'PWA shell must continue excluding API responses.');
     composer_expect(str_contains($worker, 'networkFirst(request'), 'PWA shell must refresh composer assets while online.');
 }

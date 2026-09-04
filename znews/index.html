@@ -15,15 +15,16 @@
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link id="appManifest" rel="manifest" href="/znews/manifest.webmanifest">
   <link rel="stylesheet" href="/znews/assets/znews.css?v=4">
-  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=12">
+  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=13">
   <script defer src="/znews/assets/znews-config.js?v=8"></script>
-  <script defer src="/znews/assets/znews-api.js?v=12"></script>
+  <script defer src="/znews/assets/znews-api.js?v=13"></script>
   <script defer src="/znews/assets/znews-request-scheduler.js?v=1"></script>
   <script defer src="/znews/assets/znews-progressive-feed.js?v=3"></script>
   <script defer src="/znews/assets/znews-feed-ui.js?v=3"></script>
   <script defer src="/znews/assets/znews-ads.js?v=2"></script>
-  <script defer src="/znews/assets/znews-bootstrap.js?v=27"></script>
-  <script defer src="/znews/assets/znews.js?v=23"></script>
+  <script defer src="/znews/assets/znews-rich-editor.js?v=1"></script>
+  <script defer src="/znews/assets/znews-bootstrap.js?v=28"></script>
+  <script defer src="/znews/assets/znews.js?v=24"></script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -94,8 +95,6 @@
 
     <section class="content-column">
       <div id="announcement" class="announcement" hidden></div>
-      <div class="znews-guest-note">You are reading as a guest. Create a Z-Pay account to publish posts and join conversations.</div>
-
       <section id="feedView" class="view active" data-view="feed">
         <nav class="feed-categories" id="feedCategories" aria-label="Feed categories">
           <button class="feed-category active" type="button" data-feed-category="" aria-pressed="true">News feed all</button>
@@ -141,13 +140,21 @@
             </div>
             <div class="composer-writing-fields">
               <div class="composer-field composer-category-field">
-                <label for="postCategory">Category</label>
-                <select id="postCategory" name="category" required>
-                  <option value="">Choose a category</option>
-                  <option value="INTERNATIONAL_NEWS">International news</option>
-                  <option value="BD_NEWS">BD news</option>
-                  <option value="MOBILE_PRICING">Mobile pricing</option>
-                </select>
+                <span class="composer-field-label" id="postCategoryLabel">Category</span>
+                <input id="postCategory" name="category" type="hidden" value="">
+                <button class="category-picker-trigger" id="postCategoryButton" type="button" aria-labelledby="postCategoryLabel postCategoryValue" aria-haspopup="dialog" aria-expanded="false" aria-controls="postCategoryDialog">
+                  <span id="postCategoryValue" data-category-label>Choose a category</span><span aria-hidden="true">⌄</span>
+                </button>
+                <dialog class="category-picker-dialog" id="postCategoryDialog" aria-labelledby="postCategoryDialogTitle">
+                  <div class="category-picker-sheet">
+                    <header><h2 id="postCategoryDialogTitle">Choose category</h2><button type="button" data-category-close aria-label="Close category picker">×</button></header>
+                    <div class="category-picker-options" role="radiogroup" aria-label="Post category">
+                      <button type="button" role="radio" aria-checked="false" data-category-option="INTERNATIONAL_NEWS"><span>International news</span><i aria-hidden="true"></i></button>
+                      <button type="button" role="radio" aria-checked="false" data-category-option="BD_NEWS"><span>BD news</span><i aria-hidden="true"></i></button>
+                      <button type="button" role="radio" aria-checked="false" data-category-option="MOBILE_PRICING"><span>Mobile pricing</span><i aria-hidden="true"></i></button>
+                    </div>
+                  </div>
+                </dialog>
               </div>
               <div class="composer-field composer-title-field">
                 <label for="postTitle">News headline</label>
@@ -156,8 +163,18 @@
               </div>
               <div class="composer-field composer-body-field">
                 <label for="postText">Post details</label>
-                <div class="composer-format-toolbar" role="toolbar" aria-label="Text formatting">
-                  <button class="composer-format-button" id="postBoldButton" type="button" aria-label="Bold selected text" title="Bold selected text"><strong>B</strong></button>
+                <div class="composer-format-toolbar" id="postFormatToolbar" role="toolbar" aria-label="Text formatting">
+                  <button class="composer-format-button" id="postBoldButton" type="button" data-format-bold aria-label="Bold selected text" aria-pressed="false" title="Bold selected text"><strong>B</strong></button>
+                  <button class="composer-format-button composer-color-button" id="postColorButton" type="button" data-format-color-toggle data-color="default" aria-label="Text color: Default" aria-haspopup="true" aria-expanded="false" aria-controls="postColorPalette"><strong>A</strong><span class="format-color-swatch" aria-hidden="true"></span></button>
+                  <div class="format-color-palette" id="postColorPalette" data-format-palette role="radiogroup" aria-label="Text color" hidden>
+                    <button type="button" role="radio" aria-checked="true" data-format-color="default"><i class="color-swatch default" aria-hidden="true"></i><span>Default</span></button>
+                    <button type="button" role="radio" aria-checked="false" data-format-color="white"><i class="color-swatch white" aria-hidden="true"></i><span>White</span></button>
+                    <button type="button" role="radio" aria-checked="false" data-format-color="light_blue"><i class="color-swatch light-blue" aria-hidden="true"></i><span>Light blue</span></button>
+                    <button type="button" role="radio" aria-checked="false" data-format-color="green"><i class="color-swatch green" aria-hidden="true"></i><span>Green</span></button>
+                    <button type="button" role="radio" aria-checked="false" data-format-color="yellow"><i class="color-swatch yellow" aria-hidden="true"></i><span>Yellow</span></button>
+                    <button type="button" role="radio" aria-checked="false" data-format-color="orange"><i class="color-swatch orange" aria-hidden="true"></i><span>Orange</span></button>
+                    <button type="button" role="radio" aria-checked="false" data-format-color="red"><i class="color-swatch red" aria-hidden="true"></i><span>Red</span></button>
+                  </div>
                 </div>
                 <textarea id="postText" name="text" maxlength="5000" rows="4" placeholder="Write the story or update…" aria-describedby="composerReviewNote postTextCount"></textarea>
                 <span class="composer-field-count" id="postTextCount">0 / 5000</span>

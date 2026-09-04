@@ -18,6 +18,10 @@ $boldRanges = znews_validate_post_bold_ranges(
     $body['bold_ranges'] ?? [],
     (string)$content['text']
 );
+$formattingRuns = array_key_exists('formatting_runs', $body)
+    ? znews_validate_post_formatting_runs($body['formatting_runs'], (string)$content['text'])
+    : znews_post_formatting_runs_from_bold_ranges($boldRanges, (string)$content['text']);
+$boldRanges = znews_post_bold_ranges_from_formatting_runs($formattingRuns, (string)$content['text']);
 $title = znews_post_validate_title($body['title'] ?? '');
 $category = array_key_exists('category', $body)
     ? znews_normalize_category($body['category'], false)
@@ -33,6 +37,7 @@ $result = znews_create_post_with_media(
     $title,
     (string)$content['text'],
     $boldRanges,
+    $formattingRuns,
     (string)$content['media_id'],
     (string)$content['content_type'],
     $category,

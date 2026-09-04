@@ -233,7 +233,7 @@
       });
     }
 
-    createPost({ title = '', text = '', boldRanges = [], mediaId = '', category = '' }) {
+    createPost({ title = '', text = '', boldRanges = [], formattingRuns = [], mediaId = '', category = '' }) {
       return this.request('znews/posts/create.php', {
         method: 'POST',
         authenticated: true,
@@ -241,6 +241,7 @@
           title,
           text,
           bold_ranges: Array.isArray(boldRanges) ? boldRanges : [],
+          formatting_runs: Array.isArray(formattingRuns) ? formattingRuns : [],
           media_id: mediaId,
           category,
           idempotency_key: this.idempotencyKey('post')

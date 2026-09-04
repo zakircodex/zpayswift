@@ -85,6 +85,37 @@ try {
 }
 rich_mine_expect($tooManyRejected, 'More than 100 formatting ranges were accepted.');
 
+$formatText = 'বাংলা bold 🎉 color';
+$formatRuns = znews_validate_post_formatting_runs([
+    ['start' => 0, 'end' => 5, 'bold' => true, 'color' => 'green'],
+    ['start' => 6, 'end' => 10, 'bold' => true],
+    ['start' => 13, 'end' => 18, 'color' => 'light_blue'],
+], $formatText);
+rich_mine_expect(count($formatRuns) === 3, 'Valid Bangla/emoji formatting runs were not accepted.');
+rich_mine_expect(
+    znews_post_bold_ranges_from_formatting_runs($formatRuns, $formatText) === [
+        ['start' => 0, 'end' => 5],
+        ['start' => 6, 'end' => 10],
+    ],
+    'Bold compatibility ranges were not derived from formatting runs.'
+);
+
+foreach ([
+    [['start' => 0, 'end' => 2, 'color' => '#ffffff']],
+    [['start' => 0, 'end' => 2, 'color' => 'url(javascript:alert(1))']],
+    [['start' => 0, 'end' => 2, 'html' => '<script>']],
+    [['start' => 0, 'end' => 2, 'bold' => 'true']],
+    [['start' => 0, 'end' => 99, 'color' => 'red']],
+] as $invalidRuns) {
+    $rejected = false;
+    try {
+        znews_validate_post_formatting_runs($invalidRuns, 'Safe text');
+    } catch (RuntimeException $exception) {
+        $rejected = str_starts_with($exception->getMessage(), 'ZNEWS_POST_FORMAT_INVALID|422');
+    }
+    rich_mine_expect($rejected, 'Malicious or malformed formatting run was not rejected.');
+}
+
 $formatted = znews_format_public_post([
     'post_id' => 'POST_RICH',
     'creator_uid' => 'USER_A',
@@ -92,11 +123,13 @@ $formatted = znews_format_public_post([
     'title' => 'Safe title',
     'text' => '<b>plain</b> bold',
     'bold_ranges' => [['start' => 13, 'end' => 17]],
+    'formatting_runs' => [['start' => 13, 'end' => 17, 'bold' => true, 'color' => 'orange']],
     'status' => 'ACTIVE',
     'visibility' => 'PUBLIC',
 ]);
 rich_mine_expect(($formatted['text'] ?? '') === '<b>plain</b> bold', 'Canonical text was converted into HTML.');
 rich_mine_expect(($formatted['bold_ranges'] ?? []) === [['start' => 13, 'end' => 17]], 'Public formatter lost bold ranges.');
+rich_mine_expect(($formatted['formatting_runs'][0]['color'] ?? '') === 'orange', 'Public formatter lost the allowlisted text color.');
 rich_mine_expect(!isset($formatted['email'], $formatted['wallet']), 'Public formatter exposed private fields.');
 
 $legacy = znews_format_public_post([
@@ -105,6 +138,7 @@ $legacy = znews_format_public_post([
     'status' => 'ACTIVE',
 ]);
 rich_mine_expect(($legacy['bold_ranges'] ?? null) === [], 'Legacy post did not default to plain text.');
+rich_mine_expect(($legacy['formatting_runs'] ?? null) === [], 'Legacy post did not default to empty formatting runs.');
 
 $countsByDataset = [];
 foreach ([100, 1000, 10000] as $datasetSize) {
@@ -123,6 +157,7 @@ foreach ([100, 1000, 10000] as $datasetSize) {
             'title' => 'Title ' . $index,
             'text' => 'Body ' . $index,
             'bold_ranges' => [['start' => 0, 'end' => 4]],
+            'formatting_runs' => [['start' => 0, 'end' => 4, 'bold' => true, 'color' => 'yellow']],
             'status' => 'ACTIVE',
             'visibility' => 'PUBLIC',
             'created_at' => $index,
@@ -142,6 +177,7 @@ foreach ([100, 1000, 10000] as $datasetSize) {
     rich_mine_expect((int)$page['items'][0]['created_at'] === $datasetSize, "{$datasetSize}-row page is not newest first.");
     rich_mine_expect((int)$page['items'][0]['like_count'] === $datasetSize, "{$datasetSize}-row page lost canonical engagement.");
     rich_mine_expect(($page['items'][0]['bold_ranges'] ?? []) === [['start' => 0, 'end' => 4]], "{$datasetSize}-row page lost formatting.");
+    rich_mine_expect(($page['items'][0]['formatting_runs'][0]['color'] ?? '') === 'yellow', "{$datasetSize}-row page lost rich formatting.");
     rich_mine_expect(!empty($page['has_more']) && ($page['next_cursor'] ?? '') !== '', "{$datasetSize}-row page lost its cursor.");
     rich_mine_expect(count($queries) === 23, "{$datasetSize}-row page read count is not bounded at 23.");
     rich_mine_expect(($queries[0]['path'] ?? '') === 'ZNEWS_USER_POSTS/U1', "{$datasetSize}-row page did not use the owner index.");

@@ -145,7 +145,7 @@
     const image = safeUrl(post.image_url);
     const title = text(post.title).trim();
     const body = text(post.text);
-    const bodyHtml = window.ZNewsRichText?.formattedTextHtml(body, post.bold_ranges) || escapeHtml(body);
+    const bodyHtml = window.ZNewsRichText?.formattedTextHtml(body, post.formatting_runs, post.bold_ranges) || escapeHtml(body);
     const avatar = photo
       ? `<span class="avatar"><img src="${escapeHtml(photo)}" alt="" referrerpolicy="no-referrer"></span>`
       : `<span class="avatar">${escapeHtml(name.charAt(0).toUpperCase() || 'Z')}</span>`;

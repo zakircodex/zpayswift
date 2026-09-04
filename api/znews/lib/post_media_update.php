@@ -18,6 +18,8 @@ function znews_update_post_with_media(
     bool $textProvided,
     $boldRangesValue,
     bool $boldRangesProvided,
+    $formattingRunsValue,
+    bool $formattingRunsProvided,
     bool $mediaProvided,
     string $requestedMediaId,
     string $category,
@@ -74,6 +76,20 @@ function znews_update_post_with_media(
     } else {
         $boldRanges = [];
     }
+    if ($formattingRunsProvided) {
+        $formattingRuns = znews_validate_post_formatting_runs($formattingRunsValue, $text);
+        $boldRanges = znews_post_bold_ranges_from_formatting_runs($formattingRuns, $text);
+    } elseif ($boldRangesProvided) {
+        $formattingRuns = znews_post_formatting_runs_from_bold_ranges($boldRanges, $text);
+    } elseif (!$textProvided || hash_equals($currentText, $text)) {
+        $formattingRuns = znews_post_formatting_runs(
+            $post['formatting_runs'] ?? znews_post_formatting_runs_from_bold_ranges($boldRanges, $text),
+            $text
+        );
+        $boldRanges = znews_post_bold_ranges_from_formatting_runs($formattingRuns, $text);
+    } else {
+        $formattingRuns = [];
+    }
     $targetMediaId = (string)$content['media_id'];
     $contentType = (string)$content['content_type'];
 
@@ -86,6 +102,8 @@ function znews_update_post_with_media(
         'text' => $text,
         'bold_ranges' => $boldRanges,
         'bold_ranges_provided' => $boldRangesProvided,
+        'formatting_runs' => $formattingRuns,
+        'formatting_runs_provided' => $formattingRunsProvided,
         'title' => $targetTitle,
         'title_provided' => $titleProvided,
         'text_provided' => $textProvided,
@@ -127,10 +145,11 @@ function znews_update_post_with_media(
     $now = znews_now();
     $decision = znews_post_publication_decision($newMediaRow, trim($targetTitle . "\n" . $text));
     $updated = $post;
-    $updated['schema_version'] = max(6, (int)($post['schema_version'] ?? 1));
+    $updated['schema_version'] = max(7, (int)($post['schema_version'] ?? 1));
     $updated['title'] = $targetTitle;
     $updated['text'] = $text;
     $updated['bold_ranges'] = $boldRanges;
+    $updated['formatting_runs'] = $formattingRuns;
     $updated['category'] = $targetCategory;
     $updated['image_media_id'] = $targetMediaId;
     $updated['image_url'] = znews_post_media_public_url($targetMediaId);

@@ -14,6 +14,7 @@ function znews_create_post_with_media(
     string $title,
     string $text,
     array $boldRanges,
+    array $formattingRuns,
     string $mediaId,
     string $contentType,
     string $category,
@@ -27,6 +28,7 @@ function znews_create_post_with_media(
         $title,
         $text,
         $boldRanges,
+        $formattingRuns,
         $mediaId,
         $contentType,
         $category
@@ -62,7 +64,7 @@ function znews_create_post_with_media(
     $imageHeight = max(0, (int)($mediaRow['optimized_height'] ?? $mediaRow['height'] ?? 0));
     $decision = znews_post_publication_decision($mediaRow, trim($title . "\n" . $text));
     $post = [
-        'schema_version' => 6,
+        'schema_version' => 7,
         'post_id' => $postId,
         'creator_uid' => $uid,
         'creator_name' => (string)($creator['name'] ?? 'Z-Pay User'),
@@ -70,6 +72,7 @@ function znews_create_post_with_media(
         'title' => $title,
         'text' => $text,
         'bold_ranges' => $boldRanges,
+        'formatting_runs' => $formattingRuns,
         'category' => $category,
         'image_media_id' => $mediaId,
         'image_url' => znews_post_media_public_url($mediaId),

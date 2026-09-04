@@ -75,6 +75,7 @@ async function main() {
       title: `Post title ${number}`,
       text: `Post body ${number}`,
       bold_ranges: number === 1 ? [{ start: 5, end: 9 }] : [],
+      formatting_runs: number === 1 ? [{ start: 5, end: 9, bold: true, color: 'orange' }] : [],
       category,
       image_media_id: `MEDIA_${number}`,
       image_url: `/api/znews/public/media.php?media_id=MEDIA_${number}`,
@@ -100,10 +101,13 @@ async function main() {
       posts: fixturePosts,
       requests: [],
       updates: [],
+      deletes: [],
       creates: [],
       uploads: [],
       mode: 'ok',
       updateDelayMs: 0,
+      detailsDelayMs: 0,
+      detailFailuresRemaining: 0,
       mineFailuresRemaining: 0,
       nextMedia: 100
     };
@@ -153,6 +157,11 @@ async function main() {
         return success('ZNEWS_MY_POSTS_OK', { items: state.posts.slice(0, 10), next_cursor: 'MINE_10', has_more: true });
       }
       if (url.pathname.endsWith('/znews/posts/details.php')) {
+        if (state.detailsDelayMs) await sleep(state.detailsDelayMs);
+        if (state.detailFailuresRemaining > 0) {
+          state.detailFailuresRemaining -= 1;
+          return fail('REQUEST_TIMEOUT', 'The request timed out. Please try again.', 504);
+        }
         const post = state.posts.find((item) => item.post_id === url.searchParams.get('post_id'));
         return post ? success('ZNEWS_POST_DETAILS_OK', { post: { ...post } }) : fail('ZNEWS_POST_NOT_FOUND', 'Post not found.', 404);
       }
@@ -190,6 +199,7 @@ async function main() {
           title: body.title,
           text: body.text,
           bold_ranges: Array.isArray(body.bold_ranges) ? body.bold_ranges : [],
+          formatting_runs: Array.isArray(body.formatting_runs) ? body.formatting_runs : [],
           category: body.category,
           updated_at: post.updated_at + 1
         });
@@ -201,6 +211,12 @@ async function main() {
           post.image_height = body.media_id ? 844 : 0;
         }
         return success('ZNEWS_POST_UPDATED', { post: { ...post }, published_immediately: true });
+      }
+      if (url.pathname.endsWith('/znews/posts/delete.php')) {
+        const body = JSON.parse(String(init.body || '{}'));
+        if (state.mode === 'delete-fail') return fail('ZNEWS_POST_DELETE_FAILED', 'Post could not be deleted.', 503);
+        state.deletes.push(body);
+        return success('ZNEWS_POST_DELETED');
       }
       if (url.pathname.endsWith('/znews/likes/status.php')) return success('ZNEWS_LIKE_STATUS_OK', { liked: false });
       if (url.pathname.endsWith('/znews/public/impression.php')) return success('ZNEWS_IMPRESSION_OK');
@@ -220,14 +236,15 @@ async function main() {
     assert.deepEqual(renderedBold, { value: 'body', rawMarkers: false }, 'Feed did not safely render the middle bold range.');
     const escapedFormatting = await page.evaluate(() => {
       const holder = document.createElement('div');
-      holder.innerHTML = window.ZNewsRichText.formattedTextHtml('<img src=x> bold', [{ start: 12, end: 16 }]);
+      holder.innerHTML = window.ZNewsRichText.formattedTextHtml('<img src=x> bold', [], [{ start: 12, end: 16 }]);
       return {
         images: holder.querySelectorAll('img').length,
         strong: holder.querySelector('strong')?.textContent || '',
-        text: holder.textContent
+        text: holder.textContent,
+        unsafe: holder.querySelectorAll('script,style,[onerror]').length
       };
     });
-    assert.deepEqual(escapedFormatting, { images: 0, strong: 'bold', text: '<img src=x> bold' }, 'Formatted text allowed HTML injection or lost text.');
+    assert.deepEqual(escapedFormatting, { images: 0, strong: 'bold', text: '<img src=x> bold', unsafe: 0 }, 'Formatted text allowed HTML injection or lost text.');
     await page.evaluate(() => window.ZNEWS_AUTH_READY);
     await page.waitForFunction(() => window.ZNEWS_POST_PAINT_MODULES?.ready === true, null, { timeout: 10000 });
 
@@ -264,10 +281,9 @@ async function main() {
     const failedHeight = await page.locator('#feedList [data-post-id="POST_4"] .media-failed').evaluate((element) => element.getBoundingClientRect().height);
     assert.ok(failedHeight <= 70, `Broken image placeholder remained too tall (${failedHeight}px).`);
 
-    const feedRequestsBeforeMicro = await page.evaluate(() => window.__zskyMediaCategoryTest.requests.filter((value) => value.includes('/public/feed.php')).length);
     await page.getByRole('button', { name: /Micro job/ }).dispatchEvent('click');
-    const feedRequestsAfterMicro = await page.evaluate(() => window.__zskyMediaCategoryTest.requests.filter((value) => value.includes('/public/feed.php')).length);
-    assert.equal(feedRequestsAfterMicro, feedRequestsBeforeMicro, 'Micro Job triggered a feed request.');
+    const microFeedRequests = await page.evaluate(() => window.__zskyMediaCategoryTest.requests.filter((value) => value.includes('/public/feed.php') && value.includes('category=MICRO_JOB')).length);
+    assert.equal(microFeedRequests, 0, 'Micro Job triggered a category feed request.');
     await page.getByRole('button', { name: 'BD news', exact: true }).click();
     await page.waitForFunction(() => [...document.querySelectorAll('#feedList .post-card')].every((card) => card.textContent.includes('BD news')));
     const categoryAudit = await page.evaluate(() => ({
@@ -282,25 +298,74 @@ async function main() {
     await page.waitForSelector('#mineList [data-mine-retry]');
     assert.equal(await page.locator('#mineList .post-card').count(), 0, 'Failed initial My Posts load rendered stale cards.');
     await page.locator('#mineList [data-mine-retry]').click();
-    await page.waitForSelector('#mineList [data-post-id="POST_1"] [data-creator-edit]', { timeout: 5000 });
-    const editButton = page.locator('#mineList [data-post-id="POST_1"] [data-creator-edit]');
+    await page.waitForSelector('#mineList [data-post-id="POST_1"] [data-creator-menu]', { timeout: 5000 });
+    const mineUiAudit = await page.evaluate(() => {
+      const view = document.querySelector('#mineView');
+      const heading = view.querySelector('.section-heading');
+      return {
+        guestNoticeCount: document.querySelectorAll('.znews-guest-note').length,
+        nativeCategorySelects: document.querySelectorAll('#postCategory, #creatorEditCategory').length
+          ? [...document.querySelectorAll('#postCategory, #creatorEditCategory')].filter((item) => item.tagName === 'SELECT').length
+          : 0,
+        bottomManagement: document.querySelectorAll('#mineList .creator-management').length,
+        overflowButtons: document.querySelectorAll('#mineList [data-creator-menu]').length,
+        topGap: Math.round(heading.getBoundingClientRect().top - view.getBoundingClientRect().top)
+      };
+    });
+    assert.equal(mineUiAudit.guestNoticeCount, 0, 'Removed guest notice remains in the document.');
+    assert.equal(mineUiAudit.nativeCategorySelects, 0, 'Create/Edit still depends on a native select popup.');
+    assert.equal(mineUiAudit.bottomManagement, 0, 'Legacy bottom Edit/Delete controls remain.');
+    assert.equal(mineUiAudit.overflowButtons, 10, 'My Posts cards do not have one owner-only overflow action each.');
+    assert.ok(mineUiAudit.topGap <= 4, `My Posts retained an excessive top gap (${mineUiAudit.topGap}px).`);
+    const openEdit = async ({ expectLoading = false } = {}) => {
+      await page.locator('#mineList [data-post-id="POST_1"] [data-creator-menu]').click();
+      await page.waitForSelector('#creatorCardMenuDialog[open]');
+      await page.locator('#creatorCardMenuDialog [data-menu-edit]').click();
+      if (expectLoading) {
+        await page.waitForSelector('#creatorActionDialog[open][data-mode="loading"]');
+        assert.match(await page.locator('#creatorActionDialog').textContent(), /Loading post.*Preparing the editor/is, 'Polished edit loading state is missing.');
+      }
+      await page.waitForSelector('#creatorEditDialog[open]');
+    };
 
-    await editButton.click();
-    await page.waitForSelector('#creatorEditDialog[open]');
+    await page.locator('#mineList [data-post-id="POST_1"] [data-creator-menu]').click();
+    assert.equal(await page.locator('#creatorCardMenuDialog[open]').count(), 1, 'Overflow did not open exactly one custom action menu.');
+    await page.locator('#creatorCardMenuDialog').evaluate((dialog) => dialog.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await page.waitForFunction(() => !document.querySelector('#creatorCardMenuDialog')?.open);
+    assert.equal(await page.evaluate(() => document.activeElement?.matches('#mineList [data-post-id="POST_1"] [data-creator-menu]')), true, 'Overflow menu did not return focus to its trigger.');
+    await page.evaluate(() => { window.__zskyMediaCategoryTest.detailsDelayMs = 120; });
+    await openEdit({ expectLoading: true });
+    await page.evaluate(() => { window.__zskyMediaCategoryTest.detailsDelayMs = 0; });
     const initialEdit = await page.evaluate(() => ({
       title: document.querySelector('#creatorEditTitle').value,
       text: document.querySelector('#creatorEditText').value,
       category: document.querySelector('#creatorEditCategory').value,
-      preview: !document.querySelector('#creatorEditPreview').hidden
+      preview: !document.querySelector('#creatorEditPreview').hidden,
+      previewImages: document.querySelectorAll('#creatorEditPreview img').length,
+      savesDisabled: [...document.querySelectorAll('#creatorEditForm button[type="submit"]')].every((button) => button.disabled)
     }));
-    assert.deepEqual(initialEdit, { title: 'Post title 1', text: 'Post **body** 1', category: 'INTERNATIONAL_NEWS', preview: true }, 'Edit did not load current fields/image/formatting.');
+    assert.deepEqual(initialEdit, { title: 'Post title 1', text: 'Post body 1', category: 'INTERNATIONAL_NEWS', preview: true, previewImages: 1, savesDisabled: true }, 'Edit did not load current fields, exactly one image, or unchanged Save state.');
+    if (process.env.ZNEWS_UI_SCREENSHOT_DIR) {
+      fs.mkdirSync(process.env.ZNEWS_UI_SCREENSHOT_DIR, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.ZNEWS_UI_SCREENSHOT_DIR, 'edit-390.png'), fullPage: true });
+    }
     await page.locator('#creatorEditTitle').fill('Cancelled title');
+    assert.equal(await page.locator('#creatorEditSubmitTop').isEnabled(), true, 'Top and bottom Save state did not activate after a valid change.');
+    assert.equal(await page.locator('#creatorEditSubmitBottom').isEnabled(), true, 'Bottom Save state is not synchronized with top Save.');
     const updateCountBeforeCancel = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length);
     await page.locator('#creatorEditDialog [data-close]').click();
     assert.equal(await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length), updateCountBeforeCancel, 'Cancel mutated the post.');
 
-    await editButton.click();
+    await page.evaluate(() => { window.__zskyMediaCategoryTest.detailFailuresRemaining = 1; });
+    await page.locator('#mineList [data-post-id="POST_1"] [data-creator-menu]').click();
+    await page.locator('#creatorCardMenuDialog [data-menu-edit]').click();
+    await page.waitForSelector('#creatorActionDialog[open][data-mode="error"]');
+    assert.match(await page.locator('#creatorActionDialog').textContent(), /could not be loaded.*Retry/is, 'Edit loading failure lacks concise Retry/Close state.');
+    await page.locator('#creatorActionDialog [data-action-confirm]').click();
     await page.waitForSelector('#creatorEditDialog[open]');
+    await page.locator('#creatorEditDialog [data-close]').click();
+
+    await openEdit();
     const cleanReopen = await page.evaluate(() => ({
       title: document.querySelector('#creatorEditTitle').value,
       fileCount: document.querySelector('#creatorEditImage').files.length,
@@ -313,12 +378,11 @@ async function main() {
     const titleOnly = await page.evaluate(() => window.__zskyMediaCategoryTest.updates[0]);
     assert.equal(Object.prototype.hasOwnProperty.call(titleOnly, 'media_id'), false, 'Title-only edit did not preserve the existing image.');
     assert.deepEqual(titleOnly.bold_ranges, [{ start: 5, end: 9 }], 'Title-only edit did not preserve the middle bold range.');
+    assert.equal(titleOnly.formatting_runs[0].color, 'orange', 'Title-only edit did not preserve text color.');
 
     const png = await page.screenshot({ type: 'png' });
     const paddedPhoto = Buffer.concat([png, Buffer.alloc(Math.max(0, 3 * 1024 * 1024 - png.length))]);
-    await page.waitForSelector('#mineList [data-post-id="POST_1"] [data-creator-edit]');
-    await page.locator('#mineList [data-post-id="POST_1"] [data-creator-edit]').click();
-    await page.waitForSelector('#creatorEditDialog[open]');
+    await openEdit();
     await page.locator('#creatorRemoveImage').evaluate((element) => { element.checked = true; element.dispatchEvent(new Event('change', { bubbles: true })); });
     await page.locator('#creatorEditImage').setInputFiles({ name: 'replacement.png', mimeType: 'image/png', buffer: paddedPhoto });
     assert.equal(await page.locator('#creatorRemoveImage').isChecked(), false, 'Replacement did not win after Remove.');
@@ -331,8 +395,7 @@ async function main() {
     assert.ok(String(replacementAudit.update.media_id).startsWith('MEDIA_NEW_'), 'Replacement media was not attached.');
     assert.ok(replacementAudit.upload.size > 0 && replacementAudit.upload.size <= 700 * 1024, 'Edit replacement was not compressed below 700 KB.');
 
-    await page.locator('#mineList [data-post-id="POST_1"] [data-creator-edit]').click();
-    await page.waitForSelector('#creatorEditDialog[open]');
+    await openEdit();
     await page.locator('#creatorEditPreview .composer-image-remove').click();
     await page.locator('#creatorEditSubmitTop').click();
     await page.waitForFunction(() => window.__zskyMediaCategoryTest.updates.length === 3);
@@ -344,8 +407,7 @@ async function main() {
       post.image_url = '/api/znews/public/media.php?media_id=MEDIA_RESTORED';
       post.image_preview_url = '/api/znews/media/owner.php?media_id=MEDIA_RESTORED';
     });
-    await page.locator('#mineList [data-post-id="POST_1"] [data-creator-edit]').click();
-    await page.waitForSelector('#creatorEditDialog[open]');
+    await openEdit();
     await page.evaluate(() => { window.__zskyMediaCategoryTest.mode = 'conflict'; });
     await page.locator('#creatorEditText').fill('Conflict text');
     await page.locator('#creatorEditSubmitTop').click();
@@ -353,8 +415,7 @@ async function main() {
     assert.match(await page.locator('#creatorEditError').textContent(), /changed|Reload/i, 'Version conflict is not clear.');
     await page.locator('#creatorEditDialog [data-close]').click();
 
-    await page.locator('#mineList [data-post-id="POST_1"] [data-creator-edit]').click();
-    await page.waitForSelector('#creatorEditDialog[open]');
+    await openEdit();
     await page.evaluate(() => { window.__zskyMediaCategoryTest.mode = 'upload-fail'; });
     const updatesBeforeUploadFailure = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length);
     await page.locator('#creatorEditImage').setInputFiles({ name: 'failed.png', mimeType: 'image/png', buffer: paddedPhoto });
@@ -363,8 +424,7 @@ async function main() {
     assert.equal(await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length), updatesBeforeUploadFailure, 'Failed upload attempted to update/detach current media.');
     await page.locator('#creatorEditDialog [data-close]').click();
 
-    await page.locator('#mineList [data-post-id="POST_1"] [data-creator-edit]').click();
-    await page.waitForSelector('#creatorEditDialog[open]');
+    await openEdit();
     await page.evaluate(() => { window.__zskyMediaCategoryTest.mode = 'update-fail'; });
     await page.locator('#creatorEditText').fill('Failed update text');
     const imageBeforeFailedUpdate = await page.evaluate(() => window.__zskyMediaCategoryTest.posts[0].image_media_id);
@@ -373,8 +433,7 @@ async function main() {
     assert.equal(await page.evaluate(() => window.__zskyMediaCategoryTest.posts[0].image_media_id), imageBeforeFailedUpdate, 'Failed update detached the current image.');
     await page.locator('#creatorEditDialog [data-close]').click();
 
-    await page.locator('#mineList [data-post-id="POST_1"] [data-creator-edit]').click();
-    await page.waitForSelector('#creatorEditDialog[open]');
+    await openEdit();
     await page.evaluate(() => {
       window.__zskyMediaCategoryTest.mode = 'ok';
       window.__zskyMediaCategoryTest.updateDelayMs = 250;
@@ -389,16 +448,128 @@ async function main() {
     assert.equal(await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length), beforeDouble + 1, 'Double submit produced duplicate updates.');
     await page.waitForTimeout(300);
 
+    const openDelete = async () => {
+      await page.locator('#mineList [data-post-id="POST_2"] [data-creator-menu]').click();
+      await page.waitForSelector('#creatorCardMenuDialog[open]');
+      await page.locator('#creatorCardMenuDialog [data-menu-delete]').click();
+      await page.waitForSelector('#creatorActionDialog[open][data-mode="delete"]');
+    };
+    await page.evaluate(() => { window.__zskyMediaCategoryTest.mode = 'delete-fail'; });
+    await openDelete();
+    const deleteButtonSizes = await page.locator('#creatorActionDialog .creator-action-buttons button').evaluateAll((buttons) => buttons.map((button) => Math.round(button.getBoundingClientRect().height)));
+    assert.deepEqual(deleteButtonSizes, [50, 50], 'Delete modal buttons are not equal height.');
+    await page.locator('#creatorActionDialog [data-action-confirm]').evaluate((button) => {
+      button.click();
+      button.click();
+    });
+    await page.waitForSelector('#creatorActionError:not([hidden])');
+    const failedDeleteAudit = await page.evaluate(() => ({
+      requests: window.__zskyMediaCategoryTest.requests.filter((value) => value.includes('/posts/delete.php')).length,
+      cardExists: Boolean(document.querySelector('#mineList [data-post-id="POST_2"]')),
+      confirmDisabled: document.querySelector('#creatorActionDialog [data-action-confirm]').disabled
+    }));
+    assert.deepEqual(failedDeleteAudit, { requests: 1, cardExists: true, confirmDisabled: false }, 'Delete failure did not recover safely or double-delete was not blocked.');
+    await page.locator('#creatorActionDialog [data-action-cancel]').click();
+
+    await page.evaluate(() => { window.__zskyMediaCategoryTest.mode = 'ok'; });
+    await openDelete();
+    await page.locator('#creatorActionDialog [data-action-confirm]').click();
+    await page.waitForFunction(() => window.__zskyMediaCategoryTest.deletes.length === 1);
+    await page.waitForFunction(() => !document.querySelector('#mineList [data-post-id="POST_2"]'));
+    assert.equal(await page.evaluate(() => window.__zskyMediaCategoryTest.deletes.length), 1, 'Successful delete was submitted more than once.');
+
     await page.locator('[data-route="create"]').first().dispatchEvent('click');
-    await page.locator('#postCategory').selectOption('MOBILE_PRICING');
+    const richEditorAudit = await page.evaluate(() => {
+      const textarea = document.querySelector('#postText');
+      const rich = window.ZNewsRichText;
+      const sample = 'বাংলা hello 🎉 রং';
+      rich.setEditorContent(textarea, sample);
+      const start = sample.indexOf('hello');
+      textarea.focus();
+      textarea.setSelectionRange(start, start + 5);
+      rich.toggleBold(textarea);
+      rich.applyColor(textarea, 'red');
+      const combined = rich.getEditorPayload(textarea);
+      rich.toggleBold(textarea);
+      const unbold = rich.getEditorPayload(textarea);
+      rich.applyColor(textarea, 'green');
+      const recolored = rich.getEditorPayload(textarea);
+      const sentenceText = 'Bold a full sentence.';
+      rich.setEditorContent(textarea, sentenceText);
+      textarea.setSelectionRange(0, sentenceText.length);
+      rich.toggleBold(textarea);
+      const sentence = rich.getEditorPayload(textarea);
+      const partialText = 'Partial color';
+      rich.setEditorContent(textarea, partialText);
+      textarea.setSelectionRange(1, 5);
+      rich.applyColor(textarea, 'yellow');
+      const partial = rich.getEditorPayload(textarea);
+      const emojiText = 'A 🎉 B';
+      rich.setEditorContent(textarea, emojiText);
+      const emojiStart = emojiText.indexOf('🎉');
+      textarea.setSelectionRange(emojiStart, emojiStart + '🎉'.length);
+      rich.toggleBold(textarea);
+      const emoji = rich.getEditorPayload(textarea);
+      rich.setEditorContent(textarea, 'Legacy bold', [], [{ start: 7, end: 11 }]);
+      const legacy = rich.getEditorPayload(textarea);
+      return { value: textarea.value, combined, unbold, recolored, sentence, partial, emoji, legacy };
+    });
+    assert.equal(richEditorAudit.combined.text, 'বাংলা hello 🎉 রং', 'Bangla/emoji editor changed canonical text.');
+    assert.deepEqual(richEditorAudit.combined.formattingRuns, [{ start: 6, end: 11, bold: true, color: 'red' }], 'Bold/color combination was not represented safely.');
+    assert.deepEqual(richEditorAudit.unbold.formattingRuns, [{ start: 6, end: 11, color: 'red' }], 'Bold toggle-off removed the wrong formatting.');
+    assert.deepEqual(richEditorAudit.recolored.formattingRuns, [{ start: 6, end: 11, color: 'green' }], 'Text color change was not applied to the selected word.');
+    assert.deepEqual(richEditorAudit.sentence.boldRanges, [{ start: 0, end: 21 }], 'A selected sentence was not made bold.');
+    assert.deepEqual(richEditorAudit.partial.formattingRuns, [{ start: 1, end: 5, color: 'yellow' }], 'Partial text selection color was not preserved.');
+    assert.deepEqual(richEditorAudit.emoji.boldRanges, [{ start: 2, end: 3 }], 'Emoji formatting did not use Unicode code-point ranges.');
+    assert.deepEqual(richEditorAudit.legacy.boldRanges, [{ start: 7, end: 11 }], 'Legacy bold range was not preserved by the editor.');
+    assert.equal(richEditorAudit.value, 'Legacy bold', 'Rich editor displayed formatting syntax.');
+    await page.locator('#postCategoryButton').click();
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('#postCategoryDialog')?.open);
+    assert.equal(await page.evaluate(() => document.activeElement?.id), 'postCategoryButton', 'Category picker did not return focus after Escape.');
+    await page.locator('#postCategoryButton').click();
+    const pickerAudit = await page.evaluate(() => ({
+      options: [...document.querySelectorAll('#postCategoryDialog [data-category-option]')].map((button) => button.dataset.categoryOption),
+      nativeSelect: document.querySelector('#postCategory')?.tagName === 'SELECT'
+    }));
+    assert.deepEqual(pickerAudit.options, ['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'], 'Custom category picker options are incorrect.');
+    assert.equal(pickerAudit.nativeSelect, false, 'Create category still uses a native select.');
+    if (process.env.ZNEWS_UI_SCREENSHOT_DIR) {
+      await page.screenshot({ path: path.join(process.env.ZNEWS_UI_SCREENSHOT_DIR, 'category-picker-390.png'), fullPage: true });
+    }
+    await page.locator('#postCategoryDialog [data-category-option="MOBILE_PRICING"]').click();
+    for (const width of [320, 360, 390, 412, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      const composerLayout = await page.evaluate(() => {
+        const toolbar = document.querySelector('#postFormatToolbar');
+        const trigger = document.querySelector('#postCategoryButton');
+        const bottom = document.querySelector('#createView .composer-bottom-submit');
+        return {
+          overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          toolbarInside: toolbar.getBoundingClientRect().right <= window.innerWidth,
+          triggerInside: trigger.getBoundingClientRect().right <= window.innerWidth,
+          toolbarTargets: [...toolbar.querySelectorAll('button')].slice(0, 2).map((button) => Math.round(button.getBoundingClientRect().height)),
+          bottomHeight: Math.round(bottom.getBoundingClientRect().height)
+        };
+      });
+      assert.equal(composerLayout.overflow, false, `Composer causes horizontal overflow at ${width}px.`);
+      assert.equal(composerLayout.toolbarInside && composerLayout.triggerInside, true, `Composer controls exceed the ${width}px viewport.`);
+      assert.deepEqual(composerLayout.toolbarTargets, [44, 44], `Formatting touch targets are too small at ${width}px.`);
+      assert.ok(composerLayout.bottomHeight >= 48, `Sticky Post action is too short at ${width}px.`);
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('#postTitle').fill('Created with category');
-    await page.locator('#postText').fill('Created middle bold text');
+    await page.evaluate(() => window.ZNewsRichText.setEditorContent(document.querySelector('#postText'), 'Created middle bold text'));
     await page.locator('#postText').evaluate((element) => {
       element.focus();
       element.setSelectionRange(8, 19);
     });
     await page.locator('#postBoldButton').click();
-    assert.equal(await page.locator('#postText').inputValue(), 'Created **middle bold** text', 'Bold toolbar did not wrap the selected middle text.');
+    assert.equal(await page.locator('#postText').inputValue(), 'Created middle bold text', 'Bold toolbar exposed formatting markers in the editor.');
+    await page.locator('#postColorButton').click();
+    await page.locator('#postColorPalette [data-format-color="green"]').click();
+    assert.equal(await page.locator('#createPostSubmit').isEnabled(), true, 'Top Post action did not activate for valid content.');
+    assert.equal(await page.locator('#createPostSubmitBottom').isEnabled(), true, 'Bottom Post action is not synchronized with top Post.');
     await page.locator('#postImage').setInputFiles({ name: 'create.png', mimeType: 'image/png', buffer: paddedPhoto });
     await page.locator('#createPostSubmit').click();
     await page.waitForFunction(() => window.__zskyMediaCategoryTest.creates.length === 1);
@@ -409,6 +580,7 @@ async function main() {
     assert.equal(createAudit.body.category, 'MOBILE_PRICING', 'Create did not persist selected category.');
     assert.equal(createAudit.body.text, 'Created middle bold text', 'Create sent editor markers instead of canonical plain text.');
     assert.deepEqual(createAudit.body.bold_ranges, [{ start: 8, end: 19 }], 'Create did not send the selected middle bold range.');
+    assert.deepEqual(createAudit.body.formatting_runs, [{ start: 8, end: 19, bold: true, color: 'green' }], 'Create did not send combined bold/color formatting.');
     assert.ok(createAudit.upload.size > 0 && createAudit.upload.size <= 700 * 1024, 'Create upload was not compressed below 700 KB.');
 
     await page.evaluate(() => window.ZNEWS_IMAGE_OPTIMIZER_READY());

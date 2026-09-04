@@ -11,13 +11,51 @@
   const client = () => new window.ZNewsApiClient(config);
   const text = (value) => String(value ?? '');
   const richText = window.ZNewsRichText || {
-    parseComposerText: (value) => ({ text: text(value).trim(), boldRanges: [] }),
-    composerText: (value) => text(value),
-    toggleBold: () => {}
+    getEditorPayload: (textarea) => ({ text: text(textarea?.value).trim(), boldRanges: [], formattingRuns: [] }),
+    setEditorContent: (textarea, value) => { if (textarea) textarea.value = text(value); },
+    bindToolbar: () => {}
   };
   let currentImagePreviewUrl = '';
   let replacementPreviewUrl = '';
   let editLoadGeneration = 0;
+  let editOpening = false;
+  let actionCleanup = null;
+  let actionReturnFocus = null;
+
+  function categoryPickerMarkup(prefix, inputId) {
+    return `
+      <span class="composer-field-label" id="${prefix}Label">Category</span>
+      <input id="${inputId}" type="hidden" value="">
+      <button class="category-picker-trigger" id="${prefix}Button" type="button" aria-labelledby="${prefix}Label ${prefix}Value" aria-haspopup="dialog" aria-expanded="false" aria-controls="${prefix}Dialog">
+        <span id="${prefix}Value" data-category-label>Choose a category</span><span aria-hidden="true">⌄</span>
+      </button>
+      <dialog class="category-picker-dialog" id="${prefix}Dialog" aria-labelledby="${prefix}DialogTitle">
+        <div class="category-picker-sheet">
+          <header><h2 id="${prefix}DialogTitle">Choose category</h2><button type="button" data-category-close aria-label="Close category picker">×</button></header>
+          <div class="category-picker-options" role="radiogroup" aria-label="Post category">
+            <button type="button" role="radio" aria-checked="false" data-category-option="INTERNATIONAL_NEWS"><span>International news</span><i aria-hidden="true"></i></button>
+            <button type="button" role="radio" aria-checked="false" data-category-option="BD_NEWS"><span>BD news</span><i aria-hidden="true"></i></button>
+            <button type="button" role="radio" aria-checked="false" data-category-option="MOBILE_PRICING"><span>Mobile pricing</span><i aria-hidden="true"></i></button>
+          </div>
+        </div>
+      </dialog>`;
+  }
+
+  function formattingToolbarMarkup(prefix) {
+    const colors = [
+      ['default', 'default', 'Default'], ['white', 'white', 'White'],
+      ['light_blue', 'light-blue', 'Light blue'], ['green', 'green', 'Green'],
+      ['yellow', 'yellow', 'Yellow'], ['orange', 'orange', 'Orange'], ['red', 'red', 'Red']
+    ];
+    return `
+      <div class="composer-format-toolbar" id="${prefix}Toolbar" role="toolbar" aria-label="Text formatting">
+        <button class="composer-format-button" type="button" data-format-bold aria-label="Bold selected text" aria-pressed="false"><strong>B</strong></button>
+        <button class="composer-format-button composer-color-button" type="button" data-format-color-toggle data-color="default" aria-label="Text color: Default" aria-haspopup="true" aria-expanded="false" aria-controls="${prefix}Palette"><strong>A</strong><span class="format-color-swatch" aria-hidden="true"></span></button>
+        <div class="format-color-palette" id="${prefix}Palette" data-format-palette role="radiogroup" aria-label="Text color" hidden>
+          ${colors.map(([id, className, label], index) => `<button type="button" role="radio" aria-checked="${index === 0 ? 'true' : 'false'}" data-format-color="${id}"><i class="color-swatch ${className}" aria-hidden="true"></i><span>${label}</span></button>`).join('')}
+        </div>
+      </div>`;
+  }
 
   function safeUrl(value) {
     const raw = text(value).trim();
@@ -133,13 +171,7 @@
         </div>
         <div class="composer-writing-fields">
           <div class="composer-field composer-category-field">
-            <label for="creatorEditCategory">Category</label>
-            <select id="creatorEditCategory" required>
-              <option value="">Choose a category</option>
-              <option value="INTERNATIONAL_NEWS">International news</option>
-              <option value="BD_NEWS">BD news</option>
-              <option value="MOBILE_PRICING">Mobile pricing</option>
-            </select>
+            ${categoryPickerMarkup('creatorEditCategoryPicker', 'creatorEditCategory')}
           </div>
           <div class="composer-field composer-title-field">
             <label for="creatorEditTitle">News headline</label>
@@ -148,9 +180,7 @@
           </div>
           <div class="composer-field composer-body-field">
             <label for="creatorEditText">Post details</label>
-            <div class="composer-format-toolbar" role="toolbar" aria-label="Text formatting">
-              <button class="composer-format-button" id="creatorEditBoldButton" type="button" aria-label="Bold selected text" title="Bold selected text"><strong>B</strong></button>
-            </div>
+            ${formattingToolbarMarkup('creatorEditFormat')}
             <textarea id="creatorEditText" maxlength="5000" rows="4" placeholder="Write the story or update…" aria-describedby="creatorEditNote creatorEditTextCount"></textarea>
             <span class="composer-field-count" id="creatorEditTextCount">0 / 5000</span>
           </div>
@@ -178,13 +208,25 @@
       event.preventDefault();
       if (dialog.querySelector('#creatorEditForm')?.getAttribute('aria-busy') !== 'true') dialog.close();
     });
-    dialog.addEventListener('close', () => resetEditor(dialog));
-    dialog.querySelector('#creatorEditCategory')?.addEventListener('change', () => syncEditor(dialog));
-    dialog.querySelector('#creatorEditTitle')?.addEventListener('input', () => syncEditor(dialog));
-    dialog.querySelector('#creatorEditText')?.addEventListener('input', () => syncEditor(dialog));
-    dialog.querySelector('#creatorEditBoldButton')?.addEventListener('click', () => {
-      richText.toggleBold(dialog.querySelector('#creatorEditText'));
+    dialog.addEventListener('close', () => {
+      const returnFocus = dialog._returnFocus;
+      resetEditor(dialog);
+      dialog._returnFocus = null;
+      if (returnFocus?.isConnected) returnFocus.focus();
     });
+    const categoryInput = dialog.querySelector('#creatorEditCategory');
+    categoryInput?.addEventListener('change', () => syncEditor(dialog));
+    dialog.querySelector('#creatorEditTitle')?.addEventListener('input', () => syncEditor(dialog));
+    const body = dialog.querySelector('#creatorEditText');
+    body?.addEventListener('input', () => syncEditor(dialog));
+    body?.addEventListener('znews:format-change', () => syncEditor(dialog));
+    richText.setEditorContent(body, '');
+    richText.bindToolbar(body, dialog.querySelector('#creatorEditFormatToolbar'));
+    window.ZNewsCategoryPicker?.bind(
+      categoryInput,
+      dialog.querySelector('#creatorEditCategoryPickerButton'),
+      dialog.querySelector('#creatorEditCategoryPickerDialog')
+    );
     dialog.querySelector('#creatorEditImage')?.addEventListener('change', () => {
       dialog.querySelector('#creatorRemoveImage').checked = false;
       renderEditPreview(dialog);
@@ -211,7 +253,10 @@
       editForm.dataset.currentImageUrl = '';
       editForm.dataset.postId = '';
       editForm.dataset.updatedAt = '';
+      editForm.dataset.initialState = '';
     }
+    richText.setEditorContent(dialog.querySelector('#creatorEditText'), '');
+    window.ZNewsCategoryPicker?.set(dialog.querySelector('#creatorEditCategory'), '', { notify: false });
     const preview = dialog.querySelector('#creatorEditPreview');
     if (preview) {
       preview.textContent = '';
@@ -252,15 +297,10 @@
     preview.textContent = '';
     preview.hidden = !imageUrl;
     if (imageUrl) {
-      const backdrop = document.createElement('img');
-      backdrop.className = 'composer-image-backdrop';
-      backdrop.src = imageUrl;
-      backdrop.alt = '';
-      backdrop.setAttribute('aria-hidden', 'true');
-      const foreground = document.createElement('img');
-      foreground.className = 'composer-image-foreground';
-      foreground.src = imageUrl;
-      foreground.alt = 'Selected post photo';
+      const image = document.createElement('img');
+      image.className = 'composer-image-foreground';
+      image.src = imageUrl;
+      image.alt = 'Selected post photo';
       const removeButton = document.createElement('button');
       removeButton.className = 'composer-image-remove';
       removeButton.type = 'button';
@@ -272,10 +312,26 @@
         renderEditPreview(dialog);
         syncEditor(dialog);
       });
-      preview.append(backdrop, foreground, removeButton);
+      preview.append(image, removeButton);
     }
 
     dialog.querySelector('#creatorEditPhotoLabel').textContent = imageUrl ? 'Replace photo' : 'Add photo';
+  }
+
+  function editorSnapshot(dialog) {
+    const formElement = dialog.querySelector('#creatorEditForm');
+    const body = dialog.querySelector('#creatorEditText');
+    const replacement = dialog.querySelector('#creatorEditImage').files?.[0] || null;
+    const parsedBody = richText.getEditorPayload(body);
+    return JSON.stringify({
+      title: dialog.querySelector('#creatorEditTitle').value.trim(),
+      text: parsedBody.text,
+      formattingRuns: parsedBody.formattingRuns,
+      category: dialog.querySelector('#creatorEditCategory').value,
+      replacement: replacement ? `${replacement.name}:${replacement.size}:${replacement.lastModified}` : '',
+      removeImage: dialog.querySelector('#creatorRemoveImage').checked,
+      hasCurrentImage: formElement.dataset.hasCurrentImage === 'true'
+    });
   }
 
   function syncEditor(dialog) {
@@ -287,16 +343,18 @@
     const currentImageKept = formElement.dataset.hasCurrentImage === 'true'
       && !dialog.querySelector('#creatorRemoveImage').checked;
     dialog.querySelector('#creatorEditTitleCount').textContent = `${title.value.length} / 160`;
-    const parsedBody = richText.parseComposerText(body.value);
+    const parsedBody = richText.getEditorPayload(body);
     dialog.querySelector('#creatorEditTextCount').textContent = `${Array.from(parsedBody.text).length} / 5000`;
     body.style.height = 'auto';
-    body.style.height = `${Math.min(210, Math.max(112, body.scrollHeight))}px`;
-    const enabled = Boolean(
+    body.style.height = `${Math.min(260, Math.max(84, body.scrollHeight))}px`;
+    const valid = Boolean(
       title.value.trim()
       && ['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(category.value)
       && (body.value.trim() || replacement || currentImageKept)
     );
-    dialog.querySelectorAll('button[type="submit"]').forEach((button) => { button.disabled = !enabled; });
+    const currentState = editorSnapshot(dialog);
+    const changed = formElement.dataset.initialState !== '' && currentState !== formElement.dataset.initialState;
+    dialog.querySelectorAll('button[type="submit"]').forEach((button) => { button.disabled = !valid || !changed; });
   }
 
   function ensureActionDialog() {
@@ -311,70 +369,97 @@
         <span class="creator-action-spinner" aria-hidden="true"></span>
         <h2 id="creatorActionTitle">Please wait…</h2>
         <p id="creatorActionMessage">Loading your post.</p>
+        <p class="creator-action-error" id="creatorActionError" hidden></p>
         <div class="creator-action-buttons" hidden>
           <button class="ghost-button" type="button" data-action-cancel>Cancel</button>
-          <button class="primary-button danger" type="button" data-action-confirm>Delete</button>
+          <button class="primary-button danger" type="button" data-action-confirm><span data-action-confirm-label>Delete</span></button>
         </div>
       </div>`;
     dialog.setAttribute('aria-labelledby', 'creatorActionTitle');
     dialog.setAttribute('aria-describedby', 'creatorActionMessage');
     document.body.appendChild(dialog);
+    dialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      if (dialog.getAttribute('aria-busy') !== 'true') closeActionDialog();
+    });
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog && dialog.getAttribute('aria-busy') !== 'true') closeActionDialog();
+    });
     return dialog;
+  }
+
+  function clearActionHandlers() {
+    if (typeof actionCleanup === 'function') actionCleanup();
+    actionCleanup = null;
   }
 
   function showActionLoading(title, message) {
     const dialog = ensureActionDialog();
+    const confirm = dialog.querySelector('[data-action-confirm]');
+    const cancel = dialog.querySelector('[data-action-cancel]');
+    clearActionHandlers();
+    actionReturnFocus = null;
     dialog.dataset.mode = 'loading';
     dialog.querySelector('#creatorActionTitle').textContent = title;
     dialog.querySelector('#creatorActionMessage').textContent = message;
+    dialog.querySelector('#creatorActionError').hidden = true;
     dialog.querySelector('.creator-action-spinner').hidden = false;
     dialog.querySelector('.creator-action-buttons').hidden = true;
+    confirm.classList.remove('is-loading');
+    confirm.disabled = false;
+    cancel.disabled = false;
     dialog.setAttribute('aria-busy', 'true');
     if (!dialog.open) dialog.showModal();
   }
 
   function closeActionDialog() {
     const dialog = document.querySelector('#creatorActionDialog');
+    clearActionHandlers();
     if (dialog?.open) dialog.close();
     dialog?.removeAttribute('aria-busy');
+    const returnFocus = actionReturnFocus;
+    actionReturnFocus = null;
+    if (returnFocus?.isConnected) returnFocus.focus();
   }
 
-  function confirmDelete() {
+  function showActionError(message, retry, returnFocus) {
     const dialog = ensureActionDialog();
     const confirm = dialog.querySelector('[data-action-confirm]');
     const cancel = dialog.querySelector('[data-action-cancel]');
-    const buttons = dialog.querySelector('.creator-action-buttons');
-    const spinner = dialog.querySelector('.creator-action-spinner');
-    dialog.dataset.mode = 'confirm';
-    dialog.querySelector('#creatorActionTitle').textContent = 'Delete this post?';
-    dialog.querySelector('#creatorActionMessage').textContent = 'This action cannot be undone.';
-    spinner.hidden = true;
-    buttons.hidden = false;
+    clearActionHandlers();
+    actionReturnFocus = returnFocus || actionReturnFocus;
+    dialog.dataset.mode = 'error';
+    dialog.querySelector('#creatorActionTitle').textContent = 'Post could not be loaded';
+    dialog.querySelector('#creatorActionMessage').textContent = message;
+    dialog.querySelector('#creatorActionError').hidden = true;
+    dialog.querySelector('.creator-action-spinner').hidden = true;
+    dialog.querySelector('.creator-action-buttons').hidden = false;
+    cancel.textContent = 'Close';
+    confirm.classList.remove('danger');
+    confirm.classList.remove('is-loading');
+    confirm.querySelector('[data-action-confirm-label]').textContent = 'Retry';
+    cancel.disabled = false;
+    confirm.disabled = false;
     dialog.removeAttribute('aria-busy');
     if (!dialog.open) dialog.showModal();
-
-    return new Promise((resolve) => {
-      const finish = (approved) => {
-        confirm.removeEventListener('click', approve);
-        cancel.removeEventListener('click', reject);
-        dialog.removeEventListener('cancel', rejectEvent);
-        closeActionDialog();
-        resolve(approved);
-      };
-      const approve = () => finish(true);
-      const reject = () => finish(false);
-      const rejectEvent = (event) => {
-        event.preventDefault();
-        finish(false);
-      };
-      confirm.addEventListener('click', approve);
-      cancel.addEventListener('click', reject);
-      dialog.addEventListener('cancel', rejectEvent);
-    });
+    const onCancel = () => closeActionDialog();
+    const onRetry = () => {
+      clearActionHandlers();
+      retry();
+    };
+    cancel.addEventListener('click', onCancel);
+    confirm.addEventListener('click', onRetry);
+    actionCleanup = () => {
+      cancel.removeEventListener('click', onCancel);
+      confirm.removeEventListener('click', onRetry);
+    };
   }
 
-  async function openEditor(postId) {
+  async function openEditor(postId, returnFocus = null) {
+    if (editOpening) return;
+    editOpening = true;
     const dialog = ensureEditor();
+    dialog._returnFocus = returnFocus;
     resetEditor(dialog);
     const generation = ++editLoadGeneration;
     const editForm = dialog.querySelector('#creatorEditForm');
@@ -392,8 +477,17 @@
       const creatorPhoto = text(post.creator_photo_url || api.profile.profile_photo_url
         || api.profile.photo_url || api.profile.PROFILE);
       dialog.querySelector('#creatorEditTitle').value = text(post.title);
-      dialog.querySelector('#creatorEditText').value = richText.composerText(post.text, post.bold_ranges);
-      dialog.querySelector('#creatorEditCategory').value = text(post.category).toUpperCase();
+      richText.setEditorContent(
+        dialog.querySelector('#creatorEditText'),
+        post.text,
+        post.formatting_runs,
+        post.bold_ranges
+      );
+      window.ZNewsCategoryPicker?.set(
+        dialog.querySelector('#creatorEditCategory'),
+        text(post.category).toUpperCase(),
+        { notify: false }
+      );
       dialog.querySelector('#creatorEditImage').value = '';
       dialog.querySelector('#creatorRemoveImage').checked = false;
       dialog.querySelector('#creatorEditName').textContent = creatorName;
@@ -403,9 +497,11 @@
       editForm.dataset.postId = postId;
       editForm.dataset.updatedAt = text(post.updated_at);
       renderEditPreview(dialog);
+      editForm.dataset.initialState = editorSnapshot(dialog);
       syncEditor(dialog);
       closeActionDialog();
       if (!dialog.open) dialog.showModal();
+      editOpening = false;
       if (editForm.dataset.hasCurrentImage === 'true' && post.image_preview_url) {
         try {
           const blob = await api.authenticatedMedia(post.image_preview_url);
@@ -418,8 +514,8 @@
       }
     } catch (requestError) {
       if (generation !== editLoadGeneration) return;
-      closeActionDialog();
-      toast(errorMessage(requestError), 'error');
+      editOpening = false;
+      showActionError(errorMessage(requestError), () => openEditor(postId, returnFocus), returnFocus);
     }
   }
 
@@ -434,7 +530,7 @@
     const postId = text(editForm.dataset.postId);
     const expectedUpdatedAt = Number(editForm.dataset.updatedAt || 0);
     const postTitle = text(editForm.querySelector('#creatorEditTitle').value).trim();
-    const parsedText = richText.parseComposerText(editForm.querySelector('#creatorEditText').value);
+    const parsedText = richText.getEditorPayload(editForm.querySelector('#creatorEditText'));
     const postText = parsedText.text;
     const category = text(editForm.querySelector('#creatorEditCategory').value).toUpperCase();
     const replacement = editForm.querySelector('#creatorEditImage').files?.[0] || null;
@@ -476,6 +572,7 @@
         title: postTitle,
         text: postText,
         bold_ranges: parsedText.boldRanges,
+        formatting_runs: parsedText.formattingRuns,
         category,
         expected_updated_at: expectedUpdatedAt,
         idempotency_key: idempotency('post-edit')
@@ -512,51 +609,151 @@
     }
   });
 
-  async function deletePost(postId) {
-    if (!await confirmDelete()) return;
-    showActionLoading('Deleting post…', 'Please wait while the post is removed.');
-    try {
-      const details = await postDetails(postId);
-      const post = details.data?.post || {};
-      await client().request('znews/posts/delete.php', {
-        method: 'POST',
-        authenticated: true,
-        body: {
-          post_id: postId,
-          expected_updated_at: Number(post.updated_at || 0),
-          idempotency_key: idempotency('post-delete')
-        }
-      });
-      window.dispatchEvent(new CustomEvent('znews:creator-post-mutated', { detail: { postId, action: 'delete' } }));
-      toast('Post deleted.');
-      document.querySelector('[data-route="mine"]')?.click();
-    } catch (error) {
-      toast(errorMessage(error), 'error');
-    } finally {
-      closeActionDialog();
-    }
+  function deletePost(postId, card, returnFocus) {
+    const dialog = ensureActionDialog();
+    const confirm = dialog.querySelector('[data-action-confirm]');
+    const cancel = dialog.querySelector('[data-action-cancel]');
+    const error = dialog.querySelector('#creatorActionError');
+    const spinner = dialog.querySelector('.creator-action-spinner');
+    const buttons = dialog.querySelector('.creator-action-buttons');
+    clearActionHandlers();
+    actionReturnFocus = returnFocus;
+    dialog.dataset.mode = 'delete';
+    dialog.querySelector('#creatorActionTitle').textContent = 'Delete this post?';
+    dialog.querySelector('#creatorActionMessage').textContent = 'This action cannot be undone.';
+    error.textContent = '';
+    error.hidden = true;
+    spinner.hidden = true;
+    buttons.hidden = false;
+    cancel.textContent = 'Cancel';
+    confirm.classList.add('danger');
+    confirm.classList.remove('is-loading');
+    confirm.querySelector('[data-action-confirm-label]').textContent = 'Delete';
+    cancel.disabled = false;
+    confirm.disabled = false;
+    dialog.removeAttribute('aria-busy');
+    if (!dialog.open) dialog.showModal();
+
+    let busy = false;
+    const onCancel = () => { if (!busy) closeActionDialog(); };
+    const onConfirm = async () => {
+      if (busy) return;
+      busy = true;
+      dialog.setAttribute('aria-busy', 'true');
+      cancel.disabled = true;
+      confirm.disabled = true;
+      confirm.classList.add('is-loading');
+      confirm.querySelector('[data-action-confirm-label]').textContent = 'Deleting…';
+      error.hidden = true;
+      try {
+        const details = await postDetails(postId);
+        const post = details.data?.post || {};
+        await client().request('znews/posts/delete.php', {
+          method: 'POST',
+          authenticated: true,
+          body: {
+            post_id: postId,
+            expected_updated_at: Number(post.updated_at || 0),
+            idempotency_key: idempotency('post-delete')
+          }
+        });
+        closeActionDialog();
+        card?.classList.add('creator-card-removing');
+        window.setTimeout(() => {
+          card?.remove();
+          if (!mineList.querySelector('.post-card')) {
+            mineList.innerHTML = '<div class="empty-state card"><strong>No posts yet</strong>Create your first Z Sky 24 post.</div>';
+          }
+        }, 180);
+        window.dispatchEvent(new CustomEvent('znews:creator-post-mutated', { detail: { postId, action: 'delete' } }));
+        toast('Post deleted.');
+      } catch (requestError) {
+        busy = false;
+        dialog.removeAttribute('aria-busy');
+        cancel.disabled = false;
+        confirm.disabled = false;
+        confirm.classList.remove('is-loading');
+        confirm.querySelector('[data-action-confirm-label]').textContent = 'Delete';
+        error.textContent = errorMessage(requestError);
+        error.hidden = false;
+      }
+    };
+    cancel.addEventListener('click', onCancel);
+    confirm.addEventListener('click', onConfirm);
+    actionCleanup = () => {
+      cancel.removeEventListener('click', onCancel);
+      confirm.removeEventListener('click', onConfirm);
+    };
+  }
+
+  function ensureCardMenu() {
+    let dialog = document.querySelector('#creatorCardMenuDialog');
+    if (dialog) return dialog;
+    dialog = document.createElement('dialog');
+    dialog.id = 'creatorCardMenuDialog';
+    dialog.className = 'creator-card-menu-dialog';
+    dialog.setAttribute('aria-labelledby', 'creatorCardMenuTitle');
+    dialog.innerHTML = `
+      <div class="creator-card-menu-sheet">
+        <header><h2 id="creatorCardMenuTitle">Post options</h2><button type="button" data-menu-close aria-label="Close post options">×</button></header>
+        <button type="button" data-menu-edit>Edit post</button>
+        <button class="danger" type="button" data-menu-delete>Delete post</button>
+      </div>`;
+    document.body.appendChild(dialog);
+    const close = ({ restore = true } = {}) => {
+      const trigger = dialog._trigger;
+      if (dialog.open) dialog.close();
+      trigger?.setAttribute('aria-expanded', 'false');
+      dialog._trigger = null;
+      if (restore && trigger?.isConnected) trigger.focus();
+    };
+    dialog.querySelector('[data-menu-close]').addEventListener('click', () => close());
+    dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) close(); });
+    dialog._closeMenu = close;
+    return dialog;
+  }
+
+  function openCardMenu(card, trigger, blocked) {
+    const dialog = ensureCardMenu();
+    if (dialog.open) dialog._closeMenu({ restore: false });
+    const postId = text(card.dataset.postId);
+    dialog._trigger = trigger;
+    trigger.setAttribute('aria-expanded', 'true');
+    const edit = dialog.querySelector('[data-menu-edit]');
+    const remove = dialog.querySelector('[data-menu-delete]');
+    edit.disabled = blocked;
+    edit.onclick = () => {
+      dialog._closeMenu({ restore: false });
+      openEditor(postId, trigger);
+    };
+    remove.onclick = () => {
+      dialog._closeMenu({ restore: false });
+      deletePost(postId, card, trigger);
+    };
+    dialog.showModal();
+    (blocked ? remove : edit).focus();
   }
 
   function enhanceMineCards() {
-    mineList.querySelectorAll('[data-post-id]').forEach((card) => {
-      if (card.querySelector('.creator-management')) return;
-      const postId = text(card.dataset.postId);
+    mineList.querySelectorAll('.post-card[data-post-id]').forEach((card) => {
+      if (card.querySelector('[data-creator-menu]')) return;
       const chip = card.querySelector('.status-chip');
       const blocked = chip?.textContent?.toUpperCase().includes('BLOCKED') === true;
-      const controls = document.createElement('div');
-      controls.className = 'creator-management';
-      controls.innerHTML = `
-        <button class="ghost-button" type="button" data-creator-edit ${blocked ? 'disabled' : ''}>Edit</button>
-        <button class="ghost-button danger" type="button" data-creator-delete>Delete</button>`;
-      controls.querySelector('[data-creator-edit]')?.addEventListener('click', (event) => {
+      const trigger = document.createElement('button');
+      trigger.className = 'creator-overflow-button';
+      trigger.type = 'button';
+      trigger.dataset.creatorMenu = '';
+      trigger.setAttribute('aria-label', 'Post options');
+      trigger.setAttribute('aria-haspopup', 'dialog');
+      trigger.setAttribute('aria-expanded', 'false');
+      trigger.setAttribute('aria-controls', 'creatorCardMenuDialog');
+      trigger.textContent = '⋮';
+      trigger.addEventListener('click', (event) => {
         event.stopPropagation();
-        openEditor(postId);
+        openCardMenu(card, trigger, blocked);
       });
-      controls.querySelector('[data-creator-delete]')?.addEventListener('click', (event) => {
-        event.stopPropagation();
-        deletePost(postId);
-      });
-      card.appendChild(controls);
+      card.querySelector('.post-head')?.appendChild(trigger);
     });
   }
 
@@ -566,27 +763,40 @@
 
   const style = document.createElement('style');
   style.textContent = `
-    .creator-management{display:flex;gap:10px;padding:0 16px 16px}
-    .creator-management .ghost-button{flex:1}
-    .creator-management .danger{border-color:rgba(255,107,107,.45);color:#ff9b9b}
-    .creator-edit-dialog{width:min(100%,680px);max-width:680px;max-height:min(94dvh,920px);padding:0;border:0;border-radius:24px;background:#0a203b;color:#f3f7fd;overflow:hidden}
+    .creator-overflow-button{width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center;padding:0;border:0;border-radius:12px;background:transparent;color:#cbd9ea;font-size:27px;line-height:1;cursor:pointer}
+    .creator-overflow-button:hover,.creator-overflow-button:focus-visible{background:rgba(255,255,255,.07);color:#fff;outline:2px solid rgba(97,226,156,.52);outline-offset:1px}
+    .creator-card-menu-dialog{width:min(92vw,360px);padding:0;border:0;background:transparent;color:#f4f8ff}
+    .creator-card-menu-dialog::backdrop{background:rgba(0,8,20,.68);backdrop-filter:blur(5px)}
+    .creator-card-menu-sheet{display:grid;gap:7px;padding:14px;border:1px solid rgba(142,177,226,.2);border-radius:16px;background:#0a203a;box-shadow:0 24px 70px rgba(0,0,0,.46)}
+    .creator-card-menu-sheet header{display:flex;align-items:center;justify-content:space-between;padding:3px 4px 8px;border-bottom:1px solid rgba(142,177,226,.14)}
+    .creator-card-menu-sheet h2{margin:0;font-size:15px}
+    .creator-card-menu-sheet header button{width:40px;height:40px;padding:0;border:0;border-radius:10px;background:transparent;color:#b9c8db;font-size:24px;cursor:pointer}
+    .creator-card-menu-sheet>button{min-height:48px;padding:0 14px;border:1px solid transparent;border-radius:11px;background:rgba(255,255,255,.045);color:#eaf2fc;text-align:left;font:inherit;font-size:14px;font-weight:800;cursor:pointer}
+    .creator-card-menu-sheet>button:hover,.creator-card-menu-sheet>button:focus-visible{border-color:rgba(91,225,151,.35);background:rgba(91,225,151,.09);outline:none}
+    .creator-card-menu-sheet>button.danger{color:#ffadb7;background:rgba(173,45,66,.12)}
+    .creator-card-menu-sheet>button.danger:hover,.creator-card-menu-sheet>button.danger:focus-visible{border-color:rgba(255,102,122,.38);background:rgba(173,45,66,.22)}
+    .creator-edit-dialog{width:min(100%,680px);max-width:680px;max-height:min(94dvh,920px);padding:0;border:0;border-radius:20px;background:#0a203b;color:#f3f7fd;overflow:hidden}
     .creator-edit-dialog::backdrop{background:rgba(0,10,24,.78);backdrop-filter:blur(6px)}
     .creator-edit-form{max-height:min(94dvh,920px);overflow-x:hidden;overflow-y:auto;padding-bottom:18px;overscroll-behavior:contain}
     .creator-edit-form .image-preview{position:relative;width:min(calc(100% - 32px),420px);margin:4px 16px 12px;overflow:hidden;border:1px solid rgba(142,177,226,.2);border-radius:13px;background:#020915}
     .creator-edit-form .image-preview img{display:block;width:100%;height:auto;object-fit:contain}
-    .creator-edit-form .composer-image-backdrop{display:none}
     .creator-edit-form .composer-image-foreground{position:relative;z-index:1;object-fit:contain}
     .creator-edit-form .form-error{margin:8px 16px 0}
     .creator-edit-form[aria-busy="true"] [data-close]{opacity:.45;pointer-events:none}
-    .creator-action-dialog{width:min(88vw,390px);padding:0;border:0;border-radius:24px;background:transparent;color:#f7fbff}
+    .creator-action-dialog{width:min(90vw,390px);padding:0;border:0;border-radius:18px;background:transparent;color:#f7fbff}
     .creator-action-dialog::backdrop{background:rgba(0,10,24,.72);backdrop-filter:blur(5px)}
-    .creator-action-shell{display:grid;justify-items:center;gap:12px;padding:28px 24px;border:1px solid rgba(151,190,235,.25);border-radius:24px;background:#09213b;box-shadow:0 24px 70px rgba(0,0,0,.48);text-align:center}
+    .creator-action-shell{display:grid;justify-items:center;gap:12px;padding:26px 22px;border:1px solid rgba(151,190,235,.16);border-radius:18px;background:rgba(9,33,59,.97);box-shadow:0 24px 70px rgba(0,0,0,.48);text-align:center;backdrop-filter:blur(18px)}
     .creator-action-shell h2,.creator-action-shell p{margin:0}
     .creator-action-shell p{color:#aebed4}
     .creator-action-spinner{width:42px;height:42px;border:4px solid rgba(116,231,168,.2);border-top-color:#74e7a8;border-radius:50%;animation:creator-action-spin .75s linear infinite}
-    .creator-action-buttons{display:flex;width:100%;gap:10px;margin-top:8px}
-    .creator-action-buttons button{flex:1;border-radius:16px}
-    .creator-action-buttons .danger{background:linear-gradient(135deg,#e34d63,#ff7385);color:#fff}
+    .creator-action-error{width:100%;padding:9px 11px;border-radius:9px;background:rgba(181,49,69,.14);color:#ffbdc6;font-size:12px}
+    .creator-action-buttons{display:grid;grid-template-columns:1fr 1fr;width:100%;gap:10px;margin-top:8px}
+    .creator-action-buttons button{width:100%;height:50px;min-height:50px;padding:0 14px;border-radius:12px}
+    .creator-action-buttons .danger{border-color:rgba(255,102,122,.38);background:#9f3044;color:#fff;box-shadow:none}
+    .creator-action-buttons .danger:hover{background:#b63a50}
+    .creator-action-buttons [data-action-confirm].is-loading{display:flex;align-items:center;justify-content:center;gap:8px}
+    .creator-action-buttons [data-action-confirm].is-loading::before{content:"";width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:creator-action-spin .75s linear infinite}
+    .creator-card-removing{opacity:0;transform:translateY(-8px);transition:opacity .18s ease,transform .18s ease}
     @keyframes creator-action-spin{to{transform:rotate(360deg)}}
     @media (prefers-reduced-motion:reduce){.creator-action-spinner{animation-duration:1.5s}}
     @media(max-width:780px){
@@ -601,6 +811,8 @@
       .creator-edit-form .composer-review-note{margin:10px 24px 12px}
       .creator-edit-bottom-action{position:fixed;inset:auto 0 0;z-index:90;display:block;padding:10px 22px calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(180deg,rgba(7,22,42,.2),#07162a 28%);backdrop-filter:blur(14px)}
       .creator-edit-bottom-action .composer-bottom-submit{min-height:52px;border-radius:17px}
+      .creator-card-menu-dialog{inset:auto 0 0;width:100%;max-width:none;margin:0;border-radius:20px 20px 0 0}
+      .creator-card-menu-sheet{padding:16px 18px calc(18px + env(safe-area-inset-bottom,0px));border-radius:20px 20px 0 0}
     }
   `;
   document.head.appendChild(style);

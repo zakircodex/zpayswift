@@ -305,7 +305,7 @@
     ]);
     const publicModules = [
       loadStylesheet('/znews/assets/znews-reader.css?v=2'),
-      loadScript('/znews/assets/znews-profile.js?v=6'),
+      loadScript('/znews/assets/znews-profile.js?v=7'),
       loadScript('/znews/assets/znews-reader.js?v=4'),
       loadScript('/znews/assets/znews-header.js?v=2')
     ];
@@ -313,7 +313,7 @@
     const creatorModules = authenticated ? [
       loadStylesheet('/znews/assets/znews-weekly-review.css?v=1'),
       loadScript('/znews/assets/znews-weekly-review.js?v=1'),
-      imageOptimizerReady.then(() => loadScript('/znews/assets/znews-creator.js?v=9')),
+      imageOptimizerReady.then(() => loadScript('/znews/assets/znews-creator.js?v=10')),
       loadScript('/znews/assets/znews-instant-comments.js?v=4')
     ] : [];
     const results = accessResult.concat(await Promise.allSettled(publicModules.concat(creatorModules)));

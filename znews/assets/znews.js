@@ -117,124 +117,8 @@
     })[char]);
   }
 
-  function normalizeBoldRanges(value, content) {
-    const length = Array.from(text(content)).length;
-    if (!Array.isArray(value)) return [];
-    const ranges = value.slice(0, 100).map((range) => ({
-      start: Number(range?.start),
-      end: Number(range?.end)
-    })).filter((range) => (
-      Number.isInteger(range.start)
-      && Number.isInteger(range.end)
-      && range.start >= 0
-      && range.end > range.start
-      && range.end <= length
-    )).sort((left, right) => left.start - right.start || left.end - right.end);
-
-    const normalized = [];
-    ranges.forEach((range) => {
-      if (!normalized.length || range.start >= normalized[normalized.length - 1].end) {
-        normalized.push(range);
-      }
-    });
-    return normalized;
-  }
-
-  function parseComposerText(value) {
-    const source = text(value).replace(/\r\n?/g, '\n').trim();
-    let plain = '';
-    const ranges = [];
-    let index = 0;
-    while (index < source.length) {
-      if (source.slice(index, index + 2) === '**') {
-        const closing = source.indexOf('**', index + 2);
-        if (closing >= index + 2) {
-          const boldText = source.slice(index + 2, closing);
-          const start = Array.from(plain).length;
-          plain += boldText;
-          const end = Array.from(plain).length;
-          if (end > start) ranges.push({ start, end });
-          index = closing + 2;
-          continue;
-        }
-      }
-      const codePoint = String.fromCodePoint(source.codePointAt(index));
-      plain += codePoint;
-      index += codePoint.length;
-    }
-
-    const trimmed = plain.trim();
-    const leadingUnits = plain.indexOf(trimmed);
-    const leadingPoints = trimmed === '' ? 0 : Array.from(plain.slice(0, leadingUnits)).length;
-    const trimmedLength = Array.from(trimmed).length;
-    const adjusted = ranges.map((range) => ({
-      start: Math.max(0, range.start - leadingPoints),
-      end: Math.min(trimmedLength, range.end - leadingPoints)
-    }));
-    return {
-      text: trimmed,
-      boldRanges: normalizeBoldRanges(adjusted, trimmed)
-    };
-  }
-
-  function composerText(content, ranges) {
-    const plain = text(content);
-    const points = Array.from(plain);
-    const normalized = normalizeBoldRanges(ranges, plain);
-    let result = '';
-    let cursor = 0;
-    normalized.forEach((range) => {
-      result += points.slice(cursor, range.start).join('');
-      result += `**${points.slice(range.start, range.end).join('')}**`;
-      cursor = range.end;
-    });
-    return result + points.slice(cursor).join('');
-  }
-
-  function formattedTextHtml(content, ranges) {
-    const plain = text(content);
-    const points = Array.from(plain);
-    const normalized = normalizeBoldRanges(ranges, plain);
-    let result = '';
-    let cursor = 0;
-    normalized.forEach((range) => {
-      result += escapeHtml(points.slice(cursor, range.start).join(''));
-      result += `<strong>${escapeHtml(points.slice(range.start, range.end).join(''))}</strong>`;
-      cursor = range.end;
-    });
-    return result + escapeHtml(points.slice(cursor).join(''));
-  }
-
-  function toggleBold(textarea) {
-    if (!(textarea instanceof HTMLTextAreaElement)) return;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    if (start === end) {
-      textarea.focus();
-      return;
-    }
-    const value = textarea.value;
-    const wrapped = value.slice(Math.max(0, start - 2), start) === '**'
-      && value.slice(end, end + 2) === '**';
-    if (wrapped) {
-      textarea.value = value.slice(0, start - 2) + value.slice(start, end) + value.slice(end + 2);
-      textarea.setSelectionRange(start - 2, end - 2);
-    } else {
-      textarea.value = `${value.slice(0, start)}**${value.slice(start, end)}**${value.slice(end)}`;
-      textarea.setSelectionRange(start + 2, end + 2);
-    }
-    textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    textarea.focus();
-  }
-
-  const richText = Object.freeze({
-    parseComposerText,
-    composerText,
-    formattedTextHtml,
-    normalizeBoldRanges,
-    toggleBold
-  });
-  window.ZNewsRichText = richText;
+  const richText = window.ZNewsRichText;
+  if (!richText) throw new Error('Z Sky rich-text module is unavailable.');
 
   function safeUrl(value) {
     const raw = text(value).trim();
@@ -548,7 +432,7 @@
     const image = postImage(post);
     const title = text(post.title).trim();
     const body = text(post.text);
-    const bodyHtml = richText.formattedTextHtml(body, post.bold_ranges);
+    const bodyHtml = richText.formattedTextHtml(body, post.formatting_runs, post.bold_ranges);
     const category = categoryLabel(post.category);
     const imageWidth = Math.max(0, Number(post.image_width || 0));
     const imageHeight = Math.max(0, Number(post.image_height || 0));
@@ -1179,7 +1063,7 @@
     if (els.createPostForm.getAttribute('aria-busy') === 'true') return;
     const submits = $$('button[type="submit"]', els.createPostForm);
     const postTitle = els.postTitle.value.trim();
-    const parsedText = richText.parseComposerText(els.postText.value);
+    const parsedText = richText.getEditorPayload(els.postText);
     const postText = parsedText.text;
     const category = text(els.postCategory?.value).trim();
     const file = els.postImage.files?.[0] || null;
@@ -1210,11 +1094,14 @@
         title: postTitle,
         text: postText,
         boldRanges: parsedText.boldRanges,
+        formattingRuns: parsedText.formattingRuns,
         mediaId,
         category
       });
       state.feedDirty = true;
       els.createPostForm.reset();
+      richText.setEditorContent(els.postText, '');
+      window.ZNewsCategoryPicker?.set(els.postCategory, '', { notify: false });
       els.imagePreview.hidden = true;
       els.imagePreview.textContent = '';
       els.postTitleCount.textContent = '0 / 160';
@@ -1397,11 +1284,11 @@
 
   function syncComposerState() {
     const titleLength = els.postTitle.value.length;
-    const length = Array.from(richText.parseComposerText(els.postText.value).text).length;
+    const length = Array.from(richText.getEditorPayload(els.postText).text).length;
     els.postTitleCount.textContent = `${titleLength} / 160`;
     els.postTextCount.textContent = `${length} / 5000`;
     els.postText.style.height = 'auto';
-    els.postText.style.height = `${Math.min(210, Math.max(112, els.postText.scrollHeight))}px`;
+    els.postText.style.height = `${Math.min(260, Math.max(84, els.postText.scrollHeight))}px`;
     const hasContent = Boolean(
       els.postTitle.value.trim()
       && ['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(text(els.postCategory?.value))
@@ -1449,7 +1336,10 @@
     els.postCategory?.addEventListener('change', syncComposerState);
     els.postTitle.addEventListener('input', syncComposerState);
     els.postText.addEventListener('input', syncComposerState);
-    $('#postBoldButton')?.addEventListener('click', () => richText.toggleBold(els.postText));
+    els.postText.addEventListener('znews:format-change', syncComposerState);
+    richText.setEditorContent(els.postText, '');
+    richText.bindToolbar(els.postText, $('#postFormatToolbar'));
+    window.ZNewsCategoryPicker?.bind(els.postCategory, $('#postCategoryButton'), $('#postCategoryDialog'));
     els.postImage.addEventListener('change', previewImage);
     els.feedCategories?.addEventListener('click', (event) => {
       const button = event.target.closest('[data-feed-category]');

@@ -34,6 +34,14 @@ function znews_format_post(array $post): array
             $post['bold_ranges'] ?? [],
             (string)($post['text'] ?? '')
         ),
+        'formatting_runs' => znews_post_formatting_runs(
+            $post['formatting_runs']
+                ?? znews_post_formatting_runs_from_bold_ranges(
+                    znews_post_bold_ranges($post['bold_ranges'] ?? [], (string)($post['text'] ?? '')),
+                    (string)($post['text'] ?? '')
+                ),
+            (string)($post['text'] ?? '')
+        ),
         'category' => strtoupper(trim((string)($post['category'] ?? ''))),
         'image_url' => trim((string)($post['image_url'] ?? '')),
         'image_width' => max(0, (int)($post['image_width'] ?? 0)),

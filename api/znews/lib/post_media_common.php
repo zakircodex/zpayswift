@@ -105,6 +105,7 @@ function znews_post_media_payload_hash(
     string $title,
     string $text,
     array $boldRanges,
+    array $formattingRuns,
     string $mediaId,
     string $contentType,
     string $category = ''
@@ -114,6 +115,7 @@ function znews_post_media_payload_hash(
         'title' => $title,
         'text' => $text,
         'bold_ranges' => $boldRanges,
+        'formatting_runs' => $formattingRuns,
         'media_id' => $mediaId,
         'content_type' => $contentType,
         'category' => $category,
