@@ -24,7 +24,8 @@ my_posts_expect(str_contains($app, "routeTo(restoredView, { syncHistory: false }
 
 my_posts_expect(str_contains($creator, "showActionLoading('Loading post…'"), 'Edit must show polished loading feedback for a non-trivial request.');
 my_posts_expect(str_contains($creator, "confirm.querySelector('[data-action-confirm-label]').textContent = 'Deleting…'"), 'Delete must show blocking progress feedback.');
-my_posts_expect(str_contains($creator, '.creator-action-buttons button{box-sizing:border-box;flex:1 1 0;width:0;min-width:0;height:50px;min-height:50px;padding:0 14px;border:1px solid transparent'), 'Delete confirmation actions are not dimensionally equal.');
+my_posts_expect(str_contains($creator, '.creator-action-buttons{display:flex;width:100%;gap:12px')
+    && str_contains($creator, '.creator-action-buttons button{box-sizing:border-box;flex:1 1 0;width:0;min-width:0;height:52px;min-height:52px;padding:0 14px;border:1px solid transparent'), 'Delete confirmation actions are not dimensionally equal.');
 my_posts_expect(str_contains($creator, '.creator-card-menu-actions button')
     && str_contains($creator, '.creator-card-menu-dialog{position:fixed;inset:auto 0 0'), 'Mobile post options is not a bottom action sheet.');
 my_posts_expect(str_contains($creator, "trigger.setAttribute('aria-haspopup', 'menu')"), 'Post options trigger does not expose menu semantics.');
@@ -34,10 +35,10 @@ my_posts_expect(!str_contains($creator, 'window.confirm('), 'Native delete confi
 my_posts_expect(str_contains($creator, "dialog.setAttribute('aria-busy', 'true')"), 'Loading modal must expose its busy state to assistive technology.');
 
 my_posts_expect(str_contains($app, 'window.ZNEWS_APP_INITIALIZED = true'), 'Latest navigation behavior is not activated.');
-my_posts_expect(str_contains($bootstrap, 'znews-creator.js?v=11'), 'Latest creator modal behavior is not activated.');
-my_posts_expect(str_contains($embeddedWorker, "zsky24-embedded-shell-v24"), 'Embedded cache namespace is stale.');
-my_posts_expect(str_contains($standaloneWorker, "zsky24-standalone-shell-v24"), 'Standalone cache namespace is stale.');
-my_posts_expect(str_contains($embeddedWorker, 'znews.js?v=25') && str_contains($embeddedWorker, 'znews-creator.js?v=11'), 'Embedded shell is missing the updated scripts.');
-my_posts_expect(str_contains($standaloneWorker, 'znews.js?v=25') && str_contains($standaloneWorker, 'znews-creator.js?v=11'), 'Standalone shell is missing the updated scripts.');
+my_posts_expect(str_contains($bootstrap, 'znews-creator.js?v=12'), 'Latest creator modal behavior is not activated.');
+my_posts_expect(str_contains($embeddedWorker, "zsky24-embedded-shell-v25"), 'Embedded cache namespace is stale.');
+my_posts_expect(str_contains($standaloneWorker, "zsky24-standalone-shell-v25"), 'Standalone cache namespace is stale.');
+my_posts_expect(str_contains($embeddedWorker, 'znews.js?v=26') && str_contains($embeddedWorker, 'znews-creator.js?v=12'), 'Embedded shell is missing the updated scripts.');
+my_posts_expect(str_contains($standaloneWorker, 'znews.js?v=26') && str_contains($standaloneWorker, 'znews-creator.js?v=12'), 'Standalone shell is missing the updated scripts.');
 
 fwrite(STDOUT, "Z Sky 24 My Posts navigation/loading checks passed.\n");

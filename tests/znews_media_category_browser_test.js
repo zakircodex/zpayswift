@@ -110,6 +110,7 @@ async function main() {
       uploadDelayMs: 0,
       deleteDelayMs: 0,
       detailsDelayMs: 0,
+      mineDelayMs: 0,
       detailFailuresRemaining: 0,
       mineFailuresRemaining: 0,
       nextMedia: 100
@@ -153,6 +154,7 @@ async function main() {
         });
       }
       if (url.pathname.endsWith('/znews/posts/mine.php')) {
+        if (state.mineDelayMs) await sleep(state.mineDelayMs);
         if (state.mineFailuresRemaining > 0) {
           state.mineFailuresRemaining -= 1;
           return fail('REQUEST_TIMEOUT', 'The request timed out. Please try again.', 504);
@@ -323,19 +325,22 @@ async function main() {
     assert.equal(mineUiAudit.bottomManagement, 0, 'Legacy bottom Edit/Delete controls remain.');
     assert.equal(mineUiAudit.overflowButtons, 10, 'My Posts cards do not have one owner-only overflow action each.');
     assert.ok(mineUiAudit.topGap <= 4, `My Posts retained an excessive top gap (${mineUiAudit.topGap}px).`);
-    const openEdit = async ({ expectLoading = false } = {}) => {
-      await page.locator('#mineList [data-post-id="POST_1"] [data-creator-menu]').click();
+    const openEdit = async ({ expectLoading = false, postId = 'POST_1' } = {}) => {
+      await page.locator(`#mineList [data-post-id="${postId}"] [data-creator-menu]`).click();
       await page.waitForSelector('#creatorCardMenuDialog[open]');
       await page.locator('#creatorCardMenuDialog [data-menu-edit]').click();
       if (expectLoading) {
         await page.waitForSelector('#creatorActionDialog[open][data-mode="loading"]');
         assert.match(await page.locator('#creatorActionDialog').textContent(), /Loading post.*Preparing editor/is, 'Polished edit loading state is missing.');
         const loadingAudit = await page.evaluate(() => ({
-          border: getComputedStyle(document.querySelector('#creatorActionDialog .creator-action-shell')).borderTopWidth,
+          dialogBorder: getComputedStyle(document.querySelector('#creatorActionDialog')).borderTopWidth,
+          sheetBorder: getComputedStyle(document.querySelector('#creatorActionDialog .creator-action-shell')).borderTopWidth,
+          radius: getComputedStyle(document.querySelector('#creatorActionDialog .creator-action-shell')).borderRadius,
+          blackRectangle: getComputedStyle(document.querySelector('#creatorActionDialog .creator-action-shell')).backgroundColor === 'rgb(0, 0, 0)',
           progress: document.querySelector('#znewsTopProgress')?.classList.contains('active') === true,
           spinner: !document.querySelector('#creatorActionDialog .creator-action-spinner')?.hidden
         }));
-        assert.deepEqual(loadingAudit, { border: '0px', progress: true, spinner: true }, 'Edit loading does not use the shared borderless progress system.');
+        assert.deepEqual(loadingAudit, { dialogBorder: '0px', sheetBorder: '0px', radius: '22px', blackRectangle: false, progress: true, spinner: true }, 'Edit loading does not use the shared borderless glass progress system.');
       }
       await page.waitForSelector('#creatorEditDialog[open]');
     };
@@ -352,6 +357,7 @@ async function main() {
         openMenus: document.querySelectorAll('#creatorCardMenuDialog[open]').length,
         role: dialog.getAttribute('role'),
         fullRows: actions.every((button) => button.getBoundingClientRect().width >= first.width && button.getBoundingClientRect().height >= 48),
+        rowHeights: actions.map((button) => Math.round(button.getBoundingClientRect().height)),
         icons: dialog.querySelectorAll('.creator-card-menu-actions svg').length,
         floatingClose: dialog.querySelectorAll('header [data-menu-close]').length,
         borderWidth: sheetStyle.borderTopWidth,
@@ -360,7 +366,7 @@ async function main() {
     });
     assert.equal(menuAudit.openMenus, 1, 'Overflow did not keep exactly one action sheet open.');
     assert.equal(menuAudit.role, 'dialog', 'Post options lacks dialog semantics.');
-    assert.equal(menuAudit.fullRows && menuAudit.icons === 2 && menuAudit.floatingClose === 0 && menuAudit.borderWidth === '0px', true, 'Post options lacks borderless full-width icon rows.');
+    assert.equal(menuAudit.fullRows && menuAudit.rowHeights.every((height) => height >= 52 && height <= 56) && menuAudit.icons === 2 && menuAudit.floatingClose === 0 && menuAudit.borderWidth === '0px', true, 'Post options lacks borderless full-width 52-56px icon rows.');
     assert.equal(menuAudit.nearBottom, true, 'Post options dialog is not anchored to the mobile viewport bottom.');
     if (process.env.ZNEWS_UI_SCREENSHOT_DIR) {
       fs.mkdirSync(process.env.ZNEWS_UI_SCREENSHOT_DIR, { recursive: true });
@@ -480,6 +486,7 @@ async function main() {
     await page.evaluate(() => {
       window.__zskyMediaCategoryTest.mode = 'ok';
       window.__zskyMediaCategoryTest.updateDelayMs = 250;
+      window.__zskyMediaCategoryTest.mineDelayMs = 600;
     });
     const beforeDouble = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length);
     await page.locator('#creatorEditText').fill('Single guarded update');
@@ -498,8 +505,34 @@ async function main() {
     assert.deepEqual(saveLoadingAudit, { top: 'SAVING…', bottom: 'Saving…', spinner: true, bothDisabled: true, progress: true }, 'Top/bottom Edit save states are not synchronized.');
     await page.waitForFunction((expected) => window.__zskyMediaCategoryTest.updates.length === expected + 1, beforeDouble);
     assert.equal(await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length), beforeDouble + 1, 'Double submit produced duplicate updates.');
+    await page.waitForFunction(() => document.querySelector('#mineList [data-post-id="POST_1"] .post-copy')?.textContent.includes('Single guarded update'));
+    const localSaveAudit = await page.evaluate(() => ({
+      locallyUpdated: document.querySelector('#mineList [data-post-id="POST_1"] .post-copy')?.textContent.includes('Single guarded update') === true,
+      skeletons: document.querySelectorAll('#mineList .skeleton').length,
+      cards: document.querySelectorAll('#mineList .post-card').length
+    }));
+    assert.deepEqual(localSaveAudit, { locallyUpdated: true, skeletons: 0, cards: 10 }, 'Successful Edit blanked My Posts instead of updating the existing card locally.');
     await page.waitForFunction(() => !document.querySelector('#znewsTopProgress')?.classList.contains('active'), null, { timeout: 1500 });
     assert.equal(await page.locator('#znewsTopProgress.active').count(), 0, 'Save left the shared progress indicator active.');
+    await page.evaluate(() => {
+      window.__zskyMediaCategoryTest.updateDelayMs = 0;
+      window.__zskyMediaCategoryTest.mineDelayMs = 0;
+    });
+
+    for (const [postId, category] of [
+      ['POST_1', 'INTERNATIONAL_NEWS'],
+      ['POST_2', 'BD_NEWS'],
+      ['POST_3', 'MOBILE_PRICING']
+    ]) {
+      await openEdit({ postId });
+      const beforeCategorySave = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length);
+      await page.locator('#creatorEditText').fill(`Text-only edit for ${category}`);
+      await page.locator('#creatorEditSubmitBottom').click();
+      await page.waitForFunction((before) => window.__zskyMediaCategoryTest.updates.length === before + 1, beforeCategorySave);
+      const savedCategory = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.at(-1).category);
+      assert.equal(savedCategory, category, `Text-only Edit changed ${category}.`);
+      await page.waitForFunction(() => !document.querySelector('#creatorEditDialog')?.open);
+    }
 
     const openDelete = async () => {
       await page.locator('#mineList [data-post-id="POST_2"] [data-creator-menu]').click();
@@ -519,7 +552,7 @@ async function main() {
       radius: getComputedStyle(button).borderRadius,
       fontSize: getComputedStyle(button).fontSize
     })));
-    assert.ok(deleteButtonSizes[0].height >= 48, 'Delete modal controls are shorter than the required touch target.');
+    assert.equal(deleteButtonSizes[0].height, 52, 'Delete modal controls are not exactly 52px high.');
     assert.deepEqual(deleteButtonSizes[0], deleteButtonSizes[1], 'Delete modal buttons do not have equal dimensions and typography.');
     await page.locator('#creatorActionDialog [data-action-confirm]').evaluate((button) => {
       button.click();
@@ -637,6 +670,71 @@ async function main() {
     assert.equal(richEditorAudit.finalMatch.styledText, 'Malaysia', 'Malaysia did not render bold and green in the live editor.');
     assert.deepEqual(richEditorAudit.legacy.boldRanges, [{ start: 7, end: 11 }], 'Legacy bold range was not preserved by the editor.');
     assert.equal(richEditorAudit.value, 'Legacy bold', 'Rich editor displayed formatting syntax.');
+    const androidSelectionAudit = await page.evaluate(() => {
+      const textarea = document.querySelector('#postText');
+      const bold = document.querySelector('#postBoldButton');
+      const rich = window.ZNewsRichText;
+      const sample = 'Select Malaysia safely';
+      const start = sample.indexOf('Malaysia');
+      const end = start + 'Malaysia'.length;
+      rich.setEditorContent(textarea, sample);
+      textarea.focus();
+      textarea.setSelectionRange(start, end);
+      textarea.dispatchEvent(new Event('select'));
+      bold.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, pointerType: 'touch' }));
+      textarea.blur();
+      textarea.setSelectionRange(end, end);
+      bold.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      const payload = rich.getEditorPayload(textarea);
+      const surface = document.querySelector('#createView .rich-editor-surface');
+      const toolbar = document.querySelector('#postFormatToolbar');
+      return {
+        selection: [textarea.selectionStart, textarea.selectionEnd],
+        boldRanges: payload.boldRanges,
+        liveBold: document.querySelector('#createView .rich-editor-live-preview strong')?.textContent || '',
+        boldPressed: bold.getAttribute('aria-pressed'),
+        boldBackground: getComputedStyle(bold).backgroundColor,
+        toolbarBeforeEditor: toolbar.compareDocumentPosition(surface) === Node.DOCUMENT_POSITION_FOLLOWING,
+        editorPaddingTop: Number.parseFloat(getComputedStyle(textarea).paddingTop)
+      };
+    });
+    assert.deepEqual(androidSelectionAudit.selection, [7, 15], 'Bold toolbar tap did not restore the Android text selection.');
+    assert.deepEqual(androidSelectionAudit.boldRanges, [{ start: 7, end: 15 }], 'Stored Android selection was not formatted.');
+    assert.equal(androidSelectionAudit.liveBold, 'Malaysia', 'Bold was not visible immediately in the editor.');
+    assert.equal(androidSelectionAudit.boldPressed, 'true', 'Bold active state is not exposed.');
+    assert.notEqual(androidSelectionAudit.boldBackground, 'rgba(0, 0, 0, 0)', 'Bold active state has no strong filled background.');
+    assert.equal(androidSelectionAudit.toolbarBeforeEditor && androidSelectionAudit.editorPaddingTop >= 24, true, 'Formatting toolbar is not structurally separated from selected text.');
+
+    await page.evaluate(() => {
+      document.documentElement.style.setProperty('--znews-keyboard-inset', '300px');
+      document.documentElement.style.setProperty('--znews-visual-height', '544px');
+    });
+    await page.locator('#postColorButton').click();
+    const paletteLayout = await page.evaluate(() => {
+      const palette = document.querySelector('#postColorPalette');
+      const rect = palette.getBoundingClientRect();
+      return {
+        position: getComputedStyle(palette).position,
+        bottom: Math.round(rect.bottom),
+        visibleBottom: 544,
+        toolbarOpen: document.querySelector('#postFormatToolbar').classList.contains('palette-open')
+      };
+    });
+    assert.equal(paletteLayout.position, 'fixed', 'Mobile color palette is not a keyboard-safe bottom sheet.');
+    assert.equal(paletteLayout.bottom <= paletteLayout.visibleBottom && paletteLayout.toolbarOpen, true, 'Color palette overlaps the simulated Android keyboard area.');
+    await page.locator('#postColorPalette [data-format-color="green"]').click();
+    const androidColorAudit = await page.evaluate(() => ({
+      selection: [document.querySelector('#postText').selectionStart, document.querySelector('#postText').selectionEnd],
+      live: document.querySelector('#createView .rich-editor-live-preview .znews-text-color-green')?.textContent || '',
+      colorPressed: document.querySelector('#postColorButton').getAttribute('aria-pressed'),
+      colorLabel: document.querySelector('#postColorButton').getAttribute('aria-label'),
+      paletteClosed: document.querySelector('#postColorPalette').hidden
+    }));
+    assert.deepEqual(androidColorAudit, { selection: [7, 15], live: 'Malaysia', colorPressed: 'true', colorLabel: 'Text color: Green', paletteClosed: true }, 'Color toolbar did not restore selection and apply a live color safely.');
+    await page.evaluate(() => {
+      document.documentElement.style.removeProperty('--znews-keyboard-inset');
+      document.documentElement.style.removeProperty('--znews-visual-height');
+    });
     await page.locator('#postCategoryButton').click();
     await page.keyboard.press('Escape');
     await page.waitForFunction(() => !document.querySelector('#postCategoryDialog')?.open);

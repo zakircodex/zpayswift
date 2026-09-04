@@ -29,6 +29,7 @@
     transferMinimumMicros: 200_000_000,
     authStage: 'credentials',
     authContext: {},
+    minePosts: new Map(),
     localLikes: new Set(),
     lastBoundaryBackAt: 0
   };
@@ -1131,18 +1132,40 @@
     }
   }
 
-  async function loadMyPosts({ append = false } = {}) {
+  function replaceMyPostCard(postId, incoming) {
+    const card = els.mineList.querySelector(`.post-card[data-post-id="${CSS.escape(postId)}"]`);
+    if (!card || !incoming || typeof incoming !== 'object') return false;
+    const previous = state.minePosts.get(postId) || {};
+    const merged = { ...previous, ...incoming, post_id: postId };
+    ['like_count', 'comment_count', 'share_count'].forEach((field) => {
+      if (Object.hasOwn(previous, field)) merged[field] = previous[field];
+    });
+    const holder = document.createElement('div');
+    holder.innerHTML = postMarkup(merged, { creatorMode: true }).trim();
+    const replacement = holder.firstElementChild;
+    if (!replacement) return false;
+    card.replaceWith(replacement);
+    state.minePosts.set(postId, merged);
+    bindPostActions(replacement);
+    return true;
+  }
+
+  async function loadMyPosts({ append = false, preserveExisting = false } = {}) {
     if (!hasVerifiedSession() || state.mineLoading) return;
     state.mineLoading = true;
     const finishProgress = uiFeedback.beginProgress();
     let appendFailed = false;
-    if (!append) renderSkeletons(els.mineList, 2);
+    if (!append && !preserveExisting) renderSkeletons(els.mineList, 2);
     setBusy(els.mineLoadMore, true, 'Loading…');
     try {
       const result = await api.myPosts(append ? state.mineCursor : '');
       const items = Array.isArray(result.data?.items) ? result.data.items : [];
-      if (!append) els.mineList.textContent = '';
+      if (!append) {
+        els.mineList.textContent = '';
+        state.minePosts.clear();
+      }
       if (items.length) {
+        items.forEach((post) => state.minePosts.set(text(post.post_id), post));
         els.mineList.insertAdjacentHTML('beforeend', items.map((post) => postMarkup(post, { creatorMode: true })).join(''));
       } else if (!append) {
         els.mineList.innerHTML = '<div class="empty-state card"><strong>No posts yet</strong>Create your first Z Sky 24 post.</div>';
@@ -1152,7 +1175,7 @@
       state.mineHasMore = result.data?.has_more === true;
       els.mineLoadMore.hidden = !state.mineHasMore || !state.mineCursor;
     } catch (error) {
-      if (!append) {
+      if (!append && !preserveExisting) {
         els.mineList.innerHTML = `<div class="empty-state card"><strong>Posts could not be loaded</strong>${escapeHtml(errorMessage(error))}<button class="feed-retry-button" type="button" data-mine-retry>Retry</button></div>`;
       } else {
         appendFailed = true;
@@ -1376,9 +1399,18 @@
       progressiveFeed = null;
       void loadFeed();
     });
-    window.addEventListener('znews:creator-post-mutated', () => {
+    window.addEventListener('znews:creator-post-mutated', (event) => {
+      const postId = text(event.detail?.postId);
+      const action = text(event.detail?.action);
+      if (action === 'update' && postId && event.detail?.post) {
+        replaceMyPostCard(postId, event.detail.post);
+      }
+      if (action === 'delete' && postId) state.minePosts.delete(postId);
       state.feedDirty = true;
       if (state.route === 'feed') routeTo('feed', { syncHistory: false });
+      if (state.route === 'mine' && action === 'update') {
+        window.setTimeout(() => void loadMyPosts({ preserveExisting: true }), 0);
+      }
     });
     els.commentForm.addEventListener('submit', submitComment);
     els.postDialogClose.addEventListener('click', closePost);

@@ -19,6 +19,7 @@
   const editorStates = new WeakMap();
   const pickerStates = new WeakMap();
   const progressTokens = new Set();
+  let visualViewportBound = false;
 
   const text = (value) => String(value ?? '');
   const points = (value) => Array.from(text(value));
@@ -122,6 +123,83 @@
     return points(content).slice(0, Math.max(0, pointIndex)).join('').length;
   }
 
+  function liveSelection(textarea) {
+    const length = textarea.value.length;
+    const start = Math.max(0, Math.min(length, Number(textarea.selectionStart || 0)));
+    const end = Math.max(start, Math.min(length, Number(textarea.selectionEnd || start)));
+    return { start, end, direction: textarea.selectionDirection || 'none' };
+  }
+
+  function rememberSelection(textarea) {
+    const state = editorStates.get(textarea);
+    if (!state) return liveSelection(textarea);
+    state.selection = liveSelection(textarea);
+    return state.selection;
+  }
+
+  function resolvedSelection(textarea) {
+    const state = ensureState(textarea);
+    const live = liveSelection(textarea);
+    if (document.activeElement === textarea || live.start !== live.end || !state.selection) {
+      state.selection = live;
+    }
+    return { ...(state.selection || live) };
+  }
+
+  function restoreSelection(textarea, selection = null) {
+    const state = ensureState(textarea);
+    const saved = selection || state.selection || liveSelection(textarea);
+    const length = textarea.value.length;
+    const start = Math.max(0, Math.min(length, Number(saved.start || 0)));
+    const end = Math.max(start, Math.min(length, Number(saved.end || start)));
+    textarea.focus({ preventScroll: true });
+    textarea.setSelectionRange(start, end, saved.direction || 'none');
+    state.selection = { start, end, direction: saved.direction || 'none' };
+    return state.selection;
+  }
+
+  function updateVisualViewportMetrics() {
+    const viewport = window.visualViewport;
+    const layoutHeight = Math.max(window.innerHeight || 0, document.documentElement.clientHeight || 0);
+    const visibleHeight = viewport ? viewport.height : layoutHeight;
+    const offsetTop = viewport ? viewport.offsetTop : 0;
+    const keyboardInset = Math.max(0, Math.round(layoutHeight - visibleHeight - offsetTop));
+    document.documentElement.style.setProperty('--znews-keyboard-inset', `${keyboardInset}px`);
+    document.documentElement.style.setProperty('--znews-visual-height', `${Math.round(visibleHeight)}px`);
+  }
+
+  function bindVisualViewport() {
+    if (visualViewportBound) return;
+    visualViewportBound = true;
+    updateVisualViewportMetrics();
+    window.addEventListener('resize', updateVisualViewportMetrics, { passive: true });
+    window.visualViewport?.addEventListener('resize', updateVisualViewportMetrics, { passive: true });
+    window.visualViewport?.addEventListener('scroll', updateVisualViewportMetrics, { passive: true });
+  }
+
+  function keepSelectionVisible(textarea, selection = null) {
+    const saved = selection || resolvedSelection(textarea);
+    const style = window.getComputedStyle(textarea);
+    const lineHeight = Number.parseFloat(style.lineHeight) || 24;
+    const paddingTop = Number.parseFloat(style.paddingTop) || 0;
+    const linesBefore = textarea.value.slice(0, saved.start).split('\n').length - 1;
+    const caretTop = paddingTop + (linesBefore * lineHeight);
+    const safeInsideTop = textarea.scrollTop + Math.min(48, textarea.clientHeight / 3);
+    const safeInsideBottom = textarea.scrollTop + textarea.clientHeight - 48;
+    if (caretTop < safeInsideTop) textarea.scrollTop = Math.max(0, caretTop - 56);
+    if (caretTop > safeInsideBottom) textarea.scrollTop = Math.max(0, caretTop - textarea.clientHeight + 72);
+
+    const viewport = window.visualViewport;
+    const visibleTop = (viewport?.offsetTop || 0) + 126;
+    const visibleBottom = (viewport?.offsetTop || 0) + (viewport?.height || window.innerHeight) - 104;
+    const surface = textarea.closest('.rich-editor-surface') || textarea;
+    const rect = surface.getBoundingClientRect();
+    const form = textarea.closest('.composer-form');
+    if (form && rect.top < visibleTop) form.scrollBy({ top: rect.top - visibleTop, behavior: 'auto' });
+    else if (form && rect.bottom > visibleBottom) form.scrollBy({ top: rect.bottom - visibleBottom, behavior: 'auto' });
+    renderEditorPreview(textarea);
+  }
+
   function reconcileInput(textarea) {
     const state = editorStates.get(textarea);
     if (!state) return;
@@ -154,7 +232,8 @@
       text: plain,
       styles: stylesFor(plain, formattingRuns, boldRanges),
       toolbar: current?.toolbar || null,
-      preview: current?.preview || null
+      preview: current?.preview || null,
+      selection: { start: 0, end: 0, direction: 'none' }
     });
     updateToolbar(textarea);
     renderEditorPreview(textarea);
@@ -180,13 +259,16 @@
     return { text: plain, formattingRuns: runs, boldRanges: boldRangesFromRuns(runs) };
   }
 
-  function applyStyle(textarea, update) {
+  function applyStyle(textarea, update, savedSelection = null) {
     if (!(textarea instanceof HTMLTextAreaElement)) return;
     reconcileInput(textarea);
     const state = ensureState(textarea);
-    const selection = selectionPoints(textarea);
+    const codeSelection = restoreSelection(textarea, savedSelection || resolvedSelection(textarea));
+    const selection = {
+      start: points(textarea.value.slice(0, codeSelection.start)).length,
+      end: points(textarea.value.slice(0, codeSelection.end)).length
+    };
     if (selection.start === selection.end) {
-      textarea.focus({ preventScroll: true });
       updateToolbar(textarea);
       return;
     }
@@ -196,29 +278,38 @@
     state.text = textarea.value;
     const start = pointToCodeUnit(textarea.value, selection.start);
     const end = pointToCodeUnit(textarea.value, selection.end);
-    textarea.focus({ preventScroll: true });
     textarea.setSelectionRange(start, end);
+    state.selection = { start, end, direction: codeSelection.direction || 'none' };
     updateToolbar(textarea);
     renderEditorPreview(textarea);
+    keepSelectionVisible(textarea, state.selection);
     textarea.dispatchEvent(new Event('znews:format-change', { bubbles: true }));
   }
 
   function toggleBold(textarea) {
     const state = ensureState(textarea);
-    const selection = selectionPoints(textarea);
+    const saved = resolvedSelection(textarea);
+    const selection = {
+      start: points(textarea.value.slice(0, saved.start)).length,
+      end: points(textarea.value.slice(0, saved.end)).length
+    };
     const selected = state.styles.slice(selection.start, selection.end);
     const shouldBold = selected.length > 0 && !selected.every((style) => style.bold === true);
-    applyStyle(textarea, (style) => ({ ...style, bold: shouldBold }));
+    applyStyle(textarea, (style) => ({ ...style, bold: shouldBold }), saved);
   }
 
   function applyColor(textarea, color) {
     const safeColor = COLOR_IDS.includes(color) ? color : 'default';
-    applyStyle(textarea, (style) => ({ ...style, color: safeColor }));
+    applyStyle(textarea, (style) => ({ ...style, color: safeColor }), resolvedSelection(textarea));
   }
 
   function selectedStyle(textarea) {
     const state = ensureState(textarea);
-    const selection = selectionPoints(textarea);
+    const saved = resolvedSelection(textarea);
+    const selection = {
+      start: points(textarea.value.slice(0, saved.start)).length,
+      end: points(textarea.value.slice(0, saved.end)).length
+    };
     const selected = state.styles.slice(selection.start, selection.end);
     if (!selected.length) {
       const index = selection.start < state.styles.length
@@ -251,6 +342,8 @@
     if (color) {
       color.dataset.color = selected.colorMixed ? 'mixed' : selected.color;
       color.classList.toggle('mixed', selected.colorMixed);
+      color.classList.toggle('active', selected.colorMixed || selected.color !== 'default');
+      color.setAttribute('aria-pressed', selected.colorMixed ? 'mixed' : (selected.color !== 'default' ? 'true' : 'false'));
       const colorLabel = selected.colorMixed ? 'Mixed' : COLOR_LABELS[selected.color];
       color.setAttribute('aria-label', `Text color: ${colorLabel}`);
       color.querySelector('[data-color-name]')?.replaceChildren(document.createTextNode(colorLabel));
@@ -296,35 +389,59 @@
     const palette = toolbar?.querySelector('[data-format-palette]');
     if (!toggle || !palette) return;
     palette.hidden = true;
+    toolbar.classList.remove('palette-open');
     toggle.setAttribute('aria-expanded', 'false');
-    if (restore) toggle.focus();
+    if (restore) restoreSelection(toolbar._znewsTextarea);
   }
 
   function bindToolbar(textarea, toolbar) {
     if (!(textarea instanceof HTMLTextAreaElement) || !(toolbar instanceof HTMLElement)) return;
     const state = ensureState(textarea);
     state.toolbar = toolbar;
+    toolbar._znewsTextarea = textarea;
+    bindVisualViewport();
     ensureVisualSurface(textarea);
     toolbar.querySelectorAll('button').forEach((button) => {
-      button.addEventListener('pointerdown', (event) => event.preventDefault());
+      button.addEventListener('pointerdown', (event) => {
+        rememberSelection(textarea);
+        event.preventDefault();
+      });
+      button.addEventListener('touchstart', () => rememberSelection(textarea), { passive: true });
     });
-    toolbar.querySelector('[data-format-bold]')?.addEventListener('click', () => toggleBold(textarea));
+    toolbar.querySelector('[data-format-bold]')?.addEventListener('click', () => {
+      restoreSelection(textarea);
+      toggleBold(textarea);
+    });
     toolbar.querySelector('[data-format-color-toggle]')?.addEventListener('click', () => {
+      const saved = resolvedSelection(textarea);
       const palette = toolbar.querySelector('[data-format-palette]');
       const open = palette.hidden;
       document.querySelectorAll('[data-format-palette]:not([hidden])').forEach((item) => {
         if (item !== palette) closePalette(item.closest('.composer-format-toolbar'));
       });
       palette.hidden = !open;
+      toolbar.classList.toggle('palette-open', open);
       toolbar.querySelector('[data-format-color-toggle]').setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) {
+        restoreSelection(textarea, saved);
+        keepSelectionVisible(textarea, saved);
+      }
     });
     toolbar.querySelectorAll('[data-format-color]').forEach((button) => {
       button.addEventListener('click', () => {
+        restoreSelection(textarea);
         applyColor(textarea, text(button.dataset.formatColor));
         closePalette(toolbar);
       });
     });
-    ['select', 'keyup', 'click', 'focus'].forEach((name) => textarea.addEventListener(name, () => updateToolbar(textarea)));
+    ['select', 'keyup', 'click', 'focus'].forEach((name) => textarea.addEventListener(name, () => {
+      const live = liveSelection(textarea);
+      if (document.activeElement === textarea || live.start !== live.end) rememberSelection(textarea);
+      updateToolbar(textarea);
+      if (name === 'select' && live.start !== live.end) {
+        window.requestAnimationFrame(() => keepSelectionVisible(textarea, live));
+      }
+    }));
     textarea.addEventListener('input', () => reconcileInput(textarea));
     textarea.addEventListener('scroll', () => renderEditorPreview(textarea), { passive: true });
     textarea.addEventListener('keydown', (event) => {
@@ -376,7 +493,7 @@
         option.setAttribute('aria-checked', selected ? 'true' : 'false');
       });
     }
-    if (notify) input.dispatchEvent(new Event('change', { bubbles: true }));
+    if (notify) input.dispatchEvent(new CustomEvent('change', { bubbles: true, detail: { source: 'user' } }));
   }
 
   function bindCategoryPicker(input, button, dialog) {

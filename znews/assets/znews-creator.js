@@ -2,6 +2,7 @@
   'use strict';
 
   const config = window.ZNEWS_CONFIG;
+  const EDITABLE_CATEGORIES = Object.freeze(['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING']);
   const form = document.querySelector('#createPostForm');
   const mineList = document.querySelector('#mineList');
   const toastRegion = document.querySelector('#toastRegion');
@@ -10,6 +11,10 @@
 
   const client = () => new window.ZNewsApiClient(config);
   const text = (value) => String(value ?? '');
+  const canonicalCategory = (value) => {
+    const normalized = text(value).trim().toUpperCase();
+    return EDITABLE_CATEGORIES.includes(normalized) ? normalized : '';
+  };
   const richText = window.ZNewsRichText || {
     getEditorPayload: (textarea) => ({ text: text(textarea?.value).trim(), boldRanges: [], formattingRuns: [] }),
     setEditorContent: (textarea, value) => { if (textarea) textarea.value = text(value); },
@@ -54,7 +59,7 @@
     return `
       <div class="composer-format-toolbar" id="${prefix}Toolbar" role="toolbar" aria-label="Text formatting">
         <button class="composer-format-button" type="button" data-format-bold aria-label="Bold selected text" aria-pressed="false"><strong>B</strong></button>
-        <button class="composer-format-button composer-color-button" type="button" data-format-color-toggle data-color="default" aria-label="Text color: Default" aria-haspopup="true" aria-expanded="false" aria-controls="${prefix}Palette"><strong>A</strong><span class="format-color-swatch" aria-hidden="true"></span></button>
+        <button class="composer-format-button composer-color-button" type="button" data-format-color-toggle data-color="default" aria-label="Text color: Default" aria-haspopup="dialog" aria-expanded="false" aria-pressed="false" aria-controls="${prefix}Palette"><strong>A</strong><span class="format-color-swatch" aria-hidden="true"></span></button>
         <div class="format-color-palette" id="${prefix}Palette" data-format-palette role="radiogroup" aria-label="Text color" hidden>
           ${colors.map(([id, className, label], index) => `<button type="button" role="radio" aria-checked="${index === 0 ? 'true' : 'false'}" data-format-color="${id}"><i class="color-swatch ${className}" aria-hidden="true"></i><span>${label}</span></button>`).join('')}
         </div>
@@ -233,7 +238,12 @@
       if (returnFocus?.isConnected) returnFocus.focus();
     });
     const categoryInput = dialog.querySelector('#creatorEditCategory');
-    categoryInput?.addEventListener('change', () => syncEditor(dialog));
+    categoryInput?.addEventListener('change', (event) => {
+      if (event.detail?.source === 'user') {
+        dialog.querySelector('#creatorEditForm').dataset.categoryTouched = 'true';
+      }
+      syncEditor(dialog);
+    });
     dialog.querySelector('#creatorEditTitle')?.addEventListener('input', () => syncEditor(dialog));
     const body = dialog.querySelector('#creatorEditText');
     body?.addEventListener('input', () => syncEditor(dialog));
@@ -272,6 +282,8 @@
       editForm.dataset.postId = '';
       editForm.dataset.updatedAt = '';
       editForm.dataset.initialState = '';
+      editForm.dataset.originalCategory = '';
+      editForm.dataset.categoryTouched = 'false';
     }
     richText.setEditorContent(dialog.querySelector('#creatorEditText'), '');
     window.ZNewsCategoryPicker?.set(dialog.querySelector('#creatorEditCategory'), '', { notify: false });
@@ -383,7 +395,7 @@
     dialog.id = 'creatorActionDialog';
     dialog.className = 'creator-action-dialog';
     dialog.innerHTML = `
-      <div class="creator-action-shell" role="document">
+      <div class="creator-action-shell znews-creator-sheet" role="document">
         <span class="creator-action-spinner" aria-hidden="true"></span>
         <h2 id="creatorActionTitle">Please wait…</h2>
         <p id="creatorActionMessage">Loading your post.</p>
@@ -497,6 +509,12 @@
       const result = await postDetails(postId);
       if (generation !== editLoadGeneration) return;
       const post = result.data?.post || {};
+      const initialCategory = canonicalCategory(post.category);
+      if (!initialCategory) {
+        const categoryError = new Error('The post category could not be loaded safely.');
+        categoryError.code = 'ZNEWS_POST_CATEGORY_INVALID';
+        throw categoryError;
+      }
       const api = client();
       const creatorName = text(post.creator_name || api.profile.name || api.profile.NAME
         || api.profile.display_name || api.profile.phone || 'Z-Pay creator').trim();
@@ -511,7 +529,7 @@
       );
       window.ZNewsCategoryPicker?.set(
         dialog.querySelector('#creatorEditCategory'),
-        text(post.category).toUpperCase(),
+        initialCategory,
         { notify: false }
       );
       dialog.querySelector('#creatorEditImage').value = '';
@@ -522,6 +540,8 @@
       editForm.dataset.currentImageUrl = safeUrl(post.image_url);
       editForm.dataset.postId = postId;
       editForm.dataset.updatedAt = text(post.updated_at);
+      editForm.dataset.originalCategory = initialCategory;
+      editForm.dataset.categoryTouched = 'false';
       renderEditPreview(dialog);
       editForm.dataset.initialState = editorSnapshot(dialog);
       syncEditor(dialog);
@@ -562,7 +582,9 @@
     const postTitle = text(editForm.querySelector('#creatorEditTitle').value).trim();
     const parsedText = richText.getEditorPayload(editForm.querySelector('#creatorEditText'));
     const postText = parsedText.text;
-    const category = text(editForm.querySelector('#creatorEditCategory').value).toUpperCase();
+    const selectedCategory = canonicalCategory(editForm.querySelector('#creatorEditCategory').value);
+    const originalCategory = canonicalCategory(editForm.dataset.originalCategory);
+    const category = editForm.dataset.categoryTouched === 'true' ? selectedCategory : originalCategory;
     const replacement = editForm.querySelector('#creatorEditImage').files?.[0] || null;
     const removeImage = editForm.querySelector('#creatorRemoveImage').checked;
 
@@ -571,7 +593,7 @@
       error.hidden = false;
       return;
     }
-    if (!['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(category)) {
+    if (!EDITABLE_CATEGORIES.includes(category)) {
       error.textContent = 'Choose a post category.';
       error.hidden = false;
       return;
@@ -624,10 +646,24 @@
         body
       });
 
+      const updatedPost = result.data?.post && typeof result.data.post === 'object'
+        ? result.data.post
+        : {
+            post_id: postId,
+            title: postTitle,
+            text: postText,
+            bold_ranges: parsedText.boldRanges,
+            formatting_runs: parsedText.formattingRuns,
+            category
+          };
       ensureEditor().close();
-      window.dispatchEvent(new CustomEvent('znews:creator-post-mutated', { detail: { postId, action: 'update' } }));
+      window.dispatchEvent(new CustomEvent('znews:creator-post-mutated', {
+        detail: { postId, action: 'update', post: updatedPost }
+      }));
       toast(result.data?.published_immediately === true ? 'Saved' : 'Saved and sent for review.');
-      document.querySelector('[data-route="mine"]')?.click();
+      if (document.documentElement.dataset.znewsRoute !== 'mine') {
+        document.querySelector('[data-route="mine"]')?.click();
+      }
     } catch (requestError) {
       error.textContent = errorMessage(requestError);
       error.hidden = false;
@@ -757,6 +793,15 @@
     if (dialog.open) dialog._closeMenu({ restore: false });
     const postId = text(card.dataset.postId);
     dialog._trigger = trigger;
+    if (window.matchMedia('(min-width: 781px)').matches) {
+      const rect = trigger.getBoundingClientRect();
+      const width = 360;
+      dialog.style.left = `${Math.max(12, Math.min(window.innerWidth - width - 12, rect.right - width))}px`;
+      dialog.style.top = `${Math.max(12, Math.min(window.innerHeight - 260, rect.bottom + 8))}px`;
+    } else {
+      dialog.style.removeProperty('left');
+      dialog.style.removeProperty('top');
+    }
     trigger.setAttribute('aria-expanded', 'true');
     const edit = dialog.querySelector('[data-menu-edit]');
     const remove = dialog.querySelector('[data-menu-delete]');
@@ -804,13 +849,13 @@
     .creator-overflow-button{width:44px;height:44px;flex:0 0 44px;display:grid;place-items:center;margin-left:auto;padding:0;border:0;border-radius:12px;background:transparent;color:#cbd9ea;font-size:27px;line-height:1;cursor:pointer;touch-action:manipulation}
     .creator-overflow-button:hover,.creator-overflow-button:focus-visible{background:rgba(255,255,255,.07);color:#fff;outline:2px solid rgba(97,226,156,.52);outline-offset:1px}
     .creator-overflow-button:active{transform:scale(.92);background:rgba(101,224,159,.12)}
-    .creator-card-menu-dialog{width:min(92vw,360px);padding:0;border:0;background:transparent;color:#f4f8ff}
+    .creator-card-menu-dialog{width:min(92vw,360px);padding:0!important;border:0!important;outline:0!important;background:transparent!important;box-shadow:none!important;color:#f4f8ff;appearance:none}
     .creator-card-menu-dialog::backdrop{background:rgba(0,8,20,.68);backdrop-filter:blur(5px)}
-    .creator-card-menu-sheet{display:grid;gap:8px;padding:18px;border:0;border-radius:18px;background:rgba(8,29,53,.97);box-shadow:0 26px 76px rgba(0,0,0,.52);backdrop-filter:blur(22px);animation:creator-sheet-in .18s ease-out}
+    .creator-card-menu-sheet{display:grid;gap:8px;padding:18px;border:0!important;border-radius:22px;background:linear-gradient(180deg,rgba(12,40,70,.98),rgba(7,25,47,.99));box-shadow:0 26px 76px rgba(0,0,0,.55);backdrop-filter:blur(22px);animation:creator-sheet-in .18s ease-out}
     .creator-card-menu-sheet header{padding:2px 4px 10px;border-bottom:1px solid rgba(142,177,226,.12)}
     .creator-card-menu-sheet h2{margin:0;font-size:16px;letter-spacing:0}
     .creator-card-menu-actions{display:grid;gap:4px}
-    .creator-card-menu-actions button,.creator-card-menu-cancel{width:100%;min-height:54px;display:flex;align-items:center;gap:13px;padding:0 14px;border:0;border-radius:12px;background:transparent;color:#eaf2fc;text-align:left;font:inherit;font-size:15px;font-weight:800;cursor:pointer;touch-action:manipulation}
+    .creator-card-menu-actions button,.creator-card-menu-cancel{width:100%;height:56px;min-height:56px;display:flex;align-items:center;gap:13px;padding:0 14px;border:0;border-radius:14px;background:transparent;color:#eaf2fc;text-align:left;font:inherit;font-size:15px;font-weight:800;cursor:pointer;touch-action:manipulation}
     .creator-card-menu-actions button svg{width:21px;height:21px;flex:0 0 21px;fill:currentColor}
     .creator-card-menu-actions button:hover,.creator-card-menu-actions button:focus-visible,.creator-card-menu-cancel:hover,.creator-card-menu-cancel:focus-visible{background:rgba(91,225,151,.09);outline:2px solid rgba(91,225,151,.34);outline-offset:-2px}
     .creator-card-menu-actions button:active,.creator-card-menu-cancel:active{transform:scale(.985);background:rgba(91,225,151,.14)}
@@ -825,15 +870,15 @@
     .creator-edit-form .composer-image-foreground{position:relative;z-index:1;object-fit:contain}
     .creator-edit-form .form-error{margin:8px 16px 0}
     .creator-edit-form[aria-busy="true"] [data-close]{opacity:.45;pointer-events:none}
-    .creator-action-dialog{width:min(90vw,390px);padding:0;border:0;border-radius:18px;background:transparent;color:#f7fbff}
+    .creator-action-dialog{width:min(90vw,390px);padding:0!important;border:0!important;outline:0!important;border-radius:22px;background:transparent!important;box-shadow:none!important;color:#f7fbff;appearance:none}
     .creator-action-dialog::backdrop{background:rgba(0,10,24,.72);backdrop-filter:blur(5px)}
-    .creator-action-shell{display:grid;justify-items:center;gap:12px;padding:26px 22px;border:0;border-radius:18px;background:rgba(9,33,59,.97);box-shadow:0 24px 70px rgba(0,0,0,.48);text-align:center;backdrop-filter:blur(18px);animation:creator-sheet-in .18s ease-out}
+    .creator-action-shell{display:grid;justify-items:center;gap:12px;padding:26px 22px;border:0!important;outline:0;border-radius:22px;background:linear-gradient(180deg,rgba(13,42,72,.98),rgba(7,26,49,.99));box-shadow:0 24px 70px rgba(0,0,0,.52);text-align:center;backdrop-filter:blur(20px);animation:creator-sheet-in .18s ease-out}
     .creator-action-shell h2,.creator-action-shell p{margin:0}
     .creator-action-shell p{color:#aebed4}
     .creator-action-spinner{width:42px;height:42px;border:4px solid rgba(116,231,168,.2);border-top-color:#74e7a8;border-radius:50%;animation:creator-action-spin .75s linear infinite}
     .creator-action-error{width:100%;padding:9px 11px;border-radius:9px;background:rgba(181,49,69,.14);color:#ffbdc6;font-size:12px}
-    .creator-action-buttons{display:flex;width:100%;gap:10px;margin-top:8px}
-    .creator-action-buttons button{box-sizing:border-box;flex:1 1 0;width:0;min-width:0;height:50px;min-height:50px;padding:0 14px;border:1px solid transparent;border-radius:12px;font-size:14px;line-height:1}
+    .creator-action-buttons{display:flex;width:100%;gap:12px;margin-top:8px}
+    .creator-action-buttons button{box-sizing:border-box;flex:1 1 0;width:0;min-width:0;height:52px;min-height:52px;padding:0 14px;border:1px solid transparent;border-radius:14px;font-size:14px;font-weight:800;line-height:1}
     .creator-action-buttons .danger{border-color:rgba(255,102,122,.38);background:#9f3044;color:#fff;box-shadow:none}
     .creator-action-buttons .danger:hover{background:#b63a50}
     .creator-action-buttons [data-action-confirm].is-loading{display:flex;align-items:center;justify-content:center;gap:8px}
@@ -842,6 +887,7 @@
     @keyframes creator-action-spin{to{transform:rotate(360deg)}}
     @keyframes creator-sheet-in{from{opacity:0;transform:translateY(12px) scale(.985)}to{opacity:1;transform:none}}
     @media (prefers-reduced-motion:reduce){.creator-action-spinner{animation-duration:1.5s}}
+    @media(min-width:781px){.creator-card-menu-dialog{position:fixed;inset:auto;margin:0}}
     @media(max-width:780px){
       .creator-edit-dialog{inset:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;border-radius:0;background:linear-gradient(180deg,#0c203b 0%,#07162a 100%)}
       .creator-edit-form{height:100dvh;max-height:none;padding-top:64px;padding-bottom:calc(94px + env(safe-area-inset-bottom,0px))}
@@ -856,8 +902,8 @@
       .creator-edit-bottom-action .composer-bottom-submit{min-height:52px;border-radius:17px}
       .creator-card-menu-dialog{position:fixed;inset:auto 0 0;width:100%;max-width:none;margin:0;border-radius:22px 22px 0 0}
       .creator-card-menu-sheet{width:100%;padding:18px 18px calc(14px + env(safe-area-inset-bottom,0px));border-radius:22px 22px 0 0}
-      .creator-action-dialog{position:fixed;inset:auto 0 0;width:100%;max-width:none;margin:0;border-radius:22px 22px 0 0}
-      .creator-action-shell{padding:25px 22px calc(22px + env(safe-area-inset-bottom,0px));border-radius:22px 22px 0 0}
+      .creator-edit-form{height:var(--znews-visual-height,100dvh);padding-bottom:calc(104px + var(--znews-keyboard-inset,0px) + env(safe-area-inset-bottom,0px));scroll-padding:136px 0 calc(116px + var(--znews-keyboard-inset,0px))}
+      .creator-edit-bottom-action{bottom:var(--znews-keyboard-inset,0px)}
     }
   `;
   document.head.appendChild(style);

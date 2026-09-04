@@ -313,7 +313,7 @@
     const creatorModules = authenticated ? [
       loadStylesheet('/znews/assets/znews-weekly-review.css?v=1'),
       loadScript('/znews/assets/znews-weekly-review.js?v=1'),
-      imageOptimizerReady.then(() => loadScript('/znews/assets/znews-creator.js?v=11')),
+      imageOptimizerReady.then(() => loadScript('/znews/assets/znews-creator.js?v=12')),
       loadScript('/znews/assets/znews-instant-comments.js?v=4')
     ] : [];
     const results = accessResult.concat(await Promise.allSettled(publicModules.concat(creatorModules)));

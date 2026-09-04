@@ -29,7 +29,7 @@ $embeddedSw = zsky24_reload_read('znews/sw.js');
 
 zsky24_reload_expect(str_contains($index, 'znews-config.js?v=8'), 'config cache-busting revision was not advanced');
 zsky24_reload_expect(str_contains($index, 'znews-api.js?v=13'), 'API cache-busting revision was not advanced');
-zsky24_reload_expect(str_contains($index, 'znews-bootstrap.js?v=29'), 'bootstrap cache-busting revision was not advanced');
+zsky24_reload_expect(str_contains($index, 'znews-bootstrap.js?v=30'), 'bootstrap cache-busting revision was not advanced');
 zsky24_reload_expect(str_contains($bootstrap, 'znews-weekly-review.js?v=1'), 'weekly creator report cache-busting revision is missing');
 
 zsky24_reload_expect(str_contains($api, 'new AbortController()'), 'API requests do not have an abort controller');
@@ -47,10 +47,10 @@ zsky24_reload_expect(str_contains($bootstrap, "deferred: true"), 'transient crea
 zsky24_reload_expect(str_contains($bootstrap, 'SESSION_VALIDATION_MAX_ATTEMPTS = 2'), 'creator session validation retry is not bounded');
 zsky24_reload_expect(str_contains($index, 'defer src="/znews/assets/znews-request-scheduler.js?v=1"'), 'priority request scheduler is not defer-loaded');
 zsky24_reload_expect(str_contains($index, 'defer src="/znews/assets/znews-progressive-feed.js?v=3"'), 'progressive feed controller is not defer-loaded');
-zsky24_reload_expect(str_contains($index, 'defer src="/znews/assets/znews.js?v=25"'), 'deferred app shell revision was not advanced');
+zsky24_reload_expect(str_contains($index, 'defer src="/znews/assets/znews.js?v=26"'), 'deferred app shell revision was not advanced');
 
 foreach ([$standaloneSw, $embeddedSw] as $sw) {
-    zsky24_reload_expect(str_contains($sw, 'shell-v24'), 'service worker cache generation was not advanced');
+    zsky24_reload_expect(str_contains($sw, 'shell-v25'), 'service worker cache generation was not advanced');
     zsky24_reload_expect(str_contains($sw, 'networkFirst(request'), 'service worker is not network-first');
     zsky24_reload_expect(str_contains($sw, "fetch(request, { cache: 'no-store' })"), 'service worker online refresh bypass is missing');
     zsky24_reload_expect(str_contains($sw, 'Promise.allSettled'), 'one missing shell asset can still fail the whole service-worker install');
@@ -58,11 +58,11 @@ foreach ([$standaloneSw, $embeddedSw] as $sw) {
     zsky24_reload_expect(str_contains($sw, 'znews-api.js?v=13'), 'service worker API revision does not match index');
     zsky24_reload_expect(str_contains($sw, 'znews-weekly-review.js?v=1'), 'service worker weekly report revision does not match index');
     zsky24_reload_expect(str_contains($sw, 'znews-weekly-review.css?v=1'), 'service worker weekly report stylesheet does not match index');
-    zsky24_reload_expect(str_contains($sw, 'znews-bootstrap.js?v=29'), 'service worker bootstrap revision does not match index');
+    zsky24_reload_expect(str_contains($sw, 'znews-bootstrap.js?v=30'), 'service worker bootstrap revision does not match index');
     zsky24_reload_expect(str_contains($sw, 'znews-ads.js?v=2'), 'service worker ad shell revision does not match index');
     zsky24_reload_expect(str_contains($sw, 'znews-request-scheduler.js?v=1'), 'service worker priority scheduler revision is missing');
     zsky24_reload_expect(str_contains($sw, 'znews-progressive-feed.js?v=3'), 'service worker progressive feed revision is missing');
-    zsky24_reload_expect(str_contains($sw, 'znews.js?v=25'), 'service worker app revision does not match index');
+    zsky24_reload_expect(str_contains($sw, 'znews.js?v=26'), 'service worker app revision does not match index');
     zsky24_reload_expect(!str_contains($sw, 'cached || fetch(request)'), 'legacy cache-first script strategy remains active');
 }
 

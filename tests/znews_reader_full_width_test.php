@@ -26,8 +26,8 @@ $expect(str_contains($css, 'width:var(--znews-reader-vv-width,100%)'), 'Reader m
 $expect(str_contains($css, 'left:var(--znews-reader-vv-left,0px)'), 'Reader must preserve the visual viewport horizontal offset.');
 $expect(str_contains($css, 'max-width:none;max-inline-size:none'), 'Browser dialog maximum width must be reset.');
 $expect(!str_contains($css, '@media(max-width:780px){\n  .post-modal{position:fixed'), 'Low-specificity mobile selector can reintroduce the right-side gap.');
-$expect(str_contains($sw, "const SHELL_REVISION = 'creator-ui-polish-2'"), 'Service worker revision must refresh creator UI assets without regressing the reader.');
-$expect(str_contains($sw, "const CACHE_NAME = 'zsky24-embedded-shell-v24'"), 'Embedded shell cache namespace is incorrect.');
+$expect(str_contains($sw, "const SHELL_REVISION = 'creator-interactions-3'"), 'Service worker revision must refresh creator UI assets without regressing the reader.');
+$expect(str_contains($sw, "const CACHE_NAME = 'zsky24-embedded-shell-v25'"), 'Embedded shell cache namespace is incorrect.');
 $expect(str_contains($sw, 'znews-reader.css?v=2'), 'Reader stylesheet is missing from the current shell.');
 $expect(str_contains($sw, 'znews-weekly-review.js?v=1'), 'Weekly creator report asset is missing from the current shell.');
 $expect(str_contains($sw, 'networkFirst(request'), 'Reader shell may serve stale cached assets while online.');

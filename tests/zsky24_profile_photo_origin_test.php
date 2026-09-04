@@ -22,7 +22,7 @@ $app = $read('znews/assets/znews.js');
 $bootstrap = $read('znews/assets/znews-bootstrap.js');
 $rootRewrite = $read('.htaccess');
 $expect(str_contains($index, 'znews-config.js?v=8'), 'Profile-photo config cachebuster is missing.');
-$expect(str_contains($index, 'znews-bootstrap.js?v=29'), 'Reload-safe bootstrap cachebuster is missing.');
+$expect(str_contains($index, 'znews-bootstrap.js?v=30'), 'Reload-safe bootstrap cachebuster is missing.');
 $expect(str_contains($bootstrap, "updateViaCache: 'none'"), 'Early service-worker update may reuse a stale HTTP cache.');
 $expect(str_contains($bootstrap, 'await registration.update()'), 'Service-worker update is not requested during bootstrap.');
 $expect(str_contains($app, "updateViaCache: 'none'"), 'Late service-worker fallback may reuse a stale HTTP cache.');
