@@ -16,8 +16,8 @@
     return EDITABLE_CATEGORIES.includes(normalized) ? normalized : '';
   };
   const richText = window.ZNewsRichText || {
-    getEditorPayload: (textarea) => ({ text: text(textarea?.value).trim(), boldRanges: [], formattingRuns: [] }),
-    setEditorContent: (textarea, value) => { if (textarea) textarea.value = text(value); },
+    getEditorPayload: (editor) => ({ text: text(editor?.textContent).trim(), boldRanges: [], formattingRuns: [] }),
+    setEditorContent: (editor, value) => { if (editor) editor.textContent = text(value); },
     bindToolbar: () => {}
   };
   const uiFeedback = window.ZNewsUiFeedback || {
@@ -202,9 +202,9 @@
             <span class="composer-field-count" id="creatorEditTitleCount">0 / 160</span>
           </div>
           <div class="composer-field composer-body-field">
-            <label for="creatorEditText">Post details</label>
+            <span class="composer-field-label" id="creatorEditTextLabel">Post details</span>
             ${formattingToolbarMarkup('creatorEditFormat')}
-            <textarea id="creatorEditText" maxlength="5000" rows="4" placeholder="Write the story or update…" aria-describedby="creatorEditNote creatorEditTextCount"></textarea>
+            <div class="rich-editor-editable" id="creatorEditText" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="creatorEditTextLabel" aria-describedby="creatorEditNote creatorEditTextCount" data-placeholder="Write the story or update…" data-maxlength="5000" spellcheck="true" dir="auto"></div>
             <span class="composer-field-count" id="creatorEditTextCount">0 / 5000</span>
           </div>
         </div>
@@ -246,7 +246,11 @@
     });
     dialog.querySelector('#creatorEditTitle')?.addEventListener('input', () => syncEditor(dialog));
     const body = dialog.querySelector('#creatorEditText');
-    body?.addEventListener('input', () => syncEditor(dialog));
+    body?.addEventListener('input', (event) => {
+      if (event.isComposing || event.inputType === 'insertCompositionText') return;
+      syncEditor(dialog);
+    });
+    body?.addEventListener('znews:editor-sync', () => syncEditor(dialog));
     body?.addEventListener('znews:format-change', () => syncEditor(dialog));
     richText.setEditorContent(body, '');
     richText.bindToolbar(body, dialog.querySelector('#creatorEditFormatToolbar'));
@@ -375,12 +379,10 @@
     dialog.querySelector('#creatorEditTitleCount').textContent = `${title.value.length} / 160`;
     const parsedBody = richText.getEditorPayload(body);
     dialog.querySelector('#creatorEditTextCount').textContent = `${Array.from(parsedBody.text).length} / 5000`;
-    body.style.height = 'auto';
-    body.style.height = `${Math.min(260, Math.max(84, body.scrollHeight))}px`;
     const valid = Boolean(
       title.value.trim()
       && ['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(category.value)
-      && (body.value.trim() || replacement || currentImageKept)
+      && (parsedBody.text || replacement || currentImageKept)
     );
     const currentState = editorSnapshot(dialog);
     const changed = formElement.dataset.initialState !== '' && currentState !== formElement.dataset.initialState;

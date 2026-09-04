@@ -117,13 +117,6 @@
     return points(content).slice(0, Math.max(0, pointIndex)).join('').length;
   }
 
-  function sourceSelection(textarea) {
-    const length = textarea.value.length;
-    const start = Math.max(0, Math.min(length, Number(textarea.selectionStart || 0)));
-    const end = Math.max(start, Math.min(length, Number(textarea.selectionEnd || start)));
-    return { start, end, direction: textarea.selectionDirection || 'none' };
-  }
-
   function inlineStyle(node, inherited = DEFAULT_STYLE) {
     if (!(node instanceof HTMLElement)) return inherited;
     let bold = inherited.bold === true;
@@ -184,11 +177,9 @@
     return readEditorContent(range.cloneContents()).text.length;
   }
 
-  function editorSelection(textarea) {
-    const state = editorStates.get(textarea);
-    const editor = state?.editor;
+  function editorSelection(editor) {
     const selection = window.getSelection();
-    if (!editor || !selectionInside(editor, selection)) return null;
+    if (!selectionInside(editor, selection)) return null;
     const anchor = offsetAtDomPoint(editor, selection.anchorNode, selection.anchorOffset);
     const focus = offsetAtDomPoint(editor, selection.focusNode, selection.focusOffset);
     return {
@@ -198,27 +189,24 @@
     };
   }
 
-  function storeSelection(textarea, selection) {
-    const state = ensureState(textarea);
-    const length = textarea.value.length;
+  function storeSelection(editor, selection) {
+    const state = ensureState(editor);
+    const length = state.text.length;
     const start = Math.max(0, Math.min(length, Number(selection?.start || 0)));
     const end = Math.max(start, Math.min(length, Number(selection?.end || start)));
     state.selection = { start, end, direction: selection?.direction || 'none' };
-    textarea.setSelectionRange(start, end, state.selection.direction);
     return { ...state.selection };
   }
 
-  function rememberSelection(textarea) {
-    const source = sourceSelection(textarea);
-    const live = editorSelection(textarea);
-    if (source.start !== source.end && (!live || live.start === live.end)) return storeSelection(textarea, source);
-    if (live) return storeSelection(textarea, live);
-    const state = ensureState(textarea);
-    return storeSelection(textarea, state.selection || source);
+  function rememberSelection(editor) {
+    const live = editorSelection(editor);
+    if (live) return storeSelection(editor, live);
+    const state = ensureState(editor);
+    return storeSelection(editor, state.selection);
   }
 
-  function resolvedSelection(textarea) {
-    return rememberSelection(textarea);
+  function resolvedSelection(editor) {
+    return rememberSelection(editor);
   }
 
   function domPointAtOffset(editor, requestedOffset) {
@@ -246,11 +234,9 @@
     return { node: editor, offset: 0 };
   }
 
-  function restoreSelection(textarea, selection = null) {
-    const state = ensureState(textarea);
-    const editor = state.editor;
-    const saved = storeSelection(textarea, selection || state.selection || sourceSelection(textarea));
-    if (!editor) return saved;
+  function restoreSelection(editor, selection = null) {
+    const state = ensureState(editor);
+    const saved = storeSelection(editor, selection || state.selection);
     const start = domPointAtOffset(editor, saved.start);
     const end = domPointAtOffset(editor, saved.end);
     const range = document.createRange();
@@ -282,27 +268,24 @@
     window.visualViewport?.addEventListener('scroll', updateVisualViewportMetrics, { passive: true });
   }
 
-  function keepSelectionVisible(textarea, selection = null) {
-    const saved = selection || resolvedSelection(textarea);
-    const editor = ensureState(textarea).editor;
-    if (!editor) return;
+  function keepSelectionVisible(editor, selection = null) {
+    const saved = selection || resolvedSelection(editor);
     const viewport = window.visualViewport;
     const visibleTop = (viewport?.offsetTop || 0) + 126;
     const visibleBottom = (viewport?.offsetTop || 0) + (viewport?.height || window.innerHeight) - 104;
     const surface = editor.closest('.rich-editor-surface') || editor;
     const rect = surface.getBoundingClientRect();
-    const form = textarea.closest('.composer-form');
+    const form = editor.closest('.composer-form');
     if (form && rect.top < visibleTop) form.scrollBy({ top: rect.top - visibleTop, behavior: 'auto' });
     else if (form && rect.bottom > visibleBottom) form.scrollBy({ top: rect.bottom - visibleBottom, behavior: 'auto' });
-    storeSelection(textarea, saved);
+    storeSelection(editor, saved);
   }
 
-  function renderEditorContent(textarea, selection = null) {
-    const state = ensureState(textarea);
-    const editor = state.editor;
-    if (!editor || state.composing) return;
+  function renderEditorContent(editor, selection = null) {
+    const state = ensureState(editor);
+    if (state.composing) return;
     const characters = points(state.text);
-    let html = '';
+    const fragment = document.createDocumentFragment();
     let start = 0;
     while (start < characters.length) {
       const style = state.styles[start] || DEFAULT_STYLE;
@@ -310,42 +293,50 @@
       while (end < characters.length
         && (state.styles[end]?.bold === true) === (style.bold === true)
         && (state.styles[end]?.color || 'default') === (style.color || 'default')) end += 1;
-      let segment = escapeHtml(characters.slice(start, end).join(''));
-      if (style.color !== 'default') segment = `<span class="znews-text-color-${style.color}">${segment}</span>`;
-      if (style.bold) segment = `<strong>${segment}</strong>`;
-      html += (style.bold || style.color !== 'default') ? segment : `<span data-znews-plain>${segment}</span>`;
+      const segment = document.createTextNode(characters.slice(start, end).join(''));
+      let node = segment;
+      if (style.color !== 'default') {
+        const color = document.createElement('span');
+        color.className = `znews-text-color-${style.color}`;
+        color.appendChild(node);
+        node = color;
+      }
+      if (style.bold) {
+        const strong = document.createElement('strong');
+        strong.appendChild(node);
+        node = strong;
+      }
+      if (!style.bold && style.color === 'default') {
+        const plain = document.createElement('span');
+        plain.dataset.znewsPlain = '';
+        plain.appendChild(node);
+        node = plain;
+      }
+      fragment.appendChild(node);
       start = end;
     }
-    editor.innerHTML = html;
-    if (selection) restoreSelection(textarea, selection);
+    editor.replaceChildren(fragment);
+    if (selection) restoreSelection(editor, selection);
   }
 
-  function syncFromEditor(textarea, { dispatch = true, updateControls = true } = {}) {
-    const state = ensureState(textarea);
-    if (!state.editor || state.composing) return;
-    const selected = editorSelection(textarea) || state.selection || sourceSelection(textarea);
-    const snapshot = readEditorContent(state.editor);
+  function syncFromEditor(editor, { updateControls = true } = {}) {
+    const state = ensureState(editor);
+    if (state.composing) return;
+    const selected = editorSelection(editor) || state.selection;
+    const snapshot = readEditorContent(editor);
     state.text = snapshot.text;
     state.styles = snapshot.styles;
-    textarea.value = snapshot.text;
-    storeSelection(textarea, selected);
-    if (updateControls) updateToolbar(textarea);
-    if (dispatch) {
-      state.syncingSource = true;
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
-      state.syncingSource = false;
-    }
+    storeSelection(editor, selected);
+    if (updateControls) updateToolbar(editor);
   }
 
-  function scheduleCompositionSync(textarea) {
-    const state = ensureState(textarea);
-    if (state.compositionSyncPending) return;
-    state.compositionSyncPending = true;
-    queueMicrotask(() => {
-      state.compositionSyncPending = false;
-      if (state.composing) return;
-      syncFromEditor(textarea);
-    });
+  function finishComposition(editor) {
+    const state = ensureState(editor);
+    state.composing = false;
+    syncFromEditor(editor);
+    editor.dispatchEvent(new Event('znews:editor-sync', { bubbles: true }));
+    state.ignoreNextCompositionInput = true;
+    window.setTimeout(() => { state.ignoreNextCompositionInput = false; }, 0);
   }
 
   function insertPlainText(editor, value) {
@@ -361,46 +352,61 @@
     selection.addRange(range);
   }
 
-  function setEditorContent(textarea, content = '', formattingRuns = [], boldRanges = []) {
-    if (!(textarea instanceof HTMLTextAreaElement)) return;
+  function sameStyle(left, right) {
+    return (left?.bold === true) === (right?.bold === true)
+      && (left?.color || 'default') === (right?.color || 'default');
+  }
+
+  function atFormattingBoundary(editor) {
+    const state = ensureState(editor);
+    const selected = editorSelection(editor);
+    if (!selected || selected.start !== selected.end) return false;
+    const index = points(state.text.slice(0, selected.start)).length;
+    const before = index > 0 ? state.styles[index - 1] : DEFAULT_STYLE;
+    const after = index < state.styles.length ? state.styles[index] : DEFAULT_STYLE;
+    return !sameStyle(before, after);
+  }
+
+  function isEditorElement(editor) {
+    return editor instanceof HTMLElement && editor.isContentEditable;
+  }
+
+  function ensureState(editor) {
+    let state = editorStates.get(editor);
+    if (state) return state;
+    const snapshot = readEditorContent(editor);
+    state = {
+      text: snapshot.text,
+      styles: snapshot.styles,
+      toolbar: null,
+      selection: { start: 0, end: 0, direction: 'none' },
+      composing: false,
+      ignoreNextCompositionInput: false,
+      bound: false
+    };
+    editorStates.set(editor, state);
+    return state;
+  }
+
+  function setEditorContent(editor, content = '', formattingRuns = [], boldRanges = []) {
+    if (!isEditorElement(editor)) return;
     const plain = text(content);
-    let state = editorStates.get(textarea);
-    textarea.value = plain;
-    if (!state) {
-      state = {
-        text: plain,
-        styles: [],
-        toolbar: null,
-        editor: null,
-        selection: { start: 0, end: 0, direction: 'none' },
-        composing: false,
-        compositionSyncPending: false,
-        syncingSource: false
-      };
-      editorStates.set(textarea, state);
-    }
+    const state = ensureState(editor);
     state.text = plain;
     state.styles = stylesFor(plain, formattingRuns, boldRanges);
     state.selection = { start: 0, end: 0, direction: 'none' };
     state.composing = false;
-    state.compositionSyncPending = false;
-    state.syncingSource = false;
-    textarea.setSelectionRange(0, 0);
-    renderEditorContent(textarea);
-    updateToolbar(textarea);
-    textarea.dispatchEvent(new Event('znews:format-change', { bubbles: true }));
+    state.ignoreNextCompositionInput = false;
+    renderEditorContent(editor);
+    updateToolbar(editor);
+    editor.dispatchEvent(new Event('znews:format-change', { bubbles: true }));
   }
 
-  function ensureState(textarea) {
-    if (!editorStates.has(textarea)) setEditorContent(textarea, textarea.value);
-    return editorStates.get(textarea);
-  }
-
-  function getEditorPayload(textarea) {
-    if (!(textarea instanceof HTMLTextAreaElement)) return { text: '', formattingRuns: [], boldRanges: [] };
-    const state = ensureState(textarea);
-    if (state.editor && !state.composing) syncFromEditor(textarea, { dispatch: false, updateControls: false });
-    const all = points(textarea.value.replace(/\r\n?/g, '\n'));
+  function getEditorPayload(editor) {
+    if (!isEditorElement(editor)) return { text: '', formattingRuns: [], boldRanges: [] };
+    const state = ensureState(editor);
+    if (!state.composing) syncFromEditor(editor, { updateControls: false });
+    const all = points(state.text.replace(/\r\n?/g, '\n'));
     let start = 0;
     let end = all.length;
     while (start < end && /\s/u.test(all[start])) start += 1;
@@ -410,56 +416,55 @@
     return { text: plain, formattingRuns: runs, boldRanges: boldRangesFromRuns(runs) };
   }
 
-  function applyStyle(textarea, update, savedSelection = null) {
-    if (!(textarea instanceof HTMLTextAreaElement)) return;
-    const state = ensureState(textarea);
+  function applyStyle(editor, update, savedSelection = null) {
+    if (!isEditorElement(editor)) return;
+    const state = ensureState(editor);
     if (state.composing) return;
-    const codeSelection = savedSelection || resolvedSelection(textarea);
-    syncFromEditor(textarea, { dispatch: false, updateControls: false });
+    const codeSelection = savedSelection || resolvedSelection(editor);
+    syncFromEditor(editor, { updateControls: false });
     const selection = {
-      start: points(textarea.value.slice(0, codeSelection.start)).length,
-      end: points(textarea.value.slice(0, codeSelection.end)).length
+      start: points(state.text.slice(0, codeSelection.start)).length,
+      end: points(state.text.slice(0, codeSelection.end)).length
     };
     if (selection.start === selection.end) {
-      updateToolbar(textarea);
+      updateToolbar(editor);
       return;
     }
     for (let index = selection.start; index < selection.end; index += 1) {
       state.styles[index] = update({ ...(state.styles[index] || { bold: false, color: 'default' }) });
     }
-    state.text = textarea.value;
-    const start = pointToCodeUnit(textarea.value, selection.start);
-    const end = pointToCodeUnit(textarea.value, selection.end);
+    const start = pointToCodeUnit(state.text, selection.start);
+    const end = pointToCodeUnit(state.text, selection.end);
     state.selection = { start, end, direction: codeSelection.direction || 'none' };
-    renderEditorContent(textarea, state.selection);
-    updateToolbar(textarea);
-    keepSelectionVisible(textarea, state.selection);
-    textarea.dispatchEvent(new Event('znews:format-change', { bubbles: true }));
+    renderEditorContent(editor, state.selection);
+    updateToolbar(editor);
+    keepSelectionVisible(editor, state.selection);
+    editor.dispatchEvent(new Event('znews:format-change', { bubbles: true }));
   }
 
-  function toggleBold(textarea) {
-    const state = ensureState(textarea);
-    const saved = resolvedSelection(textarea);
+  function toggleBold(editor) {
+    const state = ensureState(editor);
+    const saved = resolvedSelection(editor);
     const selection = {
-      start: points(textarea.value.slice(0, saved.start)).length,
-      end: points(textarea.value.slice(0, saved.end)).length
+      start: points(state.text.slice(0, saved.start)).length,
+      end: points(state.text.slice(0, saved.end)).length
     };
     const selected = state.styles.slice(selection.start, selection.end);
     const shouldBold = selected.length > 0 && !selected.every((style) => style.bold === true);
-    applyStyle(textarea, (style) => ({ ...style, bold: shouldBold }), saved);
+    applyStyle(editor, (style) => ({ ...style, bold: shouldBold }), saved);
   }
 
-  function applyColor(textarea, color) {
+  function applyColor(editor, color) {
     const safeColor = COLOR_IDS.includes(color) ? color : 'default';
-    applyStyle(textarea, (style) => ({ ...style, color: safeColor }), resolvedSelection(textarea));
+    applyStyle(editor, (style) => ({ ...style, color: safeColor }), resolvedSelection(editor));
   }
 
-  function selectedStyle(textarea) {
-    const state = ensureState(textarea);
-    const saved = resolvedSelection(textarea);
+  function selectedStyle(editor) {
+    const state = ensureState(editor);
+    const saved = resolvedSelection(editor);
     const selection = {
-      start: points(textarea.value.slice(0, saved.start)).length,
-      end: points(textarea.value.slice(0, saved.end)).length
+      start: points(state.text.slice(0, saved.start)).length,
+      end: points(state.text.slice(0, saved.end)).length
     };
     const selected = state.styles.slice(selection.start, selection.end);
     if (!selected.length) {
@@ -480,11 +485,11 @@
     };
   }
 
-  function updateToolbar(textarea) {
-    const state = editorStates.get(textarea);
+  function updateToolbar(editor) {
+    const state = editorStates.get(editor);
     const toolbar = state?.toolbar;
     if (!toolbar || state.composing) return;
-    const selected = selectedStyle(textarea);
+    const selected = selectedStyle(editor);
     const bold = toolbar.querySelector('[data-format-bold]');
     const color = toolbar.querySelector('[data-format-color-toggle]');
     bold?.classList.toggle('active', selected.bold);
@@ -506,30 +511,8 @@
     });
   }
 
-  function ensureVisualSurface(textarea) {
-    const state = ensureState(textarea);
-    if (state.editor?.isConnected) return state.editor;
-    const surface = document.createElement('div');
-    surface.className = 'rich-editor-surface';
-    const editor = document.createElement('div');
-    editor.className = 'rich-editor-live-preview rich-editor-input';
-    editor.contentEditable = 'true';
-    editor.setAttribute('role', 'textbox');
-    editor.setAttribute('aria-multiline', 'true');
-    editor.setAttribute('aria-label', textarea.getAttribute('aria-label') || textarea.placeholder || 'Post details');
-    editor.dataset.placeholder = textarea.placeholder || '';
-    textarea.parentNode.insertBefore(surface, textarea);
-    surface.append(editor, textarea);
-    textarea.classList.add('rich-editor-source');
-    textarea.setAttribute('aria-hidden', 'true');
-    textarea.tabIndex = -1;
-    state.editor = editor;
-    renderEditorContent(textarea);
-    return editor;
-  }
-
-  function getEditorElement(textarea) {
-    return editorStates.get(textarea)?.editor || null;
+  function getEditorElement(editor) {
+    return isEditorElement(editor) ? editor : null;
   }
 
   function closePalette(toolbar, { restore = false } = {}) {
@@ -539,29 +522,30 @@
     palette.hidden = true;
     toolbar.classList.remove('palette-open');
     toggle.setAttribute('aria-expanded', 'false');
-    if (restore) restoreSelection(toolbar._znewsTextarea);
+    if (restore && toolbar._znewsEditor) restoreSelection(toolbar._znewsEditor);
   }
 
-  function bindToolbar(textarea, toolbar) {
-    if (!(textarea instanceof HTMLTextAreaElement) || !(toolbar instanceof HTMLElement)) return;
-    const state = ensureState(textarea);
+  function bindToolbar(editor, toolbar) {
+    if (!isEditorElement(editor) || !(toolbar instanceof HTMLElement)) return;
+    const state = ensureState(editor);
+    if (state.bound) return;
+    state.bound = true;
     state.toolbar = toolbar;
-    toolbar._znewsTextarea = textarea;
+    toolbar._znewsEditor = editor;
     bindVisualViewport();
-    const editor = ensureVisualSurface(textarea);
     toolbar.querySelectorAll('button').forEach((button) => {
       button.addEventListener('pointerdown', (event) => {
-        rememberSelection(textarea);
+        rememberSelection(editor);
         event.preventDefault();
       });
-      button.addEventListener('touchstart', () => rememberSelection(textarea), { passive: true });
+      button.addEventListener('touchstart', () => rememberSelection(editor), { passive: true });
     });
     toolbar.querySelector('[data-format-bold]')?.addEventListener('click', () => {
-      restoreSelection(textarea);
-      toggleBold(textarea);
+      restoreSelection(editor);
+      toggleBold(editor);
     });
     toolbar.querySelector('[data-format-color-toggle]')?.addEventListener('click', () => {
-      const saved = resolvedSelection(textarea);
+      const saved = resolvedSelection(editor);
       const palette = toolbar.querySelector('[data-format-palette]');
       const open = palette.hidden;
       document.querySelectorAll('[data-format-palette]:not([hidden])').forEach((item) => {
@@ -571,76 +555,79 @@
       toolbar.classList.toggle('palette-open', open);
       toolbar.querySelector('[data-format-color-toggle]').setAttribute('aria-expanded', open ? 'true' : 'false');
       if (open) {
-        restoreSelection(textarea, saved);
-        keepSelectionVisible(textarea, saved);
+        restoreSelection(editor, saved);
+        keepSelectionVisible(editor, saved);
       }
     });
     toolbar.querySelectorAll('[data-format-color]').forEach((button) => {
       button.addEventListener('click', () => {
-        restoreSelection(textarea);
-        applyColor(textarea, text(button.dataset.formatColor));
+        restoreSelection(editor);
+        applyColor(editor, text(button.dataset.formatColor));
         closePalette(toolbar);
       });
     });
     document.addEventListener('selectionchange', () => {
       if (state.composing || !selectionInside(editor, window.getSelection())) return;
-      rememberSelection(textarea);
-      updateToolbar(textarea);
+      rememberSelection(editor);
+      updateToolbar(editor);
     });
     editor.addEventListener('compositionstart', () => {
       state.composing = true;
-      rememberSelection(textarea);
+      state.ignoreNextCompositionInput = false;
+      rememberSelection(editor);
     });
     editor.addEventListener('compositionupdate', () => {});
     editor.addEventListener('compositionend', () => {
-      state.composing = false;
-      scheduleCompositionSync(textarea);
+      finishComposition(editor);
     });
     editor.addEventListener('beforeinput', (event) => {
       if (state.composing || event.isComposing) return;
-      if ((event.inputType === 'insertText' || event.inputType === 'insertReplacementText')
-        && typeof event.data === 'string') {
+      if (!state.ignoreNextCompositionInput
+        && (event.inputType === 'insertText' || event.inputType === 'insertReplacementText')
+        && typeof event.data === 'string'
+        && atFormattingBoundary(editor)) {
         event.preventDefault();
         insertPlainText(editor, event.data);
-        syncFromEditor(textarea);
+        syncFromEditor(editor);
+        editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: event.inputType, data: event.data }));
         return;
       }
       if (event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
         event.preventDefault();
         insertPlainText(editor, '\n');
-        syncFromEditor(textarea);
+        syncFromEditor(editor);
+        editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: event.inputType, data: null }));
       }
     });
     editor.addEventListener('input', (event) => {
       if (state.composing || event.isComposing) return;
-      syncFromEditor(textarea);
+      if (state.ignoreNextCompositionInput && event.inputType === 'insertCompositionText') {
+        state.ignoreNextCompositionInput = false;
+        return;
+      }
+      syncFromEditor(editor);
     });
     editor.addEventListener('paste', (event) => {
       event.preventDefault();
       insertPlainText(editor, event.clipboardData?.getData('text/plain') || '');
-      syncFromEditor(textarea);
+      syncFromEditor(editor);
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste', data: null }));
     });
     editor.addEventListener('drop', (event) => {
       event.preventDefault();
       insertPlainText(editor, event.dataTransfer?.getData('text/plain') || '');
-      syncFromEditor(textarea);
+      syncFromEditor(editor);
+      editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromDrop', data: null }));
     });
     ['keyup', 'click', 'focus'].forEach((name) => editor.addEventListener(name, () => {
       if (state.composing) return;
-      rememberSelection(textarea);
-      updateToolbar(textarea);
+      rememberSelection(editor);
+      updateToolbar(editor);
     }));
-    textarea.addEventListener('input', () => {
-      if (state.syncingSource) return;
-      state.text = textarea.value;
-      state.styles = stylesFor(state.text);
-      renderEditorContent(textarea, sourceSelection(textarea));
-      updateToolbar(textarea);
-    });
     editor.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') closePalette(toolbar, { restore: true });
     });
-    updateToolbar(textarea);
+    updateToolbar(editor);
   }
 
   function formattedTextHtml(content, formattingRuns = [], boldRanges = []) {

@@ -15,16 +15,16 @@
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link id="appManifest" rel="manifest" href="/znews/manifest.webmanifest">
   <link rel="stylesheet" href="/znews/assets/znews.css?v=4">
-  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=16">
+  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=17">
   <script defer src="/znews/assets/znews-config.js?v=8"></script>
   <script defer src="/znews/assets/znews-api.js?v=13"></script>
   <script defer src="/znews/assets/znews-request-scheduler.js?v=1"></script>
   <script defer src="/znews/assets/znews-progressive-feed.js?v=3"></script>
   <script defer src="/znews/assets/znews-feed-ui.js?v=3"></script>
   <script defer src="/znews/assets/znews-ads.js?v=2"></script>
-  <script defer src="/znews/assets/znews-rich-editor.js?v=4"></script>
-  <script defer src="/znews/assets/znews-bootstrap.js?v=31"></script>
-  <script defer src="/znews/assets/znews.js?v=26"></script>
+  <script defer src="/znews/assets/znews-rich-editor.js?v=5"></script>
+  <script defer src="/znews/assets/znews-bootstrap.js?v=32"></script>
+  <script defer src="/znews/assets/znews.js?v=27"></script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -162,7 +162,7 @@
                 <span class="composer-field-count" id="postTitleCount">0 / 160</span>
               </div>
               <div class="composer-field composer-body-field">
-                <label for="postText">Post details</label>
+                <span class="composer-field-label" id="postTextLabel">Post details</span>
                 <div class="composer-format-toolbar" id="postFormatToolbar" role="toolbar" aria-label="Text formatting">
                   <button class="composer-format-button" id="postBoldButton" type="button" data-format-bold aria-label="Bold selected text" aria-pressed="false" title="Bold selected text"><strong>B</strong></button>
                   <button class="composer-format-button composer-color-button" id="postColorButton" type="button" data-format-color-toggle data-color="default" aria-label="Text color: Default" aria-haspopup="dialog" aria-expanded="false" aria-pressed="false" aria-controls="postColorPalette"><strong>A</strong><span class="format-color-swatch" aria-hidden="true"></span></button>
@@ -176,7 +176,7 @@
                     <button type="button" role="radio" aria-checked="false" data-format-color="red"><i class="color-swatch red" aria-hidden="true"></i><span>Red</span></button>
                   </div>
                 </div>
-                <textarea id="postText" name="text" maxlength="5000" rows="4" placeholder="Write the story or update…" aria-describedby="composerReviewNote postTextCount"></textarea>
+                <div class="rich-editor-editable" id="postText" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="postTextLabel" aria-describedby="composerReviewNote postTextCount" data-placeholder="Write the story or update…" data-maxlength="5000" spellcheck="true" dir="auto"></div>
                 <span class="composer-field-count" id="postTextCount">0 / 5000</span>
               </div>
             </div>

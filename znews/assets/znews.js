@@ -1323,15 +1323,14 @@
 
   function syncComposerState() {
     const titleLength = els.postTitle.value.length;
-    const length = Array.from(richText.getEditorPayload(els.postText).text).length;
+    const editorPayload = richText.getEditorPayload(els.postText);
+    const length = Array.from(editorPayload.text).length;
     els.postTitleCount.textContent = `${titleLength} / 160`;
     els.postTextCount.textContent = `${length} / 5000`;
-    els.postText.style.height = 'auto';
-    els.postText.style.height = `${Math.min(260, Math.max(84, els.postText.scrollHeight))}px`;
     const hasContent = Boolean(
       els.postTitle.value.trim()
       && ['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(text(els.postCategory?.value))
-      && (els.postText.value.trim() || els.postImage.files?.[0])
+      && (editorPayload.text || els.postImage.files?.[0])
     );
     els.createPostForm.classList.toggle('has-media', Boolean(els.postImage.files?.[0]));
     [els.createPostSubmit, els.createPostSubmitBottom].forEach((button) => {
@@ -1374,7 +1373,11 @@
     els.createPostForm.addEventListener('submit', submitPost);
     els.postCategory?.addEventListener('change', syncComposerState);
     els.postTitle.addEventListener('input', syncComposerState);
-    els.postText.addEventListener('input', syncComposerState);
+    els.postText.addEventListener('input', (event) => {
+      if (event.isComposing || event.inputType === 'insertCompositionText') return;
+      syncComposerState();
+    });
+    els.postText.addEventListener('znews:editor-sync', syncComposerState);
     els.postText.addEventListener('znews:format-change', syncComposerState);
     richText.setEditorContent(els.postText, '');
     richText.bindToolbar(els.postText, $('#postFormatToolbar'));
