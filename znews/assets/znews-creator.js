@@ -10,6 +10,11 @@
 
   const client = () => new window.ZNewsApiClient(config);
   const text = (value) => String(value ?? '');
+  const richText = window.ZNewsRichText || {
+    parseComposerText: (value) => ({ text: text(value).trim(), boldRanges: [] }),
+    composerText: (value) => text(value),
+    toggleBold: () => {}
+  };
   let currentImagePreviewUrl = '';
   let replacementPreviewUrl = '';
   let editLoadGeneration = 0;
@@ -143,6 +148,9 @@
           </div>
           <div class="composer-field composer-body-field">
             <label for="creatorEditText">Post details</label>
+            <div class="composer-format-toolbar" role="toolbar" aria-label="Text formatting">
+              <button class="composer-format-button" id="creatorEditBoldButton" type="button" aria-label="Bold selected text" title="Bold selected text"><strong>B</strong></button>
+            </div>
             <textarea id="creatorEditText" maxlength="5000" rows="4" placeholder="Write the story or update…" aria-describedby="creatorEditNote creatorEditTextCount"></textarea>
             <span class="composer-field-count" id="creatorEditTextCount">0 / 5000</span>
           </div>
@@ -174,6 +182,9 @@
     dialog.querySelector('#creatorEditCategory')?.addEventListener('change', () => syncEditor(dialog));
     dialog.querySelector('#creatorEditTitle')?.addEventListener('input', () => syncEditor(dialog));
     dialog.querySelector('#creatorEditText')?.addEventListener('input', () => syncEditor(dialog));
+    dialog.querySelector('#creatorEditBoldButton')?.addEventListener('click', () => {
+      richText.toggleBold(dialog.querySelector('#creatorEditText'));
+    });
     dialog.querySelector('#creatorEditImage')?.addEventListener('change', () => {
       dialog.querySelector('#creatorRemoveImage').checked = false;
       renderEditPreview(dialog);
@@ -276,7 +287,8 @@
     const currentImageKept = formElement.dataset.hasCurrentImage === 'true'
       && !dialog.querySelector('#creatorRemoveImage').checked;
     dialog.querySelector('#creatorEditTitleCount').textContent = `${title.value.length} / 160`;
-    dialog.querySelector('#creatorEditTextCount').textContent = `${body.value.length} / 5000`;
+    const parsedBody = richText.parseComposerText(body.value);
+    dialog.querySelector('#creatorEditTextCount').textContent = `${Array.from(parsedBody.text).length} / 5000`;
     body.style.height = 'auto';
     body.style.height = `${Math.min(210, Math.max(112, body.scrollHeight))}px`;
     const enabled = Boolean(
@@ -380,7 +392,7 @@
       const creatorPhoto = text(post.creator_photo_url || api.profile.profile_photo_url
         || api.profile.photo_url || api.profile.PROFILE);
       dialog.querySelector('#creatorEditTitle').value = text(post.title);
-      dialog.querySelector('#creatorEditText').value = text(post.text);
+      dialog.querySelector('#creatorEditText').value = richText.composerText(post.text, post.bold_ranges);
       dialog.querySelector('#creatorEditCategory').value = text(post.category).toUpperCase();
       dialog.querySelector('#creatorEditImage').value = '';
       dialog.querySelector('#creatorRemoveImage').checked = false;
@@ -422,7 +434,8 @@
     const postId = text(editForm.dataset.postId);
     const expectedUpdatedAt = Number(editForm.dataset.updatedAt || 0);
     const postTitle = text(editForm.querySelector('#creatorEditTitle').value).trim();
-    const postText = text(editForm.querySelector('#creatorEditText').value).trim();
+    const parsedText = richText.parseComposerText(editForm.querySelector('#creatorEditText').value);
+    const postText = parsedText.text;
     const category = text(editForm.querySelector('#creatorEditCategory').value).toUpperCase();
     const replacement = editForm.querySelector('#creatorEditImage').files?.[0] || null;
     const removeImage = editForm.querySelector('#creatorRemoveImage').checked;
@@ -462,6 +475,7 @@
         post_id: postId,
         title: postTitle,
         text: postText,
+        bold_ranges: parsedText.boldRanges,
         category,
         expected_updated_at: expectedUpdatedAt,
         idempotency_key: idempotency('post-edit')

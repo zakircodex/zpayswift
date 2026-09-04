@@ -219,7 +219,8 @@
     myPosts(cursor = '') {
       return this.request('znews/posts/mine.php', {
         params: { limit: this.config.creatorPostPageSize, cursor },
-        authenticated: true
+        authenticated: true,
+        timeoutMs: 20000
       });
     }
 
@@ -232,13 +233,14 @@
       });
     }
 
-    createPost({ title = '', text = '', mediaId = '', category = '' }) {
+    createPost({ title = '', text = '', boldRanges = [], mediaId = '', category = '' }) {
       return this.request('znews/posts/create.php', {
         method: 'POST',
         authenticated: true,
         body: {
           title,
           text,
+          bold_ranges: Array.isArray(boldRanges) ? boldRanges : [],
           media_id: mediaId,
           category,
           idempotency_key: this.idempotencyKey('post')

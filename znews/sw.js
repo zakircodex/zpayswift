@@ -1,29 +1,29 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-embedded-shell-v21';
-const SHELL_REVISION = 'media-category-1';
+const CACHE_NAME = 'zsky24-embedded-shell-v22';
+const SHELL_REVISION = 'rich-text-my-posts-1';
 const SHELL = [
   '/znews/',
   '/znews/index.html',
   '/znews/assets/znews.css?v=4',
-  '/znews/assets/znews-premium.css?v=11',
+  '/znews/assets/znews-premium.css?v=12',
   '/znews/assets/znews-reader.css?v=2',
   '/znews/assets/znews-weekly-review.css?v=1',
   '/znews/assets/znews-config.js?v=8',
-  '/znews/assets/znews-api.js?v=11',
+  '/znews/assets/znews-api.js?v=12',
   '/znews/assets/znews-weekly-review.js?v=1',
   '/znews/assets/znews-ads.js?v=2',
-  '/znews/assets/znews-bootstrap.js?v=26',
+  '/znews/assets/znews-bootstrap.js?v=27',
   '/znews/assets/znews-access.js?v=3',
   '/znews/assets/znews-request-scheduler.js?v=1',
   '/znews/assets/znews-progressive-feed.js?v=3',
   '/znews/assets/znews-feed-ui.js?v=3',
-  '/znews/assets/znews-profile.js?v=5',
+  '/znews/assets/znews-profile.js?v=6',
   '/znews/assets/znews-reader.js?v=4',
-  '/znews/assets/znews.js?v=22',
+  '/znews/assets/znews.js?v=23',
   '/znews/assets/znews-image-optimizer.js?v=1',
   '/znews/assets/znews-header.js?v=2',
-  '/znews/assets/znews-creator.js?v=8',
+  '/znews/assets/znews-creator.js?v=9',
   '/znews/assets/znews-instant-comments.js?v=4',
   '/znews/manifest.webmanifest'
 ];

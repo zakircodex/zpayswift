@@ -32,13 +32,13 @@ $standaloneWorker = fast_boot_source('znews/sw-root.js');
 
 $critical = [
     'znews-config.js?v=8',
-    'znews-api.js?v=11',
+    'znews-api.js?v=12',
     'znews-request-scheduler.js?v=1',
     'znews-progressive-feed.js?v=3',
     'znews-feed-ui.js?v=3',
     'znews-ads.js?v=2',
-    'znews-bootstrap.js?v=26',
-    'znews.js?v=22',
+    'znews-bootstrap.js?v=27',
+    'znews.js?v=23',
 ];
 $last = -1;
 foreach ($critical as $asset) {
@@ -66,16 +66,16 @@ fast_boot_expect(str_contains($bootstrap, 'publicContentReady.then(() => {')
 fast_boot_expect(!str_contains($index, 'rel="stylesheet" href="/znews/assets/znews-reader.css'), 'Post-reader CSS remains render-blocking.');
 fast_boot_expect(!str_contains($index, 'rel="stylesheet" href="/znews/assets/znews-weekly-review.css'), 'Auth-only weekly CSS remains render-blocking.');
 fast_boot_expect(str_contains($bootstrap, "loadStylesheet('/znews/assets/znews-reader.css?v=2')"), 'Reader CSS post-paint loader is missing.');
-fast_boot_expect(str_contains($bootstrap, "loadScript('/znews/assets/znews-creator.js?v=8')"), 'Creator module is unavailable after verified auth.');
+fast_boot_expect(str_contains($bootstrap, "loadScript('/znews/assets/znews-creator.js?v=9')"), 'Creator module is unavailable after verified auth.');
 fast_boot_expect(str_contains($bootstrap, "loadScript('/znews/assets/znews-image-optimizer.js?v=1')"), 'Image optimizer is unavailable to authenticated creators.');
 fast_boot_expect(!str_contains($index, 'defer src="/znews/assets/znews-image-optimizer.js'), 'Image optimizer must not block the guest feed critical path.');
 fast_boot_expect(str_contains($bootstrap, "const creatorModules = authenticated ? ["), 'Auth-only modules are not verification-gated.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    fast_boot_expect(str_contains($worker, 'shell-v21'), 'Service-worker cache generation was not advanced.');
-    fast_boot_expect(str_contains($worker, "SHELL_REVISION = 'media-category-1'"), 'Media/category shell revision is missing.');
-    fast_boot_expect(str_contains($worker, 'znews-bootstrap.js?v=26'), 'Service worker has a stale bootstrap URL.');
-    fast_boot_expect(str_contains($worker, 'znews.js?v=22'), 'Service worker has a stale app URL.');
+    fast_boot_expect(str_contains($worker, 'shell-v22'), 'Service-worker cache generation was not advanced.');
+    fast_boot_expect(str_contains($worker, "SHELL_REVISION = 'rich-text-my-posts-1'"), 'Rich-text/My Posts shell revision is missing.');
+    fast_boot_expect(str_contains($worker, 'znews-bootstrap.js?v=27'), 'Service worker has a stale bootstrap URL.');
+    fast_boot_expect(str_contains($worker, 'znews.js?v=23'), 'Service worker has a stale app URL.');
     fast_boot_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'Service worker may intercept API requests.');
 }
 

@@ -54,8 +54,15 @@ headline_expect(str_contains($posts, "'title' => trim((string)(\$post['title'] ?
 headline_expect(str_contains($createService, 'trim($title . "\\n" . $text)'), 'Headline is not included in create moderation.');
 headline_expect(str_contains($updateService, 'trim($targetTitle . "\\n" . $text)'), 'Headline is not included in update moderation.');
 
-headline_expect(str_contains($apiClient, "createPost({ title = '', text = '', mediaId = '', category = '' })"), 'Web API client does not send headlines/categories.');
-headline_expect(str_contains($app, 'api.createPost({ title: postTitle, text: postText, mediaId, category })'), 'Canonical Create request does not send the headline/category.');
+headline_expect(str_contains($apiClient, "createPost({ title = '', text = '', boldRanges = [], mediaId = '', category = '' })"), 'Web API client does not send headlines/categories/formatting.');
+headline_expect(
+    str_contains($app, 'title: postTitle')
+    && str_contains($app, 'text: postText')
+    && str_contains($app, 'boldRanges: parsedText.boldRanges')
+    && str_contains($app, 'mediaId')
+    && str_contains($app, 'category'),
+    'Canonical Create request does not send the headline/category/formatting.'
+);
 headline_expect(str_contains($creator, 'id="creatorEditTitle"'), 'Creator edit headline input is missing.');
 headline_expect(str_contains($app, "['image/jpeg', 'image/png', 'image/webp'].includes(file.type)"), 'Create photo MIME validation is missing.');
 headline_expect(str_contains($creator, "['image/jpeg', 'image/png', 'image/webp'].includes(replacement.type)"), 'Edit photo MIME validation is missing.');

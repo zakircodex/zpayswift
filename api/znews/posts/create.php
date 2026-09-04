@@ -14,6 +14,10 @@ $content = znews_post_validate_content(
     $body['text'] ?? '',
     $body['media_id'] ?? $body['image_media_id'] ?? ''
 );
+$boldRanges = znews_validate_post_bold_ranges(
+    $body['bold_ranges'] ?? [],
+    (string)$content['text']
+);
 $title = znews_post_validate_title($body['title'] ?? '');
 $category = array_key_exists('category', $body)
     ? znews_normalize_category($body['category'], false)
@@ -28,6 +32,7 @@ $result = znews_create_post_with_media(
     $auth,
     $title,
     (string)$content['text'],
+    $boldRanges,
     (string)$content['media_id'],
     (string)$content['content_type'],
     $category,

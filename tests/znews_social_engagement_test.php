@@ -144,10 +144,18 @@ znews_social_expect(str_contains($shares, 'fb_put_if_match'), 'share record lack
 $shareEndpoint = znews_social_read($root . '/api/znews/shares/create.php');
 znews_social_expect(str_contains($shareEndpoint, 'api_require_app_key();') && str_contains($shareEndpoint, 'znews_require_creator(true)') && str_contains($shareEndpoint, 'znews_idempotency_key'), 'share endpoint lacks authentication or idempotency');
 
-foreach (['api/znews/public/post.php','api/znews/posts/details.php','api/znews/posts/mine.php'] as $relative) {
+foreach (['api/znews/public/post.php','api/znews/posts/details.php'] as $relative) {
     $source = znews_social_read($root . '/' . $relative);
     znews_social_expect(str_contains($source, 'znews_engagement_overlay'), "{$relative} does not overlay canonical engagement counts");
 }
+$minePosts = znews_social_read($root . '/api/znews/posts/mine.php');
+$postAccess = znews_social_read($root . '/api/znews/lib/post_access.php');
+znews_social_expect(
+    !str_contains($minePosts, 'znews_engagement_overlay')
+    && str_contains($postAccess, 'znews_engagement_overlay_counts')
+    && str_contains($postAccess, "'ZNEWS_ENGAGEMENT/' . \$postId"),
+    'My Posts must overlay canonical engagement in its bounded parallel child-read path'
+);
 $publicFeed = znews_social_read($root . '/api/znews/public/feed.php');
 $feedRanking = znews_social_read($root . '/api/znews/lib/feed_ranking.php');
 znews_social_expect(str_contains($publicFeed, 'znews_fair_feed_page'), 'public feed is not delegated to the fair ranking page');

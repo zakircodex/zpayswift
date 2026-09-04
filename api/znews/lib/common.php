@@ -85,6 +85,8 @@ function znews_validate_post_text($value, int $minLength = 1, int $maxLength = 5
     return $text;
 }
 
+require_once __DIR__ . '/rich_text.php';
+
 function znews_normalize_status($value, string $fallback = 'ACTIVE'): string
 {
     $status = strtoupper(trim((string)$value));

@@ -30,6 +30,10 @@ function znews_format_post(array $post): array
         'creator_photo_url' => trim((string)($post['creator_photo_url'] ?? '')),
         'title' => trim((string)($post['title'] ?? '')),
         'text' => (string)($post['text'] ?? ''),
+        'bold_ranges' => znews_post_bold_ranges(
+            $post['bold_ranges'] ?? [],
+            (string)($post['text'] ?? '')
+        ),
         'category' => strtoupper(trim((string)($post['category'] ?? ''))),
         'image_url' => trim((string)($post['image_url'] ?? '')),
         'image_width' => max(0, (int)($post['image_width'] ?? 0)),

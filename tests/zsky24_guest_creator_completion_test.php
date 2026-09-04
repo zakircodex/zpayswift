@@ -190,6 +190,8 @@ $index = (string)file_get_contents($root . '/znews/index.html');
 completion_expect(str_contains($web, 'const creatorActions = hasVerifiedSession()'), 'Web post controls must require a verified creator session before markup is rendered.');
 completion_expect(str_contains($web, "if (hasVerifiedSession())") && str_contains($web, 'api.recordShare(postId, channel, { signal, idempotencyKey })') && str_contains($web, '.catch(() => {})'), 'Guest Web Share must not depend on authenticated analytics.');
 completion_expect(str_contains($index, 'id="postTitle"') && str_contains($web, 'title: postTitle'), 'Web Create title contract must remain present.');
+completion_expect(str_contains($index, 'id="postBoldButton"') && str_contains($web, 'formattedTextHtml(body, post.bold_ranges)'), 'Web middle-bold create/render contract is missing.');
 completion_expect(str_contains($index, 'id="mineLoadMoreButton"'), 'Web My Posts continuation control is missing.');
+completion_expect(str_contains($web, 'data-mine-retry') && str_contains($web, 'api.myPosts'), 'My Posts timeout recovery UI is missing.');
 
 fwrite(STDOUT, "Z Sky 24 guest/creator completion tests passed.\n");

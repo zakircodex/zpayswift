@@ -6,6 +6,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/rich_text.php';
 require_once __DIR__ . '/ranking_snapshot.php';
 require_once __DIR__ . '/categories.php';
 
@@ -89,6 +90,10 @@ function znews_public_projection_item(array $row): ?array
         'creator_photo_url' => (string)$row['creator_photo_url'],
         'title' => (string)$row['title'],
         'text' => (string)$row['text'],
+        'bold_ranges' => znews_post_bold_ranges(
+            $row['bold_ranges'] ?? [],
+            (string)$row['text']
+        ),
         'category' => strtoupper(trim((string)($row['category'] ?? ''))),
         'image_url' => (string)$row['image_url'],
         'image_width' => max(0, (int)($row['image_width'] ?? 0)),
@@ -119,6 +124,10 @@ function znews_public_projection_format_public(array $post): array
         'creator_photo_url' => trim((string)($post['creator_photo_url'] ?? '')),
         'title' => trim((string)($post['title'] ?? '')),
         'text' => (string)($post['text'] ?? ''),
+        'bold_ranges' => znews_post_bold_ranges(
+            $post['bold_ranges'] ?? [],
+            (string)($post['text'] ?? '')
+        ),
         'category' => strtoupper(trim((string)($post['category'] ?? ''))),
         'image_url' => trim((string)($post['image_url'] ?? '')),
         'image_width' => max(0, (int)($post['image_width'] ?? 0)),
@@ -163,6 +172,7 @@ function znews_public_projection_for_post(
         'creator_photo_url' => (string)$formatted['creator_photo_url'],
         'title' => (string)$formatted['title'],
         'text' => (string)$formatted['text'],
+        'bold_ranges' => (array)($formatted['bold_ranges'] ?? []),
         'category' => $category,
         'category_created_at' => $category !== ''
             ? znews_category_created_at($category, (int)$formatted['created_at'])

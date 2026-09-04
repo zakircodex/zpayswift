@@ -74,6 +74,7 @@ async function main() {
       creator_photo_url: '',
       title: `Post title ${number}`,
       text: `Post body ${number}`,
+      bold_ranges: number === 1 ? [{ start: 5, end: 9 }] : [],
       category,
       image_media_id: `MEDIA_${number}`,
       image_url: `/api/znews/public/media.php?media_id=MEDIA_${number}`,
@@ -103,6 +104,7 @@ async function main() {
       uploads: [],
       mode: 'ok',
       updateDelayMs: 0,
+      mineFailuresRemaining: 0,
       nextMedia: 100
     };
     window.__zskyMediaCategoryTest = state;
@@ -144,6 +146,10 @@ async function main() {
         });
       }
       if (url.pathname.endsWith('/znews/posts/mine.php')) {
+        if (state.mineFailuresRemaining > 0) {
+          state.mineFailuresRemaining -= 1;
+          return fail('REQUEST_TIMEOUT', 'The request timed out. Please try again.', 504);
+        }
         return success('ZNEWS_MY_POSTS_OK', { items: state.posts.slice(0, 10), next_cursor: 'MINE_10', has_more: true });
       }
       if (url.pathname.endsWith('/znews/posts/details.php')) {
@@ -180,7 +186,13 @@ async function main() {
         if (state.mode === 'conflict') return fail('ZNEWS_POST_VERSION_CONFLICT', 'This post changed. Reload it before editing.', 409);
         if (state.mode === 'update-fail') return fail('ZNEWS_POST_UPDATE_FAILED', 'Post could not be updated.', 503);
         const post = state.posts.find((item) => item.post_id === body.post_id);
-        Object.assign(post, { title: body.title, text: body.text, category: body.category, updated_at: post.updated_at + 1 });
+        Object.assign(post, {
+          title: body.title,
+          text: body.text,
+          bold_ranges: Array.isArray(body.bold_ranges) ? body.bold_ranges : [],
+          category: body.category,
+          updated_at: post.updated_at + 1
+        });
         if (Object.prototype.hasOwnProperty.call(body, 'media_id')) {
           post.image_media_id = body.media_id;
           post.image_url = body.media_id ? `/api/znews/public/media.php?media_id=${body.media_id}` : '';
@@ -201,6 +213,21 @@ async function main() {
   try {
     await page.goto(`${origin}/znews/`, { waitUntil: 'domcontentloaded' });
     await page.waitForSelector('#feedList .post-card[data-post-id="POST_1"]', { timeout: 5000 });
+    const renderedBold = await page.evaluate(() => ({
+      value: document.querySelector('#feedList [data-post-id="POST_1"] .post-copy strong')?.textContent || '',
+      rawMarkers: document.querySelector('#feedList [data-post-id="POST_1"] .post-copy')?.textContent.includes('**') === true
+    }));
+    assert.deepEqual(renderedBold, { value: 'body', rawMarkers: false }, 'Feed did not safely render the middle bold range.');
+    const escapedFormatting = await page.evaluate(() => {
+      const holder = document.createElement('div');
+      holder.innerHTML = window.ZNewsRichText.formattedTextHtml('<img src=x> bold', [{ start: 12, end: 16 }]);
+      return {
+        images: holder.querySelectorAll('img').length,
+        strong: holder.querySelector('strong')?.textContent || '',
+        text: holder.textContent
+      };
+    });
+    assert.deepEqual(escapedFormatting, { images: 0, strong: 'bold', text: '<img src=x> bold' }, 'Formatted text allowed HTML injection or lost text.');
     await page.evaluate(() => window.ZNEWS_AUTH_READY);
     await page.waitForFunction(() => window.ZNEWS_POST_PAINT_MODULES?.ready === true, null, { timeout: 10000 });
 
@@ -250,7 +277,11 @@ async function main() {
     assert.ok(categoryAudit.ids.length > 0, 'BD category rendered no posts.');
     assert.ok(categoryAudit.requests.length > 0, 'BD category was not sent to the feed API.');
 
+    await page.evaluate(() => { window.__zskyMediaCategoryTest.mineFailuresRemaining = 1; });
     await page.locator('[data-route="mine"]').first().dispatchEvent('click');
+    await page.waitForSelector('#mineList [data-mine-retry]');
+    assert.equal(await page.locator('#mineList .post-card').count(), 0, 'Failed initial My Posts load rendered stale cards.');
+    await page.locator('#mineList [data-mine-retry]').click();
     await page.waitForSelector('#mineList [data-post-id="POST_1"] [data-creator-edit]', { timeout: 5000 });
     const editButton = page.locator('#mineList [data-post-id="POST_1"] [data-creator-edit]');
 
@@ -262,7 +293,7 @@ async function main() {
       category: document.querySelector('#creatorEditCategory').value,
       preview: !document.querySelector('#creatorEditPreview').hidden
     }));
-    assert.deepEqual(initialEdit, { title: 'Post title 1', text: 'Post body 1', category: 'INTERNATIONAL_NEWS', preview: true }, 'Edit did not load current fields/image.');
+    assert.deepEqual(initialEdit, { title: 'Post title 1', text: 'Post **body** 1', category: 'INTERNATIONAL_NEWS', preview: true }, 'Edit did not load current fields/image/formatting.');
     await page.locator('#creatorEditTitle').fill('Cancelled title');
     const updateCountBeforeCancel = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length);
     await page.locator('#creatorEditDialog [data-close]').click();
@@ -281,6 +312,7 @@ async function main() {
     await page.waitForFunction(() => window.__zskyMediaCategoryTest.updates.length === 1);
     const titleOnly = await page.evaluate(() => window.__zskyMediaCategoryTest.updates[0]);
     assert.equal(Object.prototype.hasOwnProperty.call(titleOnly, 'media_id'), false, 'Title-only edit did not preserve the existing image.');
+    assert.deepEqual(titleOnly.bold_ranges, [{ start: 5, end: 9 }], 'Title-only edit did not preserve the middle bold range.');
 
     const png = await page.screenshot({ type: 'png' });
     const paddedPhoto = Buffer.concat([png, Buffer.alloc(Math.max(0, 3 * 1024 * 1024 - png.length))]);
@@ -360,7 +392,13 @@ async function main() {
     await page.locator('[data-route="create"]').first().dispatchEvent('click');
     await page.locator('#postCategory').selectOption('MOBILE_PRICING');
     await page.locator('#postTitle').fill('Created with category');
-    await page.locator('#postText').fill('Created text');
+    await page.locator('#postText').fill('Created middle bold text');
+    await page.locator('#postText').evaluate((element) => {
+      element.focus();
+      element.setSelectionRange(8, 19);
+    });
+    await page.locator('#postBoldButton').click();
+    assert.equal(await page.locator('#postText').inputValue(), 'Created **middle bold** text', 'Bold toolbar did not wrap the selected middle text.');
     await page.locator('#postImage').setInputFiles({ name: 'create.png', mimeType: 'image/png', buffer: paddedPhoto });
     await page.locator('#createPostSubmit').click();
     await page.waitForFunction(() => window.__zskyMediaCategoryTest.creates.length === 1);
@@ -369,6 +407,8 @@ async function main() {
       upload: window.__zskyMediaCategoryTest.uploads.at(-1)
     }));
     assert.equal(createAudit.body.category, 'MOBILE_PRICING', 'Create did not persist selected category.');
+    assert.equal(createAudit.body.text, 'Created middle bold text', 'Create sent editor markers instead of canonical plain text.');
+    assert.deepEqual(createAudit.body.bold_ranges, [{ start: 8, end: 19 }], 'Create did not send the selected middle bold range.');
     assert.ok(createAudit.upload.size > 0 && createAudit.upload.size <= 700 * 1024, 'Create upload was not compressed below 700 KB.');
 
     await page.evaluate(() => window.ZNEWS_IMAGE_OPTIMIZER_READY());

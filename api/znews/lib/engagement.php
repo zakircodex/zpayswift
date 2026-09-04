@@ -78,10 +78,14 @@ function znews_engagement_overlay(array $post): array
         return $post;
     }
 
-    $counts = znews_engagement_counts($postId);
-    $post['like_count'] = (int)$counts['like_count'];
-    $post['comment_count'] = (int)$counts['comment_count'];
-    $post['share_count'] = (int)$counts['share_count'];
+    return znews_engagement_overlay_counts($post, znews_engagement_counts($postId));
+}
+
+function znews_engagement_overlay_counts(array $post, array $counts): array
+{
+    $post['like_count'] = max(0, (int)($counts['like_count'] ?? 0));
+    $post['comment_count'] = max(0, (int)($counts['comment_count'] ?? 0));
+    $post['share_count'] = max(0, (int)($counts['share_count'] ?? 0));
 
     return $post;
 }

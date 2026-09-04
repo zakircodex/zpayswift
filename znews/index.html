@@ -15,15 +15,15 @@
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link id="appManifest" rel="manifest" href="/znews/manifest.webmanifest">
   <link rel="stylesheet" href="/znews/assets/znews.css?v=4">
-  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=11">
+  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=12">
   <script defer src="/znews/assets/znews-config.js?v=8"></script>
-  <script defer src="/znews/assets/znews-api.js?v=11"></script>
+  <script defer src="/znews/assets/znews-api.js?v=12"></script>
   <script defer src="/znews/assets/znews-request-scheduler.js?v=1"></script>
   <script defer src="/znews/assets/znews-progressive-feed.js?v=3"></script>
   <script defer src="/znews/assets/znews-feed-ui.js?v=3"></script>
   <script defer src="/znews/assets/znews-ads.js?v=2"></script>
-  <script defer src="/znews/assets/znews-bootstrap.js?v=26"></script>
-  <script defer src="/znews/assets/znews.js?v=22"></script>
+  <script defer src="/znews/assets/znews-bootstrap.js?v=27"></script>
+  <script defer src="/znews/assets/znews.js?v=23"></script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -156,6 +156,9 @@
               </div>
               <div class="composer-field composer-body-field">
                 <label for="postText">Post details</label>
+                <div class="composer-format-toolbar" role="toolbar" aria-label="Text formatting">
+                  <button class="composer-format-button" id="postBoldButton" type="button" aria-label="Bold selected text" title="Bold selected text"><strong>B</strong></button>
+                </div>
                 <textarea id="postText" name="text" maxlength="5000" rows="4" placeholder="Write the story or update…" aria-describedby="composerReviewNote postTextCount"></textarea>
                 <span class="composer-field-count" id="postTextCount">0 / 5000</span>
               </div>

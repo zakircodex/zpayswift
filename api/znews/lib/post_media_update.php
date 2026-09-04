@@ -16,6 +16,8 @@ function znews_update_post_with_media(
     bool $titleProvided,
     string $text,
     bool $textProvided,
+    $boldRangesValue,
+    bool $boldRangesProvided,
     bool $mediaProvided,
     string $requestedMediaId,
     string $category,
@@ -65,6 +67,13 @@ function znews_update_post_with_media(
 
     $content = znews_post_validate_content($targetText, $targetMediaId);
     $text = (string)$content['text'];
+    if ($boldRangesProvided) {
+        $boldRanges = znews_validate_post_bold_ranges($boldRangesValue, $text);
+    } elseif (!$textProvided || hash_equals($currentText, $text)) {
+        $boldRanges = znews_post_bold_ranges($post['bold_ranges'] ?? [], $text);
+    } else {
+        $boldRanges = [];
+    }
     $targetMediaId = (string)$content['media_id'];
     $contentType = (string)$content['content_type'];
 
@@ -75,6 +84,8 @@ function znews_update_post_with_media(
 
     $payloadHash = znews_mutation_payload_hash($uid, $postId, 'UPDATE_CONTENT', [
         'text' => $text,
+        'bold_ranges' => $boldRanges,
+        'bold_ranges_provided' => $boldRangesProvided,
         'title' => $targetTitle,
         'title_provided' => $titleProvided,
         'text_provided' => $textProvided,
@@ -116,9 +127,10 @@ function znews_update_post_with_media(
     $now = znews_now();
     $decision = znews_post_publication_decision($newMediaRow, trim($targetTitle . "\n" . $text));
     $updated = $post;
-    $updated['schema_version'] = max(5, (int)($post['schema_version'] ?? 1));
+    $updated['schema_version'] = max(6, (int)($post['schema_version'] ?? 1));
     $updated['title'] = $targetTitle;
     $updated['text'] = $text;
+    $updated['bold_ranges'] = $boldRanges;
     $updated['category'] = $targetCategory;
     $updated['image_media_id'] = $targetMediaId;
     $updated['image_url'] = znews_post_media_public_url($targetMediaId);

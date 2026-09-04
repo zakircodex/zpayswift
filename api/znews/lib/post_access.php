@@ -147,6 +147,85 @@ function znews_sort_index_rows_desc(array &$rows): void
     });
 }
 
+function znews_bounded_multi_get(array $paths, int $maximum = 22): array
+{
+    $paths = array_values(array_unique(array_filter(array_map(
+        static fn($path): string => trim((string)$path, '/'),
+        $paths
+    ))));
+    if ($paths === []) {
+        return ['ok' => true, 'values' => [], 'request_count' => 0];
+    }
+    if (count($paths) > max(1, $maximum)) {
+        return ['ok' => false, 'values' => [], 'request_count' => 0];
+    }
+
+    if (!function_exists('fb_build_url') || !function_exists('curl_multi_init')) {
+        $values = [];
+        foreach ($paths as $path) {
+            $values[$path] = fb_get($path);
+        }
+        return ['ok' => true, 'values' => $values, 'request_count' => count($paths)];
+    }
+
+    $multi = curl_multi_init();
+    if (defined('CURLMOPT_MAX_TOTAL_CONNECTIONS')) {
+        curl_multi_setopt($multi, CURLMOPT_MAX_TOTAL_CONNECTIONS, 8);
+    }
+    if (defined('CURLMOPT_MAX_HOST_CONNECTIONS')) {
+        curl_multi_setopt($multi, CURLMOPT_MAX_HOST_CONNECTIONS, 8);
+    }
+    $handles = [];
+    foreach ($paths as $path) {
+        $handle = curl_init();
+        curl_setopt_array($handle, [
+            CURLOPT_URL => fb_build_url($path),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => 'GET',
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 15,
+            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+        ]);
+        curl_multi_add_handle($multi, $handle);
+        $handles[] = [$path, $handle];
+    }
+
+    $multiStatus = CURLM_OK;
+    do {
+        $multiStatus = curl_multi_exec($multi, $running);
+        if ($running && $multiStatus === CURLM_OK) {
+            $selected = curl_multi_select($multi, 1.0);
+            if ($selected === -1) {
+                usleep(10000);
+            }
+        }
+    } while ($running && $multiStatus === CURLM_OK);
+
+    $values = [];
+    $ok = $multiStatus === CURLM_OK;
+    foreach ($handles as [$path, $handle]) {
+        $raw = curl_multi_getcontent($handle);
+        $status = (int)curl_getinfo($handle, CURLINFO_HTTP_CODE);
+        $decoded = null;
+        if ($status >= 200 && $status < 300 && is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $ok = $ok && json_last_error() === JSON_ERROR_NONE;
+        } else {
+            $ok = false;
+        }
+        $values[$path] = $decoded;
+        curl_multi_remove_handle($multi, $handle);
+        curl_close($handle);
+    }
+    curl_multi_close($multi);
+
+    return [
+        'ok' => $ok,
+        'values' => $values,
+        'request_count' => count($paths),
+    ];
+}
+
 function znews_owned_posts_page(
     string $uid,
     int $limit,
@@ -186,12 +265,13 @@ function znews_owned_posts_page(
         $rows[] = [
             'post_id' => $postId,
             'created_at' => max(0, (int)($row['created_at'] ?? 0)),
+            'status' => znews_normalize_status($row['status'] ?? '', ''),
         ];
     }
 
     znews_sort_index_rows_desc($rows);
 
-    $items = [];
+    $eligibleRows = [];
     $lastScanned = null;
     foreach ($rows as $row) {
         $postId = znews_firebase_key((string)$row['post_id'], 'post_id');
@@ -200,21 +280,64 @@ function znews_owned_posts_page(
         if (!znews_item_is_after_cursor($createdAt, $postId, $cursor)) {
             continue;
         }
-        $lastScanned = $row;
-
-        $post = znews_post_load($postId);
-        if (!is_array($post)) {
+        if (!$includeDeleted && ($row['status'] ?? '') === 'DELETED') {
             continue;
         }
+        $eligibleRows[] = $row;
+    }
 
-        $status = znews_normalize_status($post['status'] ?? 'REVIEW', 'REVIEW');
-        if (!$includeDeleted && $status === 'DELETED') {
-            continue;
+    $items = [];
+    $offset = 0;
+    $chunkSize = $limit + 1;
+    while (count($items) <= $limit && $offset < count($eligibleRows)) {
+        $chunk = array_slice($eligibleRows, $offset, $chunkSize);
+        $offset += count($chunk);
+        $paths = [];
+        foreach ($chunk as $row) {
+            $postId = znews_firebase_key((string)$row['post_id'], 'post_id');
+            $paths[] = znews_path_post($postId);
+            $paths[] = 'ZNEWS_ENGAGEMENT/' . $postId;
         }
+        $batch = znews_bounded_multi_get($paths, $chunkSize * 2);
+        if (empty($batch['ok'])) {
+            api_response(
+                false,
+                'ZNEWS_MY_POSTS_READ_FAILED',
+                'Posts could not be loaded. Please try again.',
+                [],
+                503
+            );
+        }
+        $values = is_array($batch['values'] ?? null) ? (array)$batch['values'] : [];
 
-        $items[] = znews_format_owned_post($post);
-        if (count($items) > $limit) {
-            break;
+        foreach ($chunk as $row) {
+            $lastScanned = $row;
+            $postId = znews_firebase_key((string)$row['post_id'], 'post_id');
+            $post = $values[znews_path_post($postId)] ?? null;
+            if (!is_array($post)) {
+                continue;
+            }
+            $status = znews_normalize_status($post['status'] ?? 'REVIEW', 'REVIEW');
+            if (!$includeDeleted && $status === 'DELETED') {
+                continue;
+            }
+
+            $formatted = znews_format_owned_post($post);
+            $counts = $values['ZNEWS_ENGAGEMENT/' . $postId] ?? [];
+            if (function_exists('znews_engagement_overlay_counts')) {
+                $formatted = znews_engagement_overlay_counts(
+                    $formatted,
+                    is_array($counts) ? $counts : []
+                );
+            } else {
+                $formatted['like_count'] = max(0, (int)($counts['like_count'] ?? 0));
+                $formatted['comment_count'] = max(0, (int)($counts['comment_count'] ?? 0));
+                $formatted['share_count'] = max(0, (int)($counts['share_count'] ?? 0));
+            }
+            $items[] = $formatted;
+            if (count($items) > $limit) {
+                break 2;
+            }
         }
     }
 
@@ -230,7 +353,8 @@ function znews_owned_posts_page(
             (int)($last['created_at'] ?? 0),
             (string)($last['post_id'] ?? '')
         );
-    } elseif (count($index) >= $candidateWindow && is_array($lastScanned)) {
+    } elseif (($offset < count($eligibleRows) || count($index) >= $candidateWindow)
+        && is_array($lastScanned)) {
         $hasMore = true;
         $nextCursor = znews_cursor_encode(
             (int)($lastScanned['created_at'] ?? 0),

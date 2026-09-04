@@ -85,6 +85,9 @@ html[data-znews-access="guest"] .desktop-nav [data-route="balance"]{border-color
 .composer-field select option{background:#0b203b;color:#f3f7fd}
 .composer-title-field input{font-size:22px;font-weight:850;line-height:1.25;letter-spacing:-.025em}
 .composer-body-field textarea{min-height:112px;max-height:210px;overflow-y:auto;font-size:16px;line-height:1.5}
+.composer-format-toolbar{display:flex;align-items:center;gap:6px;min-height:34px;padding-bottom:2px;border-bottom:1px solid rgba(142,177,226,.14)}
+.composer-format-button{width:32px;height:30px;display:grid;place-items:center;padding:0;border:1px solid rgba(142,177,226,.24);border-radius:7px;background:rgba(255,255,255,.045);color:#eef5ff;cursor:pointer}
+.composer-format-button:hover,.composer-format-button:focus-visible{border-color:rgba(82,244,164,.5);background:rgba(82,244,164,.1);outline:none}
 .composer-field input::placeholder,.composer-field textarea::placeholder{color:#7085a2}
 .composer-field-count{justify-self:end;color:#6f84a0;font-size:9px}
 .composer-counter{height:0;margin:0 16px;overflow:hidden;opacity:0;transition:height .15s ease,opacity .15s ease}
