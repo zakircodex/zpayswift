@@ -40,6 +40,7 @@ const criticalPaths = [
 
 let requestLog = [];
 let sessionMode = 'guest';
+let exchangedHandoffCode = '';
 
 function json(response, status, payload, delayMs = 0) {
   setTimeout(() => {
@@ -125,6 +126,27 @@ const server = http.createServer((request, response) => {
     }
     return;
   }
+  if (url.pathname === '/api/znews/auth/handoff.php') {
+    let body = '';
+    request.on('data', (chunk) => { body += chunk; });
+    request.on('end', () => {
+      try {
+        exchangedHandoffCode = String(JSON.parse(body || '{}').code || '');
+      } catch (_error) {
+        exchangedHandoffCode = '';
+      }
+      json(response, 200, {
+        ok: true,
+        code: 'ZNEWS_HANDOFF_ACCEPTED',
+        message: 'Creator access granted.',
+        data: {
+          session_token: 'handoff-session-token',
+          user: { uid: 'HANDOFF_USER', name: 'Handoff Creator', role: 'USER', status: 'ACTIVE' }
+        }
+      }, 100);
+    });
+    return;
+  }
   if (url.pathname.startsWith('/api/')) {
     json(response, 200, { ok: true, code: 'TEST_OK', message: 'OK', data: {} }, 10);
     return;
@@ -162,7 +184,7 @@ async function launchBrowser() {
   return chromium.launch(options);
 }
 
-async function openApp(browser, baseUrl, { storedSession = false } = {}) {
+async function openApp(browser, baseUrl, { storedSession = false, handoff = '' } = {}) {
   const context = await browser.newContext({ serviceWorkers: 'allow' });
   const page = await context.newPage();
   if (storedSession) {
@@ -172,7 +194,8 @@ async function openApp(browser, baseUrl, { storedSession = false } = {}) {
       sessionStorage.setItem('znews_profile_v1', JSON.stringify({ uid: 'TEST_USER', name: 'Stored Creator' }));
     });
   }
-  await page.goto(`${baseUrl}/znews/`, { waitUntil: 'domcontentloaded' });
+  const handoffFragment = handoff ? `#handoff=${encodeURIComponent(handoff)}` : '';
+  await page.goto(`${baseUrl}/znews/${handoffFragment}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#feedList .post-card[data-post-id]', { timeout: 5000 });
   const metrics = await page.evaluate(() => ({
     timings: { ...window.ZNEWS_BOOT_TIMINGS },
@@ -267,6 +290,35 @@ async function main() {
     assert.equal(visibleCreatorControls, true, 'Verified creator controls were not enabled after validation.');
     assert.equal(await valid.page.evaluate(() => window.ZNEWS_APP_INITIALIZED), true, 'App initialization guard changed unexpectedly.');
     await valid.context.close();
+
+    requestLog = [];
+    exchangedHandoffCode = '';
+    sessionMode = 'guest';
+    const handoff = await openApp(browser, baseUrl, { handoff: 'ONE_TIME_HANDOFF_CODE' });
+    const handoffState = await handoff.page.evaluate(async () => {
+      await window.ZNEWS_AUTH_READY;
+      while (window.ZNEWS_POST_PAINT_MODULES?.ready !== true) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return {
+        verified: window.ZNEWS_AUTH_VERIFIED,
+        token: sessionStorage.getItem('znews_session_v1'),
+        hash: window.location.hash,
+        creatorControlsVisible: [...document.querySelectorAll('[data-auth-only]')]
+          .some((element) => !element.hidden)
+      };
+    });
+    assert.equal(exchangedHandoffCode, 'ONE_TIME_HANDOFF_CODE', 'App history discarded the handoff code before exchange.');
+    assert.equal(handoffState.verified, true, 'Successful dashboard handoff did not verify creator access.');
+    assert.equal(handoffState.token, 'handoff-session-token', 'Successful handoff session was not stored.');
+    assert.equal(handoffState.hash, '', 'One-time handoff code remained in the visible URL.');
+    assert.equal(handoffState.creatorControlsVisible, true, 'Verified handoff did not reveal creator controls.');
+    assert.equal(
+      requestLog.filter((entry) => entry.path === '/api/znews/auth/handoff.php').length,
+      1,
+      'One-time handoff was not exchanged exactly once.'
+    );
+    await handoff.context.close();
 
     process.stdout.write(`PASS: Z Sky fast bootstrap browser assertions. ${JSON.stringify({ coldRuns })}\n`);
   } finally {

@@ -37,7 +37,7 @@ $critical = [
     'znews-progressive-feed.js?v=3',
     'znews-feed-ui.js?v=3',
     'znews-ads.js?v=2',
-    'znews-bootstrap.js?v=24',
+    'znews-bootstrap.js?v=25',
     'znews.js?v=22',
 ];
 $last = -1;
@@ -72,9 +72,9 @@ fast_boot_expect(!str_contains($index, 'defer src="/znews/assets/znews-image-opt
 fast_boot_expect(str_contains($bootstrap, "const creatorModules = authenticated ? ["), 'Auth-only modules are not verification-gated.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    fast_boot_expect(str_contains($worker, 'shell-v19'), 'Service-worker cache generation was not advanced.');
+    fast_boot_expect(str_contains($worker, 'shell-v20'), 'Service-worker cache generation was not advanced.');
     fast_boot_expect(str_contains($worker, "SHELL_REVISION = 'media-category-1'"), 'Media/category shell revision is missing.');
-    fast_boot_expect(str_contains($worker, 'znews-bootstrap.js?v=24'), 'Service worker has a stale bootstrap URL.');
+    fast_boot_expect(str_contains($worker, 'znews-bootstrap.js?v=25'), 'Service worker has a stale bootstrap URL.');
     fast_boot_expect(str_contains($worker, 'znews.js?v=22'), 'Service worker has a stale app URL.');
     fast_boot_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'Service worker may intercept API requests.');
 }

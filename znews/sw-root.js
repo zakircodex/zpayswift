@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-standalone-shell-v19';
+const CACHE_NAME = 'zsky24-standalone-shell-v20';
 const SHELL_REVISION = 'media-category-1';
 const SHELL = [
   '/',
@@ -13,7 +13,7 @@ const SHELL = [
   '/znews/assets/znews-api.js?v=10',
   '/znews/assets/znews-weekly-review.js?v=1',
   '/znews/assets/znews-ads.js?v=2',
-  '/znews/assets/znews-bootstrap.js?v=24',
+  '/znews/assets/znews-bootstrap.js?v=25',
   '/znews/assets/znews-access.js?v=3',
   '/znews/assets/znews-request-scheduler.js?v=1',
   '/znews/assets/znews-progressive-feed.js?v=3',

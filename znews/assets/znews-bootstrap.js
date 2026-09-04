@@ -148,8 +148,12 @@
     );
   }
 
+  let pendingHandoffCode = handoffCode().trim();
+  if (pendingHandoffCode) clearHandoffFragment();
+
   async function exchangeHandoff(api) {
-    const code = handoffCode().trim();
+    const code = pendingHandoffCode;
+    pendingHandoffCode = '';
     if (!code) return false;
 
     try {
@@ -167,8 +171,6 @@
         message: error?.message || 'Z Sky 24 access could not be granted.'
       };
       return false;
-    } finally {
-      clearHandoffFragment();
     }
   }
 
