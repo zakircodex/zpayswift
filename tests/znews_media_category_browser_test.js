@@ -353,6 +353,9 @@ async function main() {
       }
       await page.waitForSelector('#creatorEditDialog[open]');
     };
+    const fillRichText = async (selector, value) => page.evaluate(({ target, content }) => {
+      window.ZNewsRichText.setEditorContent(document.querySelector(target), content);
+    }, { target: selector, content: value });
 
     await page.locator('#mineList [data-post-id="POST_1"] [data-creator-menu]').click();
     assert.equal(await page.locator('#creatorCardMenuDialog[open]').count(), 1, 'Overflow did not open exactly one custom action menu.');
@@ -486,7 +489,7 @@ async function main() {
     });
     await openEdit();
     await page.evaluate(() => { window.__zskyMediaCategoryTest.mode = 'conflict'; });
-    await page.locator('#creatorEditText').fill('Conflict text');
+    await fillRichText('#creatorEditText', 'Conflict text');
     await page.locator('#creatorEditSubmitTop').click();
     await page.waitForSelector('#creatorEditError:not([hidden])');
     assert.match(await page.locator('#creatorEditError').textContent(), /changed|Reload/i, 'Version conflict is not clear.');
@@ -503,7 +506,7 @@ async function main() {
 
     await openEdit();
     await page.evaluate(() => { window.__zskyMediaCategoryTest.mode = 'update-fail'; });
-    await page.locator('#creatorEditText').fill('Failed update text');
+    await fillRichText('#creatorEditText', 'Failed update text');
     const imageBeforeFailedUpdate = await page.evaluate(() => window.__zskyMediaCategoryTest.posts[0].image_media_id);
     await page.locator('#creatorEditSubmitTop').click();
     await page.waitForSelector('#creatorEditError:not([hidden])');
@@ -517,7 +520,7 @@ async function main() {
       window.__zskyMediaCategoryTest.mineDelayMs = 600;
     });
     const beforeDouble = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length);
-    await page.locator('#creatorEditText').fill('Single guarded update');
+    await fillRichText('#creatorEditText', 'Single guarded update');
     await page.locator('#creatorEditForm').evaluate((form) => {
       form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }));
       form.dispatchEvent(new SubmitEvent('submit', { bubbles: true, cancelable: true }));
@@ -554,7 +557,7 @@ async function main() {
     ]) {
       await openEdit({ postId });
       const beforeCategorySave = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length);
-      await page.locator('#creatorEditText').fill(`Text-only edit for ${category}`);
+      await fillRichText('#creatorEditText', `Text-only edit for ${category}`);
       await page.locator('#creatorEditSubmitBottom').click();
       await page.waitForFunction((before) => window.__zskyMediaCategoryTest.updates.length === before + 1, beforeCategorySave);
       const savedCategory = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.at(-1).category);
@@ -672,11 +675,13 @@ async function main() {
       rich.applyColor(textarea, 'green');
       const finalPayload = rich.getEditorPayload(textarea);
       const livePreview = document.querySelector('#createView .rich-editor-live-preview').cloneNode(true);
-      livePreview.querySelector('.rich-editor-caret-space')?.remove();
+      const publishedPreview = document.createElement('div');
+      publishedPreview.innerHTML = rich.formattedTextHtml(finalPayload.text, finalPayload.formattingRuns, finalPayload.boldRanges);
       const finalMatch = {
-        live: livePreview.innerHTML,
-        published: rich.formattedTextHtml(finalPayload.text, finalPayload.formattingRuns, finalPayload.boldRanges),
-        styledText: livePreview.querySelector('strong .znews-text-color-green')?.textContent || ''
+        liveText: livePreview.textContent,
+        publishedText: publishedPreview.textContent,
+        liveStyledText: livePreview.querySelector('strong .znews-text-color-green')?.textContent || '',
+        publishedStyledText: publishedPreview.querySelector('strong .znews-text-color-green')?.textContent || ''
       };
       rich.setEditorContent(textarea, 'Legacy bold', [], [{ start: 7, end: 11 }]);
       const legacy = rich.getEditorPayload(textarea);
@@ -694,8 +699,9 @@ async function main() {
     assert.deepEqual(richEditorAudit.emoji.boldRanges, [{ start: 2, end: 3 }], 'Emoji formatting did not use Unicode code-point ranges.');
     assert.deepEqual(richEditorAudit.mixed, { bold: 'mixed', color: 'Text color: Mixed' }, 'Mixed formatting selection is not represented neutrally.');
     assert.deepEqual(richEditorAudit.caret, { bold: 'true', color: 'Text color: Green' }, 'Caret inside formatted text does not restore toolbar state.');
-    assert.equal(richEditorAudit.finalMatch.live, richEditorAudit.finalMatch.published, 'Live editor formatting does not match the published renderer.');
-    assert.equal(richEditorAudit.finalMatch.styledText, 'Malaysia', 'Malaysia did not render bold and green in the live editor.');
+    assert.equal(richEditorAudit.finalMatch.liveText, richEditorAudit.finalMatch.publishedText, 'Live editor text does not match the published renderer.');
+    assert.equal(richEditorAudit.finalMatch.liveStyledText, 'Malaysia', 'Malaysia did not render bold and green in the live editor.');
+    assert.equal(richEditorAudit.finalMatch.publishedStyledText, 'Malaysia', 'Published Malaysia formatting does not match the live editor.');
     assert.deepEqual(richEditorAudit.legacy.boldRanges, [{ start: 7, end: 11 }], 'Legacy bold range was not preserved by the editor.');
     assert.equal(richEditorAudit.value, 'Legacy bold', 'Rich editor displayed formatting syntax.');
     const androidSelectionAudit = await page.evaluate(() => {
@@ -723,7 +729,7 @@ async function main() {
         boldPressed: bold.getAttribute('aria-pressed'),
         boldBackground: getComputedStyle(bold).backgroundColor,
         toolbarBeforeEditor: toolbar.compareDocumentPosition(surface) === Node.DOCUMENT_POSITION_FOLLOWING,
-        editorPaddingTop: Number.parseFloat(getComputedStyle(textarea).paddingTop)
+        editorPaddingTop: Number.parseFloat(getComputedStyle(document.querySelector('#createView .rich-editor-input')).paddingTop)
       };
     });
     assert.deepEqual(androidSelectionAudit.selection, [7, 15], 'Bold toolbar tap did not restore the Android text selection.');
@@ -798,12 +804,12 @@ async function main() {
       assert.ok(composerLayout.bottomHeight >= 48, `Sticky Post action is too short at ${width}px.`);
     }
     await page.setViewportSize({ width: 390, height: 520 });
-    await page.locator('#postText').focus();
-    await page.locator('#postText').evaluate((element) => element.scrollIntoView({ block: 'center' }));
+    await page.locator('#createView .rich-editor-input').focus();
+    await page.locator('#createView .rich-editor-input').evaluate((element) => element.scrollIntoView({ block: 'center' }));
     const keyboardViewportAudit = await page.evaluate(() => {
       const toolbar = document.querySelector('#postFormatToolbar').getBoundingClientRect();
       const bottom = document.querySelector('#createPostSubmitBottom').getBoundingClientRect();
-      const editor = document.querySelector('#postText').getBoundingClientRect();
+      const editor = document.querySelector('#createView .rich-editor-input').getBoundingClientRect();
       return {
         toolbarVisible: toolbar.top >= 0 && toolbar.bottom < window.innerHeight,
         editorVisible: editor.top < bottom.top && editor.bottom > toolbar.bottom,

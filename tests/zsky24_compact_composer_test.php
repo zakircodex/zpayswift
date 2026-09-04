@@ -47,7 +47,7 @@ composer_expect(str_contains($app, 'function syncComposerState()'), 'Composer st
 composer_expect(str_contains($index, 'id="postBoldButton"'), 'Composer middle-bold control is missing.');
 composer_expect(str_contains($app, 'getEditorPayload') && str_contains($app, 'formattingRuns: parsedText.formattingRuns'), 'Composer does not send canonical plain text with safe formatting runs.');
 composer_expect(str_contains($richEditor, 'toggleBold') && !str_contains($richEditor, 'textarea.value = `${value.slice(0, start)}**'), 'Composer still exposes markdown formatting markers.');
-composer_expect(str_contains($richEditor, 'rich-editor-live-preview') && str_contains($richEditor, 'renderEditorPreview(textarea)'), 'Selected formatting has no safe live editor preview.');
+composer_expect(str_contains($richEditor, "editor.contentEditable = 'true'") && str_contains($richEditor, "editor.addEventListener('compositionstart'") && str_contains($richEditor, "editor.addEventListener('compositionend'") && str_contains($richEditor, 'if (!editor || state.composing) return;'), 'Selected formatting is not using the composition-safe native editor.');
 composer_expect(str_contains($richEditor, "boldMixed ? 'mixed'") && str_contains($richEditor, "colorLabel = selected.colorMixed ? 'Mixed'"), 'Caret/mixed formatting toolbar state is missing.');
 composer_expect(str_contains($richEditor, 'beginProgress') && str_contains($richEditor, 'setButtonLoading'), 'Shared Z Sky progress/button feedback is missing.');
 composer_expect(str_contains($app, 'Math.min(260, Math.max(84, els.postText.scrollHeight))'), 'Compact auto-growing composer bounds are missing.');
@@ -62,7 +62,7 @@ foreach ([
     '.composer-card{max-width:680px',
     '.composer-body-field textarea{min-height:84px;max-height:260px',
     '.rich-editor-surface{position:relative',
-    '.rich-editor-input{position:relative',
+    '.rich-editor-live-preview.rich-editor-input{box-sizing:border-box;position:relative',
     '.znews-top-progress{position:fixed',
     '.znews-button-loading::before',
     '.composer-add-row{display:grid',
@@ -77,13 +77,14 @@ foreach ([
 composer_expect(str_contains($index, 'znews-premium.css?v=16'), 'Composer stylesheet cachebuster is missing.');
 composer_expect(str_contains($index, 'znews-bootstrap.js?v=31'), 'Reload-safe composer bootstrap cachebuster is missing.');
 composer_expect(str_contains($index, 'znews.js?v=26'), 'Latest composer behavior is not loaded.');
-composer_expect(str_contains($index, 'znews-rich-editor.js?v=3'), 'Safe rich editor module is not loaded.');
+composer_expect(str_contains($index, 'znews-rich-editor.js?v=4'), 'Composition-safe rich editor module is not loaded.');
 composer_expect(str_contains($bootstrap, 'znews-creator.js?v=13'), 'Latest creator behavior is not loaded.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
     composer_expect(str_contains($worker, 'znews-premium.css?v=16'), 'Latest composer stylesheet is missing from a PWA shell.');
     composer_expect(str_contains($worker, 'znews-bootstrap.js?v=31'), 'Latest reload-safe bootstrap is missing from a PWA shell.');
     composer_expect(str_contains($worker, 'znews.js?v=26'), 'Latest app behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-rich-editor.js?v=4'), 'Composition-safe rich editor is missing from a PWA shell.');
     composer_expect(str_contains($worker, 'znews-creator.js?v=13'), 'Latest creator behavior is missing from a PWA shell.');
     composer_expect(str_contains($worker, "SHELL_REVISION = 'creator-csp-styles-1'"), 'Creator UI cache revision is missing from a PWA shell.');
     composer_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'PWA shell must continue excluding API responses.');

@@ -37,7 +37,7 @@ $critical = [
     'znews-progressive-feed.js?v=3',
     'znews-feed-ui.js?v=3',
     'znews-ads.js?v=2',
-    'znews-rich-editor.js?v=3',
+    'znews-rich-editor.js?v=4',
     'znews-bootstrap.js?v=31',
     'znews.js?v=26',
 ];
@@ -75,7 +75,7 @@ fast_boot_expect(str_contains($bootstrap, "const creatorModules = authenticated 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
     fast_boot_expect(str_contains($worker, 'shell-v26'), 'Service-worker cache generation was not advanced.');
     fast_boot_expect(str_contains($worker, "SHELL_REVISION = 'creator-csp-styles-1'"), 'Creator UI shell revision is missing.');
-    fast_boot_expect(str_contains($worker, 'znews-rich-editor.js?v=3'), 'Service worker is missing the safe rich editor module.');
+    fast_boot_expect(str_contains($worker, 'znews-rich-editor.js?v=4'), 'Service worker is missing the composition-safe rich editor module.');
     fast_boot_expect(str_contains($worker, 'znews-bootstrap.js?v=31'), 'Service worker has a stale bootstrap URL.');
     fast_boot_expect(str_contains($worker, 'znews.js?v=26'), 'Service worker has a stale app URL.');
     fast_boot_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'Service worker may intercept API requests.');
