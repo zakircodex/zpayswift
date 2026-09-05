@@ -49,7 +49,7 @@ function usage(): void
 Z Sky 24 controlled signed ad-impression test
 
 Required: --post-id=ID --view-id=ID --confirm-live-test
-Optional: --base-url=https://zpayswift.com --network=INMOBI_TEST
+Optional: --base-url=https://zpayswift.com --network=ADSTERRA_TEST
           --revenue-micros=20000 --ad-unit-id=zsky24-controlled-test
 
 The secret comes from a hidden prompt or ZNEWS_AD_TEST_SECRET. It is never printed.
@@ -69,7 +69,7 @@ $baseUrl = rtrim(option($options, 'base-url', 'https://zpayswift.com'), '/');
 if (filter_var($baseUrl, FILTER_VALIDATE_URL) === false || !str_starts_with(strtolower($baseUrl), 'https://')) {
     fail('base-url must be a valid HTTPS URL.');
 }
-$network = strtoupper(option($options, 'network', 'INMOBI_TEST'));
+$network = strtoupper(option($options, 'network', 'ADSTERRA_TEST'));
 if (preg_match('/^[A-Z0-9_]{2,40}$/', $network) !== 1) fail('Invalid network.');
 $postId = clean_key(option($options, 'post-id'), 'post-id');
 $viewId = clean_key(option($options, 'view-id'), 'view-id');

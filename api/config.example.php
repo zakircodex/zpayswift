@@ -79,6 +79,19 @@ define('SECURITY_ENABLED', true);
 define('SECURITY_HASH_SECRET', '');
 /* Dedicated private key for Z Sky 24 cross-domain handoff (minimum 32 characters). */
 define('ZNEWS_HANDOFF_ENCRYPTION_KEY', '');
+/* Dedicated HMAC key for short-lived, guest-only Web ad delivery permits. */
+define('ZNEWS_AD_DELIVERY_SIGNING_KEY', '');
+define('ZNEWS_AD_DELIVERY_PERMIT_TTL_SECONDS', 120);
+
+/*
+ * Z Sky 24 Adsterra Web banner delivery. Copy these values from the approved
+ * Adsterra post-reader banner tag; never put the Publisher API token here.
+ */
+define('ADSTERRA_ZSKY24_WEB_ADS_ENABLED', false);
+define('ADSTERRA_ZSKY24_POST_READER_KEY', '');
+define('ADSTERRA_ZSKY24_POST_READER_SCRIPT_URL', '');
+define('ADSTERRA_ZSKY24_POST_READER_SIZE', '300x250');
+define('ADSTERRA_ZSKY24_WEB_ALLOWED_SCRIPT_HOSTS', '');
 define('SECURITY_IP_WHITELIST', []);
 define('SECURITY_IP_BLOCKLIST', []);
 define('SECURITY_IP_CACHE_TTL_SECONDS', 86400);

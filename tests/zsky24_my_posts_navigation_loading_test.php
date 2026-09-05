@@ -41,9 +41,9 @@ my_posts_expect(str_contains($creator, "dialog.setAttribute('aria-busy', 'true')
 
 my_posts_expect(str_contains($app, 'window.ZNEWS_APP_INITIALIZED = true'), 'Latest navigation behavior is not activated.');
 my_posts_expect(str_contains($bootstrap, 'znews-creator.js?v=14'), 'Latest creator modal behavior is not activated.');
-my_posts_expect(str_contains($embeddedWorker, "zsky24-embedded-shell-v30"), 'Embedded cache namespace is stale.');
-my_posts_expect(str_contains($standaloneWorker, "zsky24-standalone-shell-v30"), 'Standalone cache namespace is stale.');
-my_posts_expect(str_contains($embeddedWorker, 'znews.js?v=28') && str_contains($embeddedWorker, 'znews-creator.js?v=14'), 'Embedded shell is missing the updated scripts.');
-my_posts_expect(str_contains($standaloneWorker, 'znews.js?v=28') && str_contains($standaloneWorker, 'znews-creator.js?v=14'), 'Standalone shell is missing the updated scripts.');
+my_posts_expect(str_contains($embeddedWorker, "zsky24-embedded-shell-v31"), 'Embedded cache namespace is stale.');
+my_posts_expect(str_contains($standaloneWorker, "zsky24-standalone-shell-v31"), 'Standalone cache namespace is stale.');
+my_posts_expect(str_contains($embeddedWorker, 'znews.js?v=29') && str_contains($embeddedWorker, 'znews-creator.js?v=14'), 'Embedded shell is missing the updated scripts.');
+my_posts_expect(str_contains($standaloneWorker, 'znews.js?v=29') && str_contains($standaloneWorker, 'znews-creator.js?v=14'), 'Standalone shell is missing the updated scripts.');
 
 fwrite(STDOUT, "Z Sky 24 My Posts navigation/loading checks passed.\n");

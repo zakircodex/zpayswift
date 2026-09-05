@@ -10,7 +10,7 @@ This CLI-only utility submits one signed BDT 0.01-0.03 test impression against a
 
 ```php
 define('ZNEWS_AD_NETWORK_SECRETS', [
-    'INMOBI_TEST' => 'replace-with-a-random-secret-at-least-32-characters',
+    'ADSTERRA_TEST' => 'replace-with-a-random-secret-at-least-32-characters',
 ]);
 ```
 
@@ -24,7 +24,7 @@ To obtain the valid view after reading and closing the test post, open Firebase 
 cd /home/zedpayhe/repositories/zpayswift
 php tools/zsky24_controlled_ad_test.php \
   --base-url=https://zpayswift.com \
-  --network=INMOBI_TEST \
+  --network=ADSTERRA_TEST \
   --post-id=REAL_TEST_POST_ID \
   --view-id=REAL_VALID_VIEW_ID \
   --revenue-micros=20000 \

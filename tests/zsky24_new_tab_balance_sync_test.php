@@ -43,11 +43,11 @@ new_tab_balance_expect(str_contains($weekly, 'znews:weekly-performance-open'), '
 new_tab_balance_expect(str_contains($index, 'data-route="performance"'), 'Weekly performance navigation is missing.');
 new_tab_balance_expect(str_contains($app, "window.addEventListener('znews:auth-ready'"), 'Authenticated feed boot does not observe verified session readiness.');
 new_tab_balance_expect(!str_contains($app, "void loadMiniBalance();"), 'Verified session still triggers the retired mini-balance request.');
-new_tab_balance_expect(str_contains($index, 'znews-bootstrap.js?v=35'), 'Feed document does not bypass the stale bootstrap cache.');
-new_tab_balance_expect(str_contains($index, 'znews.js?v=28'), 'Document does not bypass the stale feed app cache.');
+new_tab_balance_expect(str_contains($index, 'znews-bootstrap.js?v=36'), 'Feed document does not bypass the stale bootstrap cache.');
+new_tab_balance_expect(str_contains($index, 'znews.js?v=29'), 'Document does not bypass the stale feed app cache.');
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    new_tab_balance_expect(str_contains($worker, 'znews-bootstrap.js?v=35'), 'A PWA shell is missing the refreshed bootstrap URL.');
-    new_tab_balance_expect(str_contains($worker, 'znews.js?v=28'), 'A PWA shell is missing the refreshed feed app URL.');
+    new_tab_balance_expect(str_contains($worker, 'znews-bootstrap.js?v=36'), 'A PWA shell is missing the refreshed bootstrap URL.');
+    new_tab_balance_expect(str_contains($worker, 'znews.js?v=29'), 'A PWA shell is missing the refreshed feed app URL.');
 }
 
 echo "Z Sky 24 new-tab and weekly performance tests passed ({$assertions} assertions).\n";

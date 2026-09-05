@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/views_v2.php';
 require_once dirname(__DIR__) . '/lib/creator_view_policy.php';
+require_once dirname(__DIR__) . '/lib/adsterra_web_ads.php';
 
 api_require_method('POST');
 $body = api_read_json_body();
@@ -33,6 +34,10 @@ if (is_array($result['session'] ?? null)) {
     $viewGate = znews_creator_view_gate($viewerUid, $postId, $idempotencyKey);
     $result = znews_creator_view_policy_apply($result, $viewGate);
 }
+$adDelivery = znews_adsterra_web_delivery(
+    is_array($result['session'] ?? null) ? (array)$result['session'] : [],
+    $viewGate
+);
 
 api_response(
     !empty($result['ok']),
@@ -53,6 +58,7 @@ api_response(
             'reason' => trim((string)($viewGate['reason'] ?? '')),
             'idempotent_replay' => !empty($viewGate['idempotent_replay']),
         ],
+        'ad_delivery' => $adDelivery,
     ], static fn($value) => $value !== null),
     (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 500))
 );

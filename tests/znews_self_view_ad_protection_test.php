@@ -55,8 +55,10 @@ self_view_expect(str_contains($settlement, "in_array('SELF_VIEW', \$riskReasons,
 $api = self_view_read($root, 'znews/assets/znews-api.js');
 $ads = self_view_read($root, 'znews/assets/znews-ads.js');
 $reader = self_view_read($root, 'znews/assets/znews.js');
+$viewPolicy = self_view_read($root, 'api/znews/lib/creator_view_policy.php');
 self_view_expect(str_contains($api, 'authenticated: this.isAuthenticated()'), 'Authenticated reader does not bind its session to view start.');
-self_view_expect(str_contains($ads, 'creatorUid === viewerUid'), 'Reader ad renderer does not suppress the creator own-post slot.');
-self_view_expect(str_contains($reader, 'creatorUid: text(post.creator_uid).trim()'), 'Post reader does not provide ownership context to the ad renderer.');
+self_view_expect(str_contains($viewPolicy, "'viewer_class' => 'CREATOR'") && str_contains($viewPolicy, "'ad_eligible' => false"), 'Server policy does not suppress all authenticated creator ads.');
+self_view_expect(str_contains($ads, 'authenticatedCreator()') && str_contains($ads, 'window.ZNEWS_AUTH_VERIFIED === true'), 'Reader ad renderer does not suppress verified creators.');
+self_view_expect(str_contains($reader, 'await Promise.resolve(window.ZNEWS_AUTH_READY)') && str_contains($reader, 'hasVerifiedSession()'), 'Post reader can mount an ad before creator verification finishes.');
 
 echo "Z News self-view ad protection tests passed ({$assertions} assertions).\n";

@@ -73,13 +73,13 @@ check(!str_contains($index, 'class="mobile-nav"'), 'Removed bottom navigation re
 check(!str_contains($index, 'znews-quick-login.js'), 'Removed standalone login returned');
 
 $config = contents($root . '/znews/assets/znews-config.js');
-check(str_contains($config, "provider: 'NONE'"), 'Ad provider must remain disabled before Adsterra integration');
-check(str_contains($config, "mode: 'DISABLED'"), 'Disabled ad mode is missing');
-check(str_contains($config, 'enabled: false'), 'Ads are not fail-closed');
+check(str_contains($config, "provider: 'ADSTERRA'"), 'Adsterra is not the Web ad provider');
+check(str_contains($config, "mode: 'SERVER_GATED'"), 'Server-gated ad mode is missing');
+check(str_contains($config, "post_reader: 'SIGNED_SAME_ORIGIN_FRAME'"), 'Signed reader placement is missing');
 check(str_contains($config, "creatorRevenueMode: 'PERIOD_REVIEW_DIRECT_ZPAY_PAYOUT'"), 'Period payout mode is missing');
 check(str_contains($config, 'creatorBalanceEnabled: false'), 'Creator balance feature is not disabled');
 check(str_contains($config, '[data-route="balance"]'), 'Legacy balance route is not hidden');
-check(str_contains($config, "document.querySelectorAll('.ad-slot')"), 'Ad slots are not hidden until provider integration');
+check(!str_contains($config, "document.querySelectorAll('.ad-slot')"), 'Revenue UI observer still deletes server-gated ads');
 check(str_contains($config, 'Weekly review • Monthly payout'), 'Creator period policy UI is missing');
 check(!str_contains($config, 'persistentSessionStorageKey'), 'Standalone persistent login config remains');
 check(!preg_match('/(?:secret|private[_-]?key)\s*[:=]\s*[\'\"][^\'\"]{8,}/i', $config), 'Possible public secret detected');
@@ -137,6 +137,7 @@ check(str_contains($app, 'await completeView()'), 'View completion guard is miss
 $viewStart = contents($root . '/api/znews/views/start.php');
 $viewPolicy = contents($root . '/api/znews/lib/creator_view_policy.php');
 check(str_contains($viewStart, "'ad_policy'"), 'Server ad-policy response is missing');
+check(str_contains($viewStart, "'ad_delivery' => \$adDelivery"), 'Signed Adsterra delivery is missing');
 check(str_contains($viewStart, 'znews_creator_view_gate($viewerUid, $postId, $idempotencyKey)'), 'Retry-safe guest policy is not wired');
 check(str_contains($viewPolicy, "'viewer_class' => 'CREATOR'"), 'Creator viewer class is missing');
 check(str_contains($viewPolicy, "'ad_eligible' => false"), 'Authenticated creators can still qualify for ads');

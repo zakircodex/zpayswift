@@ -1,114 +1,103 @@
 (() => {
   'use strict';
 
-  const config = window.ZNEWS_CONFIG?.ads || {};
-  const renderers = new Map();
+  const SUPPORTED_SIZES = new Set(['160x300', '160x600', '300x250', '320x50', '468x60', '728x90']);
 
   function clearSlot(slot) {
-    while (slot.firstChild) slot.removeChild(slot.firstChild);
+    if (!(slot instanceof HTMLElement)) return;
+    slot.replaceChildren();
+    slot.classList.remove('ad-slot-live', 'ad-slot-loading');
+    delete slot.dataset.adDeliveryUrl;
   }
 
-  function renderTestSlot(slot, slotName) {
-    clearSlot(slot);
-    slot.hidden = false;
-    slot.classList.add('ad-slot-test');
-
-    const badge = document.createElement('span');
-    badge.className = 'ad-label';
-    badge.textContent = 'Sponsored • Test placement';
-
-    const title = document.createElement('strong');
-    title.textContent = 'InMobi placement ready';
-
-    const note = document.createElement('small');
-    note.textContent = `${slotName} will show a live ad after publisher review and placement configuration.`;
-
-    slot.append(badge, title, note);
-  }
-
-  function hideSlot(slot) {
+  function hide(slot) {
     clearSlot(slot);
     slot.hidden = true;
+    slot.setAttribute('aria-hidden', 'true');
   }
 
-  function currentViewerUid() {
+  function authenticatedCreator() {
+    return window.ZNEWS_AUTH_VERIFIED === true;
+  }
+
+  function androidApp() {
+    return /^zpayswift-android-znews\//i.test(String(navigator.userAgent || '').trim());
+  }
+
+  function safeDelivery(delivery, expectedSlot) {
+    if (!delivery || delivery.enabled !== true || String(delivery.provider || '').toUpperCase() !== 'ADSTERRA') {
+      return null;
+    }
+    const slot = String(delivery.slot || '').trim();
+    const width = Number(delivery.width || 0);
+    const height = Number(delivery.height || 0);
+    const size = `${width}x${height}`;
+    if (slot !== expectedSlot || slot !== 'post_reader' || !SUPPORTED_SIZES.has(size)) return null;
+
     try {
-      const profile = JSON.parse(sessionStorage.getItem(window.ZNEWS_CONFIG?.profileStorageKey) || '{}');
-      return String(profile?.uid || '').trim();
+      const frameUrl = new URL(String(delivery.frame_url || ''), window.location.origin);
+      if (frameUrl.origin !== window.location.origin
+        || frameUrl.pathname !== '/api/znews/public/ad_frame.php'
+        || !frameUrl.searchParams.get('permit')) {
+        return null;
+      }
+      return { frameUrl: frameUrl.toString(), slot, width, height };
     } catch (_error) {
-      return '';
+      return null;
     }
   }
 
-  async function mount(slot, context = {}) {
-    if (!(slot instanceof HTMLElement)) return;
-
-    const creatorUid = String(context.creatorUid || slot.dataset.creatorUid || '').trim();
-    const viewerUid = currentViewerUid();
-    if (creatorUid && viewerUid && creatorUid === viewerUid) {
-      hideSlot(slot);
-      return;
+  function mount(slot, delivery) {
+    if (!(slot instanceof HTMLElement)) return false;
+    const expectedSlot = String(slot.dataset.znewsAdSlot || '').trim();
+    const safe = safeDelivery(delivery, expectedSlot);
+    if (!safe || authenticatedCreator() || androidApp()) {
+      hide(slot);
+      return false;
     }
-
-    const slotName = String(slot.dataset.znewsAdSlot || '').trim();
-    const placementId = String(config.placements?.[slotName] || '').trim();
-    const mode = String(config.mode || 'TEST').toUpperCase();
-
-    if (mode === 'TEST') {
-      renderTestSlot(slot, slotName || 'unnamed_slot');
-      return;
-    }
-
-    if (config.enabled !== true || !slotName || !placementId) {
-      hideSlot(slot);
-      return;
-    }
-
-    const renderer = renderers.get('INMOBI');
-    if (typeof renderer !== 'function') {
-      hideSlot(slot);
-      console.warn('Z Sky 24: InMobi renderer is not registered.');
-      return;
-    }
+    if (slot.dataset.adDeliveryUrl === safe.frameUrl && slot.querySelector('iframe')) return true;
 
     clearSlot(slot);
     slot.hidden = false;
+    slot.removeAttribute('aria-hidden');
+    slot.classList.add('ad-slot-live', 'ad-slot-loading');
+    slot.dataset.adDeliveryUrl = safe.frameUrl;
 
-    try {
-      await renderer({
-        element: slot,
-        slotName,
-        placementId,
-        format: String(slot.dataset.format || 'mobile_banner')
-      });
-    } catch (error) {
-      hideSlot(slot);
-      console.warn('Z Sky 24: ad placement could not be rendered.', error);
-    }
+    const label = document.createElement('span');
+    label.className = 'ad-label';
+    label.textContent = 'Sponsored';
+
+    const frame = document.createElement('iframe');
+    frame.className = 'ad-slot-frame';
+    frame.title = 'Advertisement';
+    frame.width = String(safe.width);
+    frame.height = String(safe.height);
+    frame.loading = 'lazy';
+    frame.referrerPolicy = 'strict-origin-when-cross-origin';
+    frame.setAttribute('credentialless', '');
+    frame.setAttribute(
+      'sandbox',
+      'allow-scripts allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation'
+    );
+    frame.addEventListener('load', () => slot.classList.remove('ad-slot-loading'), { once: true });
+    frame.addEventListener('error', () => hide(slot), { once: true });
+    frame.src = safe.frameUrl;
+
+    slot.append(label, frame);
+    window.dispatchEvent(new CustomEvent('znews:ad-mounted', {
+      detail: { provider: 'ADSTERRA', slot: safe.slot, width: safe.width, height: safe.height }
+    }));
+    return true;
   }
 
-  function mountAll(root = document) {
-    root.querySelectorAll('[data-znews-ad-slot]').forEach((slot) => mount(slot));
+  function hideAll(root = document) {
+    root.querySelectorAll('[data-znews-ad-slot]').forEach((slot) => hide(slot));
   }
 
-  function registerProviderRenderer(provider, renderer) {
-    const name = String(provider || '').trim().toUpperCase();
-    if (name !== 'INMOBI' || typeof renderer !== 'function') {
-      throw new TypeError('A valid InMobi renderer is required.');
-    }
-    renderers.set(name, renderer);
-  }
-
-  /*
-   * The publisher-specific WebX tag/renderer must call this registration
-   * function after InMobi enables the website and provides placement tags.
-   * Provider secrets, reported value and creator settlement never belong in
-   * browser code; those remain in the signed server ingestion pipeline.
-   */
   window.ZNewsAds = Object.freeze({
-    provider: 'INMOBI',
+    provider: 'ADSTERRA',
     mount,
-    mountAll,
-    registerProviderRenderer
+    hide,
+    hideAll
   });
 })();

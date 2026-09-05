@@ -768,15 +768,7 @@
       }));
       window.requestAnimationFrame(() => markBoot('first_text_paint'));
     }
-    if ((index + 1) % 4 === 0) {
-      const ad = document.createElement('div');
-      ad.className = 'ad-slot';
-      ad.dataset.znewsAdSlot = 'post_inline';
-      ad.dataset.format = 'mobile_banner';
-      els.feedList.appendChild(ad);
-    }
     bindPostActions(card);
-    window.ZNewsAds.mountAll(els.feedList);
     showAnnouncement('');
   }
 
@@ -950,12 +942,6 @@
       els.postDetail.innerHTML = postMarkup(post, { detail: true });
       bindPostActions(els.postDetail);
       renderComments(commentResult.data?.items || []);
-      const ad = document.createElement('div');
-      ad.className = 'ad-slot';
-      ad.dataset.znewsAdSlot = 'post_reader';
-      ad.dataset.format = 'mobile_banner';
-      els.postDetail.appendChild(ad);
-      window.ZNewsAds.mount(ad, { creatorUid: text(post.creator_uid).trim() });
       beginView(postId);
     } catch (error) {
       els.postDetail.innerHTML = `<div class="empty-state"><strong>Post could not be loaded</strong>${escapeHtml(errorMessage(error))}</div>`;
@@ -1008,6 +994,7 @@
       );
       const session = result.data?.session || {};
       if (!session.view_id || !session.view_token) return;
+      const adDelivery = result.data?.ad_delivery || {};
       const heartbeatDelay = Math.max(3000, Number(session.heartbeat_after_seconds || 5) * 1000);
       state.viewSession = {
         id: session.view_id,
@@ -1024,6 +1011,7 @@
         }, heartbeatDelay),
         interval: 0
       };
+      void mountReaderAd(postId, adDelivery);
     } catch (_error) {
       state.viewSession = null;
     } finally {
@@ -1140,6 +1128,29 @@
       els.createPostForm.removeAttribute('aria-busy');
       setCreateMutationState(false);
       syncComposerState();
+    }
+  }
+
+  async function mountReaderAd(postId, delivery) {
+    try {
+      await Promise.resolve(window.ZNEWS_AUTH_READY).catch(() => false);
+      if (state.currentPostId !== postId || !els.postDialog.open || hasVerifiedSession()) return;
+      await scheduleRequest(
+        requestPriority.ANALYTICS,
+        () => {
+          if (state.currentPostId !== postId || !els.postDialog.open || hasVerifiedSession()) return false;
+          const slot = document.createElement('div');
+          slot.className = 'ad-slot';
+          slot.dataset.znewsAdSlot = 'post_reader';
+          slot.hidden = true;
+          els.postDetail.appendChild(slot);
+          if (!window.ZNewsAds.mount(slot, delivery)) slot.remove();
+          return true;
+        },
+        { key: `ad-delivery:${postId}`, preemptible: true }
+      );
+    } catch (_error) {
+      // Ad delivery is optional and must never affect the reader.
     }
   }
 
@@ -1468,7 +1479,6 @@
     initializeAppHistory(route);
     refreshSessionUi();
     bindEvents();
-    window.ZNewsAds.mountAll();
     if (route.kind !== 'policy') await loadFeed();
     if (route.kind === 'post') openPost(route.id, { syncHistory: false });
     if (route.kind === 'policy') routeTo('policy', { syncHistory: false });

@@ -24,8 +24,8 @@ body.znews-post-reader-open{position:fixed;top:var(--znews-reader-page-top,0px);
 #postDetail .post-meta{padding:11px 18px;border-bottom:1px solid var(--line);font-size:12px}
 #postDetail .post-actions{padding:5px 8px 7px;border-bottom:1px solid var(--line)}
 #postDetail .post-action{min-height:44px;font-size:14px}
-#postDetail>.ad-slot{min-height:76px;margin:12px 14px 0;padding:12px 14px;border-radius:16px;background:rgba(255,255,255,.025)}
-#postDetail>.ad-slot:empty{display:none}
+#postDetail>.ad-slot{margin:14px 0 0;padding:10px 0 4px;background:rgba(255,255,255,.018)}
+#postDetail>.ad-slot:empty,#postDetail>.ad-slot[hidden]{display:none}
 #postDetail>.ad-slot .ad-label{font-size:8px}
 .comments-section{min-width:0;padding:16px 16px 26px;border-top:0;background:#081a32;box-sizing:border-box}
 .comments-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}

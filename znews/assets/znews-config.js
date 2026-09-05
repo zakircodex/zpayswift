@@ -56,14 +56,12 @@
     creatorRevenueMode: 'PERIOD_REVIEW_DIRECT_ZPAY_PAYOUT',
     creatorBalanceEnabled: false,
     ads: Object.freeze({
-      provider: 'NONE',
-      mode: 'DISABLED',
-      enabled: false,
+      provider: 'ADSTERRA',
+      mode: 'SERVER_GATED',
+      enabled: true,
       eligibilitySource: 'VIEW_START_SERVER_POLICY',
       placements: Object.freeze({
-        feed_sidebar: '',
-        post_inline: '',
-        post_reader: ''
+        post_reader: 'SIGNED_SAME_ORIGIN_FRAME'
       })
     })
   });
@@ -73,7 +71,6 @@
     '[data-menu-route="balance"]',
     '#balanceView',
     '.balance-mini',
-    '.ad-slot',
     '.creator-policy-page',
     '#creatorAdRateLabel',
     '#creatorAdRate',
@@ -113,11 +110,6 @@
 
       hideElement(document.querySelector('#balanceView'));
       document.querySelectorAll('.balance-mini').forEach(hideElement);
-
-      document.querySelectorAll('.ad-slot').forEach((element) => {
-        hideElement(element);
-        if (element.childNodes.length > 0) element.replaceChildren();
-      });
 
       const policyTitle = document.querySelector('.creator-policy-page .policy-header h1');
       const policyIntro = document.querySelector('.creator-policy-page .policy-header p');

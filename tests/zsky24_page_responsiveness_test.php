@@ -40,8 +40,8 @@ zsky24_responsive_expect(
     'observer does not filter irrelevant feed mutations'
 );
 zsky24_responsive_expect(
-    str_contains($source, 'element.childNodes.length > 0'),
-    'empty ad slots can be rewritten repeatedly'
+    !str_contains($source, "document.querySelectorAll('.ad-slot')"),
+    'revenue observer still rewrites live ad slots'
 );
 zsky24_responsive_expect(
     str_contains($source, 'setTextIfChanged'),

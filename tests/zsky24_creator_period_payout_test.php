@@ -136,9 +136,9 @@ zsky_creator_expect(str_contains($policy, "'payout_cycle' => 'MONTHLY'"), 'month
 zsky_creator_expect(str_contains($policy, "'safety_reserve_percent' => 10"), 'ten-percent reserve policy missing');
 zsky_creator_expect(str_contains($policy, "'creator_pool_percent_of_net' => 40"), 'forty-percent creator pool policy missing');
 
-zsky_creator_expect(str_contains($config, "provider: 'NONE'"), 'legacy ad provider remains active');
+zsky_creator_expect(str_contains($config, "provider: 'ADSTERRA'"), 'Adsterra Web provider is not active');
 zsky_creator_expect(str_contains($config, 'creatorBalanceEnabled: false'), 'creator balance UI feature flag missing');
-zsky_creator_expect(str_contains($config, "document.querySelectorAll('.ad-slot')"), 'ad slots are not disabled before provider integration');
+zsky_creator_expect(!str_contains($config, "document.querySelectorAll('.ad-slot')"), 'revenue UI observer still deletes server-gated ads');
 zsky_creator_expect(str_contains($config, 'Weekly review • Monthly payout'), 'period payout UI policy missing');
 zsky_creator_expect(str_contains($config, '[data-route="balance"]'), 'legacy balance navigation is not hidden');
 

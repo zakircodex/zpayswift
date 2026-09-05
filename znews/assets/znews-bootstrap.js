@@ -304,7 +304,7 @@
       loadScript('/znews/assets/znews-access.js?v=4')
     ]);
     const publicModules = [
-      loadStylesheet('/znews/assets/znews-reader.css?v=2'),
+      loadStylesheet('/znews/assets/znews-reader.css?v=3'),
       loadScript('/znews/assets/znews-profile.js?v=7'),
       loadScript('/znews/assets/znews-reader.js?v=4'),
       loadScript('/znews/assets/znews-header.js?v=2')

@@ -395,18 +395,17 @@ img { display: block; max-width: 100%; }
 .balance-mini > span { color: var(--muted); font-size: 12px; }
 .balance-mini > strong { display: block; margin: 3px 0 12px; font-size: 26px; }
 .ad-slot {
-  min-height: 105px;
-  padding: 14px;
+  width: 100%;
+  min-height: 0;
   display: grid;
-  align-content: center;
-  gap: 4px;
-  border: 1px dashed var(--line-strong);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, .025);
+  justify-items: center;
+  gap: 6px;
+  overflow: hidden;
   color: var(--muted);
 }
-.ad-slot strong { color: #d8e7fc; font-size: 13px; }
-.ad-slot small { font-size: 10px; line-height: 1.4; }
+.ad-slot[hidden] { display: none !important; }
+.ad-slot-frame { display: block; max-width: 100%; border: 0; background: transparent; color-scheme: normal; }
+.ad-slot-loading .ad-slot-frame { opacity: .78; }
 .ad-label { color: #8195b3; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
 
 .modal {
