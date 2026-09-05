@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/views.php';
+require_once __DIR__ . '/weekly_live_projection.php';
 
 function znews_view_analytics_apply_once(
     string $postId,
@@ -107,6 +108,7 @@ function znews_view_open_sync(array $row): array
         'created_at' => (int)($row['created_at'] ?? znews_now()),
         'updated_at' => znews_now(),
     ]);
+    znews_weekly_live_projection_mirror($row);
 
     return [
         'ok' => !empty($analytics['ok']) && $indexOk,
@@ -167,6 +169,7 @@ function znews_view_start_v2(string $postId, string $idempotencyKey, string $vie
             'idempotent_replay' => true,
             'session' => znews_view_public_session($existing, $blocked ? '' : $token),
             'reconciliation_required' => empty($sync['ok']),
+            'weekly_creator_uid' => trim((string)($existing['creator_uid'] ?? $creatorUid)),
         ];
     }
     if ($existing !== null) {
@@ -196,6 +199,7 @@ function znews_view_start_v2(string $postId, string $idempotencyKey, string $vie
         'schema_version' => 2,
         'view_id' => $viewId,
         'post_id' => $postId,
+        'creator_uid' => $creatorUid,
         'status' => $blocked ? 'BLOCKED' : 'STARTED',
         'result' => $blocked ? 'INVALID' : 'PENDING',
         'viewer_type' => (string)$ctx['viewer_type'],
@@ -245,7 +249,7 @@ function znews_view_start_v2(string $postId, string $idempotencyKey, string $vie
         znews_view_risk_store($row);
     }
     if ($blocked) {
-        return ['ok' => false, 'code' => 'ZNEWS_VIEW_BLOCKED', 'message' => 'View session was blocked.', 'http_status' => 429, 'session' => znews_view_public_session($row), 'reconciliation_required' => empty($sync['ok'])];
+        return ['ok' => false, 'code' => 'ZNEWS_VIEW_BLOCKED', 'message' => 'View session was blocked.', 'http_status' => 429, 'session' => znews_view_public_session($row), 'reconciliation_required' => empty($sync['ok']), 'weekly_creator_uid' => $creatorUid];
     }
     return [
         'ok' => !empty($sync['ok']),
@@ -255,6 +259,7 @@ function znews_view_start_v2(string $postId, string $idempotencyKey, string $vie
         'idempotent_replay' => false,
         'session' => znews_view_public_session($row, $token),
         'reconciliation_required' => empty($sync['ok']),
+        'weekly_creator_uid' => $creatorUid,
     ];
 }
 
@@ -343,6 +348,7 @@ function znews_view_complete_sync(array $row): array
         'completed_at' => (int)($row['completed_at'] ?? znews_now()),
         'updated_at' => znews_now(),
     ]);
+    znews_weekly_live_projection_mirror($row);
     return [
         'ok' => $indexOk,
         'code' => $indexOk ? 'OK' : 'ZNEWS_VIEW_INDEX_SYNC_FAILED',

@@ -144,6 +144,20 @@ weekly_expect(($metrics['self_views_excluded'] ?? -1) === 1, 'Creator self-view 
 weekly_expect(($metrics['pending_views'] ?? -1) === 1, 'Incomplete view sessions must remain pending.');
 weekly_expect(($metricsResult['source_view_count'] ?? -1) === 6, 'Source audit count must include the future record before period filtering.');
 
+$projectionRows = [];
+foreach (['valid-guest', 'creator-self', 'duplicate-guest', 'spam-guest', 'pending-guest', 'future-guest'] as $viewId) {
+    $projectionRows[$viewId] = znews_weekly_live_projection_row(
+        (array)$weeklyFakeDb['ZNEWS_VIEW_SESSIONS/' . $viewId],
+        'creator-a'
+    );
+}
+$weeklyFakeDb[znews_weekly_live_projection_path('creator-a', (string)$period['period_id'])] = $projectionRows;
+$weeklyFbQueries = [];
+$projectionMetricsResult = znews_weekly_review_projection_metrics('creator-a', $period);
+weekly_expect(($projectionMetricsResult['metrics'] ?? []) === $metrics, 'Bounded live projection changed canonical weekly metric semantics.');
+weekly_expect(count($weeklyFbQueries) === 2, 'Bounded live projection must use exactly two Firebase reads.');
+weekly_expect(count(array_filter($weeklyFbQueries, static fn(array $read): bool => str_starts_with((string)$read['path'], 'ZNEWS_POST_VIEWS/') || str_starts_with((string)$read['path'], 'ZNEWS_VIEW_SESSIONS/'))) === 0, 'Live projection still performs per-post or per-view N+1 reads.');
+
 $historyRows = [
     '2026-08-03' => ['period_start_at' => strtotime('2026-08-03 UTC')],
     '2026-07-27' => ['period_start_at' => strtotime('2026-07-27 UTC')],
@@ -219,6 +233,8 @@ weekly_expect(!str_contains($mine, "\$_GET['uid']"), 'Creator weekly report must
 weekly_expect(str_contains($mine, "'next_cursor'") && str_contains($mine, "'has_more'"), 'Creator weekly history pagination metadata is missing.');
 weekly_expect(str_contains($mine, "\$_GET['include_history']"), 'Creator weekly endpoint cannot isolate the fast history request from the live preview.');
 weekly_expect(str_contains($mine, '$includeHistory'), 'Creator weekly endpoint does not preserve backward-compatible optional history loading.');
+weekly_expect(str_contains($mine, "header('Server-Timing:"), 'Weekly current endpoint does not emit safe stage timing diagnostics.');
+weekly_expect(str_contains($mine, "\$_GET['refresh_current']"), 'Weekly current endpoint cannot safely bypass its short derived preview cache.');
 
 foreach (['weekly_periods', 'weekly_review', 'weekly_generate', 'weekly_status'] as $action) {
     weekly_expect(str_contains($gateway, "'{$action}'"), "Admin gateway action is missing: {$action}");
@@ -244,7 +260,7 @@ weekly_expect(str_contains($index, 'Z Sky 24 does not maintain a creator wallet'
 weekly_expect(!str_contains($index, '>Creator balance<'), 'Legacy creator balance label remains visible.');
 weekly_expect(!str_contains($index, 'Transfer to Z-Pay balance'), 'Legacy transfer action remains visible.');
 weekly_expect(!str_contains($index, '৳0.01–৳0.03'), 'Legacy per-ad credit promise remains visible.');
-weekly_expect(str_contains($bootstrap, 'znews-weekly-review.js?v=3'), 'Weekly creator report JavaScript is not loaded after creator authentication.');
+weekly_expect(str_contains($bootstrap, 'znews-weekly-review.js?v=4'), 'Weekly creator report JavaScript is not loaded after creator authentication.');
 weekly_expect(str_contains($bootstrap, 'znews-weekly-review.css?v=3'), 'Weekly creator report stylesheet is not loaded after creator authentication.');
 
 weekly_expect(str_contains($weeklyJs, 'weeklyReviews'), 'Creator weekly report API method is not wired.');
@@ -256,11 +272,11 @@ weekly_expect(str_contains($weeklyJs, 'requestScheduler.schedule'), 'Weekly mobi
 weekly_expect(!str_contains($weeklyJs, 'balanceSummary'), 'Weekly performance still invokes the retired balance API.');
 
 foreach ([
-    [$embeddedWorker, 'zsky24-embedded-shell-v29'],
-    [$standaloneWorker, 'zsky24-standalone-shell-v29'],
+    [$embeddedWorker, 'zsky24-embedded-shell-v30'],
+    [$standaloneWorker, 'zsky24-standalone-shell-v30'],
 ] as [$worker, $cacheName]) {
     weekly_expect(str_contains($worker, $cacheName), "Weekly review service-worker generation is missing: {$cacheName}");
-    weekly_expect(str_contains($worker, 'znews-weekly-review.js?v=3'), 'Weekly review JavaScript is missing from a service-worker shell.');
+    weekly_expect(str_contains($worker, 'znews-weekly-review.js?v=4'), 'Weekly review JavaScript is missing from a service-worker shell.');
     weekly_expect(str_contains($worker, 'znews-weekly-review.css?v=3'), 'Weekly review CSS is missing from a service-worker shell.');
     weekly_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'A service worker may cache weekly API responses.');
 }

@@ -224,13 +224,14 @@
       });
     }
 
-    weeklyReviews(cursor = '', { includeCurrent = true, includeHistory = true, signal = undefined } = {}) {
+    weeklyReviews(cursor = '', { includeCurrent = true, includeHistory = true, refreshCurrent = false, signal = undefined } = {}) {
       return this.request('znews/reviews/mine.php', {
         params: {
           limit: this.config.weeklyReviewPageSize || 6,
           cursor,
           include_current: includeCurrent ? 1 : 0,
-          include_history: includeHistory ? 1 : 0
+          include_history: includeHistory ? 1 : 0,
+          refresh_current: refreshCurrent ? 1 : 0
         },
         authenticated: true,
         signal,

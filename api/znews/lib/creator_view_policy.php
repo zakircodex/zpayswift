@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/weekly_live_projection.php';
+
 if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     http_response_code(404);
     exit('Not Found');
@@ -286,7 +288,10 @@ function znews_creator_view_policy_apply(array $result, array $gate): array
 
     $result['session'] = array_merge($session, $policy);
 
+    $projectionCreatorUid = trim((string)($result['weekly_creator_uid'] ?? ''));
+
     if (empty($gate['spam']) || $viewId === '' || $postId === '') {
+        znews_weekly_live_projection_mirror_policy($session, $projectionCreatorUid, $policy);
         return $result;
     }
 
@@ -333,6 +338,15 @@ function znews_creator_view_policy_apply(array $result, array $gate): array
         'result' => 'INVALID',
         'ad_eligible' => false,
         'revenue_share_eligible' => false,
+    ]);
+    znews_weekly_live_projection_mirror_policy($session, $projectionCreatorUid, array_merge($policy, [
+        'guest_spam' => true,
+        'revenue_share_eligible' => false,
+    ]), [
+        'status' => 'BLOCKED',
+        'result' => 'INVALID',
+        'completed_at' => $now,
+        'updated_at' => $now,
     ]);
 
     return $result;

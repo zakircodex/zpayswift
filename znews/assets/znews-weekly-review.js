@@ -332,11 +332,29 @@
         setCurrentLoading();
         const currentResult = await requestReviews('', {
           includeCurrent: true,
-          includeHistory: false
+          includeHistory: false,
+          refreshCurrent: true
         }, 'weekly:current');
         renderCurrent(currentResult.data?.current_preview || {}, currentResult.data?.creator || {});
         setInlineStatus('');
         return;
+      }
+
+      let currentFailed = false;
+      if (!append) {
+        $('#weeklyPerformanceContent').hidden = false;
+        setCurrentLoading();
+        try {
+          const currentResult = await requestReviews('', {
+            includeCurrent: true,
+            includeHistory: false,
+            refreshCurrent: refreshing
+          }, 'weekly:current');
+          renderCurrent(currentResult.data?.current_preview || {}, currentResult.data?.creator || {});
+        } catch (_currentError) {
+          currentFailed = true;
+          setCurrentError();
+        }
       }
 
       const historyResult = await requestReviews(append ? state.cursor : '', {
@@ -359,28 +377,24 @@
       finishInitialLoading();
 
       if (!append) {
-        setCurrentLoading();
-        try {
-          const currentResult = await requestReviews('', {
-            includeCurrent: true,
-            includeHistory: false
-          }, 'weekly:current');
-          renderCurrent(currentResult.data?.current_preview || {}, currentResult.data?.creator || {});
-          setInlineStatus(refreshing ? 'Weekly performance refreshed.' : '');
-          if (refreshing) {
-            state.statusTimer = window.setTimeout(() => {
-              if (!state.loading) setInlineStatus('');
-            }, 2400);
-          }
-        } catch (_currentError) {
-          setCurrentError();
-          setInlineStatus(refreshing ? 'Previous reviews refreshed. Current week needs another try.' : '');
+        setInlineStatus(currentFailed
+          ? (refreshing ? 'Previous reviews refreshed. Current week needs another try.' : '')
+          : (refreshing ? 'Weekly performance refreshed.' : ''));
+        if (refreshing && !currentFailed) {
+          state.statusTimer = window.setTimeout(() => {
+            if (!state.loading) setInlineStatus('');
+          }, 2400);
         }
       }
     } catch (_error) {
+      if (currentOnly) {
+        setCurrentError();
+        setInlineStatus('');
+        return;
+      }
       state.retryMode = append ? 'append' : 'refresh';
       setInlineStatus('Weekly performance could not be loaded.', { error: true, retry: true });
-      if (!state.loaded) $('#weeklyPerformanceContent').hidden = true;
+      if (!state.loaded && !state.currentLoaded) $('#weeklyPerformanceContent').hidden = true;
     } finally {
       state.loading = false;
       finishInitialLoading();

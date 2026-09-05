@@ -312,7 +312,7 @@
     const imageOptimizerReady = authenticated ? ensureImageOptimizer() : Promise.resolve(null);
     const creatorModules = authenticated ? [
       loadStylesheet('/znews/assets/znews-weekly-review.css?v=3'),
-      loadScript('/znews/assets/znews-weekly-review.js?v=3'),
+      loadScript('/znews/assets/znews-weekly-review.js?v=4'),
       imageOptimizerReady.then(() => loadScript('/znews/assets/znews-creator.js?v=14')),
       loadScript('/znews/assets/znews-instant-comments.js?v=4')
     ] : [];

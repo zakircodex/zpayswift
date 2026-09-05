@@ -214,8 +214,9 @@ async function main() {
     await page.locator('#weeklyReviewLoadMore').click();
     await page.waitForFunction(() => window.ZNewsWeeklyPerformance.snapshot().itemCount === 3);
     const requests = await page.evaluate(() => window.__weeklyTest.requests.filter((item) => item.includes('/znews/reviews/mine.php')));
-    assert.equal(requests[0].includes('include_current=0') && requests[0].includes('include_history=1'), true, 'Initial mobile load did not request fast bounded history first.');
-    assert.equal(requests[1].includes('include_current=1') && requests[1].includes('include_history=0'), true, 'Current preview was not isolated from history loading.');
+    assert.equal(requests[0].includes('include_current=1') && requests[0].includes('include_history=0'), true, 'Initial mobile load did not prioritize the isolated current preview.');
+    assert.equal(requests[1].includes('include_current=0') && requests[1].includes('include_history=1'), true, 'Weekly history was not kept as an independent request.');
+    assert.equal(requests.some((item) => item.includes('include_current=1') && item.includes('refresh_current=1')), true, 'Current-preview Retry did not bypass a stale derived cache.');
     assert.equal(requests.some((item) => item.includes('cursor=2026-08-17') && item.includes('include_current=0') && item.includes('include_history=1')), true, 'History pagination did not use the bounded cursor-only request.');
 
     await page.evaluate(() => { window.__weeklyTest.delay = 260; });

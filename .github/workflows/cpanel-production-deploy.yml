@@ -89,6 +89,7 @@ jobs:
           php tests/zsky24_page_responsiveness_test.php
           php tests/zsky24_reload_guest_boot_test.php
           php tests/zsky24_weekly_creator_review_test.php
+          php tests/zsky24_weekly_mobile_preview_performance_test.php
           php tests/zsky24_calendar_review_periods_test.php
           php tests/zsky24_invalid_view_diagnostics_test.php
           php tests/zsky24_monthly_performance_preview_test.php
@@ -97,6 +98,9 @@ jobs:
           php -l api/admin/dashboard.php >/dev/null
           php -l api/admin/zsky24_creator_admin.php >/dev/null
           php -l api/znews/lib/creator_weekly_reviews.php >/dev/null
+          php -l api/znews/lib/weekly_live_projection.php >/dev/null
+          php -l api/znews/lib/weekly_live_projection_backfill.php >/dev/null
+          php -l api/tools/backfill_znews_weekly_live_projection.php >/dev/null
           php -l api/znews/lib/creator_calendar_reviews.php >/dev/null
           php -l api/znews/lib/creator_view_diagnostics.php >/dev/null
           php -l api/znews/lib/creator_monthly_performance.php >/dev/null
@@ -134,6 +138,9 @@ jobs:
           test -f deployment/api/znews/lib/creator_view_policy.php
           test -f deployment/api/znews/lib/creator_payout_batches.php
           test -f deployment/api/znews/lib/creator_weekly_reviews.php
+          test -f deployment/api/znews/lib/weekly_live_projection.php
+          test -f deployment/api/znews/lib/weekly_live_projection_backfill.php
+          test -f deployment/api/tools/backfill_znews_weekly_live_projection.php
           test -f deployment/api/znews/lib/creator_calendar_reviews.php
           test -f deployment/api/znews/lib/creator_view_diagnostics.php
           test -f deployment/api/znews/lib/creator_monthly_performance.php

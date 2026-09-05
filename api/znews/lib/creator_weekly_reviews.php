@@ -112,6 +112,8 @@ function znews_weekly_review_public_row(array $row): array
     ];
 }
 
+require_once __DIR__ . '/weekly_live_projection.php';
+
 function znews_weekly_review_creator_row(array $row): array
 {
     $safe = znews_weekly_review_public_row($row);
@@ -164,7 +166,7 @@ function znews_weekly_review_load_view(string $viewId, array $indexRow): array
     return is_array($session) ? array_merge($indexRow, $session) : $indexRow;
 }
 
-function znews_weekly_review_creator_metrics(string $creatorUid, array $period): array
+function znews_weekly_review_creator_metrics_legacy(string $creatorUid, array $period): array
 {
     $creatorUid = znews_firebase_key($creatorUid, 'creator_uid');
     $postIndex = fb_get('ZNEWS_USER_POSTS/' . $creatorUid);
@@ -286,6 +288,142 @@ function znews_weekly_review_creator_metrics(string $creatorUid, array $period):
         'metrics' => $metrics,
         'source_view_count' => $sourceViews,
     ];
+}
+
+function znews_weekly_review_empty_metrics(): array
+{
+    return [
+        'post_count' => 0,
+        'raw_views' => 0,
+        'eligible_views' => 0,
+        'invalid_views' => 0,
+        'spam_views' => 0,
+        'duplicate_views' => 0,
+        'creator_views_excluded' => 0,
+        'self_views_excluded' => 0,
+        'pending_views' => 0,
+        'eligible_read_seconds' => 0,
+        'average_eligible_read_seconds' => 0.0,
+    ];
+}
+
+function znews_weekly_review_projection_metrics(string $creatorUid, array $period): array
+{
+    $creatorUid = znews_firebase_key($creatorUid, 'creator_uid');
+    $start = max(0, (int)($period['period_start_at'] ?? 0));
+    $end = max(0, (int)($period['period_end_at'] ?? 0));
+    $periodId = znews_firebase_key((string)($period['period_id'] ?? ''), 'period_id');
+    if ($start <= 0 || $end <= $start || $periodId === '') {
+        return ['ok' => false, 'code' => 'ZNEWS_WEEKLY_PERIOD_INVALID'];
+    }
+
+    $timing = [];
+    $started = microtime(true);
+    $postIndex = fb_get('ZNEWS_USER_POSTS/' . $creatorUid, [
+        'orderBy' => json_encode('created_at'),
+        'startAt' => $start,
+        'endAt' => $end - 1,
+        'limitToFirst' => 501,
+    ]);
+    $timing['post_index_ms'] = round((microtime(true) - $started) * 1000, 2);
+    $postIndex = is_array($postIndex) ? $postIndex : [];
+    if (count($postIndex) > 500) {
+        return ['ok' => false, 'code' => 'ZNEWS_WEEKLY_POST_SOURCE_LIMIT_EXCEEDED', 'timing' => $timing];
+    }
+
+    $started = microtime(true);
+    $views = fb_get(znews_weekly_live_projection_path($creatorUid, $periodId), [
+        'orderBy' => json_encode('$key'),
+        'limitToFirst' => 5001,
+    ]);
+    $timing['view_analytics_reads_ms'] = round((microtime(true) - $started) * 1000, 2);
+    $views = is_array($views) ? $views : [];
+    if (count($views) > 5000) {
+        return ['ok' => false, 'code' => 'ZNEWS_WEEKLY_VIEW_SOURCE_LIMIT_EXCEEDED', 'timing' => $timing];
+    }
+
+    $metrics = znews_weekly_review_empty_metrics();
+    $metrics['post_count'] = count($postIndex);
+    $selfStarted = microtime(true);
+    $invalidMs = 0.0;
+
+    foreach ($views as $view) {
+        if (!is_array($view)) {
+            continue;
+        }
+        $timestamp = max(0, (int)($view['completed_at'] ?? 0));
+        if ($timestamp <= 0) {
+            $timestamp = max(0, (int)($view['created_at'] ?? 0));
+        }
+        if ($timestamp < $start || $timestamp >= $end) {
+            continue;
+        }
+
+        $metrics['raw_views']++;
+        if (!empty($view['creator_view'])) {
+            $metrics['creator_views_excluded']++;
+            if (!empty($view['self_view'])) {
+                $metrics['self_views_excluded']++;
+            }
+            continue;
+        }
+
+        $status = strtoupper(trim((string)($view['status'] ?? '')));
+        $result = strtoupper(trim((string)($view['result'] ?? 'PENDING')));
+        if ($status !== 'COMPLETED' && $status !== 'BLOCKED') {
+            $metrics['pending_views']++;
+            continue;
+        }
+
+        $invalidStarted = microtime(true);
+        $spam = !empty($view['spam_view']);
+        $duplicate = !empty($view['duplicate']);
+        $eligible = $result === 'VALID'
+            && $status === 'COMPLETED'
+            && !empty($view['revenue_share_eligible'])
+            && !$duplicate
+            && !$spam
+            && empty($view['bot_detected'])
+            && empty($view['risk_blocked']);
+        if ($eligible) {
+            $metrics['eligible_views']++;
+            $metrics['eligible_read_seconds'] += max(0, (int)($view['active_seconds'] ?? 0));
+        } else {
+            $metrics['invalid_views']++;
+            if ($spam) {
+                $metrics['spam_views']++;
+            }
+            if ($duplicate) {
+                $metrics['duplicate_views']++;
+            }
+        }
+        $invalidMs += (microtime(true) - $invalidStarted) * 1000;
+    }
+
+    $timing['self_exclusion_ms'] = max(0, round((microtime(true) - $selfStarted) * 1000 - $invalidMs, 2));
+    $timing['invalid_spam_ms'] = round($invalidMs, 2);
+    $eligible = max(0, (int)$metrics['eligible_views']);
+    $metrics['average_eligible_read_seconds'] = $eligible > 0
+        ? round(((int)$metrics['eligible_read_seconds']) / $eligible, 2)
+        : 0.0;
+
+    return [
+        'ok' => true,
+        'metrics' => $metrics,
+        'source_view_count' => count($views),
+        'firebase_read_count' => 2,
+        'timing' => $timing,
+    ];
+}
+
+function znews_weekly_review_creator_metrics(
+    string $creatorUid,
+    array $period,
+    bool $useLiveProjection = false
+): array {
+    return $useLiveProjection
+        ? znews_weekly_review_projection_metrics($creatorUid, $period)
+        : znews_weekly_review_creator_metrics_legacy($creatorUid, $period);
 }
 
 function znews_weekly_review_creator_registry_rows(): array
@@ -699,15 +837,47 @@ function znews_weekly_review_creator_history(string $creatorUid, int $limit = 12
     return znews_weekly_review_creator_history_page($creatorUid, $limit)['items'];
 }
 
-function znews_weekly_review_creator_live_preview(string $creatorUid): array
+function znews_weekly_review_creator_live_preview(
+    string $creatorUid,
+    array $registry = [],
+    bool $bypassCache = false
+): array
 {
+    $totalStarted = microtime(true);
+    $periodStarted = microtime(true);
     $period = znews_weekly_review_period();
-    $metrics = znews_weekly_review_creator_metrics($creatorUid, $period);
-    if (empty($metrics['ok'])) {
-        return ['ok' => false, 'code' => (string)($metrics['code'] ?? 'ZNEWS_WEEKLY_METRICS_FAILED')];
+    $timing = [
+        'period_ms' => round((microtime(true) - $periodStarted) * 1000, 2),
+    ];
+    $now = znews_now();
+    $cacheStarted = microtime(true);
+    $cached = $bypassCache
+        ? null
+        : znews_weekly_preview_cache_read($creatorUid, (string)$period['period_id'], $now);
+    $timing['cache_ms'] = round((microtime(true) - $cacheStarted) * 1000, 2);
+    if (is_array($cached)) {
+        $cached['creator_name'] = trim((string)($registry['name'] ?? $cached['creator_name'] ?? 'Z-Pay creator'));
+        $cached['creator_status'] = znews_creator_normalize_status($registry['status'] ?? $cached['creator_status'] ?? 'ACTIVE');
+        $timing['total_ms'] = round((microtime(true) - $totalStarted) * 1000, 2);
+        return [
+            'ok' => true,
+            'review' => znews_weekly_review_creator_row($cached),
+            'cache_hit' => true,
+            'firebase_read_count' => 0,
+            'timing' => $timing,
+        ];
     }
-    $registry = fb_get(znews_creator_registry_path($creatorUid));
-    $registry = is_array($registry) ? $registry : [];
+
+    $metrics = znews_weekly_review_creator_metrics($creatorUid, $period, true);
+    if (empty($metrics['ok'])) {
+        return [
+            'ok' => false,
+            'code' => (string)($metrics['code'] ?? 'ZNEWS_WEEKLY_METRICS_FAILED'),
+            'timing' => array_merge($timing, (array)($metrics['timing'] ?? [])),
+        ];
+    }
+    $timing = array_merge($timing, (array)($metrics['timing'] ?? []));
+    $trafficStarted = microtime(true);
     $row = array_merge($period, (array)$metrics['metrics'], [
         'creator_uid' => $creatorUid,
         'creator_name' => trim((string)($registry['name'] ?? 'Z-Pay creator')),
@@ -717,10 +887,28 @@ function znews_weekly_review_creator_live_preview(string $creatorUid): array
         'traffic_share_ppm' => 0,
         'traffic_share_percent' => 0.0,
         'traffic_share_pending' => true,
-        'generated_at' => znews_now(),
+        'generated_at' => $now,
         'reviewed_at' => 0,
         'reviewed_by' => '',
         'live_preview' => true,
     ]);
-    return ['ok' => true, 'review' => znews_weekly_review_creator_row($row)];
+    $timing['traffic_share_ms'] = round((microtime(true) - $trafficStarted) * 1000, 2);
+    $review = znews_weekly_review_creator_row($row);
+    $cacheStarted = microtime(true);
+    $cacheWritten = znews_weekly_preview_cache_write(
+        $creatorUid,
+        (string)$period['period_id'],
+        $review,
+        $now
+    );
+    $timing['cache_write_ms'] = round((microtime(true) - $cacheStarted) * 1000, 2);
+    $timing['total_ms'] = round((microtime(true) - $totalStarted) * 1000, 2);
+    return [
+        'ok' => true,
+        'review' => $review,
+        'cache_hit' => false,
+        'cache_written' => $cacheWritten,
+        'firebase_read_count' => (int)($metrics['firebase_read_count'] ?? 0),
+        'timing' => $timing,
+    ];
 }
