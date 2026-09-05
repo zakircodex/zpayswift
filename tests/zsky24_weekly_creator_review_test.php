@@ -4,6 +4,7 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $failures = [];
 $weeklyFakeDb = [];
+$weeklyFbQueries = [];
 
 function weekly_expect(bool $condition, string $message): void
 {
@@ -29,9 +30,20 @@ function znews_creator_normalize_status($value): string {
 }
 function znews_view_path(string $viewId): string { return 'ZNEWS_VIEW_SESSIONS/' . trim($viewId); }
 function znews_view_risk_threshold(): int { return 70; }
-function fb_get(string $path) {
-    global $weeklyFakeDb;
-    return $weeklyFakeDb[$path] ?? null;
+function fb_get(string $path, array $query = []) {
+    global $weeklyFakeDb, $weeklyFbQueries;
+    $weeklyFbQueries[] = ['path' => $path, 'query' => $query];
+    $value = $weeklyFakeDb[$path] ?? null;
+    if (!is_array($value) || json_decode((string)($query['orderBy'] ?? 'null'), true) !== '$key') {
+        return $value;
+    }
+    $endAt = json_decode((string)($query['endAt'] ?? 'null'), true);
+    if (is_string($endAt) && $endAt !== '') {
+        $value = array_filter($value, static fn($row, $key): bool => strcmp((string)$key, $endAt) <= 0, ARRAY_FILTER_USE_BOTH);
+    }
+    ksort($value, SORT_STRING);
+    $limit = max(0, (int)($query['limitToLast'] ?? 0));
+    return $limit > 0 ? array_slice($value, -$limit, null, true) : $value;
 }
 
 require_once $root . '/api/znews/lib/creator_weekly_reviews.php';
@@ -132,6 +144,36 @@ weekly_expect(($metrics['self_views_excluded'] ?? -1) === 1, 'Creator self-view 
 weekly_expect(($metrics['pending_views'] ?? -1) === 1, 'Incomplete view sessions must remain pending.');
 weekly_expect(($metricsResult['source_view_count'] ?? -1) === 6, 'Source audit count must include the future record before period filtering.');
 
+$historyRows = [
+    '2026-08-03' => ['period_start_at' => strtotime('2026-08-03 UTC')],
+    '2026-07-27' => ['period_start_at' => strtotime('2026-07-27 UTC')],
+    '2026-07-20' => ['period_start_at' => strtotime('2026-07-20 UTC')],
+];
+$weeklyFakeDb['ZNEWS_WEEKLY_REVIEWS_BY_CREATOR/creator-a'] = $historyRows;
+foreach ($historyRows as $periodId => $reference) {
+    $weeklyFakeDb['ZNEWS_WEEKLY_REVIEWS/' . $periodId . '/creator-a'] = [
+        'period_id' => $periodId,
+        'period_start_at' => (int)$reference['period_start_at'],
+        'period_start_date' => $periodId,
+        'period_end_date' => gmdate('Y-m-d', (int)$reference['period_start_at'] + 518400),
+        'creator_uid' => 'creator-a',
+        'review_status' => 'APPROVED',
+        'eligible_views' => 10,
+        'reviewed_by' => 'PRIVATE_ADMIN_UID',
+    ];
+}
+$weeklyFbQueries = [];
+$historyPageOne = znews_weekly_review_creator_history_page('creator-a', 2);
+weekly_expect(array_column($historyPageOne['items'], 'period_id') === ['2026-08-03', '2026-07-27'], 'Weekly history first page order is incorrect.');
+weekly_expect(($historyPageOne['has_more'] ?? false) === true && ($historyPageOne['next_cursor'] ?? '') === '2026-07-27', 'Weekly history first-page cursor is incorrect.');
+$historyIndexQuery = $weeklyFbQueries[0]['query'] ?? [];
+weekly_expect(($historyIndexQuery['orderBy'] ?? '') === json_encode('$key'), 'Weekly history is not ordered by bounded Firebase keys.');
+weekly_expect(($historyIndexQuery['limitToLast'] ?? 0) === 3, 'Weekly history first page does not request only limit plus one rows.');
+$historyPageTwo = znews_weekly_review_creator_history_page('creator-a', 2, '2026-07-27');
+weekly_expect(array_column($historyPageTwo['items'], 'period_id') === ['2026-07-20'], 'Weekly history cursor page is incorrect.');
+weekly_expect(($historyPageTwo['has_more'] ?? true) === false, 'Weekly history incorrectly reports another page.');
+weekly_expect(!array_key_exists('reviewed_by', $historyPageOne['items'][0] ?? []), 'Creator response exposes the reviewing admin identifier.');
+
 $engine = weekly_source('api/znews/lib/creator_weekly_reviews.php');
 $mine = weekly_source('api/znews/reviews/mine.php');
 $gateway = weekly_source('api/admin/zsky24_creator_admin.php');
@@ -173,6 +215,8 @@ weekly_expect(!preg_match('/amount_(?:micros|usd)|revenue_(?:micros|usd)|payout_
 weekly_expect(str_contains($mine, "znews/reviews/mine.php") === false, 'Creator endpoint unexpectedly references itself.');
 weekly_expect(str_contains($mine, 'auth_require_user(false)'), 'Creator weekly report must use the existing authenticated Z-Pay session.');
 weekly_expect(str_contains($mine, 'money_fields_present'), 'Creator response must state that money fields are absent.');
+weekly_expect(!str_contains($mine, "\$_GET['uid']"), 'Creator weekly report must not trust a client-supplied UID.');
+weekly_expect(str_contains($mine, "'next_cursor'") && str_contains($mine, "'has_more'"), 'Creator weekly history pagination metadata is missing.');
 
 foreach (['weekly_periods', 'weekly_review', 'weekly_generate', 'weekly_status'] as $action) {
     weekly_expect(str_contains($gateway, "'{$action}'"), "Admin gateway action is missing: {$action}");
@@ -198,21 +242,21 @@ weekly_expect(str_contains($index, 'Z Sky 24 does not maintain a creator wallet'
 weekly_expect(!str_contains($index, '>Creator balance<'), 'Legacy creator balance label remains visible.');
 weekly_expect(!str_contains($index, 'Transfer to Z-Pay balance'), 'Legacy transfer action remains visible.');
 weekly_expect(!str_contains($index, '৳0.01–৳0.03'), 'Legacy per-ad credit promise remains visible.');
-weekly_expect(str_contains($bootstrap, 'znews-weekly-review.js?v=1'), 'Weekly creator report JavaScript is not loaded after creator authentication.');
-weekly_expect(str_contains($bootstrap, 'znews-weekly-review.css?v=1'), 'Weekly creator report stylesheet is not loaded after creator authentication.');
+weekly_expect(str_contains($bootstrap, 'znews-weekly-review.js?v=2'), 'Weekly creator report JavaScript is not loaded after creator authentication.');
+weekly_expect(str_contains($bootstrap, 'znews-weekly-review.css?v=2'), 'Weekly creator report stylesheet is not loaded after creator authentication.');
 
-weekly_expect(str_contains($weeklyJs, 'retiredBalanceSummary'), 'Legacy Z Sky balance request is not disabled.');
-weekly_expect(str_contains($weeklyJs, "znews/reviews/mine.php"), 'Creator weekly report endpoint is not wired.');
+weekly_expect(str_contains($weeklyJs, 'weeklyReviews'), 'Creator weekly report API method is not wired.');
 weekly_expect(str_contains($weeklyJs, 'Creator views excluded'), 'Creator exclusion metric is not shown.');
-weekly_expect(str_contains($weeklyJs, 'No money or balance is calculated'), 'Creator UI does not explain the non-financial review.');
+weekly_expect(str_contains($weeklyJs, 'Weekly performance could not be loaded.'), 'Inline weekly performance error state is missing.');
+weekly_expect(!str_contains($weeklyJs, 'balanceSummary'), 'Weekly performance still invokes the retired balance API.');
 
 foreach ([
-    [$embeddedWorker, 'zsky24-embedded-shell-v27'],
-    [$standaloneWorker, 'zsky24-standalone-shell-v27'],
+    [$embeddedWorker, 'zsky24-embedded-shell-v28'],
+    [$standaloneWorker, 'zsky24-standalone-shell-v28'],
 ] as [$worker, $cacheName]) {
     weekly_expect(str_contains($worker, $cacheName), "Weekly review service-worker generation is missing: {$cacheName}");
-    weekly_expect(str_contains($worker, 'znews-weekly-review.js?v=1'), 'Weekly review JavaScript is missing from a service-worker shell.');
-    weekly_expect(str_contains($worker, 'znews-weekly-review.css?v=1'), 'Weekly review CSS is missing from a service-worker shell.');
+    weekly_expect(str_contains($worker, 'znews-weekly-review.js?v=2'), 'Weekly review JavaScript is missing from a service-worker shell.');
+    weekly_expect(str_contains($worker, 'znews-weekly-review.css?v=2'), 'Weekly review CSS is missing from a service-worker shell.');
     weekly_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'A service worker may cache weekly API responses.');
 }
 

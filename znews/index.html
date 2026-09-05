@@ -16,15 +16,15 @@
   <link id="appManifest" rel="manifest" href="/znews/manifest.webmanifest">
   <link rel="stylesheet" href="/znews/assets/znews.css?v=4">
   <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=17">
-  <script defer src="/znews/assets/znews-config.js?v=8"></script>
-  <script defer src="/znews/assets/znews-api.js?v=13"></script>
+  <script defer src="/znews/assets/znews-config.js?v=9"></script>
+  <script defer src="/znews/assets/znews-api.js?v=14"></script>
   <script defer src="/znews/assets/znews-request-scheduler.js?v=1"></script>
   <script defer src="/znews/assets/znews-progressive-feed.js?v=3"></script>
   <script defer src="/znews/assets/znews-feed-ui.js?v=3"></script>
   <script defer src="/znews/assets/znews-ads.js?v=2"></script>
   <script defer src="/znews/assets/znews-rich-editor.js?v=5"></script>
-  <script defer src="/znews/assets/znews-bootstrap.js?v=32"></script>
-  <script defer src="/znews/assets/znews.js?v=27"></script>
+  <script defer src="/znews/assets/znews-bootstrap.js?v=33"></script>
+  <script defer src="/znews/assets/znews.js?v=28"></script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -65,7 +65,7 @@
       <button type="button" data-menu-route="feed"><span>⌂</span><strong>News feed</strong></button>
       <button type="button" data-menu-route="create" data-auth-only hidden><span>＋</span><strong>Create post</strong></button>
       <button type="button" data-menu-route="mine" data-auth-only hidden><span>▤</span><strong>My posts</strong></button>
-      <button type="button" data-menu-route="balance" data-auth-only hidden><span>◈</span><strong>Weekly performance</strong></button>
+      <button type="button" data-menu-route="performance" data-auth-only hidden><span>◈</span><strong>Weekly performance</strong></button>
       <button type="button" data-menu-route="policy"><span>ⓘ</span><strong>Creator policy</strong></button>
       <a href="https://zpayswift.com/user/dashboard" data-zpay-dashboard><span>↗</span><strong>Z-Pay Dashboard</strong></a>
       <a href="https://zpayswift.com/user" data-guest-only data-zpay-login><span>＋</span><strong>Join Z-Pay</strong></a>
@@ -86,7 +86,7 @@
         <button class="side-nav-item active" type="button" data-route="feed"><span>⌂</span>News feed</button>
         <button class="side-nav-item" type="button" data-route="create" data-auth-only hidden><span>＋</span>Create post</button>
         <button class="side-nav-item" type="button" data-route="mine" data-auth-only hidden><span>▤</span>My posts</button>
-        <button class="side-nav-item" type="button" data-route="balance" data-auth-only hidden><span>◈</span>Weekly performance</button>
+        <button class="side-nav-item" type="button" data-route="performance" data-auth-only hidden><span>◈</span>Weekly performance</button>
         <a class="side-nav-item" href="https://zpayswift.com/user" data-guest-only data-zpay-login><span>＋</span>Sign in / Join Z-Pay</a>
         <button class="side-nav-item" type="button" data-route="policy"><span>ⓘ</span>Creator policy</button>
       </nav>
@@ -202,23 +202,59 @@
         <button class="load-more" id="mineLoadMoreButton" type="button" hidden>Load more</button>
       </section>
 
-      <section id="balanceView" class="view" data-view="balance" data-auth-only hidden>
-        <div class="weekly-performance-hero card" id="weeklyCurrentReview">
-          <div class="weekly-performance-heading">
-            <div><span class="eyebrow">Creator performance</span><h1>Weekly report</h1><span class="weekly-period-label" id="weeklyCurrentPeriod">Current week</span></div>
-            <span class="weekly-status live" id="weeklyCurrentStatus">LIVE PREVIEW</span>
-          </div>
-          <div id="weeklyCurrentMetrics" class="weekly-performance-metrics"></div>
-          <p class="weekly-performance-note" id="weeklyCurrentNote">Loading verified creator engagement…</p>
-          <button class="balance-policy-link" type="button" data-route="policy">View creator review policy</button>
-          <div class="weekly-performance-compat" aria-hidden="true">
-            <strong id="balanceAmount">0</strong><p id="balanceStatus"></p><button id="transferButton" type="button" disabled></button>
-          </div>
+      <section id="weeklyPerformanceView" class="view weekly-performance-page" data-view="performance" data-auth-only hidden>
+        <header class="weekly-page-header">
+          <button class="weekly-back-button" type="button" data-route="feed" aria-label="Back to news feed">‹</button>
+          <div><h1>Weekly Performance</h1><p>Track your verified weekly engagement</p></div>
+          <button class="weekly-refresh-button" id="weeklyReviewRefresh" type="button" aria-label="Refresh weekly performance"><span aria-hidden="true">↻</span><span class="weekly-refresh-label">Refresh</span></button>
+        </header>
+
+        <p class="weekly-inline-status" id="weeklyInlineStatus" aria-live="polite" hidden></p>
+        <div class="weekly-loading-shell" id="weeklyPerformanceSkeleton" aria-hidden="true" hidden>
+          <div class="weekly-skeleton weekly-skeleton-hero"></div>
+          <div class="weekly-skeleton-grid"><i></i><i></i><i></i><i></i></div>
+          <div class="weekly-skeleton weekly-skeleton-row"></div>
+          <div class="weekly-skeleton weekly-skeleton-row"></div>
         </div>
-        <div class="page-card card weekly-history-card">
-          <div class="weekly-history-head"><div><h2>Previous weekly reviews</h2><p>Admin-reviewed performance snapshots. No balance or withdrawal is created here.</p></div><button class="ghost-button" id="weeklyReviewRefresh" type="button">Refresh report</button></div>
-          <div id="weeklyReviewHistory" class="weekly-history-list"></div>
-          <div id="ledgerList" class="weekly-performance-compat" aria-hidden="true"></div>
+
+        <div class="weekly-performance-content" id="weeklyPerformanceContent" hidden>
+          <article class="weekly-performance-hero" id="weeklyCurrentReview" aria-labelledby="weeklyCurrentTitle">
+            <div class="weekly-performance-heading">
+              <div><span class="eyebrow">Current week</span><h2 id="weeklyCurrentTitle">Verified engagement</h2><span class="weekly-period-label" id="weeklyCurrentPeriod">Current week</span></div>
+              <span class="weekly-status live" id="weeklyCurrentStatus" role="status">LIVE</span>
+            </div>
+            <div class="weekly-primary-metric"><span>Eligible views</span><strong id="weeklyEligibleViews" title="0">0</strong></div>
+            <div class="weekly-hero-metrics" id="weeklyHeroMetrics"></div>
+            <div class="weekly-verification" id="weeklyVerification" aria-label="View verification breakdown"></div>
+            <p class="weekly-performance-note" id="weeklyCurrentNote"></p>
+          </article>
+
+          <section class="weekly-overview" aria-labelledby="weeklyOverviewTitle">
+            <div class="weekly-section-heading"><div><span class="eyebrow">Overview</span><h2 id="weeklyOverviewTitle">Performance overview</h2></div></div>
+            <div id="weeklyCurrentMetrics" class="weekly-performance-metrics"></div>
+          </section>
+
+          <aside class="weekly-how-it-works" aria-labelledby="weeklyHowTitle">
+            <div><span class="weekly-info-icon" aria-hidden="true">i</span><div><h2 id="weeklyHowTitle">How this works</h2><p>Only verified guest engagement can qualify. Creator and self views are excluded, while duplicate, bot and suspicious activity may be invalidated. Completed weeks may require admin review.</p></div></div>
+            <button class="weekly-policy-link" type="button" data-route="policy">View creator policy</button>
+          </aside>
+
+          <section class="weekly-history-card" aria-labelledby="weeklyHistoryTitle">
+            <div class="weekly-history-head"><div><span class="eyebrow">History</span><h2 id="weeklyHistoryTitle">Previous weekly reviews</h2><p>Admin-reviewed performance snapshots.</p></div></div>
+            <div id="weeklyReviewHistory" class="weekly-history-list"></div>
+            <button class="weekly-load-more" id="weeklyReviewLoadMore" type="button" hidden>Load more</button>
+          </section>
+        </div>
+
+        <dialog class="weekly-detail-dialog" id="weeklyDetailDialog" aria-labelledby="weeklyDetailTitle">
+          <div class="weekly-detail-sheet">
+            <header><div><span class="eyebrow">Weekly review</span><h2 id="weeklyDetailTitle">Week details</h2></div><button type="button" id="weeklyDetailClose" aria-label="Close week details">×</button></header>
+            <div id="weeklyDetailBody"></div>
+          </div>
+        </dialog>
+
+        <div class="weekly-performance-compat" aria-hidden="true">
+          <strong id="balanceAmount">0</strong><p id="balanceStatus"></p><button id="transferButton" type="button" disabled></button><div id="ledgerList"></div>
         </div>
       </section>
 
@@ -252,7 +288,7 @@
     <aside class="right-rail">
       <section class="card compact-card"><span class="eyebrow">Z Sky 24</span><h2>Community guidelines</h2><p>Share original, respectful content. Posts and comments may be hidden later when they violate safety or copyright rules.</p></section>
       <div class="ad-slot" data-znews-ad-slot="feed_sidebar" data-format="mobile_banner" aria-label="Sponsored content"></div>
-      <section class="card compact-card performance-mini" data-auth-only hidden><span>Creator report</span><strong>Weekly performance</strong><button class="ghost-button full" type="button" data-route="balance">View report</button><strong id="miniBalance" class="weekly-performance-compat">0</strong></section>
+      <section class="card compact-card performance-mini" data-auth-only hidden><span>Creator report</span><strong>Weekly performance</strong><button class="ghost-button full" type="button" data-route="performance">View report</button><strong id="miniBalance" class="weekly-performance-compat">0</strong></section>
     </aside>
   </main>
 

@@ -112,6 +112,13 @@ function znews_weekly_review_public_row(array $row): array
     ];
 }
 
+function znews_weekly_review_creator_row(array $row): array
+{
+    $safe = znews_weekly_review_public_row($row);
+    unset($safe['reviewed_by']);
+    return $safe;
+}
+
 function znews_weekly_review_view_is_spam(array $view): bool
 {
     if (!empty($view['guest_spam']) || !empty($view['bot_detected'])) {
@@ -630,33 +637,66 @@ function znews_weekly_review_set_status(
     return ['ok' => false, 'code' => 'ZNEWS_WEEKLY_REVIEW_BUSY', 'http_status' => 409];
 }
 
-function znews_weekly_review_creator_history(string $creatorUid, int $limit = 12): array
+function znews_weekly_review_history_cursor($value): string
+{
+    $cursor = trim((string)$value);
+    if ($cursor === '') {
+        return '';
+    }
+    if (strlen($cursor) !== 10 || empty(znews_weekly_review_period($cursor)['ok'])) {
+        api_response(false, 'ZNEWS_INVALID_CURSOR', 'Invalid cursor.', [], 422);
+    }
+    return $cursor;
+}
+
+function znews_weekly_review_creator_history_page(
+    string $creatorUid,
+    int $limit = 6,
+    string $cursor = ''
+): array
 {
     $creatorUid = znews_firebase_key($creatorUid, 'creator_uid');
-    $limit = max(1, min(52, $limit));
-    $index = fb_get('ZNEWS_WEEKLY_REVIEWS_BY_CREATOR/' . $creatorUid);
-    $refs = [];
-    if (is_array($index)) {
-        foreach ($index as $periodId => $row) {
-            if (is_array($row)) {
-                $refs[] = [
-                    'period_id' => (string)$periodId,
-                    'period_start_at' => max(0, (int)($row['period_start_at'] ?? 0)),
-                ];
-            }
-        }
+    $limit = max(1, min(12, $limit));
+    $cursor = znews_weekly_review_history_cursor($cursor);
+    $query = [
+        'orderBy' => json_encode('$key'),
+        'limitToLast' => $limit + 1 + ($cursor !== '' ? 1 : 0),
+    ];
+    if ($cursor !== '') {
+        $query['endAt'] = json_encode($cursor);
     }
-    usort($refs, static fn(array $a, array $b): int =>
-        ((int)$b['period_start_at']) <=> ((int)$a['period_start_at'])
-    );
+
+    $index = fb_get('ZNEWS_WEEKLY_REVIEWS_BY_CREATOR/' . $creatorUid, $query);
+    $index = is_array($index) ? $index : [];
+    if ($cursor !== '') {
+        unset($index[$cursor]);
+    }
+    krsort($index, SORT_STRING);
+    $periodIds = array_keys($index);
+    $hasMore = count($periodIds) > $limit;
+    $periodIds = array_slice($periodIds, 0, $limit);
+
     $items = [];
-    foreach (array_slice($refs, 0, $limit) as $ref) {
-        $row = fb_get(znews_weekly_review_creator_path((string)$ref['period_id'], $creatorUid));
+    foreach ($periodIds as $periodId) {
+        $row = fb_get(znews_weekly_review_creator_path((string)$periodId, $creatorUid));
         if (is_array($row)) {
-            $items[] = znews_weekly_review_public_row($row);
+            $items[] = znews_weekly_review_creator_row($row);
         }
     }
-    return $items;
+    $nextCursor = $hasMore && $items
+        ? (string)($items[count($items) - 1]['period_id'] ?? '')
+        : '';
+
+    return [
+        'items' => $items,
+        'next_cursor' => $nextCursor,
+        'has_more' => $hasMore && $nextCursor !== '',
+    ];
+}
+
+function znews_weekly_review_creator_history(string $creatorUid, int $limit = 12): array
+{
+    return znews_weekly_review_creator_history_page($creatorUid, $limit)['items'];
 }
 
 function znews_weekly_review_creator_live_preview(string $creatorUid): array
@@ -682,5 +722,5 @@ function znews_weekly_review_creator_live_preview(string $creatorUid): array
         'reviewed_by' => '',
         'live_preview' => true,
     ]);
-    return ['ok' => true, 'review' => znews_weekly_review_public_row($row)];
+    return ['ok' => true, 'review' => znews_weekly_review_creator_row($row)];
 }

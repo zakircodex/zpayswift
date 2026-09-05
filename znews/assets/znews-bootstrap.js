@@ -301,7 +301,7 @@
 
   async function loadPostPaintModules(authenticated) {
     const accessResult = await Promise.allSettled([
-      loadScript('/znews/assets/znews-access.js?v=3')
+      loadScript('/znews/assets/znews-access.js?v=4')
     ]);
     const publicModules = [
       loadStylesheet('/znews/assets/znews-reader.css?v=2'),
@@ -311,8 +311,8 @@
     ];
     const imageOptimizerReady = authenticated ? ensureImageOptimizer() : Promise.resolve(null);
     const creatorModules = authenticated ? [
-      loadStylesheet('/znews/assets/znews-weekly-review.css?v=1'),
-      loadScript('/znews/assets/znews-weekly-review.js?v=1'),
+      loadStylesheet('/znews/assets/znews-weekly-review.css?v=2'),
+      loadScript('/znews/assets/znews-weekly-review.js?v=2'),
       imageOptimizerReady.then(() => loadScript('/znews/assets/znews-creator.js?v=14')),
       loadScript('/znews/assets/znews-instant-comments.js?v=4')
     ] : [];

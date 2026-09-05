@@ -5,195 +5,373 @@
   const ApiClient = window.ZNewsApiClient;
   if (!config || !ApiClient) return;
 
-  // Retire legacy Z Sky balance calls without touching any Z-Pay wallet code.
-  ApiClient.prototype.balanceSummary = async function retiredBalanceSummary(){
-    return {ok:true, data:{balances:[], minimum_bdt_micros:200000000, retired:true}};
+  const api = window.ZNEWS_API_CLIENT || new ApiClient(config);
+  const state = {
+    loading: false,
+    loaded: false,
+    items: [],
+    cursor: '',
+    hasMore: false,
+    detailTrigger: null,
+    skeletonTimer: 0,
+    statusTimer: 0,
+    retryMode: 'refresh'
   };
-  ApiClient.prototype.balanceLedger = async function retiredBalanceLedger(){
-    return {ok:true, data:{items:[], retired:true}};
-  };
-  ApiClient.prototype.requestTransfer = async function retiredTransfer(){
-    throw new window.ZNewsApiError('Z Sky balance and withdrawal are retired.', {
-      code:'ZNEWS_BALANCE_RETIRED', status:410
-    });
+  const $ = (selector) => document.querySelector(selector);
+  const text = (value) => String(value ?? '');
+  const number = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   };
 
-  const state = {loading:false, loaded:false};
-  const $ = selector => document.querySelector(selector);
-  const text = value => String(value ?? '');
-
-  function escapeHtml(value){
-    return text(value).replace(/[&<>'"]/g, char => ({
-      '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;'
+  function escapeHtml(value) {
+    return text(value).replace(/[&<>'"]/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
     })[char]);
   }
 
-  function formatPeriod(row){
-    const start = text(row?.period_start_date || row?.period_id);
-    const end = text(row?.period_end_date);
-    return end ? `${start} – ${end}` : start || 'Current week';
+  function formatCompactNumber(value) {
+    const exact = Math.floor(number(value));
+    if (exact < 1000) return String(exact);
+    const units = [
+      { threshold: 1_000_000, suffix: 'M' },
+      { threshold: 1_000, suffix: 'K' }
+    ];
+    const unit = units.find((item) => exact >= item.threshold);
+    if (!unit) return String(exact);
+    const scaled = exact / unit.threshold;
+    return `${scaled >= 100 ? Math.round(scaled) : scaled.toFixed(1).replace(/\.0$/, '')}${unit.suffix}`;
   }
 
-  function formatStatus(value){
-    return text(value || 'UNDER_REVIEW').replaceAll('_', ' ');
+  function formatPercent(value) {
+    const safe = Math.max(0, Math.min(100, number(value)));
+    return `${safe.toFixed(1).replace(/\.0$/, '')}%`;
   }
 
-  function statusClass(value){
-    const status = text(value).toUpperCase();
-    if (status === 'APPROVED') return 'approved';
-    if (status === 'HELD') return 'held';
-    return 'review';
+  function formatDate(value, options) {
+    const match = text(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return '';
+    const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+    return new Intl.DateTimeFormat('en', { timeZone: 'UTC', ...options }).format(date);
   }
 
-  function setViewActive(){
-    document.querySelectorAll('.view').forEach(view => {
-      view.classList.toggle('active', view.id === 'balanceView');
+  function formatPeriod(row) {
+    const start = formatDate(row?.period_start_date || row?.period_id, { day: 'numeric', month: 'short' });
+    const end = formatDate(row?.period_end_date, { day: 'numeric', month: 'short', year: 'numeric' });
+    return start && end ? `${start} – ${end}` : start || end || 'Current week';
+  }
+
+  function canonicalStatus(row) {
+    if (row?.live_preview) return 'LIVE';
+    const status = text(row?.review_status || 'UNDER_REVIEW').toUpperCase();
+    return ['UNDER_REVIEW', 'APPROVED', 'HELD', 'REJECTED'].includes(status)
+      ? status
+      : 'UNDER_REVIEW';
+  }
+
+  function statusLabel(status) {
+    return status === 'UNDER_REVIEW' ? 'UNDER REVIEW' : status;
+  }
+
+  function statusClass(status) {
+    return status.toLowerCase().replaceAll('_', '-');
+  }
+
+  function statusMarkup(row) {
+    const status = canonicalStatus(row);
+    const label = statusLabel(status);
+    return `<span class="weekly-status ${statusClass(status)}" aria-label="Review status: ${escapeHtml(label)}">${escapeHtml(label)}</span>`;
+  }
+
+  function metricMarkup(label, value, tone = '', suffix = '') {
+    const exact = Math.floor(number(value));
+    const formatted = suffix ? `${number(value).toFixed(1).replace(/\.0$/, '')}${suffix}` : formatCompactNumber(exact);
+    const title = suffix ? formatted : exact.toLocaleString('en-US');
+    return `<article class="weekly-performance-metric ${tone}"><span>${escapeHtml(label)}</span><strong title="${escapeHtml(title)}">${escapeHtml(formatted)}</strong></article>`;
+  }
+
+  function breakdownValues(row) {
+    const raw = number(row?.raw_views);
+    const eligible = Math.min(raw, number(row?.eligible_views));
+    const invalid = Math.min(Math.max(0, raw - eligible), number(row?.invalid_views));
+    const excluded = Math.min(Math.max(0, raw - eligible - invalid), number(row?.creator_views_excluded));
+    const pending = Math.max(0, raw - eligible - invalid - excluded);
+    return { raw, eligible, invalid, excluded, pending };
+  }
+
+  function breakdownMarkup(row, idPrefix) {
+    const values = breakdownValues(row);
+    const denominator = values.raw || 1;
+    const segments = [
+      ['eligible', 'Eligible', values.eligible],
+      ['invalid', 'Invalid', values.invalid],
+      ['excluded', 'Excluded', values.excluded],
+      ['pending', 'Pending', values.pending]
+    ];
+    const bar = segments.map(([kind, label, value]) => {
+      const width = values.raw > 0 ? (value / denominator) * 100 : 0;
+      return `<span class="weekly-bar-segment ${kind}" data-weekly-width="${width.toFixed(4)}" title="${escapeHtml(label)}: ${Math.floor(value)}"></span>`;
+    }).join('');
+    const legend = segments.slice(0, 3).map(([kind, label, value]) => {
+      const percent = values.raw > 0 ? (value / denominator) * 100 : 0;
+      return `<span><i class="${kind}" aria-hidden="true"></i>${escapeHtml(label)} <strong>${escapeHtml(formatPercent(percent))}</strong></span>`;
+    }).join('');
+    return `<div class="weekly-bar" role="img" aria-label="Eligible ${Math.floor(values.eligible)}, invalid ${Math.floor(values.invalid)}, excluded ${Math.floor(values.excluded)} out of ${Math.floor(values.raw)} total views">${bar}</div><div class="weekly-bar-legend" id="${escapeHtml(idPrefix)}Legend">${legend}</div>`;
+  }
+
+  function applyBreakdownWidths(root) {
+    root?.querySelectorAll('[data-weekly-width]').forEach((segment) => {
+      const width = Math.max(0, Math.min(100, number(segment.dataset.weeklyWidth)));
+      segment.style.flexBasis = `${width}%`;
     });
-    document.querySelectorAll('[data-route]').forEach(button => {
-      button.classList.toggle('active', button.dataset.route === 'balance');
-    });
-    document.documentElement.dataset.znewsRoute = 'balance';
-    const drawer = $('#menuDrawer');
-    const backdrop = $('#menuBackdrop');
-    if (drawer) {
-      drawer.setAttribute('aria-hidden', 'true');
-      drawer.classList.remove('open');
-    }
-    if (backdrop) backdrop.hidden = true;
-    window.scrollTo({top:0, behavior:'auto'});
   }
 
-  function metricMarkup(label, value, tone=''){
-    return `<div class="weekly-performance-metric ${tone}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
-  }
-
-  function renderCurrent(review, creator){
-    const current = $('#weeklyCurrentReview');
-    const metrics = $('#weeklyCurrentMetrics');
-    const note = $('#weeklyCurrentNote');
-    const status = $('#weeklyCurrentStatus');
-    if (!current || !metrics || !note || !status) return;
-
+  function renderCurrent(review, creator) {
+    const status = canonicalStatus(review);
     $('#weeklyCurrentPeriod').textContent = formatPeriod(review);
-    status.textContent = review.live_preview ? 'LIVE PREVIEW' : formatStatus(review.review_status);
-    status.className = `weekly-status ${review.live_preview ? 'live' : statusClass(review.review_status)}`;
-    metrics.innerHTML = [
-      metricMarkup('Raw views', review.raw_views || 0),
-      metricMarkup('Eligible views', review.eligible_views || 0, 'good'),
-      metricMarkup('Invalid views', review.invalid_views || 0, 'danger'),
-      metricMarkup('Spam views', review.spam_views || 0, 'danger'),
-      metricMarkup('Creator views excluded', review.creator_views_excluded || 0),
-      metricMarkup('Self-views excluded', review.self_views_excluded || 0),
-      metricMarkup('Duplicate views', review.duplicate_views || 0),
-      metricMarkup('Posts this week', review.post_count || 0),
+    const badge = $('#weeklyCurrentStatus');
+    badge.textContent = statusLabel(status);
+    badge.className = `weekly-status ${statusClass(status)}`;
+    badge.setAttribute('aria-label', `Review status: ${statusLabel(status)}`);
+
+    const eligible = Math.floor(number(review?.eligible_views));
+    const eligibleNode = $('#weeklyEligibleViews');
+    eligibleNode.textContent = formatCompactNumber(eligible);
+    eligibleNode.title = eligible.toLocaleString('en-US');
+
+    $('#weeklyHeroMetrics').innerHTML = [
+      metricMarkup('Total views', review?.raw_views),
+      metricMarkup('Invalid', review?.invalid_views, 'danger'),
+      metricMarkup('Self views', review?.self_views_excluded),
+      metricMarkup('Spam / Bot', review?.spam_views, 'danger')
     ].join('');
 
-    const creatorStatus = text(creator?.status || review.creator_status || 'ACTIVE').toUpperCase();
+    const verification = $('#weeklyVerification');
+    verification.innerHTML = breakdownMarkup(review, 'weeklyCurrent');
+    applyBreakdownWidths(verification);
+
+    const metrics = [
+      metricMarkup('Eligible views', review?.eligible_views, 'good'),
+      metricMarkup('Total views', review?.raw_views),
+      metricMarkup('Invalid views', review?.invalid_views, 'danger'),
+      metricMarkup('Creator views excluded', review?.creator_views_excluded),
+      metricMarkup('Self views', review?.self_views_excluded),
+      metricMarkup('Spam / Bot', review?.spam_views, 'danger'),
+      metricMarkup('Duplicate views', review?.duplicate_views),
+      metricMarkup('Pending verification', review?.pending_views)
+    ];
+    if (!review?.traffic_share_pending) {
+      metrics.push(metricMarkup('Traffic share', review?.traffic_share_percent, 'accent', '%'));
+    }
+    $('#weeklyCurrentMetrics').innerHTML = metrics.join('');
+
+    const note = $('#weeklyCurrentNote');
+    const creatorStatus = text(creator?.status || review?.creator_status || 'ACTIVE').toUpperCase();
     if (creatorStatus === 'BLOCKED') {
-      note.textContent = 'Your creator account is blocked. Previous reports remain visible, but payout eligibility is disabled.';
+      note.textContent = 'Your creator account is blocked. Previous reports remain available for reference.';
       note.className = 'weekly-performance-note danger';
-    } else if (review.traffic_share_pending) {
-      note.textContent = 'Traffic share is calculated after the completed week is generated by the admin. No money or balance is calculated on this page.';
+    } else if (review?.traffic_share_pending) {
+      note.textContent = 'Traffic share is finalized after the week closes and the review is generated.';
       note.className = 'weekly-performance-note';
     } else {
-      note.textContent = `Verified traffic share for this review: ${Number(review.traffic_share_percent || 0).toFixed(4)}%.`;
+      note.textContent = `Verified traffic share for this review: ${formatPercent(review?.traffic_share_percent)}.`;
       note.className = 'weekly-performance-note';
     }
   }
 
-  function historyMarkup(row){
-    const reason = text(row.review_reason).trim();
-    return `
-      <article class="weekly-history-row">
-        <div><strong>${escapeHtml(formatPeriod(row))}</strong><span>${escapeHtml(row.post_count || 0)} posts • ${escapeHtml(row.raw_views || 0)} raw views</span></div>
-        <div><small>Eligible</small><strong>${escapeHtml(row.eligible_views || 0)}</strong></div>
-        <div><small>Invalid</small><strong>${escapeHtml(row.invalid_views || 0)}</strong></div>
-        <div><small>Traffic share</small><strong>${escapeHtml(Number(row.traffic_share_percent || 0).toFixed(4))}%</strong></div>
-        <div><span class="weekly-status ${statusClass(row.review_status)}">${escapeHtml(formatStatus(row.review_status))}</span>${reason ? `<small class="weekly-hold-reason">${escapeHtml(reason)}</small>` : ''}</div>
-      </article>`;
+  function historyMarkup(row) {
+    const periodId = text(row?.period_id);
+    return `<button class="weekly-history-row" type="button" data-weekly-period="${escapeHtml(periodId)}" aria-haspopup="dialog" aria-expanded="false">
+      <span class="weekly-history-main"><strong>${escapeHtml(formatPeriod(row))}</strong><small>${escapeHtml(formatCompactNumber(row?.raw_views))} total views</small></span>
+      <span class="weekly-history-stat"><small>Eligible</small><strong title="${Math.floor(number(row?.eligible_views)).toLocaleString('en-US')}">${escapeHtml(formatCompactNumber(row?.eligible_views))}</strong></span>
+      <span class="weekly-history-stat"><small>Invalid / excluded</small><strong>${escapeHtml(formatCompactNumber(number(row?.invalid_views) + number(row?.creator_views_excluded)))}</strong></span>
+      <span class="weekly-history-share"><small>Traffic share</small><strong>${escapeHtml(row?.traffic_share_pending ? 'Pending' : formatPercent(row?.traffic_share_percent))}</strong></span>
+      ${statusMarkup(row)}<span class="weekly-history-chevron" aria-hidden="true">›</span>
+    </button>`;
   }
 
-  function renderHistory(items){
+  function renderHistory() {
     const list = $('#weeklyReviewHistory');
-    if (!list) return;
-    const rows = Array.isArray(items) ? items : [];
-    list.innerHTML = rows.length
-      ? rows.map(historyMarkup).join('')
-      : '<div class="weekly-empty"><strong>No completed weekly review yet</strong><span>Your current live performance is shown above.</span></div>';
-  }
-
-  function setLoading(loading){
-    const refresh = $('#weeklyReviewRefresh');
-    if (refresh) {
-      refresh.disabled = loading;
-      refresh.textContent = loading ? 'Loading…' : 'Refresh report';
+    if (!state.items.length) {
+      list.innerHTML = '<div class="weekly-empty"><span class="weekly-empty-icon" aria-hidden="true">◷</span><strong>No weekly reviews yet</strong><p>Your verified activity will appear here after a review period is available.</p></div>';
+    } else {
+      list.innerHTML = state.items.map(historyMarkup).join('');
     }
-    const list = $('#weeklyReviewHistory');
-    if (loading && list && !state.loaded) list.innerHTML = '<div class="weekly-empty">Loading weekly performance…</div>';
+    const more = $('#weeklyReviewLoadMore');
+    more.hidden = !state.hasMore || !state.cursor;
   }
 
-  async function loadReviews(force=false){
-    if (state.loading || (state.loaded && !force)) return;
+  function renderDetail(row, trigger) {
+    const dialog = $('#weeklyDetailDialog');
+    const body = $('#weeklyDetailBody');
+    if (!dialog || !body) return;
+    state.detailTrigger = trigger;
+    trigger?.setAttribute('aria-expanded', 'true');
+    $('#weeklyDetailTitle').textContent = formatPeriod(row);
+    const metrics = [
+      metricMarkup('Eligible views', row?.eligible_views, 'good'),
+      metricMarkup('Total views', row?.raw_views),
+      metricMarkup('Invalid', row?.invalid_views, 'danger'),
+      metricMarkup('Creator excluded', row?.creator_views_excluded),
+      metricMarkup('Self views', row?.self_views_excluded),
+      metricMarkup('Spam / Bot', row?.spam_views, 'danger')
+    ];
+    if (!row?.traffic_share_pending) metrics.push(metricMarkup('Traffic share', row?.traffic_share_percent, 'accent', '%'));
+    const reason = text(row?.review_reason).trim();
+    body.innerHTML = `<div class="weekly-detail-status">${statusMarkup(row)}</div>
+      <div class="weekly-detail-metrics">${metrics.join('')}</div>
+      <div class="weekly-detail-breakdown">${breakdownMarkup(row, 'weeklyDetail')}</div>
+      ${reason ? `<div class="weekly-review-note"><strong>Review note</strong><p>${escapeHtml(reason)}</p></div>` : ''}`;
+    applyBreakdownWidths(body);
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
+    $('#weeklyDetailClose')?.focus();
+  }
+
+  function closeDetail() {
+    const dialog = $('#weeklyDetailDialog');
+    if (dialog?.open && typeof dialog.close === 'function') dialog.close();
+    else dialog?.removeAttribute('open');
+  }
+
+  function setInlineStatus(message = '', { error = false, retry = false } = {}) {
+    const region = $('#weeklyInlineStatus');
+    if (!region) return;
+    window.clearTimeout(state.statusTimer);
+    region.hidden = !message;
+    region.classList.toggle('danger', error);
+    region.innerHTML = message
+      ? `<span>${escapeHtml(message)}</span>${retry ? '<button type="button" data-weekly-retry>Retry</button>' : ''}`
+      : '';
+  }
+
+  function setLoading(loading, { append = false, refresh = false } = {}) {
+    const refreshButton = $('#weeklyReviewRefresh');
+    const loadMore = $('#weeklyReviewLoadMore');
+    if (refreshButton) {
+      refreshButton.disabled = loading;
+      refreshButton.classList.toggle('is-loading', loading && !append);
+      const label = refreshButton.querySelector('.weekly-refresh-label');
+      if (label) label.textContent = loading && !append ? 'Refreshing…' : 'Refresh';
+    }
+    if (loadMore) {
+      loadMore.disabled = loading;
+      loadMore.classList.toggle('is-loading', loading && append);
+      loadMore.textContent = loading && append ? 'Loading…' : 'Load more';
+    }
+    if (refresh && state.loaded && loading) setInlineStatus('Refreshing…');
+  }
+
+  function scheduleSkeleton() {
+    window.clearTimeout(state.skeletonTimer);
+    state.skeletonTimer = window.setTimeout(() => {
+      if (!state.loading || state.loaded) return;
+      const skeleton = $('#weeklyPerformanceSkeleton');
+      if (skeleton) skeleton.hidden = false;
+    }, 160);
+  }
+
+  function finishInitialLoading() {
+    window.clearTimeout(state.skeletonTimer);
+    const skeleton = $('#weeklyPerformanceSkeleton');
+    if (skeleton) skeleton.hidden = true;
+  }
+
+  async function loadReviews({ force = false, append = false } = {}) {
+    if (state.loading || (state.loaded && !force && !append)) return;
+    if (append && (!state.hasMore || !state.cursor)) return;
+    if (!window.ZNEWS_AUTH_VERIFIED || !api.isAuthenticated()) return;
+
     state.loading = true;
-    setLoading(true);
+    const refreshing = force && state.loaded && !append;
+    setLoading(true, { append, refresh: refreshing });
+    if (!state.loaded) scheduleSkeleton();
+    if (!append) setInlineStatus(refreshing ? 'Refreshing…' : '');
+
     try {
-      const api = new ApiClient(config);
-      if (!api.isAuthenticated()) {
-        throw new window.ZNewsApiError('Open Z Sky 24 from your Z-Pay dashboard.', {
-          code:'ZNEWS_DASHBOARD_ACCESS_REQUIRED', status:401
-        });
+      const result = await api.weeklyReviews(append ? state.cursor : '', { includeCurrent: !append });
+      const incoming = Array.isArray(result.data?.items) ? result.data.items : [];
+      if (!append) {
+        renderCurrent(result.data?.current_preview || {}, result.data?.creator || {});
+        state.items = incoming;
+      } else {
+        const known = new Set(state.items.map((item) => text(item?.period_id)));
+        state.items.push(...incoming.filter((item) => !known.has(text(item?.period_id))));
       }
-      const result = await api.request('znews/reviews/mine.php', {
-        authenticated:true,
-        params:{limit:12},
-        timeoutMs:20000,
-      });
-      renderCurrent(result.data?.current_preview || {}, result.data?.creator || {});
-      renderHistory(result.data?.items || []);
+      state.cursor = text(result.data?.next_cursor);
+      state.hasMore = result.data?.has_more === true;
+      state.retryMode = 'refresh';
       state.loaded = true;
-    } catch (error) {
-      const list = $('#weeklyReviewHistory');
-      if (list) list.innerHTML = `<div class="weekly-empty danger"><strong>Performance could not be loaded</strong><span>${escapeHtml(error?.message || 'Please try again.')}</span></div>`;
+      $('#weeklyPerformanceContent').hidden = false;
+      renderHistory();
+      setInlineStatus(refreshing ? 'Weekly performance refreshed.' : '');
+      if (refreshing) {
+        state.statusTimer = window.setTimeout(() => {
+          if (!state.loading) setInlineStatus('');
+        }, 2400);
+      }
+    } catch (_error) {
+      state.retryMode = append ? 'append' : 'refresh';
+      setInlineStatus('Weekly performance could not be loaded.', { error: true, retry: true });
+      if (!state.loaded) $('#weeklyPerformanceContent').hidden = true;
     } finally {
       state.loading = false;
-      setLoading(false);
+      finishInitialLoading();
+      setLoading(false, { append, refresh: refreshing });
     }
   }
 
-  function openPerformance({pushHistory=true} = {}){
-    const api = new ApiClient(config);
-    if (!api.isAuthenticated()) return;
-    setViewActive();
-    if (pushHistory && history.state?.znewsPerformance !== true) {
-      history.pushState({znewsAppEntry:true, znewsView:'balance', znewsPerformance:true}, '', config.publicPath());
-    }
-    loadReviews(true);
+  function openPerformance() {
+    if (!window.ZNEWS_AUTH_VERIFIED || !api.isAuthenticated()) return;
+    void loadReviews();
   }
 
-  document.addEventListener('click', event => {
-    const route = event.target.closest('[data-route="balance"], [data-menu-route="balance"]');
-    if (!route) return;
-    const api = new ApiClient(config);
-    if (!api.isAuthenticated()) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    openPerformance();
-  }, true);
-
-  document.addEventListener('click', event => {
-    if (event.target.closest('#weeklyReviewRefresh')) loadReviews(true);
+  document.addEventListener('click', (event) => {
+    const historyButton = event.target.closest('[data-weekly-period]');
+    if (historyButton) {
+      const row = state.items.find((item) => text(item?.period_id) === historyButton.dataset.weeklyPeriod);
+      if (row) renderDetail(row, historyButton);
+      return;
+    }
+    if (event.target.closest('#weeklyReviewRefresh')) {
+      void loadReviews({ force: true });
+      return;
+    }
+    if (event.target.closest('#weeklyReviewLoadMore')) {
+      void loadReviews({ append: true });
+      return;
+    }
+    if (event.target.closest('[data-weekly-retry]')) {
+      void loadReviews(state.retryMode === 'append' ? { append: true } : { force: true });
+      return;
+    }
+    if (event.target.closest('#weeklyDetailClose')) closeDetail();
   });
 
-  window.addEventListener('popstate', event => {
-    if (event.state?.znewsPerformance === true) {
-      event.stopImmediatePropagation();
-      openPerformance({pushHistory:false});
-    }
-  }, true);
-
-  window.addEventListener('pageshow', () => {
-    if (history.state?.znewsPerformance === true) {
-      window.setTimeout(() => openPerformance({pushHistory:false}), 0);
-    }
+  const detailDialog = $('#weeklyDetailDialog');
+  detailDialog?.addEventListener('click', (event) => {
+    if (event.target === detailDialog) closeDetail();
   });
+  detailDialog?.addEventListener('close', () => {
+    state.detailTrigger?.setAttribute('aria-expanded', 'false');
+    state.detailTrigger?.focus();
+    state.detailTrigger = null;
+  });
+
+  window.addEventListener('znews:weekly-performance-open', openPerformance);
+  window.ZNewsWeeklyPerformance = Object.freeze({
+    open: openPerformance,
+    refresh: () => loadReviews({ force: true }),
+    formatCompactNumber,
+    formatPercent,
+    snapshot: () => ({
+      loading: state.loading,
+      loaded: state.loaded,
+      itemCount: state.items.length,
+      cursor: state.cursor,
+      hasMore: state.hasMore
+    })
+  });
+
+  if (document.documentElement.dataset.znewsRoute === 'performance') openPerformance();
 })();

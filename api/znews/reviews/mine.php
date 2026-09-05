@@ -20,21 +20,33 @@ if (!in_array($role, ['USER', 'RETAILER'], true)) {
 
 $uid = znews_firebase_key($uid, 'creator_uid');
 $registry = znews_creator_registry_touch($auth);
-$limit = znews_limit($_GET['limit'] ?? 12, 12, 52);
-$preview = znews_weekly_review_creator_live_preview($uid);
-if (empty($preview['ok'])) {
-    api_response(
-        false,
-        (string)($preview['code'] ?? 'ZNEWS_WEEKLY_PREVIEW_FAILED'),
-        'Weekly performance could not be calculated.',
-        [],
-        503
-    );
+$limit = znews_limit($_GET['limit'] ?? 6, 6, 12);
+$cursor = znews_weekly_review_history_cursor($_GET['cursor'] ?? '');
+$includeCurrent = !in_array(
+    strtolower(trim((string)($_GET['include_current'] ?? '1'))),
+    ['0', 'false', 'no'],
+    true
+);
+$preview = ['review' => null];
+if ($includeCurrent) {
+    $preview = znews_weekly_review_creator_live_preview($uid);
+    if (empty($preview['ok'])) {
+        api_response(
+            false,
+            (string)($preview['code'] ?? 'ZNEWS_WEEKLY_PREVIEW_FAILED'),
+            'Weekly performance could not be calculated.',
+            [],
+            503
+        );
+    }
 }
+$history = znews_weekly_review_creator_history_page($uid, $limit, $cursor);
 
 api_response(true, 'ZNEWS_WEEKLY_CREATOR_REVIEWS_OK', 'Weekly creator performance loaded.', [
     'creator' => znews_creator_public_registry($registry),
-    'current_preview' => (array)$preview['review'],
-    'items' => znews_weekly_review_creator_history($uid, $limit),
+    'current_preview' => $includeCurrent ? (array)$preview['review'] : null,
+    'items' => $history['items'],
+    'next_cursor' => $history['next_cursor'],
+    'has_more' => $history['has_more'],
     'money_fields_present' => false,
 ]);

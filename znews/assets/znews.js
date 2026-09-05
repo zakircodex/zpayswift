@@ -337,7 +337,9 @@
     els.authDialog.close();
     toast('Signed in successfully.');
     if (state.route === 'mine') loadMyPosts();
-    if (state.route === 'balance') loadBalance();
+    if (state.route === 'performance') {
+      window.dispatchEvent(new CustomEvent('znews:weekly-performance-open'));
+    }
   }
 
   function appHistoryState(view, extra = {}) {
@@ -346,14 +348,21 @@
 
   function syncViewMetadata(view) {
     const policy = view === 'policy';
+    const performance = view === 'performance';
     const canonical = policy ? config.canonicalUrl('policy') : config.canonicalUrl();
-    document.title = policy ? 'Creator credit policy | Z Sky 24' : 'Z Sky 24';
+    document.title = policy
+      ? 'Creator policy | Z Sky 24'
+      : (performance ? 'Weekly Performance | Z Sky 24' : 'Z Sky 24');
     document.querySelector('link[rel="canonical"]')?.setAttribute('href', canonical);
     document.querySelector('meta[property="og:url"]')?.setAttribute('content', canonical);
-    document.querySelector('meta[property="og:title"]')?.setAttribute('content', policy ? 'Creator credit policy | Z Sky 24' : 'Z Sky 24');
+    document.querySelector('meta[property="og:title"]')?.setAttribute('content', policy
+      ? 'Creator policy | Z Sky 24'
+      : (performance ? 'Weekly Performance | Z Sky 24' : 'Z Sky 24'));
     document.querySelector('meta[name="description"]')?.setAttribute('content', policy
-      ? 'Z Sky 24 verified ad credit, balance and transfer policy.'
-      : 'Z Sky 24 — News, stories and community updates.');
+      ? 'How Z Sky 24 verifies creator engagement and weekly reviews.'
+      : (performance
+        ? 'Track your verified weekly Z Sky 24 engagement.'
+        : 'Z Sky 24 — News, stories and community updates.'));
   }
 
   function initializeAppHistory(route) {
@@ -382,9 +391,9 @@
   }
 
   function routeTo(route, { syncHistory = true } = {}) {
-    const allowed = ['feed', 'create', 'mine', 'balance', 'policy'];
+    const allowed = ['feed', 'create', 'mine', 'performance', 'policy'];
     const next = allowed.includes(route) ? route : 'feed';
-    if (['create', 'mine', 'balance'].includes(next) && !requireSession()) return;
+    if (['create', 'mine', 'performance'].includes(next) && !requireSession()) return;
     if (els.postDialog.open) closePost({ syncHistory: false });
     state.route = next;
     syncViewMetadata(next);
@@ -399,7 +408,9 @@
       progressiveFeed = null;
       void loadFeed();
     }
-    if (next === 'balance') loadBalance();
+    if (next === 'performance') {
+      window.dispatchEvent(new CustomEvent('znews:weekly-performance-open'));
+    }
     if (next === 'policy') loadCreatorPolicy();
     if (syncHistory) {
       state.lastBoundaryBackAt = 0;
@@ -1432,7 +1443,7 @@
       if (route.kind === 'post') openPost(route.id, { syncHistory: false });
       else {
         if (els.postDialog.open) closePost({ syncHistory: false });
-        const restoredView = ['feed', 'create', 'mine', 'balance', 'policy'].includes(event.state?.znewsView)
+        const restoredView = ['feed', 'create', 'mine', 'performance', 'policy'].includes(event.state?.znewsView)
           ? event.state.znewsView
           : 'feed';
         routeTo(restoredView, { syncHistory: false });
@@ -1448,7 +1459,6 @@
     window.addEventListener('znews:auth-ready', () => {
       refreshSessionUi();
       syncPostCardAccess();
-      if (hasVerifiedSession() && state.route !== 'balance') void loadMiniBalance();
     });
     syncComposerState();
   }

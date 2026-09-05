@@ -41,6 +41,7 @@
     creatorPublicPageSize: 12,
     commentPageSize: 20,
     creatorPostPageSize: 10,
+    weeklyReviewPageSize: 6,
     brandName: 'Z Sky 24',
     standaloneHost,
     standalone,

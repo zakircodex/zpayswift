@@ -114,7 +114,7 @@ check(!str_contains($creator, "form.addEventListener('submit'"), 'A competing Cr
 check(str_contains($app, "els.createPostForm.getAttribute('aria-busy') === 'true'"), 'Canonical Create double-submit guard is missing');
 
 $access = contents($root . '/znews/assets/znews-access.js');
-check(str_contains($access, "['create', 'mine', 'balance']"), 'Guest creator-route guard is missing');
+check(str_contains($access, "['create', 'mine', 'performance']"), 'Guest creator-route guard is missing');
 check(str_contains($access, 'config.zpayLoginUrl'), 'Guest login route is missing');
 
 $feedUi = contents($root . '/znews/assets/znews-feed-ui.js');

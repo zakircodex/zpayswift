@@ -224,6 +224,18 @@
       });
     }
 
+    weeklyReviews(cursor = '', { includeCurrent = true } = {}) {
+      return this.request('znews/reviews/mine.php', {
+        params: {
+          limit: this.config.weeklyReviewPageSize || 6,
+          cursor,
+          include_current: includeCurrent ? 1 : 0
+        },
+        authenticated: true,
+        timeoutMs: 20000
+      });
+    }
+
     uploadMedia(file) {
       const body = new FormData();
       body.append('image', file);

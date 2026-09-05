@@ -15,7 +15,7 @@
 
   function isGuestLockedRoute(target) {
     const route = target?.closest?.('[data-route]')?.dataset.route || '';
-    return !authenticated && ['create', 'mine', 'balance'].includes(route);
+    return !authenticated && ['create', 'mine', 'performance'].includes(route);
   }
 
   document.addEventListener('click', (event) => {
@@ -65,8 +65,8 @@
     const commentForm = document.querySelector('#commentForm');
     setHidden(commentForm, !authenticated);
 
-    const mobileBalance = document.querySelector('.mobile-nav [data-route="balance"]');
-    const desktopBalance = document.querySelector('.desktop-nav [data-route="balance"]');
+    const mobileBalance = document.querySelector('.mobile-nav [data-route="performance"]');
+    const desktopBalance = document.querySelector('.desktop-nav [data-route="performance"]');
     if (!authenticated) {
       if (mobileBalance) {
         mobileBalance.innerHTML = '<span>＋</span><small>Join Z-Pay</small>';
