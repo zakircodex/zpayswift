@@ -70,6 +70,11 @@ foreach ([
     'data-zsky-weekly-approve',
     'data-zsky-weekly-hold',
     'id="zskyPayoutPreflightBtn"',
+    'id="zskyPayoutSettlementPanel"',
+    'id="zskyRevenueSyncBtn"',
+    'id="zskyRevenueLockBtn"',
+    'id="zskyLockBdtFx"',
+    'id="zskyLockMyrFx"',
     'id="zskyPolicyBody"',
 ] as $marker) {
     zsky_admin_ui_expect(str_contains($script, $marker), 'Existing action binding missing: ' . $marker);
@@ -89,6 +94,10 @@ foreach ([
     "if (\$action === 'comments_queue')",
     "if (\$action === 'comment_details')",
     "if (\$action === 'comment_decision')",
+    "if (\$action === 'revenue_sync')",
+    "if (\$action === 'revenue_lock')",
+    "if (\$action === 'payout_fx_lock')",
+    "if (\$action === 'payout_execute')",
     'znews_admin_queue($limit, $cursor)',
     'znews_admin_moderate_post_with_media(',
     'znews_admin_comment_queue($limit, $cursor)',
@@ -113,10 +122,23 @@ foreach (['wallet_credit_available', 'Approve transfer', 'creator_amount:', 'rep
 }
 
 foreach ([
+    "request('revenue_sync'",
+    "request('revenue_lock'",
+    "request('payout_fx_lock'",
+    "request('payout_execute'",
+    "confirmation:'LOCK_REVENUE'",
+    "confirmation:'LOCK_FX'",
+    "confirmation:'EXECUTE_PAYOUT'",
+] as $marker) {
+    zsky_admin_ui_expect(str_contains($script, $marker), 'Settlement action marker missing: ' . $marker);
+}
+zsky_admin_ui_expect(!str_contains($script, 'ADSTERRA_PUBLISHER_API_TOKEN'), 'Admin browser code exposes the Adsterra token name.');
+
+foreach ([
     'What each area does',
     'How creator value can reach Z-Pay',
     'No balance movement here',
-    'The readiness button cannot add user balance.',
+    'No financial amount is accepted from this screen.',
     "setModalPresentationScope('zsky24')",
     'zsky-admin-button',
 ] as $marker) {
@@ -128,6 +150,9 @@ foreach ([
     'grid-template-columns:repeat(2,minmax(0,1fr))',
     '#zsky24Section .btn.danger',
     'height:48px',
+    '.zsky-settlement-panel',
+    '.zsky-revenue-status',
+    '.zsky-fx-grid',
 ] as $marker) {
     zsky_admin_ui_expect(str_contains($style, $marker), 'Admin action sizing/style marker missing: ' . $marker);
 }

@@ -39,7 +39,7 @@ foreach ([
     monthly_ui_expect(str_contains($js, $required), 'existing creator/weekly UI contract is missing: ' . $required);
 }
 
-// Monthly UI remains an equal primary control in the completed Admin workspace and is explicitly read-only.
+// Monthly UI remains an equal primary control and its summary does not mutate a wallet.
 foreach ([
     'data-zsky-mode="MONTHLY"',
     'Monthly summary',
@@ -52,6 +52,11 @@ foreach ([
     'Traffic share',
     'Currency snapshot',
     'Review readiness',
+    'Adsterra gross USD',
+    'Safety reserve USD',
+    'Distributable USD',
+    'Creator pool USD',
+    'Platform share USD',
 ] as $required) {
     monthly_ui_expect(str_contains($js, $required), 'monthly admin UI contract is missing: ' . $required);
 }
@@ -59,16 +64,17 @@ monthly_ui_expect(str_contains($css, '.zsky-primary-tabs{display:grid;grid-templ
 monthly_ui_expect(str_contains($css, '.zsky-primary-tabs{grid-template-columns:repeat(3,minmax(0,1fr))'), 'tablet Admin tabs are not responsive');
 monthly_ui_expect(str_contains($css, '.zsky-primary-tabs{grid-template-columns:1fr 1fr'), 'mobile Admin tabs are not responsive');
 
-// Monthly screen must use only the GET-only preview endpoints and must not expose a settlement write action.
+// Monthly summary uses GET-only preview endpoints; settlement actions live in the protected Payout workspace.
 monthly_ui_expect(str_contains($js, "request('monthly_periods'"), 'monthly period GET is not used');
 monthly_ui_expect(str_contains($js, "request('monthly_preview'"), 'monthly preview GET is not used');
 monthly_ui_expect(!preg_match("/request\\('monthly_(?:periods|preview)'[^;]*method\\s*:\\s*'POST'/s", $js), 'monthly UI attempts a POST request');
 monthly_ui_expect(!str_contains($js, 'monthly_settle'), 'monthly settlement action exists in the UI');
 monthly_ui_expect(!str_contains($js, 'monthly_pay'), 'monthly pay action exists in the UI');
+monthly_ui_expect(str_contains($js, "request('revenue_sync'") && str_contains($js, "request('payout_execute'"), 'protected settlement workspace actions are missing');
 
 // User-facing copy must make financial safety boundaries clear.
 foreach ([
-    'no revenue amount, FX conversion, wallet credit or payout is performed',
+    'Locked Adsterra revenue and FX snapshots are shown without mutating any wallet.',
     'No money is calculated here.',
     'Live account preflight is still required before any future payout.',
 ] as $required) {

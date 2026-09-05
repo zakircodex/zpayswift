@@ -70,6 +70,8 @@ require_once dirname(__DIR__) . '/znews/lib/creator_payout_batches.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_weekly_reviews.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_calendar_reviews.php';
 require_once dirname(__DIR__) . '/znews/lib/creator_monthly_performance.php';
+require_once dirname(__DIR__) . '/znews/lib/monthly_revenue.php';
+require_once dirname(__DIR__) . '/znews/lib/monthly_creator_payouts.php';
 require_once dirname(__DIR__) . '/znews/lib/moderation_media.php';
 require_once dirname(__DIR__) . '/znews/lib/post_media_attach.php';
 require_once dirname(__DIR__) . '/znews/lib/comments.php';
@@ -194,6 +196,9 @@ if ($action === 'monthly_preview') {
     }
     $monthId = trim((string)($_GET['month_id'] ?? ''));
     $result = znews_monthly_performance_preview($monthId);
+    if (!empty($result['ok'])) {
+        $result = znews_monthly_payout_enrich_performance($result);
+    }
     zsky24_admin_gateway_response(
         !empty($result['ok']),
         (string)($result['code'] ?? 'ZNEWS_MONTHLY_PERFORMANCE_PREVIEW_FAILED'),
@@ -207,6 +212,28 @@ $raw = file_get_contents('php://input');
 $body = trim((string)$raw) === '' ? [] : json_decode((string)$raw, true);
 if (!is_array($body)) {
     zsky24_admin_gateway_response(false, 'INVALID_JSON', 'Request body must be valid JSON.', [], 400);
+}
+
+if ($action === 'revenue_status') {
+    if ($method !== 'GET') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Revenue status is GET-only.', [], 405);
+    }
+    $monthId = trim((string)($_GET['month_id'] ?? ''));
+    $result = znews_monthly_revenue_status($monthId);
+    if (!empty($result['ok'])) {
+        $resolvedMonth = (string)($result['month']['month_id'] ?? $monthId);
+        $result['fx'] = [
+            'USD_BDT' => znews_monthly_fx_public(znews_monthly_fx_get($resolvedMonth, 'BDT')),
+            'USD_MYR' => znews_monthly_fx_public(znews_monthly_fx_get($resolvedMonth, 'MYR')),
+        ];
+    }
+    zsky24_admin_gateway_response(
+        !empty($result['ok']),
+        (string)($result['code'] ?? 'ZNEWS_MONTHLY_REVENUE_STATUS_FAILED'),
+        !empty($result['ok']) ? 'Monthly Adsterra revenue status loaded.' : 'Monthly revenue status could not be loaded.',
+        $result,
+        (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 422))
+    );
 }
 
 if ($action === 'post_decision') {
@@ -321,13 +348,99 @@ if ($action === 'payout_preflight') {
         zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Payout preflight is POST-only.', [], 405);
     }
     $creatorUids = is_array($body['creator_uids'] ?? null) ? (array)$body['creator_uids'] : [];
-    $result = znews_creator_payout_batch_preflight($creatorUids);
+    $monthId = trim((string)($body['month_id'] ?? ''));
+    $result = $monthId !== ''
+        ? znews_monthly_payout_preflight($monthId, $creatorUids)
+        : znews_creator_payout_batch_preflight($creatorUids);
     zsky24_admin_gateway_response(
         !empty($result['ok']),
         (string)($result['code'] ?? 'ZNEWS_PAYOUT_PREFLIGHT_FAILED'),
         (string)($result['message'] ?? 'Payout preflight failed.'),
         $result,
         (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 422))
+    );
+}
+
+if ($action === 'revenue_sync') {
+    if ($method !== 'POST') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Revenue sync is POST-only.', [], 405);
+    }
+    $monthId = trim((string)($body['month_id'] ?? ''));
+    $result = znews_monthly_revenue_sync($monthId, $adminUid);
+    zsky24_admin_gateway_response(
+        !empty($result['ok']),
+        (string)($result['code'] ?? 'ZNEWS_ADSTERRA_REVENUE_SYNC_FAILED'),
+        !empty($result['ok']) ? 'Adsterra revenue synchronized.' : 'Adsterra revenue could not be synchronized.',
+        $result,
+        (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 503))
+    );
+}
+
+if ($action === 'revenue_lock') {
+    if ($method !== 'POST') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Revenue lock is POST-only.', [], 405);
+    }
+    if (!hash_equals('LOCK_REVENUE', strtoupper(trim((string)($body['confirmation'] ?? ''))))) {
+        zsky24_admin_gateway_response(false, 'ZNEWS_REVENUE_LOCK_CONFIRMATION_REQUIRED', 'Explicit revenue lock confirmation is required.', [], 422);
+    }
+    $result = znews_monthly_revenue_lock(
+        trim((string)($body['month_id'] ?? '')),
+        trim((string)($body['sync_id'] ?? '')),
+        $adminUid
+    );
+    zsky24_admin_gateway_response(
+        !empty($result['ok']),
+        (string)($result['code'] ?? 'ZNEWS_REVENUE_LOCK_FAILED'),
+        !empty($result['ok']) ? 'Final Adsterra revenue locked.' : 'Final revenue could not be locked.',
+        $result,
+        (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 503))
+    );
+}
+
+if ($action === 'payout_fx_lock') {
+    if ($method !== 'POST') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Payout FX lock is POST-only.', [], 405);
+    }
+    if (!hash_equals('LOCK_FX', strtoupper(trim((string)($body['confirmation'] ?? ''))))) {
+        zsky24_admin_gateway_response(false, 'ZNEWS_PAYOUT_FX_CONFIRMATION_REQUIRED', 'Explicit FX lock confirmation is required.', [], 422);
+    }
+    $result = znews_monthly_fx_lock(
+        trim((string)($body['month_id'] ?? '')),
+        trim((string)($body['currency'] ?? '')),
+        trim((string)($body['rate'] ?? '')),
+        trim((string)($body['source_reference'] ?? '')),
+        (int)($body['rate_timestamp'] ?? 0),
+        $adminUid
+    );
+    zsky24_admin_gateway_response(
+        !empty($result['ok']),
+        (string)($result['code'] ?? 'ZNEWS_PAYOUT_FX_LOCK_FAILED'),
+        !empty($result['ok']) ? 'Payout FX rate locked.' : 'Payout FX rate could not be locked.',
+        $result,
+        (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 503))
+    );
+}
+
+if ($action === 'payout_execute') {
+    if ($method !== 'POST') {
+        zsky24_admin_gateway_response(false, 'METHOD_NOT_ALLOWED', 'Payout execution is POST-only.', [], 405);
+    }
+    if (!hash_equals('EXECUTE_PAYOUT', strtoupper(trim((string)($body['confirmation'] ?? ''))))) {
+        zsky24_admin_gateway_response(false, 'ZNEWS_PAYOUT_CONFIRMATION_REQUIRED', 'Explicit payout confirmation is required.', [], 422);
+    }
+    $creatorUids = is_array($body['creator_uids'] ?? null) ? (array)$body['creator_uids'] : [];
+    $result = znews_monthly_payout_execute(
+        trim((string)($body['month_id'] ?? '')),
+        $creatorUids,
+        znews_idempotency_key($body['idempotency_key'] ?? $body['client_request_id'] ?? ''),
+        $adminUid
+    );
+    zsky24_admin_gateway_response(
+        !empty($result['ok']),
+        (string)($result['code'] ?? 'ZNEWS_PAYOUT_BATCH_FAILED'),
+        (string)($result['message'] ?? (!empty($result['ok']) ? 'Creator payout completed.' : 'Creator payout failed.')),
+        $result,
+        (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 503))
     );
 }
 

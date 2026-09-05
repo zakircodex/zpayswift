@@ -68,10 +68,13 @@ async function mount(page) {
         return ok({
           revenue_mode: 'PERIOD_REVIEW_DIRECT_ZPAY_PAYOUT', performance_review_days: 7,
           payout_cycle: 'MONTHLY', payout_destination: 'LINKED_ZPAY_WALLET',
+          revenue_provider: 'ADSTERRA', revenue_base_currency: 'USD',
           creator_pool_percent_of_net: 40, platform_share_percent_of_net: 60,
+          creator_effective_percent_of_gross: 36, platform_effective_percent_of_gross: 54,
           safety_reserve_percent: 10, payout_batch_limit: 5,
           creator_balance_enabled: false, withdraw_request_enabled: false,
-          automatic_per_ad_credit_enabled: false, supported_wallet_currencies: ['BDT', 'MYR']
+          automatic_per_ad_credit_enabled: false, instant_comments_enabled: true,
+          supported_wallet_currencies: ['BDT', 'MYR']
         });
       }
       const action = url.searchParams.get('action');
@@ -83,6 +86,16 @@ async function mount(page) {
         return ok({ items: [{ post_id: 'POST_A', creator_uid: 'CREATOR_A', creator_name: 'Creator A', title: 'Review post', text: 'Body', status: 'REVIEW', moderation_status: 'PENDING', created_at: 1, updated_at: 2 }], has_more: false });
       }
       if (action === 'comments_queue') return ok({ items: [], has_more: false });
+      if (action === 'monthly_periods') {
+        const month = { month_id: '2026-08', month_start_date: '2026-08-01', month_end_date: '2026-08-31', completed: true };
+        return ok({ default_month: month, items: [month] });
+      }
+      if (action === 'revenue_status') {
+        return ok({
+          month: { month_id: '2026-08', month_start_date: '2026-08-01', month_end_date: '2026-08-31', completed: true },
+          sync: {}, lock: {}, fx: { USD_BDT: {}, USD_MYR: {} }, provider_configured: false
+        });
+      }
       if (action === 'post_details') {
         return ok({ post: { post_id: 'POST_A', creator_uid: 'CREATOR_A', creator_name: 'Creator A', title: 'Review post', text: 'Body', status: 'REVIEW', moderation_status: 'PENDING', created_at: 1, updated_at: 2 } });
       }
@@ -109,7 +122,7 @@ async function assertViewport(browser, width) {
     await page.getByRole('tab', { name: 'Settings' }).click();
     await page.waitForSelector('.zsky-admin-guide');
     assert.equal(await page.locator('.zsky-admin-guide-grid article').count(), 7);
-    assert.match(await page.locator('.zsky-balance-flow').innerText(), /readiness button cannot add user balance/i);
+    assert.match(await page.locator('.zsky-balance-flow').innerText(), /canonical wallet helper credits the exact native amount once/i);
 
     await page.getByRole('tab', { name: 'Creator accounts' }).click();
     await page.locator('[data-zsky-block-creator]').click();
@@ -123,6 +136,15 @@ async function assertViewport(browser, width) {
     assert.ok(modalButtons.every((button) => button.height === 48), `${width}px modal buttons are not 48px high.`);
     assert.notEqual(modalButtons[0].background, modalButtons[1].background, 'Destructive action is not visually distinct.');
     await page.locator('#modalFoot .btn.ghost').click();
+
+    await page.getByRole('tab', { name: 'Payout readiness' }).click();
+    await page.waitForSelector('#zskyPayoutSettlementPanel:not([hidden])');
+    assert.equal(await page.locator('#zskyRevenueStatus').getByText('Pending', { exact: true }).count(), 1);
+    const settlementButtons = await page.locator('#zskyPayoutSettlementPanel .zsky-admin-button').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect()));
+    assert.equal(settlementButtons.length, 4);
+    assert.ok(settlementButtons.every((button) => button.height === 48), `${width}px settlement action heights differ.`);
+    const settlementOverflow = await page.locator('#zskyPayoutSettlementPanel').evaluate((node) => node.scrollWidth - node.clientWidth);
+    assert.ok(settlementOverflow <= 1, `${width}px settlement panel overflows (${settlementOverflow}px).`);
 
     await page.getByRole('tab', { name: 'Posts / Moderation' }).click();
     await page.locator('[data-zsky-view-post]').click();

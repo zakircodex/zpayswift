@@ -38,6 +38,10 @@
     monthlyPreview: null,
     monthlyLoading: false,
     monthlyPage: 1,
+    revenueStatus: null,
+    revenueLoading: false,
+    payoutPreview: null,
+    payoutExecuting: false,
     policy: null,
     policyLoading: false,
   };
@@ -45,6 +49,7 @@
   const $ = id => document.getElementById(id);
   const safe = value => esc(String(value ?? ''));
   const timestamp = value => value ? fmtTs(Number(value)) : '-';
+  const usd = value => `$${humanValue(value, '0')}`;
 
   function currentCsrf(){
     try { return String(state?.csrf || ''); }
@@ -122,6 +127,8 @@
             <div class="zsky-admin-metric warning"><span>Comments on current queue page</span><strong id="zskyPendingCommentCount">0</strong></div>
             <div class="zsky-admin-metric"><span>Active creators loaded</span><strong id="zskyActiveCreatorCountOverview">0</strong></div>
             <div class="zsky-admin-metric danger"><span>Blocked creators loaded</span><strong id="zskyBlockedCreatorCountOverview">0</strong></div>
+            <div class="zsky-admin-metric"><span>Adsterra estimate</span><strong id="zskyRevenueEstimateOverview">Pending</strong></div>
+            <div class="zsky-admin-metric warning"><span>Revenue sync</span><strong id="zskyRevenueSyncOverview">Not synced</strong></div>
           </div>
           <div class="zsky-overview-grid">
             <article class="card zsky-overview-card"><span class="zsky-admin-kicker">PUBLISHING</span><h3>Moderation queue</h3><p>Review pending posts and comments with canonical version and idempotency controls.</p><button class="btn ghost" type="button" data-zsky-open-mode="MODERATION">Open moderation</button></article>
@@ -129,7 +136,7 @@
             <article class="card zsky-overview-card"><span class="zsky-admin-kicker">PERFORMANCE</span><h3>Calendar review</h3><p>Generate completed period reviews and inspect the read-only monthly aggregation.</p><button class="btn ghost" type="button" data-zsky-open-mode="WEEKLY">Open reviews</button></article>
             <article class="card zsky-overview-card"><span class="zsky-admin-kicker">POLICY</span><h3>Current settings</h3><p>Inspect the canonical public creator policy. No browser-side setting or payout value is created here.</p><button class="btn ghost" type="button" data-zsky-open-mode="POLICY">Open settings</button></article>
           </div>
-          <div class="zsky-retired-note"><strong>Current payout contract</strong><span>Creator balances and creator-initiated withdrawal requests are retired. This Admin panel exposes eligibility preview only and never calculates a payable value in the browser.</span></div>
+          <div class="zsky-retired-note"><strong>Monthly payout contract</strong><span>Provider revenue, approved traffic and locked payout FX are resolved by the server. Creator balances, withdrawals and automatic per-ad credit remain disabled.</span></div>
         </section>
 
         <section id="zskyModerationView" hidden>
@@ -149,6 +156,22 @@
         </section>
 
         <section id="zskyCreatorAdminView" hidden>
+          <div class="card zsky-settlement-panel" id="zskyPayoutSettlementPanel" hidden>
+            <div class="panel-head"><div><span class="zsky-admin-kicker">ADSTERRA SETTLEMENT</span><h3>Revenue and payout locks</h3><p>Sync provider USD revenue, lock the completed month, then lock independent USD payout FX before checking creators.</p></div></div>
+            <div class="zsky-settlement-controls">
+              <label>Month<select class="input" id="zskyPayoutMonthSelect"></select></label>
+              <button class="btn ghost zsky-admin-button" id="zskyRevenueSyncBtn" type="button">Sync Adsterra</button>
+              <button class="btn brand zsky-admin-button" id="zskyRevenueLockBtn" type="button" disabled>Lock revenue</button>
+            </div>
+            <div id="zskyRevenueStatus" class="zsky-revenue-status" aria-live="polite"></div>
+            <div class="zsky-fx-grid" id="zskyFxLockPanel">
+              <label>USD_BDT<input class="input" id="zskyFxBdtRate" inputmode="decimal" placeholder="e.g. 122.00"></label>
+              <label>USD_MYR<input class="input" id="zskyFxMyrRate" inputmode="decimal" placeholder="e.g. 4.20"></label>
+              <label class="zsky-fx-source">Rate source/reference<input class="input" id="zskyFxSource" maxlength="200" placeholder="Required audit reference"></label>
+              <button class="btn ghost zsky-admin-button" id="zskyLockBdtFx" type="button">Lock USD_BDT</button>
+              <button class="btn ghost zsky-admin-button" id="zskyLockMyrFx" type="button">Lock USD_MYR</button>
+            </div>
+          </div>
           <div class="zsky-admin-metrics" aria-label="Creator summary">
             <div class="zsky-admin-metric"><span>Active creators</span><strong id="zskyActiveCreatorCount">0</strong></div>
             <div class="zsky-admin-metric danger"><span>Blocked creators</span><strong id="zskyBlockedCreatorCount">0</strong></div>
@@ -174,7 +197,7 @@
           </div>
 
           <div class="zsky-payout-dock" id="zskyPayoutDock">
-            <div><strong><span id="zskyPayoutSelectedText">0</span> of ${BATCH_LIMIT} selected</strong><span>Readiness checks creator status, live Z-Pay account status and BDT/MYR wallet currency. It never changes a balance.</span></div>
+            <div><strong><span id="zskyPayoutSelectedText">0</span> of ${BATCH_LIMIT} selected</strong><span>Readiness is read-only. Execute payout appears only after month, reviews, revenue and FX all pass server checks.</span></div>
             <div class="zsky-admin-actions"><button class="btn ghost zsky-admin-button" id="zskyClearCreatorSelection" type="button" disabled>Clear</button><button class="btn brand zsky-admin-button" id="zskyPayoutPreflightBtn" type="button" disabled>Check readiness</button></div>
           </div>
         </section>
@@ -210,7 +233,7 @@
             <div class="zsky-weekly-heading">
               <span class="zsky-admin-kicker">MONTHLY PERFORMANCE</span>
               <h3>Creator settlement preview</h3>
-              <p>Approved fixed-calendar reviews are aggregated here. This is read-only: no revenue amount, FX conversion, wallet credit or payout is performed.</p>
+              <p>Approved fixed-calendar reviews are aggregated here. Locked Adsterra revenue and FX snapshots are shown without mutating any wallet.</p>
             </div>
             <div class="zsky-weekly-controls">
               <label for="zskyMonthlySelect">Month</label>
@@ -255,6 +278,7 @@
     if ($('zskyPayoutPreflightBtn')) $('zskyPayoutPreflightBtn').disabled = !hasSelection;
     if ($('zskyClearCreatorSelection')) $('zskyClearCreatorSelection').disabled = !hasSelection;
     if ($('zskyPayoutDock')) $('zskyPayoutDock').hidden = zskyState.mode !== 'PAYOUT' || zskyState.activeStatus !== 'ACTIVE';
+    if ($('zskyPayoutSettlementPanel')) $('zskyPayoutSettlementPanel').hidden = zskyState.mode !== 'PAYOUT';
   }
 
   function empty(message){ return `<div class="empty">${safe(message)}</div>`; }
@@ -517,7 +541,7 @@
       ? 'Payout readiness'
       : (status === 'ACTIVE' ? 'Active creators' : 'Blocked creators');
     if ($('zskyCreatorListSubtitle')) $('zskyCreatorListSubtitle').textContent = status === 'ACTIVE'
-      ? (zskyState.mode === 'PAYOUT' ? 'Select up to five active creators for account and wallet-currency checks. No amount is calculated or transferred here.' : 'Manage creator access using public registry fields only.')
+      ? (zskyState.mode === 'PAYOUT' ? 'Select up to five active creators. The server resolves review readiness, locked revenue, locked FX and final wallet credit.' : 'Manage creator access using public registry fields only.')
       : 'Blocked creators cannot publish, manage posts or receive payout.';
     if ($('zskyCreatorList')) $('zskyCreatorList').innerHTML = paged.items.length
       ? paged.items.map(creatorRow).join('')
@@ -538,16 +562,21 @@
     $('zskyPolicyBody').innerHTML = `
       ${detailRows([
         ['Revenue mode', policy.revenue_mode],
+        ['Revenue provider', policy.revenue_provider],
+        ['Base revenue currency', policy.revenue_base_currency],
         ['Performance review', `${humanValue(policy.performance_review_days, '7')} days`],
         ['Payout cycle', policy.payout_cycle],
         ['Payout destination', policy.payout_destination],
         ['Creator pool', `${humanValue(policy.creator_pool_percent_of_net, '0')}% of net`],
         ['Platform share', `${humanValue(policy.platform_share_percent_of_net, '0')}% of net`],
+        ['Creator effective gross', `${humanValue(policy.creator_effective_percent_of_gross, '0')}%`],
+        ['Platform effective gross', `${humanValue(policy.platform_effective_percent_of_gross, '0')}%`],
         ['Safety reserve', `${humanValue(policy.safety_reserve_percent, '0')}%`],
         ['Batch limit', policy.payout_batch_limit],
         ['Creator balance', yesNo(Boolean(policy.creator_balance_enabled))],
         ['Withdrawal requests', yesNo(Boolean(policy.withdraw_request_enabled))],
         ['Automatic per-ad credit', yesNo(Boolean(policy.automatic_per_ad_credit_enabled))],
+        ['Instant clean comments', yesNo(Boolean(policy.instant_comments_enabled))],
         ['Wallet currencies', Array.isArray(policy.supported_wallet_currencies) ? policy.supported_wallet_currencies.join(', ') : '-'],
       ])}
       <section class="zsky-admin-guide" aria-labelledby="zskyAdminGuideTitle">
@@ -558,7 +587,7 @@
           <article><strong>Creator accounts</strong><span>Activates or blocks Z Sky creator access. It does not change the Z-Pay account or wallet.</span></article>
           <article><strong>Weekly reviews</strong><span>Generates completed calendar snapshots, then approves or holds each creator review.</span></article>
           <article><strong>Monthly summary</strong><span>Combines approved review metrics into a read-only settlement-readiness summary.</span></article>
-          <article><strong>Payout readiness</strong><span>Checks up to five creators for active account and supported wallet currency. It does not calculate or transfer money.</span></article>
+          <article><strong>Payout readiness</strong><span>Checks up to five creators against completed reviews, locked Adsterra revenue, locked FX and live wallet identity.</span></article>
           <article><strong>Settings</strong><span>Displays the canonical public creator policy. All values on this screen are read-only.</span></article>
         </div>
       </section>
@@ -567,10 +596,11 @@
         <ol>
           <li><strong>Verify engagement</strong><span>Self, creator, duplicate, bot and invalid activity is excluded by the server.</span></li>
           <li><strong>Review periods</strong><span>Completed weekly reviews must be approved and the monthly summary must be ready.</span></li>
-          <li><strong>Verify ad revenue</strong><span>The Ads phase must use provider-authoritative revenue. Views alone never create money.</span></li>
-          <li><strong>Server-side payout</strong><span>Only an audited settlement service may later credit the linked Z-Pay wallet.</span></li>
+          <li><strong>Lock Adsterra revenue</strong><span>A completed month uses the final provider USD report. Views alone never create money.</span></li>
+          <li><strong>Lock payout FX</strong><span>USD_BDT and USD_MYR are independent audited snapshots, not Top-Up conversion rates.</span></li>
+          <li><strong>Server-side payout</strong><span>The canonical wallet helper credits the exact native amount once and writes a deterministic ledger reference.</span></li>
         </ol>
-        <p>Current state: creator balance, withdrawal requests and automatic per-ad credit are disabled. The readiness button cannot add user balance.</p>
+        <p>Formula: reserve 10% of gross; creators receive 40% of the remaining 90% (36% effective gross); platform receives 60% of the remaining 90% (54% effective gross). Creator balance, withdrawal and per-ad credit remain disabled.</p>
       </section>
       <div class="zsky-retired-note"><strong>Server authoritative</strong><span>Creator/account eligibility and review-period rules remain enforced by the existing backend. No financial amount is accepted from this screen.</span></div>`;
   }
@@ -611,6 +641,7 @@
     if ($('zskyWeeklyReviewView')) $('zskyWeeklyReviewView').hidden = zskyState.mode !== 'WEEKLY';
     if ($('zskyMonthlyView')) $('zskyMonthlyView').hidden = zskyState.mode !== 'MONTHLY';
     if ($('zskyPolicyView')) $('zskyPolicyView').hidden = zskyState.mode !== 'POLICY';
+    if ($('zskyPayoutSettlementPanel')) $('zskyPayoutSettlementPanel').hidden = zskyState.mode !== 'PAYOUT';
     const blockedTab = document.querySelector('[data-zsky-creator-tab="BLOCKED"]');
     if (blockedTab) blockedTab.hidden = zskyState.mode === 'PAYOUT';
     if (zskyState.mode === 'PAYOUT') {
@@ -630,7 +661,9 @@
       loadModeration().catch(error => showToast(error.message || 'Moderation queue could not be loaded.', 'error'));
     } else if (zskyState.mode === 'POLICY') {
       loadPolicy().catch(error => showToast(error.message || 'Z Sky settings could not be loaded.', 'error'));
-    } else if (['CREATORS','PAYOUT'].includes(zskyState.mode)) {
+    } else if (zskyState.mode === 'PAYOUT') {
+      loadPayoutWorkspace().catch(error => showToast(error.message || 'Payout workspace could not be loaded.', 'error'));
+    } else if (zskyState.mode === 'CREATORS') {
       renderCreators();
     } else {
       updateMetrics();
@@ -669,6 +702,7 @@
       renderCreators();
       renderModeration();
       setMode(zskyState.mode);
+      loadMonthlyPeriods().then(() => loadRevenueStatus(zskyState.defaultMonth?.month_id || zskyState.selectedMonthId)).catch(() => {});
       if (results.some(result => result.status === 'rejected')) showToast('Some Z Sky 24 data could not be loaded. Retry this view.', 'error');
     })().finally(() => {
       zskyState.loading = false;
@@ -686,6 +720,7 @@
       return;
     }
     if (checked) zskyState.selected.add(uid); else zskyState.selected.delete(uid);
+    zskyState.payoutPreview = null;
     renderCreators();
   }
 
@@ -729,28 +764,30 @@
 
   function preflightMarkup(data){
     const creators = Array.isArray(data.creators) ? data.creators : [];
-    const counts = data.currency_counts || {};
+    const revenue = data.revenue || {};
     return `
-      <div class="zsky-preflight-banner"><strong>Preview only</strong><span>No wallet balance will be changed.</span></div>
+      <div class="zsky-preflight-banner"><strong>Ready for explicit payout</strong><span>Review these server-calculated final values. No value came from the browser.</span></div>
       <div class="zsky-admin-detail-grid">
-        <div class="zsky-admin-detail"><small>Selected creators</small><strong>${safe(data.count || creators.length)}</strong></div>
+        <div class="zsky-admin-detail"><small>Selected creators</small><strong>${safe(creators.length)}</strong></div>
         <div class="zsky-admin-detail"><small>Batch limit</small><strong>${safe(data.batch_limit || BATCH_LIMIT)}</strong></div>
-        <div class="zsky-admin-detail"><small>BDT wallets</small><strong>${safe(counts.BDT || 0)}</strong></div>
-        <div class="zsky-admin-detail"><small>MYR wallets</small><strong>${safe(counts.MYR || 0)}</strong></div>
+        <div class="zsky-admin-detail"><small>Locked gross USD</small><strong>${safe(usd(revenue.gross_settled_usd))}</strong></div>
+        <div class="zsky-admin-detail"><small>Creator pool USD</small><strong>${safe(usd(revenue.creator_pool_usd))}</strong></div>
       </div>
       <div class="zsky-preflight-list">${creators.map(row => `
-        <div class="zsky-preflight-row"><div><strong>${safe(row.name || 'Creator')}</strong><span>${safe(row.zpay_account_masked || row.creator_uid || '')}</span></div><div><small>Live account</small><strong>${safe(row.zpay_status || '-')}</strong></div><div><small>Payout currency</small><strong>${safe(row.wallet_currency || '-')}</strong></div></div>`).join('')}</div>
-      <p class="zsky-admin-note">A later payout phase may process no more than five creators per execution batch. This preview does not calculate or transfer money.</p>`;
+        <div class="zsky-preflight-row"><div><strong>${safe(row.name || 'Creator')}</strong><span>${safe(row.zpay_account_masked || row.creator_uid || '')}</span></div><div><small>Eligible views / USD share</small><strong>${safe(row.settlement_eligible_views || 0)} / ${safe(usd(row.creator_share_usd))}</strong></div><div><small>Locked FX</small><strong>${safe(row.fx_pair || '-')} ${safe(row.fx_rate || '-')}</strong></div><div><small>Final wallet credit</small><strong>${safe(row.wallet_currency || '-')} ${safe(row.wallet_amount || '0')}</strong></div></div>`).join('')}</div>
+      <p class="zsky-admin-note">Execute payout uses the canonical wallet helper, deterministic ledger IDs and one payout identity per provider, month and creator.</p>`;
   }
 
   async function previewPayout(){
     if (!zskyState.selected.size) return;
     try {
       const data = await request('payout_preflight', {
-        method:'POST', body:{creator_uids:[...zskyState.selected]},
+        method:'POST', body:{month_id:zskyState.selectedMonthId, creator_uids:[...zskyState.selected]},
         busyText:'Validating creator payout batch…',
       });
-      openDrawer('Payout readiness', `${data.count || zskyState.selected.size} creators passed live eligibility checks`, preflightMarkup(data), '<button class="btn ghost zsky-admin-button" type="button" onclick="closeDrawer()">Close</button>');
+      zskyState.payoutPreview = data;
+      openDrawer('Payout readiness', `${(data.creators || []).length} creators passed all payout checks`, preflightMarkup(data), '<button class="btn ghost zsky-admin-button" type="button" onclick="closeDrawer()">Close</button><button class="btn brand zsky-admin-button" type="button" id="zskyExecutePayoutBtn">Execute payout</button>');
+      $('zskyExecutePayoutBtn')?.addEventListener('click', confirmPayoutExecution, {once:true});
     } catch (error) {
       const rejected = Array.isArray(error.data?.rejected) ? error.data.rejected : [];
       if (rejected.length) {
@@ -763,6 +800,45 @@
         return;
       }
       showToast(error.message || 'Payout preview failed.', 'error');
+    }
+  }
+
+  function confirmPayoutExecution(){
+    const data = zskyState.payoutPreview || {};
+    const creators = Array.isArray(data.creators) ? data.creators : [];
+    if (!creators.length || zskyState.payoutExecuting) return;
+    closeDrawer();
+    openZSkyModal(
+      'Execute creator payout?',
+      `<div class="zsky-confirm-payout"><p>This will credit linked Z-Pay wallets using the locked provider revenue and FX snapshots.</p>${creators.map(row => `<div><strong>${safe(row.name || row.creator_uid)}</strong><span>${safe(row.wallet_currency)} ${safe(row.wallet_amount)} (${safe(usd(row.creator_share_usd))})</span></div>`).join('')}</div>`,
+      '<button class="btn ghost zsky-admin-button" type="button" onclick="closeModal()">Cancel</button><button class="btn brand zsky-admin-button" type="button" id="zskyConfirmPayoutExecute">Confirm payout</button>'
+    );
+    $('zskyConfirmPayoutExecute')?.addEventListener('click', executePayout, {once:true});
+  }
+
+  async function executePayout(){
+    if (zskyState.payoutExecuting || !zskyState.payoutPreview) return;
+    zskyState.payoutExecuting = true;
+    closeModal();
+    try {
+      const data = await request('payout_execute', {
+        method:'POST',
+        body:{
+          month_id:zskyState.selectedMonthId,
+          creator_uids:[...zskyState.selected],
+          confirmation:'EXECUTE_PAYOUT',
+          idempotency_key:actionKey('zsky-monthly-payout'),
+        },
+        busyText:'Crediting linked Z-Pay wallets…',
+      });
+      zskyState.selected.clear();
+      zskyState.payoutPreview = null;
+      renderCreators();
+      showToast(data.idempotent_replay ? 'Payout was already completed.' : 'Creator payout completed.', 'success');
+    } catch (error) {
+      showToast(error.message || 'Creator payout could not be completed. Safe retry is available.', 'error');
+    } finally {
+      zskyState.payoutExecuting = false;
     }
   }
 
@@ -1067,17 +1143,17 @@
   }
 
   function renderMonthlyOptions(){
-    const select = $('zskyMonthlySelect');
-    if (!select) return;
     const map = new Map();
     if (zskyState.defaultMonth?.month_id) map.set(zskyState.defaultMonth.month_id, zskyState.defaultMonth);
     zskyState.monthlyPeriods.forEach(month => {
       if (month?.month_id) map.set(month.month_id, month);
     });
     const months = [...map.values()];
-    select.innerHTML = months.map(month => `<option value="${safe(month.month_id)}">${safe(monthlyOptionLabel(month))}</option>`).join('');
     if (!zskyState.selectedMonthId) zskyState.selectedMonthId = zskyState.defaultMonth?.month_id || months[0]?.month_id || '';
-    select.value = zskyState.selectedMonthId;
+    [$('zskyMonthlySelect'), $('zskyPayoutMonthSelect')].filter(Boolean).forEach(select => {
+      select.innerHTML = months.map(month => `<option value="${safe(month.month_id)}">${safe(monthlyOptionLabel(month))}</option>`).join('');
+      select.value = zskyState.selectedMonthId;
+    });
   }
 
   function monthlyReadinessLabel(row){
@@ -1092,6 +1168,11 @@
     const currency = String(row.wallet_currency_snapshot || '-').toUpperCase() || '-';
     const reason = row.payout_block_reason || 'Approved review data is ready for later live payout validation.';
     const statusClass = row.payout_candidate ? 'zsky-status-active' : 'zsky-status-review';
+    const revenue = String(row.revenue_status || 'PENDING').toUpperCase();
+    const share = revenue === 'LOCKED' ? usd(row.creator_share_usd) : humanStatus(revenue);
+    const native = row.estimated_wallet_amount
+      ? `${currency} ${row.estimated_wallet_amount}`
+      : (row.fx_status === 'UNLOCKED' ? 'FX pending' : '-');
     return `
       <article class="zsky-weekly-row">
         <div class="zsky-admin-row-main"><strong>${safe(row.creator_name || 'Z-Pay creator')}</strong><span>${safe(row.creator_uid || '')}</span><small>${safe(reason)}</small></div>
@@ -1099,6 +1180,8 @@
         <div class="zsky-weekly-stat"><small>Approved eligible</small><strong>${safe(row.settlement_eligible_views || 0)}</strong></div>
         <div class="zsky-weekly-stat"><small>Reviews approved</small><strong>${safe(approved)} / ${safe(expected)}</strong></div>
         <div class="zsky-weekly-stat"><small>Traffic share</small><strong>${safe(Number(row.settlement_traffic_share_percent || 0).toFixed(4))}%</strong></div>
+        <div class="zsky-weekly-stat"><small>Creator USD share</small><strong>${safe(share)}</strong></div>
+        <div class="zsky-weekly-stat"><small>Native estimate</small><strong>${safe(native)}</strong></div>
         <div class="zsky-weekly-stat"><small>Currency snapshot</small><strong>${safe(currency)}</strong></div>
         <div class="zsky-weekly-status"><small>Review readiness</small><strong class="${statusClass}">${safe(monthlyReadinessLabel(row))}</strong></div>
         <div class="zsky-admin-actions zsky-weekly-actions"><div class="zsky-live-chip">Read only</div></div>
@@ -1126,7 +1209,9 @@
     }
     if (summary.settlement_ready) {
       notice.className = 'zsky-period-notice completed';
-      notice.innerHTML = `<strong>Performance review complete</strong><span>All ${safe(expected)} calendar periods are complete and approved eligible traffic is ready for a later revenue-allocation phase. No money is calculated here.</span>`;
+      notice.innerHTML = summary.revenue_locked
+        ? `<strong>Revenue snapshot locked</strong><span>All ${safe(expected)} calendar periods are complete. Provider revenue and creator allocations shown below are read-only; wallet credit requires the separate payout readiness flow.</span>`
+        : `<strong>Performance review complete</strong><span>All ${safe(expected)} calendar periods are complete and approved eligible traffic is ready for a later revenue-allocation phase. No money is calculated here.</span>`;
       return;
     }
     notice.className = 'zsky-period-notice completed';
@@ -1154,11 +1239,17 @@
     }
 
     if ($('zskyMonthlyMetrics')) {
+      const locked = Boolean(summary.revenue_locked);
       $('zskyMonthlyMetrics').innerHTML = `
         <div class="zsky-admin-metric"><span>Creators</span><strong>${safe(summary.creator_count || rows.length || 0)}</strong></div>
         <div class="zsky-admin-metric"><span>Approved eligible views</span><strong>${safe(summary.settlement_eligible_views || 0)}</strong></div>
         <div class="zsky-admin-metric warning"><span>Calendar periods</span><strong>${safe(generated)} / ${safe(expected)}</strong></div>
-        <div class="zsky-admin-metric"><span>Review-ready creators</span><strong>${safe(summary.payout_candidate_count || 0)}</strong></div>`;
+        <div class="zsky-admin-metric"><span>Review-ready creators</span><strong>${safe(summary.payout_candidate_count || 0)}</strong></div>
+        <div class="zsky-admin-metric"><span>Adsterra gross USD</span><strong>${locked ? safe(usd(summary.gross_settled_usd)) : 'Revenue pending'}</strong></div>
+        <div class="zsky-admin-metric warning"><span>Safety reserve USD</span><strong>${locked ? safe(usd(summary.safety_reserve_usd)) : '-'}</strong></div>
+        <div class="zsky-admin-metric"><span>Distributable USD</span><strong>${locked ? safe(usd(summary.distributable_usd)) : '-'}</strong></div>
+        <div class="zsky-admin-metric"><span>Creator pool USD</span><strong>${locked ? safe(usd(summary.creator_pool_usd)) : '-'}</strong></div>
+        <div class="zsky-admin-metric"><span>Platform share USD</span><strong>${locked ? safe(usd(summary.platform_share_usd)) : '-'}</strong></div>`;
     }
 
     if ($('zskyMonthlyList')) {
@@ -1196,6 +1287,122 @@
       await loadMonthlyPreview(zskyState.selectedMonthId);
     } finally {
       zskyState.monthlyLoading = false;
+    }
+  }
+
+  function renderRevenueStatus(){
+    const data = zskyState.revenueStatus || {};
+    const month = data.month || monthlyMeta() || {};
+    const sync = data.sync || {};
+    const lock = data.lock || {};
+    const fx = data.fx || {};
+    const locked = String(lock.status || '').toUpperCase() === 'LOCKED';
+    const syncStatus = String(sync.source_status || sync.status || 'NOT_SYNCED').toUpperCase();
+    const completed = Boolean(month.completed);
+    if ($('zskyRevenueEstimateOverview')) {
+      const value = locked ? lock.gross_settled_usd : sync.gross_settled_usd;
+      $('zskyRevenueEstimateOverview').textContent = value !== undefined ? usd(value) : 'Pending';
+    }
+    if ($('zskyRevenueSyncOverview')) $('zskyRevenueSyncOverview').textContent = humanStatus(locked ? 'LOCKED' : syncStatus);
+    if ($('zskyRevenueStatus')) {
+      const providerAmount = locked
+        ? usd(lock.gross_settled_usd)
+        : (sync.gross_settled_usd !== undefined ? usd(sync.gross_settled_usd) : 'Pending');
+      $('zskyRevenueStatus').innerHTML = `
+        <div><small>Month</small><strong>${safe(monthLabel(month))}</strong></div>
+        <div><small>Revenue status</small>${statusBadge(locked ? 'LOCKED' : syncStatus)}</div>
+        <div><small>Provider USD</small><strong>${safe(providerAmount)}</strong></div>
+        <div><small>Last sync</small><strong>${safe(timestamp(sync.synced_at))}</strong></div>
+        <div><small>USD_BDT</small><strong>${safe(fx.USD_BDT?.rate || 'Unlocked')}</strong></div>
+        <div><small>USD_MYR</small><strong>${safe(fx.USD_MYR?.rate || 'Unlocked')}</strong></div>
+        ${data.provider_configured === false ? '<div class="zsky-settlement-warning"><strong>Private Adsterra configuration required</strong><span>Set the API token and Z Sky domain ID on the server before syncing.</span></div>' : ''}`;
+    }
+    if ($('zskyRevenueSyncBtn')) $('zskyRevenueSyncBtn').disabled = zskyState.revenueLoading || locked;
+    if ($('zskyRevenueLockBtn')) $('zskyRevenueLockBtn').disabled = zskyState.revenueLoading || locked || !completed || syncStatus !== 'FINAL_SYNCED';
+    if ($('zskyLockBdtFx')) $('zskyLockBdtFx').disabled = !completed || Boolean(fx.USD_BDT?.locked_at);
+    if ($('zskyLockMyrFx')) $('zskyLockMyrFx').disabled = !completed || Boolean(fx.USD_MYR?.locked_at);
+    if ($('zskyFxBdtRate') && fx.USD_BDT?.rate) $('zskyFxBdtRate').value = fx.USD_BDT.rate;
+    if ($('zskyFxMyrRate') && fx.USD_MYR?.rate) $('zskyFxMyrRate').value = fx.USD_MYR.rate;
+  }
+
+  async function loadRevenueStatus(monthId=zskyState.selectedMonthId){
+    if (!monthId) return;
+    zskyState.revenueStatus = await request('revenue_status', {params:{month_id:monthId}, busy:false});
+    renderRevenueStatus();
+  }
+
+  async function loadPayoutWorkspace(force=false){
+    await loadMonthlyPeriods(force);
+    renderMonthlyOptions();
+    await loadRevenueStatus(zskyState.selectedMonthId);
+    renderCreators();
+  }
+
+  async function syncRevenue(){
+    if (zskyState.revenueLoading || !zskyState.selectedMonthId) return;
+    zskyState.revenueLoading = true;
+    renderRevenueStatus();
+    try {
+      await request('revenue_sync', {
+        method:'POST', body:{month_id:zskyState.selectedMonthId}, busyText:'Synchronizing Adsterra revenue…',
+      });
+      await loadRevenueStatus(zskyState.selectedMonthId);
+      await loadMonthlyPreview(zskyState.selectedMonthId);
+      showToast('Adsterra revenue synchronized.', 'success');
+    } catch (error) {
+      showToast(error.message || 'Adsterra revenue could not be synchronized.', 'error');
+    } finally {
+      zskyState.revenueLoading = false;
+      renderRevenueStatus();
+    }
+  }
+
+  function confirmRevenueLock(){
+    const sync = zskyState.revenueStatus?.sync || {};
+    if (!sync.sync_id) return;
+    openZSkyModal(
+      'Lock final Adsterra revenue?',
+      `<p>Lock <strong>${safe(usd(sync.gross_settled_usd))}</strong> for ${safe(monthLabel(zskyState.revenueStatus?.month || {}))}. This snapshot cannot be silently changed after payout starts.</p>`,
+      '<button class="btn ghost zsky-admin-button" type="button" onclick="closeModal()">Cancel</button><button class="btn brand zsky-admin-button" type="button" id="zskyConfirmRevenueLock">Lock revenue</button>'
+    );
+    $('zskyConfirmRevenueLock')?.addEventListener('click', lockRevenue, {once:true});
+  }
+
+  async function lockRevenue(){
+    const sync = zskyState.revenueStatus?.sync || {};
+    closeModal();
+    try {
+      await request('revenue_lock', {
+        method:'POST',
+        body:{month_id:zskyState.selectedMonthId, sync_id:sync.sync_id, confirmation:'LOCK_REVENUE'},
+        busyText:'Locking final provider revenue…',
+      });
+      await loadRevenueStatus(zskyState.selectedMonthId);
+      await loadMonthlyPreview(zskyState.selectedMonthId);
+      showToast('Final Adsterra revenue locked.', 'success');
+    } catch (error) {
+      showToast(error.message || 'Final revenue could not be locked.', 'error');
+    }
+  }
+
+  async function lockPayoutFx(currency){
+    currency = String(currency || '').toUpperCase();
+    const input = $(currency === 'BDT' ? 'zskyFxBdtRate' : 'zskyFxMyrRate');
+    const rate = input?.value.trim() || '';
+    const source = $('zskyFxSource')?.value.trim() || '';
+    if (!/^\d{1,4}(?:\.\d{1,6})?$/.test(rate)) return showToast('Enter a valid positive payout FX rate.', 'error');
+    if (source.length < 3) return showToast('Rate source/reference is required.', 'error');
+    try {
+      await request('payout_fx_lock', {
+        method:'POST',
+        body:{month_id:zskyState.selectedMonthId, currency, rate, source_reference:source, rate_timestamp:Math.floor(Date.now()/1000), confirmation:'LOCK_FX'},
+        busyText:`Locking USD_${currency} payout FX…`,
+      });
+      await loadRevenueStatus(zskyState.selectedMonthId);
+      await loadMonthlyPreview(zskyState.selectedMonthId);
+      showToast(`USD_${currency} payout FX locked.`, 'success');
+    } catch (error) {
+      showToast(error.message || `USD_${currency} payout FX could not be locked.`, 'error');
     }
   }
 
@@ -1263,6 +1470,7 @@
     if (event.target.closest('#zsky24RefreshBtn')) {
       if (zskyState.mode === 'WEEKLY') loadWeekly(true).catch(error => showToast(error.message || 'Weekly refresh failed.', 'error'));
       else if (zskyState.mode === 'MONTHLY') loadMonthly(true).catch(error => showToast(error.message || 'Monthly refresh failed.', 'error'));
+      else if (zskyState.mode === 'PAYOUT') loadPayoutWorkspace(true).catch(error => showToast(error.message || 'Payout workspace refresh failed.', 'error'));
       else if (zskyState.mode === 'MODERATION') loadModeration(true).catch(error => showToast(error.message || 'Moderation refresh failed.', 'error'));
       else if (zskyState.mode === 'POLICY') loadPolicy(true).catch(error => showToast(error.message || 'Settings refresh failed.', 'error'));
       else load(true).catch(error => showToast(error.message || 'Z Sky 24 refresh failed.', 'error'));
@@ -1272,6 +1480,10 @@
       zskyState.selected.clear(); renderCreators(); return;
     }
     if (event.target.closest('#zskyPayoutPreflightBtn')) { previewPayout(); return; }
+    if (event.target.closest('#zskyRevenueSyncBtn')) { syncRevenue(); return; }
+    if (event.target.closest('#zskyRevenueLockBtn')) { confirmRevenueLock(); return; }
+    if (event.target.closest('#zskyLockBdtFx')) { lockPayoutFx('BDT'); return; }
+    if (event.target.closest('#zskyLockMyrFx')) { lockPayoutFx('MYR'); return; }
     if (event.target.closest('#zskyGenerateWeeklyReview') && !event.target.closest('#zskyGenerateWeeklyReview').disabled) generateWeekly();
   });
 
@@ -1286,6 +1498,14 @@
     if (event.target.closest('#zskyMonthlySelect')) {
       zskyState.selectedMonthId = event.target.value;
       loadMonthlyPreview(zskyState.selectedMonthId).catch(error => showToast(error.message || 'Monthly performance could not be loaded.', 'error'));
+      return;
+    }
+    if (event.target.closest('#zskyPayoutMonthSelect')) {
+      zskyState.selectedMonthId = event.target.value;
+      zskyState.selected.clear();
+      zskyState.payoutPreview = null;
+      renderMonthlyOptions();
+      loadRevenueStatus(zskyState.selectedMonthId).then(renderCreators).catch(error => showToast(error.message || 'Settlement month could not be loaded.', 'error'));
     }
   });
 

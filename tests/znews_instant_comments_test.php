@@ -36,6 +36,13 @@ $clean = znews_comment_publication_decision('Thanks for sharing this update.');
 znews_comment_test_expect(!empty($clean['publish']), 'Clean comment must publish immediately.');
 znews_comment_test_expect(($clean['status'] ?? '') === 'ACTIVE', 'Clean comment status must be ACTIVE.');
 znews_comment_test_expect(($clean['moderation_status'] ?? '') === 'APPROVED', 'Clean comment moderation must be APPROVED.');
+znews_comment_test_expect(($clean['mode'] ?? '') === 'INSTANT_PUBLISH', 'Clean comment publication mode must be INSTANT_PUBLISH.');
+
+$bangla = znews_comment_publication_decision('খুব সুন্দর একটি পোস্ট');
+znews_comment_test_expect(!empty($bangla['publish']) && ($bangla['status'] ?? '') === 'ACTIVE', 'Clean Bengali comment must publish immediately.');
+
+$twoLinks = znews_comment_publication_decision('https://one.test https://two.test');
+znews_comment_test_expect(!empty($twoLinks['publish']), 'Two links must follow the canonical clean-comment policy.');
 
 $links = znews_comment_publication_decision('https://one.test https://two.test https://three.test');
 znews_comment_test_expect(empty($links['publish']), 'Comment with more than two links must require review.');
@@ -75,6 +82,7 @@ $update = znews_comment_test_read($root . '/api/znews/lib/comments/update.php');
 $moderation = znews_comment_test_read($root . '/api/znews/lib/comments/moderation.php');
 $endpoint = znews_comment_test_read($root . '/api/znews/comments/create.php');
 $ui = znews_comment_test_read($root . '/znews/assets/znews-instant-comments.js');
+$publication = znews_comment_test_read($root . '/api/znews/lib/comments/publication.php');
 
 znews_comment_test_expect(str_contains($create, 'znews_comment_publication_decision($text)'), 'Create flow must use automated publication decision.');
 znews_comment_test_expect(str_contains($create, "znews_engagement_adjust_counter(\$postId, 'comment_count', 1)"), 'Instant create must increment public comment count.');
@@ -85,6 +93,7 @@ znews_comment_test_expect(str_contains($moderation, "'comment_count', -1"), 'Blo
 znews_comment_test_expect(str_contains($endpoint, "'published_immediately' => \$published"), 'Comment endpoint must expose instant-publication result.');
 znews_comment_test_expect(str_contains($ui, "toast('Comment published.')"), 'Web UI must confirm instant comment publication.');
 znews_comment_test_expect(!str_contains($ui, 'Unlock with PIN'), 'Comment UI must not reference removed PIN login.');
+znews_comment_test_expect(str_contains($publication, "if (!defined('ZNEWS_INSTANT_COMMENTS_ENABLED'))") && str_contains($publication, 'return true;'), 'Missing production flag must default instant clean comments to enabled.');
 
 if ($failures) {
     fwrite(STDERR, "Z News instant comment contract failed:\n- " . implode("\n- ", $failures) . "\n");

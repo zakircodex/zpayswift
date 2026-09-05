@@ -30,6 +30,9 @@ $bootstrap = zsky_creator_read('api/znews/bootstrap.php');
 $viewPolicy = zsky_creator_read('api/znews/lib/creator_view_policy.php');
 $start = zsky_creator_read('api/znews/views/start.php');
 $payout = zsky_creator_read('api/znews/lib/creator_payout_batches.php');
+$monthlyRevenue = zsky_creator_read('api/znews/lib/monthly_revenue.php');
+$monthlyPayout = zsky_creator_read('api/znews/lib/monthly_creator_payouts.php');
+$adsterra = zsky_creator_read('api/znews/lib/adsterra_publisher.php');
 $activeList = zsky_creator_read('api/admin/znews/creators/list.php');
 $statusEndpoint = zsky_creator_read('api/admin/znews/creators/status.php');
 $preflight = zsky_creator_read('api/admin/znews/creators/payout_preflight.php');
@@ -96,6 +99,9 @@ zsky_creator_expect(str_contains($adminGateway, 'auth_require_admin_session(true
 zsky_creator_expect(str_contains($adminGateway, "\$action === 'creators_list'"), 'creator list gateway action missing');
 zsky_creator_expect(str_contains($adminGateway, "\$action === 'creator_status'"), 'creator status gateway action missing');
 zsky_creator_expect(str_contains($adminGateway, "\$action === 'payout_preflight'"), 'payout preflight gateway action missing');
+zsky_creator_expect(str_contains($adminGateway, "\$action === 'payout_execute'"), 'monthly payout execution gateway action missing');
+zsky_creator_expect(str_contains($adminGateway, "\$action === 'revenue_sync'") && str_contains($adminGateway, "\$action === 'revenue_lock'"), 'Adsterra revenue admin actions missing');
+zsky_creator_expect(str_contains($adminGateway, "\$action === 'payout_fx_lock'"), 'payout FX lock action missing');
 zsky_creator_expect(str_contains($adminGateway, 'ZNEWS_CREATOR_BLOCK_REASON_REQUIRED'), 'gateway does not require a block reason');
 zsky_creator_expect(!str_contains($adminGateway, 'wallet_credit_available') && !str_contains($adminGateway, 'wallet_debit_available'), 'creator admin gateway can mutate a wallet');
 
@@ -107,9 +113,16 @@ zsky_creator_expect(str_contains($adminJs, 'data-zsky-creator-tab="ACTIVE"') && 
 zsky_creator_expect(str_contains($adminJs, 'data-zsky-block-creator') && str_contains($adminJs, 'data-zsky-unblock-creator'), 'creator block/unblock controls missing');
 zsky_creator_expect(str_contains($adminJs, 'A block reason is required.'), 'admin UI block reason validation missing');
 zsky_creator_expect(str_contains($adminJs, "request('payout_preflight'"), 'admin UI payout preflight call missing');
-zsky_creator_expect(str_contains($adminJs, 'Preview only') && str_contains($adminJs, 'No wallet balance will be changed.'), 'admin UI does not clearly mark payout as preview-only');
-zsky_creator_expect(!str_contains($adminJs, 'wallet_credit_available') && !str_contains($adminJs, 'Approve transfer'), 'admin UI exposes legacy payout execution');
+zsky_creator_expect(str_contains($adminJs, "request('payout_execute'") && str_contains($adminJs, 'Execute payout'), 'admin UI monthly payout execution is missing');
+zsky_creator_expect(!str_contains($adminJs, 'wallet_credit_available') && !str_contains($adminJs, 'Approve transfer'), 'browser code exposes wallet internals or legacy transfer UI');
 zsky_creator_expect(str_contains($adminCss, '.zsky-payout-dock') && str_contains($adminCss, '.zsky-preflight-list'), 'creator payout preview styles missing');
+
+zsky_creator_expect(str_contains($adsterra, "getenv(\$name)") && str_contains($adsterra, "'X-API-Key: ' . \$token"), 'Adsterra private environment/header contract missing');
+zsky_creator_expect(!str_contains($adsterra, "echo \$token") && !str_contains($adsterra, "'token' => \$token"), 'Adsterra token can be emitted.');
+zsky_creator_expect(str_contains($monthlyRevenue, "'safety_reserve_bps' => 1000") && str_contains($monthlyRevenue, "'creator_effective_gross_bps' => 3600"), '10/36/54 revenue formula missing');
+zsky_creator_expect(str_contains($monthlyPayout, 'wallet_financial_operation_begin(') && str_contains($monthlyPayout, 'wallet_credit_available('), 'monthly payout bypasses canonical wallet helper');
+zsky_creator_expect(str_contains($monthlyPayout, "'ADSTERRA|' . \$monthId . '|' . \$uid"), 'provider/month/creator payout identity missing');
+zsky_creator_expect(!str_contains($monthlyPayout, 'phone_country'), 'monthly payout uses phone_country');
 
 zsky_creator_expect(!str_contains($ingest, 'settlements_auto.php'), 'per-impression auto settlement is still loaded');
 zsky_creator_expect(str_contains($ingest, 'DISABLED_PERIOD_REVENUE_PAYOUT'), 'auto-credit disabled status missing');

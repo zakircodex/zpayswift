@@ -72,6 +72,25 @@
 .zsky-payout-dock{position:sticky;bottom:12px;z-index:5;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px 16px;border:1px solid rgba(92,222,169,.3);border-radius:16px;background:rgba(6,25,44,.96);box-shadow:0 14px 34px rgba(0,0,0,.25);backdrop-filter:blur(14px)}
 .zsky-payout-dock>div:first-child strong,.zsky-payout-dock>div:first-child span{display:block}
 .zsky-payout-dock>div:first-child span{margin-top:3px;color:var(--muted);font-size:12px}
+.zsky-settlement-panel{display:grid;gap:14px;min-width:0;padding:18px;overflow:hidden}
+.zsky-settlement-panel[hidden]{display:none}
+.zsky-settlement-panel .panel-head{padding:0}
+.zsky-settlement-panel .panel-head h3{margin:4px 0 5px;font-size:19px}
+.zsky-settlement-panel .panel-head p{margin:0;color:var(--muted);line-height:1.48}
+.zsky-settlement-controls{display:grid;grid-template-columns:minmax(180px,1fr) auto auto;gap:9px;align-items:end}
+.zsky-settlement-controls label,.zsky-fx-grid label{display:grid;gap:6px;min-width:0;color:var(--muted);font-size:12px}
+.zsky-settlement-controls .zsky-admin-button,.zsky-fx-grid .zsky-admin-button{height:48px;min-height:48px;margin:0}
+.zsky-revenue-status{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.zsky-revenue-status>div{min-width:0;padding:11px;border:1px solid rgba(118,154,194,.16);border-radius:11px;background:rgba(5,20,38,.48)}
+.zsky-revenue-status small,.zsky-revenue-status strong{display:block;overflow-wrap:anywhere}
+.zsky-revenue-status small{margin-bottom:5px;color:var(--muted);font-size:11px}
+.zsky-settlement-warning{grid-column:1/-1;border-color:rgba(255,209,102,.28)!important;background:rgba(133,102,24,.12)!important}
+.zsky-settlement-warning strong{color:#ffd166}
+.zsky-settlement-warning span{display:block;margin-top:4px;color:var(--muted);font-size:12px;line-height:1.45}
+.zsky-fx-grid{display:grid;grid-template-columns:minmax(120px,.55fr) minmax(120px,.55fr) minmax(210px,1fr) auto auto;gap:9px;align-items:end;padding-top:13px;border-top:1px solid rgba(118,154,194,.14)}
+.zsky-confirm-payout{display:grid;gap:8px}
+.zsky-confirm-payout>div{display:flex;justify-content:space-between;gap:12px;padding:10px;border:1px solid rgba(118,154,194,.16);border-radius:10px;background:rgba(5,20,38,.48)}
+.zsky-confirm-payout span{color:var(--muted);text-align:right;overflow-wrap:anywhere}
 .zsky-preflight-banner{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;padding:12px 14px;border:1px solid rgba(84,215,161,.3);border-radius:12px;background:rgba(42,133,99,.16)}
 .zsky-preflight-banner strong{color:#7befb5}
 .zsky-preflight-banner span{color:var(--muted)}
@@ -142,6 +161,11 @@
   .zsky-admin-row,.zsky-moderation-row,.zsky-creator-row{grid-template-columns:auto minmax(0,1fr) minmax(110px,.55fr)}
   .zsky-admin-actions{grid-column:2/-1;justify-content:flex-start}
   .zsky-payout-dock{align-items:flex-start;flex-direction:column}
+  .zsky-settlement-controls{grid-template-columns:1fr 1fr}
+  .zsky-settlement-controls label{grid-column:1/-1}
+  .zsky-revenue-status{grid-template-columns:1fr 1fr}
+  .zsky-fx-grid{grid-template-columns:1fr 1fr}
+  .zsky-fx-source{grid-column:1/-1}
   .zsky-preflight-row{grid-template-columns:1fr 1fr}
   .zsky-preflight-row>div:first-child{grid-column:1/-1}
   .zsky-weekly-toolbar{align-items:stretch;flex-direction:column}
@@ -172,6 +196,12 @@
   .zsky-pagination .btn{min-width:0;width:100%;padding-inline:8px}
   .zsky-admin-detail-grid{grid-template-columns:1fr}
   .zsky-payout-dock{bottom:8px;padding:13px}
+  .zsky-settlement-panel{gap:12px;padding:14px}
+  .zsky-settlement-controls,.zsky-revenue-status,.zsky-fx-grid{grid-template-columns:1fr}
+  .zsky-settlement-controls label,.zsky-fx-source,.zsky-settlement-warning{grid-column:auto}
+  .zsky-settlement-controls .zsky-admin-button,.zsky-fx-grid .zsky-admin-button{width:100%}
+  .zsky-confirm-payout>div{align-items:flex-start;flex-direction:column}
+  .zsky-confirm-payout span{text-align:left}
   .zsky-payout-dock .zsky-admin-actions{grid-column:auto;display:grid;grid-template-columns:1fr 1fr;width:100%}
   .zsky-preflight-banner{align-items:flex-start;flex-direction:column}
   .zsky-preflight-row{grid-template-columns:1fr}
