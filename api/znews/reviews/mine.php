@@ -27,6 +27,11 @@ $includeCurrent = !in_array(
     ['0', 'false', 'no'],
     true
 );
+$includeHistory = !in_array(
+    strtolower(trim((string)($_GET['include_history'] ?? '1'))),
+    ['0', 'false', 'no'],
+    true
+);
 $preview = ['review' => null];
 if ($includeCurrent) {
     $preview = znews_weekly_review_creator_live_preview($uid);
@@ -40,7 +45,9 @@ if ($includeCurrent) {
         );
     }
 }
-$history = znews_weekly_review_creator_history_page($uid, $limit, $cursor);
+$history = $includeHistory
+    ? znews_weekly_review_creator_history_page($uid, $limit, $cursor)
+    : ['items' => [], 'next_cursor' => '', 'has_more' => false];
 
 api_response(true, 'ZNEWS_WEEKLY_CREATOR_REVIEWS_OK', 'Weekly creator performance loaded.', [
     'creator' => znews_creator_public_registry($registry),

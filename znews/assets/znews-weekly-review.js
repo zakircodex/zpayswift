@@ -6,9 +6,12 @@
   if (!config || !ApiClient) return;
 
   const api = window.ZNEWS_API_CLIENT || new ApiClient(config);
+  const requestScheduler = window.ZNEWS_REQUEST_SCHEDULER;
+  const highPriority = window.ZNewsRequestScheduler?.PRIORITY?.FEED ?? 0;
   const state = {
     loading: false,
     loaded: false,
+    currentLoaded: false,
     items: [],
     cursor: '',
     hasMore: false,
@@ -41,6 +44,17 @@
     if (!unit) return String(exact);
     const scaled = exact / unit.threshold;
     return `${scaled >= 100 ? Math.round(scaled) : scaled.toFixed(1).replace(/\.0$/, '')}${unit.suffix}`;
+  }
+
+  function requestReviews(cursor, options, key) {
+    if (!requestScheduler || typeof requestScheduler.schedule !== 'function') {
+      return api.weeklyReviews(cursor, options);
+    }
+    return requestScheduler.schedule(
+      highPriority,
+      ({ signal }) => api.weeklyReviews(cursor, { ...options, signal }),
+      { key, preemptible: false }
+    );
   }
 
   function formatPercent(value) {
@@ -177,6 +191,13 @@
       note.textContent = `Verified traffic share for this review: ${formatPercent(review?.traffic_share_percent)}.`;
       note.className = 'weekly-performance-note';
     }
+
+    state.currentLoaded = true;
+    $('#weeklyCurrentLoading').hidden = true;
+    $('#weeklyCurrentError').hidden = true;
+    $('#weeklyCurrentBody').hidden = false;
+    $('#weeklyOverview').hidden = false;
+    $('#weeklyCurrentReview').setAttribute('aria-busy', 'false');
   }
 
   function historyMarkup(row) {
@@ -277,38 +298,84 @@
     if (skeleton) skeleton.hidden = true;
   }
 
-  async function loadReviews({ force = false, append = false } = {}) {
+  function setCurrentLoading() {
+    const review = $('#weeklyCurrentReview');
+    const loading = $('#weeklyCurrentLoading');
+    const error = $('#weeklyCurrentError');
+    review?.setAttribute('aria-busy', 'true');
+    if (error) error.hidden = true;
+    if (loading) loading.hidden = state.currentLoaded;
+  }
+
+  function setCurrentError() {
+    const review = $('#weeklyCurrentReview');
+    const loading = $('#weeklyCurrentLoading');
+    const error = $('#weeklyCurrentError');
+    if (loading) loading.hidden = true;
+    if (error) error.hidden = false;
+    review?.setAttribute('aria-busy', 'false');
+  }
+
+  async function loadReviews({ force = false, append = false, currentOnly = false } = {}) {
     if (state.loading || (state.loaded && !force && !append)) return;
     if (append && (!state.hasMore || !state.cursor)) return;
     if (!window.ZNEWS_AUTH_VERIFIED || !api.isAuthenticated()) return;
 
     state.loading = true;
-    const refreshing = force && state.loaded && !append;
+    const refreshing = force && state.loaded && !append && !currentOnly;
     setLoading(true, { append, refresh: refreshing });
-    if (!state.loaded) scheduleSkeleton();
-    if (!append) setInlineStatus(refreshing ? 'Refreshing…' : '');
+    if (!state.loaded && !currentOnly) scheduleSkeleton();
+    if (!append && !currentOnly) setInlineStatus(refreshing ? 'Refreshing…' : '');
 
     try {
-      const result = await api.weeklyReviews(append ? state.cursor : '', { includeCurrent: !append });
-      const incoming = Array.isArray(result.data?.items) ? result.data.items : [];
-      if (!append) {
-        renderCurrent(result.data?.current_preview || {}, result.data?.creator || {});
-        state.items = incoming;
-      } else {
+      if (currentOnly) {
+        setCurrentLoading();
+        const currentResult = await requestReviews('', {
+          includeCurrent: true,
+          includeHistory: false
+        }, 'weekly:current');
+        renderCurrent(currentResult.data?.current_preview || {}, currentResult.data?.creator || {});
+        setInlineStatus('');
+        return;
+      }
+
+      const historyResult = await requestReviews(append ? state.cursor : '', {
+        includeCurrent: false,
+        includeHistory: true
+      }, `weekly:history:${append ? state.cursor : 'first'}`);
+      const incoming = Array.isArray(historyResult.data?.items) ? historyResult.data.items : [];
+      if (append) {
         const known = new Set(state.items.map((item) => text(item?.period_id)));
         state.items.push(...incoming.filter((item) => !known.has(text(item?.period_id))));
+      } else {
+        state.items = incoming;
       }
-      state.cursor = text(result.data?.next_cursor);
-      state.hasMore = result.data?.has_more === true;
+      state.cursor = text(historyResult.data?.next_cursor);
+      state.hasMore = historyResult.data?.has_more === true;
       state.retryMode = 'refresh';
       state.loaded = true;
       $('#weeklyPerformanceContent').hidden = false;
       renderHistory();
-      setInlineStatus(refreshing ? 'Weekly performance refreshed.' : '');
-      if (refreshing) {
-        state.statusTimer = window.setTimeout(() => {
-          if (!state.loading) setInlineStatus('');
-        }, 2400);
+      finishInitialLoading();
+
+      if (!append) {
+        setCurrentLoading();
+        try {
+          const currentResult = await requestReviews('', {
+            includeCurrent: true,
+            includeHistory: false
+          }, 'weekly:current');
+          renderCurrent(currentResult.data?.current_preview || {}, currentResult.data?.creator || {});
+          setInlineStatus(refreshing ? 'Weekly performance refreshed.' : '');
+          if (refreshing) {
+            state.statusTimer = window.setTimeout(() => {
+              if (!state.loading) setInlineStatus('');
+            }, 2400);
+          }
+        } catch (_currentError) {
+          setCurrentError();
+          setInlineStatus(refreshing ? 'Previous reviews refreshed. Current week needs another try.' : '');
+        }
       }
     } catch (_error) {
       state.retryMode = append ? 'append' : 'refresh';
@@ -345,6 +412,10 @@
       void loadReviews(state.retryMode === 'append' ? { append: true } : { force: true });
       return;
     }
+    if (event.target.closest('[data-weekly-current-retry]')) {
+      void loadReviews({ force: true, currentOnly: true });
+      return;
+    }
     if (event.target.closest('#weeklyDetailClose')) closeDetail();
   });
 
@@ -367,6 +438,7 @@
     snapshot: () => ({
       loading: state.loading,
       loaded: state.loaded,
+      currentLoaded: state.currentLoaded,
       itemCount: state.items.length,
       cursor: state.cursor,
       hasMore: state.hasMore

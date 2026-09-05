@@ -311,8 +311,8 @@
     ];
     const imageOptimizerReady = authenticated ? ensureImageOptimizer() : Promise.resolve(null);
     const creatorModules = authenticated ? [
-      loadStylesheet('/znews/assets/znews-weekly-review.css?v=2'),
-      loadScript('/znews/assets/znews-weekly-review.js?v=2'),
+      loadStylesheet('/znews/assets/znews-weekly-review.css?v=3'),
+      loadScript('/znews/assets/znews-weekly-review.js?v=3'),
       imageOptimizerReady.then(() => loadScript('/znews/assets/znews-creator.js?v=14')),
       loadScript('/znews/assets/znews-instant-comments.js?v=4')
     ] : [];

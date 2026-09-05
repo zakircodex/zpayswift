@@ -217,6 +217,8 @@ weekly_expect(str_contains($mine, 'auth_require_user(false)'), 'Creator weekly r
 weekly_expect(str_contains($mine, 'money_fields_present'), 'Creator response must state that money fields are absent.');
 weekly_expect(!str_contains($mine, "\$_GET['uid']"), 'Creator weekly report must not trust a client-supplied UID.');
 weekly_expect(str_contains($mine, "'next_cursor'") && str_contains($mine, "'has_more'"), 'Creator weekly history pagination metadata is missing.');
+weekly_expect(str_contains($mine, "\$_GET['include_history']"), 'Creator weekly endpoint cannot isolate the fast history request from the live preview.');
+weekly_expect(str_contains($mine, '$includeHistory'), 'Creator weekly endpoint does not preserve backward-compatible optional history loading.');
 
 foreach (['weekly_periods', 'weekly_review', 'weekly_generate', 'weekly_status'] as $action) {
     weekly_expect(str_contains($gateway, "'{$action}'"), "Admin gateway action is missing: {$action}");
@@ -242,21 +244,24 @@ weekly_expect(str_contains($index, 'Z Sky 24 does not maintain a creator wallet'
 weekly_expect(!str_contains($index, '>Creator balance<'), 'Legacy creator balance label remains visible.');
 weekly_expect(!str_contains($index, 'Transfer to Z-Pay balance'), 'Legacy transfer action remains visible.');
 weekly_expect(!str_contains($index, '৳0.01–৳0.03'), 'Legacy per-ad credit promise remains visible.');
-weekly_expect(str_contains($bootstrap, 'znews-weekly-review.js?v=2'), 'Weekly creator report JavaScript is not loaded after creator authentication.');
-weekly_expect(str_contains($bootstrap, 'znews-weekly-review.css?v=2'), 'Weekly creator report stylesheet is not loaded after creator authentication.');
+weekly_expect(str_contains($bootstrap, 'znews-weekly-review.js?v=3'), 'Weekly creator report JavaScript is not loaded after creator authentication.');
+weekly_expect(str_contains($bootstrap, 'znews-weekly-review.css?v=3'), 'Weekly creator report stylesheet is not loaded after creator authentication.');
 
 weekly_expect(str_contains($weeklyJs, 'weeklyReviews'), 'Creator weekly report API method is not wired.');
 weekly_expect(str_contains($weeklyJs, 'Creator views excluded'), 'Creator exclusion metric is not shown.');
 weekly_expect(str_contains($weeklyJs, 'Weekly performance could not be loaded.'), 'Inline weekly performance error state is missing.');
+weekly_expect(str_contains($weeklyJs, 'includeHistory: false'), 'The expensive current preview still repeats weekly history reads.');
+weekly_expect(str_contains($weeklyJs, 'data-weekly-current-retry'), 'A current-preview failure can still blank the complete weekly page.');
+weekly_expect(str_contains($weeklyJs, 'requestScheduler.schedule'), 'Weekly mobile requests do not use the existing shared-origin priority scheduler.');
 weekly_expect(!str_contains($weeklyJs, 'balanceSummary'), 'Weekly performance still invokes the retired balance API.');
 
 foreach ([
-    [$embeddedWorker, 'zsky24-embedded-shell-v28'],
-    [$standaloneWorker, 'zsky24-standalone-shell-v28'],
+    [$embeddedWorker, 'zsky24-embedded-shell-v29'],
+    [$standaloneWorker, 'zsky24-standalone-shell-v29'],
 ] as [$worker, $cacheName]) {
     weekly_expect(str_contains($worker, $cacheName), "Weekly review service-worker generation is missing: {$cacheName}");
-    weekly_expect(str_contains($worker, 'znews-weekly-review.js?v=2'), 'Weekly review JavaScript is missing from a service-worker shell.');
-    weekly_expect(str_contains($worker, 'znews-weekly-review.css?v=2'), 'Weekly review CSS is missing from a service-worker shell.');
+    weekly_expect(str_contains($worker, 'znews-weekly-review.js?v=3'), 'Weekly review JavaScript is missing from a service-worker shell.');
+    weekly_expect(str_contains($worker, 'znews-weekly-review.css?v=3'), 'Weekly review CSS is missing from a service-worker shell.');
     weekly_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'A service worker may cache weekly API responses.');
 }
 

@@ -17,13 +17,13 @@
   <link rel="stylesheet" href="/znews/assets/znews.css?v=4">
   <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=17">
   <script defer src="/znews/assets/znews-config.js?v=9"></script>
-  <script defer src="/znews/assets/znews-api.js?v=14"></script>
+  <script defer src="/znews/assets/znews-api.js?v=15"></script>
   <script defer src="/znews/assets/znews-request-scheduler.js?v=1"></script>
   <script defer src="/znews/assets/znews-progressive-feed.js?v=3"></script>
   <script defer src="/znews/assets/znews-feed-ui.js?v=3"></script>
   <script defer src="/znews/assets/znews-ads.js?v=2"></script>
   <script defer src="/znews/assets/znews-rich-editor.js?v=5"></script>
-  <script defer src="/znews/assets/znews-bootstrap.js?v=33"></script>
+  <script defer src="/znews/assets/znews-bootstrap.js?v=34"></script>
   <script defer src="/znews/assets/znews.js?v=28"></script>
 </head>
 <body>
@@ -218,18 +218,28 @@
         </div>
 
         <div class="weekly-performance-content" id="weeklyPerformanceContent" hidden>
-          <article class="weekly-performance-hero" id="weeklyCurrentReview" aria-labelledby="weeklyCurrentTitle">
-            <div class="weekly-performance-heading">
-              <div><span class="eyebrow">Current week</span><h2 id="weeklyCurrentTitle">Verified engagement</h2><span class="weekly-period-label" id="weeklyCurrentPeriod">Current week</span></div>
-              <span class="weekly-status live" id="weeklyCurrentStatus" role="status">LIVE</span>
+          <article class="weekly-performance-hero" id="weeklyCurrentReview" aria-labelledby="weeklyCurrentTitle" aria-busy="true">
+            <div class="weekly-current-state" id="weeklyCurrentLoading" role="status">
+              <span class="weekly-current-spinner" aria-hidden="true"></span>
+              <div><strong>Loading current week…</strong><small>Verifying recent engagement</small></div>
             </div>
-            <div class="weekly-primary-metric"><span>Eligible views</span><strong id="weeklyEligibleViews" title="0">0</strong></div>
-            <div class="weekly-hero-metrics" id="weeklyHeroMetrics"></div>
-            <div class="weekly-verification" id="weeklyVerification" aria-label="View verification breakdown"></div>
-            <p class="weekly-performance-note" id="weeklyCurrentNote"></p>
+            <div class="weekly-current-state danger" id="weeklyCurrentError" hidden>
+              <div><strong>Current week could not be loaded.</strong><small>Your previous weekly reviews are still available.</small></div>
+              <button type="button" data-weekly-current-retry>Retry</button>
+            </div>
+            <div class="weekly-current-body" id="weeklyCurrentBody" hidden>
+              <div class="weekly-performance-heading">
+                <div><span class="eyebrow">Current week</span><h2 id="weeklyCurrentTitle">Verified engagement</h2><span class="weekly-period-label" id="weeklyCurrentPeriod">Current week</span></div>
+                <span class="weekly-status live" id="weeklyCurrentStatus" role="status">LIVE</span>
+              </div>
+              <div class="weekly-primary-metric"><span>Eligible views</span><strong id="weeklyEligibleViews" title="0">0</strong></div>
+              <div class="weekly-hero-metrics" id="weeklyHeroMetrics"></div>
+              <div class="weekly-verification" id="weeklyVerification" aria-label="View verification breakdown"></div>
+              <p class="weekly-performance-note" id="weeklyCurrentNote"></p>
+            </div>
           </article>
 
-          <section class="weekly-overview" aria-labelledby="weeklyOverviewTitle">
+          <section class="weekly-overview" id="weeklyOverview" aria-labelledby="weeklyOverviewTitle" hidden>
             <div class="weekly-section-heading"><div><span class="eyebrow">Overview</span><h2 id="weeklyOverviewTitle">Performance overview</h2></div></div>
             <div id="weeklyCurrentMetrics" class="weekly-performance-metrics"></div>
           </section>

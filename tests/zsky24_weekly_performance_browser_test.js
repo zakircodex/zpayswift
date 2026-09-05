@@ -84,9 +84,11 @@ async function main() {
       requests: [],
       delay: 280,
       failures: 0,
+      currentFailures: 1,
       empty: false,
       currentStatus: 'UNDER_REVIEW',
       currentLive: true,
+      backgroundEvents: [],
       baseReview,
       history
     };
@@ -111,12 +113,18 @@ async function main() {
       }
       if (url.pathname.endsWith('/znews/reviews/mine.php')) {
         await sleep(window.__weeklyTest.delay);
-        if (window.__weeklyTest.failures > 0) {
+        const includeCurrent = url.searchParams.get('include_current') !== '0';
+        const includeHistory = url.searchParams.get('include_history') !== '0';
+        if (includeCurrent && window.__weeklyTest.currentFailures > 0) {
+          window.__weeklyTest.currentFailures -= 1;
+          return json({ ok: false, code: 'ZNEWS_WEEKLY_PREVIEW_TEST_FAILURE', message: 'Fixture current preview failed.', data: {} }, 503);
+        }
+        if (includeHistory && window.__weeklyTest.failures > 0) {
           window.__weeklyTest.failures -= 1;
           return json({ ok: false, code: 'ZNEWS_WEEKLY_TEST_FAILURE', message: 'Fixture failed.', data: {} }, 503);
         }
         const cursor = url.searchParams.get('cursor') || '';
-        const items = window.__weeklyTest.empty
+        const items = !includeHistory || window.__weeklyTest.empty
           ? []
           : (cursor ? window.__weeklyTest.history.slice(2) : window.__weeklyTest.history.slice(0, 2));
         const current = {
@@ -130,10 +138,10 @@ async function main() {
         };
         return success('ZNEWS_WEEKLY_CREATOR_REVIEWS_OK', {
           creator: { uid: 'CREATOR_A', name: 'Creator A', role: 'USER', status: 'ACTIVE' },
-          current_preview: url.searchParams.get('include_current') === '0' ? null : current,
+          current_preview: includeCurrent ? current : null,
           items,
-          next_cursor: !cursor && !window.__weeklyTest.empty ? '2026-08-17' : '',
-          has_more: !cursor && !window.__weeklyTest.empty,
+          next_cursor: includeHistory && !cursor && !window.__weeklyTest.empty ? '2026-08-17' : '',
+          has_more: includeHistory && !cursor && !window.__weeklyTest.empty,
           money_fields_present: false
         });
       }
@@ -146,6 +154,24 @@ async function main() {
     const origin = `http://127.0.0.1:${server.address().port}`;
     await page.goto(`${origin}/znews/`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.ZNEWS_AUTH_VERIFIED === true && Boolean(window.ZNewsWeeklyPerformance));
+    await page.evaluate(() => {
+      const priority = window.ZNewsRequestScheduler.PRIORITY.ANALYTICS;
+      window.ZNEWS_REQUEST_SCHEDULER.schedule(priority, ({ signal }) => new Promise((resolve, reject) => {
+        window.__weeklyTest.backgroundEvents.push('start');
+        const timer = setTimeout(() => {
+          window.__weeklyTest.backgroundEvents.push('end');
+          resolve();
+        }, 800);
+        signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          window.__weeklyTest.backgroundEvents.push('abort');
+          const error = new Error('aborted');
+          error.name = 'AbortError';
+          reject(error);
+        }, { once: true });
+      }), { key: 'weekly-test-background' }).catch(() => {});
+    });
+    await page.waitForFunction(() => window.__weeklyTest.backgroundEvents.includes('start'));
     await page.locator('#menuToggle').click();
     const route = page.locator('#menuDrawer [data-menu-route="performance"]');
     await route.waitFor({ state: 'visible' });
@@ -154,6 +180,17 @@ async function main() {
     await page.waitForTimeout(190);
     assert.equal(await page.locator('#weeklyPerformanceSkeleton').isVisible(), true, 'Slow weekly response did not show skeletons after 150ms.');
     await page.waitForFunction(() => window.ZNewsWeeklyPerformance.snapshot().loaded === true);
+    assert.equal(await page.evaluate(() => window.__weeklyTest.backgroundEvents.includes('abort')), true, 'Weekly page P0 request did not preempt shared-origin background work.');
+
+    await page.locator('#weeklyCurrentError').waitFor({ state: 'visible' });
+    assert.equal(await page.locator('#weeklyPerformanceContent').isVisible(), true, 'A failed current preview hid the successfully loaded weekly history.');
+    assert.equal(await page.locator('#weeklyReviewHistory [data-weekly-period]').count(), 2, 'Fast weekly history was not rendered before the current preview recovered.');
+    if (process.env.WEEKLY_SCREENSHOT_DIR) {
+      fs.mkdirSync(process.env.WEEKLY_SCREENSHOT_DIR, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.WEEKLY_SCREENSHOT_DIR, 'weekly-mobile-partial-390.png'), fullPage: true });
+    }
+    await page.locator('[data-weekly-current-retry]').click();
+    await page.waitForFunction(() => window.ZNewsWeeklyPerformance.snapshot().currentLoaded === true && !window.ZNewsWeeklyPerformance.snapshot().loading);
 
     assert.equal(await page.locator('#weeklyCurrentStatus').textContent(), 'LIVE');
     assert.equal(await page.locator('#weeklyEligibleViews').textContent(), '1.2K');
@@ -177,7 +214,9 @@ async function main() {
     await page.locator('#weeklyReviewLoadMore').click();
     await page.waitForFunction(() => window.ZNewsWeeklyPerformance.snapshot().itemCount === 3);
     const requests = await page.evaluate(() => window.__weeklyTest.requests.filter((item) => item.includes('/znews/reviews/mine.php')));
-    assert.equal(requests.some((item) => item.includes('cursor=2026-08-17') && item.includes('include_current=0')), true, 'History pagination did not use the bounded cursor-only request.');
+    assert.equal(requests[0].includes('include_current=0') && requests[0].includes('include_history=1'), true, 'Initial mobile load did not request fast bounded history first.');
+    assert.equal(requests[1].includes('include_current=1') && requests[1].includes('include_history=0'), true, 'Current preview was not isolated from history loading.');
+    assert.equal(requests.some((item) => item.includes('cursor=2026-08-17') && item.includes('include_current=0') && item.includes('include_history=1')), true, 'History pagination did not use the bounded cursor-only request.');
 
     await page.evaluate(() => { window.__weeklyTest.delay = 260; });
     const beforeRefresh = await page.locator('#weeklyEligibleViews').textContent();
@@ -189,7 +228,7 @@ async function main() {
     assert.match(await page.locator('#weeklyInlineStatus').textContent(), /Refreshing/);
     await page.waitForFunction(() => !window.ZNewsWeeklyPerformance.snapshot().loading);
     const requestCountAfter = await page.evaluate(() => window.__weeklyTest.requests.filter((item) => item.includes('/znews/reviews/mine.php')).length);
-    assert.equal(requestCountAfter, requestCountBefore + 1, 'Duplicate refresh requests were not prevented.');
+    assert.equal(requestCountAfter, requestCountBefore + 2, 'Refresh did not issue exactly one history request and one isolated current request.');
 
     for (const status of ['UNDER_REVIEW', 'APPROVED', 'HELD']) {
       await page.evaluate((nextStatus) => {

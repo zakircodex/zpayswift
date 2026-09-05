@@ -32,13 +32,13 @@ $standaloneWorker = fast_boot_source('znews/sw-root.js');
 
 $critical = [
     'znews-config.js?v=9',
-    'znews-api.js?v=14',
+    'znews-api.js?v=15',
     'znews-request-scheduler.js?v=1',
     'znews-progressive-feed.js?v=3',
     'znews-feed-ui.js?v=3',
     'znews-ads.js?v=2',
     'znews-rich-editor.js?v=5',
-    'znews-bootstrap.js?v=33',
+    'znews-bootstrap.js?v=34',
     'znews.js?v=28',
 ];
 $last = -1;
@@ -73,10 +73,10 @@ fast_boot_expect(!str_contains($index, 'defer src="/znews/assets/znews-image-opt
 fast_boot_expect(str_contains($bootstrap, "const creatorModules = authenticated ? ["), 'Auth-only modules are not verification-gated.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    fast_boot_expect(str_contains($worker, 'shell-v28'), 'Service-worker cache generation was not advanced.');
-    fast_boot_expect(str_contains($worker, "SHELL_REVISION = 'weekly-performance-premium-1'"), 'Weekly performance shell revision is missing.');
+    fast_boot_expect(str_contains($worker, 'shell-v29'), 'Service-worker cache generation was not advanced.');
+    fast_boot_expect(str_contains($worker, "SHELL_REVISION = 'weekly-performance-mobile-load-1'"), 'Weekly performance shell revision is missing.');
     fast_boot_expect(str_contains($worker, 'znews-rich-editor.js?v=5'), 'Service worker is missing the single-surface rich editor module.');
-    fast_boot_expect(str_contains($worker, 'znews-bootstrap.js?v=33'), 'Service worker has a stale bootstrap URL.');
+    fast_boot_expect(str_contains($worker, 'znews-bootstrap.js?v=34'), 'Service worker has a stale bootstrap URL.');
     fast_boot_expect(str_contains($worker, 'znews.js?v=28'), 'Service worker has a stale app URL.');
     fast_boot_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'Service worker may intercept API requests.');
 }
