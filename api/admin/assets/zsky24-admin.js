@@ -103,7 +103,7 @@
             <h3 id="zsky24AdminTitle">Z Sky 24 Admin</h3>
             <p>Moderate publishing, manage creator access and review fixed-calendar performance from one protected workspace.</p>
           </div>
-          <button class="btn blue" id="zsky24RefreshBtn" type="button">Refresh</button>
+          <button class="btn blue zsky-admin-button" id="zsky24RefreshBtn" type="button">Refresh</button>
         </div>
 
         <div class="zsky-admin-tabs zsky-primary-tabs" role="tablist" aria-label="Z Sky 24 administration">
@@ -112,7 +112,7 @@
           <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="CREATORS">Creator accounts</button>
           <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="WEEKLY">Weekly reviews</button>
           <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="MONTHLY">Monthly summary</button>
-          <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="PAYOUT">Payout / transfers</button>
+          <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="PAYOUT">Payout readiness</button>
           <button class="zsky-admin-tab" type="button" role="tab" aria-selected="false" data-zsky-mode="POLICY">Settings</button>
         </div>
 
@@ -174,8 +174,8 @@
           </div>
 
           <div class="zsky-payout-dock" id="zskyPayoutDock">
-            <div><strong><span id="zskyPayoutSelectedText">0</span> of ${BATCH_LIMIT} selected</strong><span>Preview checks creator status, live Z-Pay account status and BDT/MYR wallet currency.</span></div>
-            <div class="zsky-admin-actions"><button class="btn ghost" id="zskyClearCreatorSelection" type="button" disabled>Clear</button><button class="btn brand" id="zskyPayoutPreflightBtn" type="button" disabled>Preview payout batch</button></div>
+            <div><strong><span id="zskyPayoutSelectedText">0</span> of ${BATCH_LIMIT} selected</strong><span>Readiness checks creator status, live Z-Pay account status and BDT/MYR wallet currency. It never changes a balance.</span></div>
+            <div class="zsky-admin-actions"><button class="btn ghost zsky-admin-button" id="zskyClearCreatorSelection" type="button" disabled>Clear</button><button class="btn brand zsky-admin-button" id="zskyPayoutPreflightBtn" type="button" disabled>Check readiness</button></div>
           </div>
         </section>
 
@@ -369,6 +369,13 @@
     }
   }
 
+  function openZSkyModal(title, bodyHtml, footHtml){
+    openModal(title, bodyHtml, footHtml);
+    if (typeof setModalPresentationScope === 'function') {
+      setModalPresentationScope('zsky24');
+    }
+  }
+
   async function moveModerationPage(direction){
     const pager = moderationState();
     if (direction > 0) {
@@ -400,8 +407,8 @@
       ])}<div class="zsky-content-preview"><small>Title</small><strong>${safe(humanValue(post.title || post.headline, 'Untitled post'))}</strong><small>Post text</small><p>${safe(humanValue(post.body || post.text || post.content, 'No text content.'))}</p></div>`;
       const reviewable = String(post.status || '').toUpperCase() === 'REVIEW' || String(post.moderation_status || '').toUpperCase() === 'PENDING';
       const foot = reviewable
-        ? '<button class="btn ghost" type="button" onclick="closeDrawer()">Close</button><button class="btn danger" type="button" data-zsky-post-decision="REJECT">Reject</button><button class="btn brand" type="button" data-zsky-post-decision="APPROVE">Approve</button>'
-        : '<button class="btn ghost" type="button" onclick="closeDrawer()">Close</button>';
+        ? '<button class="btn ghost zsky-admin-button" type="button" onclick="closeDrawer()">Close</button><button class="btn danger zsky-admin-button" type="button" data-zsky-post-decision="REJECT">Reject</button><button class="btn brand zsky-admin-button" type="button" data-zsky-post-decision="APPROVE">Approve</button>'
+        : '<button class="btn ghost zsky-admin-button" type="button" onclick="closeDrawer()">Close</button>';
       openDrawer('Post moderation', humanValue(post.title || post.headline, 'Post details'), body, foot);
     } catch (error) { showToast(error.message || 'Post details could not be loaded.', 'error'); }
   }
@@ -413,10 +420,10 @@
     const options = approve
       ? '<option value="CLEAR">Clear</option><option value="ORIGINAL_CONFIRMED">Original confirmed</option><option value="LICENSED">Licensed</option>'
       : '<option value="POLICY_REJECTED">Policy rejected</option><option value="COPYRIGHT_MATCH">Copyright match</option><option value="PLAGIARISM">Plagiarism</option><option value="OTHER">Other</option>';
-    openModal(
+    openZSkyModal(
       approve ? 'Approve post' : 'Reject post',
       `<label for="zskyPostVerdict">Copyright verdict</label><select class="input" id="zskyPostVerdict">${options}</select><label for="zskyPostDecisionNote">${approve ? 'Admin note (optional)' : 'Reason'}</label><textarea class="input zsky-admin-reason" id="zskyPostDecisionNote" maxlength="${approve ? 1000 : 500}" ${approve ? '' : 'required'}></textarea>`,
-      `<button class="btn ghost" type="button" onclick="closeModal()">Cancel</button><button class="btn ${approve ? 'brand' : 'danger'}" type="button" id="zskyConfirmPostDecision">${approve ? 'Approve' : 'Reject'}</button>`
+      `<button class="btn ghost zsky-admin-button" type="button" onclick="closeModal()">Cancel</button><button class="btn ${approve ? 'brand' : 'danger'} zsky-admin-button" type="button" id="zskyConfirmPostDecision">${approve ? 'Approve' : 'Reject'}</button>`
     );
     $('zskyConfirmPostDecision')?.addEventListener('click', async event => {
       const note = $('zskyPostDecisionNote')?.value.trim() || '';
@@ -447,8 +454,8 @@
       ])}<div class="zsky-content-preview"><small>Comment</small><p>${safe(humanValue(comment.text || comment.comment || comment.body || comment.content, 'No text content.'))}</p></div>`;
       const reviewable = String(comment.status || '').toUpperCase() === 'REVIEW' || String(comment.moderation_status || '').toUpperCase() === 'PENDING';
       const foot = reviewable
-        ? '<button class="btn ghost" type="button" onclick="closeDrawer()">Close</button><button class="btn danger" type="button" data-zsky-comment-decision="REJECT">Reject</button><button class="btn brand" type="button" data-zsky-comment-decision="APPROVE">Approve</button>'
-        : '<button class="btn ghost" type="button" onclick="closeDrawer()">Close</button>';
+        ? '<button class="btn ghost zsky-admin-button" type="button" onclick="closeDrawer()">Close</button><button class="btn danger zsky-admin-button" type="button" data-zsky-comment-decision="REJECT">Reject</button><button class="btn brand zsky-admin-button" type="button" data-zsky-comment-decision="APPROVE">Approve</button>'
+        : '<button class="btn ghost zsky-admin-button" type="button" onclick="closeDrawer()">Close</button>';
       openDrawer('Comment moderation', `Comment ${humanValue(comment.comment_id || commentId)}`, body, foot);
     } catch (error) { showToast(error.message || 'Comment details could not be loaded.', 'error'); }
   }
@@ -457,10 +464,10 @@
     const comment = zskyState.selectedComment || {};
     if (!comment.post_id || !comment.comment_id || !comment.updated_at) return showToast('Reload the comment before moderating it.', 'error');
     const approve = decision === 'APPROVE';
-    openModal(
+    openZSkyModal(
       approve ? 'Approve comment' : 'Reject comment',
       `<label for="zskyCommentDecisionNote">${approve ? 'Admin note (optional)' : 'Reason'}</label><textarea class="input zsky-admin-reason" id="zskyCommentDecisionNote" maxlength="500" ${approve ? '' : 'required'}></textarea>`,
-      `<button class="btn ghost" type="button" onclick="closeModal()">Cancel</button><button class="btn ${approve ? 'brand' : 'danger'}" type="button" id="zskyConfirmCommentDecision">${approve ? 'Approve' : 'Reject'}</button>`
+      `<button class="btn ghost zsky-admin-button" type="button" onclick="closeModal()">Cancel</button><button class="btn ${approve ? 'brand' : 'danger'} zsky-admin-button" type="button" id="zskyConfirmCommentDecision">${approve ? 'Approve' : 'Reject'}</button>`
     );
     $('zskyConfirmCommentDecision')?.addEventListener('click', async event => {
       const note = $('zskyCommentDecisionNote')?.value.trim() || '';
@@ -495,8 +502,8 @@
         <div class="zsky-admin-cell"><small>Wallet snapshot</small><strong>${safe(currency)}</strong></div>
         <div class="zsky-admin-cell"><small>Creator status</small><strong class="${active ? 'zsky-status-active' : 'zsky-flag'}">${safe(status)}</strong></div>
         <div class="zsky-admin-actions">${active
-          ? `<button class="btn danger" type="button" data-zsky-block-creator="${safe(uid)}" data-creator-name="${safe(row.name || 'Creator')}">Block</button>`
-          : `<button class="btn brand" type="button" data-zsky-unblock-creator="${safe(uid)}" data-creator-name="${safe(row.name || 'Creator')}">Unblock</button>`}</div>
+          ? `<button class="btn danger zsky-admin-button" type="button" data-zsky-block-creator="${safe(uid)}" data-creator-name="${safe(row.name || 'Creator')}">Block</button>`
+          : `<button class="btn brand zsky-admin-button" type="button" data-zsky-unblock-creator="${safe(uid)}" data-creator-name="${safe(row.name || 'Creator')}">Unblock</button>`}</div>
       </article>`;
   }
 
@@ -507,10 +514,10 @@
     const paged = pageRows(rows, zskyState.creatorPage);
     zskyState.creatorPage = paged.page;
     if ($('zskyCreatorListTitle')) $('zskyCreatorListTitle').textContent = zskyState.mode === 'PAYOUT'
-      ? 'Payout eligibility preview'
+      ? 'Payout readiness'
       : (status === 'ACTIVE' ? 'Active creators' : 'Blocked creators');
     if ($('zskyCreatorListSubtitle')) $('zskyCreatorListSubtitle').textContent = status === 'ACTIVE'
-      ? (zskyState.mode === 'PAYOUT' ? 'Select up to five active creators. No amount is calculated or transferred here.' : 'Manage creator access using public registry fields only.')
+      ? (zskyState.mode === 'PAYOUT' ? 'Select up to five active creators for account and wallet-currency checks. No amount is calculated or transferred here.' : 'Manage creator access using public registry fields only.')
       : 'Blocked creators cannot publish, manage posts or receive payout.';
     if ($('zskyCreatorList')) $('zskyCreatorList').innerHTML = paged.items.length
       ? paged.items.map(creatorRow).join('')
@@ -543,6 +550,28 @@
         ['Automatic per-ad credit', yesNo(Boolean(policy.automatic_per_ad_credit_enabled))],
         ['Wallet currencies', Array.isArray(policy.supported_wallet_currencies) ? policy.supported_wallet_currencies.join(', ') : '-'],
       ])}
+      <section class="zsky-admin-guide" aria-labelledby="zskyAdminGuideTitle">
+        <div class="zsky-admin-guide-head"><span class="zsky-admin-kicker">OPERATIONS GUIDE</span><h4 id="zskyAdminGuideTitle">What each area does</h4></div>
+        <div class="zsky-admin-guide-grid">
+          <article><strong>Overview</strong><span>Shows bounded queue and creator counts for a quick health check.</span></article>
+          <article><strong>Posts / Moderation</strong><span>Opens pending posts or comments and applies canonical approve or reject decisions.</span></article>
+          <article><strong>Creator accounts</strong><span>Activates or blocks Z Sky creator access. It does not change the Z-Pay account or wallet.</span></article>
+          <article><strong>Weekly reviews</strong><span>Generates completed calendar snapshots, then approves or holds each creator review.</span></article>
+          <article><strong>Monthly summary</strong><span>Combines approved review metrics into a read-only settlement-readiness summary.</span></article>
+          <article><strong>Payout readiness</strong><span>Checks up to five creators for active account and supported wallet currency. It does not calculate or transfer money.</span></article>
+          <article><strong>Settings</strong><span>Displays the canonical public creator policy. All values on this screen are read-only.</span></article>
+        </div>
+      </section>
+      <section class="zsky-balance-flow" aria-labelledby="zskyBalanceFlowTitle">
+        <div class="zsky-balance-flow-head"><div><span class="zsky-admin-kicker">BALANCE FLOW</span><h4 id="zskyBalanceFlowTitle">How creator value can reach Z-Pay</h4></div><span class="zsky-status-badge is-warning">No balance movement here</span></div>
+        <ol>
+          <li><strong>Verify engagement</strong><span>Self, creator, duplicate, bot and invalid activity is excluded by the server.</span></li>
+          <li><strong>Review periods</strong><span>Completed weekly reviews must be approved and the monthly summary must be ready.</span></li>
+          <li><strong>Verify ad revenue</strong><span>The Ads phase must use provider-authoritative revenue. Views alone never create money.</span></li>
+          <li><strong>Server-side payout</strong><span>Only an audited settlement service may later credit the linked Z-Pay wallet.</span></li>
+        </ol>
+        <p>Current state: creator balance, withdrawal requests and automatic per-ad credit are disabled. The readiness button cannot add user balance.</p>
+      </section>
       <div class="zsky-retired-note"><strong>Server authoritative</strong><span>Creator/account eligibility and review-period rules remain enforced by the existing backend. No financial amount is accepted from this screen.</span></div>`;
   }
 
@@ -671,10 +700,10 @@
   }
 
   function blockCreator(uid, name){
-    openModal(
+    openZSkyModal(
       'Block Z Sky creator',
       `<p>Block <strong>${safe(name)}</strong> from creator actions and payout eligibility?</p><label for="zskyCreatorBlockReason">Reason</label><textarea id="zskyCreatorBlockReason" class="input zsky-admin-reason" maxlength="300" placeholder="Required reason"></textarea>`,
-      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn danger" id="zskyConfirmCreatorBlock">Block creator</button>'
+      '<button class="btn ghost zsky-admin-button" type="button" onclick="closeModal()">Cancel</button><button class="btn danger zsky-admin-button" type="button" id="zskyConfirmCreatorBlock">Block creator</button>'
     );
     $('zskyConfirmCreatorBlock')?.addEventListener('click', async () => {
       const reason = $('zskyCreatorBlockReason')?.value.trim() || '';
@@ -686,10 +715,10 @@
   }
 
   function unblockCreator(uid, name){
-    openModal(
+    openZSkyModal(
       'Activate Z Sky creator',
       `<p>Restore creator access for <strong>${safe(name)}</strong>? Live Z-Pay account eligibility will still be checked before payout.</p>`,
-      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn brand" id="zskyConfirmCreatorUnblock">Activate creator</button>'
+      '<button class="btn ghost zsky-admin-button" type="button" onclick="closeModal()">Cancel</button><button class="btn brand zsky-admin-button" type="button" id="zskyConfirmCreatorUnblock">Activate creator</button>'
     );
     $('zskyConfirmCreatorUnblock')?.addEventListener('click', async () => {
       closeModal();
@@ -721,7 +750,7 @@
         method:'POST', body:{creator_uids:[...zskyState.selected]},
         busyText:'Validating creator payout batch…',
       });
-      openDrawer('Payout batch preview', `${data.count || zskyState.selected.size} creators passed live eligibility checks`, preflightMarkup(data), '<button class="btn ghost" onclick="closeDrawer()">Close</button>');
+      openDrawer('Payout readiness', `${data.count || zskyState.selected.size} creators passed live eligibility checks`, preflightMarkup(data), '<button class="btn ghost zsky-admin-button" type="button" onclick="closeDrawer()">Close</button>');
     } catch (error) {
       const rejected = Array.isArray(error.data?.rejected) ? error.data.rejected : [];
       if (rejected.length) {
@@ -729,7 +758,7 @@
           'Payout batch blocked',
           'One or more selected creators failed eligibility checks',
           `<div class="zsky-preflight-banner danger"><strong>Preview failed</strong><span>No wallet balance was changed.</span></div><div class="zsky-preflight-list">${rejected.map(row => `<div class="zsky-preflight-row"><div><strong>${safe(row.creator_uid || 'Creator')}</strong><span>${safe(row.message || row.code || 'Not eligible')}</span></div><div><small>Code</small><strong class="zsky-flag">${safe(row.code || '-')}</strong></div></div>`).join('')}</div>`,
-          '<button class="btn ghost" onclick="closeDrawer()">Close</button>'
+          '<button class="btn ghost zsky-admin-button" type="button" onclick="closeDrawer()">Close</button>'
         );
         return;
       }
@@ -814,7 +843,7 @@
     const canHold = !readOnly && status !== 'HELD';
     const actions = readOnly
       ? `<div class="zsky-live-chip">Live preview</div>`
-      : `<button class="btn brand" type="button" data-zsky-weekly-approve="${safe(row.creator_uid)}" ${canApprove ? '' : 'disabled'}>${status === 'APPROVED' ? 'Approved' : 'Approve'}</button><button class="btn danger" type="button" data-zsky-weekly-hold="${safe(row.creator_uid)}" data-creator-name="${safe(row.creator_name || 'Creator')}" ${canHold ? '' : 'disabled'}>${status === 'HELD' ? 'Held' : 'Hold'}</button>`;
+      : `<button class="btn brand zsky-admin-button" type="button" data-zsky-weekly-approve="${safe(row.creator_uid)}" ${canApprove ? '' : 'disabled'}>${status === 'APPROVED' ? 'Approved' : 'Approve'}</button><button class="btn danger zsky-admin-button" type="button" data-zsky-weekly-hold="${safe(row.creator_uid)}" data-creator-name="${safe(row.creator_name || 'Creator')}" ${canHold ? '' : 'disabled'}>${status === 'HELD' ? 'Held' : 'Hold'}</button>`;
     return `
       <article class="zsky-weekly-row ${readOnly ? 'is-live' : ''}">
         <div class="zsky-admin-row-main"><strong>${safe(row.creator_name || 'Z-Pay creator')}</strong><span>${safe(row.creator_uid || '')}</span><small>${safe(row.review_reason || `${row.post_count || 0} posts in period`)}</small></div>
@@ -1002,10 +1031,10 @@
   }
 
   function holdWeeklyReview(uid, name){
-    openModal(
+    openZSkyModal(
       'Hold creator review',
       `<p>Hold <strong>${safe(name)}</strong> for manual investigation?</p><label for="zskyWeeklyHoldReason">Reason</label><textarea id="zskyWeeklyHoldReason" class="input zsky-admin-reason" maxlength="300" placeholder="Required reason"></textarea>`,
-      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn danger" id="zskyConfirmWeeklyHold">Hold review</button>'
+      '<button class="btn ghost zsky-admin-button" type="button" onclick="closeModal()">Cancel</button><button class="btn danger zsky-admin-button" type="button" id="zskyConfirmWeeklyHold">Hold review</button>'
     );
     $('zskyConfirmWeeklyHold')?.addEventListener('click', async () => {
       const reason = $('zskyWeeklyHoldReason')?.value.trim() || '';

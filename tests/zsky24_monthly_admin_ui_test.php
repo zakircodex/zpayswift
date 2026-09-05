@@ -34,7 +34,7 @@ foreach ([
     'id="zskyCreatorAdminView"',
     'id="zskyWeeklyReviewView"',
     'id="zskyGenerateWeeklyReview"',
-    'Preview payout batch',
+    'Check readiness',
 ] as $required) {
     monthly_ui_expect(str_contains($js, $required), 'existing creator/weekly UI contract is missing: ' . $required);
 }

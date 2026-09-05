@@ -52,7 +52,7 @@ foreach ([
     'Creator accounts',
     'Weekly reviews',
     'Monthly summary',
-    'Payout / transfers',
+    'Payout readiness',
     'Settings',
 ] as $marker) {
     zsky_admin_ui_expect(str_contains($script, $marker), 'Admin tab/feature marker missing: ' . $marker);
@@ -110,6 +110,26 @@ foreach (['is-success', 'is-warning', 'is-danger', 'is-neutral'] as $marker) {
 
 foreach (['wallet_credit_available', 'Approve transfer', 'creator_amount:', 'reported_revenue_micros:', 'APP_KEY', 'ADMIN_KEY', 'retailer_secret_pin'] as $forbidden) {
     zsky_admin_ui_expect(!str_contains($script, $forbidden), 'Unsafe/retired browser capability rendered: ' . $forbidden);
+}
+
+foreach ([
+    'What each area does',
+    'How creator value can reach Z-Pay',
+    'No balance movement here',
+    'The readiness button cannot add user balance.',
+    "setModalPresentationScope('zsky24')",
+    'zsky-admin-button',
+] as $marker) {
+    zsky_admin_ui_expect(str_contains($script, $marker), 'Admin explanation or normalized action marker missing: ' . $marker);
+}
+
+foreach ([
+    '.modal[data-modal-scope="zsky24"] .modal-foot',
+    'grid-template-columns:repeat(2,minmax(0,1fr))',
+    '#zsky24Section .btn.danger',
+    'height:48px',
+] as $marker) {
+    zsky_admin_ui_expect(str_contains($style, $marker), 'Admin action sizing/style marker missing: ' . $marker);
 }
 
 foreach ([
