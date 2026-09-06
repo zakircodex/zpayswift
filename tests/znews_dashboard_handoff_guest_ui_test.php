@@ -91,7 +91,7 @@ znews_contract_expect(!str_contains($config, 'zpayRegisterUrl'), 'Guest navigati
 znews_contract_expect(str_contains($access, "['create', 'mine', 'performance']"), 'Guest-only route guard must cover creator sections.');
 znews_contract_expect(str_contains($access, 'config.zpayLoginUrl'), 'Guest join action must open the existing Z-Pay login page.');
 znews_contract_expect(str_contains($access, '[data-action="like"]'), 'Guest readers must not receive authenticated like controls.');
-znews_contract_expect(str_contains($serviceWorker, 'zsky24-embedded-shell-v31'), 'Current embedded PWA cache namespace is missing.');
+znews_contract_expect(str_contains($serviceWorker, 'zsky24-embedded-shell-v32'), 'Current embedded PWA cache namespace is missing.');
 znews_contract_expect(str_contains($serviceWorker, 'znews-reader.js?v=4'), 'Latest reader module must be cached.');
 znews_contract_expect(str_contains($serviceWorker, 'znews-weekly-review.js?v=4'), 'Creator weekly report module must be cached.');
 znews_contract_expect(str_contains($serviceWorker, "url.pathname.startsWith('/api/')"), 'Service worker must not cache API responses.');

@@ -31,4 +31,7 @@ header(
     . "font-src https: data:; frame-src https:"
 );
 
-echo znews_adsterra_web_frame_html($placement);
+echo znews_adsterra_web_frame_html(
+    $placement,
+    is_array($verified['payload'] ?? null) ? (array)$verified['payload'] : []
+);

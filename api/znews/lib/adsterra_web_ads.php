@@ -28,6 +28,24 @@ function znews_adsterra_web_enabled(): bool
     );
 }
 
+function znews_adsterra_web_creative_format(): string
+{
+    $configured = strtoupper(str_replace(['-', ' '], '_', znews_adsterra_web_setting(
+        'ADSTERRA_ZSKY24_POST_READER_FORMAT'
+    )));
+    return match ($configured) {
+        '', 'BANNER', 'DISPLAY_BANNER' => 'banner',
+        'NATIVE', 'NATIVE_BANNER' => 'native_banner',
+        default => '',
+    };
+}
+
+function znews_adsterra_web_native_initial_height(): int
+{
+    $configured = (int)znews_adsterra_web_setting('ADSTERRA_ZSKY24_NATIVE_INITIAL_HEIGHT');
+    return max(160, min(640, $configured > 0 ? $configured : 300));
+}
+
 function znews_adsterra_web_allowed_hosts(): array
 {
     $raw = znews_adsterra_web_setting('ADSTERRA_ZSKY24_WEB_ALLOWED_SCRIPT_HOSTS');
@@ -63,7 +81,7 @@ function znews_adsterra_web_placement(): array
 
     $key = znews_adsterra_web_setting('ADSTERRA_ZSKY24_POST_READER_KEY');
     $scriptUrl = znews_adsterra_web_setting('ADSTERRA_ZSKY24_POST_READER_SCRIPT_URL');
-    $size = znews_adsterra_web_size();
+    $creativeFormat = znews_adsterra_web_creative_format();
     $parts = parse_url($scriptUrl);
     $host = strtolower(rtrim((string)($parts['host'] ?? ''), '.'));
     $allowedHosts = znews_adsterra_web_allowed_hosts();
@@ -78,18 +96,37 @@ function znews_adsterra_web_placement(): array
         && (!isset($parts['port']) || (int)$parts['port'] === 443)
         && preg_match('#/invoke\.js$#D', (string)($parts['path'] ?? '')) === 1;
 
-    if (preg_match('/^[A-Za-z0-9_-]{16,128}$/D', $key) !== 1 || !$validUrl || count($size) !== 2) {
+    if (!$validUrl || $creativeFormat === '') {
         return ['ok' => false, 'code' => 'ADSTERRA_WEB_PLACEMENT_INVALID'];
     }
 
-    [$width, $height] = $size;
+    $containerId = '';
+    if ($creativeFormat === 'native_banner') {
+        $validKey = preg_match('/^[a-f0-9]{32}$/D', $key) === 1;
+        $validPath = (string)($parts['path'] ?? '') === '/' . $key . '/invoke.js';
+        if (!$validKey || !$validPath) {
+            return ['ok' => false, 'code' => 'ADSTERRA_WEB_PLACEMENT_INVALID'];
+        }
+        $width = 0;
+        $height = znews_adsterra_web_native_initial_height();
+        $containerId = 'container-' . $key;
+    } else {
+        $size = znews_adsterra_web_size();
+        if (preg_match('/^[A-Za-z0-9_-]{16,128}$/D', $key) !== 1 || count($size) !== 2) {
+            return ['ok' => false, 'code' => 'ADSTERRA_WEB_PLACEMENT_INVALID'];
+        }
+        [$width, $height] = $size;
+    }
+
     $configHash = substr(hash('sha256', implode('|', [
         'ADSTERRA',
         'post_reader',
+        $creativeFormat,
         $key,
         $scriptUrl,
         (string)$width,
         (string)$height,
+        $containerId,
     ])), 0, 24);
 
     return [
@@ -97,9 +134,11 @@ function znews_adsterra_web_placement(): array
         'provider' => 'ADSTERRA',
         'slot' => 'post_reader',
         'format' => 'iframe',
+        'creative_format' => $creativeFormat,
         'key' => $key,
         'script_url' => $scriptUrl,
         'script_origin' => 'https://' . $host,
+        'container_id' => $containerId,
         'width' => $width,
         'height' => $height,
         'config_hash' => $configHash,
@@ -137,7 +176,9 @@ function znews_adsterra_web_base64url_decode(string $value): ?string
     }
     $padding = (4 - strlen($value) % 4) % 4;
     $decoded = base64_decode(strtr($value . str_repeat('=', $padding), '-_', '+/'), true);
-    return is_string($decoded) ? $decoded : null;
+    return is_string($decoded) && znews_adsterra_web_base64url_encode($decoded) === $value
+        ? $decoded
+        : null;
 }
 
 function znews_adsterra_web_safe_id($value): string
@@ -194,16 +235,21 @@ function znews_adsterra_web_delivery(array $session, array $gate, ?int $now = nu
     $signature = znews_adsterra_web_base64url_encode(hash_hmac('sha256', $encoded, $signingKey, true));
     $permit = $encoded . '.' . $signature;
 
-    return [
+    $delivery = [
         'enabled' => true,
         'provider' => 'ADSTERRA',
         'slot' => 'post_reader',
         'format' => 'iframe',
+        'creative_format' => (string)$placement['creative_format'],
         'width' => (int)$placement['width'],
         'height' => (int)$placement['height'],
         'expires_at' => (int)$payload['exp'],
         'frame_url' => '/api/znews/public/ad_frame.php?permit=' . rawurlencode($permit),
     ];
+    if ((string)$placement['creative_format'] === 'native_banner') {
+        $delivery['resize_channel'] = $nonce;
+    }
+    return $delivery;
 }
 
 function znews_adsterra_web_verify_permit(string $permit, ?int $now = null): array
@@ -226,6 +272,8 @@ function znews_adsterra_web_verify_permit(string $permit, ?int $now = null): arr
     $payload = json_decode($json, true);
     $placement = znews_adsterra_web_placement();
     $current = $now ?? time();
+    $issuedAt = (int)($payload['iat'] ?? 0);
+    $expiresAt = (int)($payload['exp'] ?? 0);
     if (!is_array($payload)
         || empty($placement['ok'])
         || (int)($payload['v'] ?? 0) !== 1
@@ -234,17 +282,45 @@ function znews_adsterra_web_verify_permit(string $permit, ?int $now = null): arr
         || znews_adsterra_web_safe_id($payload['view'] ?? '') === ''
         || znews_adsterra_web_safe_id($payload['post'] ?? '') === ''
         || preg_match('/^[a-f0-9]{24}$/D', (string)($payload['nonce'] ?? '')) !== 1
-        || (int)($payload['iat'] ?? 0) > $current + 30
-        || (int)($payload['exp'] ?? 0) < $current
-        || (int)($payload['exp'] ?? 0) - (int)($payload['iat'] ?? 0) > 300) {
+        || $issuedAt < 1
+        || $issuedAt > $current + 30
+        || $expiresAt < $issuedAt
+        || $expiresAt < $current
+        || $expiresAt - $issuedAt > 300) {
         return ['ok' => false, 'code' => 'AD_DELIVERY_PERMIT_INVALID'];
     }
 
     return ['ok' => true, 'payload' => $payload, 'placement' => $placement];
 }
 
-function znews_adsterra_web_frame_html(array $placement): string
+function znews_adsterra_web_frame_html(array $placement, array $payload = []): string
 {
+    $creativeFormat = (string)($placement['creative_format'] ?? 'banner');
+    $scriptUrl = htmlspecialchars((string)$placement['script_url'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+    if ($creativeFormat === 'native_banner') {
+        $containerId = (string)($placement['container_id'] ?? '');
+        $channel = (string)($payload['nonce'] ?? '');
+        $containerJson = json_encode($containerId, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        $channelJson = json_encode($channel, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+        $containerHtml = htmlspecialchars($containerId, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+
+        return '<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            . '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            . '<title>Advertisement</title><style>html,body{width:100%;margin:0;overflow:hidden;background:transparent}'
+            . 'body{min-height:1px}body>div{max-width:100%}</style></head><body>'
+            . '<script async="async" data-cfasync="false" src="' . $scriptUrl . '"></script>'
+            . '<div id="' . $containerHtml . '"></div>'
+            . '<script>(()=>{"use strict";const containerId=' . $containerJson . ',channel=' . $channelJson . ';'
+            . 'const container=document.getElementById(containerId);if(!container||!channel)return;let last=0;'
+            . 'const publish=()=>{const rect=container.getBoundingClientRect();const raw=Math.ceil(Math.max(rect.height,container.scrollHeight));'
+            . 'if(raw<1)return;const height=Math.max(90,Math.min(1600,raw));if(height===last)return;last=height;'
+            . 'parent.postMessage({type:"znews:adsterra-native-size",channel,height},"*");};'
+            . 'if("ResizeObserver" in window)new ResizeObserver(publish).observe(container);'
+            . 'new MutationObserver(publish).observe(container,{childList:true,subtree:true,attributes:true});'
+            . 'addEventListener("load",publish);[0,250,1000,3000].forEach(delay=>setTimeout(publish,delay));})();</script>'
+            . '<noscript><span hidden>Advertisement requires JavaScript.</span></noscript></body></html>';
+    }
+
     $options = json_encode([
         'key' => (string)$placement['key'],
         'format' => 'iframe',
@@ -252,7 +328,6 @@ function znews_adsterra_web_frame_html(array $placement): string
         'width' => (int)$placement['width'],
         'params' => (object)[],
     ], JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-    $scriptUrl = htmlspecialchars((string)$placement['script_url'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
     $width = (int)$placement['width'];
     $height = (int)$placement['height'];
 

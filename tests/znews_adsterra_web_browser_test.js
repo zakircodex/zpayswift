@@ -13,6 +13,7 @@ function testPage() {
   return `<!doctype html><html><body>
     <article id="reader">Reader content remains visible.</article>
     <div id="slot" class="ad-slot" data-znews-ad-slot="post_reader" hidden></div>
+    <div id="native-slot" class="ad-slot" data-znews-ad-slot="post_reader" hidden></div>
     <script>window.ZNEWS_AUTH_VERIFIED=false;</script>
     <script src="/znews/assets/znews-ads.js"></script>
   </body></html>`;
@@ -34,7 +35,10 @@ async function main() {
     if (url.pathname === '/api/znews/public/ad_frame.php') {
       frameRequests += 1;
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      response.end('<!doctype html><html><body>test ad</body></html>');
+      const channel = JSON.stringify(url.searchParams.get('channel') || '');
+      response.end(`<!doctype html><html><body>test ad<script>
+        if (${channel}) parent.postMessage({type:'znews:adsterra-native-size',channel:${channel},height:412}, '*');
+      </script></body></html>`);
       return;
     }
     response.writeHead(404);
@@ -79,6 +83,31 @@ async function main() {
   await page.evaluate((value) => window.ZNewsAds.mount(document.querySelector('#slot'), value), delivery);
   assert.equal(await page.locator('#slot iframe').count(), 1, 'Duplicate delivery mounted multiple frames.');
 
+  const nativeDelivery = {
+    enabled: true,
+    provider: 'ADSTERRA',
+    slot: 'post_reader',
+    creative_format: 'native_banner',
+    width: 0,
+    height: 300,
+    resize_channel: '0123456789abcdef01234567',
+    frame_url: `${origin}/api/znews/public/ad_frame.php?permit=NATIVE_TEST_PERMIT&channel=0123456789abcdef01234567`
+  };
+  const nativeMounted = await page.evaluate((value) => window.ZNewsAds.mount(document.querySelector('#native-slot'), value), nativeDelivery);
+  assert.equal(nativeMounted, true, 'Eligible Native Banner delivery did not mount.');
+  await page.waitForFunction(() => document.querySelector('#native-slot iframe')?.height === '412');
+  const nativeFrame = await page.locator('#native-slot iframe').evaluate((element) => ({
+    width: element.style.width,
+    height: element.height,
+    sandbox: element.getAttribute('sandbox')
+  }));
+  assert.equal(nativeFrame.width, '100%', 'Native Banner frame is not responsive.');
+  assert.equal(nativeFrame.height, '412', 'Native Banner frame did not apply its bounded content height.');
+  assert.doesNotMatch(nativeFrame.sandbox, /allow-same-origin/, 'Native Banner frame received same-origin privileges.');
+
+  await page.evaluate((value) => window.ZNewsAds.mount(document.querySelector('#native-slot'), value), nativeDelivery);
+  assert.equal(await page.locator('#native-slot iframe').count(), 1, 'Duplicate Native delivery mounted multiple frames.');
+
   await page.evaluate(() => {
     window.ZNEWS_AUTH_VERIFIED = true;
     window.ZNewsAds.mount(document.querySelector('#slot'), {
@@ -107,7 +136,7 @@ async function main() {
   const androidMounted = await androidPage.evaluate((value) => window.ZNewsAds.mount(document.querySelector('#slot'), value), delivery);
   assert.equal(androidMounted, false, 'Android WebView mounted a Web ad.');
 
-  assert.ok(frameRequests >= 1, 'Guest frame was never requested.');
+  assert.ok(frameRequests >= 2, 'Guest Banner and Native frames were not both requested.');
   await androidContext.close();
   await context.close();
   await browser.close();

@@ -917,6 +917,7 @@
     if (state.currentPostId === postId && els.postDialog.open && state.viewSession?.postId === postId) return;
     state.openingPostId = postId;
     state.currentPostId = postId;
+    window.ZNewsAds?.hideAll(els.postDetail);
     els.postDetail.innerHTML = '<div class="skeleton-card"><div class="skeleton line short"></div><div class="skeleton block"></div></div>';
     els.commentList.textContent = '';
     if (!els.postDialog.open) els.postDialog.showModal();
@@ -1060,6 +1061,7 @@
 
   function closePost({ syncHistory = true } = {}) {
     completeView();
+    window.ZNewsAds?.hideAll(els.postDetail);
     if (els.postDialog.open) els.postDialog.close();
     state.currentPostId = '';
     if (syncHistory && config.parseRoute().kind === 'post') {

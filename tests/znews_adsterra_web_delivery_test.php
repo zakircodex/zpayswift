@@ -15,8 +15,10 @@ function adsterra_web_expect(bool $condition, string $message): void
 }
 
 putenv('ADSTERRA_ZSKY24_WEB_ADS_ENABLED=1');
+putenv('ADSTERRA_ZSKY24_POST_READER_FORMAT=NATIVE_BANNER');
 putenv('ADSTERRA_ZSKY24_POST_READER_KEY=0123456789abcdef0123456789abcdef');
-putenv('ADSTERRA_ZSKY24_POST_READER_SCRIPT_URL=https://ads.example.test/0123456789abcdef/invoke.js');
+putenv('ADSTERRA_ZSKY24_POST_READER_SCRIPT_URL=https://ads.example.test/0123456789abcdef0123456789abcdef/invoke.js');
+putenv('ADSTERRA_ZSKY24_NATIVE_INITIAL_HEIGHT=300');
 putenv('ADSTERRA_ZSKY24_POST_READER_SIZE=300x250');
 putenv('ADSTERRA_ZSKY24_WEB_ALLOWED_SCRIPT_HOSTS=ads.example.test');
 putenv('ZNEWS_AD_DELIVERY_SIGNING_KEY=unit-test-signing-key-with-more-than-32-characters');
@@ -26,8 +28,10 @@ putenv('ADSTERRA_PUBLISHER_API_TOKEN=publisher-token-must-never-leak');
 require_once $root . '/api/znews/lib/adsterra_web_ads.php';
 
 $placement = znews_adsterra_web_placement();
-adsterra_web_expect(!empty($placement['ok']), 'Valid private banner config was rejected.');
-adsterra_web_expect((int)$placement['width'] === 300 && (int)$placement['height'] === 250, 'Banner size changed.');
+adsterra_web_expect(!empty($placement['ok']), 'Valid private Native Banner config was rejected.');
+adsterra_web_expect(($placement['creative_format'] ?? '') === 'native_banner', 'Native Banner format was lost.');
+adsterra_web_expect(($placement['container_id'] ?? '') === 'container-0123456789abcdef0123456789abcdef', 'Native container ID does not match its unit key.');
+adsterra_web_expect((int)$placement['width'] === 0 && (int)$placement['height'] === 300, 'Native initial frame dimensions changed.');
 
 $session = ['view_id' => 'VIEW_TEST_1', 'post_id' => 'POST_TEST_1'];
 $guestGate = ['viewer_class' => 'GUEST', 'ad_eligible' => true, 'reason' => ''];
@@ -35,6 +39,8 @@ $delivery = znews_adsterra_web_delivery($session, $guestGate, 1000);
 adsterra_web_expect(!empty($delivery['enabled']), 'Eligible guest did not receive ad delivery.');
 adsterra_web_expect(($delivery['provider'] ?? '') === 'ADSTERRA', 'Adsterra is not the Web provider.');
 adsterra_web_expect(($delivery['slot'] ?? '') === 'post_reader', 'Unverified ad slot was enabled.');
+adsterra_web_expect(($delivery['creative_format'] ?? '') === 'native_banner', 'Native delivery format was not returned.');
+adsterra_web_expect(preg_match('/^[a-f0-9]{24}$/D', (string)($delivery['resize_channel'] ?? '')) === 1, 'Native resize channel is invalid.');
 adsterra_web_expect(str_starts_with((string)$delivery['frame_url'], '/api/znews/public/ad_frame.php?permit='), 'Delivery is not same-origin.');
 
 $deliveryJson = json_encode($delivery, JSON_UNESCAPED_SLASHES);
@@ -61,10 +67,27 @@ adsterra_web_expect(empty($creator['enabled']), 'Authenticated creator received 
 adsterra_web_expect(empty($android['enabled']), 'Android app received a Web ad permit.');
 adsterra_web_expect(empty($blocked['enabled']), 'Spam-blocked guest received an ad permit.');
 
-$frame = znews_adsterra_web_frame_html($placement);
-adsterra_web_expect(str_contains($frame, 'window.atOptions='), 'Adsterra banner options are missing from the frame.');
-adsterra_web_expect(str_contains($frame, 'https://ads.example.test/0123456789abcdef/invoke.js'), 'Approved banner script is missing from the frame.');
+$frame = znews_adsterra_web_frame_html($placement, (array)$verified['payload']);
+adsterra_web_expect(!str_contains($frame, 'window.atOptions='), 'Standard Banner options leaked into the Native frame.');
+adsterra_web_expect(str_contains($frame, 'data-cfasync="false"'), 'Native Banner script attributes are missing.');
+adsterra_web_expect(str_contains($frame, 'https://ads.example.test/0123456789abcdef0123456789abcdef/invoke.js'), 'Approved Native Banner script is missing from the frame.');
+adsterra_web_expect(str_contains($frame, 'id="container-0123456789abcdef0123456789abcdef"'), 'Approved Native Banner container is missing from the frame.');
+adsterra_web_expect(str_contains($frame, 'znews:adsterra-native-size'), 'Native responsive-height bridge is missing.');
 adsterra_web_expect(!str_contains($frame, 'publisher-token-must-never-leak'), 'Publisher API token leaked into the frame.');
+
+putenv('ADSTERRA_ZSKY24_POST_READER_SCRIPT_URL=https://ads.example.test/fedcba9876543210fedcba9876543210/invoke.js');
+adsterra_web_expect(empty(znews_adsterra_web_placement()['ok']), 'Mismatched Native script key was accepted.');
+
+putenv('ADSTERRA_ZSKY24_POST_READER_FORMAT=BANNER');
+putenv('ADSTERRA_ZSKY24_POST_READER_SCRIPT_URL=https://ads.example.test/banner/invoke.js');
+$standardPlacement = znews_adsterra_web_placement();
+adsterra_web_expect(!empty($standardPlacement['ok']) && ($standardPlacement['creative_format'] ?? '') === 'banner', 'Standard Banner compatibility was broken.');
+adsterra_web_expect((int)$standardPlacement['width'] === 300 && (int)$standardPlacement['height'] === 250, 'Standard Banner size changed.');
+$standardFrame = znews_adsterra_web_frame_html($standardPlacement);
+adsterra_web_expect(str_contains($standardFrame, 'window.atOptions='), 'Standard Banner options are missing from the frame.');
+
+putenv('ADSTERRA_ZSKY24_POST_READER_FORMAT=NATIVE_BANNER');
+putenv('ADSTERRA_ZSKY24_POST_READER_SCRIPT_URL=https://ads.example.test/0123456789abcdef0123456789abcdef/invoke.js');
 
 putenv('ADSTERRA_ZSKY24_WEB_ALLOWED_SCRIPT_HOSTS=another.example.test');
 adsterra_web_expect(empty(znews_adsterra_web_placement()['ok']), 'Unapproved ad script host was accepted.');
@@ -87,8 +110,10 @@ adsterra_web_expect(!str_contains($configSource, "document.querySelectorAll('.ad
 
 foreach ([
     'ADSTERRA_ZSKY24_WEB_ADS_ENABLED',
+    'ADSTERRA_ZSKY24_POST_READER_FORMAT',
     'ADSTERRA_ZSKY24_POST_READER_KEY',
     'ADSTERRA_ZSKY24_POST_READER_SCRIPT_URL',
+    'ADSTERRA_ZSKY24_NATIVE_INITIAL_HEIGHT',
     'ADSTERRA_ZSKY24_POST_READER_SIZE',
     'ADSTERRA_ZSKY24_WEB_ALLOWED_SCRIPT_HOSTS',
     'ZNEWS_AD_DELIVERY_SIGNING_KEY',
