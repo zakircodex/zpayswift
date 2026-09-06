@@ -1,7 +1,7 @@
 'use strict';
 
-const CACHE_NAME = 'zsky24-embedded-shell-v32';
-const SHELL_REVISION = 'adsterra-native-v1';
+const CACHE_NAME = 'zsky24-embedded-shell-v33';
+const SHELL_REVISION = 'adsterra-cross-origin-frame-v1';
 const SHELL = [
   '/znews/',
   '/znews/index.html',
@@ -12,7 +12,7 @@ const SHELL = [
   '/znews/assets/znews-config.js?v=10',
   '/znews/assets/znews-api.js?v=16',
   '/znews/assets/znews-weekly-review.js?v=4',
-  '/znews/assets/znews-ads.js?v=4',
+  '/znews/assets/znews-ads.js?v=5',
   '/znews/assets/znews-rich-editor.js?v=5',
   '/znews/assets/znews-bootstrap.js?v=36',
   '/znews/assets/znews-access.js?v=4',

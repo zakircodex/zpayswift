@@ -11,7 +11,8 @@ if (strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'GET') {
 }
 
 $verified = znews_adsterra_web_verify_permit(trim((string)($_GET['permit'] ?? '')));
-if (empty($verified['ok']) || !is_array($verified['placement'] ?? null)) {
+$frameAncestors = znews_adsterra_web_frame_ancestors();
+if (empty($verified['ok']) || !is_array($verified['placement'] ?? null) || $frameAncestors === []) {
     http_response_code(404);
     header('Content-Type: text/plain; charset=utf-8');
     exit('Not Found');
@@ -21,12 +22,12 @@ $placement = (array)$verified['placement'];
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store, private, max-age=0');
 header('X-Content-Type-Options: nosniff');
-header('X-Frame-Options: SAMEORIGIN');
 header('Referrer-Policy: origin');
 header('Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()');
+header('Cross-Origin-Resource-Policy: cross-origin');
 header(
     "Content-Security-Policy: default-src 'none'; base-uri 'none'; object-src 'none'; "
-    . "frame-ancestors 'self'; form-action 'none'; script-src 'unsafe-inline' https:; "
+    . 'frame-ancestors ' . implode(' ', $frameAncestors) . "; form-action 'none'; script-src 'unsafe-inline' https:; "
     . "style-src 'unsafe-inline' https:; img-src https: data:; connect-src https:; "
     . "font-src https: data:; frame-src https:"
 );

@@ -164,6 +164,42 @@ function znews_adsterra_web_permit_ttl(): int
     return max(30, min(300, $configured > 0 ? $configured : 120));
 }
 
+function znews_adsterra_web_request_host(): string
+{
+    $host = strtolower(trim((string)($_SERVER['HTTP_HOST'] ?? '')));
+    if (str_contains($host, ':')) {
+        $host = (string)parse_url('https://' . $host, PHP_URL_HOST);
+    }
+    return in_array($host, [
+        'zsky24.com',
+        'www.zsky24.com',
+        'zpayswift.com',
+        'www.zpayswift.com',
+    ], true) ? $host : '';
+}
+
+function znews_adsterra_web_frame_origin(): string
+{
+    return match (znews_adsterra_web_request_host()) {
+        'zsky24.com' => 'https://www.zsky24.com',
+        'www.zsky24.com', 'zpayswift.com', 'www.zpayswift.com' => 'https://zsky24.com',
+        default => '',
+    };
+}
+
+function znews_adsterra_web_frame_ancestors(): array
+{
+    return match (znews_adsterra_web_request_host()) {
+        'www.zsky24.com' => ['https://zsky24.com'],
+        'zsky24.com' => [
+            'https://www.zsky24.com',
+            'https://zpayswift.com',
+            'https://www.zpayswift.com',
+        ],
+        default => [],
+    };
+}
+
 function znews_adsterra_web_base64url_encode(string $value): string
 {
     return rtrim(strtr(base64_encode($value), '+/', '-_'), '=');
@@ -206,7 +242,8 @@ function znews_adsterra_web_delivery(array $session, array $gate, ?int $now = nu
     $viewId = znews_adsterra_web_safe_id($session['view_id'] ?? '');
     $postId = znews_adsterra_web_safe_id($session['post_id'] ?? '');
     $signingKey = znews_adsterra_web_signing_key();
-    if ($viewId === '' || $postId === '' || $signingKey === '') {
+    $frameOrigin = znews_adsterra_web_frame_origin();
+    if ($viewId === '' || $postId === '' || $signingKey === '' || $frameOrigin === '') {
         return ['enabled' => false, 'provider' => 'ADSTERRA', 'reason' => 'AD_DELIVERY_UNAVAILABLE'];
     }
 
@@ -244,7 +281,7 @@ function znews_adsterra_web_delivery(array $session, array $gate, ?int $now = nu
         'width' => (int)$placement['width'],
         'height' => (int)$placement['height'],
         'expires_at' => (int)$payload['exp'],
-        'frame_url' => '/api/znews/public/ad_frame.php?permit=' . rawurlencode($permit),
+        'frame_url' => $frameOrigin . '/api/znews/public/ad_frame.php?permit=' . rawurlencode($permit),
     ];
     if ((string)$placement['creative_format'] === 'native_banner') {
         $delivery['resize_channel'] = $nonce;

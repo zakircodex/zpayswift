@@ -84,7 +84,7 @@ foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
     composer_expect(str_contains($worker, 'znews.js?v=30'), 'Latest app behavior is missing from a PWA shell.');
     composer_expect(str_contains($worker, 'znews-rich-editor.js?v=5'), 'Single-surface rich editor is missing from a PWA shell.');
     composer_expect(str_contains($worker, 'znews-creator.js?v=14'), 'Latest creator behavior is missing from a PWA shell.');
-    composer_expect(str_contains($worker, "SHELL_REVISION = 'adsterra-native-v1'"), 'Adsterra cache revision is missing from a PWA shell.');
+    composer_expect(str_contains($worker, "SHELL_REVISION = 'adsterra-cross-origin-frame-v1'"), 'Adsterra cache revision is missing from a PWA shell.');
     composer_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'PWA shell must continue excluding API responses.');
     composer_expect(str_contains($worker, 'networkFirst(request'), 'PWA shell must refresh composer assets while online.');
 }

@@ -28,6 +28,25 @@
     return /^zpayswift-android-znews\//i.test(String(navigator.userAgent || '').trim());
   }
 
+  function expectedFrameOrigin() {
+    const host = String(window.location.hostname || '').toLowerCase();
+    if (host === 'zsky24.com') return 'https://www.zsky24.com';
+    if (host === 'www.zsky24.com' || host === 'zpayswift.com' || host === 'www.zpayswift.com') {
+      return 'https://zsky24.com';
+    }
+    return '';
+  }
+
+  function trustedFrameOrigin(frameUrl) {
+    const expected = expectedFrameOrigin();
+    if (expected) return frameUrl.origin === expected;
+    const pageHost = String(window.location.hostname || '').toLowerCase();
+    const frameHost = String(frameUrl.hostname || '').toLowerCase();
+    return ['127.0.0.1', 'localhost'].includes(pageHost)
+      && frameHost === pageHost
+      && frameUrl.origin !== window.location.origin;
+  }
+
   function safeDelivery(delivery, expectedSlot) {
     if (!delivery || delivery.enabled !== true || String(delivery.provider || '').toUpperCase() !== 'ADSTERRA') {
       return null;
@@ -49,7 +68,7 @@
 
     try {
       const frameUrl = new URL(String(delivery.frame_url || ''), window.location.origin);
-      if (frameUrl.origin !== window.location.origin
+      if (!trustedFrameOrigin(frameUrl)
         || frameUrl.pathname !== '/api/znews/public/ad_frame.php'
         || !frameUrl.searchParams.get('permit')) {
         return null;
@@ -110,7 +129,7 @@
     frame.setAttribute('credentialless', '');
     frame.setAttribute(
       'sandbox',
-      'allow-scripts allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation'
+      'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation'
     );
     frame.addEventListener('load', () => slot.classList.remove('ad-slot-loading'), { once: true });
     frame.addEventListener('error', () => hide(slot), { once: true });

@@ -25,8 +25,8 @@ back_guard_expect(str_contains($app, "button.classList.contains('composer-back')
 back_guard_expect(str_contains($index, 'znews.js?v=30'), 'The guarded app script is not activated.');
 back_guard_expect(str_contains($index, 'znews-bootstrap.js?v=36'), 'The reload-safe guarded bootstrap is not activated.');
 back_guard_expect(str_contains($bootstrap, 'znews-weekly-review.js?v=4'), 'The weekly performance route guard is not activated.');
-back_guard_expect(str_contains($embeddedWorker, "zsky24-embedded-shell-v32"), 'The embedded cache namespace is stale.');
-back_guard_expect(str_contains($standaloneWorker, "zsky24-standalone-shell-v32"), 'The standalone cache namespace is stale.');
+back_guard_expect(str_contains($embeddedWorker, "zsky24-embedded-shell-v33"), 'The embedded cache namespace is stale.');
+back_guard_expect(str_contains($standaloneWorker, "zsky24-standalone-shell-v33"), 'The standalone cache namespace is stale.');
 back_guard_expect(str_contains($embeddedWorker, 'networkFirst(request'), 'Embedded reload navigation is not network-first.');
 back_guard_expect(str_contains($standaloneWorker, 'networkFirst(request'), 'Standalone reload navigation is not network-first.');
 

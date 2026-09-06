@@ -20,6 +20,29 @@ function testPage() {
 }
 
 async function main() {
+  const frameServer = http.createServer((request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1');
+    if (url.pathname === '/api/znews/public/ad_frame.php') {
+      frameRequests += 1;
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      const channel = JSON.stringify(url.searchParams.get('channel') || '');
+      response.end(`<!doctype html><html><body>test ad<script>
+        let cookieReadable = true;
+        try { void document.cookie; } catch (_error) { cookieReadable = false; }
+        if (${channel}) parent.postMessage({
+          type:'znews:adsterra-native-size',
+          channel:${channel},
+          height:cookieReadable ? 412 : 91
+        }, '*');
+      </script></body></html>`);
+      return;
+    }
+    response.writeHead(404);
+    response.end();
+  });
+  await new Promise((resolve) => frameServer.listen(0, '127.0.0.1', resolve));
+  const frameOrigin = `http://127.0.0.1:${frameServer.address().port}`;
+
   const server = http.createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
     if (url.pathname === '/') {
@@ -30,15 +53,6 @@ async function main() {
     if (url.pathname === '/znews/assets/znews-ads.js') {
       response.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
       fs.createReadStream(path.join(root, 'znews', 'assets', 'znews-ads.js')).pipe(response);
-      return;
-    }
-    if (url.pathname === '/api/znews/public/ad_frame.php') {
-      frameRequests += 1;
-      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      const channel = JSON.stringify(url.searchParams.get('channel') || '');
-      response.end(`<!doctype html><html><body>test ad<script>
-        if (${channel}) parent.postMessage({type:'znews:adsterra-native-size',channel:${channel},height:412}, '*');
-      </script></body></html>`);
       return;
     }
     response.writeHead(404);
@@ -60,7 +74,7 @@ async function main() {
     slot: 'post_reader',
     width: 300,
     height: 250,
-    frame_url: `${origin}/api/znews/public/ad_frame.php?permit=SIGNED_TEST_PERMIT`
+    frame_url: `${frameOrigin}/api/znews/public/ad_frame.php?permit=SIGNED_TEST_PERMIT`
   };
   const mounted = await page.evaluate((value) => window.ZNewsAds.mount(document.querySelector('#slot'), value), delivery);
   assert.equal(mounted, true, 'Eligible guest delivery did not mount.');
@@ -77,7 +91,8 @@ async function main() {
   assert.equal(frame.loading, 'lazy', 'Ad frame is not lazy.');
   assert.equal(frame.credentialless, true, 'Ad frame can receive first-party credentials.');
   assert.match(frame.sandbox, /allow-top-navigation-by-user-activation/, 'Ad clicks lack user-activation protection.');
-  assert.doesNotMatch(frame.sandbox, /allow-same-origin/, 'Ad frame received same-origin privileges.');
+  assert.match(frame.sandbox, /allow-same-origin/, 'Cross-origin ad frame cannot use the provider runtime.');
+  assert.notEqual(new URL(frame.src).origin, origin, 'Ad frame is not isolated on a cross-origin host.');
   assert.equal(await page.locator('#reader').textContent(), 'Reader content remains visible.', 'Ad mount replaced reader content.');
 
   await page.evaluate((value) => window.ZNewsAds.mount(document.querySelector('#slot'), value), delivery);
@@ -91,7 +106,7 @@ async function main() {
     width: 0,
     height: 300,
     resize_channel: '0123456789abcdef01234567',
-    frame_url: `${origin}/api/znews/public/ad_frame.php?permit=NATIVE_TEST_PERMIT&channel=0123456789abcdef01234567`
+    frame_url: `${frameOrigin}/api/znews/public/ad_frame.php?permit=NATIVE_TEST_PERMIT&channel=0123456789abcdef01234567`
   };
   const nativeMounted = await page.evaluate((value) => window.ZNewsAds.mount(document.querySelector('#native-slot'), value), nativeDelivery);
   assert.equal(nativeMounted, true, 'Eligible Native Banner delivery did not mount.');
@@ -103,18 +118,18 @@ async function main() {
   }));
   assert.equal(nativeFrame.width, '100%', 'Native Banner frame is not responsive.');
   assert.equal(nativeFrame.height, '412', 'Native Banner frame did not apply its bounded content height.');
-  assert.doesNotMatch(nativeFrame.sandbox, /allow-same-origin/, 'Native Banner frame received same-origin privileges.');
+  assert.match(nativeFrame.sandbox, /allow-same-origin/, 'Native Banner provider runtime cannot read its isolated document state.');
 
   await page.evaluate((value) => window.ZNewsAds.mount(document.querySelector('#native-slot'), value), nativeDelivery);
   assert.equal(await page.locator('#native-slot iframe').count(), 1, 'Duplicate Native delivery mounted multiple frames.');
 
-  await page.evaluate(() => {
+  await page.evaluate((value) => {
     window.ZNEWS_AUTH_VERIFIED = true;
     window.ZNewsAds.mount(document.querySelector('#slot'), {
       enabled: true, provider: 'ADSTERRA', slot: 'post_reader', width: 300, height: 250,
-      frame_url: `${location.origin}/api/znews/public/ad_frame.php?permit=CREATOR_PERMIT`
+      frame_url: value
     });
-  });
+  }, `${frameOrigin}/api/znews/public/ad_frame.php?permit=CREATOR_PERMIT`);
   assert.equal(await page.locator('#slot iframe').count(), 0, 'Authenticated creator retained an ad frame.');
   assert.equal(await page.locator('#slot').getAttribute('aria-hidden'), 'true', 'Rejected slot is not hidden accessibly.');
 
@@ -141,6 +156,7 @@ async function main() {
   await context.close();
   await browser.close();
   await new Promise((resolve) => server.close(resolve));
+  await new Promise((resolve) => frameServer.close(resolve));
   console.log('PASS: Z Sky Adsterra Web browser assertions.');
 }
 

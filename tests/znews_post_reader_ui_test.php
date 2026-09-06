@@ -103,7 +103,7 @@ reader_expect(str_contains($bootstrap, 'publicContentReady.then'), 'Reader enhan
 reader_expect(str_contains($bootstrap, 'znews-instant-comments.js?v=4'), 'Updated instant-comment module is not loaded.');
 reader_expect(str_contains($bootstrap, 'void prepareServiceWorker();'), 'Reader shell refresh is not started in the background.');
 
-reader_expect(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v32'"), 'Mobile viewport PWA cache version is stale.');
+reader_expect(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v33'"), 'Mobile viewport PWA cache version is stale.');
 reader_expect(str_contains($serviceWorker, 'znews-reader.css?v=3'), 'Latest reader CSS is missing from the shell cache.');
 reader_expect(str_contains($serviceWorker, 'znews-reader.js?v=4'), 'Latest reader JS is missing from the shell cache.');
 reader_expect(str_contains($serviceWorker, 'znews-weekly-review.js?v=4'), 'Weekly creator report JS is missing from the shell cache.');

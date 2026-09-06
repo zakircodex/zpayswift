@@ -24,6 +24,7 @@ putenv('ADSTERRA_ZSKY24_WEB_ALLOWED_SCRIPT_HOSTS=ads.example.test');
 putenv('ZNEWS_AD_DELIVERY_SIGNING_KEY=unit-test-signing-key-with-more-than-32-characters');
 putenv('ZNEWS_AD_DELIVERY_PERMIT_TTL_SECONDS=120');
 putenv('ADSTERRA_PUBLISHER_API_TOKEN=publisher-token-must-never-leak');
+$_SERVER['HTTP_HOST'] = 'zsky24.com';
 
 require_once $root . '/api/znews/lib/adsterra_web_ads.php';
 
@@ -41,7 +42,7 @@ adsterra_web_expect(($delivery['provider'] ?? '') === 'ADSTERRA', 'Adsterra is n
 adsterra_web_expect(($delivery['slot'] ?? '') === 'post_reader', 'Unverified ad slot was enabled.');
 adsterra_web_expect(($delivery['creative_format'] ?? '') === 'native_banner', 'Native delivery format was not returned.');
 adsterra_web_expect(preg_match('/^[a-f0-9]{24}$/D', (string)($delivery['resize_channel'] ?? '')) === 1, 'Native resize channel is invalid.');
-adsterra_web_expect(str_starts_with((string)$delivery['frame_url'], '/api/znews/public/ad_frame.php?permit='), 'Delivery is not same-origin.');
+adsterra_web_expect(str_starts_with((string)$delivery['frame_url'], 'https://www.zsky24.com/api/znews/public/ad_frame.php?permit='), 'Delivery is not isolated on the approved cross-origin host.');
 
 $deliveryJson = json_encode($delivery, JSON_UNESCAPED_SLASHES);
 adsterra_web_expect(!str_contains((string)$deliveryJson, 'publisher-token-must-never-leak'), 'Publisher API token leaked to delivery JSON.');
@@ -66,6 +67,17 @@ $blocked = znews_adsterra_web_delivery($session, ['viewer_class' => 'GUEST', 'ad
 adsterra_web_expect(empty($creator['enabled']), 'Authenticated creator received an ad permit.');
 adsterra_web_expect(empty($android['enabled']), 'Android app received a Web ad permit.');
 adsterra_web_expect(empty($blocked['enabled']), 'Spam-blocked guest received an ad permit.');
+
+$_SERVER['HTTP_HOST'] = 'www.zsky24.com';
+$wwwDelivery = znews_adsterra_web_delivery($session, $guestGate, 1000);
+adsterra_web_expect(str_starts_with((string)($wwwDelivery['frame_url'] ?? ''), 'https://zsky24.com/api/znews/public/ad_frame.php?permit='), 'WWW delivery did not switch to the root cross-origin frame.');
+$_SERVER['HTTP_HOST'] = 'zpayswift.com';
+$embeddedDelivery = znews_adsterra_web_delivery($session, $guestGate, 1000);
+adsterra_web_expect(str_starts_with((string)($embeddedDelivery['frame_url'] ?? ''), 'https://zsky24.com/api/znews/public/ad_frame.php?permit='), 'Embedded Z-Pay delivery did not use the approved Z Sky frame origin.');
+$_SERVER['HTTP_HOST'] = 'untrusted.example';
+$untrustedHostDelivery = znews_adsterra_web_delivery($session, $guestGate, 1000);
+adsterra_web_expect(empty($untrustedHostDelivery['enabled']), 'Untrusted request host received an ad frame permit.');
+$_SERVER['HTTP_HOST'] = 'zsky24.com';
 
 $frame = znews_adsterra_web_frame_html($placement, (array)$verified['payload']);
 adsterra_web_expect(!str_contains($frame, 'window.atOptions='), 'Standard Banner options leaked into the Native frame.');
@@ -100,9 +112,10 @@ $appSource = (string)file_get_contents($root . '/znews/assets/znews.js');
 $configSource = (string)file_get_contents($root . '/znews/assets/znews-config.js');
 
 adsterra_web_expect(str_contains($startSource, "'ad_delivery' => \$adDelivery"), 'View start does not return server-gated delivery.');
-adsterra_web_expect(str_contains($frameSource, "frame-ancestors 'self'") && str_contains($frameSource, 'X-Frame-Options: SAMEORIGIN'), 'Ad frame embedding is not same-origin constrained.');
+adsterra_web_expect(str_contains($frameSource, "znews_adsterra_web_frame_ancestors()") && !str_contains($frameSource, 'X-Frame-Options: SAMEORIGIN'), 'Ad frame is not constrained to reciprocal trusted parent origins.');
 adsterra_web_expect(str_contains($webSource, "provider: 'ADSTERRA'") && !str_contains($webSource, 'INMOBI'), 'InMobi remains in the active Web adapter.');
-adsterra_web_expect(str_contains($webSource, 'allow-top-navigation-by-user-activation') && !str_contains($webSource, 'allow-same-origin'), 'Ad frame sandbox is too permissive.');
+adsterra_web_expect(str_contains($webSource, 'allow-top-navigation-by-user-activation') && str_contains($webSource, 'allow-same-origin'), 'Cross-origin ad frame cannot run the approved provider runtime.');
+adsterra_web_expect(str_contains($webSource, 'event.source !== frame.contentWindow') && str_contains($webSource, 'data.channel !== safe.resizeChannel'), 'Ad resize messages are not source-and-nonce bound.');
 adsterra_web_expect(!str_contains($appSource, "dataset.znewsAdSlot = 'post_inline'"), 'Ungated feed ad insertion remains active.');
 adsterra_web_expect(!str_contains($appSource, 'mountAll('), 'Legacy eager ad mounting remains active.');
 adsterra_web_expect(str_contains($configSource, "mode: 'SERVER_GATED'") && !str_contains($configSource, "provider: 'NONE'"), 'Adsterra server-gated client mode is not active.');
