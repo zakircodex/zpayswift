@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/auth_android.php';
 require_once dirname(__DIR__) . '/lib/mobile_dashboard.php';
 
 api_require_method('POST');
@@ -46,15 +47,24 @@ if (password_verify($newPassword, $passwordHash)) {
     api_response(false, 'PASSWORD_UNCHANGED', 'Choose a different new password.', [], 422);
 }
 
+$now = now_ts();
+$sessionEpoch = auth_new_session_epoch();
 $updates = [
     'password_hash' => password_hash($newPassword, PASSWORD_DEFAULT),
-    'updated_at' => now_ts(),
-    'password_changed_at' => now_ts(),
+    'active_device_id' => '',
+    'ACTIVE_DEVICE_ID' => '',
+    'auth_session_epoch' => $sessionEpoch,
+    'session_epoch' => $sessionEpoch,
+    'credentials_revoked_at' => $now,
+    'updated_at' => $now,
+    'password_changed_at' => $now,
 ];
 
 if (!fb_patch('USERS/' . $uid, $updates)) {
     api_response(false, 'PASSWORD_UPDATE_FAILED', 'Unable to update password. Please try again.', [], 500);
 }
+
+auth_app_revoke_user_trust_records($uid, $now);
 
 system_log('USER_PASSWORD_CHANGED', $uid, 'User password changed from profile security.', [
     'uid' => $uid,
@@ -62,4 +72,5 @@ system_log('USER_PASSWORD_CHANGED', $uid, 'User password changed from profile se
 
 api_response(true, 'PASSWORD_UPDATED', 'Password updated successfully.', [
     'password_updated' => true,
+    'reauth_required' => true,
 ]);

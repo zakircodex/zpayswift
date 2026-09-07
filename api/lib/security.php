@@ -161,59 +161,16 @@ function security_is_private_or_reserved_ip(string $ip): bool
 
 function security_client_ip(): string
 {
-    $candidates = [];
-
-    /*
-     * Cloudflare থাকলে CF-Connecting-IP best.
-     * তবে server অবশ্যই Cloudflare-only access এ রাখা better.
-     */
-    $cfIp = trim((string)($_SERVER['HTTP_CF_CONNECTING_IP'] ?? ''));
-    if ($cfIp !== '') {
-        $candidates[] = $cfIp;
-    }
-
-    /*
-     * Proxy / Load balancer fallback.
-     */
-    $xff = trim((string)($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''));
-    if ($xff !== '') {
-        foreach (explode(',', $xff) as $part) {
-            $part = trim($part);
-            if ($part !== '') {
-                $candidates[] = $part;
-            }
+    // market_request_ip accepts only signed internal forwarding or a verified Cloudflare peer.
+    if (function_exists('market_request_ip')) {
+        $trusted = trim((string)market_request_ip());
+        if (security_is_valid_ip($trusted)) {
+            return $trusted;
         }
-    }
-
-    $realIp = trim((string)($_SERVER['HTTP_X_REAL_IP'] ?? ''));
-    if ($realIp !== '') {
-        $candidates[] = $realIp;
     }
 
     $remoteAddr = trim((string)($_SERVER['REMOTE_ADDR'] ?? ''));
-    if ($remoteAddr !== '') {
-        $candidates[] = $remoteAddr;
-    }
-
-    /*
-     * First valid public IP priority.
-     */
-    foreach ($candidates as $ip) {
-        if (security_is_valid_ip($ip) && security_is_public_ip($ip)) {
-            return $ip;
-        }
-    }
-
-    /*
-     * Public না পেলে first valid IP.
-     */
-    foreach ($candidates as $ip) {
-        if (security_is_valid_ip($ip)) {
-            return $ip;
-        }
-    }
-
-    return '';
+    return security_is_valid_ip($remoteAddr) ? $remoteAddr : '';
 }
 
 function security_ip_family(string $ip): string

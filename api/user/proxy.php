@@ -390,7 +390,8 @@ function user_proxy_clear_session(): void
         $_SESSION['user_session_token'],
         $_SESSION['user_user'],
         $_SESSION['user_csrf'],
-        $_SESSION['user_verified_at']
+        $_SESSION['user_verified_at'],
+        $_SESSION['user_transaction_pin_proofs']
     );
 }
 
@@ -455,6 +456,24 @@ function user_proxy_set_trust_cookie(array $cookieData): void
     ]);
 
     $_COOKIE[user_proxy_trust_cookie_name()] = $cookieValue;
+}
+
+function user_proxy_clear_trust_cookie(): void
+{
+    $https = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https') {
+        $https = true;
+    }
+
+    setcookie(user_proxy_trust_cookie_name(), '', [
+        'expires' => time() - 3600,
+        'path' => '/',
+        'domain' => '',
+        'secure' => $https,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    unset($_COOKIE[user_proxy_trust_cookie_name()]);
 }
 
 function user_proxy_session_user_if_fresh(): array
@@ -681,10 +700,40 @@ function user_proxy_validate_transaction_pin(string $uid, string $pin): array
         return ['ok' => false, 'code' => 'ACCOUNT_INACTIVE', 'message' => 'Account is inactive', 'data' => []];
     }
 
+    $limitState = auth_user_login_limit_state('TRANSACTION_PIN', $uid);
+    if (empty($limitState['ok'])) {
+        return ['ok' => false, 'code' => 'PIN_PROTECTION_UNAVAILABLE', 'message' => 'PIN verification is temporarily unavailable', 'data' => []];
+    }
+    if (!empty($limitState['blocked'])) {
+        return [
+            'ok' => false,
+            'code' => 'RATE_LIMITED',
+            'message' => 'Too many PIN attempts. Please try again later.',
+            'data' => ['retry_after_seconds' => max(1, (int)($limitState['retry_after_seconds'] ?? 1))],
+        ];
+    }
+
     $pinHash = (string)($user['pin_hash'] ?? '');
 
     if ($pinHash === '' || !password_verify($pin, $pinHash)) {
+        $failure = auth_user_login_record_attempt('TRANSACTION_PIN', $uid);
+        if (empty($failure['ok'])) {
+            return ['ok' => false, 'code' => 'PIN_PROTECTION_UNAVAILABLE', 'message' => 'PIN verification is temporarily unavailable', 'data' => []];
+        }
+        if (!empty($failure['blocked'])) {
+            return [
+                'ok' => false,
+                'code' => 'RATE_LIMITED',
+                'message' => 'Too many PIN attempts. Please try again later.',
+                'data' => ['retry_after_seconds' => max(1, (int)($failure['retry_after_seconds'] ?? 1))],
+            ];
+        }
         return ['ok' => false, 'code' => 'INVALID_PIN', 'message' => 'Invalid transaction PIN', 'data' => []];
+    }
+
+    $reset = auth_user_login_reset_attempts('TRANSACTION_PIN', $uid, $limitState);
+    if (empty($reset['ok'])) {
+        return ['ok' => false, 'code' => 'PIN_PROTECTION_UNAVAILABLE', 'message' => 'PIN verification is temporarily unavailable', 'data' => []];
     }
 
     return [
@@ -855,6 +904,48 @@ function user_proxy_public_transfer_favorite(array $row): array
         'created_at' => (int)($row['created_at'] ?? 0),
         'updated_at' => (int)($row['updated_at'] ?? 0),
     ];
+}
+
+function user_proxy_transaction_pin_proof_purpose(string $purpose): string
+{
+    $purpose = strtoupper(trim($purpose));
+    return in_array($purpose, ['TOPUP', 'BUNDLE'], true) ? $purpose : '';
+}
+
+function user_proxy_issue_transaction_pin_proof(string $uid, string $purpose): bool
+{
+    $uid = trim($uid);
+    $purpose = user_proxy_transaction_pin_proof_purpose($purpose);
+    if ($uid === '' || $purpose === '') {
+        return false;
+    }
+
+    $_SESSION['user_transaction_pin_proofs'][$purpose] = [
+        'uid_hash' => hash('sha256', $uid),
+        'verified_at' => user_proxy_now(),
+        'expires_at' => user_proxy_now() + 120,
+    ];
+
+    return true;
+}
+
+function user_proxy_consume_transaction_pin_proof(string $uid, string $purpose): bool
+{
+    $uid = trim($uid);
+    $purpose = user_proxy_transaction_pin_proof_purpose($purpose);
+    $proof = is_array($_SESSION['user_transaction_pin_proofs'][$purpose] ?? null)
+        ? $_SESSION['user_transaction_pin_proofs'][$purpose]
+        : [];
+    unset($_SESSION['user_transaction_pin_proofs'][$purpose]);
+
+    $expectedUidHash = hash('sha256', $uid);
+    $actualUidHash = trim((string)($proof['uid_hash'] ?? ''));
+
+    return $uid !== ''
+        && $purpose !== ''
+        && $actualUidHash !== ''
+        && hash_equals($expectedUidHash, $actualUidHash)
+        && (int)($proof['expires_at'] ?? 0) >= user_proxy_now();
 }
 
 function user_proxy_load_transfer_favorites(string $uid, int $limit = 10): array
@@ -1701,6 +1792,37 @@ function user_proxy_forward_authenticated_json(
         (string)($json['code'] ?? $fallbackCode),
         (string)($json['message'] ?? $fallbackMessage),
         (array)($json['data'] ?? []),
+        (int)(($res['status'] ?? 0) > 0 ? $res['status'] : 502)
+    );
+}
+
+function user_proxy_forward_credential_change(
+    string $relativePath,
+    array $body,
+    string $fallbackCode,
+    string $fallbackMessage
+): void {
+    $res = user_proxy_internal_api_request(
+        'POST',
+        $relativePath,
+        $body,
+        user_proxy_authenticated_headers()
+    );
+    $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+    $data = (array)($json['data'] ?? []);
+
+    if (!empty($res['ok'])) {
+        user_proxy_clear_session();
+        user_proxy_clear_trust_cookie();
+        session_regenerate_id(true);
+        $data['reauth_required'] = true;
+    }
+
+    user_proxy_response(
+        !empty($res['ok']),
+        (string)($json['code'] ?? $fallbackCode),
+        (string)($json['message'] ?? $fallbackMessage),
+        $data,
         (int)(($res['status'] ?? 0) > 0 ? $res['status'] : 502)
     );
 }
@@ -4164,71 +4286,9 @@ switch ($action) {
 
     case 'login':
         user_proxy_require_method('POST');
-
-        $body = user_proxy_read_json_body();
-
-        $phone = trim((string)($body['phone'] ?? ''));
-        $password = (string)($body['password'] ?? '');
-        $trustDevice = user_proxy_bool_value($body['trust_device'] ?? true);
-        $deviceId = trim((string)($body['device_id'] ?? 'USER_WEB'));
-        $deviceName = trim((string)($body['device_name'] ?? 'User Dashboard'));
-        $trustedDeviceCookie = user_proxy_get_trust_cookie();
-        $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
-
-        if ($phone === '' || $password === '') {
-            user_proxy_response(false, 'VALIDATION_ERROR', 'Phone and password are required', [], 422);
-        }
-
-        $loginRes = user_proxy_internal_api_request('POST', 'auth/user_login_start.php', [
-            'phone' => $phone,
-            'phone_country' => $phoneCountry,
-            'password' => $password,
-            'device_id' => $deviceId,
-            'device_name' => $deviceName,
-            'trust_device' => $trustDevice,
-            'trusted_device_cookie' => $trustedDeviceCookie,
-            'client_ip' => security_client_ip(),
-            'ip_country' => auth_request_ip_country(),
-            'user_agent' => security_user_agent(),
-            'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
-        ], [
-            'X-APP-KEY' => APP_KEY,
-        ]);
-
-        if (!$loginRes['ok']) {
-            $json = $loginRes['json'] ?? [];
-
-            user_proxy_response(
-                false,
-                (string)($json['code'] ?? 'LOGIN_FAILED'),
-                (string)($json['message'] ?? 'Login failed'),
-                (array)($json['data'] ?? []),
-                $loginRes['status'] > 0 ? $loginRes['status'] : 401
-            );
-        }
-
-        $data = (array)($loginRes['json']['data'] ?? []);
-
-        if (!empty($data['require_otp'])) {
-            user_proxy_response(true, 'OTP_REQUIRED', (string)($loginRes['json']['message'] ?? 'OTP verification required'), [
-                'require_otp' => true,
-                'pre_auth_token' => (string)($data['pre_auth_token'] ?? ''),
-                'otp_request_id' => (string)($data['otp_request_id'] ?? ''),
-                'masked_phone' => (string)($data['masked_phone'] ?? ''),
-                'expires_in_seconds' => (int)($data['expires_in_seconds'] ?? 300),
-            ]);
-        }
-
-        $sessionToken = trim((string)($data['session_token'] ?? ''));
-        user_proxy_finalize_login_with_session_token($sessionToken);
-
-        user_proxy_response(true, 'SUCCESS', 'Login successful', [
-            'login_complete' => true,
-            'session_active' => true,
-            'redirect' => 'dashboard',
-            'user' => $_SESSION['user_user'],
-            'csrf' => user_proxy_get_csrf(),
-        ]);
+        user_proxy_response(false, 'LOGIN_FLOW_UPGRADE_REQUIRED', 'Please use the secure Password, PIN and OTP login flow.', [
+            'required_steps' => ['PASSWORD', 'PIN', 'OTP'],
+        ], 409);
         break;
 
     case 'login_verify_otp':
@@ -4583,6 +4643,7 @@ switch ($action) {
         $uid = trim((string)($sessionUser['uid'] ?? ''));
         $body = user_proxy_read_json_body();
         $pin = trim((string)($body['pin'] ?? $body['transaction_pin'] ?? ''));
+        $purpose = strtoupper(trim((string)($body['purpose'] ?? '')));
 
         $res = user_proxy_validate_transaction_pin($uid, $pin);
 
@@ -4594,6 +4655,10 @@ switch ($action) {
                 $httpStatus = 422;
             } elseif (in_array($code, ['ACCOUNT_INACTIVE', 'INVALID_PIN'], true)) {
                 $httpStatus = 403;
+            } elseif ($code === 'RATE_LIMITED') {
+                $httpStatus = 429;
+            } elseif ($code === 'PIN_PROTECTION_UNAVAILABLE') {
+                $httpStatus = 503;
             } elseif ($code === 'USER_NOT_FOUND') {
                 $httpStatus = 404;
             }
@@ -4605,6 +4670,12 @@ switch ($action) {
                 (array)($res['data'] ?? []),
                 $httpStatus
             );
+        }
+
+        if (user_proxy_bool_value($body['issue_proof'] ?? false)) {
+            if (!user_proxy_issue_transaction_pin_proof($uid, $purpose)) {
+                user_proxy_response(false, 'PIN_PURPOSE_INVALID', 'A valid transaction purpose is required.', [], 422);
+            }
         }
 
         user_proxy_response(
@@ -4755,8 +4826,17 @@ switch ($action) {
     case 'bundle_preview':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
-        user_proxy_require_login(true, false);
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
         $body = user_proxy_read_json_body();
+        $checkOnly = user_proxy_bool_value($body['check_only'] ?? false);
+        if (!$checkOnly && !user_proxy_consume_transaction_pin_proof($uid, 'BUNDLE')) {
+            user_proxy_response(false, 'PIN_VERIFICATION_REQUIRED', 'Verify your transaction PIN before creating a bundle preview.', [], 403);
+        }
+        unset($body['pin'], $body['transaction_pin'], $body['issue_proof']);
+        if (!$checkOnly) {
+            $body['verified_by'] = 'PIN';
+        }
         user_proxy_forward_authenticated_json(
             'POST',
             'bundle/preview.php',
@@ -4865,8 +4945,17 @@ switch ($action) {
     case 'topup_preview':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
-        user_proxy_require_login(true, false);
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
         $body = user_proxy_read_json_body();
+        $checkOnly = user_proxy_bool_value($body['check_only'] ?? false);
+        if (!$checkOnly && !user_proxy_consume_transaction_pin_proof($uid, 'TOPUP')) {
+            user_proxy_response(false, 'PIN_VERIFICATION_REQUIRED', 'Verify your transaction PIN before creating a top-up preview.', [], 403);
+        }
+        unset($body['pin'], $body['transaction_pin'], $body['issue_proof']);
+        if (!$checkOnly) {
+            $body['verified_by'] = 'PIN';
+        }
         user_proxy_forward_authenticated_json(
             'POST',
             'topup/preview.php',
@@ -4985,8 +5074,7 @@ switch ($action) {
         user_proxy_require_csrf();
         user_proxy_require_login(true, false);
         $body = user_proxy_read_json_body();
-        user_proxy_forward_authenticated_json(
-            'POST',
+        user_proxy_forward_credential_change(
             'user/change_password.php',
             [
                 'current_password' => (string)($body['current_password'] ?? ''),
@@ -5003,8 +5091,7 @@ switch ($action) {
         user_proxy_require_csrf();
         user_proxy_require_login(true, false);
         $body = user_proxy_read_json_body();
-        user_proxy_forward_authenticated_json(
-            'POST',
+        user_proxy_forward_credential_change(
             'user/change_pin.php',
             [
                 'current_pin' => (string)($body['current_pin'] ?? ''),

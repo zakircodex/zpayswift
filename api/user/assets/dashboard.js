@@ -2966,7 +2966,7 @@ async function submitBundleBuy(){
         confirmButton.textContent = 'Reviewing...';
       }
 
-      await validateTransactionPin(pin);
+      await validateTransactionPin(pin, 'BUNDLE');
       const preview = await proxyPost('bundle_preview', {
         offer_id: offerId,
         bundle_number: bundleNumber,
@@ -3681,8 +3681,8 @@ function setTopupFlowError(message){
   node.classList.toggle('active', !!message);
 }
 
-async function validateTransactionPin(pin){
-  await proxyPost('validate_pin', { pin }, 'Checking PIN...', { busy: false });
+async function validateTransactionPin(pin, purpose){
+  await proxyPost('validate_pin', { pin, purpose, issue_proof: true }, 'Checking PIN...', { busy: false });
 }
 
 function openTopupFlowFromNumber(){
@@ -3858,7 +3858,7 @@ async function topupFlowNext(){
         next.disabled = true;
         next.textContent = 'Checking...';
       }
-      await validateTransactionPin(data.pin);
+      await validateTransactionPin(data.pin, 'TOPUP');
       wizard.preview = await proxyPost('topup_preview', {
         country_code: 'BD',
         topup_number: data.topup_number,

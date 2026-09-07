@@ -822,7 +822,7 @@
     openLoading('Verifying PIN...');
     let response = null;
     try {
-      await proxyPost('validate_pin', { pin, purpose: 'TOPUP' }, 'Verifying PIN...');
+      await proxyPost('validate_pin', { pin, purpose: 'TOPUP', issue_proof: true }, 'Verifying PIN...');
       state.verified = true;
       clearPin();
       updateLoading('Loading top-up preview...');

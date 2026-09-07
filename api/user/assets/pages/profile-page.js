@@ -506,7 +506,7 @@
     });
   }
 
-  function showProfileResult(title, message, kind) {
+  function showProfileResult(title, message, kind, options = {}) {
     openActionModal((body) => {
       const icon = document.createElement('div');
       icon.className = 'zpay-action-icon';
@@ -524,8 +524,8 @@
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'android-primary-button';
-      button.textContent = kind === 'error' ? 'OK' : 'Done';
-      button.addEventListener('click', () => closeProfileModal());
+      button.textContent = options.buttonLabel || (kind === 'error' ? 'OK' : 'Done');
+      button.addEventListener('click', options.action || (() => closeProfileModal()));
       const wrap = document.createElement('div');
       wrap.className = 'zpay-profile-result-actions';
       wrap.appendChild(button);
@@ -669,9 +669,14 @@
       { name: 'new_password', label: 'New Password', type: 'password', autocomplete: 'new-password' },
       { name: 'confirm_password', label: 'Confirm New Password', type: 'password', autocomplete: 'new-password' }
     ], 'Update Password', async (values) => {
-      await post('profile_change_password', values, 'Updating password...');
+      const data = await post('profile_change_password', values, 'Updating password...');
       closeActionModal({ preserveHistory: true });
-      showProfileResult('Password Updated', 'Your login password was updated successfully.', 'success');
+      showProfileResult(
+        'Password Updated',
+        data.reauth_required ? 'Your password was updated. Sign in again to continue.' : 'Your login password was updated successfully.',
+        'success',
+        data.reauth_required ? { buttonLabel: 'Sign In', action: () => window.location.replace('/user/') } : {}
+      );
     });
   }
 
@@ -681,9 +686,14 @@
       { name: 'new_pin', label: 'New 4-digit PIN', type: 'password', inputMode: 'numeric', maxLength: 4 },
       { name: 'confirm_pin', label: 'Confirm New PIN', type: 'password', inputMode: 'numeric', maxLength: 4 }
     ], 'Update PIN', async (values) => {
-      await post('profile_change_pin', values, 'Updating PIN...');
+      const data = await post('profile_change_pin', values, 'Updating PIN...');
       closeActionModal({ preserveHistory: true });
-      showProfileResult('PIN Updated', 'Your transaction PIN was updated successfully.', 'success');
+      showProfileResult(
+        'PIN Updated',
+        data.reauth_required ? 'Your PIN was updated. Sign in again to continue.' : 'Your transaction PIN was updated successfully.',
+        'success',
+        data.reauth_required ? { buttonLabel: 'Sign In', action: () => window.location.replace('/user/') } : {}
+      );
     });
   }
 

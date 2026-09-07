@@ -387,6 +387,245 @@ function auth_admin_login_reset_failed_passwords(
     return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
 }
 
+function auth_user_login_limit_scope(string $scope): string
+{
+    $scope = strtoupper(trim($scope));
+
+    return in_array($scope, ['ACCOUNT_LOOKUP', 'PASSWORD', 'PIN', 'TRANSACTION_PIN'], true)
+        ? $scope
+        : '';
+}
+
+function auth_user_login_limit_policy(string $scope): array
+{
+    $scope = auth_user_login_limit_scope($scope);
+    $defaults = [
+        'ACCOUNT_LOOKUP' => [30, 900, 900],
+        'PASSWORD' => [5, 900, 900],
+        'PIN' => [5, 900, 900],
+        'TRANSACTION_PIN' => [5, 900, 900],
+    ];
+    [$defaultMax, $defaultWindow, $defaultLock] = $defaults[$scope] ?? [5, 900, 900];
+    $prefix = 'USER_LOGIN_' . $scope;
+    $max = defined($prefix . '_MAX_ATTEMPTS')
+        ? (int)constant($prefix . '_MAX_ATTEMPTS')
+        : $defaultMax;
+    $window = defined($prefix . '_WINDOW_SECONDS')
+        ? (int)constant($prefix . '_WINDOW_SECONDS')
+        : $defaultWindow;
+    $lock = defined($prefix . '_LOCK_SECONDS')
+        ? (int)constant($prefix . '_LOCK_SECONDS')
+        : $defaultLock;
+
+    return [
+        'max_attempts' => max(1, min(100, $max)),
+        'window_seconds' => max(60, min(86400, $window)),
+        'lock_seconds' => max(60, min(86400, $lock)),
+    ];
+}
+
+function auth_user_login_limit_key(string $scope, string $identity): string
+{
+    $scope = auth_user_login_limit_scope($scope);
+    $identity = trim($identity);
+    $secret = function_exists('security_secret_for_hash')
+        ? security_secret_for_hash()
+        : 'zpay-user-login-rate-limit';
+
+    return hash_hmac('sha256', 'user-login|' . $scope . '|' . $identity, $secret);
+}
+
+function auth_user_login_limit_path(string $scope, string $identity): string
+{
+    $scope = auth_user_login_limit_scope($scope);
+
+    return 'AUTH_USER_LOGIN_LIMIT/' . $scope . '/' . auth_user_login_limit_key($scope, $identity);
+}
+
+function auth_user_login_phone_identity(string $country, string $phone): string
+{
+    $country = auth_normalize_country_code($country);
+    $phone = preg_replace('/\D+/', '', trim($phone)) ?? '';
+
+    return ($country !== '' ? $country : 'UNKNOWN') . '|' . $phone;
+}
+
+function auth_user_login_limit_row_state(string $scope, array $row, int $now): array
+{
+    $policy = auth_user_login_limit_policy($scope);
+    $windowStartedAt = (int)($row['window_started_at'] ?? 0);
+    $attempts = max(0, (int)($row['attempts'] ?? 0));
+    $lockedUntil = max(0, (int)($row['locked_until'] ?? 0));
+    $expiresAt = max(0, (int)($row['expires_at'] ?? 0));
+    $expired = ($expiresAt > 0 && $expiresAt <= $now)
+        || $windowStartedAt <= 0
+        || $windowStartedAt > $now
+        || ($now - $windowStartedAt) >= (int)$policy['window_seconds']
+        || ($lockedUntil > 0 && $lockedUntil <= $now);
+
+    if ($expired) {
+        $windowStartedAt = $now;
+        $attempts = 0;
+        $lockedUntil = 0;
+    }
+
+    $blocked = $lockedUntil > $now;
+
+    return [
+        'blocked' => $blocked,
+        'retry_after_seconds' => $blocked ? max(1, $lockedUntil - $now) : 0,
+        'window_started_at' => $windowStartedAt,
+        'attempts' => $attempts,
+        'locked_until' => $lockedUntil,
+        'revision' => max(0, (int)($row['revision'] ?? 0)),
+    ];
+}
+
+function auth_user_login_limit_state(string $scope, string $identity, ?int $now = null): array
+{
+    $scope = auth_user_login_limit_scope($scope);
+    $identity = trim($identity);
+    if ($scope === '' || $identity === '') {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_INPUT_INVALID'];
+    }
+
+    $now = $now ?? now_ts();
+    $path = auth_user_login_limit_path($scope, $identity);
+
+    try {
+        $snapshot = fb_get_with_etag($path);
+    } catch (Throwable $e) {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+    }
+
+    if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+    }
+
+    $value = $snapshot['value'] ?? null;
+    if ($value !== null && !is_array($value)) {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_STATE_INVALID'];
+    }
+
+    return auth_user_login_limit_row_state($scope, is_array($value) ? $value : [], $now) + [
+        'ok' => true,
+        'path' => $path,
+        'etag' => (string)$snapshot['etag'],
+        'exists' => is_array($value),
+        'checked_at' => $now,
+    ];
+}
+
+function auth_user_login_record_attempt(string $scope, string $identity, ?int $now = null): array
+{
+    $scope = auth_user_login_limit_scope($scope);
+    $identity = trim($identity);
+    if ($scope === '' || $identity === '') {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_INPUT_INVALID'];
+    }
+
+    $now = $now ?? now_ts();
+    $path = auth_user_login_limit_path($scope, $identity);
+    $identityHash = auth_user_login_limit_key($scope, $identity);
+    $policy = auth_user_login_limit_policy($scope);
+
+    for ($attempt = 0; $attempt < 8; $attempt++) {
+        try {
+            $snapshot = fb_get_with_etag($path);
+        } catch (Throwable $e) {
+            return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+        }
+
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+            return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+        }
+
+        $value = $snapshot['value'] ?? null;
+        if ($value !== null && !is_array($value)) {
+            return ['ok' => false, 'code' => 'RATE_LIMIT_STATE_INVALID'];
+        }
+
+        $state = auth_user_login_limit_row_state($scope, is_array($value) ? $value : [], $now);
+        if (!empty($state['blocked'])) {
+            return ['ok' => true] + $state;
+        }
+
+        $attempts = (int)$state['attempts'] + 1;
+        $locked = $attempts >= (int)$policy['max_attempts'];
+        $lockedUntil = $locked ? $now + (int)$policy['lock_seconds'] : 0;
+        $windowStartedAt = (int)$state['window_started_at'];
+        $expiresAt = max($windowStartedAt + (int)$policy['window_seconds'], $lockedUntil);
+        $row = [
+            'scope' => $scope,
+            'identity_hash' => $identityHash,
+            'window_started_at' => $windowStartedAt,
+            'attempts' => $attempts,
+            'locked_until' => $lockedUntil,
+            'last_attempt_at' => $now,
+            'revision' => (int)$state['revision'] + 1,
+            'expires_at' => $expiresAt,
+            'updated_at' => $now,
+        ];
+
+        try {
+            $write = fb_put_if_match($path, $row, (string)$snapshot['etag']);
+        } catch (Throwable $e) {
+            return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+        }
+
+        if (!empty($write['ok'])) {
+            return [
+                'ok' => true,
+                'blocked' => $locked,
+                'retry_after_seconds' => $locked ? (int)$policy['lock_seconds'] : 0,
+                'attempts' => $attempts,
+            ];
+        }
+
+        if ((int)($write['status'] ?? 0) !== 412) {
+            return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+        }
+    }
+
+    return ['ok' => false, 'code' => 'RATE_LIMIT_CAS_CONFLICT'];
+}
+
+function auth_user_login_reset_attempts(string $scope, string $identity, array $precheckState = []): array
+{
+    $scope = auth_user_login_limit_scope($scope);
+    $identity = trim($identity);
+    $path = auth_user_login_limit_path($scope, $identity);
+    $state = $precheckState;
+
+    if (($state['path'] ?? '') !== $path || !is_string($state['etag'] ?? null)) {
+        $state = auth_user_login_limit_state($scope, $identity);
+    }
+
+    if (empty($state['ok'])) {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+    }
+
+    if (empty($state['exists'])) {
+        return ['ok' => true, 'cleared' => false];
+    }
+
+    try {
+        $delete = fb_delete_if_match($path, (string)$state['etag']);
+    } catch (Throwable $e) {
+        return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+    }
+
+    if (!empty($delete['ok'])) {
+        return ['ok' => true, 'cleared' => true];
+    }
+
+    if ((int)($delete['status'] ?? 0) === 412) {
+        return ['ok' => true, 'cleared' => false, 'concurrent_attempt_preserved' => true];
+    }
+
+    return ['ok' => false, 'code' => 'RATE_LIMIT_STORAGE_UNAVAILABLE'];
+}
+
 function auth_otp_max_attempts(): int
 {
     $max = defined('OTP_MAX_ATTEMPTS') ? (int)OTP_MAX_ATTEMPTS : 5;

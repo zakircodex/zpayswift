@@ -19,10 +19,20 @@ if (in_array($purpose, ['TOPUP', 'ZPAY_TRANSFER', 'BUNDLE'], true)) {
 
     $auth = auth_require_user(true);
     $user = is_array($auth['user'] ?? null) ? $auth['user'] : [];
+    $uid = trim((string)($user['uid'] ?? ''));
     $pinHash = (string)($user['pin_hash'] ?? '');
+    $limitState = auth_user_login_limit_state('TRANSACTION_PIN', $uid);
+    auth_app_enforce_login_limit($limitState);
 
     if ($pinHash === '' || !password_verify($pin, $pinHash)) {
+        $failure = auth_user_login_record_attempt('TRANSACTION_PIN', $uid);
+        auth_app_enforce_login_limit($failure);
         api_response(false, 'WRONG_PIN', 'Incorrect PIN. Please try again.', [], 422);
+    }
+
+    $reset = auth_user_login_reset_attempts('TRANSACTION_PIN', $uid, $limitState);
+    if (empty($reset['ok'])) {
+        api_response(false, 'LOGIN_PROTECTION_UNAVAILABLE', 'PIN protection is temporarily unavailable.', [], 503);
     }
 
     api_response(true, 'PIN_VERIFIED', 'PIN verified.', [
@@ -55,9 +65,18 @@ if ($deviceId !== '' && (string)($preAuthRow['device_id'] ?? '') !== '' && (stri
 $account = auth_app_preauth_user($preAuthRow);
 $uid = (string)$account['uid'];
 $user = (array)$account['user'];
+$limitState = auth_user_login_limit_state('PIN', $uid);
+auth_app_enforce_login_limit($limitState);
 
 if (!auth_app_pin_ok($user, $pin)) {
+    $failure = auth_user_login_record_attempt('PIN', $uid);
+    auth_app_enforce_login_limit($failure);
     api_response(false, 'WRONG_PIN', 'PIN ভুল হয়েছে।', [], 401);
+}
+
+$reset = auth_user_login_reset_attempts('PIN', $uid, $limitState);
+if (empty($reset['ok'])) {
+    api_response(false, 'LOGIN_PROTECTION_UNAVAILABLE', 'PIN protection is temporarily unavailable.', [], 503);
 }
 
 $trustedBrowserPreauth = !empty($preAuthRow['trusted_browser_verified']);

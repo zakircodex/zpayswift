@@ -71,13 +71,32 @@ if ($phoneInput === '' && $deviceId === 'USER_WEB' && $trustedDeviceCookie !== '
     ]);
 }
 
-$account = auth_app_lookup_user_by_body($body);
-$uid = (string)$account['uid'];
-$user = (array)$account['user'];
+$requestIp = function_exists('market_request_ip') ? market_request_ip() : security_client_ip();
+$lookupIdentity = 'ip|' . ($requestIp !== '' ? $requestIp : hash('sha256', security_user_agent()));
+$lookupState = auth_user_login_limit_state('ACCOUNT_LOOKUP', $lookupIdentity);
+auth_app_enforce_login_limit($lookupState);
+$lookupAttempt = auth_user_login_record_attempt('ACCOUNT_LOOKUP', $lookupIdentity);
+auth_app_enforce_login_limit($lookupAttempt);
 
-auth_app_guard_user_login($user);
+$phoneCountry = auth_app_phone_country($body);
+$phone = normalize_phone_by_country($phoneInput, $phoneCountry);
+if ($phone === '') {
+    api_response(false, 'VALIDATION_ERROR', auth_phone_validation_message($phoneCountry), [], 422);
+}
 
-$deviceTrusted = $deviceId !== '' && auth_app_trusted_login_allowed($uid, $deviceId);
+$account = auth_app_lookup_user_result($body, false);
+$uid = !empty($account['ok']) ? (string)$account['uid'] : '';
+$user = !empty($account['ok']) ? (array)$account['user'] : [];
+$status = auth_status_value($user['status'] ?? '');
+$accountStatus = auth_status_value($user['account_status'] ?? $status);
+$loginEligible = $uid !== ''
+    && $status === 'ACTIVE'
+    && !in_array($accountStatus, ['REVIEW', 'BLOCKED', 'REJECTED'], true)
+    && auth_app_allowed_role((string)($user['role'] ?? ''));
+
+$deviceTrusted = $loginEligible
+    && $deviceId !== ''
+    && auth_app_trusted_login_allowed($uid, $deviceId, $user);
 $trustedBrowser = ['ok' => false];
 
 if ($deviceId === 'USER_WEB' && $deviceTrusted && $trustedDeviceCookie !== '') {
@@ -93,9 +112,13 @@ if ($deviceId === 'USER_WEB' && $deviceTrusted && $trustedDeviceCookie !== '') {
 $trustedLoginAvailable = !empty($trustedBrowser['ok']);
 $preAuthToken = '';
 if ($trustedLoginAvailable) {
-    $preAuthToken = auth_app_create_preauth($uid, (string)$account['phone'], $body, [
-        'phone_country' => (string)$account['phone_country'],
-        'pricing_country' => (string)$account['pricing_country'],
+    $phone = (string)$account['phone'];
+    $phoneCountry = (string)$account['phone_country'];
+    $wallet = fb_get('USER_WALLETS/' . $uid);
+    $pricingCountry = auth_pricing_country_from_user($user, is_array($wallet) ? $wallet : []);
+    $preAuthToken = auth_app_create_preauth($uid, $phone, $body, [
+        'phone_country' => $phoneCountry,
+        'pricing_country' => $pricingCountry,
         'password_verified' => true,
         'pin_verified' => false,
         'trusted_browser_verified' => true,
@@ -106,17 +129,11 @@ if ($trustedLoginAvailable) {
 
 api_response(true, 'ACCOUNT_FOUND', 'Account found.', [
     'exists' => true,
-    'phone' => (string)$account['phone'],
-    'account' => (string)$account['phone'],
-    'name' => (string)($user['name'] ?? ''),
-    'masked_name' => auth_app_mask_name((string)($user['name'] ?? '')),
-    'masked_phone' => auth_app_mask_phone((string)$account['phone']),
-    'account_status' => (string)($user['account_status'] ?? $user['status'] ?? ''),
-    'kyc_status' => (string)($user['kyc_status'] ?? $user['KYC']['status'] ?? ''),
-    'phone_country' => (string)$account['phone_country'],
-    'pricing_country' => (string)$account['pricing_country'],
-    'device_trusted' => $deviceTrusted,
+    'phone' => $phone,
+    'masked_phone' => auth_app_mask_phone($phone),
+    'phone_country' => $phoneCountry,
+    'device_trusted' => $trustedLoginAvailable,
     'trusted_login_available' => $trustedLoginAvailable,
     'pre_auth_token' => $preAuthToken,
-    'otp_required' => !$deviceTrusted,
+    'otp_required' => !$trustedLoginAvailable,
 ]);

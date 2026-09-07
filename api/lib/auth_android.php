@@ -15,6 +15,19 @@ function auth_app_bool($value): bool
     return in_array(strtoupper(trim((string)$value)), ['1', 'TRUE', 'YES', 'ON'], true);
 }
 
+function auth_app_enforce_login_limit(array $state): void
+{
+    if (empty($state['ok'])) {
+        api_response(false, 'LOGIN_PROTECTION_UNAVAILABLE', 'Login protection is temporarily unavailable.', [], 503);
+    }
+
+    if (!empty($state['blocked'])) {
+        api_response(false, 'RATE_LIMITED', 'Too many attempts. Please try again later.', [
+            'retry_after_seconds' => max(1, (int)($state['retry_after_seconds'] ?? 1)),
+        ], 429);
+    }
+}
+
 function auth_app_phone_country(array $body): string
 {
     $country = auth_normalize_country_code((string)($body['phone_country'] ?? $body['country'] ?? $body['country_code'] ?? ''));
@@ -61,37 +74,83 @@ function auth_app_allowed_role(string $role): bool
     return in_array(auth_status_value($role), ['USER', 'RETAILER'], true);
 }
 
-function auth_app_lookup_user_by_body(array $body): array
+function auth_app_lookup_user_result(array $body, bool $includePricingCountry = true): array
 {
     $phoneCountry = auth_app_phone_country($body);
     $phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);
 
     if ($phone === '') {
-        api_response(false, 'VALIDATION_ERROR', auth_phone_validation_message($phoneCountry), [], 422);
+        return [
+            'ok' => false,
+            'code' => 'VALIDATION_ERROR',
+            'message' => auth_phone_validation_message($phoneCountry),
+            'http_status' => 422,
+        ];
     }
 
     $uid = auth_find_uid_by_phone_country($phone, $phoneCountry);
     if ($uid === '') {
-        api_response(false, 'ACCOUNT_NOT_FOUND', 'এই নাম্বারে কোনো অ্যাকাউন্ট পাওয়া যায়নি।', [], 404);
+        return [
+            'ok' => false,
+            'code' => 'ACCOUNT_NOT_FOUND',
+            'message' => 'এই নাম্বারে কোনো অ্যাকাউন্ট পাওয়া যায়নি।',
+            'http_status' => 404,
+        ];
     }
 
     $user = fb_get('USERS/' . $uid);
     if (!is_array($user)) {
-        api_response(false, 'ACCOUNT_NOT_FOUND', 'এই নাম্বারে কোনো অ্যাকাউন্ট পাওয়া যায়নি।', [], 404);
+        return [
+            'ok' => false,
+            'code' => 'ACCOUNT_NOT_FOUND',
+            'message' => 'এই নাম্বারে কোনো অ্যাকাউন্ট পাওয়া যায়নি।',
+            'http_status' => 404,
+        ];
     }
 
     $storedPhoneCountry = auth_phone_country_from_user($user);
     if ($storedPhoneCountry !== $phoneCountry) {
-        api_response(false, 'ACCOUNT_NOT_FOUND', 'এই নাম্বারে কোনো অ্যাকাউন্ট পাওয়া যায়নি।', [], 404);
+        return [
+            'ok' => false,
+            'code' => 'ACCOUNT_NOT_FOUND',
+            'message' => 'এই নাম্বারে কোনো অ্যাকাউন্ট পাওয়া যায়নি।',
+            'http_status' => 404,
+        ];
     }
 
-    return [
+    $result = [
+        'ok' => true,
         'uid' => $uid,
         'phone' => normalize_phone_by_country((string)($user['phone'] ?? $phone), $storedPhoneCountry) ?: $phone,
         'phone_country' => $storedPhoneCountry,
-        'pricing_country' => auth_pricing_country_from_user($user, (array)(fb_get('USER_WALLETS/' . $uid) ?: [])),
         'user' => $user,
     ];
+
+    if ($includePricingCountry) {
+        $result['pricing_country'] = auth_pricing_country_from_user(
+            $user,
+            (array)(fb_get('USER_WALLETS/' . $uid) ?: [])
+        );
+    }
+
+    return $result;
+}
+
+function auth_app_lookup_user_by_body(array $body): array
+{
+    $result = auth_app_lookup_user_result($body);
+    if (empty($result['ok'])) {
+        api_response(
+            false,
+            (string)($result['code'] ?? 'ACCOUNT_NOT_FOUND'),
+            (string)($result['message'] ?? 'Account could not be verified.'),
+            [],
+            (int)($result['http_status'] ?? 404)
+        );
+    }
+
+    unset($result['ok']);
+    return $result;
 }
 
 function auth_app_guard_user_login(array $user): void
@@ -262,6 +321,11 @@ function auth_app_password_ok(array $user, string $password): bool
 {
     $hash = trim((string)($user['password_hash'] ?? ''));
     return $hash !== '' && $password !== '' && password_verify($password, $hash);
+}
+
+function auth_app_dummy_password_verify(string $password): void
+{
+    password_verify($password, '$2y$12$1tVfZbdmitKWqs0nyWuM/umhS56ugQL238kO4EWSs7uvo01q0QIAa');
 }
 
 function auth_app_pin_ok(array $user, string $pin): bool
@@ -653,24 +717,14 @@ function auth_app_repair_device_trust_from_current_session(
     return ['ok' => true, 'repaired' => true];
 }
 
-function auth_app_revoke_user_sessions_and_trust(string $uid): void
+function auth_app_revoke_user_trust_records(string $uid, ?int $now = null): void
 {
     $uid = auth_clean_string($uid);
     if ($uid === '') {
         return;
     }
 
-    $now = now_ts();
-    $sessionEpoch = auth_new_session_epoch();
-
-    @fb_patch('USERS/' . $uid, [
-        'active_device_id' => '',
-        'ACTIVE_DEVICE_ID' => '',
-        'auth_session_epoch' => $sessionEpoch,
-        'session_epoch' => $sessionEpoch,
-        'credentials_revoked_at' => $now,
-        'updated_at' => $now,
-    ]);
+    $now = $now ?? now_ts();
 
     $devices = fb_get('AUTH_DEVICE_TRUST/' . $uid);
     if (is_array($devices)) {
@@ -696,6 +750,28 @@ function auth_app_revoke_user_sessions_and_trust(string $uid): void
             ]);
         }
     }
+}
+
+function auth_app_revoke_user_sessions_and_trust(string $uid): void
+{
+    $uid = auth_clean_string($uid);
+    if ($uid === '') {
+        return;
+    }
+
+    $now = now_ts();
+    $sessionEpoch = auth_new_session_epoch();
+
+    @fb_patch('USERS/' . $uid, [
+        'active_device_id' => '',
+        'ACTIVE_DEVICE_ID' => '',
+        'auth_session_epoch' => $sessionEpoch,
+        'session_epoch' => $sessionEpoch,
+        'credentials_revoked_at' => $now,
+        'updated_at' => $now,
+    ]);
+
+    auth_app_revoke_user_trust_records($uid, $now);
 
 }
 

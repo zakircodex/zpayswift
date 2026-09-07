@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
+require_once dirname(__DIR__) . '/lib/auth_android.php';
 require_once dirname(__DIR__) . '/lib/mobile_dashboard.php';
 
 api_require_method('POST');
@@ -46,15 +47,24 @@ if (password_verify($newPin, $pinHash)) {
     api_response(false, 'PIN_UNCHANGED', 'Choose a different new PIN.', [], 422);
 }
 
+$now = now_ts();
+$sessionEpoch = auth_new_session_epoch();
 $updates = [
     'pin_hash' => password_hash($newPin, PASSWORD_DEFAULT),
-    'updated_at' => now_ts(),
-    'pin_changed_at' => now_ts(),
+    'active_device_id' => '',
+    'ACTIVE_DEVICE_ID' => '',
+    'auth_session_epoch' => $sessionEpoch,
+    'session_epoch' => $sessionEpoch,
+    'credentials_revoked_at' => $now,
+    'updated_at' => $now,
+    'pin_changed_at' => $now,
 ];
 
 if (!fb_patch('USERS/' . $uid, $updates)) {
     api_response(false, 'PIN_UPDATE_FAILED', 'Unable to update PIN. Please try again.', [], 500);
 }
+
+auth_app_revoke_user_trust_records($uid, $now);
 
 system_log('USER_PIN_CHANGED', $uid, 'User PIN changed from profile security.', [
     'uid' => $uid,
@@ -62,4 +72,5 @@ system_log('USER_PIN_CHANGED', $uid, 'User PIN changed from profile security.', 
 
 api_response(true, 'PIN_UPDATED', 'PIN updated successfully.', [
     'pin_updated' => true,
+    'reauth_required' => true,
 ]);

@@ -36,6 +36,19 @@ define('OTP_SEND_LIMIT_PER_HOUR', 12);
 define('ADMIN_LOGIN_MAX_FAILED_ATTEMPTS', 5);
 define('ADMIN_LOGIN_ATTEMPT_WINDOW_SECONDS', 15 * 60);
 define('ADMIN_LOGIN_LOCK_SECONDS', 15 * 60);
+/* Public user login/account checks use independent hashed CAS-backed limits. */
+define('USER_LOGIN_ACCOUNT_LOOKUP_MAX_ATTEMPTS', 30);
+define('USER_LOGIN_ACCOUNT_LOOKUP_WINDOW_SECONDS', 15 * 60);
+define('USER_LOGIN_ACCOUNT_LOOKUP_LOCK_SECONDS', 15 * 60);
+define('USER_LOGIN_PASSWORD_MAX_ATTEMPTS', 5);
+define('USER_LOGIN_PASSWORD_WINDOW_SECONDS', 15 * 60);
+define('USER_LOGIN_PASSWORD_LOCK_SECONDS', 15 * 60);
+define('USER_LOGIN_PIN_MAX_ATTEMPTS', 5);
+define('USER_LOGIN_PIN_WINDOW_SECONDS', 15 * 60);
+define('USER_LOGIN_PIN_LOCK_SECONDS', 15 * 60);
+define('USER_LOGIN_TRANSACTION_PIN_MAX_ATTEMPTS', 5);
+define('USER_LOGIN_TRANSACTION_PIN_WINDOW_SECONDS', 15 * 60);
+define('USER_LOGIN_TRANSACTION_PIN_LOCK_SECONDS', 15 * 60);
 /* New Add Money receipt capabilities expire; historical unversioned links remain compatible. */
 define('RECEIPT_TOKEN_TTL_SECONDS', 60 * 60 * 24 * 30);
 /* Abandoned pre-registration KYC is eligible 72 hours after its session expires. */

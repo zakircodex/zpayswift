@@ -642,7 +642,7 @@
     byId('bundlePinContinueButton').disabled = true;
     openLoading('Preparing bundle preview...');
     try {
-      await shell.post('validate_pin', { pin, purpose: 'BUNDLE' }, '', { busy: false });
+      await shell.post('validate_pin', { pin, purpose: 'BUNDLE', issue_proof: true }, '', { busy: false });
       const data = await shell.post('bundle_preview', {
         offer_id: offerId(state.selectedOffer), bundle_number: state.numberFull, verified_by: 'PIN'
       }, '', { busy: false });

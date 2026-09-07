@@ -297,9 +297,11 @@ function auth_find_uid_by_phone_country(string $phoneE164, string $country): str
 
 function auth_request_ip(array $body = []): string
 {
-    $forwarded = trim((string)($body['client_ip'] ?? $body['created_ip'] ?? ''));
-    if ($forwarded !== '' && filter_var($forwarded, FILTER_VALIDATE_IP) !== false) {
-        return $forwarded;
+    if (function_exists('market_trusted_forwarded_ip')) {
+        $forwarded = trim((string)market_trusted_forwarded_ip());
+        if ($forwarded !== '' && filter_var($forwarded, FILTER_VALIDATE_IP) !== false) {
+            return $forwarded;
+        }
     }
 
     if (function_exists('security_client_ip')) {
