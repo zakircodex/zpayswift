@@ -292,6 +292,44 @@ function mfs_create_endpoint_notify_telegram(array $data, array $user): void
     }
 }
 
+function mfs_create_endpoint_finish_success(array $result, array $data, array $user): void
+{
+    http_response_code(200);
+    echo json_encode([
+        'ok' => true,
+        'success' => true,
+        'code' => (string)($result['code'] ?? 'SUCCESS'),
+        'message' => (string)($result['message'] ?? 'MFS request created successfully'),
+        'data' => $data,
+    ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    $responseFinished = false;
+    if (function_exists('fastcgi_finish_request')) {
+        @fastcgi_finish_request();
+        $responseFinished = true;
+    } elseif (function_exists('litespeed_finish_request')) {
+        @litespeed_finish_request();
+        $responseFinished = true;
+    } else {
+        while (ob_get_level() > 0) {
+            @ob_end_flush();
+        }
+        @flush();
+    }
+
+    if ($responseFinished) {
+        ignore_user_abort(true);
+    }
+
+    try {
+        mfs_create_endpoint_notify_telegram($data, $user);
+    } catch (Throwable $e) {
+        // Optional notification work cannot change a committed financial response.
+    }
+
+    exit;
+}
+
 $source = 'USER_API';
 
 if (!empty($body['source'])) {
@@ -430,12 +468,4 @@ if ($previewHash !== '' && !empty($data['request_id'])) {
     mfs_mark_preview_used($previewHash, (string)$data['request_id']);
 }
 
-mfs_create_endpoint_notify_telegram($data, array_merge($user, ['uid' => $uid]));
-
-api_response(
-    true,
-    (string)($res['code'] ?? 'SUCCESS'),
-    (string)($res['message'] ?? 'MFS request created successfully'),
-    $data,
-    200
-);
+mfs_create_endpoint_finish_success($res, $data, array_merge($user, ['uid' => $uid]));

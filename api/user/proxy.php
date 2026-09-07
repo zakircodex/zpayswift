@@ -4535,7 +4535,12 @@ switch ($action) {
             'mfs/create.php',
             $body,
             'MFS_CREATE_FAILED',
-            'MFS request could not be created.'
+            'MFS request could not be created.',
+            [
+                'max_attempts' => 1,
+                'connect_timeout' => 5,
+                'timeout' => 40,
+            ]
         );
         break;
         

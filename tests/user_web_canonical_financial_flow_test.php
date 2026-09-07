@@ -10,6 +10,8 @@ $mfsPreview = (string)file_get_contents($root . '/api/mfs/preview.php');
 $mfsCreate = (string)file_get_contents($root . '/api/mfs/create.php');
 $mfsCore = (string)file_get_contents($root . '/api/lib/mfs.php');
 $legacyMfsCreate = (string)file_get_contents($root . '/api/user/mfs_create_telegram.php');
+$mfsCreateProxyStart = strpos($proxy, "case 'mfs_create':");
+$mfsCreateProxyBlock = $mfsCreateProxyStart === false ? '' : substr($proxy, $mfsCreateProxyStart, 1800);
 $assertions = 0;
 
 function canonical_flow_expect(bool $condition, string $message): void
@@ -56,6 +58,15 @@ canonical_flow_expect(
     && str_contains($mfsCore, "'MFS_DAILY_AMOUNT_TOO_CLOSE'")
     && str_contains($mfsCreate, "\$httpStatus = 503;"),
     'Canonical MFS preview/create flow must enforce the atomic same-day recipient amount guard.'
+);
+canonical_flow_expect(
+    str_contains($mfsCreate, 'function mfs_create_endpoint_finish_success')
+    && str_contains($mfsCreate, "function_exists('fastcgi_finish_request')")
+    && str_contains($mfsCreate, "function_exists('litespeed_finish_request')")
+    && str_contains($mfsCreate, 'Optional notification work cannot change a committed financial response.')
+    && str_contains($mfsCreateProxyBlock, "'max_attempts' => 1")
+    && str_contains($mfsCreateProxyBlock, "'timeout' => 40"),
+    'MFS create must return committed success before Telegram work and must not retry the mutating proxy request.'
 );
 canonical_flow_expect(
     str_contains($dashboardJs, "proxyPost('topup_preview'")
