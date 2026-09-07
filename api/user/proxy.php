@@ -1705,6 +1705,101 @@ function user_proxy_forward_authenticated_json(
     );
 }
 
+function user_proxy_recover_mfs_create_result(
+    string $uid,
+    string $previewToken,
+    array $sessionUser = [],
+    int $pollAttempts = 1
+): array {
+    $uid = trim($uid);
+    $previewToken = trim($previewToken);
+    if ($uid === '' || $previewToken === '' || !function_exists('mfs_recover_request_from_preview_token')) {
+        return ['ok' => false];
+    }
+
+    $recovered = mfs_recover_request_from_preview_token($uid, $previewToken, $pollAttempts);
+    $request = is_array($recovered['request'] ?? null) ? (array)$recovered['request'] : [];
+    if (!empty($recovered['ok']) && $request) {
+        $data = mfs_public_log_row($request);
+        $data['receipt_token'] = (string)($request['receipt_token'] ?? '');
+        $walletSummary = user_proxy_wallet_summary_payload($uid, $sessionUser, true);
+        $data['wallet'] = is_array($walletSummary['wallet'] ?? null)
+            ? (array)$walletSummary['wallet']
+            : [];
+
+        return [
+            'ok' => true,
+            'request_id' => (string)($recovered['request_id'] ?? ''),
+            'data' => $data,
+        ];
+    }
+
+    return ['ok' => false];
+}
+
+function user_proxy_forward_mfs_create(array $body, array $sessionUser): void
+{
+    $res = user_proxy_internal_api_request(
+        'POST',
+        'mfs/create.php',
+        $body,
+        user_proxy_authenticated_headers(),
+        [
+            'max_attempts' => 1,
+            'connect_timeout' => 5,
+            'timeout' => 40,
+        ]
+    );
+    $json = is_array($res['json'] ?? null) ? (array)$res['json'] : [];
+    if (!empty($res['ok'])) {
+        user_proxy_response(
+            true,
+            (string)($json['code'] ?? 'SUCCESS'),
+            (string)($json['message'] ?? 'MFS request created successfully'),
+            (array)($json['data'] ?? []),
+            (int)($res['status'] ?? 200)
+        );
+    }
+
+    $code = strtoupper(trim((string)($json['code'] ?? '')));
+    $transportUncertain = !is_array($res['json'] ?? null) || (int)($res['status'] ?? 0) === 0;
+    $submissionUncertain = in_array($code, ['MFS_ALREADY_SUBMITTED', 'MFS_PREVIEW_CLAIM_FAILED'], true);
+    if ($transportUncertain || $submissionUncertain) {
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $recovered = user_proxy_recover_mfs_create_result(
+            $uid,
+            (string)($body['preview_token'] ?? ''),
+            $sessionUser,
+            12
+        );
+        if (!empty($recovered['ok'])) {
+            user_proxy_response(
+                true,
+                'SUCCESS',
+                'MFS request created successfully',
+                (array)($recovered['data'] ?? []),
+                200
+            );
+        }
+
+        user_proxy_response(
+            false,
+            'MFS_CREATE_STATUS_UNKNOWN',
+            'Request status could not be confirmed. Check History before trying again.',
+            ['retry_safe' => false],
+            503
+        );
+    }
+
+    user_proxy_response(
+        false,
+        $code !== '' ? $code : 'MFS_CREATE_FAILED',
+        (string)($json['message'] ?? 'MFS request could not be created.'),
+        (array)($json['data'] ?? []),
+        (int)(($res['status'] ?? 0) > 0 ? $res['status'] : 502)
+    );
+}
+
 function user_proxy_forward_authenticated_multipart(
     string $relativePath,
     array $fields,
@@ -4520,7 +4615,7 @@ switch ($action) {
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
 
-        user_proxy_require_login(true, false);
+        $sessionUser = user_proxy_require_login(true, false);
         $body = user_proxy_read_json_body();
 
         if ($action === 'bkash_create') {
@@ -4530,18 +4625,7 @@ switch ($action) {
         }
         $body['source'] = 'USER_API';
 
-        user_proxy_forward_authenticated_json(
-            'POST',
-            'mfs/create.php',
-            $body,
-            'MFS_CREATE_FAILED',
-            'MFS request could not be created.',
-            [
-                'max_attempts' => 1,
-                'connect_timeout' => 5,
-                'timeout' => 40,
-            ]
-        );
+        user_proxy_forward_mfs_create($body, $sessionUser);
         break;
         
         

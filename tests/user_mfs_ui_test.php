@@ -149,6 +149,15 @@ mfs_ui_expect(
     && !str_contains($script, "{ label: 'Done', handler: () => requestModalClose(resetFlow) }"),
     'Done does not collapse stale Amount/PIN/Preview history entries'
 );
+mfs_ui_expect(
+    str_contains($script, 'function syncHoldAvailability()')
+    && str_contains($script, "&& Boolean(state.pin)")
+    && str_contains($script, "navigateStep('pin', 'replace')")
+    && str_contains($script, "navigateStep('amount', 'replace')")
+    && str_contains($script, "'MFS_CREATE_STATUS_UNKNOWN'")
+    && str_contains($flow, 'aria-disabled="true" disabled'),
+    'failed submission must not leave Preview active with an empty PIN or enabled hold control'
+);
 
 mfs_ui_expect(
     str_contains($style, '.user-mfs-page')

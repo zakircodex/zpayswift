@@ -116,8 +116,11 @@
       return walletDetails().isMyr ? 'Insufficient MYR balance.' : 'Insufficient BDT balance.';
     }
     if (code === 'MFS_PREVIEW_EXPIRED') return 'This preview has expired. Please review again.';
-    if (['MFS_PREVIEW_INVALID', 'MFS_PREVIEW_MISMATCH'].includes(code)) {
+    if (['MFS_PREVIEW_INVALID', 'MFS_PREVIEW_MISMATCH', 'MFS_PREVIEW_REQUIRED'].includes(code)) {
       return 'This preview is no longer valid. Please review again.';
+    }
+    if (['MFS_ALREADY_SUBMITTED', 'MFS_CREATE_STATUS_UNKNOWN'].includes(code)) {
+      return 'Request status could not be confirmed. Check History before trying again.';
     }
     if (code === 'PROVIDER_DISABLED') return `${providerLabel} is currently unavailable.`;
     if (code === 'MFS_DISABLED') return 'bKash/Nagad service is currently unavailable.';
@@ -297,6 +300,7 @@
 
     if (previous === 'preview' && nextStep === 'pin') clearPin();
     if ((previous === 'pin' || previous === 'preview') && STEP_ORDER.indexOf(nextStep) < 2) clearPin();
+    syncHoldAvailability();
 
     if (!focus) return;
     const targets = {
@@ -322,6 +326,7 @@
     state.pin = '';
     const pin = byId('mfsPin');
     if (pin) pin.value = '';
+    syncHoldAvailability();
   }
 
   function invalidatePreview() {
@@ -330,6 +335,18 @@
     state.result = null;
     clearPin();
     cancelHold();
+  }
+
+  function syncHoldAvailability() {
+    const button = byId('mfsHoldConfirm');
+    if (!button) return;
+    const ready = state.step === 'preview'
+      && Boolean(state.preview?.preview_token)
+      && Boolean(state.pin)
+      && !state.submitting
+      && !state.completed;
+    button.disabled = !ready;
+    button.setAttribute('aria-disabled', ready ? 'false' : 'true');
   }
 
   function modalElement() {
@@ -902,14 +919,21 @@
 
   async function submitRequest() {
     if (state.submitting || state.completed) return;
-    if (!state.preview?.preview_token || !state.pin) {
+    if (!state.preview?.preview_token) {
+      invalidatePreview();
+      navigateStep('amount', 'replace');
+      openError('Preview Expired', 'This preview has expired. Please review the amount again.', byId('mfsAmountContinue'));
+      return;
+    }
+    if (!state.pin) {
       clearPin();
-      openError('Verification Required', 'Please verify this request again before submitting.', byId('mfsHoldConfirm'));
+      navigateStep('pin', 'replace');
+      openError('Verification Required', 'Please verify this request again before submitting.', byId('mfsPinContinue'));
       return;
     }
     state.submitting = true;
     const button = byId('mfsHoldConfirm');
-    if (button) button.disabled = true;
+    syncHoldAvailability();
     setHoldLabel('Submitting...');
     state.reference = String(byId('mfsReference')?.value || '').trim().slice(0, 80);
     try {
@@ -924,18 +948,33 @@
       }
       openSuccess(result || {});
     } catch (error) {
+      const code = String(error?.code || '').trim().toUpperCase();
       clearPin();
       cancelHold();
       if (isPinError(error)) {
-        navigateStep('pin');
-        openError('Incorrect PIN', safeMessage(error, 'Incorrect PIN. Please try again.'), button);
+        navigateStep('pin', 'replace');
+        openError('Incorrect PIN', safeMessage(error, 'Incorrect PIN. Please try again.'), byId('mfsPinContinue'));
+      } else if ([
+        'MFS_PREVIEW_EXPIRED',
+        'MFS_PREVIEW_INVALID',
+        'MFS_PREVIEW_MISMATCH',
+        'MFS_PREVIEW_REQUIRED',
+        'MFS_DAILY_AMOUNT_TOO_CLOSE',
+        'INSUFFICIENT_BALANCE',
+        'MFS_ALREADY_SUBMITTED',
+        'MFS_CREATE_STATUS_UNKNOWN'
+      ].includes(code)) {
+        invalidatePreview();
+        navigateStep('amount', 'replace');
+        openError(`${providerLabel} Request Not Submitted`, safeMessage(error, 'Please review the amount and try again.'), byId('mfsAmountContinue'));
       } else {
-        openError(`${providerLabel} Request Failed`, safeMessage(error, 'Request could not be submitted. Please try again.'), button);
+        navigateStep('pin', 'replace');
+        openError(`${providerLabel} Request Failed`, safeMessage(error, 'Request could not be submitted. Please try again.'), byId('mfsPinContinue'));
       }
     } finally {
       state.submitting = false;
-      if (button && !state.completed) button.disabled = false;
       if (!state.completed) resetHoldVisual();
+      syncHoldAvailability();
     }
   }
 
@@ -972,7 +1011,7 @@
   }
 
   function startHold(event) {
-    if (state.submitting || state.completed || !state.preview?.preview_token || state.hold.startedAt) return;
+    if (state.submitting || state.completed || !state.preview?.preview_token || !state.pin || state.hold.startedAt) return;
     if (event.type === 'keydown' && !['Enter', ' '].includes(event.key)) return;
     event.preventDefault();
     if (event.pointerId !== undefined && event.currentTarget?.setPointerCapture) {
@@ -1197,6 +1236,7 @@
       state.requestBusy = false;
       state.submitting = false;
       resetHoldVisual();
+      syncHoldAvailability();
     });
 
     byId('mfsBackButton')?.addEventListener('click', (event) => {

@@ -64,8 +64,12 @@ canonical_flow_expect(
     && str_contains($mfsCreate, "function_exists('fastcgi_finish_request')")
     && str_contains($mfsCreate, "function_exists('litespeed_finish_request')")
     && str_contains($mfsCreate, 'Optional notification work cannot change a committed financial response.')
-    && str_contains($mfsCreateProxyBlock, "'max_attempts' => 1")
-    && str_contains($mfsCreateProxyBlock, "'timeout' => 40"),
+    && str_contains($proxy, 'function user_proxy_forward_mfs_create')
+    && str_contains($proxy, 'function user_proxy_recover_mfs_create_result')
+    && str_contains($proxy, "'max_attempts' => 1")
+    && str_contains($proxy, "'timeout' => 40")
+    && str_contains($proxy, "'MFS_CREATE_STATUS_UNKNOWN'")
+    && str_contains($mfsCreateProxyBlock, 'user_proxy_forward_mfs_create($body, $sessionUser)'),
     'MFS create must return committed success before Telegram work and must not retry the mutating proxy request.'
 );
 canonical_flow_expect(

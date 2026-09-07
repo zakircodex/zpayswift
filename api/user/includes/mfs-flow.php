@@ -115,7 +115,7 @@ window.USER_MFS_CONFIG = <?= json_encode([
             <span>Reference <small>Optional</small></span>
             <input id="mfsReference" type="text" autocomplete="off" maxlength="80" placeholder="Enter reference (optional)">
           </label>
-          <button id="mfsHoldConfirm" class="mfs-hold-control" type="button" aria-label="Tap and hold to confirm <?= htmlspecialchars($providerLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+          <button id="mfsHoldConfirm" class="mfs-hold-control" type="button" aria-label="Tap and hold to confirm <?= htmlspecialchars($providerLabel, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>" aria-disabled="true" disabled>
             <span class="mfs-hold-progress" aria-hidden="true"></span>
             <span class="mfs-hold-dot" aria-hidden="true"></span>
             <span class="mfs-hold-bubble mfs-hold-bubble-one" aria-hidden="true"></span>

@@ -552,12 +552,17 @@ assert_true((float)$snapshotWallet['hold_balance'] === 0.00 && $snapshotHeld > 0
 fb_put('MFS_SETTINGS/fees/MY/TIERS', mfs_my_fee_tier_storage());
 mfs_config(true);
 
-function mfs_confirm_from_preview(string $uid, string $provider, string $idempotencyKey): array
+function mfs_confirm_from_preview(
+    string $uid,
+    string $provider,
+    string $idempotencyKey,
+    float $amountBdt = 620.00
+): array
 {
-    $body = mfs_create_body($provider, $idempotencyKey);
+    $body = mfs_create_body($provider, $idempotencyKey, $amountBdt);
     $preview = mfs_preview_payload($uid, $body);
     if (empty($preview['ok'])) {
-        return ['preview' => $preview, 'result' => $preview, 'preview_hash' => ''];
+        return ['preview' => $preview, 'result' => $preview, 'preview_hash' => '', 'preview_token' => ''];
     }
 
     $previewData = (array)$preview['data'];
@@ -568,7 +573,7 @@ function mfs_confirm_from_preview(string $uid, string $provider, string $idempot
     $previewHash = mfs_preview_token_hash($previewToken);
     $claim = mfs_claim_preview_token($previewHash, $uid);
     if (empty($claim['ok'])) {
-        return ['preview' => $preview, 'result' => $claim, 'preview_hash' => $previewHash];
+        return ['preview' => $preview, 'result' => $claim, 'preview_hash' => $previewHash, 'preview_token' => $previewToken];
     }
 
     $result = mfs_create_request(
@@ -584,11 +589,14 @@ function mfs_confirm_from_preview(string $uid, string $provider, string $idempot
         ]
     );
 
-    return ['preview' => $preview, 'result' => $result, 'preview_hash' => $previewHash];
+    return ['preview' => $preview, 'result' => $result, 'preview_hash' => $previewHash, 'preview_token' => $previewToken];
 }
 
+fb_put('MFS_SETTINGS/rate_myr_bdt', 31.10);
+mfs_config(true);
 put_mfs_create_user('MFS_CREATE_BKASH_MY', 'MY', 'MYR');
-$bkashConfirm = mfs_confirm_from_preview('MFS_CREATE_BKASH_MY', 'BKASH', 'MFS_CREATE_BKASH_MY_ONCE');
+put_wallet('MFS_CREATE_BKASH_MY', 3018.26, 0.00, 'MYR');
+$bkashConfirm = mfs_confirm_from_preview('MFS_CREATE_BKASH_MY', 'BKASH', 'MFS_CREATE_BKASH_MY_ONCE', 1000.00);
 $bkashCreate = (array)$bkashConfirm['result'];
 assert_true(!empty($bkashConfirm['preview']['ok']), 'bKash MY preview must succeed with default provider config');
 assert_true(!empty($bkashCreate['ok']), 'bKash MY confirm must create a request with default provider config');
@@ -597,10 +605,40 @@ $bkashData = (array)$bkashCreate['data'];
 assert_true((string)($bkashData['provider'] ?? '') === 'BKASH', 'bKash provider must remain canonical');
 assert_true((string)($bkashData['wallet_currency'] ?? '') === 'MYR', 'bKash MY wallet currency must remain MYR');
 assert_true((float)($bkashData['total_debit'] ?? 0) === (float)($bkashData['amount_rm'] ?? 0) + (float)($bkashData['fee_rm'] ?? 0), 'bKash MY fee and total debit must remain consistent');
+assert_true((float)($bkashData['amount_bdt'] ?? 0) === 1000.00, 'bKash MY service amount must remain BDT 1000');
+assert_true((float)($bkashData['exchange_rate'] ?? 0) === 31.10, 'bKash MY request must preserve the canonical 31.10 rate');
+assert_true((float)($bkashData['amount_rm'] ?? 0) === 32.15, 'bKash MY service amount must use existing two-decimal conversion');
+assert_true((float)($bkashData['fee_rm'] ?? 0) === 5.00, 'bKash MY request must preserve the configured RM 5 fee');
+assert_true((float)($bkashData['total_debit'] ?? 0) === 37.15, 'bKash MY total debit must remain RM 37.15');
+assert_true((float)($bkashData['balance_after'] ?? 0) === 2981.11, 'bKash MY balance after must remain RM 2981.11');
+mfs_mark_preview_used((string)$bkashConfirm['preview_hash'], (string)$bkashData['request_id']);
+$bkashRecovered = mfs_recover_request_from_preview_token(
+    'MFS_CREATE_BKASH_MY',
+    (string)$bkashConfirm['preview_token']
+);
+assert_true(
+    !empty($bkashRecovered['ok'])
+    && (string)($bkashRecovered['request_id'] ?? '') === (string)$bkashData['request_id']
+    && (string)($bkashRecovered['request']['provider'] ?? '') === 'BKASH'
+    && (float)($bkashRecovered['request']['amount_bdt'] ?? 0) === 1000.00
+    && (float)($bkashRecovered['request']['exchange_rate'] ?? 0) === 31.10
+    && (float)($bkashRecovered['request']['fee_rm'] ?? 0) === 5.00
+    && (float)($bkashRecovered['request']['total_debit'] ?? 0) === 37.15
+    && (float)($bkashRecovered['request']['balance_after'] ?? 0) === 2981.11,
+    'timed-out bKash response must recover the canonical owned request from its preview token'
+);
+$wrongOwnerRecovery = mfs_recover_request_from_preview_token(
+    'MFS_CREATE_NAGAD_MY',
+    (string)$bkashConfirm['preview_token']
+);
+assert_true(
+    empty($wrongOwnerRecovery['ok']) && ($wrongOwnerRecovery['code'] ?? '') === 'MFS_RECOVERY_FORBIDDEN',
+    'preview recovery must reject a different authenticated user'
+);
 $bkashWrites = wallet_write_count('MFS_CREATE_BKASH_MY');
 $bkashDuplicate = mfs_create_request(
     'MFS_CREATE_BKASH_MY',
-    mfs_create_body('BKASH', 'MFS_CREATE_BKASH_MY_ONCE'),
+    mfs_create_body('BKASH', 'MFS_CREATE_BKASH_MY_ONCE', 1000.00),
     'USER_API',
     'PANEL',
     ['uid' => 'MFS_CREATE_BKASH_MY', 'role' => 'USER']
@@ -719,6 +757,15 @@ assert_true(!empty($bdConfirm['preview']['ok']), 'BD MFS preview must succeed');
 assert_true(!empty($bdCreate['ok']), 'BD MFS confirm must create a request');
 assert_true((float)($bdCreate['data']['total_debit'] ?? 0) === (float)($bdCreate['data']['amount_bdt'] ?? 0) + (float)($bdCreate['data']['fee_bdt'] ?? 0), 'BD fee and total debit must remain consistent');
 assert_true((string)($bdCreate['data']['wallet_currency'] ?? '') === 'BDT', 'BD wallet currency must remain BDT');
+
+put_mfs_create_user('MFS_CREATE_NAGAD_BD', 'BD', 'BDT');
+$nagadBdConfirm = mfs_confirm_from_preview('MFS_CREATE_NAGAD_BD', 'NAGAD', 'MFS_CREATE_NAGAD_BD_ONCE');
+$nagadBdCreate = (array)$nagadBdConfirm['result'];
+assert_true(!empty($nagadBdConfirm['preview']['ok']), 'Nagad BD MFS preview must succeed');
+assert_true(!empty($nagadBdCreate['ok']), 'Nagad BD MFS confirm must create a request');
+assert_true((string)($nagadBdCreate['data']['provider'] ?? '') === 'NAGAD', 'Nagad BD provider must remain canonical');
+assert_true((string)($nagadBdCreate['data']['wallet_currency'] ?? '') === 'BDT', 'Nagad BD wallet currency must remain BDT');
+assert_true((float)($nagadBdCreate['data']['amount_rm'] ?? 0) === 0.00, 'Nagad BD request must not apply MYR conversion');
 
 put_mfs_create_user('MFS_CREATE_RETRY', 'MY', 'MYR');
 $failNextPendingPut = true;

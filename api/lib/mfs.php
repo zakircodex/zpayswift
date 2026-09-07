@@ -3645,6 +3645,75 @@ function mfs_find_request(string $requestId): array
     return [];
 }
 
+function mfs_recover_request_from_preview_token(
+    string $uid,
+    string $previewToken,
+    int $pollAttempts = 1
+): array {
+    $uid = trim($uid);
+    $previewToken = trim($previewToken);
+    if ($uid === '' || $previewToken === '') {
+        return [
+            'ok' => false,
+            'code' => 'MFS_RECOVERY_INVALID',
+            'request' => [],
+        ];
+    }
+
+    $previewPath = 'MFS_PREVIEWS/' . mfs_preview_token_hash($previewToken);
+    $pollAttempts = max(1, min(12, $pollAttempts));
+
+    for ($attempt = 0; $attempt < $pollAttempts; $attempt++) {
+        $preview = mfs_fb_get($previewPath);
+        if (!is_array($preview)) {
+            return [
+                'ok' => false,
+                'code' => 'MFS_RECOVERY_NOT_FOUND',
+                'request' => [],
+            ];
+        }
+        if (!hash_equals($uid, trim((string)($preview['uid'] ?? '')))) {
+            return [
+                'ok' => false,
+                'code' => 'MFS_RECOVERY_FORBIDDEN',
+                'request' => [],
+            ];
+        }
+
+        $requestId = trim((string)($preview['request_id'] ?? ''));
+        if ($requestId !== '') {
+            $request = mfs_find_request($requestId);
+            if ($request && hash_equals($uid, trim((string)($request['uid'] ?? '')))) {
+                return [
+                    'ok' => true,
+                    'code' => 'SUCCESS',
+                    'request_id' => $requestId,
+                    'request' => $request,
+                ];
+            }
+            if ($request) {
+                return [
+                    'ok' => false,
+                    'code' => 'MFS_RECOVERY_FORBIDDEN',
+                    'request' => [],
+                ];
+            }
+        }
+
+        $status = strtoupper(trim((string)($preview['status'] ?? '')));
+        if ($status !== 'PROCESSING' || $attempt + 1 >= $pollAttempts) {
+            break;
+        }
+        usleep(250000);
+    }
+
+    return [
+        'ok' => false,
+        'code' => 'MFS_RECOVERY_PENDING',
+        'request' => [],
+    ];
+}
+
 function mfs_save_sender_details(string $requestId, string $senderDetails): array
 {
     $requestId = trim($requestId);
