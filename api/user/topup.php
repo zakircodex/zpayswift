@@ -88,7 +88,7 @@ user_page_begin($page);
             <button class="topup-preset-button" type="button" data-topup-amount="1000">1000 BDT</button>
           </div>
 
-          <label class="topup-field-group topup-custom-amount" for="topupAmountInput">
+          <label id="topupCustomAmountField" class="topup-field-group topup-custom-amount" for="topupAmountInput">
             <span class="topup-field-label">Custom Amount</span>
             <span class="topup-money-shell">
               <strong id="topupAmountPrefix">BDT</strong>

@@ -18,12 +18,12 @@ function topup_now(): int
 
 function topup_calculation_version(): string
 {
-    return 'TOPUP_BDT_SERVICE_V4';
+    return 'TOPUP_MULTI_CURRENCY_V5';
 }
 
 function topup_destination_currency(string $countryCode): string
 {
-    return 'BDT';
+    return topup_country_currency($countryCode);
 }
 
 function topup_legacy_financials(float $amount, array $user = [], array $wallet = [], string $topupCountryCode = 'BD'): array
@@ -33,8 +33,8 @@ function topup_legacy_financials(float $amount, array $user = [], array $wallet 
     $currency = in_array($currency, ['MYR', 'BDT'], true) ? $currency : 'BDT';
     $topupCountryCode = topup_country_code($topupCountryCode);
     $topupCurrency = topup_destination_currency($topupCountryCode);
-    $amountBdt = $amount;
-    $amountMyr = 0.0;
+    $amountBdt = $topupCurrency === 'BDT' ? $amount : 0.0;
+    $amountMyr = $topupCurrency === 'MYR' ? $amount : 0.0;
 
     return [
         'ok' => false,
@@ -313,7 +313,40 @@ function topup_calculate_payment_context(
     $accountCountry = (string)$context['account_country'];
     $balanceBefore = round((float)$context['balance_before'], 2);
 
-    $commission = topup_commission_from_settings($amount, $role, (array)$context['role_settings']);
+    $rateNeeded = $topupCountryCode === 'MY' || ($accountCountry === 'MY' && $walletCurrency === 'MYR');
+    $rate = 0.0;
+    if ($rateNeeded) {
+        $rate = topup_configured_myr_to_bdt_rate();
+        if ($rate <= 0) {
+            return array_merge($base, [
+                'ok' => false,
+                'code' => 'RATE_UNAVAILABLE',
+                'message' => 'Current exchange rate is unavailable. Please try again later.',
+                'account_country' => $accountCountry,
+                'wallet_currency' => $walletCurrency,
+            ]);
+        }
+        if ($rate < 1 || $rate > 1000) {
+            return array_merge($base, [
+                'ok' => false,
+                'code' => 'RATE_INVALID',
+                'message' => 'The current exchange rate is invalid.',
+                'account_country' => $accountCountry,
+                'wallet_currency' => $walletCurrency,
+                'rate_snapshot' => $rate,
+            ]);
+        }
+    }
+
+    $rateSnapshot = $rateNeeded ? round($rate, 2) : null;
+    $topupAmountBdt = $topupCountryCode === 'MY'
+        ? round($amount * (float)$rateSnapshot, 2)
+        : $amount;
+    $topupAmountMyr = $topupCountryCode === 'MY'
+        ? $amount
+        : ($rateSnapshot !== null ? round($amount / $rateSnapshot, 2) : 0.0);
+
+    $commission = topup_commission_from_settings($topupAmountBdt, $role, (array)$context['role_settings']);
     if (empty($commission['ok'])) {
         return array_merge($base, $commission, [
             'account_country' => $accountCountry,
@@ -327,44 +360,15 @@ function topup_calculate_payment_context(
     $commissionApplicable = $commissionAmount > 0;
     $commissionCredit = 0.0;
     $feeAmount = 0.0;
-    $rateApplicable = false;
-    $rateSnapshot = null;
-    $convertedAmount = 0.0;
-    $walletDebitBdt = round(max(0, $amount - $commissionAmount), 2);
+    $rateApplicable = $rateNeeded;
+    $convertedAmount = $topupAmountMyr;
+    $walletDebitBdt = round(max(0, $topupAmountBdt - $commissionAmount), 2);
     $walletDebit = $walletDebitBdt;
     $walletDebitMyr = 0.0;
-    $topupAmountBdt = $amount;
-    $topupAmountMyr = 0.0;
 
     if ($accountCountry === 'MY' && $walletCurrency === 'MYR') {
-        $rate = topup_configured_myr_to_bdt_rate();
-        if ($rate <= 0) {
-            return array_merge($base, [
-                'ok' => false,
-                'code' => 'RATE_UNAVAILABLE',
-                'message' => 'Current exchange rate is unavailable. Please try again later.',
-                'account_country' => $accountCountry,
-                'wallet_currency' => $walletCurrency,
-            ]);
-        }
-
-        if ($rate < 1 || $rate > 1000) {
-            return array_merge($base, [
-                'ok' => false,
-                'code' => 'RATE_INVALID',
-                'message' => 'The current exchange rate is invalid.',
-                'account_country' => $accountCountry,
-                'wallet_currency' => $walletCurrency,
-                'rate_snapshot' => $rate,
-            ]);
-        }
-
-        $rateApplicable = true;
-        $rateSnapshot = round($rate, 2);
-        $convertedAmount = round($amount / $rateSnapshot, 2);
         $walletDebitMyr = round($walletDebitBdt / $rateSnapshot, 2);
         $walletDebit = $walletDebitMyr;
-        $topupAmountMyr = $convertedAmount;
     } elseif ($accountCountry === 'BD' && $walletCurrency === 'BDT') {
         $walletDebit = $walletDebitBdt;
     } else {
@@ -1071,6 +1075,49 @@ function create_topup_pending_request(
     return fb_put('TOPUP_REQUESTS/PENDING/' . $requestId, $row);
 }
 
+function topup_submit_response_data(array $row, array $fallback = []): array
+{
+    $requestId = (string)($row['request_id'] ?? $fallback['request_id'] ?? '');
+    $status = (string)($row['status'] ?? $fallback['status'] ?? 'PENDING');
+    $amount = (float)($row['amount'] ?? $fallback['amount'] ?? 0);
+    $walletDebit = (float)($row['wallet_debit_amount'] ?? $fallback['wallet_debit_amount'] ?? $amount);
+
+    return [
+        'request_id' => $requestId,
+        'status' => $status !== '' ? $status : 'PENDING',
+        'topup_number' => (string)($row['topup_number'] ?? $fallback['topup_number'] ?? ''),
+        'operator' => normalize_operator($row['operator'] ?? $fallback['operator'] ?? ''),
+        'amount' => $amount,
+        'topup_amount' => (float)($row['topup_amount'] ?? $fallback['topup_amount'] ?? $amount),
+        'topup_currency' => (string)($row['topup_currency'] ?? $fallback['topup_currency'] ?? $row['currency'] ?? $fallback['currency'] ?? 'BDT'),
+        'amount_bdt' => (float)($row['amount_bdt'] ?? $fallback['amount_bdt'] ?? $amount),
+        'topup_amount_bdt' => (float)($row['topup_amount_bdt'] ?? $row['amount_bdt'] ?? $fallback['topup_amount_bdt'] ?? $fallback['amount_bdt'] ?? $amount),
+        'service_amount_bdt' => (float)($row['service_amount_bdt'] ?? $row['topup_amount_bdt'] ?? $row['amount_bdt'] ?? $fallback['service_amount_bdt'] ?? $amount),
+        'amount_myr' => (float)($row['amount_myr'] ?? $fallback['amount_myr'] ?? 0),
+        'topup_amount_myr' => (float)($row['topup_amount_myr'] ?? $row['amount_myr'] ?? $fallback['topup_amount_myr'] ?? $fallback['amount_myr'] ?? 0),
+        'account_country' => (string)($row['account_country'] ?? $fallback['account_country'] ?? ''),
+        'wallet_currency' => (string)($row['wallet_currency'] ?? $fallback['wallet_currency'] ?? $row['wallet_debit_currency'] ?? $fallback['wallet_debit_currency'] ?? 'BDT'),
+        'commission_per_1000' => (float)($row['commission_per_1000'] ?? $fallback['commission_per_1000'] ?? 0),
+        'commission_bdt' => (float)($row['commission_bdt'] ?? $fallback['commission_bdt'] ?? 0),
+        'commission_applicable' => (bool)($row['commission_applicable'] ?? $fallback['commission_applicable'] ?? false),
+        'commission_type' => (string)($row['commission_type'] ?? $fallback['commission_type'] ?? 'NONE'),
+        'commission_amount' => (float)($row['commission_amount'] ?? $fallback['commission_amount'] ?? $row['commission_bdt'] ?? $fallback['commission_bdt'] ?? 0),
+        'commission_credit' => (float)($row['commission_credit'] ?? $fallback['commission_credit'] ?? 0),
+        'wallet_debit_bdt' => (float)($row['wallet_debit_bdt'] ?? $fallback['wallet_debit_bdt'] ?? $amount),
+        'wallet_debit_myr' => (float)($row['wallet_debit_myr'] ?? $fallback['wallet_debit_myr'] ?? 0),
+        'wallet_debit_amount' => $walletDebit,
+        'wallet_debit_currency' => (string)($row['wallet_debit_currency'] ?? $fallback['wallet_debit_currency'] ?? 'BDT'),
+        'rate_applicable' => (bool)($row['rate_applicable'] ?? $fallback['rate_applicable'] ?? false),
+        'rate_snapshot' => $row['rate_snapshot'] ?? $fallback['rate_snapshot'] ?? $row['rate_used'] ?? $fallback['rate_used'] ?? null,
+        'rate_used' => (float)($row['rate_used'] ?? $row['rate_snapshot'] ?? $fallback['rate_used'] ?? $fallback['rate_snapshot'] ?? 0),
+        'fee_amount' => (float)($row['fee_amount'] ?? $fallback['fee_amount'] ?? 0),
+        'balance_before' => (float)($row['balance_before'] ?? $fallback['balance_before'] ?? 0),
+        'balance_after' => (float)($row['balance_after'] ?? $fallback['balance_after'] ?? 0),
+        'calculation_version' => (string)($row['calculation_version'] ?? $fallback['calculation_version'] ?? ''),
+        'total_debit' => $walletDebit,
+    ];
+}
+
 function topup_find_request(string $requestId): ?array
 {
     foreach (['PENDING', 'CLAIMED', 'PROCESSING', 'DONE'] as $bucket) {
@@ -1122,6 +1169,55 @@ function topup_history_float_first(array $row, array $keys, bool $positiveOnly =
     }
 
     return null;
+}
+
+function topup_recover_request_from_preview_token(
+    string $uid,
+    string $previewToken,
+    int $pollAttempts = 1
+): array {
+    $uid = trim($uid);
+    $previewToken = trim($previewToken);
+    if ($uid === '' || $previewToken === '') {
+        return ['ok' => false, 'code' => 'TOPUP_RECOVERY_INVALID', 'request' => []];
+    }
+
+    $previewPath = 'TOPUP_PREVIEWS/' . topup_preview_token_hash($previewToken);
+    $pollAttempts = max(1, min(12, $pollAttempts));
+
+    for ($attempt = 0; $attempt < $pollAttempts; $attempt++) {
+        $preview = fb_get($previewPath);
+        if (!is_array($preview)) {
+            return ['ok' => false, 'code' => 'TOPUP_RECOVERY_NOT_FOUND', 'request' => []];
+        }
+        if (!hash_equals($uid, trim((string)($preview['uid'] ?? '')))) {
+            return ['ok' => false, 'code' => 'TOPUP_RECOVERY_FORBIDDEN', 'request' => []];
+        }
+
+        $requestId = trim((string)($preview['request_id'] ?? ''));
+        if ($requestId !== '') {
+            $request = topup_find_request($requestId);
+            if (is_array($request) && hash_equals($uid, trim((string)($request['uid'] ?? '')))) {
+                return [
+                    'ok' => true,
+                    'code' => 'SUCCESS',
+                    'request_id' => $requestId,
+                    'request' => $request,
+                ];
+            }
+            if (is_array($request)) {
+                return ['ok' => false, 'code' => 'TOPUP_RECOVERY_FORBIDDEN', 'request' => []];
+            }
+        }
+
+        $status = strtoupper(trim((string)($preview['status'] ?? '')));
+        if (!in_array($status, ['PROCESSING', 'USED'], true) || $attempt + 1 >= $pollAttempts) {
+            break;
+        }
+        usleep(250000);
+    }
+
+    return ['ok' => false, 'code' => 'TOPUP_RECOVERY_PENDING', 'request' => []];
 }
 
 function topup_normalized_history_fields(array $row): array

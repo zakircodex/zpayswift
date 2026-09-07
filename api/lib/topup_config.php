@@ -25,7 +25,19 @@ function topup_country_code($value): string
 
 function topup_effective_min_amount(string $countryCode, float $configuredMin): float
 {
-    return 20.0;
+    return topup_country_code($countryCode) === 'MY' ? 5.0 : 20.0;
+}
+
+function topup_country_currency(string $countryCode): string
+{
+    return topup_country_code($countryCode) === 'MY' ? 'MYR' : 'BDT';
+}
+
+function topup_country_quick_amounts(string $countryCode): array
+{
+    return topup_country_code($countryCode) === 'MY'
+        ? [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+        : [20, 50, 100, 200, 500, 1000];
 }
 
 function topup_clean_text($value, int $max = 80): string
@@ -114,19 +126,19 @@ function topup_default_config(): array
             [
                 'code' => 'MY',
                 'name' => 'Malaysia',
-                'currency' => 'BDT',
+                'currency' => 'MYR',
                 'dial_code' => '+60',
                 'active' => true,
                 'sort_order' => 20,
                 'operators' => [
-                    topup_default_operator('MY', 'CELCOM_XPAX', 'Celcom Xpax', [], 10),
-                    topup_default_operator('MY', 'DIGI', 'Digi', [], 20),
-                    topup_default_operator('MY', 'HOTLINK', 'Hotlink', [], 30),
-                    topup_default_operator('MY', 'MAXIS', 'Maxis', [], 40),
-                    topup_default_operator('MY', 'UMOBILE', 'U Mobile', [], 50),
-                    topup_default_operator('MY', 'XOX', 'XOX', [], 60),
-                    topup_default_operator('MY', 'TUNETALK', 'Tune Talk', [], 70),
-                    topup_default_operator('MY', 'YES', 'YES Prepaid', [], 80),
+                    topup_default_operator('MY', 'CELCOM_XPAX', 'Celcom Xpax', [], 10, true, 5, 50, topup_country_quick_amounts('MY')),
+                    topup_default_operator('MY', 'DIGI', 'Digi', [], 20, true, 5, 50, topup_country_quick_amounts('MY')),
+                    topup_default_operator('MY', 'HOTLINK', 'Hotlink', [], 30, true, 5, 50, topup_country_quick_amounts('MY')),
+                    topup_default_operator('MY', 'MAXIS', 'Maxis', [], 40, true, 5, 50, topup_country_quick_amounts('MY')),
+                    topup_default_operator('MY', 'UMOBILE', 'U Mobile', [], 50, true, 5, 50, topup_country_quick_amounts('MY')),
+                    topup_default_operator('MY', 'XOX', 'XOX', [], 60, true, 5, 50, topup_country_quick_amounts('MY')),
+                    topup_default_operator('MY', 'TUNETALK', 'Tune Talk', [], 70, true, 5, 50, topup_country_quick_amounts('MY')),
+                    topup_default_operator('MY', 'YES', 'YES Prepaid', [], 80, true, 5, 50, topup_country_quick_amounts('MY')),
                 ],
             ],
         ],
@@ -312,6 +324,11 @@ function topup_normalize_operator_row(array $row, array $fallback = [], string $
     $min = topup_money($row['min_amount'] ?? $fallback['min_amount'] ?? 20);
     $max = topup_money($row['max_amount'] ?? $fallback['max_amount'] ?? 1000);
 
+    if ($countryCode === 'MY') {
+        $min = 5.0;
+        $max = 50.0;
+    }
+
     if ($min <= 0) {
         $min = (float)($fallback['min_amount'] ?? 20);
     }
@@ -328,7 +345,9 @@ function topup_normalize_operator_row(array $row, array $fallback = [], string $
     $result['active'] = topup_bool($row['active'] ?? $fallback['active'] ?? true, true);
     $result['min_amount'] = $min;
     $result['max_amount'] = $max;
-    $result['quick_amounts'] = topup_normalize_quick_amounts($row['quick_amounts'] ?? $fallback['quick_amounts'] ?? [], $min, $max);
+    $result['quick_amounts'] = $countryCode === 'MY'
+        ? topup_country_quick_amounts('MY')
+        : topup_normalize_quick_amounts($row['quick_amounts'] ?? $fallback['quick_amounts'] ?? [], $min, $max);
     $result['prefixes'] = topup_normalize_prefixes($row['prefixes'] ?? $fallback['prefixes'] ?? []);
     $result['sort_order'] = topup_int($row['sort_order'] ?? $fallback['sort_order'] ?? 999, 999);
 
@@ -343,7 +362,7 @@ function topup_normalize_country_row(array $row, array $fallback = [], bool $mer
 
     $result['code'] = $countryCode;
     $result['name'] = topup_clean_text($row['name'] ?? $fallback['name'] ?? $countryCode, 80);
-    $result['currency'] = 'BDT';
+    $result['currency'] = topup_country_currency($countryCode);
     $result['dial_code'] = topup_clean_text($row['dial_code'] ?? $fallback['dial_code'] ?? ($countryCode === 'MY' ? '+60' : '+880'), 10);
     $result['active'] = topup_bool($row['active'] ?? $fallback['active'] ?? true, true);
     $result['sort_order'] = topup_int($row['sort_order'] ?? $fallback['sort_order'] ?? 999, 999);
@@ -581,7 +600,7 @@ function topup_amount_validation(string $countryCode, string $operator, float $a
     $config = (array)$operatorResult['operator'];
     $min = topup_effective_min_amount($countryCode, topup_money($config['min_amount'] ?? 20));
     $max = topup_money($config['max_amount'] ?? 1000);
-    $currency = 'BDT';
+    $currency = topup_country_currency($countryCode);
 
     if ($amount <= 0) {
         $error = topup_validation_error('TOPUP_AMOUNT_REQUIRED', 'Please enter top-up amount.', [
@@ -613,12 +632,36 @@ function topup_amount_validation(string $countryCode, string $operator, float $a
         return $error;
     }
 
+    if ($countryCode === 'MY') {
+        $allowedAmounts = topup_country_quick_amounts('MY');
+        $matchesPreset = false;
+        foreach ($allowedAmounts as $allowedAmount) {
+            if (abs($amount - (float)$allowedAmount) < 0.001) {
+                $matchesPreset = true;
+                break;
+            }
+        }
+        if (!$matchesPreset) {
+            return topup_validation_error(
+                'TOPUP_AMOUNT_PRESET_REQUIRED',
+                'Select a Malaysia top-up amount from RM 5 to RM 50 in RM 5 steps.',
+                [
+                    'min_amount' => $min,
+                    'max_amount' => $max,
+                    'quick_amounts' => $allowedAmounts,
+                    'currency' => $currency,
+                ]
+            );
+        }
+    }
+
     return [
         'ok' => true,
         'country' => (array)($operatorResult['country'] ?? []),
         'operator' => $config,
         'min_amount' => $min,
         'max_amount' => $max,
+        'currency' => $currency,
     ];
 }
 

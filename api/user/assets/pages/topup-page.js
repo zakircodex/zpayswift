@@ -32,10 +32,11 @@
       code: 'MY',
       name: 'Malaysia',
       dialCode: '+60',
-      currency: 'BDT',
-      minAmount: 20,
-      maxAmount: 1000,
-      presets: [20, 50, 100, 200, 500, 1000],
+      currency: 'MYR',
+      minAmount: 5,
+      maxAmount: 50,
+      presets: [5, 10, 15, 20, 25, 30, 35, 40, 45, 50],
+      fixedAmountsOnly: true,
       operators: [
         { code: 'CELCOM_XPAX', name: 'Celcom Xpax', prefixes: [] },
         { code: 'DIGI', name: 'Digi', prefixes: [] },
@@ -593,7 +594,8 @@
     if (!grid) return;
     clearNode(grid);
     selectedCountry.presets.forEach((amount) => {
-      const button = createNode('button', 'topup-preset-button', formatAmount(amount, selectedCountry.currency));
+      const label = selectedCountry.currency === 'MYR' ? `RM ${amount}` : formatAmount(amount, selectedCountry.currency);
+      const button = createNode('button', 'topup-preset-button', label);
       button.type = 'button';
       button.dataset.topupAmount = String(amount);
       button.classList.toggle('active', Number(state.amount) === Number(amount));
@@ -603,9 +605,17 @@
     if (byId('topupAmountCurrency')) byId('topupAmountCurrency').textContent = selectedCountry.currency;
     if (byId('topupAmountPrefix')) byId('topupAmountPrefix').textContent = selectedCountry.currency === 'MYR' ? 'RM' : 'BDT';
     const input = byId('topupAmountInput');
+    const customAmountField = byId('topupCustomAmountField');
+    const fixedAmountsOnly = selectedCountry.fixedAmountsOnly === true;
+    if (customAmountField) {
+      customAmountField.hidden = fixedAmountsOnly;
+      customAmountField.inert = fixedAmountsOnly;
+    }
     if (input) {
       input.min = String(selectedCountry.minAmount);
       input.max = String(selectedCountry.maxAmount);
+      input.disabled = fixedAmountsOnly;
+      input.required = !fixedAmountsOnly;
     }
     if (byId('topupMinimumHint')) {
       byId('topupMinimumHint').textContent = `Minimum top-up amount is ${formatAmount(selectedCountry.minAmount, selectedCountry.currency)}.`;
@@ -660,7 +670,13 @@
       pin: 'topupPinInput',
       preview: 'topupHoldConfirmButton'
     };
-    window.setTimeout(() => byId(focusTargets[nextStep])?.focus({ preventScroll: true }), 40);
+    window.setTimeout(() => {
+      if (nextStep === 'amount' && country().fixedAmountsOnly) {
+        byId('topupPresetGrid')?.querySelector('button')?.focus({ preventScroll: true });
+        return;
+      }
+      byId(focusTargets[nextStep])?.focus({ preventScroll: true });
+    }, 40);
   }
 
   function navigateStep(nextStep, mode = 'push') {
@@ -766,7 +782,7 @@
 
   function validateSelectedAmount() {
     const selectedCountry = country();
-    const value = Number(byId('topupAmountInput')?.value || state.amount || 0);
+    const value = Number(selectedCountry.fixedAmountsOnly ? state.amount : (byId('topupAmountInput')?.value || state.amount || 0));
     if (!Number.isFinite(value) || value <= 0) {
       openError('Amount Required', 'Please enter a top-up amount.');
       return null;
@@ -777,6 +793,10 @@
     }
     if (value > selectedCountry.maxAmount) {
       openError('Amount Too High', `Maximum top-up amount is ${formatAmount(selectedCountry.maxAmount, selectedCountry.currency)}.`);
+      return null;
+    }
+    if (selectedCountry.fixedAmountsOnly && !selectedCountry.presets.includes(value)) {
+      openError('Select an Amount', 'Choose a Malaysia top-up amount from RM 5 to RM 50.');
       return null;
     }
     return value;

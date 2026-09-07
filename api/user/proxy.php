@@ -1923,6 +1923,92 @@ function user_proxy_forward_mfs_create(array $body, array $sessionUser): void
     );
 }
 
+function user_proxy_recover_topup_submit_result(
+    string $uid,
+    string $previewToken,
+    int $pollAttempts = 1
+): array {
+    $uid = trim($uid);
+    $previewToken = trim($previewToken);
+    if ($uid === '' || $previewToken === '' || !function_exists('topup_recover_request_from_preview_token')) {
+        return ['ok' => false];
+    }
+
+    $recovered = topup_recover_request_from_preview_token($uid, $previewToken, $pollAttempts);
+    $request = is_array($recovered['request'] ?? null) ? (array)$recovered['request'] : [];
+    if (empty($recovered['ok']) || !$request) {
+        return ['ok' => false];
+    }
+
+    return [
+        'ok' => true,
+        'request_id' => (string)($recovered['request_id'] ?? ''),
+        'data' => topup_submit_response_data($request),
+    ];
+}
+
+function user_proxy_forward_topup_submit(array $body, array $sessionUser): void
+{
+    $res = user_proxy_internal_api_request(
+        'POST',
+        'topup/submit.php',
+        $body,
+        user_proxy_authenticated_headers(),
+        [
+            'canonical_only' => true,
+            'max_attempts' => 1,
+            'connect_timeout' => 5,
+            'timeout' => 40,
+        ]
+    );
+    $json = is_array($res['json'] ?? null) ? (array)$res['json'] : [];
+    if (!empty($res['ok'])) {
+        user_proxy_response(
+            true,
+            (string)($json['code'] ?? 'TOPUP_REQUEST_CREATED'),
+            (string)($json['message'] ?? 'Topup request submitted'),
+            (array)($json['data'] ?? []),
+            (int)($res['status'] ?? 200)
+        );
+    }
+
+    $code = strtoupper(trim((string)($json['code'] ?? '')));
+    $transportUncertain = !is_array($res['json'] ?? null) || (int)($res['status'] ?? 0) === 0;
+    $submissionUncertain = in_array($code, ['TOPUP_ALREADY_SUBMITTED', 'TOPUP_PREVIEW_CLAIM_FAILED'], true);
+    if ($transportUncertain || $submissionUncertain) {
+        $recovered = user_proxy_recover_topup_submit_result(
+            (string)($sessionUser['uid'] ?? ''),
+            (string)($body['preview_token'] ?? ''),
+            12
+        );
+        if (!empty($recovered['ok'])) {
+            user_proxy_response(
+                true,
+                'TOPUP_REQUEST_CREATED',
+                'Topup request submitted',
+                (array)($recovered['data'] ?? []),
+                200
+            );
+        }
+
+        user_proxy_response(
+            false,
+            'TOPUP_SUBMIT_STATUS_UNKNOWN',
+            'Request status could not be confirmed. Check History before trying again.',
+            ['retry_safe' => false],
+            503
+        );
+    }
+
+    user_proxy_response(
+        false,
+        $code !== '' ? $code : 'TOPUP_SUBMIT_FAILED',
+        (string)($json['message'] ?? 'Top-up request could not be submitted.'),
+        (array)($json['data'] ?? []),
+        (int)(($res['status'] ?? 0) > 0 ? $res['status'] : 502)
+    );
+}
+
 function user_proxy_forward_authenticated_multipart(
     string $relativePath,
     array $fields,
@@ -2635,7 +2721,7 @@ function user_proxy_create_topup_request(string $uid, array $body): array
                 'request_id' => $requestId,
                 'ref_id' => $requestId,
                 'account_country' => (string)($financials['account_country'] ?? ''),
-                'topup_amount_bdt' => $amount,
+                'topup_amount_bdt' => (float)($financials['topup_amount_bdt'] ?? 0),
                 'commission_per_1000' => $financials['commission_per_1000'],
                 'commission_bdt' => $financials['commission_bdt'],
                 'wallet_debit_bdt' => $financials['wallet_debit_bdt'],
@@ -4968,15 +5054,9 @@ switch ($action) {
     case 'topup_submit':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
-        user_proxy_require_login(true, false);
+        $sessionUser = user_proxy_require_login(true, false);
         $body = user_proxy_read_json_body();
-        user_proxy_forward_authenticated_json(
-            'POST',
-            'topup/submit.php',
-            $body,
-            'TOPUP_SUBMIT_FAILED',
-            'Top-up request could not be submitted.'
-        );
+        user_proxy_forward_topup_submit($body, $sessionUser);
         break;
         
         

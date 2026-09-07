@@ -4,6 +4,7 @@ body.user-topup-page {
   height: 100vh;
   height: 100dvh;
   min-height: 100dvh;
+  position: relative;
   overflow: hidden;
 }
 
@@ -536,6 +537,19 @@ body.user-topup-page {
 
 .user-topup-page .topup-custom-amount {
   margin-top: 18px;
+}
+
+.user-topup-page .topup-custom-amount[hidden] {
+  display: none;
+}
+
+.user-topup-page .bottom-nav {
+  position: absolute;
+  padding-bottom: 6px;
+}
+
+.user-topup-page .bottom-nav-inner {
+  width: min(100%, 560px);
 }
 
 .user-topup-page .topup-money-shell {

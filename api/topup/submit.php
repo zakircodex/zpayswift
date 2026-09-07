@@ -7,53 +7,16 @@ require_once dirname(__DIR__) . '/lib/wallet.php';
 require_once dirname(__DIR__) . '/lib/topup.php';
 require_once dirname(__DIR__) . '/lib/topup_config.php';
 
-function topup_submit_response_data(array $row, array $fallback = []): array
-{
-    $requestId = (string)($row['request_id'] ?? $fallback['request_id'] ?? '');
-    $status = (string)($row['status'] ?? $fallback['status'] ?? 'PENDING');
-    $amount = (float)($row['amount'] ?? $fallback['amount'] ?? 0);
-    $walletDebit = (float)($row['wallet_debit_amount'] ?? $fallback['wallet_debit_amount'] ?? $amount);
-
-    return [
-        'request_id' => $requestId,
-        'status' => $status !== '' ? $status : 'PENDING',
-        'topup_number' => (string)($row['topup_number'] ?? $fallback['topup_number'] ?? ''),
-        'operator' => normalize_operator($row['operator'] ?? $fallback['operator'] ?? ''),
-        'amount' => $amount,
-        'topup_amount' => (float)($row['topup_amount'] ?? $fallback['topup_amount'] ?? $amount),
-        'topup_currency' => (string)($row['topup_currency'] ?? $fallback['topup_currency'] ?? $row['currency'] ?? $fallback['currency'] ?? 'BDT'),
-        'amount_bdt' => (float)($row['amount_bdt'] ?? $fallback['amount_bdt'] ?? $amount),
-        'topup_amount_bdt' => (float)($row['topup_amount_bdt'] ?? $row['amount_bdt'] ?? $fallback['topup_amount_bdt'] ?? $fallback['amount_bdt'] ?? $amount),
-        'service_amount_bdt' => (float)($row['service_amount_bdt'] ?? $row['topup_amount_bdt'] ?? $row['amount_bdt'] ?? $fallback['service_amount_bdt'] ?? $amount),
-        'amount_myr' => (float)($row['amount_myr'] ?? $fallback['amount_myr'] ?? 0),
-        'topup_amount_myr' => (float)($row['topup_amount_myr'] ?? $row['amount_myr'] ?? $fallback['topup_amount_myr'] ?? $fallback['amount_myr'] ?? 0),
-        'account_country' => (string)($row['account_country'] ?? $fallback['account_country'] ?? ''),
-        'wallet_currency' => (string)($row['wallet_currency'] ?? $fallback['wallet_currency'] ?? $row['wallet_debit_currency'] ?? $fallback['wallet_debit_currency'] ?? 'BDT'),
-        'commission_per_1000' => (float)($row['commission_per_1000'] ?? $fallback['commission_per_1000'] ?? 0),
-        'commission_bdt' => (float)($row['commission_bdt'] ?? $fallback['commission_bdt'] ?? 0),
-        'commission_applicable' => (bool)($row['commission_applicable'] ?? $fallback['commission_applicable'] ?? false),
-        'commission_type' => (string)($row['commission_type'] ?? $fallback['commission_type'] ?? 'NONE'),
-        'commission_amount' => (float)($row['commission_amount'] ?? $fallback['commission_amount'] ?? $row['commission_bdt'] ?? $fallback['commission_bdt'] ?? 0),
-        'commission_credit' => (float)($row['commission_credit'] ?? $fallback['commission_credit'] ?? 0),
-        'wallet_debit_bdt' => (float)($row['wallet_debit_bdt'] ?? $fallback['wallet_debit_bdt'] ?? $amount),
-        'wallet_debit_myr' => (float)($row['wallet_debit_myr'] ?? $fallback['wallet_debit_myr'] ?? 0),
-        'wallet_debit_amount' => $walletDebit,
-        'wallet_debit_currency' => (string)($row['wallet_debit_currency'] ?? $fallback['wallet_debit_currency'] ?? 'BDT'),
-        'rate_applicable' => (bool)($row['rate_applicable'] ?? $fallback['rate_applicable'] ?? false),
-        'rate_snapshot' => $row['rate_snapshot'] ?? $fallback['rate_snapshot'] ?? $row['rate_used'] ?? $fallback['rate_used'] ?? null,
-        'rate_used' => (float)($row['rate_used'] ?? $row['rate_snapshot'] ?? $fallback['rate_used'] ?? $fallback['rate_snapshot'] ?? 0),
-        'fee_amount' => (float)($row['fee_amount'] ?? $fallback['fee_amount'] ?? 0),
-        'balance_before' => (float)($row['balance_before'] ?? $fallback['balance_before'] ?? 0),
-        'balance_after' => (float)($row['balance_after'] ?? $fallback['balance_after'] ?? 0),
-        'calculation_version' => (string)($row['calculation_version'] ?? $fallback['calculation_version'] ?? ''),
-        'total_debit' => $walletDebit,
-    ];
-}
-
 function topup_submit_finish_response(array $payload, ?array $telegramRow = null, array $logPayload = []): void
 {
+    $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (!is_string($encoded)) {
+        $encoded = '{"ok":false,"success":false,"code":"RESPONSE_ENCODING_FAILED","message":"Top-up response could not be encoded.","data":{}}';
+    }
     http_response_code(200);
-    echo json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Length: ' . strlen($encoded));
+    echo $encoded;
 
     $canContinue = false;
     if (function_exists('fastcgi_finish_request')) {
@@ -71,15 +34,25 @@ function topup_submit_finish_response(array $payload, ?array $telegramRow = null
 
     if ($canContinue && is_array($telegramRow) && $telegramRow !== []) {
         ignore_user_abort(true);
-        if ($logPayload !== [] && function_exists('system_log')) {
-            system_log(
-                (string)($logPayload['type'] ?? 'TOPUP_SUBMIT'),
-                (string)($logPayload['ref_id'] ?? ''),
-                (string)($logPayload['message'] ?? 'Topup request created successfully'),
-                (array)($logPayload['context'] ?? [])
-            );
+        try {
+            if ($logPayload !== [] && function_exists('system_log')) {
+                system_log(
+                    (string)($logPayload['type'] ?? 'TOPUP_SUBMIT'),
+                    (string)($logPayload['ref_id'] ?? ''),
+                    (string)($logPayload['message'] ?? 'Topup request created successfully'),
+                    (array)($logPayload['context'] ?? [])
+                );
+            }
+            topup_notify_telegram_request($telegramRow);
+        } catch (Throwable $exception) {
+            $requestId = (string)($telegramRow['request_id'] ?? '');
+            if ($requestId !== '') {
+                topup_telegram_patch_request($requestId, [
+                    'telegram_sent' => false,
+                    'telegram_error' => 'Telegram notification failed after response',
+                ]);
+            }
         }
-        topup_notify_telegram_request($telegramRow);
     } elseif (is_array($telegramRow) && $telegramRow !== []) {
         $requestId = (string)($telegramRow['request_id'] ?? '');
         $bucket = (string)($telegramRow['_bucket'] ?? 'PENDING');
