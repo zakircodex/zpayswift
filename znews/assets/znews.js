@@ -25,6 +25,7 @@
     openingPostId: '',
     viewStartingPostId: '',
     viewSession: null,
+    readerAd: null,
     balanceMicros: 0,
     transferMinimumMicros: 200_000_000,
     authStage: 'credentials',
@@ -974,6 +975,7 @@
     if (state.currentPostId === postId && els.postDialog.open && state.viewSession?.postId === postId) return;
     state.openingPostId = postId;
     state.currentPostId = postId;
+    clearReaderAd();
     window.ZNewsAds?.hideAll(els.postDetail);
     els.postDetail.innerHTML = '<div class="skeleton-card"><div class="skeleton line short"></div><div class="skeleton block"></div></div>';
     els.commentList.textContent = '';
@@ -1000,7 +1002,8 @@
       els.postDetail.innerHTML = postMarkup(post, { detail: true });
       bindPostActions(els.postDetail);
       renderComments(commentResult.data?.items || []);
-      beginView(postId);
+      scheduleReaderAd(postId);
+      void beginView(postId);
     } catch (error) {
       els.postDetail.innerHTML = `<div class="empty-state"><strong>Post could not be loaded</strong>${escapeHtml(errorMessage(error))}</div>`;
     } finally {
@@ -1048,23 +1051,25 @@
       await completeView();
       const result = await scheduleRequest(
         requestPriority.FEED,
-        ({ signal }) => api.startView(postId, idempotencyKey, { signal }),
+        ({ signal }) => api.startView(postId, idempotencyKey, { signal, timeoutMs: 30000 }),
         { key: `view-start:${idempotencyKey}`, preemptible: false }
       );
       const session = result.data?.session || {};
       if (!session.view_id || !session.view_token) return;
+      if (state.currentPostId !== postId || !els.postDialog.open) return;
       const dwellSeconds = Math.max(5, Number(result.data?.ad_policy?.dwell_seconds || 5));
       const heartbeatDelay = Math.max(
         dwellSeconds * 1000,
         Number(session.heartbeat_after_seconds || 5) * 1000
       );
+      const readerAdMounted = state.readerAd?.postId === postId && state.readerAd.mounted === true;
       state.viewSession = {
         id: session.view_id,
         postId,
         token: session.view_token,
         closing: false,
-        adMounted: false,
-        suppressAd: false,
+        adMounted: readerAdMounted,
+        suppressAd: readerAdMounted,
         heartbeatPending: null,
         completionPending: null,
         timer: window.setTimeout(() => {
@@ -1132,7 +1137,50 @@
     return session.completionPending;
   }
 
+  function clearReaderAd() {
+    const readerAd = state.readerAd;
+    if (!readerAd) return;
+    readerAd.cancelled = true;
+    window.clearTimeout(readerAd.timer);
+    state.readerAd = null;
+  }
+
+  function scheduleReaderAd(postId) {
+    clearReaderAd();
+    const readerAd = {
+      postId,
+      cancelled: false,
+      mounted: false,
+      pending: null,
+      timer: 0
+    };
+    state.readerAd = readerAd;
+    readerAd.timer = window.setTimeout(() => {
+      if (readerAd.cancelled || state.readerAd !== readerAd) return;
+      const feedSessionId = text(window.ZNewsFairFeed?.sessionId).trim();
+      if (!feedSessionId || state.currentPostId !== postId || !els.postDialog.open) return;
+      readerAd.pending = api.feedAdDelivery(feedSessionId, postId, { timeoutMs: 15000 })
+        .then(async (result) => {
+          if (readerAd.cancelled
+            || state.readerAd !== readerAd
+            || state.currentPostId !== postId
+            || !els.postDialog.open) return false;
+          const delivery = result.data?.ad_delivery || {};
+          if (delivery.enabled !== true) return false;
+          readerAd.mounted = await mountReaderAd(postId, delivery) === true;
+          if (readerAd.mounted && state.viewSession?.postId === postId) {
+            state.viewSession.adMounted = true;
+            state.viewSession.suppressAd = true;
+          }
+          return readerAd.mounted;
+        })
+        .catch(() => false)
+        .finally(() => { readerAd.pending = null; });
+    }, 5000);
+  }
+
   function closePost({ syncHistory = true } = {}) {
+    clearReaderAd();
     completeView();
     window.ZNewsAds?.hideAll(els.postDetail);
     if (els.postDialog.open) els.postDialog.close();
@@ -1210,11 +1258,14 @@
     try {
       await Promise.resolve(window.ZNEWS_AUTH_READY).catch(() => false);
       if (state.currentPostId !== postId || !els.postDialog.open) return false;
-      const existing = els.postDetail.querySelector('[data-znews-ad-slot="post_reader"]');
+      const existing = els.postDetail.querySelector('.post-reader-ad-slot');
       if (existing) return existing.querySelector('iframe') !== null;
+      const deliverySlot = ['post_reader', 'post_inline'].includes(text(delivery?.slot).trim())
+        ? text(delivery.slot).trim()
+        : 'post_reader';
       const slot = document.createElement('div');
       slot.className = 'ad-slot post-reader-ad-slot';
-      slot.dataset.znewsAdSlot = 'post_reader';
+      slot.dataset.znewsAdSlot = deliverySlot;
       slot.hidden = true;
       const postCard = els.postDetail.querySelector('.post-card');
       const anchor = postCard?.querySelector('.post-copy')

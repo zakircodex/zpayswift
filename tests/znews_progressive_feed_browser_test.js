@@ -120,6 +120,30 @@ async function main() {
             }
           });
         };
+      } else if (url.pathname.endsWith('/api/znews/public/post.php')) {
+        const postId = url.searchParams.get('post_id');
+        return json({
+          ok: true, success: true, code: 'ZNEWS_PUBLIC_POST_OK', message: 'Post loaded.',
+          data: { post: fixturePosts.find((post) => post.post_id === postId) || fixturePosts[0] }
+        });
+      } else if (url.pathname.endsWith('/api/znews/comments/list.php')) {
+        return json({
+          ok: true, success: true, code: 'ZNEWS_COMMENTS_OK', message: 'Comments loaded.',
+          data: { items: [], next_cursor: '', has_more: false }
+        });
+      } else if (url.pathname.endsWith('/api/znews/views/start.php')) {
+        kind = 'analytics'; priority = 'P0'; delayMs = 7000;
+        responseFactory = () => json({
+          ok: true, success: true, code: 'ZNEWS_VIEW_STARTED', message: 'View started.',
+          data: {
+            session: {
+              view_id: 'ZNV00000000000000000000000000000',
+              view_token: 'test-view-token',
+              heartbeat_after_seconds: 3
+            },
+            ad_policy: { dwell_seconds: 5 }
+          }
+        });
       } else if (url.pathname.endsWith('/api/znews/public/media.php')) {
         kind = 'media'; priority = 'P1'; delayMs = 800;
         responseFactory = () => new Response(
@@ -248,6 +272,19 @@ async function main() {
   assert.equal(timeoutToast, 0, 'Background impression failure must not show a timeout toast.');
   assert.equal(horizontalOverflow, false, '390px feed must not cause page-level overflow.');
   assert.ok(firstPostMs < 5000, 'First post must appear inside five seconds.');
+
+  const feedAdsBeforeReader = await page.evaluate(() => window.__znewsRequestAudit.feedAdRequests);
+  await page.getByRole('button', { name: 'Progressive post 1', exact: true }).click();
+  await page.waitForFunction((before) => (
+    window.__znewsRequestAudit.feedAdRequests === before + 1
+  ), feedAdsBeforeReader, { timeout: 10000 });
+  const readerTimeline = await page.evaluate(() => window.__znewsRequestAudit.timeline);
+  const readerStart = readerTimeline.findLast((entry) => entry.path.endsWith('/api/znews/views/start.php'));
+  const readerAd = readerTimeline.findLast((entry) => entry.path.endsWith('/api/znews/ads/feed.php'));
+  assert.ok(readerStart && readerAd, 'Reader start and fallback ad requests must both run.');
+  assert.ok(readerAd.start - readerStart.start >= 4900, 'Reader ad request started before the five-second dwell.');
+  assert.equal(readerStart.outcome, 'pending', 'Slow view analytics unexpectedly finished before the reader ad check.');
+  assert.ok(readerAd.concurrent >= 2, 'Reader ad request remained blocked behind slow view analytics.');
 
   console.log(`PASS: browser priority feed first=${firstPostMs}ms posts2-5=${postsTwoToFiveMs}ms posts6-10=${postsSixToTenMs}ms feed=${feedTimeline.length} media=${mediaTimeline.length} analytics=${analyticsTimeline.length} max=${requestAudit.maximum.total}.`);
   console.log(`TIMELINE: ${JSON.stringify(requestAudit.timeline)}`);

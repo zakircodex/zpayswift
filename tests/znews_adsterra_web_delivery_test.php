@@ -168,6 +168,8 @@ adsterra_web_expect(str_contains($webSource, 'allow-top-navigation-by-user-activ
 adsterra_web_expect(str_contains($webSource, 'event.source !== frame.contentWindow') && str_contains($webSource, 'data.channel !== safe.resizeChannel'), 'Ad resize messages are not source-and-nonce bound.');
 adsterra_web_expect(str_contains($appSource, "dataset.znewsAdSlot = 'post_inline'") && str_contains($appSource, 'FEED_AD_INTERVAL = 5'), 'Five-post server-gated feed cadence is missing.');
 adsterra_web_expect(str_contains($appSource, 'result.data?.ad_delivery') && str_contains($appSource, 'heartbeatDelay'), 'Reader does not wait for heartbeat delivery.');
+adsterra_web_expect(str_contains($appSource, 'scheduleReaderAd(postId)') && str_contains($appSource, 'api.feedAdDelivery(feedSessionId, postId, { timeoutMs: 15000 })'), 'Reader ad is still blocked by the slow analytics view start.');
+adsterra_web_expect(str_contains($appSource, '}, 5000);'), 'Reader fallback does not preserve the five-second dwell.');
 adsterra_web_expect(preg_match('/requestPriority\.FEED,\s*\(\{ signal \}\) => api\.heartbeatView/s', $appSource) === 1, 'Five-second reader heartbeat can still wait behind media analytics.');
 adsterra_web_expect(str_contains($appSource, "slot.className = 'ad-slot post-reader-ad-slot'") && str_contains($appSource, "querySelector('.post-copy')"), 'Reader ad remains detached below the complete post card.');
 adsterra_web_expect(!str_contains($appSource, 'mountAll('), 'Legacy eager ad mounting remains active.');
