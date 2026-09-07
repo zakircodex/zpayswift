@@ -6,11 +6,9 @@
     ? document.getElementById('overviewSection')
     : null;
   if (!shell || !pageRoot) return;
+  const releaseInitialLoad = shell.holdPageLoad?.('Loading dashboard...') || (() => {});
 
   const byId = (id) => document.getElementById(id);
-  const loadingModal = byId('dashboardLoadingModal');
-  const loadingText = byId('dashboardLoadingText');
-  const initialStatus = byId('dashboardInitialStatus');
   const pullIndicator = byId('dashboardPullIndicator');
   const pullText = byId('dashboardPullText');
   const pullThreshold = 72;
@@ -39,24 +37,10 @@
     return country === 'MY' || currency === 'MYR' ? 'RM' : 'BDT';
   }
 
-  function setDashboardLoading(on, message = 'Loading dashboard, please wait...') {
-    if (!loadingModal || !document.body.classList.contains('user-dashboard-page')) return;
+  function setDashboardLoading(on, message = 'Refreshing dashboard...') {
     const open = Boolean(on);
-    if (loadingText) loadingText.textContent = String(message || 'Loading dashboard, please wait...');
-    loadingModal.classList.toggle('show', open);
-    loadingModal.setAttribute('aria-hidden', open ? 'false' : 'true');
-    loadingModal.inert = !open;
     pageRoot.setAttribute('aria-busy', open ? 'true' : 'false');
-    document.body.classList.toggle('user-dashboard-loading-open', open);
-  }
-
-  function setDashboardInitialLoading(on) {
-    const loading = Boolean(on);
-    document.body.classList.toggle('dashboard-initial-loading', loading);
-    pageRoot.setAttribute('aria-busy', loading ? 'true' : 'false');
-    if (initialStatus) {
-      initialStatus.textContent = loading ? 'Loading account summary.' : 'Dashboard ready.';
-    }
+    shell.setBusy(open, String(message || 'Refreshing dashboard...'));
   }
 
   function renderDashboard(data) {
@@ -104,13 +88,13 @@
 
   function hasOpenModal() {
     return Array.from(document.querySelectorAll('[aria-modal="true"][aria-hidden="false"]'))
-      .some((modal) => modal !== loadingModal);
+      .some((modal) => modal.id !== 'loadingWrap');
   }
 
   function canPullToRefresh(event) {
     const active = document.activeElement;
     return !refreshPromise
-      && !loadingModal?.classList.contains('show')
+      && !document.body.classList.contains('user-page-loading')
       && !shell.state.drawerOpen
       && !hasOpenModal()
       && pageRoot.scrollTop <= 0
@@ -232,7 +216,6 @@
   }
 
   async function init() {
-    setDashboardInitialLoading(true);
     bindActions();
     bindSwipeRefresh();
     try {
@@ -241,7 +224,7 @@
     } catch (_) {
       // The shared shell already presents a safe bootstrap error or redirects an expired session.
     } finally {
-      setDashboardInitialLoading(false);
+      releaseInitialLoad();
     }
   }
 

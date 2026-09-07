@@ -31,6 +31,6 @@ $pageCss = basename((string)$userPage['page_css']);
     <button id="retryUserMaintenance" type="button">Retry</button>
   </div>
 </section>
-<div id="appView">
+<div id="appView" inert aria-busy="true">
   <div id="sidebarOverlay" class="sidebar-overlay"></div>
   <div class="app-shell">

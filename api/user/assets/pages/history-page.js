@@ -2,6 +2,7 @@
   'use strict';
 
   const shell = window.UserShell;
+  const releaseInitialLoad = shell?.holdPageLoad?.('Loading history...') || (() => {});
   const HISTORY_DAYS = 30;
   const HISTORY_LIMIT = 100;
   const HISTORY_WINDOW_SECONDS = HISTORY_DAYS * 24 * 60 * 60;
@@ -785,5 +786,5 @@
     await loadHistory();
   }
 
-  init().catch(() => renderError());
+  init().catch(() => renderError()).finally(releaseInitialLoad);
 })();

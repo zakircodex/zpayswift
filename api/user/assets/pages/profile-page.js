@@ -2,6 +2,7 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
+  const releaseInitialLoad = window.UserShell?.holdPageLoad?.('Loading profile...') || (() => {});
   const allowedImages = new Set(['image/jpeg', 'image/png', 'image/webp']);
   let lastModalFocus = null;
   const profileModal = {
@@ -948,5 +949,7 @@
     if (window.location.hash === "#security") document.getElementById("security")?.scrollIntoView();
   }
 
-  initProfilePage().catch((error) => toast(profileSafeMessage(error, "Profile could not be loaded."), "error"));
+  initProfilePage()
+    .catch((error) => toast(profileSafeMessage(error, "Profile could not be loaded."), "error"))
+    .finally(releaseInitialLoad);
 })();

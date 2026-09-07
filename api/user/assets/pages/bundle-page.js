@@ -7,6 +7,7 @@
   const shell = window.UserShell;
   const pageRoot = document.querySelector('.user-bundle-page #bundleSection');
   if (!shell || !pageRoot) return;
+  const releaseInitialLoad = shell.holdPageLoad?.('Loading bundle offers...') || (() => {});
 
   const HOLD_DURATION_MS = 1200;
   const STEP_ORDER = ['operator', 'offers', 'number', 'pin', 'preview'];
@@ -1185,6 +1186,8 @@
       await shell.ready;
     } catch (_) {
       // UserShell handles expired sessions and bootstrap errors.
+    } finally {
+      releaseInitialLoad();
     }
   }
 

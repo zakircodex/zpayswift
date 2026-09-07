@@ -2,6 +2,7 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
+  const releaseInitialLoad = window.UserShell?.holdPageLoad?.('Loading support...') || (() => {});
   const allowedImages = new Set(['image/jpeg', 'image/png', 'image/webp']);
   const viewIds = {
     main: 'supportMainView',
@@ -1004,5 +1005,5 @@
     closeSupportLoading();
     setPageBusy(false);
     if (!handleSessionError(error)) openSupportError(safeMessage(error, 'Support could not be loaded.'));
-  });
+  }).finally(releaseInitialLoad);
 })();

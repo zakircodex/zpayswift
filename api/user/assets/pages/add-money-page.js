@@ -1,6 +1,7 @@
 ﻿(() => {
   'use strict';
   const shell = window.UserShell;
+  const releaseInitialLoad = shell?.holdPageLoad?.('Loading add money...') || (() => {});
   const el = (id) => document.getElementById(id);
   const esc = shell.escapeHtml;
   const money = (value) => { const number = Number(value || 0); return Number.isFinite(number) ? number.toFixed(2) : '0.00'; };
@@ -560,5 +561,7 @@ async function loadAddMoneyPage(options = {}){
     bindPageEvents();
     await loadAddMoneyPage({ force: true });
   }
-  init().catch((error) => showToast(error.message || 'Failed to load add money.', 'error'));
+  init()
+    .catch((error) => showToast(error.message || 'Failed to load add money.', 'error'))
+    .finally(releaseInitialLoad);
 })();

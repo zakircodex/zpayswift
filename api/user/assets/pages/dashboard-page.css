@@ -14,7 +14,7 @@ body.user-dashboard-page.user-service-checking .bottom-nav {
 }
 
 body.user-dashboard-page.user-service-checking .dashboard-placeholder,
-body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder {
+body.user-dashboard-page.user-page-loading .dashboard-placeholder {
   min-width: 28px;
   display: inline-block;
   overflow: hidden;
@@ -26,27 +26,27 @@ body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder {
 }
 
 body.user-dashboard-page.user-service-checking .dashboard-placeholder-prefix,
-body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-prefix {
+body.user-dashboard-page.user-page-loading .dashboard-placeholder-prefix {
   width: 42px;
 }
 
 body.user-dashboard-page.user-service-checking .dashboard-placeholder-balance,
-body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-balance {
+body.user-dashboard-page.user-page-loading .dashboard-placeholder-balance {
   width: 118px;
 }
 
 body.user-dashboard-page.user-service-checking .dashboard-placeholder-compact,
-body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-compact {
+body.user-dashboard-page.user-page-loading .dashboard-placeholder-compact {
   width: 36px;
 }
 
 body.user-dashboard-page.user-service-checking .dashboard-placeholder-rate,
-body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-rate {
+body.user-dashboard-page.user-page-loading .dashboard-placeholder-rate {
   width: 78px;
 }
 
 body.user-dashboard-page.user-service-checking .dashboard-placeholder-name,
-body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-name {
+body.user-dashboard-page.user-page-loading .dashboard-placeholder-name {
   width: 82px;
 }
 
@@ -340,58 +340,6 @@ body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-name {
   transition: none;
 }
 
-.user-dashboard-page .user-dashboard-loading-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 170;
-  display: none;
-  place-items: center;
-  padding: 18px;
-  background: rgba(2, 10, 22, 0.74);
-  backdrop-filter: blur(3px);
-}
-
-.user-dashboard-page .user-dashboard-loading-modal.show {
-  display: grid;
-}
-
-.user-dashboard-page .user-dashboard-loading-card {
-  width: min(100%, 320px);
-  min-height: 150px;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 14px;
-  padding: 24px 20px;
-  border: 1px solid rgba(50, 230, 134, 0.28);
-  border-radius: 24px;
-  color: var(--z-text);
-  background: rgba(11, 45, 92, 0.98);
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.36);
-  text-align: center;
-}
-
-.user-dashboard-page .user-dashboard-loading-card p {
-  margin: 0;
-  color: var(--z-muted);
-  font-size: 14px;
-  font-weight: 800;
-  line-height: 1.45;
-}
-
-.user-dashboard-page .user-dashboard-loading-spinner {
-  width: 42px;
-  height: 42px;
-  border: 4px solid rgba(255, 255, 255, 0.18);
-  border-top-color: var(--z-green);
-  border-radius: 50%;
-  animation: dashboardLoadingSpin 0.8s linear infinite;
-}
-
-@keyframes dashboardLoadingSpin {
-  to { transform: rotate(360deg); }
-}
-
 @keyframes dashboardPullSpin {
   to { transform: rotate(360deg); }
 }
@@ -494,13 +442,11 @@ body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-name {
 
 @media (prefers-reduced-motion: reduce) {
   body.user-dashboard-page.user-service-checking .dashboard-placeholder,
-  body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder,
-  .user-dashboard-page .user-dashboard-loading-spinner,
+  body.user-dashboard-page.user-page-loading .dashboard-placeholder,
   .user-dashboard-page .user-dashboard-pull-spinner {
     animation: none;
   }
 
-  .user-dashboard-page .user-dashboard-loading-spinner,
   .user-dashboard-page .user-dashboard-pull-spinner {
     border-color: rgba(50, 230, 134, 0.45);
   }

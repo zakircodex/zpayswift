@@ -3,14 +3,20 @@
 
   const shell = window.UserShell;
   const $ = (id) => document.getElementById(id);
+  if (!shell || !$('notificationsSection')) return;
+
+  const releaseInitialLoad = shell.holdPageLoad?.('Loading notifications...') || (() => {});
   const state = {
     filter: 'ALL',
     items: [],
     selected: new Set(),
     editing: false,
     loading: false,
+    loaded: false,
     active: null,
-    opener: null
+    opener: null,
+    listSerial: 0,
+    detailSerial: 0
   };
 
   function dateText(value) {
@@ -28,12 +34,27 @@
     return 'Z';
   }
 
+  function categoryText(item) {
+    const category = String(item?.category || '').toUpperCase();
+    return ({
+      TRANSACTIONS: 'Transaction',
+      SECURITY: 'Security',
+      SUPPORT: 'Support',
+      NOTICE: 'Notice'
+    })[category] || 'Update';
+  }
+
   function destination(item) {
     const type = String(item?.type || '').toUpperCase();
     if (type.startsWith('SUPPORT_')) return '/user/support';
     if (type.startsWith('ACCOUNT_') || type === 'SECURITY_REVIEW' || type === 'LOGIN_ALERT') return '/user/profile';
     if (type === 'ADMIN_NOTICE' || type === 'RINGGIT_RATE_UPDATED') return '';
     return '/user/history';
+  }
+
+  function safeError(error, fallback) {
+    const message = String(error?.message || '').trim();
+    return message && message.length <= 180 ? message : fallback;
   }
 
   function updateControls() {
@@ -45,16 +66,33 @@
     });
     $('notificationUnreadCount').textContent = String(shell.state.unread || 0);
     $('notificationsEditButton').setAttribute('aria-pressed', state.editing ? 'true' : 'false');
+    $('notificationsEditButton').setAttribute('aria-label', state.editing ? 'Finish selecting notifications' : 'Select notifications');
+    $('notificationsEditButton').disabled = state.loading || !state.loaded;
+    $('notificationsRefreshButton').disabled = state.loading;
+    $('notificationsRefreshButton').classList.toggle('is-loading', state.loading && state.loaded);
     $('notificationEditBar').classList.toggle('hidden', !state.editing);
     $('notificationsDeleteButton').disabled = !state.selected.size || state.loading;
     $('notificationsMarkSelectedButton').disabled = !state.selected.size || state.loading;
+    $('notificationsSelectAllButton').disabled = state.loading || !state.items.length;
     $('notificationsSelectAllButton').textContent =
       state.items.length && state.items.every((item) => state.selected.has(String(item.notification_id || '')))
         ? 'Clear All' : 'Select All';
   }
 
   function renderLoading() {
-    $('notificationList').innerHTML = '<div class="notification-page-skeleton"></div><div class="notification-page-skeleton"></div><div class="notification-page-skeleton"></div>';
+    const list = $('notificationList');
+    list.setAttribute('aria-busy', 'true');
+    list.innerHTML = '<div class="notification-page-skeleton"></div><div class="notification-page-skeleton"></div><div class="notification-page-skeleton"></div>';
+    $('notificationPageLive').textContent = 'Loading notifications.';
+  }
+
+  function renderError(error) {
+    const message = safeError(error, 'Please check your connection and try again.');
+    const list = $('notificationList');
+    list.setAttribute('aria-busy', 'false');
+    list.innerHTML = `<div class="notification-page-state notification-page-error"><span class="notification-page-state-icon">!</span><h3>Notifications could not be loaded</h3><p>${shell.escapeHtml(message)}</p><button id="notificationRetry" class="notification-page-retry" type="button">Retry</button></div>`;
+    $('notificationRetry')?.addEventListener('click', () => load({ preserve: false }));
+    $('notificationPageLive').textContent = 'Notifications could not be loaded.';
   }
 
   function render() {
@@ -62,22 +100,26 @@
     list.setAttribute('aria-busy', 'false');
     if (!state.items.length) {
       list.innerHTML = `<div class="notification-page-state"><span class="notification-page-state-icon">Z</span><h3>${state.filter === 'UNREAD' ? 'You are all caught up' : 'No notifications yet'}</h3><p>Important account and transaction updates will appear here.</p></div>`;
+      $('notificationPageLive').textContent = state.filter === 'UNREAD' ? 'No unread notifications.' : 'No notifications.';
       return;
     }
+
     list.replaceChildren();
     state.items.forEach((item) => {
       const id = String(item.notification_id || '');
       const selected = state.selected.has(id);
       const button = document.createElement('button');
       button.type = 'button';
+      button.dataset.notificationId = id;
       button.className = `notification-page-card${item.is_read ? '' : ' unread'}${selected ? ' selected' : ''}`;
-      button.setAttribute('aria-pressed', state.editing ? (selected ? 'true' : 'false') : 'false');
+      button.setAttribute('aria-label', `${item.is_read ? '' : 'Unread. '}${item.title || 'Z-Pay Swift'}`);
+      if (state.editing) button.setAttribute('aria-pressed', selected ? 'true' : 'false');
       button.innerHTML = `
         <span class="notification-page-card-icon" aria-hidden="true">${shell.escapeHtml(glyph(item))}</span>
         <span class="notification-page-card-content">
+          <span class="notification-page-card-meta"><span>${shell.escapeHtml(categoryText(item))}</span><time>${shell.escapeHtml(dateText(item.created_at))}</time></span>
           <strong>${shell.escapeHtml(item.title || 'Z-Pay Swift')}</strong>
           <span class="notification-page-card-body">${shell.escapeHtml(item.body || '')}</span>
-          <time class="notification-page-card-time">${shell.escapeHtml(dateText(item.created_at))}</time>
         </span>
         ${state.editing
           ? `<span class="notification-page-select-indicator">${selected ? '&#10003;' : ''}</span>`
@@ -88,22 +130,40 @@
     $('notificationPageLive').textContent = `${state.items.length} notifications loaded.`;
   }
 
-  async function load(force = false) {
+  async function load(options = {}) {
     if (state.loading) return;
+    const preserve = options.preserve === true && state.loaded;
+    const serial = ++state.listSerial;
     state.loading = true;
     updateControls();
-    renderLoading();
+    if (!preserve) renderLoading();
+    else $('notificationPageLive').textContent = 'Refreshing notifications.';
+
     try {
-      const data = await shell.get('notifications_list', { limit: 50, filter: state.filter }, 'Loading notifications...', { busy: false });
+      const data = await shell.get(
+        'notifications_list',
+        { limit: 50, filter: state.filter },
+        'Loading notifications...',
+        { busy: false }
+      );
+      if (serial !== state.listSerial) return;
       state.items = Array.isArray(data.items) ? data.items : [];
+      state.loaded = true;
       shell.state.unread = Number(data.unread_count || 0);
       render();
     } catch (error) {
-      $('notificationList').innerHTML = `<div class="notification-page-state"><h3>Could not load notifications</h3><p>${shell.escapeHtml(error.message)}</p><button id="notificationRetry" class="notification-page-retry" type="button">Retry</button></div>`;
-      $('notificationRetry')?.addEventListener('click', () => load(true));
+      if (serial !== state.listSerial) return;
+      if (preserve) {
+        shell.toast('Notifications could not be refreshed.', 'error');
+        $('notificationPageLive').textContent = 'Notifications refresh failed. Existing notifications remain visible.';
+      } else {
+        renderError(error);
+      }
     } finally {
-      state.loading = false;
-      updateControls();
+      if (serial === state.listSerial) {
+        state.loading = false;
+        updateControls();
+      }
     }
   }
 
@@ -117,19 +177,64 @@
   function closeDetail(fromHistory = false) {
     const modal = $('notificationDetailModal');
     if (modal.classList.contains('hidden')) return;
+    state.detailSerial++;
+    const activeId = String(state.active?.notification_id || '');
     modal.classList.add('hidden');
+    modal.classList.remove('is-loading', 'has-error');
     modal.setAttribute('aria-hidden', 'true');
     modal.inert = true;
     document.body.classList.remove('notification-detail-open');
     state.active = null;
+    const currentOpener = activeId
+      ? document.querySelector(`[data-notification-id="${CSS.escape(activeId)}"]`)
+      : null;
+    (currentOpener || state.opener)?.focus?.();
     if (!fromHistory && window.history.state?.zpayNotificationDetail) {
       window.history.back();
-    } else {
-      state.opener?.focus?.();
     }
   }
 
-  async function openDetail(item, opener) {
+  async function loadDetail(item) {
+    const serial = ++state.detailSerial;
+    const modal = $('notificationDetailModal');
+    modal.classList.add('is-loading');
+    modal.classList.remove('has-error');
+    $('notificationDetailRetryButton').classList.add('hidden');
+    $('notificationDetailBody').textContent = 'Loading notification...';
+    $('notificationDetailDeleteButton').disabled = true;
+    $('notificationDetailOpenButton').disabled = true;
+
+    const requests = [shell.get('notification_details', { notification_id: item.notification_id }, 'Loading notification...', { busy: false })];
+    if (!item.is_read) {
+      requests.push(shell.post('notification_mark_read', { notification_id: item.notification_id }, 'Updating...', { busy: false }));
+    }
+    const results = await Promise.allSettled(requests);
+    if (serial !== state.detailSerial || state.active !== item) return;
+
+    if (results[1]?.status === 'fulfilled') {
+      item.is_read = true;
+      shell.state.unread = Number(results[1].value.unread_count ?? shell.state.unread);
+      if (state.filter === 'UNREAD') state.items = state.items.filter((candidate) => candidate !== item);
+      render();
+      updateControls();
+    }
+
+    modal.classList.remove('is-loading');
+    $('notificationDetailDeleteButton').disabled = false;
+    $('notificationDetailOpenButton').disabled = false;
+    if (results[0].status === 'rejected') {
+      modal.classList.add('has-error');
+      $('notificationDetailBody').textContent = 'Notification details could not be loaded.';
+      $('notificationDetailRetryButton').classList.remove('hidden');
+      return;
+    }
+
+    Object.assign(item, results[0].value.notification || {});
+    $('notificationDetailBody').textContent = item.body_full || item.body || 'No additional details are available.';
+  }
+
+  function openDetail(item, opener) {
+    if (state.loading) return;
     state.active = item;
     state.opener = opener;
     const modal = $('notificationDetailModal');
@@ -140,27 +245,18 @@
     $('notificationDetailIcon').textContent = glyph(item);
     $('notificationDetailTitle').textContent = item.title || 'Notification';
     $('notificationDetailTime').textContent = dateText(item.created_at);
-    $('notificationDetailBody').textContent = item.body || 'Loading notification...';
     $('notificationDetailOpenButton').classList.toggle('hidden', !destination(item));
     window.history.pushState({ ...(window.history.state || {}), zpayNotificationDetail: true }, '', window.location.href);
-    try {
-      const requests = [shell.get('notification_details', { notification_id: item.notification_id }, 'Loading notification...', { busy: false })];
-      if (!item.is_read) requests.push(shell.post('notification_mark_read', { notification_id: item.notification_id }, 'Updating...', { busy: false }));
-      const results = await Promise.allSettled(requests);
-      if (results[0].status === 'fulfilled') {
-        Object.assign(item, results[0].value.notification || {});
-        $('notificationDetailBody').textContent = item.body_full || item.body || 'No additional details are available.';
-      }
-      if (results[1]?.status === 'fulfilled') {
-        item.is_read = true;
-        shell.state.unread = Number(results[1].value.unread_count ?? shell.state.unread);
-      }
-      if (state.filter === 'UNREAD' && item.is_read) state.items = state.items.filter((candidate) => candidate !== item);
-      render();
-      updateControls();
-    } catch (error) {
-      $('notificationDetailBody').textContent = error.message || 'Notification details could not be loaded.';
-    }
+    loadDetail(item).catch(() => {
+      if (state.active !== item) return;
+      modal.classList.remove('is-loading');
+      modal.classList.add('has-error');
+      $('notificationDetailBody').textContent = 'Notification details could not be loaded.';
+      $('notificationDetailRetryButton').classList.remove('hidden');
+      $('notificationDetailDeleteButton').disabled = false;
+      $('notificationDetailOpenButton').disabled = false;
+    });
+    window.setTimeout(() => $('notificationDetailCloseButton').focus(), 0);
   }
 
   async function mutate(action, ids) {
@@ -169,7 +265,7 @@
     updateControls();
     try {
       const payload = ids.length === 1 ? { notification_id: ids[0], notification_ids: ids } : { notification_ids: ids };
-      const data = await shell.post(action, payload, 'Updating notifications...');
+      const data = await shell.post(action, payload, action === 'notifications_delete' ? 'Deleting notification...' : 'Updating notifications...');
       const chosen = new Set(ids);
       if (action === 'notifications_delete') {
         state.items = state.items.filter((item) => !chosen.has(String(item.notification_id || '')));
@@ -182,7 +278,7 @@
       render();
       shell.toast(action === 'notifications_delete' ? 'Notification deleted.' : 'Notification marked as read.', 'ok');
     } catch (error) {
-      shell.toast(error.message, 'error');
+      shell.toast(safeError(error, 'Notifications could not be updated.'), 'error');
     } finally {
       state.loading = false;
       updateControls();
@@ -190,43 +286,55 @@
   }
 
   async function init() {
-    await shell.ready;
-    document.querySelectorAll('[data-notification-filter]').forEach((tab) => tab.addEventListener('click', () => {
-      if (state.loading || state.filter === tab.dataset.notificationFilter) return;
-      state.filter = tab.dataset.notificationFilter;
-      state.selected.clear();
-      load(true);
-    }));
-    $('notificationsEditButton').addEventListener('click', () => {
-      state.editing = !state.editing;
-      state.selected.clear();
-      updateControls();
-      render();
-    });
-    $('notificationsSelectAllButton').addEventListener('click', () => {
-      const all = state.items.length && state.items.every((item) => state.selected.has(String(item.notification_id || '')));
-      state.selected.clear();
-      if (!all) state.items.forEach((item) => state.selected.add(String(item.notification_id || '')));
-      updateControls();
-      render();
-    });
-    $('notificationsDeleteButton').addEventListener('click', () => mutate('notifications_delete', Array.from(state.selected)));
-    $('notificationsMarkSelectedButton').addEventListener('click', () => mutate('notification_mark_read', Array.from(state.selected)));
-    $('notificationDetailCloseButton').addEventListener('click', () => closeDetail());
-    document.querySelector('[data-notification-detail-close]').addEventListener('click', () => closeDetail());
-    $('notificationDetailDeleteButton').addEventListener('click', async () => {
-      const id = String(state.active?.notification_id || '');
-      closeDetail(true);
-      await mutate('notifications_delete', id ? [id] : []);
-    });
-    $('notificationDetailOpenButton').addEventListener('click', () => {
-      const target = destination(state.active);
-      if (target) window.location.assign(target);
-    });
-    window.addEventListener('popstate', () => closeDetail(true));
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDetail(); });
-    await load();
+    try {
+      await shell.ready;
+      document.querySelectorAll('[data-notification-filter]').forEach((tab) => tab.addEventListener('click', () => {
+        if (state.loading || state.filter === tab.dataset.notificationFilter) return;
+        state.filter = tab.dataset.notificationFilter;
+        state.selected.clear();
+        state.loaded = false;
+        load({ preserve: false });
+      }));
+      $('notificationsRefreshButton').addEventListener('click', () => load({ preserve: true }));
+      $('notificationsEditButton').addEventListener('click', () => {
+        state.editing = !state.editing;
+        state.selected.clear();
+        updateControls();
+        render();
+      });
+      $('notificationsSelectAllButton').addEventListener('click', () => {
+        const all = state.items.length && state.items.every((item) => state.selected.has(String(item.notification_id || '')));
+        state.selected.clear();
+        if (!all) state.items.forEach((item) => state.selected.add(String(item.notification_id || '')));
+        updateControls();
+        render();
+      });
+      $('notificationsDeleteButton').addEventListener('click', () => mutate('notifications_delete', Array.from(state.selected)));
+      $('notificationsMarkSelectedButton').addEventListener('click', () => mutate('notification_mark_read', Array.from(state.selected)));
+      $('notificationDetailCloseButton').addEventListener('click', () => closeDetail());
+      document.querySelector('[data-notification-detail-close]').addEventListener('click', () => closeDetail());
+      $('notificationDetailRetryButton').addEventListener('click', () => {
+        if (state.active) loadDetail(state.active);
+      });
+      $('notificationDetailDeleteButton').addEventListener('click', async () => {
+        const id = String(state.active?.notification_id || '');
+        closeDetail(true);
+        await mutate('notifications_delete', id ? [id] : []);
+      });
+      $('notificationDetailOpenButton').addEventListener('click', () => {
+        const target = destination(state.active);
+        if (target) window.location.assign(target);
+      });
+      window.addEventListener('popstate', () => closeDetail(true));
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDetail(); });
+      await load({ preserve: false });
+    } finally {
+      releaseInitialLoad();
+    }
   }
 
-  init().catch((error) => shell.toast(error.message || 'Failed to load notifications.', 'error'));
+  init().catch((error) => {
+    renderError(error);
+    shell.toast('Failed to load notifications.', 'error');
+  });
 })();

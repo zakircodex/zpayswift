@@ -18,7 +18,10 @@
     logoutOpener: null,
     ready: false,
     maintenance: false,
-    bootstrapInFlight: false
+    bootstrapInFlight: false,
+    busyHolds: new Map(),
+    busySequence: 0,
+    legacyBusyRelease: null
   };
 
   const proxyUrl = window.USER_PROXY_URL || '/api/user/proxy.php';
@@ -60,12 +63,71 @@
     return String(error?.code || '').toUpperCase() === 'MAINTENANCE';
   }
 
-  function setBusy(on, label = 'Loading...') {
+  function pageLoadingLabel() {
+    const key = String(window.USER_PAGE_KEY || document.body.dataset.userPage || '').toLowerCase();
+    return ({
+      dashboard: 'Loading dashboard...',
+      'add-money': 'Loading add money...',
+      transfer: 'Loading transfer...',
+      topup: 'Loading mobile top-up...',
+      bkash: 'Loading bKash...',
+      nagad: 'Loading Nagad...',
+      bundle: 'Loading bundle offers...',
+      history: 'Loading history...',
+      notifications: 'Loading notifications...',
+      profile: 'Loading profile...',
+      support: 'Loading support...',
+      services: 'Loading services...',
+      information: 'Loading information...'
+    })[key] || 'Loading your account...';
+  }
+
+  function syncBusyUi() {
     const wrap = $('loadingWrap');
     if (!wrap) return;
-    $('loadingText').textContent = String(label || 'Loading...');
-    wrap.classList.toggle('show', Boolean(on));
-    wrap.setAttribute('aria-hidden', on ? 'false' : 'true');
+    const entries = Array.from(state.busyHolds.values());
+    const active = entries.length > 0 && !state.maintenance;
+    const label = entries.length ? entries[entries.length - 1] : pageLoadingLabel();
+    const textNode = $('loadingText');
+    if (textNode) textNode.textContent = String(label || pageLoadingLabel());
+    wrap.classList.toggle('show', active);
+    wrap.setAttribute('aria-hidden', active ? 'false' : 'true');
+
+    const app = $('appView');
+    const bottomNav = document.querySelector('.bottom-nav');
+    const blocked = active || state.maintenance;
+    if (app) {
+      app.inert = blocked;
+      app.setAttribute('aria-busy', active ? 'true' : 'false');
+    }
+    if (bottomNav) bottomNav.inert = blocked;
+    document.body.classList.toggle('user-page-loading', active);
+  }
+
+  function acquireBusy(label = 'Loading...') {
+    const id = ++state.busySequence;
+    let released = false;
+    state.busyHolds.set(id, String(label || pageLoadingLabel()));
+    syncBusyUi();
+    return () => {
+      if (released) return;
+      released = true;
+      state.busyHolds.delete(id);
+      syncBusyUi();
+    };
+  }
+
+  function setBusy(on, label = 'Loading...') {
+    if (on) {
+      if (state.legacyBusyRelease) state.legacyBusyRelease();
+      state.legacyBusyRelease = acquireBusy(label);
+      return;
+    }
+    if (state.legacyBusyRelease) {
+      const release = state.legacyBusyRelease;
+      state.legacyBusyRelease = null;
+      release();
+    }
   }
 
   function toast(message, type = 'info') {
@@ -80,7 +142,7 @@
 
   function showMaintenanceState() {
     state.maintenance = true;
-    setBusy(false);
+    if (state.legacyBusyRelease) setBusy(false);
     syncDrawer(false);
     const view = $('userMaintenanceView');
     const app = $('appView');
@@ -94,6 +156,7 @@
       app.setAttribute('aria-hidden', 'true');
       app.inert = true;
     }
+    syncBusyUi();
     window.setTimeout(() => $('retryUserMaintenance')?.focus(), 0);
   }
 
@@ -108,8 +171,8 @@
     }
     if (app) {
       app.removeAttribute('aria-hidden');
-      app.inert = false;
     }
+    syncBusyUi();
   }
 
   async function readJson(response) {
@@ -130,7 +193,9 @@
     });
 
     const busy = options.busy !== false;
-    if (busy) setBusy(true, options.label || (method === 'GET' ? 'Loading...' : 'Processing...'));
+    const releaseBusy = busy
+      ? acquireBusy(options.label || (method === 'GET' ? 'Loading...' : 'Processing...'))
+      : null;
 
     try {
       const headers = { Accept: 'application/json' };
@@ -163,7 +228,7 @@
       }
       throw error;
     } finally {
-      if (busy) setBusy(false);
+      releaseBusy?.();
     }
   }
 
@@ -511,6 +576,7 @@
     resolveReady = resolve;
     rejectReady = reject;
   });
+  const releaseBootstrapBusy = acquireBusy(pageLoadingLabel());
 
   async function attemptBootstrap() {
     if (state.bootstrapInFlight) return;
@@ -528,7 +594,7 @@
         state.ready = true;
         resolveReady(state);
         document.dispatchEvent(new CustomEvent('zpay:user-ready', { detail: state }));
-        loadUnread();
+        if (String(window.USER_PAGE_KEY || '').toLowerCase() !== 'notifications') loadUnread();
       }
     } catch (error) {
       if (isMaintenanceError(error)) {
@@ -542,6 +608,7 @@
       if (!isMaintenanceError(error) && !state.ready) rejectReady(error);
     } finally {
       state.bootstrapInFlight = false;
+      releaseBootstrapBusy();
       if (retryButton) {
         retryButton.disabled = false;
         retryButton.textContent = 'Retry';
@@ -565,6 +632,7 @@
     refreshSession,
     loadUnread,
     setBusy,
+    holdPageLoad: acquireBusy,
     toast,
     escapeHtml,
     isSessionError,

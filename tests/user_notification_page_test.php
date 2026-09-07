@@ -6,6 +6,9 @@ $page = (string)file_get_contents($root . '/api/user/notifications.php');
 $js = (string)file_get_contents($root . '/api/user/assets/pages/notifications-page.js');
 $css = (string)file_get_contents($root . '/api/user/assets/pages/notifications-page.css');
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
+$library = (string)file_get_contents($root . '/api/lib/notifications.php');
+$listEndpoint = (string)file_get_contents($root . '/api/notifications/list.php');
+$shell = (string)file_get_contents($root . '/api/user/assets/user-shell.js');
 $tests = 0;
 
 function notification_expect(bool $condition, string $message): void
@@ -34,6 +37,12 @@ notification_expect(
     'Notification detail sheet is missing'
 );
 notification_expect(
+    str_contains($page, 'id="notificationsRefreshButton"')
+    && str_contains($page, 'Account and transaction updates')
+    && str_contains($page, 'id="notificationDetailRetryButton"'),
+    'Notification refresh, heading, or detail retry UI is missing'
+);
+notification_expect(
     str_contains($page, 'data-notification-filter="ALL"')
     && str_contains($page, 'data-notification-filter="UNREAD"')
     && str_contains($page, 'class="notification-page-fixed-area"')
@@ -53,8 +62,11 @@ notification_expect(
     && str_contains($js, 'shell.escapeHtml(item.body')
     && str_contains($js, "$('notificationDetailTitle').textContent")
     && str_contains($js, "$('notificationDetailBody').textContent")
+    && str_contains($js, "results[0].status === 'rejected'")
+    && str_contains($js, "load({ preserve: true })")
+    && str_contains($js, "holdPageLoad?.('Loading notifications...')")
     && !str_contains($js, 'notificationModal'),
-    'Notification content is not rendered safely or legacy modal remains'
+    'Notification safe rendering, error handling, refresh, or loading lifecycle is incomplete'
 );
 notification_expect(
     str_contains($js, 'history.pushState')
@@ -66,8 +78,24 @@ notification_expect(
     str_contains($css, '.notification-page-fixed-area')
     && str_contains($css, '.notification-page-scroll-body')
     && str_contains($css, 'overflow-y: auto')
+    && str_contains($css, '.notification-page-card-meta')
+    && str_contains($css, '.notification-detail-retry')
     && str_contains($css, '@media (max-width: 360px)'),
     'Responsive notification page styling is incomplete'
+);
+notification_expect(
+    str_contains($library, 'function notification_rows_for_user')
+    && str_contains($library, 'function notification_list_from_rows')
+    && str_contains($library, 'function notification_unread_count_from_rows')
+    && str_contains($listEndpoint, '$rows = notification_rows_for_user($uid);')
+    && str_contains($listEndpoint, 'notification_list_from_rows($rows')
+    && str_contains($listEndpoint, 'notification_unread_count_from_rows($rows)')
+    && !str_contains($listEndpoint, 'notification_unread_count($uid)'),
+    'Notification list endpoint still performs duplicate user-tree reads'
+);
+notification_expect(
+    str_contains($shell, "!== 'notifications') loadUnread()"),
+    'Notification page still starts a redundant unread-count request during bootstrap'
 );
 notification_expect(
     !str_contains($page . $js, 'openSection(')

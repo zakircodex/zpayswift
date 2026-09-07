@@ -2,6 +2,7 @@
   'use strict';
 
   const shell = window.UserShell;
+  const releaseInitialLoad = shell?.holdPageLoad?.('Loading transfer...') || (() => {});
   const $ = (id) => document.getElementById(id);
   let lastModalFocus = null;
   const app = {
@@ -912,10 +913,14 @@
   }
 
   async function init() {
-    await shell.ready;
-    bind();
-    window.history.replaceState({ zpayTransferStep: 1 }, '', '/user/transfer');
-    loadTransferFavorites(false);
+    try {
+      await shell.ready;
+      bind();
+      window.history.replaceState({ zpayTransferStep: 1 }, '', '/user/transfer');
+      await loadTransferFavorites(false);
+    } finally {
+      releaseInitialLoad();
+    }
   }
 
   if (document.readyState === 'loading') {

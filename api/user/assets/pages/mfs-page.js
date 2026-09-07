@@ -5,6 +5,7 @@
   const shell = window.UserShell;
   if (!root || !shell || root.dataset.mfsBound === 'true') return;
   root.dataset.mfsBound = 'true';
+  const releaseInitialLoad = shell.holdPageLoad?.(`Loading ${root.dataset.provider === 'NAGAD' ? 'Nagad' : 'bKash'}...`) || (() => {});
 
   const byId = (id) => document.getElementById(id);
   const config = window.USER_MFS_CONFIG && typeof window.USER_MFS_CONFIG === 'object'
@@ -1223,6 +1224,7 @@
       }
     } finally {
       root.setAttribute('aria-busy', 'false');
+      releaseInitialLoad();
     }
   }
 

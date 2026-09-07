@@ -4,6 +4,7 @@
   const shell = window.UserShell;
   const root = document.getElementById('topupSection');
   if (!shell || !root) return;
+  const releaseInitialLoad = shell.holdPageLoad?.('Loading mobile top-up...') || (() => {});
 
   const byId = (id) => document.getElementById(id);
   const HOLD_DURATION_MS = 2300;
@@ -1412,5 +1413,5 @@
       bindEvents();
       openError('Top-Up Unavailable', safeErrorMessage(error, 'Mobile Top-Up could not be loaded.'));
     }
-  });
+  }).finally(releaseInitialLoad);
 })();

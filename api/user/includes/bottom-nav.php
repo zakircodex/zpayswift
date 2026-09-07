@@ -7,7 +7,7 @@ declare(strict_types=1);
 </div>
 
 <?php if (!empty($userPage['show_bottom_nav'])): ?>
-<nav class="bottom-nav" aria-label="Primary navigation">
+<nav class="bottom-nav" aria-label="Primary navigation" inert>
   <div class="bottom-nav-inner">
     <?php
     $items = [
@@ -41,9 +41,11 @@ declare(strict_types=1);
   </div>
 </div>
 
-<?php if (!empty($userPage['show_global_loader'])): ?>
-<div id="loadingWrap" class="loading" aria-live="polite" aria-hidden="true">
-  <div class="loading-box"><div class="spinner"></div><div id="loadingText">Loading...</div></div>
+<div id="loadingWrap" class="loading user-global-loading show" role="dialog" aria-modal="true" aria-labelledby="loadingTitle" aria-describedby="loadingText" aria-hidden="false">
+  <div class="loading-box user-global-loading-card">
+    <div class="spinner" aria-hidden="true"></div>
+    <strong id="loadingTitle">Z-Pay Swift</strong>
+    <div id="loadingText">Loading your account...</div>
+  </div>
 </div>
-<?php endif; ?>
 <div id="toastWrap" class="toast-wrap" aria-live="polite"></div>

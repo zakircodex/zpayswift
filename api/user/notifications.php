@@ -21,10 +21,18 @@ user_page_begin($page);
         <a class="notification-page-icon-button" href="/user/dashboard" aria-label="Back to dashboard">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.7 5.3-1.4-1.4L5.2 12l8.1 8.1 1.4-1.4L9 13h11v-2H9l5.7-5.7Z"/></svg>
         </a>
-        <h2 id="notificationsPageTitle">Notifications</h2>
-        <button id="notificationsEditButton" class="notification-page-icon-button notification-edit-button" type="button" aria-label="Edit notifications" aria-pressed="false">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16.6 9.9-9.9 3.4 3.4L7.4 20H4v-3.4ZM18.7 8.7l-3.4-3.4 1.4-1.4a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8l-1.4 1.4Z"/></svg>
-        </button>
+        <div class="notification-page-heading">
+          <h1 id="notificationsPageTitle">Notifications</h1>
+          <p>Account and transaction updates</p>
+        </div>
+        <div class="notification-page-header-actions">
+          <button id="notificationsRefreshButton" class="notification-page-icon-button" type="button" aria-label="Refresh notifications">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.76-4.24L13 11h8V3l-3.3 3.3Z"/></svg>
+          </button>
+          <button id="notificationsEditButton" class="notification-page-icon-button notification-edit-button" type="button" aria-label="Select notifications" aria-pressed="false">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16.6 9.9-9.9 3.4 3.4L7.4 20H4v-3.4ZM18.7 8.7l-3.4-3.4 1.4-1.4a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8l-1.4 1.4Z"/></svg>
+          </button>
+        </div>
       </header>
       <div class="notification-page-tabs" role="tablist" aria-label="Notification filters">
         <button class="notification-page-tab active" type="button" role="tab" aria-selected="true" data-notification-filter="ALL">All Notifications</button>
@@ -54,6 +62,7 @@ user_page_begin($page);
       <div class="notification-detail-content">
         <time id="notificationDetailTime"></time>
         <p id="notificationDetailBody">Loading notification...</p>
+        <button id="notificationDetailRetryButton" class="notification-detail-retry hidden" type="button">Retry</button>
       </div>
       <div class="notification-detail-actions">
         <button id="notificationDetailDeleteButton" class="danger" type="button">Delete</button>

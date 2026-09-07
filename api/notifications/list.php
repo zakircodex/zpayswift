@@ -12,7 +12,8 @@ $uid = (string)($auth['user']['uid'] ?? '');
 $limit = (int)($_GET['limit'] ?? 20);
 $before = (int)($_GET['before'] ?? 0);
 $filter = (string)($_GET['filter'] ?? 'ALL');
-$items = notification_list_for_user($uid, $limit, $before, $filter);
+$rows = notification_rows_for_user($uid);
+$items = notification_list_from_rows($rows, $limit, $before, $filter);
 $nextBefore = 0;
 if ($items !== []) {
     $last = end($items);
@@ -23,5 +24,5 @@ api_response(true, 'NOTIFICATIONS_LIST_OK', 'Notifications loaded.', [
     'items' => $items,
     'limit' => max(1, min(50, $limit)),
     'next_before' => $nextBefore,
-    'unread_count' => notification_unread_count($uid),
+    'unread_count' => notification_unread_count_from_rows($rows),
 ]);

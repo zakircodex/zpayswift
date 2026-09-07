@@ -113,12 +113,12 @@ dashboard_expect(
 );
 dashboard_expect(
     str_contains($dashboard, "'show_global_loader' => false")
-    && str_contains($dashboard, 'id="dashboardLoadingModal"')
-    && str_contains($dashboard, 'class="user-dashboard-loading-modal"')
-    && str_contains($dashboard, 'Loading dashboard, please wait...')
-    && str_contains($bottomNav, "if (!empty(\$userPage['show_global_loader']))")
+    && !str_contains($dashboard, 'id="dashboardLoadingModal"')
+    && str_contains($bottomNav, 'id="loadingWrap"')
+    && str_contains($bottomNav, 'class="loading user-global-loading show"')
+    && !str_contains($bottomNav, "if (!empty(\$userPage['show_global_loader']))")
     && str_contains($pageBootstrap, "'show_global_loader' => true"),
-    'Dashboard loader is not isolated from the authenticated shared loader'
+    'Authenticated pages do not share the blocking initial loader'
 );
 dashboard_expect(
     str_contains($dashboard, 'id="dashboardPullIndicator"')
@@ -139,20 +139,21 @@ dashboard_expect(
     && str_contains($pageJs, "window.addEventListener('pageshow'")
     && str_contains($pageJs, 'if (!event.persisted) return;')
     && str_contains($pageJs, "window.refreshUserDashboard = () => refreshDashboard()")
-    && str_contains($pageCss, '.user-dashboard-loading-modal')
+    && str_contains($pageJs, "shell.setBusy(open")
+    && !str_contains($pageCss, '.user-dashboard-loading-modal')
     && str_contains($pageCss, '@media (prefers-reduced-motion: reduce)'),
-    'Dashboard local loading lifecycle or accessibility fallback is incomplete'
+    'Dashboard shared loading lifecycle or accessibility fallback is incomplete'
 );
 dashboard_expect(
     str_contains($pageCss, 'body.user-dashboard-page.user-service-checking #appView')
     && str_contains($pageCss, 'visibility: visible')
-    && str_contains($dashboard, 'id="dashboardInitialStatus"')
+    && !str_contains($dashboard, 'id="dashboardInitialStatus"')
+    && !str_contains($dashboard . $pageJs, 'Dashboard ready.')
+    && !str_contains($dashboard . $pageJs, 'Loading account summary.')
     && str_contains($dashboard, 'dashboard-placeholder-balance')
-    && str_contains($pageJs, 'function setDashboardInitialLoading(on)')
-    && str_contains($pageJs, 'setDashboardInitialLoading(true)')
-    && str_contains($pageJs, 'setDashboardInitialLoading(false)')
-    && !preg_match('/async function init\(\)\s*\{\s*setDashboardLoading\(true\)/', $pageJs),
-    'Dashboard initial shell is still blocked by the account bootstrap request'
+    && str_contains($pageJs, "holdPageLoad?.('Loading dashboard...')")
+    && str_contains($pageCss, 'body.user-dashboard-page.user-page-loading .dashboard-placeholder'),
+    'Dashboard initial loading state or status cleanup is incomplete'
 );
 dashboard_expect(
     str_contains($loginPage, 'id="loginLoadingModal"')

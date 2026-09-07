@@ -542,14 +542,18 @@ function notification_filter_match(array $row, string $filter): bool
     return $public['category'] === notification_clean_code($filter);
 }
 
-function notification_list_for_user(string $uid, int $limit = 20, int $before = 0, string $filter = 'ALL'): array
+function notification_rows_for_user(string $uid): array
 {
     $uid = trim($uid);
     if ($uid === '') {
         return [];
     }
     $rows = fb_get('USER_NOTIFICATIONS/' . $uid);
-    $rows = is_array($rows) ? $rows : [];
+    return is_array($rows) ? $rows : [];
+}
+
+function notification_list_from_rows(array $rows, int $limit = 20, int $before = 0, string $filter = 'ALL'): array
+{
     $cutoff = notification_now() - (366 * 24 * 60 * 60);
     $items = [];
     foreach ($rows as $id => $row) {
@@ -575,12 +579,13 @@ function notification_list_for_user(string $uid, int $limit = 20, int $before = 
     return array_slice($items, 0, max(1, min(50, $limit)));
 }
 
-function notification_unread_count(string $uid): int
+function notification_list_for_user(string $uid, int $limit = 20, int $before = 0, string $filter = 'ALL'): array
 {
-    $rows = fb_get('USER_NOTIFICATIONS/' . trim($uid));
-    if (!is_array($rows)) {
-        return 0;
-    }
+    return notification_list_from_rows(notification_rows_for_user($uid), $limit, $before, $filter);
+}
+
+function notification_unread_count_from_rows(array $rows): int
+{
     $count = 0;
     $cutoff = notification_now() - (366 * 24 * 60 * 60);
     foreach ($rows as $row) {
@@ -598,6 +603,11 @@ function notification_unread_count(string $uid): int
         }
     }
     return min(99, $count);
+}
+
+function notification_unread_count(string $uid): int
+{
+    return notification_unread_count_from_rows(notification_rows_for_user($uid));
 }
 
 function notification_mark_read(string $uid, string $notificationId): bool
