@@ -23,7 +23,7 @@ function markup() {
   </div>
   <div id="notificationDetailModal" class="notification-detail-modal hidden" aria-modal="true" aria-hidden="true" inert><div class="notification-detail-backdrop" data-notification-detail-close></div><div class="notification-detail-sheet"><div class="notification-detail-handle"></div><header><span id="notificationDetailIcon" class="notification-page-card-icon">Z</span><h3 id="notificationDetailTitle">Notification</h3><button id="notificationDetailCloseButton">Close</button></header><div class="notification-detail-content"><time id="notificationDetailTime"></time><p id="notificationDetailBody">Loading notification...</p><button id="notificationDetailRetryButton" class="notification-detail-retry hidden">Retry</button></div><div class="notification-detail-actions"><button id="notificationDetailDeleteButton">Delete</button><button id="notificationDetailOpenButton">Open Related Page</button></div></div></div>
   </section></div></div></main></div></div>
-  <nav class="bottom-nav" inert></nav><div id="loadingWrap" class="loading user-global-loading show" role="dialog" aria-modal="true" aria-hidden="false"><div class="loading-box user-global-loading-card"><div class="spinner"></div><strong id="loadingTitle">Z-Pay Swift</strong><div id="loadingText">Loading your account...</div></div></div><div id="toastWrap" class="toast-wrap"></div>
+  <nav class="bottom-nav" inert><div class="bottom-nav-inner"><a class="bottom-btn" href="#">Home</a><a class="bottom-btn" href="#">Add Money</a><a class="bottom-btn" href="#">Transfer</a><a class="bottom-btn" href="#">History</a><a class="bottom-btn" href="#">Profile</a></div></nav><div id="loadingWrap" class="loading user-global-loading show" role="dialog" aria-modal="true" aria-hidden="false"><div class="loading-box user-global-loading-card"><div class="spinner"></div><strong id="loadingTitle">Z-Pay Swift</strong><div id="loadingText">Loading your account...</div></div></div><div id="toastWrap" class="toast-wrap"></div>
   <script>window.USER_PROXY_URL='/api/user/proxy.php';window.USER_LOGIN_URL='/user/';window.USER_PAGE_KEY='notifications';window.USER_BOOTSTRAP_ACTION='me';</script><script src="/user-shell.js"></script><script src="/notifications-page.js"></script></body></html>`;
 }
 
@@ -38,6 +38,8 @@ async function main() {
   let listCalls = 0;
   let unreadCalls = 0;
   let detailCalls = 0;
+  let markCalls = 0;
+  let deleteCalls = 0;
   let failNextList = false;
   const server = http.createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
@@ -84,7 +86,14 @@ async function main() {
       }
       return reply({ notification: { notification_id: 'N-1', body_full: 'Canonical notification details.' } }, 80);
     }
-    if (action === 'notification_mark_read') return reply({ unread_count: 0 }, 40);
+    if (action === 'notification_mark_read') {
+      markCalls += 1;
+      return reply({ unread_count: 0, marked_count: 1 }, 40);
+    }
+    if (action === 'notifications_delete') {
+      deleteCalls += 1;
+      return reply({ unread_count: 0, deleted_count: 1 }, 40);
+    }
     response.writeHead(404, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({ ok: false, code: 'NOT_FOUND', data: {} }));
   });
@@ -109,11 +118,15 @@ async function main() {
       const geometry = await page.evaluate(() => ({
         header: document.querySelector('.notification-page-header')?.getBoundingClientRect().toJSON(),
         tabs: document.querySelector('.notification-page-tabs')?.getBoundingClientRect().toJSON(),
-        card: document.querySelector('.notification-page-card')?.getBoundingClientRect().toJSON()
+        card: document.querySelector('.notification-page-card')?.getBoundingClientRect().toJSON(),
+        nav: document.querySelector('.bottom-nav-inner')?.getBoundingClientRect().toJSON(),
+        navDisplay: getComputedStyle(document.querySelector('.bottom-nav')).display
       }));
       assert.ok(geometry.header.height <= 90, `${width}px notification header is too tall.`);
       assert.ok(geometry.tabs.y < 150, `${width}px notification tabs shifted outside the header rhythm.`);
       assert.ok(geometry.card.y < 230, `${width}px first notification shifted below the useful viewport.`);
+      assert.notEqual(geometry.navDisplay, 'none', `${width}px shared navigation is hidden.`);
+      assert.ok(geometry.nav.height >= 70 && geometry.nav.bottom <= 844, `${width}px shared navigation is outside the viewport.`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true, `${width}px page overflows horizontally.`);
       if (captureDir && width === 390) await page.screenshot({ path: path.join(captureDir, 'notifications-loaded.png'), fullPage: true });
       await context.close();
@@ -126,6 +139,7 @@ async function main() {
     await page.locator('.notification-page-card').click();
     await page.locator('#notificationDetailRetryButton:not(.hidden)').waitFor();
     assert.equal(await page.locator('#notificationDetailBody').textContent(), 'Notification details could not be loaded.');
+    assert.equal(await page.locator('.notification-page-card.unread').count(), 0, 'Successful mark-read was overwritten by stale detail data.');
     await page.locator('#notificationDetailRetryButton').click();
     await page.waitForFunction(() => document.getElementById('notificationDetailBody')?.textContent === 'Canonical notification details.');
     await page.locator('#notificationDetailCloseButton').click();
@@ -134,11 +148,17 @@ async function main() {
     await page.waitForTimeout(300);
     assert.equal(await page.locator('.notification-page-card').count(), 1, 'Failed refresh removed existing notifications.');
     assert.equal(await page.locator('#notificationList').getAttribute('aria-busy'), 'false');
+    await page.locator('#notificationsEditButton').click();
+    await page.locator('.notification-page-card').click();
+    await page.locator('#notificationsDeleteButton').click();
+    await page.waitForFunction(() => document.querySelectorAll('.notification-page-card').length === 0);
     await context.close();
 
     assert.equal(unreadCalls, 0, 'Notification page started redundant unread requests.');
     assert.equal(listCalls, widths.length + 2, 'Notification list request count is unexpected.');
     assert.equal(detailCalls, 2, 'Notification detail Retry did not issue exactly one replacement request.');
+    assert.equal(markCalls, 1, 'Notification detail Retry duplicated the mark-read request.');
+    assert.equal(deleteCalls, 1, 'Notification delete did not issue exactly one request.');
     console.log(`User loading/notification browser tests passed (${widths.length} mobile viewports).`);
   } finally {
     await browser.close();

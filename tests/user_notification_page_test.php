@@ -38,9 +38,15 @@ notification_expect(
 );
 notification_expect(
     str_contains($page, 'id="notificationsRefreshButton"')
-    && str_contains($page, 'Account and transaction updates')
+    && str_contains($page, 'Updates from the last 30 days')
     && str_contains($page, 'id="notificationDetailRetryButton"'),
     'Notification refresh, heading, or detail retry UI is missing'
+);
+notification_expect(
+    str_contains($page, "'show_drawer' => false")
+    && str_contains($page, "'show_bottom_nav' => true")
+    && !str_contains($css, "data-active-section='notificationsSection'] .bottom-nav"),
+    'Notifications must use the shared bottom navigation without the side drawer'
 );
 notification_expect(
     str_contains($page, 'data-notification-filter="ALL"')
@@ -85,6 +91,10 @@ notification_expect(
 );
 notification_expect(
     str_contains($library, 'function notification_rows_for_user')
+    && str_contains($library, 'function notification_recent_cutoff')
+    && str_contains($library, "'orderBy' => json_encode('created_at'")
+    && str_contains($library, "'limitToLast' => notification_recent_query_limit()")
+    && str_contains($library, '30 * 24 * 60 * 60')
     && str_contains($library, 'function notification_list_from_rows')
     && str_contains($library, 'function notification_unread_count_from_rows')
     && str_contains($listEndpoint, '$rows = notification_rows_for_user($uid);')
@@ -92,6 +102,13 @@ notification_expect(
     && str_contains($listEndpoint, 'notification_unread_count_from_rows($rows)')
     && !str_contains($listEndpoint, 'notification_unread_count($uid)'),
     'Notification list endpoint still performs duplicate user-tree reads'
+);
+notification_expect(
+    strpos($js, 'Object.assign(item, results[0].value.notification || {});')
+      < strpos($js, 'item.is_read = true;')
+    && str_contains($js, 'data.deleted_count : data.marked_count')
+    && str_contains($js, 'Notification could not be deleted.'),
+    'Notification read/delete results are not applied defensively'
 );
 notification_expect(
     str_contains($shell, "!== 'notifications') loadUnread()"),

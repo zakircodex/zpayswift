@@ -198,9 +198,10 @@ history_ui_expect(
 
 history_ui_expect(
     str_contains($css, 'grid-template-columns: 50px minmax(0, 1fr) 50px')
-    && str_contains($css, 'top: calc(8px + env(safe-area-inset-top))')
-    && str_contains($css, 'margin: calc(12px + env(safe-area-inset-top)) 0 0')
-    && str_contains($css, 'inset: calc(-8px - env(safe-area-inset-top)) -1px auto')
+    && str_contains($css, 'padding: max(10px, env(safe-area-inset-top)) 0 calc(var(--z-nav-height)')
+    && str_contains($css, 'top: max(8px, env(safe-area-inset-top))')
+    && str_contains($css, 'margin: 0;')
+    && !str_contains($css, '.history-page-header::before')
     && str_contains($css, 'border-radius: 16px')
     && str_contains($css, 'gap: 7px')
     && str_contains($css, 'width: min(90vw, 430px)')

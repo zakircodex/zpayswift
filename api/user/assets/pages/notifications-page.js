@@ -211,17 +211,24 @@
     const results = await Promise.allSettled(requests);
     if (serial !== state.detailSerial || state.active !== item) return;
 
+    modal.classList.remove('is-loading');
+    $('notificationDetailDeleteButton').disabled = false;
+    $('notificationDetailOpenButton').disabled = false;
+
+    if (results[0].status === 'fulfilled') {
+      Object.assign(item, results[0].value.notification || {});
+    }
+
     if (results[1]?.status === 'fulfilled') {
       item.is_read = true;
       shell.state.unread = Number(results[1].value.unread_count ?? shell.state.unread);
       if (state.filter === 'UNREAD') state.items = state.items.filter((candidate) => candidate !== item);
       render();
       updateControls();
+    } else if (results.length > 1) {
+      $('notificationPageLive').textContent = 'Notification opened, but it could not be marked as read.';
     }
 
-    modal.classList.remove('is-loading');
-    $('notificationDetailDeleteButton').disabled = false;
-    $('notificationDetailOpenButton').disabled = false;
     if (results[0].status === 'rejected') {
       modal.classList.add('has-error');
       $('notificationDetailBody').textContent = 'Notification details could not be loaded.';
@@ -229,7 +236,6 @@
       return;
     }
 
-    Object.assign(item, results[0].value.notification || {});
     $('notificationDetailBody').textContent = item.body_full || item.body || 'No additional details are available.';
   }
 
@@ -266,6 +272,10 @@
     try {
       const payload = ids.length === 1 ? { notification_id: ids[0], notification_ids: ids } : { notification_ids: ids };
       const data = await shell.post(action, payload, action === 'notifications_delete' ? 'Deleting notification...' : 'Updating notifications...');
+      const changedCount = Number(action === 'notifications_delete' ? data.deleted_count : data.marked_count);
+      if (!Number.isFinite(changedCount) || changedCount < 1) {
+        throw new Error(action === 'notifications_delete' ? 'Notification could not be deleted.' : 'Notification could not be marked as read.');
+      }
       const chosen = new Set(ids);
       if (action === 'notifications_delete') {
         state.items = state.items.filter((item) => !chosen.has(String(item.notification_id || '')));

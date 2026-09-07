@@ -11,6 +11,8 @@ $page = user_page_config([
     'page_js' => 'notifications-page.js',
     'active_nav' => '',
     'show_header' => false,
+    'show_drawer' => false,
+    'show_bottom_nav' => true,
 ]);
 user_page_begin($page);
 ?>
@@ -23,7 +25,7 @@ user_page_begin($page);
         </a>
         <div class="notification-page-heading">
           <h1 id="notificationsPageTitle">Notifications</h1>
-          <p>Account and transaction updates</p>
+          <p>Updates from the last 30 days</p>
         </div>
         <div class="notification-page-header-actions">
           <button id="notificationsRefreshButton" class="notification-page-icon-button" type="button" aria-label="Refresh notifications">

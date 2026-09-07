@@ -542,19 +542,34 @@ function notification_filter_match(array $row, string $filter): bool
     return $public['category'] === notification_clean_code($filter);
 }
 
+function notification_recent_cutoff(): int
+{
+    return notification_now() - (30 * 24 * 60 * 60);
+}
+
+function notification_recent_query_limit(): int
+{
+    return 250;
+}
+
 function notification_rows_for_user(string $uid): array
 {
     $uid = trim($uid);
     if ($uid === '') {
         return [];
     }
-    $rows = fb_get('USER_NOTIFICATIONS/' . $uid);
+    $rows = fb_get('USER_NOTIFICATIONS/' . $uid, [
+        'orderBy' => json_encode('created_at', JSON_UNESCAPED_SLASHES),
+        'startAt' => notification_recent_cutoff(),
+        'endAt' => notification_now() + 300,
+        'limitToLast' => notification_recent_query_limit(),
+    ]);
     return is_array($rows) ? $rows : [];
 }
 
 function notification_list_from_rows(array $rows, int $limit = 20, int $before = 0, string $filter = 'ALL'): array
 {
-    $cutoff = notification_now() - (366 * 24 * 60 * 60);
+    $cutoff = notification_recent_cutoff();
     $items = [];
     foreach ($rows as $id => $row) {
         if (!is_array($row)) {
@@ -587,7 +602,7 @@ function notification_list_for_user(string $uid, int $limit = 20, int $before = 
 function notification_unread_count_from_rows(array $rows): int
 {
     $count = 0;
-    $cutoff = notification_now() - (366 * 24 * 60 * 60);
+    $cutoff = notification_recent_cutoff();
     foreach ($rows as $row) {
         if (!is_array($row)) {
             continue;
@@ -630,7 +645,7 @@ function notification_mark_read(string $uid, string $notificationId): bool
 
 function notification_mark_entity_read(string $uid, string $entityType, string $entityId): void
 {
-    $rows = fb_get('USER_NOTIFICATIONS/' . trim($uid));
+    $rows = notification_rows_for_user($uid);
     if (!is_array($rows)) {
         return;
     }
@@ -654,7 +669,7 @@ function notification_mark_entity_read(string $uid, string $entityType, string $
 function notification_mark_all_read(string $uid): int
 {
     $uid = trim($uid);
-    $rows = fb_get('USER_NOTIFICATIONS/' . $uid);
+    $rows = notification_rows_for_user($uid);
     if ($uid === '' || !is_array($rows)) {
         return 0;
     }

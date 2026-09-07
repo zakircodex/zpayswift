@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 $reads = 0;
 $now = 1788750000;
+$querySeen = [];
 
 function now_ts(): int
 {
@@ -10,10 +11,11 @@ function now_ts(): int
     return $now;
 }
 
-function fb_get(string $path)
+function fb_get(string $path, array $query = [])
 {
-    global $reads, $now;
+    global $reads, $now, $querySeen;
     $reads++;
+    $querySeen = $query;
     if ($path !== 'USER_NOTIFICATIONS/U-TEST') {
         throw new RuntimeException('Unexpected Firebase path: ' . $path);
     }
@@ -38,6 +40,13 @@ function fb_get(string $path)
             'deleted' => true,
             'created_at' => $now - 5,
         ],
+        'N-OLD' => [
+            'type' => 'ADMIN_NOTICE',
+            'title' => 'Old notice',
+            'body' => 'Outside the visible window',
+            'is_read' => false,
+            'created_at' => $now - (31 * 24 * 60 * 60),
+        ],
     ];
 }
 
@@ -49,6 +58,12 @@ $unread = notification_unread_count_from_rows($rows);
 
 if ($reads !== 1) {
     fwrite(STDERR, "FAIL: notification list snapshot was read {$reads} times.\n");
+    exit(1);
+}
+if (($querySeen['orderBy'] ?? '') !== '"created_at"'
+    || (int)($querySeen['startAt'] ?? 0) !== $now - (30 * 24 * 60 * 60)
+    || (int)($querySeen['limitToLast'] ?? 0) !== 250) {
+    fwrite(STDERR, "FAIL: notification snapshot is not bounded to the recent 30-day window.\n");
     exit(1);
 }
 if (count($items) !== 2 || ($items[0]['notification_id'] ?? '') !== 'N-NEW') {
