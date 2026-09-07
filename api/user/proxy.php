@@ -537,6 +537,28 @@ function user_proxy_finalize_login_with_session_token(string $sessionToken): arr
     return $user;
 }
 
+function user_proxy_finalize_verified_login_response(string $sessionToken, array $user): array
+{
+    $uid = trim((string)($user['uid'] ?? ''));
+    $role = strtoupper(trim((string)($user['role'] ?? '')));
+    $status = strtoupper(trim((string)($user['status'] ?? 'INACTIVE')));
+
+    if ($sessionToken === '' || $uid === '') {
+        user_proxy_response(false, 'SERVER_ERROR', 'Verified login response is incomplete', [], 500);
+    }
+    if (!user_proxy_allowed_role($role)) {
+        user_proxy_response(false, 'FORBIDDEN', 'Only USER or RETAILER can access this dashboard', [], 403);
+    }
+    if ($status !== 'ACTIVE') {
+        user_proxy_response(false, 'FORBIDDEN', 'Account is inactive', [], 403);
+    }
+
+    system_require_user_service_available($user);
+    user_proxy_store_session($sessionToken, $user);
+
+    return $user;
+}
+
 function user_proxy_require_login(bool $touch = true, bool $forceVerify = false): array
 {
     $token = user_proxy_get_session_token();
@@ -3674,7 +3696,13 @@ function user_proxy_create_mfs_request(string $uid, array $body): array
    Auth / Registration / Forgot Password Forwarders
 ========================================================= */
 
-function user_proxy_forward_auth_post(string $relativePath, array $body, string $fallbackCode, string $fallbackMessage): void
+function user_proxy_forward_auth_post(
+    string $relativePath,
+    array $body,
+    string $fallbackCode,
+    string $fallbackMessage,
+    array $requestPolicy = []
+): void
 {
     $headers = [
         'X-APP-KEY' => APP_KEY,
@@ -3723,7 +3751,7 @@ function user_proxy_forward_auth_post(string $relativePath, array $body, string 
         }
     }
 
-    $res = user_proxy_internal_api_request('POST', $relativePath, $body, $headers);
+    $res = user_proxy_internal_api_request('POST', $relativePath, $body, $headers, $requestPolicy);
 
     if (!$res['ok']) {
         $json = $res['json'] ?? [];
@@ -3945,6 +3973,11 @@ switch ($action) {
             'trusted_device_cookie' => user_proxy_get_trust_cookie(),
         ], [
             'X-APP-KEY' => APP_KEY,
+        ], [
+            'canonical_only' => true,
+            'max_attempts' => 1,
+            'connect_timeout' => 5,
+            'timeout' => 30,
         ]);
 
         if (!$pinRes['ok']) {
@@ -3961,7 +3994,7 @@ switch ($action) {
         $pinData = (array)($pinRes['json']['data'] ?? []);
         $sessionToken = trim((string)($pinData['session_token'] ?? ''));
         if ($sessionToken !== '' && empty($pinData['otp_required'])) {
-            user_proxy_finalize_login_with_session_token($sessionToken);
+            user_proxy_finalize_verified_login_response($sessionToken, (array)($pinData['user'] ?? []));
             user_proxy_response(true, 'SUCCESS', 'Trusted device login successful', [
                 'login_complete' => true,
                 'session_active' => true,
@@ -3991,7 +4024,12 @@ switch ($action) {
 
         user_proxy_forward_auth_post('auth/login_send_otp.php', [
             'pre_auth_token' => $preAuthToken,
-        ], 'OTP_SEND_FAILED', 'OTP could not be sent');
+        ], 'OTP_SEND_FAILED', 'OTP could not be sent', [
+            'canonical_only' => true,
+            'max_attempts' => 1,
+            'connect_timeout' => 5,
+            'timeout' => 40,
+        ]);
         break;
 
     case 'login':
@@ -4088,6 +4126,11 @@ switch ($action) {
             'device_name' => $deviceName,
         ], [
             'X-APP-KEY' => APP_KEY,
+        ], [
+            'canonical_only' => true,
+            'max_attempts' => 1,
+            'connect_timeout' => 5,
+            'timeout' => 45,
         ]);
 
         if (!$verifyRes['ok']) {
@@ -4105,7 +4148,7 @@ switch ($action) {
         $data = (array)($verifyRes['json']['data'] ?? []);
         $sessionToken = trim((string)($data['session_token'] ?? ''));
 
-        user_proxy_finalize_login_with_session_token($sessionToken);
+        user_proxy_finalize_verified_login_response($sessionToken, (array)($data['user'] ?? []));
 
         if (!empty($data['trusted_device_cookie']) && is_array($data['trusted_device_cookie'])) {
             user_proxy_set_trust_cookie($data['trusted_device_cookie']);
@@ -4137,6 +4180,11 @@ switch ($action) {
             'otp_request_id' => $otpRequestId,
         ], [
             'X-APP-KEY' => APP_KEY,
+        ], [
+            'canonical_only' => true,
+            'max_attempts' => 1,
+            'connect_timeout' => 5,
+            'timeout' => 40,
         ]);
 
         if (!$resendRes['ok']) {
@@ -4159,6 +4207,9 @@ switch ($action) {
             'otp_request_id' => (string)($data['otp_request_id'] ?? $otpRequestId),
             'masked_phone' => (string)($data['masked_phone'] ?? ''),
             'expires_in_seconds' => (int)($data['expires_in_seconds'] ?? 300),
+            'expires_at' => (int)($data['expires_at'] ?? 0),
+            'resend_in_seconds' => (int)($data['resend_in_seconds'] ?? auth_otp_resend_cooldown_seconds()),
+            'resend_after' => (int)($data['resend_after'] ?? 0),
         ]);
         break;
 

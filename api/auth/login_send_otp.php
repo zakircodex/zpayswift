@@ -43,12 +43,16 @@ if ($existingOtpRequestId !== '') {
         && in_array($existingStatus, ['SENT', 'RESENT'], true)
         && $existingExpiresAt > $now
     ) {
+        $existingLastSentAt = (int)($existingOtpRow['resent_at'] ?? $existingOtpRow['created_at'] ?? $now);
+        $existingResendAfter = $existingLastSentAt + auth_otp_resend_cooldown_seconds();
         api_response(true, 'OTP_ALREADY_SENT', 'OTP already sent and still valid.', [
             'pre_auth_token' => $preAuthToken,
             'otp_request_id' => $existingOtpRequestId,
             'masked_phone' => auth_app_mask_phone($otpPhone),
             'expires_in_seconds' => max(1, $existingExpiresAt - $now),
             'expires_at' => $existingExpiresAt,
+            'resend_in_seconds' => max(0, $existingResendAfter - $now),
+            'resend_after' => $existingResendAfter,
             'phone_country' => $phoneCountry,
         ]);
     }
@@ -122,13 +126,20 @@ if (empty($smsResult['ok'])) {
     'updated_at' => now_ts(),
 ] + $smsPatch);
 
-@fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, [
+$preAuthUpdated = fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, [
     'otp_request_id' => $otpRequestId,
     'status' => 'OTP_PENDING',
     'expires_at' => $preAuthExpiresAt,
     'otp_expires_at' => $expiresAt,
     'updated_at' => now_ts(),
 ]);
+if (!$preAuthUpdated) {
+    @fb_patch('AUTH_OTP_REQUESTS/' . $otpRequestId, [
+        'status' => 'CANCELLED',
+        'updated_at' => now_ts(),
+    ]);
+    api_response(false, 'PREAUTH_STATE_WRITE_FAILED', 'OTP was sent but login verification could not be saved. Please try again.', [], 500);
+}
 
 if (function_exists('system_log')) {
     system_log('USER_LOGIN_OTP_SENT_ANDROID', $otpRequestId, 'Android user login OTP sent', [
@@ -146,5 +157,7 @@ api_response(true, 'OTP_SENT', 'OTP পাঠানো হয়েছে।', [
     'masked_phone' => auth_app_mask_phone($otpPhone),
     'expires_in_seconds' => 300,
     'expires_at' => $expiresAt,
+    'resend_in_seconds' => auth_otp_resend_cooldown_seconds(),
+    'resend_after' => $now + auth_otp_resend_cooldown_seconds(),
     'phone_country' => $phoneCountry,
 ]);

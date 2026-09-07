@@ -100,6 +100,8 @@ $data = [
     'otp_required' => !$trusted,
     'device_trusted' => $trusted,
 ];
+$sessionHash = '';
+$trustedSelector = '';
 
 if ($trusted) {
     $session = auth_app_issue_session($user, $uid, $deviceId, $deviceName, $preAuthRow);
@@ -123,6 +125,8 @@ if ($trusted) {
         );
     }
     $patch['verified_at'] = $now;
+    $sessionHash = trim((string)($session['session_hash'] ?? ''));
+    $trustedSelector = trim((string)($trustedCredential['selector'] ?? ''));
     $data['session_token'] = (string)$session['session_token'];
     $data['trusted_device_cookie'] = [
         'uid' => (string)($trustedCredential['uid'] ?? ''),
@@ -133,6 +137,14 @@ if ($trusted) {
     $data['user'] = auth_app_user_payload($uid, $user);
 }
 
-@fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, $patch);
+if (!fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, $patch)) {
+    if ($sessionHash !== '') {
+        @fb_delete('USER_SESSIONS/' . $sessionHash);
+    }
+    if ($trustedSelector !== '') {
+        @fb_delete('AUTH_TRUSTED_DEVICES/' . $uid . '/' . $trustedSelector);
+    }
+    api_response(false, 'PREAUTH_STATE_WRITE_FAILED', 'Login verification could not be saved. Please try again.', [], 500);
+}
 
 api_response(true, 'PIN_VERIFIED', 'PIN verified.', $data);

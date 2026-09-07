@@ -49,7 +49,11 @@ auth_ui_expect(str_contains($loginJs, "post('login_check_number'") && str_contai
 auth_ui_expect(str_contains($loginJs, "post('login_verify_otp'") && str_contains($loginJs, "post('login_resend_otp'"), 'Login OTP actions are missing');
 auth_ui_expect(str_contains($loginJs, "const stepOrder = ['phone', 'password', 'pin', 'otp']"), 'Login Back order must include the PIN step');
 auth_ui_expect(str_contains($loginJs, 'expires_in_seconds') && str_contains($loginJs, 'formatCountdown'), 'Login OTP 300-second countdown support is missing');
+auth_ui_expect(str_contains($loginJs, 'resendAvailableAt') && str_contains($loginJs, 'resend_in_seconds'), 'Login OTP resend must use its own server-aligned cooldown');
+auth_ui_expect(!str_contains($loginJs, 'Date.now() < state.expiresAt) return;'), 'Login resend must not wait for the full OTP expiry');
+auth_ui_expect(str_contains($loginJs, "['OTP_INVALID', 'OTP_LOCKED', 'OTP_ATTEMPTS_EXCEEDED', 'OTP_EXPIRED'].includes(code)"), 'Retryable OTP verification errors must preserve the entered code');
 auth_ui_expect(str_contains($loginJs, 'state.phoneInFlight') && str_contains($loginJs, 'state.passwordInFlight') && str_contains($loginJs, 'state.pinInFlight') && str_contains($loginJs, 'state.verifyInFlight'), 'Login duplicate submission guards are missing');
+auth_ui_expect(str_contains($loginJs, "'Sending OTP...', 45000") && str_contains($loginJs, "'Verifying OTP...', 50000") && str_contains($loginJs, "'Resending OTP...', 45000"), 'Web OTP timeouts must cover the bounded backend/SMS windows');
 auth_ui_expect(str_contains($loginJs, 'trusted_login_available') && str_contains($loginJs, 'data.login_complete === true'), 'Trusted browser must route from phone to PIN and complete login after PIN');
 auth_ui_expect(str_contains($loginJs, "post('login_trusted_account'") && str_contains($loginJs, 'bootstrapLogin()'), 'Login page must resolve a trusted account before showing the phone flow');
 auth_ui_expect(str_contains($loginJs, 'ignore_trusted_device: state.ignoreTrustedLogin') && str_contains($loginJs, 'useAnotherAccount'), 'Use another account must bypass only the local trusted selection');
@@ -60,9 +64,12 @@ auth_ui_expect(str_contains($loginCss, '.user-login-page .login-card') && str_co
 auth_ui_expect(str_contains($loginCss, '--login-keyboard-inset') && str_contains($loginCss, '.user-login-page.login-keyboard-open'), 'Login keyboard viewport CSS is missing');
 auth_ui_expect(str_contains($proxy, "case 'login_check_number':") && str_contains($proxy, "case 'login_verify_password':") && str_contains($proxy, "case 'login_verify_pin':") && str_contains($proxy, "case 'login_send_otp':"), 'Web proxy staged login routes are missing');
 auth_ui_expect(str_contains($proxy, "case 'login_trusted_account':") && str_contains($proxy, "'preserve_trusted_device'"), 'Trusted page-load lookup and Web logout preservation are missing');
+auth_ui_expect(str_contains($proxy, 'function user_proxy_finalize_verified_login_response') && substr_count($proxy, 'user_proxy_finalize_verified_login_response($sessionToken') === 2, 'PIN/OTP proxy must finalize the already verified response without a redundant session API read');
+auth_ui_expect(substr_count($proxy, "'canonical_only' => true") >= 5 && substr_count($proxy, "'max_attempts' => 1") >= 3 && str_contains($proxy, "'timeout' => 45"), 'PIN/OTP proxy calls must use one bounded canonical internal attempt');
 auth_ui_expect(str_contains($proxy, "'trusted_device_cookie' => \$trustedDeviceCookie") && str_contains($proxy, "'trusted_device_cookie' => user_proxy_get_trust_cookie()"), 'Trusted cookie must be injected server-side for account recognition and PIN verification');
 auth_ui_expect(str_contains($checkNumberEndpoint, 'trusted_login_available') && str_contains($checkNumberEndpoint, 'TRUSTED_DEVICE_RECOGNIZED'), 'Account check must issue trusted-browser PIN pre-auth only after secure validation');
 auth_ui_expect(str_contains($verifyPinEndpoint, 'trusted_browser_verified') && str_contains($verifyPinEndpoint, 'TRUSTED_DEVICE_INVALID'), 'PIN verification must revalidate the trusted browser');
+auth_ui_expect(str_contains($verifyPinEndpoint, "'PREAUTH_STATE_WRITE_FAILED'") && !str_contains($verifyPinEndpoint, "@fb_patch('AUTH_LOGIN_PREAUTH/' . \$preAuthToken, \$patch)"), 'PIN verification must fail closed when pre-auth state cannot be saved');
 auth_ui_expect(str_contains($authLibrary, 'function auth_trusted_browser_cookie_context') && str_contains($authLibrary, "'auth_session_epoch'"), 'Trusted browser validation must bind token, device and session epoch');
 
 foreach (['phone', 'personal', 'identity', 'password', 'pin', 'review', 'otp'] as $step) {

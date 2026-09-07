@@ -160,6 +160,7 @@ if (empty($smsResult['ok'])) {
 $okPre = fb_patch('AUTH_LOGIN_PREAUTH/' . $preAuthToken, [
     'otp_request_id' => $newOtpRequestId,
     'expires_at' => $newExpiresAt,
+    'otp_expires_at' => $newExpiresAt,
     'updated_at' => $now,
 ]);
 if (!$okPre) {
@@ -195,5 +196,8 @@ api_response(true, 'SUCCESS', 'OTP resent successfully', [
     'otp_request_id' => $newOtpRequestId,
     'masked_phone' => user_resend_mask_phone($phone),
     'expires_in_seconds' => 300,
+    'expires_at' => $newExpiresAt,
+    'resend_in_seconds' => auth_otp_resend_cooldown_seconds(),
+    'resend_after' => $now + auth_otp_resend_cooldown_seconds(),
     'phone_country' => $phoneCountry,
 ]);

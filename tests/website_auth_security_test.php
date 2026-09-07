@@ -419,6 +419,8 @@ $dashboardJs = (string)file_get_contents($root . '/api/user/assets/dashboard.js'
 $usersAdmin = (string)file_get_contents($root . '/api/lib/users_admin.php');
 $registerResend = (string)file_get_contents($root . '/api/auth/user_register_resend_otp.php');
 $loginResend = (string)file_get_contents($root . '/api/auth/user_login_resend_otp.php');
+$loginSend = (string)file_get_contents($root . '/api/auth/login_send_otp.php');
+$verifyPin = (string)file_get_contents($root . '/api/auth/verify_pin.php');
 $bootstrap = (string)file_get_contents($root . '/api/bootstrap.php');
 $adminDashboard = (string)file_get_contents($root . '/api/admin/dashboard.php');
 $adminDashboardJs = (string)file_get_contents($root . '/api/admin/assets/dashboard.js');
@@ -435,6 +437,7 @@ $adminDashboardWrites = [
 assert_true(str_contains($registerJs, 'identity_number'), 'registration JS must send identity number');
 assert_true(str_contains($registerProxy, "'identity_number'"), 'registration proxy must forward identity number');
 assert_true(str_contains($userVerify, 'auth_otp_claim_verification'), 'user OTP endpoint must use CAS claim');
+assert_true(str_contains($userVerify, "'status' => (string)(\$user['status'] ?? '')"), 'verified login response must include canonical status for the Web session boundary');
 assert_true(!str_contains($userVerify, 'auth_activate_user_device('), 'user OTP endpoint must not run global session revocation');
 assert_true(str_contains($pinLogin, 'auth_app_quick_login_context'), 'PIN quick login must load the saved session directly');
 assert_true(str_contains($pinLogin, 'auth_app_complete_quick_login_session'), 'PIN quick login must reuse the saved session');
@@ -460,6 +463,9 @@ assert_true(str_contains($usersAdmin, 'admin_users_multi_get'), 'subadmin user l
 assert_true(str_contains($usersAdmin, 'admin_users_query_subadmin_users'), 'subadmin user list must prefer owner-scoped queries');
 assert_true(str_contains($registerResend, 'Your previous OTP remains valid.'), 'failed registration resend must preserve prior OTP');
 assert_true(str_contains($loginResend, '$newOtpRequestId'), 'login resend must rotate OTP request identity');
+assert_true(str_contains($loginResend, "'resend_in_seconds' => auth_otp_resend_cooldown_seconds()"), 'login resend must return the canonical cooldown');
+assert_true(str_contains($loginSend, '$preAuthUpdated = fb_patch(') && str_contains($loginSend, "'PREAUTH_STATE_WRITE_FAILED'"), 'login OTP send must not report success after a failed pre-auth write');
+assert_true(str_contains($verifyPin, "if (!fb_patch('AUTH_LOGIN_PREAUTH/' . \$preAuthToken, \$patch))"), 'PIN verification must check its canonical pre-auth write');
 assert_true(str_contains($bootstrap, "ini_set('display_errors', '0')"), 'API bootstrap must suppress raw PHP errors');
 assert_true(str_contains($bootstrap, "'code' => 'SERVICE_UNAVAILABLE'"), 'missing private config must use canonical API error');
 assert_true(str_contains($adminDashboard, 'aria-hidden="true" inert'), 'closed admin drawer must be inaccessible');

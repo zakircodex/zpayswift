@@ -167,6 +167,8 @@ api_response(true, 'LOGIN_SUCCESS', 'OTP verified successfully', [
         'phone' => (string)($user['phone'] ?? ''),
         'email' => (string)($user['email'] ?? ''),
         'role' => (string)($user['role'] ?? ''),
+        'status' => (string)($user['status'] ?? ''),
+        'account_status' => (string)($user['account_status'] ?? $user['status'] ?? ''),
         'phone_country' => auth_phone_country_from_user($user),
         'pricing_country' => auth_pricing_country_from_user($user, (array)(fb_get('USER_WALLETS/' . $uid) ?: [])),
     ],

@@ -153,12 +153,18 @@ if ($path === '/api/user/proxy.php') {
             'otp_request_id' => 'LOCAL-OTP-REQUEST',
             'masked_phone' => '601*****789',
             'expires_in_seconds' => 300,
+            'expires_at' => time() + 300,
+            'resend_in_seconds' => 60,
+            'resend_after' => time() + 60,
         ],
         'login_resend_otp' => [
             'pre_auth_token' => 'LOCAL-PREAUTH',
             'otp_request_id' => 'LOCAL-OTP-REQUEST-2',
             'masked_phone' => '601*****789',
             'expires_in_seconds' => 300,
+            'expires_at' => time() + 300,
+            'resend_in_seconds' => 60,
+            'resend_after' => time() + 60,
         ],
         'login_verify_otp' => [
             'login_complete' => true,

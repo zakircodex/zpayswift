@@ -17,6 +17,7 @@
     otpRequestId: '',
     maskedPhone: '',
     expiresAt: 0,
+    resendAvailableAt: 0,
     timer: 0,
     busyCount: 0,
     navigationStarted: false,
@@ -121,6 +122,7 @@
       DEVICE_MISMATCH: 'Login verification expired. Please start again.',
       PREAUTH_NOT_FOUND: 'Login verification expired. Please start again.',
       PREAUTH_EXPIRED: 'Login verification expired. Please start again.',
+      PREAUTH_STATE_WRITE_FAILED: 'Login verification could not be saved. Please try again.',
       TRUSTED_DEVICE_INVALID: 'Trusted login expired. Please verify your password again.',
       TRUSTED_DEVICE_EXPIRED: 'Trusted login expired. Please verify your password again.',
       OTP_INVALID: 'Incorrect OTP. Please try again.',
@@ -128,10 +130,15 @@
       OTP_EXPIRED: 'OTP expired. Resend OTP to continue.',
       OTP_ALREADY_USED: 'This OTP has already been used.',
       OTP_ATTEMPTS_EXCEEDED: 'Too many incorrect OTP attempts. Request a new OTP.',
+      OTP_LOCKED: 'Too many incorrect OTP attempts. Request a new OTP.',
+      OTP_NOT_PENDING: 'This login OTP is no longer pending. Please start again.',
+      OTP_VERIFY_IN_PROGRESS: 'OTP verification is still in progress. Please wait a moment and try again.',
       OTP_VERIFY_CONFLICT: 'OTP verification could not be completed. Please try again.',
       SMS_FAILED: 'OTP could not be sent. Please try again later.',
       OTP_SEND_RATE_LIMITED: 'Too many OTP requests. Please wait before trying again.',
       OTP_RESEND_LIMIT_REACHED: 'OTP resend limit reached. Please start login again later.',
+      RESEND_LIMIT_REACHED: 'OTP resend limit reached. Please start login again later.',
+      OTP_RESEND_COOLDOWN: 'Please wait before requesting another OTP.',
       SESSION_EXPIRED: 'Login session expired. Please start again.',
       NETWORK_ERROR: 'Network error. Please check your internet connection.',
       REQUEST_TIMEOUT: 'Login request timed out. Please try again.',
@@ -149,14 +156,15 @@
     return fallback || 'Login could not be completed. Please try again.';
   }
 
-  async function post(action, body, label) {
+  async function post(action, body, label, timeoutMs = 25000) {
     if (state.navigationStarted) throw new DOMException('Navigation started', 'AbortError');
     const controller = new AbortController();
     let timedOut = false;
+    const boundedTimeoutMs = Math.max(5000, Math.min(60000, Number(timeoutMs) || 25000));
     const timeoutId = window.setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, 25000);
+    }, boundedTimeoutMs);
     activeRequests.add(controller);
     setBusy(true, label);
 
@@ -233,9 +241,13 @@
 
   function updateOtpCountdown() {
     const seconds = Math.max(0, Math.ceil((state.expiresAt - Date.now()) / 1000));
+    const resendSeconds = Math.max(0, Math.ceil((state.resendAvailableAt - Date.now()) / 1000));
     $('loginOtpExpiresText').textContent = seconds > 0 ? formatCountdown(seconds) : 'Expired';
     $('verifyLoginOtpBtn').disabled = seconds < 1 || state.verifyInFlight;
-    $('resendLoginOtpBtn').disabled = seconds > 0 || state.resendInFlight;
+    $('resendLoginOtpBtn').disabled = resendSeconds > 0 || state.resendInFlight;
+    $('resendLoginOtpBtn').textContent = resendSeconds > 0
+      ? `Resend OTP in ${formatCountdown(resendSeconds)}`
+      : 'Resend OTP';
     if (seconds < 1) {
       clearOtpTimer();
       $('loginOtpStatus').textContent = 'OTP expired. Resend OTP to continue.';
@@ -251,6 +263,11 @@
     state.expiresAt = expiresAt > 0
       ? (expiresAt < 1000000000000 ? expiresAt * 1000 : expiresAt)
       : Date.now() + expiresIn * 1000;
+    const resendAfter = Number(data.resend_after || 0);
+    const resendIn = Math.max(0, Number(data.resend_in_seconds ?? 60));
+    state.resendAvailableAt = resendAfter > 0
+      ? (resendAfter < 1000000000000 ? resendAfter * 1000 : resendAfter)
+      : Date.now() + resendIn * 1000;
     $('loginOtpMaskedPhone').textContent = state.maskedPhone || '-';
     $('loginOtpCode').value = '';
     $('loginOtpStatus').textContent = 'Enter the OTP to complete login.';
@@ -347,6 +364,7 @@
     state.otpRequestId = '';
     state.maskedPhone = '';
     state.expiresAt = 0;
+    state.resendAvailableAt = 0;
     $('loginOtpCode').value = '';
     if (!keepPreAuth) {
       state.preAuthToken = '';
@@ -468,7 +486,7 @@
     try {
       const data = await post('login_send_otp', {
         pre_auth_token: state.preAuthToken
-      }, 'Sending OTP...');
+      }, 'Sending OTP...', 45000);
       if (!data.otp_request_id) throw Object.assign(new Error('Missing OTP request'), { code: 'INVALID_RESPONSE' });
       setOtpData(data);
       $('loginPin').value = '';
@@ -506,7 +524,7 @@
         pre_auth_token: state.preAuthToken,
         pin,
         ...browserMeta()
-      }, 'Checking PIN...');
+      }, 'Checking PIN...', 35000);
       if (data.login_complete === true && data.session_active === true) {
         $('loginPin').value = '';
         goToDashboard();
@@ -568,10 +586,13 @@
         otp,
         trust_device: true,
         ...browserMeta()
-      }, 'Verifying OTP...');
+      }, 'Verifying OTP...', 50000);
       goToDashboard();
     } catch (error) {
-      $('loginOtpCode').value = '';
+      const code = String(error?.code || '').toUpperCase();
+      if (['OTP_INVALID', 'OTP_LOCKED', 'OTP_ATTEMPTS_EXCEEDED', 'OTP_EXPIRED'].includes(code)) {
+        $('loginOtpCode').value = '';
+      }
       if (error?.name !== 'AbortError') showFeedback(safeErrorMessage(error, 'OTP verification failed.'));
     } finally {
       state.verifyInFlight = false;
@@ -580,7 +601,7 @@
   }
 
   async function resendOtp() {
-    if (state.resendInFlight || state.navigationStarted || Date.now() < state.expiresAt) return;
+    if (state.resendInFlight || state.navigationStarted || Date.now() < state.resendAvailableAt) return;
     if (!state.preAuthToken || !state.otpRequestId) {
       showFeedback('Login verification expired. Please start again.');
       return;
@@ -591,11 +612,18 @@
       const data = await post('login_resend_otp', {
         pre_auth_token: state.preAuthToken,
         otp_request_id: state.otpRequestId
-      }, 'Resending OTP...');
+      }, 'Resending OTP...', 45000);
       setOtpData(data);
       $('loginOtpStatus').textContent = 'A new OTP was sent. The previous code is no longer valid.';
     } catch (error) {
-      if (error?.name !== 'AbortError') showFeedback(safeErrorMessage(error, 'OTP could not be resent.'));
+      const code = String(error?.code || '').toUpperCase();
+      const retryAfter = Math.max(0, Number(error?.data?.retry_after_seconds || 0));
+      if (code === 'OTP_RESEND_COOLDOWN' && retryAfter > 0) {
+        state.resendAvailableAt = Date.now() + retryAfter * 1000;
+        $('loginOtpStatus').textContent = `You can resend OTP in ${formatCountdown(retryAfter)}.`;
+      } else if (error?.name !== 'AbortError') {
+        showFeedback(safeErrorMessage(error, 'OTP could not be resent.'));
+      }
     } finally {
       state.resendInFlight = false;
       updateOtpCountdown();

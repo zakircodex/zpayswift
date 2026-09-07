@@ -32,6 +32,12 @@ $authSms = android_login_contract_source($root . '/api/lib/auth_sms.php');
 $sms360 = android_login_contract_source($root . '/api/lib/sms_smss360.php');
 $bulkSms = android_login_contract_source($root . '/api/lib/sms_bulksmsbd.php');
 $rewrite = android_login_contract_source($root . '/.htaccess');
+$proxy = android_login_contract_source($root . '/api/user/proxy.php');
+
+android_login_contract_expect(
+    substr_count($proxy, "'canonical_only' => true") >= 5,
+    'Web PIN/OTP proxy calls must bypass unavailable loopback transports and use one canonical request.'
+);
 
 android_login_contract_expect(
     str_contains($verifyPin, "api_response(false, 'WRONG_PIN'")
@@ -51,6 +57,16 @@ android_login_contract_expect(
     str_contains($sendOtp, '$expiresAt = $now + 300;')
         && str_contains($sendOtp, "'expires_in_seconds' => 300"),
     'Login OTP validity must remain 300 seconds'
+);
+android_login_contract_expect(
+    str_contains($sendOtp, "'resend_in_seconds' => auth_otp_resend_cooldown_seconds()")
+        && str_contains($sendOtp, "'resend_after' => \$now + auth_otp_resend_cooldown_seconds()"),
+    'Login OTP response must expose the bounded resend cooldown without changing validity'
+);
+android_login_contract_expect(
+    str_contains($sendOtp, '$preAuthUpdated = fb_patch(')
+        && str_contains($sendOtp, "'PREAUTH_STATE_WRITE_FAILED'"),
+    'OTP send must fail closed if the pending pre-auth state cannot be persisted'
 );
 android_login_contract_expect(
     str_contains($sendOtp, "in_array(\$existingStatus, ['SENT', 'RESENT'], true)")
