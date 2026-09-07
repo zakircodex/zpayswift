@@ -656,7 +656,7 @@ assert_true((string)($nagadCreate['data']['provider'] ?? '') === 'NAGAD', 'Nagad
 put_mfs_create_user('MFS_DAILY_GUARD', 'MY', 'MYR');
 $dailyFirst = mfs_create_request(
     'MFS_DAILY_GUARD',
-    mfs_create_body('BKASH', 'MFS_DAILY_FIRST', 620.00),
+    mfs_create_body('BKASH', 'MFS_DAILY_FIRST', 2000.00),
     'USER_API',
     'PANEL',
     ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
@@ -666,7 +666,7 @@ $dailyWalletWrites = wallet_write_count('MFS_DAILY_GUARD');
 
 $dailySame = mfs_create_request(
     'MFS_DAILY_GUARD',
-    mfs_create_body('BKASH', 'MFS_DAILY_SAME', 620.00),
+    mfs_create_body('BKASH', 'MFS_DAILY_SAME', 2000.00),
     'USER_API',
     'PANEL',
     ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
@@ -681,7 +681,7 @@ assert_true(wallet_write_count('MFS_DAILY_GUARD') === $dailyWalletWrites, 'daily
 
 $dailyNear = mfs_create_request(
     'MFS_DAILY_GUARD',
-    mfs_create_body('BKASH', 'MFS_DAILY_NEAR', 669.99),
+    mfs_create_body('BKASH', 'MFS_DAILY_NEAR', 2049.99),
     'USER_API',
     'PANEL',
     ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
@@ -690,16 +690,34 @@ assert_true(empty($dailyNear['ok']) && ($dailyNear['code'] ?? '') === 'MFS_DAILY
 
 $dailyCrossProvider = mfs_create_request(
     'MFS_DAILY_GUARD',
-    mfs_create_body('NAGAD', 'MFS_DAILY_CROSS_PROVIDER', 620.00),
+    mfs_create_body('NAGAD', 'MFS_DAILY_CROSS_PROVIDER', 2000.00),
     'USER_API',
     'PANEL',
     ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
 );
-assert_true(empty($dailyCrossProvider['ok']) && ($dailyCrossProvider['code'] ?? '') === 'MFS_DAILY_AMOUNT_TOO_CLOSE', 'same number and amount must be blocked across bKash and Nagad');
+assert_true(!empty($dailyCrossProvider['ok']), 'same number and amount must be allowed once per provider');
+assert_true((string)($dailyCrossProvider['data']['provider'] ?? '') === 'NAGAD', 'cross-provider allowance must preserve Nagad');
+$dailyCrossProviderWalletWrites = wallet_write_count('MFS_DAILY_GUARD');
+
+$dailySameNagad = mfs_create_request(
+    'MFS_DAILY_GUARD',
+    mfs_create_body('NAGAD', 'MFS_DAILY_SAME_NAGAD', 2000.00),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
+);
+assert_true(
+    empty($dailySameNagad['ok']) && ($dailySameNagad['code'] ?? '') === 'MFS_DAILY_AMOUNT_TOO_CLOSE',
+    'same number and amount must still be blocked within Nagad'
+);
+assert_true(
+    wallet_write_count('MFS_DAILY_GUARD') === $dailyCrossProviderWalletWrites,
+    'same-provider Nagad rejection must happen before another wallet hold'
+);
 
 $dailyBoundary = mfs_create_request(
     'MFS_DAILY_GUARD',
-    mfs_create_body('BKASH', 'MFS_DAILY_BOUNDARY', 670.00),
+    mfs_create_body('BKASH', 'MFS_DAILY_BOUNDARY', 2050.00),
     'USER_API',
     'PANEL',
     ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
@@ -726,7 +744,7 @@ assert_true(
 $testNow += 86400;
 $nextDaySame = mfs_create_request(
     'MFS_DAILY_GUARD',
-    mfs_create_body('BKASH', 'MFS_DAILY_NEXT_DAY', 620.00),
+    mfs_create_body('BKASH', 'MFS_DAILY_NEXT_DAY', 2000.00),
     'USER_API',
     'PANEL',
     ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']

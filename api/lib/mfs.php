@@ -908,12 +908,14 @@ function mfs_daily_recipient_guard_conflict(
     array $guard,
     float $amountBdt,
     string $requestId = '',
-    string $operationRef = ''
+    string $operationRef = '',
+    string $provider = ''
 ): array
 {
     $amountBdt = mfs_round_money($amountBdt);
     $requestId = trim($requestId);
     $operationRef = trim($operationRef);
+    $provider = mfs_normalize_provider($provider);
     $minimumDifference = mfs_daily_recipient_min_difference_bdt();
     $entries = is_array($guard['entries'] ?? null) ? (array)$guard['entries'] : [];
 
@@ -932,6 +934,11 @@ function mfs_daily_recipient_guard_conflict(
             && hash_equals($existingOperationRef, $operationRef);
         if ($sameRequest || $sameOperation) {
             return ['ok' => true, 'same_request' => true];
+        }
+
+        $existingProvider = mfs_normalize_provider((string)($entry['provider'] ?? ''));
+        if ($provider !== '' && $existingProvider !== '' && $existingProvider !== $provider) {
+            continue;
         }
 
         $existingAmount = mfs_round_money((float)($entry['amount_bdt'] ?? 0));
@@ -1004,7 +1011,8 @@ function mfs_daily_recipient_guard_check(
     float $amountBdt,
     ?int $ts = null,
     string $requestId = '',
-    string $operationRef = ''
+    string $operationRef = '',
+    string $provider = ''
 ): array {
     $snapshot = mfs_daily_recipient_guard_snapshot($uid, $receiverNumber, $ts);
     if (empty($snapshot['ok'])) {
@@ -1015,7 +1023,8 @@ function mfs_daily_recipient_guard_check(
         (array)$snapshot['guard'],
         $amountBdt,
         $requestId,
-        $operationRef
+        $operationRef,
+        $provider
     );
     if (empty($conflict['ok'])) {
         return $conflict;
@@ -1056,7 +1065,7 @@ function mfs_daily_recipient_guard_claim(
         }
 
         $guard = (array)$snapshot['guard'];
-        $conflict = mfs_daily_recipient_guard_conflict($guard, $amountBdt, $requestId, $operationRef);
+        $conflict = mfs_daily_recipient_guard_conflict($guard, $amountBdt, $requestId, $operationRef, $provider);
         if (empty($conflict['ok'])) {
             return $conflict;
         }
@@ -3251,7 +3260,8 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
             (float)$amounts['amount_bdt'],
             $now,
             '',
-            $operationRef
+            $operationRef,
+            $provider
         );
         if (empty($dailyCheck['ok'])) {
             return [

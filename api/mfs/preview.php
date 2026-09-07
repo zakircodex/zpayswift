@@ -748,7 +748,15 @@ if ($countryCode === 'MY' && ($amountBdt <= 0 || $amountRm <= 0)) {
 
 $now = mfs_preview_now();
 if ($serviceType === 'SEND_MONEY') {
-    $dailyGuard = mfs_daily_recipient_guard_check($uid, $receiverNumber, $amountBdt, $now);
+    $dailyGuard = mfs_daily_recipient_guard_check(
+        $uid,
+        $receiverNumber,
+        $amountBdt,
+        $now,
+        '',
+        '',
+        $provider
+    );
     if (empty($dailyGuard['ok'])) {
         $dailyCode = (string)($dailyGuard['code'] ?? 'MFS_DAILY_GUARD_UNAVAILABLE');
         api_response(

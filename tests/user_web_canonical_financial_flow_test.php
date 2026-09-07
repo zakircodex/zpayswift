@@ -52,10 +52,12 @@ canonical_flow_expect(
 );
 canonical_flow_expect(
     str_contains($mfsPreview, "\$serviceType === 'SEND_MONEY'")
-    && str_contains($mfsPreview, 'mfs_daily_recipient_guard_check($uid, $receiverNumber, $amountBdt, $now)')
+    && str_contains($mfsPreview, 'mfs_daily_recipient_guard_check(')
+    && preg_match('/mfs_daily_recipient_guard_check\s*\([^;]*\$provider\s*\);/s', $mfsPreview) === 1
     && str_contains($mfsCore, 'fb_get_with_etag($path)')
     && str_contains($mfsCore, 'fb_put_if_match((string)$snapshot[\'path\']')
     && str_contains($mfsCore, "'MFS_DAILY_AMOUNT_TOO_CLOSE'")
+    && str_contains($mfsCore, "\$existingProvider !== \$provider")
     && str_contains($mfsCreate, "\$httpStatus = 503;"),
     'Canonical MFS preview/create flow must enforce the atomic same-day recipient amount guard.'
 );
