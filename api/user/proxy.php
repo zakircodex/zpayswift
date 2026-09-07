@@ -1745,6 +1745,7 @@ function user_proxy_forward_mfs_create(array $body, array $sessionUser): void
         $body,
         user_proxy_authenticated_headers(),
         [
+            'canonical_only' => true,
             'max_attempts' => 1,
             'connect_timeout' => 5,
             'timeout' => 40,

@@ -66,6 +66,7 @@ canonical_flow_expect(
     && str_contains($mfsCreate, 'Optional notification work cannot change a committed financial response.')
     && str_contains($proxy, 'function user_proxy_forward_mfs_create')
     && str_contains($proxy, 'function user_proxy_recover_mfs_create_result')
+    && str_contains($proxy, "'canonical_only' => true")
     && str_contains($proxy, "'max_attempts' => 1")
     && str_contains($proxy, "'timeout' => 40")
     && str_contains($proxy, "'MFS_CREATE_STATUS_UNKNOWN'")
