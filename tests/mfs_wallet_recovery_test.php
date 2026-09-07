@@ -17,6 +17,7 @@ $walletWriteCount = [];
 $failNextLedgerPut = false;
 $failNextDonePut = false;
 $failNextPendingPut = false;
+$injectDailyGuardConflictAmount = null;
 
 function test_path_parts(string $path): array
 {
@@ -150,9 +151,30 @@ function fb_get_with_etag(string $path): array
 
 function fb_put_if_match(string $path, mixed $data, string $etag): array
 {
-    global $versions, $walletWriteCount, $failNextLedgerPut;
+    global $versions, $walletWriteCount, $failNextLedgerPut, $injectDailyGuardConflictAmount;
     $expected = 'v' . (string)($versions[$path] ?? 0);
     if ($etag !== $expected) {
+        return ['ok' => false, 'status' => 412];
+    }
+    if ($injectDailyGuardConflictAmount !== null && str_starts_with($path, 'MFS_DAILY_RECIPIENT_GUARDS/')) {
+        $current = test_store_get($path);
+        if (!is_array($current)) {
+            $current = [];
+        }
+        $entries = is_array($current['entries'] ?? null) ? (array)$current['entries'] : [];
+        $entries['concurrent_request'] = [
+            'request_id' => 'MFS_CONCURRENT_REQUEST',
+            'operation_ref' => 'MFS_CREATE:CONCURRENT',
+            'amount_bdt' => (float)$injectDailyGuardConflictAmount,
+            'provider' => 'BKASH',
+            'created_at' => now_ts(),
+        ];
+        $current['entries'] = $entries;
+        $current['day'] = mfs_daily_recipient_period()['day'];
+        $current['timezone'] = 'Asia/Dhaka';
+        $current['retry_after'] = mfs_daily_recipient_period()['retry_after'];
+        $injectDailyGuardConflictAmount = null;
+        test_store_set($path, $current);
         return ['ok' => false, 'status' => 412];
     }
     if ($failNextLedgerPut && str_starts_with($path, 'WALLET_LEDGER/')) {
@@ -593,6 +615,103 @@ assert_true(!empty($nagadConfirm['preview']['ok']), 'Nagad MY preview must succe
 assert_true(!empty($nagadCreate['ok']), 'Nagad MY confirm must create a request with default provider config');
 assert_true((string)($nagadCreate['data']['provider'] ?? '') === 'NAGAD', 'Nagad provider must remain canonical');
 
+put_mfs_create_user('MFS_DAILY_GUARD', 'MY', 'MYR');
+$dailyFirst = mfs_create_request(
+    'MFS_DAILY_GUARD',
+    mfs_create_body('BKASH', 'MFS_DAILY_FIRST', 620.00),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
+);
+assert_true(!empty($dailyFirst['ok']), 'first same-day recipient request must succeed');
+$dailyWalletWrites = wallet_write_count('MFS_DAILY_GUARD');
+
+$dailySame = mfs_create_request(
+    'MFS_DAILY_GUARD',
+    mfs_create_body('BKASH', 'MFS_DAILY_SAME', 620.00),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
+);
+assert_true(
+    empty($dailySame['ok'])
+    && ($dailySame['code'] ?? '') === 'MFS_DAILY_AMOUNT_TOO_CLOSE'
+    && (float)($dailySame['data']['minimum_difference_bdt'] ?? 0) === 50.00,
+    'same recipient and amount must be rejected for the Dhaka day'
+);
+assert_true(wallet_write_count('MFS_DAILY_GUARD') === $dailyWalletWrites, 'daily rejection must happen before wallet hold');
+
+$dailyNear = mfs_create_request(
+    'MFS_DAILY_GUARD',
+    mfs_create_body('BKASH', 'MFS_DAILY_NEAR', 669.99),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
+);
+assert_true(empty($dailyNear['ok']) && ($dailyNear['code'] ?? '') === 'MFS_DAILY_AMOUNT_TOO_CLOSE', 'difference below BDT 50 must be rejected');
+
+$dailyCrossProvider = mfs_create_request(
+    'MFS_DAILY_GUARD',
+    mfs_create_body('NAGAD', 'MFS_DAILY_CROSS_PROVIDER', 620.00),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
+);
+assert_true(empty($dailyCrossProvider['ok']) && ($dailyCrossProvider['code'] ?? '') === 'MFS_DAILY_AMOUNT_TOO_CLOSE', 'same number and amount must be blocked across bKash and Nagad');
+
+$dailyBoundary = mfs_create_request(
+    'MFS_DAILY_GUARD',
+    mfs_create_body('BKASH', 'MFS_DAILY_BOUNDARY', 670.00),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
+);
+assert_true(!empty($dailyBoundary['ok']), 'exact BDT 50 difference must be accepted');
+
+$differentNumberBody = mfs_create_body('BKASH', 'MFS_DAILY_OTHER_NUMBER', 620.00);
+$differentNumberBody['receiver_number'] = '01800000000';
+$dailyDifferentNumber = mfs_create_request(
+    'MFS_DAILY_GUARD',
+    $differentNumberBody,
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
+);
+assert_true(!empty($dailyDifferentNumber['ok']), 'same amount to a different number must be accepted');
+
+$dailyGuardStore = json_encode(test_store_get('MFS_DAILY_RECIPIENT_GUARDS'));
+assert_true(
+    is_string($dailyGuardStore) && !str_contains($dailyGuardStore, '01700000000') && !str_contains($dailyGuardStore, '01800000000'),
+    'daily recipient guard must not store raw receiver numbers'
+);
+
+$testNow += 86400;
+$nextDaySame = mfs_create_request(
+    'MFS_DAILY_GUARD',
+    mfs_create_body('BKASH', 'MFS_DAILY_NEXT_DAY', 620.00),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_DAILY_GUARD', 'role' => 'USER']
+);
+assert_true(!empty($nextDaySame['ok']), 'same number and amount must be accepted on the next Dhaka day');
+$testNow -= 86400;
+
+put_mfs_create_user('MFS_DAILY_RACE', 'MY', 'MYR');
+$raceWalletWrites = wallet_write_count('MFS_DAILY_RACE');
+$injectDailyGuardConflictAmount = 620.00;
+$dailyRace = mfs_create_request(
+    'MFS_DAILY_RACE',
+    mfs_create_body('BKASH', 'MFS_DAILY_RACE_REQUEST', 620.00),
+    'USER_API',
+    'PANEL',
+    ['uid' => 'MFS_DAILY_RACE', 'role' => 'USER']
+);
+assert_true(
+    empty($dailyRace['ok']) && ($dailyRace['code'] ?? '') === 'MFS_DAILY_AMOUNT_TOO_CLOSE',
+    'concurrent same-recipient request must be rejected after an ETag conflict'
+);
+assert_true(wallet_write_count('MFS_DAILY_RACE') === $raceWalletWrites, 'concurrent daily rejection must not hold wallet balance');
+
 put_mfs_create_user('MFS_CREATE_BD', 'BD', 'BDT');
 $bdConfirm = mfs_confirm_from_preview('MFS_CREATE_BD', 'BKASH', 'MFS_CREATE_BD_ONCE');
 $bdCreate = (array)$bdConfirm['result'];
@@ -619,7 +738,7 @@ $createSaveRetry = mfs_create_request(
     'PANEL',
     ['uid' => 'MFS_CREATE_RETRY', 'role' => 'USER']
 );
-assert_true(!empty($createSaveRetry['ok']), 'request-save retry must repair the request');
+assert_true(!empty($createSaveRetry['ok']), 'request-save retry must repair the request: ' . json_encode($createSaveRetry));
 assert_true(wallet_write_count('MFS_CREATE_RETRY') === $retryWrites, 'request-save retry must not repeat MFS hold');
 
 $invalidProvider = mfs_create_request(

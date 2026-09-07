@@ -750,18 +750,20 @@ function user_proxy_load_role_settings(string $uid, ?string $role = null): array
     return user_proxy_default_role_settings($role ?: 'USER');
 }
 
-function user_proxy_wallet_summary_payload(string $uid, array $sessionUser = []): array
+function user_proxy_wallet_summary_payload(string $uid, array $sessionUser = [], bool $fast = false): array
 {
     $uid = trim($uid);
 
-    $userRow = user_proxy_load_user($uid);
+    $userRow = $fast && $sessionUser ? $sessionUser : user_proxy_load_user($uid);
 
     if (!$userRow && $sessionUser) {
         $userRow = $sessionUser;
     }
 
     $walletRow = user_proxy_load_wallet($uid);
-    $roleSettingsRow = user_proxy_load_role_settings($uid, (string)($userRow['role'] ?? 'USER'));
+    $roleSettingsRow = $fast
+        ? user_proxy_default_role_settings((string)($userRow['role'] ?? 'USER'))
+        : user_proxy_load_role_settings($uid, (string)($userRow['role'] ?? 'USER'));
     $walletDisplay = function_exists('mfs_wallet_display_payload')
         ? mfs_wallet_display_payload(is_array($userRow) ? $userRow : [], is_array($walletRow) ? $walletRow : [])
         : [];
@@ -4267,19 +4269,48 @@ switch ($action) {
             ['1', 'true', 'yes'],
             true
         );
+        $balanceOnly = in_array(
+            strtolower(trim((string)($_GET['balance_only'] ?? ''))),
+            ['1', 'true', 'yes'],
+            true
+        );
 
         user_proxy_response(true, 'SUCCESS', 'Dashboard bootstrap loaded', [
             'user' => $sessionUser,
             'csrf' => user_proxy_get_csrf(),
-            'wallet_summary' => user_proxy_wallet_summary_payload($uid, $sessionUser),
+            'wallet_summary' => user_proxy_wallet_summary_payload($uid, $sessionUser, $balanceOnly),
             'request_logs' => [
                 'uid' => $uid,
                 'month' => $month,
-                'items' => user_proxy_collect_request_logs($uid, $limit, false, $month),
+                'items' => $balanceOnly ? [] : user_proxy_collect_request_logs($uid, $limit, false, $month),
                 'wallet_history' => $summaryOnly ? [] : user_proxy_collect_wallet_received($uid, $month, $limit),
                 'add_money_history' => $summaryOnly ? [] : add_money_public_request_rows(add_money_list_user_history($uid, $limit)),
                 'history_complete' => !$summaryOnly,
+                'deferred' => $balanceOnly,
             ],
+            'loaded_at' => user_proxy_now(),
+        ]);
+        break;
+
+    case 'dashboard_activity_summary':
+        user_proxy_require_method('GET');
+
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $month = user_proxy_valid_month_key($_GET['month'] ?? null);
+        $limit = (int)($_GET['limit'] ?? 50);
+        if ($limit <= 0) {
+            $limit = 50;
+        }
+        if ($limit > 100) {
+            $limit = 100;
+        }
+        $items = user_proxy_collect_request_logs($uid, $limit, false, $month);
+
+        user_proxy_response(true, 'SUCCESS', 'Dashboard activity summary loaded', [
+            'uid' => $uid,
+            'month' => $month,
+            'request_count' => count($items),
             'loaded_at' => user_proxy_now(),
         ]);
         break;

@@ -121,6 +121,13 @@
     }
     if (code === 'PROVIDER_DISABLED') return `${providerLabel} is currently unavailable.`;
     if (code === 'MFS_DISABLED') return 'bKash/Nagad service is currently unavailable.';
+    if (code === 'MFS_DAILY_AMOUNT_TOO_CLOSE') {
+      const minimumDifference = Math.max(0, Number(error?.data?.minimum_difference_bdt || 50));
+      return `For this number today, use an amount at least BDT ${minimumDifference.toFixed(2)} higher or lower than your previous request.`;
+    }
+    if (code === 'MFS_DAILY_GUARD_UNAVAILABLE') {
+      return 'The daily recipient safety check is temporarily unavailable. Please try again.';
+    }
     if (!message || /firebase|exception|stack|session[_ -]?token|csrf|\/api\//i.test(message)) return fallback;
     return message;
   }

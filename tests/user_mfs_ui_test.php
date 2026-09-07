@@ -76,6 +76,12 @@ mfs_ui_expect(
     'canonical MFS proxy actions are not preserved'
 );
 mfs_ui_expect(
+    str_contains($flow, 'at least 50 BDT higher or lower')
+    && str_contains($script, "code === 'MFS_DAILY_AMOUNT_TOO_CLOSE'")
+    && str_contains($script, "code === 'MFS_DAILY_GUARD_UNAVAILABLE'"),
+    'same-day recipient amount policy is missing from the shared bKash/Nagad UX'
+);
+mfs_ui_expect(
     str_contains($script, 'preview_token: serverPreview.preview_token')
     && !preg_match('/(?:fee|total_debit|balance_after)\s*:\s*[^,]*(?:\+|\-|\*)/i', $script),
     'preview-token binding or backend-authoritative finance rendering regressed'

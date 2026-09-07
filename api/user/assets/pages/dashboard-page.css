@@ -14,7 +14,8 @@ body.user-dashboard-page.user-service-checking .bottom-nav {
 }
 
 body.user-dashboard-page.user-service-checking .dashboard-placeholder,
-body.user-dashboard-page.user-page-loading .dashboard-placeholder {
+body.user-dashboard-page.user-page-loading .dashboard-placeholder,
+.user-dashboard-page .dashboard-deferred-placeholder {
   min-width: 28px;
   display: inline-block;
   overflow: hidden;
@@ -36,7 +37,8 @@ body.user-dashboard-page.user-page-loading .dashboard-placeholder-balance {
 }
 
 body.user-dashboard-page.user-service-checking .dashboard-placeholder-compact,
-body.user-dashboard-page.user-page-loading .dashboard-placeholder-compact {
+body.user-dashboard-page.user-page-loading .dashboard-placeholder-compact,
+.user-dashboard-page .dashboard-deferred-placeholder.dashboard-placeholder-compact {
   width: 36px;
 }
 

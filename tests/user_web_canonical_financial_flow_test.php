@@ -7,6 +7,8 @@ $dashboardJs = (string)file_get_contents($root . '/api/user/assets/pages/topup-p
 $dashboardUxJs = (string)file_get_contents($root . '/api/user/assets/pages/mfs-page.js');
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $mfsPreview = (string)file_get_contents($root . '/api/mfs/preview.php');
+$mfsCreate = (string)file_get_contents($root . '/api/mfs/create.php');
+$mfsCore = (string)file_get_contents($root . '/api/lib/mfs.php');
 $legacyMfsCreate = (string)file_get_contents($root . '/api/user/mfs_create_telegram.php');
 $assertions = 0;
 
@@ -45,6 +47,15 @@ canonical_flow_expect(
     str_contains($mfsPreview, 'auth_pricing_country_from_user($user, $wallet)')
     && strpos($mfsPreview, "\$user['pricing_country']") < strpos($mfsPreview, "\$user['country_code']"),
     'MFS pricing country must take precedence over phone/account country fallbacks.'
+);
+canonical_flow_expect(
+    str_contains($mfsPreview, "\$serviceType === 'SEND_MONEY'")
+    && str_contains($mfsPreview, 'mfs_daily_recipient_guard_check($uid, $receiverNumber, $amountBdt, $now)')
+    && str_contains($mfsCore, 'fb_get_with_etag($path)')
+    && str_contains($mfsCore, 'fb_put_if_match((string)$snapshot[\'path\']')
+    && str_contains($mfsCore, "'MFS_DAILY_AMOUNT_TOO_CLOSE'")
+    && str_contains($mfsCreate, "\$httpStatus = 503;"),
+    'Canonical MFS preview/create flow must enforce the atomic same-day recipient amount guard.'
 );
 canonical_flow_expect(
     str_contains($dashboardJs, "proxyPost('topup_preview'")

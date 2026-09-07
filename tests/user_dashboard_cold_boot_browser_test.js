@@ -18,14 +18,14 @@ function pageMarkup() {
     <div class="dashboard-fixed-stack"><div class="hero-card"><div class="dashboard-hero-topbar"><button id="openSidebarBtn"></button><h1 id="dashboardHeroTitle">Z-Pay Swift</h1><a href="/user/notifications"><span data-notification-badge class="hidden">0</span></a></div>
       <div class="hero-balance"><span id="heroBalancePrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroBalance" class="dashboard-placeholder dashboard-placeholder-balance">--</span></div>
       <div class="hero-hold-line"><span id="heroHoldPrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroHold" class="dashboard-placeholder dashboard-placeholder-compact">--</span></div>
-      <span id="heroRate" class="dashboard-placeholder dashboard-placeholder-rate">Loading rate</span><span id="heroRequests" class="dashboard-placeholder dashboard-placeholder-compact">--</span><span id="heroName" class="dashboard-placeholder dashboard-placeholder-name">Loading account</span>
+      <span id="heroRate" class="dashboard-placeholder dashboard-placeholder-rate">Loading rate</span><span id="heroRequests" class="dashboard-placeholder dashboard-placeholder-compact dashboard-deferred-placeholder">--</span><span id="heroName" class="dashboard-placeholder dashboard-placeholder-name">Loading account</span>
     </div></div>
     <section id="overviewSection" aria-busy="true"><div id="zpayQuickActions"><h2>Recommended</h2><button data-dashboard-action="shopping">Shopping</button></div></section>
     <div id="dashboardPullIndicator"><span id="dashboardPullText"></span></div>
   </div></div></main></div></div>
   <nav class="bottom-nav" inert></nav><aside id="sidebar" aria-hidden="true" inert></aside><div id="sidebarOverlay"></div>
   <div id="loadingWrap" class="loading user-global-loading show" role="dialog" aria-modal="true" aria-labelledby="loadingTitle" aria-describedby="loadingText" aria-hidden="false"><div class="loading-box user-global-loading-card"><div class="spinner"></div><strong id="loadingTitle">Z-Pay Swift</strong><div id="loadingText">Loading your account...</div></div></div><div id="toastWrap"></div>
-  <script>window.USER_PROXY_URL='/api/user/proxy.php';window.USER_LOGIN_URL='/user/';window.USER_PAGE_KEY='dashboard';window.USER_BOOTSTRAP_ACTION='dashboard_bootstrap';window.USER_BOOTSTRAP_PARAMS={limit:50,summary_only:'1'};</script>
+  <script>window.USER_PROXY_URL='/api/user/proxy.php';window.USER_LOGIN_URL='/user/';window.USER_PAGE_KEY='dashboard';window.USER_BOOTSTRAP_ACTION='dashboard_bootstrap';window.USER_BOOTSTRAP_PARAMS={limit:50,summary_only:'1',balance_only:'1'};</script>
   <script src="/user-shell.js"></script><script src="/dashboard-page.js"></script></body></html>`;
 }
 
@@ -36,6 +36,7 @@ function sendFile(response, file, type) {
 
 async function main() {
   let dashboardCalls = 0;
+  let activityCalls = 0;
   const server = http.createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
     if (url.pathname === '/') {
@@ -61,8 +62,13 @@ async function main() {
         user: { uid: 'U-TEST', name: 'TEST USER', role: 'USER', status: 'ACTIVE', pricing_country: 'MY' },
         csrf: 'TEST-CSRF',
         wallet_summary: { pricing_country: 'MY', wallet: { display_currency: 'MYR', display_available_balance: 25, display_hold_balance: 0, rate_myr_bdt: 31.1 } },
-        request_logs: { items: [{ request_id: 'R-1' }] }
-      }), 2200);
+        request_logs: { items: [], deferred: true }
+      }), 900);
+      return;
+    }
+    if (action === 'dashboard_activity_summary') {
+      activityCalls += 1;
+      setTimeout(() => reply({ request_count: 2 }), 1800);
       return;
     }
     if (action === 'notifications_unread') return reply({ unread_count: 0 });
@@ -96,15 +102,22 @@ async function main() {
       await page.waitForFunction(() => window.UserShell?.state?.ready === true);
       await page.waitForFunction(() => document.getElementById('loadingWrap')?.getAttribute('aria-hidden') === 'true');
       assert.equal(await page.locator('#heroName').textContent(), 'TEST USER', `${width}px resolved dashboard did not render.`);
+      assert.equal(await page.locator('#heroBalancePrefix').textContent(), 'RM', `${width}px loader closed before RM currency rendered.`);
+      assert.equal(await page.locator('#heroBalance').textContent(), '25.00', `${width}px loader closed before balance rendered.`);
       assert.equal(await page.locator('#appView').evaluate((node) => node.inert), false, `${width}px dashboard stayed blocked after loading.`);
       assert.equal(await page.locator('.bottom-nav').evaluate((node) => node.inert), false, `${width}px navigation stayed blocked after loading.`);
+      assert.equal(await page.locator('#heroRequests').getAttribute('class').then((value) => value.includes('dashboard-deferred-placeholder')), true, `${width}px deferred activity placeholder disappeared too early.`);
+      assert.equal(await page.locator('#loadingWrap').getAttribute('aria-hidden'), 'true', `${width}px slow activity reopened the blocking modal.`);
+      await page.waitForFunction(() => document.getElementById('heroRequests')?.textContent === '2');
+      assert.equal(await page.locator('#heroRequests').getAttribute('class').then((value) => value.includes('dashboard-deferred-placeholder')), false, `${width}px activity placeholder stayed after render.`);
       assert.equal(await page.locator('body').textContent().then((text) => text.includes('Dashboard ready.') || text.includes('Loading account summary.')), false, `${width}px obsolete dashboard status text is visible.`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true, `${width}px dashboard overflows horizontally.`);
       await context.close();
     }
 
     assert.equal(dashboardCalls, widths.length, 'Dashboard bootstrap did not run exactly once per page load.');
-    console.log(`User dashboard cold-boot browser tests passed (${widths.length} mobile viewports, ${dashboardCalls} bootstrap requests).`);
+    assert.equal(activityCalls, widths.length, 'Dashboard activity did not run exactly once per page load.');
+    console.log(`User dashboard balance-first browser tests passed (${widths.length} mobile viewports, ${dashboardCalls} balance requests, ${activityCalls} deferred activity requests).`);
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));

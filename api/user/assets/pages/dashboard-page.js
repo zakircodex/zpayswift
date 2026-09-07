@@ -14,6 +14,7 @@
   const pullThreshold = 72;
   const pullLimit = 112;
   let refreshPromise = null;
+  let activityPromise = null;
   let actionsBound = false;
   let swipeBound = false;
   let pullStartX = 0;
@@ -69,13 +70,51 @@
     balanceLine?.classList.toggle('is-long', balanceText.length > 9);
     balanceLine?.classList.toggle('is-very-long', balanceText.length > 12);
     byId('heroHold').textContent = amount(wallet.display_hold_balance ?? wallet.hold_balance);
-    byId('heroRequests').textContent = String(Array.isArray(logs.items) ? logs.items.length : 0);
+    if (!logs.deferred) {
+      const requestCount = byId('heroRequests');
+      if (requestCount) {
+        requestCount.textContent = String(Array.isArray(logs.items) ? logs.items.length : 0);
+        requestCount.classList.remove('dashboard-deferred-placeholder', 'dashboard-placeholder');
+      }
+    }
     const displayName = String(user.name || summary.name || 'Z-Pay User');
     byId('heroName').textContent = displayName;
     byId('heroName').title = displayName;
     byId('heroRate').textContent = pricingCountry === 'MY' || currency === 'MYR'
       ? (rate > 0 ? `RM 1 = ${rate.toFixed(2)} BDT` : 'Rate unavailable')
       : 'Not applicable';
+  }
+
+  async function loadDashboardActivity(options = {}) {
+    if (activityPromise) return activityPromise;
+
+    activityPromise = (async () => {
+      const requestCount = byId('heroRequests');
+      try {
+        const data = await shell.get(
+          'dashboard_activity_summary',
+          { limit: 50 },
+          'Loading dashboard activity...',
+          { busy: false }
+        );
+        if (requestCount) requestCount.textContent = String(Math.max(0, Number(data.request_count || 0)));
+        return data;
+      } catch (error) {
+        if (requestCount) requestCount.textContent = '--';
+        if (options.reportError && !shell.isSessionError(error)) {
+          shell.toast('Dashboard activity could not be refreshed.', 'error');
+        }
+        return null;
+      } finally {
+        requestCount?.classList.remove('dashboard-deferred-placeholder', 'dashboard-placeholder');
+      }
+    })();
+
+    try {
+      return await activityPromise;
+    } finally {
+      activityPromise = null;
+    }
   }
 
   function bindActions() {
@@ -146,7 +185,8 @@
         shell.state.csrf = String(data.csrf || shell.state.csrf || '');
         window.userState = shell.state;
         renderDashboard(data);
-        await shell.loadUnread();
+        void loadDashboardActivity({ reportError: true });
+        void shell.loadUnread();
         return data;
       } catch (error) {
         if (!shell.isSessionError(error)) {
@@ -221,6 +261,7 @@
     try {
       await shell.ready;
       renderDashboard(shell.state.bootstrapData || {});
+      void loadDashboardActivity();
     } catch (_) {
       // The shared shell already presents a safe bootstrap error or redirects an expired session.
     } finally {

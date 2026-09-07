@@ -402,8 +402,11 @@ if (!($res['ok'] ?? false)) {
         'WALLET_CURRENCY_MISSING',
         'COUNTRY_CURRENCY_MISMATCH',
         'UNSUPPORTED_COUNTRY_CURRENCY',
+        'MFS_DAILY_AMOUNT_TOO_CLOSE',
     ], true)) {
         $httpStatus = 422;
+    } elseif ($code === 'MFS_DAILY_GUARD_UNAVAILABLE') {
+        $httpStatus = 503;
     } elseif (in_array($code, ['ACCOUNT_INACTIVE', 'INVALID_PIN'], true)) {
         $httpStatus = 403;
     } elseif ($code === 'USER_NOT_FOUND') {

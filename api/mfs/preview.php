@@ -746,6 +746,21 @@ if ($countryCode === 'MY' && ($amountBdt <= 0 || $amountRm <= 0)) {
     api_response(false, 'VALIDATION_ERROR', 'Valid MYR or BDT amount is required', [], 422);
 }
 
+$now = mfs_preview_now();
+if ($serviceType === 'SEND_MONEY') {
+    $dailyGuard = mfs_daily_recipient_guard_check($uid, $receiverNumber, $amountBdt, $now);
+    if (empty($dailyGuard['ok'])) {
+        $dailyCode = (string)($dailyGuard['code'] ?? 'MFS_DAILY_GUARD_UNAVAILABLE');
+        api_response(
+            false,
+            $dailyCode,
+            (string)($dailyGuard['message'] ?? 'Daily recipient safety check failed.'),
+            (array)($dailyGuard['data'] ?? []),
+            $dailyCode === 'MFS_DAILY_GUARD_UNAVAILABLE' ? 503 : 422
+        );
+    }
+}
+
 $feeBdt = 0.0;
 $feeRm = 0.0;
 $totalDebit = 0.0;
@@ -778,7 +793,6 @@ $validationMessage = $canSubmit
     : 'Insufficient available balance';
 
 $previewId = mfs_preview_make_preview_id();
-$now = mfs_preview_now();
 
 $responseData = [
     'preview_id' => $previewId,

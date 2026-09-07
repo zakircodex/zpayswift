@@ -867,6 +867,322 @@ function mfs_valid_bd_mobile(string $number): bool
     return (bool)preg_match('/^01\d{9}$/', $number);
 }
 
+function mfs_daily_recipient_min_difference_bdt(): float
+{
+    return max(0.01, mfs_round_money(mfs_const_float('MFS_DAILY_RECIPIENT_MIN_DIFFERENCE_BDT', 50.00)));
+}
+
+function mfs_daily_recipient_period(?int $ts = null): array
+{
+    $timezoneName = mfs_const_string('MFS_DAILY_RECIPIENT_TIMEZONE', 'Asia/Dhaka');
+
+    try {
+        $timezone = new DateTimeZone($timezoneName !== '' ? $timezoneName : 'Asia/Dhaka');
+    } catch (Throwable $e) {
+        $timezoneName = 'Asia/Dhaka';
+        $timezone = new DateTimeZone($timezoneName);
+    }
+
+    $date = (new DateTimeImmutable('@' . (string)($ts ?? mfs_now())))->setTimezone($timezone);
+    $start = $date->setTime(0, 0, 0);
+
+    return [
+        'day' => $start->format('Y-m-d'),
+        'timezone' => $timezoneName,
+        'starts_at' => $start->getTimestamp(),
+        'retry_after' => $start->modify('+1 day')->getTimestamp(),
+    ];
+}
+
+function mfs_daily_recipient_guard_path(string $uid, string $receiverNumber, string $day): string
+{
+    return 'MFS_DAILY_RECIPIENT_GUARDS/'
+        . trim($day)
+        . '/'
+        . trim($uid)
+        . '/'
+        . hash('sha256', mfs_clean_mobile_number($receiverNumber));
+}
+
+function mfs_daily_recipient_guard_conflict(
+    array $guard,
+    float $amountBdt,
+    string $requestId = '',
+    string $operationRef = ''
+): array
+{
+    $amountBdt = mfs_round_money($amountBdt);
+    $requestId = trim($requestId);
+    $operationRef = trim($operationRef);
+    $minimumDifference = mfs_daily_recipient_min_difference_bdt();
+    $entries = is_array($guard['entries'] ?? null) ? (array)$guard['entries'] : [];
+
+    foreach ($entries as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+
+        $existingRequestId = trim((string)($entry['request_id'] ?? ''));
+        $existingOperationRef = trim((string)($entry['operation_ref'] ?? ''));
+        $sameRequest = $requestId !== ''
+            && $existingRequestId !== ''
+            && hash_equals($existingRequestId, $requestId);
+        $sameOperation = $operationRef !== ''
+            && $existingOperationRef !== ''
+            && hash_equals($existingOperationRef, $operationRef);
+        if ($sameRequest || $sameOperation) {
+            return ['ok' => true, 'same_request' => true];
+        }
+
+        $existingAmount = mfs_round_money((float)($entry['amount_bdt'] ?? 0));
+        if ($existingAmount <= 0) {
+            continue;
+        }
+
+        if (abs($existingAmount - $amountBdt) + 0.0001 < $minimumDifference) {
+            $period = mfs_daily_recipient_period();
+            return [
+                'ok' => false,
+                'code' => 'MFS_DAILY_AMOUNT_TOO_CLOSE',
+                'message' => 'For this number today, use an amount at least BDT '
+                    . number_format($minimumDifference, 2, '.', '')
+                    . ' higher or lower than a previous request.',
+                'data' => [
+                    'minimum_difference_bdt' => $minimumDifference,
+                    'day' => (string)($guard['day'] ?? $period['day']),
+                    'timezone' => (string)($guard['timezone'] ?? $period['timezone']),
+                    'retry_after' => (int)($guard['retry_after'] ?? $period['retry_after']),
+                ],
+            ];
+        }
+    }
+
+    return ['ok' => true, 'same_request' => false];
+}
+
+function mfs_daily_recipient_guard_snapshot(string $uid, string $receiverNumber, ?int $ts = null): array
+{
+    if (!function_exists('fb_get_with_etag')) {
+        return [
+            'ok' => false,
+            'code' => 'MFS_DAILY_GUARD_UNAVAILABLE',
+            'message' => 'Daily recipient safety check is temporarily unavailable. Please try again.',
+            'data' => [],
+        ];
+    }
+
+    $period = mfs_daily_recipient_period($ts);
+    $path = mfs_daily_recipient_guard_path($uid, $receiverNumber, (string)$period['day']);
+
+    try {
+        $snapshot = fb_get_with_etag($path);
+    } catch (Throwable $e) {
+        $snapshot = [];
+    }
+
+    if (empty($snapshot['ok']) || trim((string)($snapshot['etag'] ?? '')) === '') {
+        return [
+            'ok' => false,
+            'code' => 'MFS_DAILY_GUARD_UNAVAILABLE',
+            'message' => 'Daily recipient safety check is temporarily unavailable. Please try again.',
+            'data' => [],
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'path' => $path,
+        'etag' => (string)$snapshot['etag'],
+        'guard' => is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [],
+        'period' => $period,
+    ];
+}
+
+function mfs_daily_recipient_guard_check(
+    string $uid,
+    string $receiverNumber,
+    float $amountBdt,
+    ?int $ts = null,
+    string $requestId = '',
+    string $operationRef = ''
+): array {
+    $snapshot = mfs_daily_recipient_guard_snapshot($uid, $receiverNumber, $ts);
+    if (empty($snapshot['ok'])) {
+        return $snapshot;
+    }
+
+    $conflict = mfs_daily_recipient_guard_conflict(
+        (array)$snapshot['guard'],
+        $amountBdt,
+        $requestId,
+        $operationRef
+    );
+    if (empty($conflict['ok'])) {
+        return $conflict;
+    }
+
+    return [
+        'ok' => true,
+        'same_request' => !empty($conflict['same_request']),
+        'path' => (string)$snapshot['path'],
+        'period' => (array)$snapshot['period'],
+    ];
+}
+
+function mfs_daily_recipient_guard_claim(
+    string $uid,
+    string $receiverNumber,
+    float $amountBdt,
+    string $requestId,
+    string $provider,
+    string $operationRef,
+    ?int $ts = null
+): array {
+    if (!function_exists('fb_put_if_match')) {
+        return [
+            'ok' => false,
+            'code' => 'MFS_DAILY_GUARD_UNAVAILABLE',
+            'message' => 'Daily recipient safety check is temporarily unavailable. Please try again.',
+            'data' => [],
+        ];
+    }
+
+    $requestId = trim($requestId);
+    $operationRef = trim($operationRef);
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $snapshot = mfs_daily_recipient_guard_snapshot($uid, $receiverNumber, $ts);
+        if (empty($snapshot['ok'])) {
+            return $snapshot;
+        }
+
+        $guard = (array)$snapshot['guard'];
+        $conflict = mfs_daily_recipient_guard_conflict($guard, $amountBdt, $requestId, $operationRef);
+        if (empty($conflict['ok'])) {
+            return $conflict;
+        }
+        if (!empty($conflict['same_request'])) {
+            return [
+                'ok' => true,
+                'claimed' => false,
+                'duplicate' => true,
+                'path' => (string)$snapshot['path'],
+                'request_id' => $requestId,
+                'period' => (array)$snapshot['period'],
+            ];
+        }
+
+        $period = (array)$snapshot['period'];
+        $entries = is_array($guard['entries'] ?? null) ? (array)$guard['entries'] : [];
+        $entryKey = hash('sha256', $operationRef !== '' ? $operationRef : $requestId);
+        $entries[$entryKey] = [
+            'request_id' => $requestId,
+            'operation_ref' => $operationRef,
+            'amount_bdt' => mfs_round_money($amountBdt),
+            'provider' => mfs_normalize_provider($provider),
+            'created_at' => $ts ?? mfs_now(),
+        ];
+
+        $next = [
+            'day' => (string)$period['day'],
+            'timezone' => (string)$period['timezone'],
+            'retry_after' => (int)$period['retry_after'],
+            'receiver_hash' => hash('sha256', mfs_clean_mobile_number($receiverNumber)),
+            'minimum_difference_bdt' => mfs_daily_recipient_min_difference_bdt(),
+            'entries' => $entries,
+            'updated_at' => $ts ?? mfs_now(),
+        ];
+
+        try {
+            $write = fb_put_if_match((string)$snapshot['path'], $next, (string)$snapshot['etag']);
+        } catch (Throwable $e) {
+            $write = [];
+        }
+
+        if (!empty($write['ok'])) {
+            return [
+                'ok' => true,
+                'claimed' => true,
+                'duplicate' => false,
+                'path' => (string)$snapshot['path'],
+                'request_id' => $requestId,
+                'entry_key' => $entryKey,
+                'period' => $period,
+            ];
+        }
+
+        if ((int)($write['status'] ?? 0) !== 412) {
+            break;
+        }
+    }
+
+    return [
+        'ok' => false,
+        'code' => 'MFS_DAILY_GUARD_UNAVAILABLE',
+        'message' => 'Daily recipient safety check is temporarily unavailable. Please try again.',
+        'data' => [],
+    ];
+}
+
+function mfs_daily_recipient_guard_release(array $claim): bool
+{
+    if (empty($claim['claimed']) || !function_exists('fb_get_with_etag') || !function_exists('fb_put_if_match')) {
+        return false;
+    }
+
+    $path = trim((string)($claim['path'] ?? ''));
+    $entryKey = trim((string)($claim['entry_key'] ?? ''));
+    $requestId = trim((string)($claim['request_id'] ?? ''));
+    if ($path === '' || $entryKey === '' || $requestId === '') {
+        return false;
+    }
+
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        try {
+            $snapshot = fb_get_with_etag($path);
+        } catch (Throwable $e) {
+            return false;
+        }
+        if (empty($snapshot['ok']) || trim((string)($snapshot['etag'] ?? '')) === '') {
+            return false;
+        }
+
+        $guard = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+        $entries = is_array($guard['entries'] ?? null) ? (array)$guard['entries'] : [];
+        $entry = is_array($entries[$entryKey] ?? null) ? (array)$entries[$entryKey] : [];
+        if (trim((string)($entry['request_id'] ?? '')) !== $requestId) {
+            return true;
+        }
+
+        unset($entries[$entryKey]);
+        $guard['entries'] = $entries;
+        $guard['updated_at'] = mfs_now();
+
+        try {
+            $write = fb_put_if_match($path, $guard, (string)$snapshot['etag']);
+        } catch (Throwable $e) {
+            return false;
+        }
+        if (!empty($write['ok'])) {
+            return true;
+        }
+        if ((int)($write['status'] ?? 0) !== 412) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+function mfs_daily_recipient_guard_required(string $source, array $actor = []): bool
+{
+    $role = strtoupper(trim((string)($actor['role'] ?? '')));
+    if (in_array($role, ['ADMIN', 'SUBADMIN'], true)) {
+        return false;
+    }
+
+    return in_array(strtoupper(trim($source)), ['USER_API', 'USER_PANEL', 'APP'], true);
+}
+
 /* =========================================================
    Config Helpers
 ========================================================= */
@@ -2898,6 +3214,9 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         ]);
     }
 
+    $dailyGuardRequired = $serviceType === 'SEND_MONEY'
+        && mfs_daily_recipient_guard_required($source, $actor);
+
     $requestId = mfs_make_request_id();
     $now = mfs_now();
     $walletCurrency = (string)$amounts['wallet_currency'];
@@ -2925,6 +3244,24 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
             (string)floor($now / 120),
         ]);
     $operationRef = 'MFS_CREATE:' . hash('sha256', $operationSeed);
+    if ($dailyGuardRequired) {
+        $dailyCheck = mfs_daily_recipient_guard_check(
+            $uid,
+            $receiverNumber,
+            (float)$amounts['amount_bdt'],
+            $now,
+            '',
+            $operationRef
+        );
+        if (empty($dailyCheck['ok'])) {
+            return [
+                'ok' => false,
+                'code' => (string)($dailyCheck['code'] ?? 'MFS_DAILY_GUARD_UNAVAILABLE'),
+                'message' => (string)($dailyCheck['message'] ?? 'Daily recipient safety check failed.'),
+                'data' => (array)($dailyCheck['data'] ?? []),
+            ];
+        }
+    }
     $operation = wallet_financial_operation_begin(
         $operationRef,
         'MFS_CREATE_HOLD',
@@ -2963,6 +3300,32 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
     $financialClaim = (array)$operation['claim'];
     $requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
 
+    $dailyGuardClaim = [];
+    if ($dailyGuardRequired) {
+        $dailyGuardClaim = mfs_daily_recipient_guard_claim(
+            $uid,
+            $receiverNumber,
+            (float)$amounts['amount_bdt'],
+            $requestId,
+            $provider,
+            $operationRef,
+            $now
+        );
+        if (empty($dailyGuardClaim['ok'])) {
+            wallet_financial_operation_mark_failed(
+                $financialClaim,
+                (string)($dailyGuardClaim['code'] ?? 'MFS_DAILY_GUARD_UNAVAILABLE'),
+                (string)($dailyGuardClaim['message'] ?? 'Daily recipient safety check failed')
+            );
+            return [
+                'ok' => false,
+                'code' => (string)($dailyGuardClaim['code'] ?? 'MFS_DAILY_GUARD_UNAVAILABLE'),
+                'message' => (string)($dailyGuardClaim['message'] ?? 'Daily recipient safety check failed.'),
+                'data' => (array)($dailyGuardClaim['data'] ?? []),
+            ];
+        }
+    }
+
     $hold = mfs_hold_wallet(
         $uid,
         $totalDebit,
@@ -2994,6 +3357,9 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
 
     if (empty($hold['ok'])) {
         wallet_financial_operation_mark_failed($financialClaim, (string)($hold['code'] ?? 'SERVER_ERROR'), (string)($hold['message'] ?? 'Failed to hold wallet balance'));
+        if (!empty($dailyGuardClaim['claimed'])) {
+            mfs_daily_recipient_guard_release($dailyGuardClaim);
+        }
         return [
             'ok' => false,
             'code' => (string)($hold['code'] ?? 'SERVER_ERROR'),
@@ -3076,6 +3442,12 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
 
         'created_by_uid' => (string)($actor['uid'] ?? $uid),
         'created_by_role' => (string)($actor['role'] ?? mfs_user_role($user)),
+
+        'daily_recipient_day' => (string)($dailyGuardClaim['period']['day'] ?? ''),
+        'daily_recipient_timezone' => (string)($dailyGuardClaim['period']['timezone'] ?? ''),
+        'daily_recipient_min_difference_bdt' => $dailyGuardRequired
+            ? mfs_daily_recipient_min_difference_bdt()
+            : 0.0,
 
         'created_at' => $now,
         'updated_at' => $now,

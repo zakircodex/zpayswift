@@ -80,12 +80,16 @@ dashboard_expect(
 dashboard_expect(
     str_contains($dashboard, "'bootstrap_action' => 'dashboard_bootstrap'")
     && str_contains($dashboard, "'summary_only' => '1'")
-    && str_contains($proxy, "'history_complete' => !\$summaryOnly"),
-    'Dashboard does not reuse the lightweight bootstrap contract'
+    && str_contains($dashboard, "'balance_only' => '1'")
+    && str_contains($proxy, "'deferred' => \$balanceOnly")
+    && str_contains($proxy, "case 'dashboard_activity_summary':"),
+    'Dashboard does not use the balance-first bootstrap contract'
 );
 dashboard_expect(
     str_contains($pageJs, 'shell.state.bootstrapData')
     && substr_count($pageJs, "'dashboard_bootstrap'") === 1
+    && str_contains($pageJs, "'dashboard_activity_summary'")
+    && str_contains($pageJs, 'void loadDashboardActivity()')
     && str_contains($pageJs, 'if (refreshPromise) return refreshPromise;')
     && !str_contains($pageJs, 'transfer_create')
     && !str_contains($pageJs, 'add_money_submit'),
@@ -187,6 +191,12 @@ dashboard_expect(
     && str_contains($shellJs, 'state.bootstrapData = data')
     && str_contains($shellJs, 'loadUnread();'),
     'Shared dashboard bootstrap or notification badge wiring is missing'
+);
+dashboard_expect(
+    str_contains($dashboard, 'dashboard-deferred-placeholder')
+    && str_contains($pageCss, '.user-dashboard-page .dashboard-deferred-placeholder')
+    && str_contains($pageJs, "classList.remove('dashboard-deferred-placeholder', 'dashboard-placeholder')"),
+    'Dashboard activity does not retain a polished non-blocking placeholder after balance render'
 );
 
 echo "User Dashboard UI tests passed ({$tests} assertions).\n";

@@ -29,6 +29,7 @@ $page = user_page_config([
     'bootstrap_params' => [
         'limit' => 50,
         'summary_only' => '1',
+        'balance_only' => '1',
     ],
 ]);
 user_page_begin($page);
@@ -63,7 +64,7 @@ user_page_begin($page);
       </div>
       <div class="hero-mini">
         <div class="hero-mini-label">This Month</div>
-        <div class="hero-mini-value">Requests: <span id="heroRequests" class="dashboard-placeholder dashboard-placeholder-compact">--</span></div>
+        <div class="hero-mini-value">Requests: <span id="heroRequests" class="dashboard-placeholder dashboard-placeholder-compact dashboard-deferred-placeholder">--</span></div>
       </div>
       <div class="hero-mini">
         <div class="hero-mini-label">Hello</div>
