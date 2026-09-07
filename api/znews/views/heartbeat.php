@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/views.php';
+require_once dirname(__DIR__) . '/lib/adsterra_web_ads.php';
 
 api_require_method('POST');
 $body = api_read_json_body();
@@ -18,6 +19,11 @@ if ($viewToken === '' || strlen($viewToken) > 160) {
 }
 
 $result = znews_view_heartbeat($viewId, $viewToken);
+$adDelivery = !empty($body['request_ad'])
+    ? znews_adsterra_web_delivery_after_dwell(
+        is_array($result['ad_context'] ?? null) ? (array)$result['ad_context'] : []
+    )
+    : ['enabled' => false, 'provider' => 'ADSTERRA', 'reason' => 'AD_NOT_REQUESTED'];
 api_response(
     !empty($result['ok']),
     (string)($result['code'] ?? 'ZNEWS_VIEW_HEARTBEAT_FAILED'),
@@ -28,6 +34,7 @@ api_response(
         'heartbeat_count' => isset($result['heartbeat_count']) ? (int)$result['heartbeat_count'] : null,
         'retry_after_seconds' => isset($result['retry_after_seconds']) ? (int)$result['retry_after_seconds'] : null,
         'server_time' => isset($result['server_time']) ? (int)$result['server_time'] : null,
+        'ad_delivery' => $adDelivery,
     ], static fn($value) => $value !== null),
     (int)($result['http_status'] ?? (!empty($result['ok']) ? 200 : 500))
 );

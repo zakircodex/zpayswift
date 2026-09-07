@@ -57,8 +57,9 @@ $ads = self_view_read($root, 'znews/assets/znews-ads.js');
 $reader = self_view_read($root, 'znews/assets/znews.js');
 $viewPolicy = self_view_read($root, 'api/znews/lib/creator_view_policy.php');
 self_view_expect(str_contains($api, 'authenticated: this.isAuthenticated()'), 'Authenticated reader does not bind its session to view start.');
-self_view_expect(str_contains($viewPolicy, "'viewer_class' => 'CREATOR'") && str_contains($viewPolicy, "'ad_eligible' => false"), 'Server policy does not suppress all authenticated creator ads.');
-self_view_expect(str_contains($ads, 'authenticatedCreator()') && str_contains($ads, 'window.ZNEWS_AUTH_VERIFIED === true'), 'Reader ad renderer does not suppress verified creators.');
-self_view_expect(str_contains($reader, 'await Promise.resolve(window.ZNEWS_AUTH_READY)') && str_contains($reader, 'hasVerifiedSession()'), 'Post reader can mount an ad before creator verification finishes.');
+self_view_expect(str_contains($viewPolicy, "'ad_eligible' => !\$selfView") && str_contains($viewPolicy, 'SELF_VIEW_NO_ADS'), 'Server policy does not distinguish self-view from another creator view.');
+self_view_expect(!str_contains($ads, 'authenticatedCreator()') && str_contains($ads, 'safeDelivery(delivery, expectedSlot)'), 'Renderer still replaces server ownership policy with a blanket creator block.');
+self_view_expect(str_contains($reader, 'await Promise.resolve(window.ZNEWS_AUTH_READY)') && str_contains($reader, 'api.startView(postId'), 'Post reader does not settle creator identity before starting its view.');
+self_view_expect(str_contains($reader, 'result.data?.ad_delivery') && str_contains($reader, 'api.heartbeatView'), 'Post reader can mount before the server heartbeat gate.');
 
 echo "Z News self-view ad protection tests passed ({$assertions} assertions).\n";

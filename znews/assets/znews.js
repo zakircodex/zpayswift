@@ -92,6 +92,10 @@
   const observedMediaCards = new WeakSet();
   const feedMediaCache = new Map();
   const feedMediaObjectUrls = new Set();
+  const feedAdRequests = new WeakMap();
+  const feedAdSlotsByAnchor = new WeakMap();
+  let feedAdObserver = null;
+  const FEED_AD_INTERVAL = 5;
 
   function scheduleRequest(priority, task, options = {}) {
     if (requestScheduler && typeof requestScheduler.schedule === 'function') {
@@ -769,7 +773,60 @@
       window.requestAnimationFrame(() => markBoot('first_text_paint'));
     }
     bindPostActions(card);
+    if ((index + 1) % FEED_AD_INTERVAL === 0) {
+      const slot = document.createElement('div');
+      slot.className = 'ad-slot feed-ad-slot';
+      slot.dataset.znewsAdSlot = 'post_inline';
+      slot.dataset.adAnchorPost = text(post.post_id);
+      slot.hidden = true;
+      card.insertAdjacentElement('afterend', slot);
+      observeFeedAd(slot, card);
+    }
     showAnnouncement('');
+  }
+
+  async function requestFeedAd(slot) {
+    if (!(slot instanceof HTMLElement) || feedAdRequests.has(slot)) return;
+    const postId = text(slot.dataset.adAnchorPost).trim();
+    const feedSessionId = text(window.ZNewsFairFeed?.sessionId).trim();
+    if (!postId || !feedSessionId) return;
+
+    const request = (async () => {
+      try {
+        await Promise.resolve(window.ZNEWS_AUTH_READY).catch(() => false);
+        if (!document.contains(slot)) return;
+        const result = await scheduleRequest(
+          requestPriority.FEED,
+          ({ signal }) => api.feedAdDelivery(feedSessionId, postId, { signal }),
+          { key: `feed-ad:${feedSessionId}:${postId}`, preemptible: false }
+        );
+        if (!document.contains(slot)) return;
+        if (!window.ZNewsAds?.mount(slot, result.data?.ad_delivery || {})) slot.remove();
+      } catch (_error) {
+        slot.remove();
+      }
+    })().finally(() => feedAdRequests.delete(slot));
+    feedAdRequests.set(slot, request);
+    return request;
+  }
+
+  function observeFeedAd(slot, anchorCard) {
+    if (!('IntersectionObserver' in window)) {
+      void requestFeedAd(slot);
+      return;
+    }
+    feedAdSlotsByAnchor.set(anchorCard, slot);
+    if (!feedAdObserver) {
+      feedAdObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          feedAdObserver.unobserve(entry.target);
+          const targetSlot = feedAdSlotsByAnchor.get(entry.target);
+          if (targetSlot) void requestFeedAd(targetSlot);
+        });
+      }, { root: null, rootMargin: '120px 0px', threshold: 0.1 });
+    }
+    feedAdObserver.observe(anchorCard);
   }
 
   function renderInitialFeedError(error) {
@@ -987,21 +1044,27 @@
     state.viewStartingPostId = postId;
     const idempotencyKey = api.idempotencyKey(`view-${postId}`);
     try {
+      await Promise.resolve(window.ZNEWS_AUTH_READY).catch(() => false);
       await completeView();
       const result = await scheduleRequest(
-        requestPriority.ANALYTICS,
+        requestPriority.FEED,
         ({ signal }) => api.startView(postId, idempotencyKey, { signal }),
-        { key: `view-start:${idempotencyKey}`, preemptible: true }
+        { key: `view-start:${idempotencyKey}`, preemptible: false }
       );
       const session = result.data?.session || {};
       if (!session.view_id || !session.view_token) return;
-      const adDelivery = result.data?.ad_delivery || {};
-      const heartbeatDelay = Math.max(3000, Number(session.heartbeat_after_seconds || 5) * 1000);
+      const dwellSeconds = Math.max(5, Number(result.data?.ad_policy?.dwell_seconds || 5));
+      const heartbeatDelay = Math.max(
+        dwellSeconds * 1000,
+        Number(session.heartbeat_after_seconds || 5) * 1000
+      );
       state.viewSession = {
         id: session.view_id,
         postId,
         token: session.view_token,
         closing: false,
+        adMounted: false,
+        suppressAd: false,
         heartbeatPending: null,
         completionPending: null,
         timer: window.setTimeout(() => {
@@ -1012,7 +1075,6 @@
         }, heartbeatDelay),
         interval: 0
       };
-      void mountReaderAd(postId, adDelivery);
     } catch (_error) {
       state.viewSession = null;
     } finally {
@@ -1024,10 +1086,20 @@
     if (!session || session.closing || document.visibilityState !== 'visible') return null;
     if (session.heartbeatPending) return session.heartbeatPending;
     session.heartbeatPending = scheduleRequest(
-      requestPriority.ANALYTICS,
-      ({ signal }) => api.heartbeatView(session.id, session.token, { signal }),
-      { key: `view-heartbeat:${session.id}`, preemptible: true }
+      requestPriority.FEED,
+      ({ signal }) => api.heartbeatView(session.id, session.token, {
+        signal,
+        requestAd: !session.suppressAd && !session.adMounted
+      }),
+      { key: `view-heartbeat:${session.id}`, preemptible: false }
     )
+      .then(async (result) => {
+        const delivery = result.data?.ad_delivery || {};
+        if (!session.adMounted && delivery.enabled === true) {
+          session.adMounted = await mountReaderAd(session.postId, delivery) === true;
+        }
+        return result;
+      })
       .catch(() => null)
       .finally(() => { session.heartbeatPending = null; });
     return session.heartbeatPending;
@@ -1039,6 +1111,7 @@
     if (session.completionPending) return session.completionPending;
     session.completionPending = (async () => {
       session.closing = true;
+      session.suppressAd = true;
       window.clearTimeout(session.timer);
       window.clearInterval(session.interval);
       if (session.heartbeatPending) await session.heartbeatPending;
@@ -1136,23 +1209,25 @@
   async function mountReaderAd(postId, delivery) {
     try {
       await Promise.resolve(window.ZNEWS_AUTH_READY).catch(() => false);
-      if (state.currentPostId !== postId || !els.postDialog.open || hasVerifiedSession()) return;
-      await scheduleRequest(
-        requestPriority.ANALYTICS,
-        () => {
-          if (state.currentPostId !== postId || !els.postDialog.open || hasVerifiedSession()) return false;
-          const slot = document.createElement('div');
-          slot.className = 'ad-slot';
-          slot.dataset.znewsAdSlot = 'post_reader';
-          slot.hidden = true;
-          els.postDetail.appendChild(slot);
-          if (!window.ZNewsAds.mount(slot, delivery)) slot.remove();
-          return true;
-        },
-        { key: `ad-delivery:${postId}`, preemptible: true }
-      );
+      if (state.currentPostId !== postId || !els.postDialog.open) return false;
+      const existing = els.postDetail.querySelector('[data-znews-ad-slot="post_reader"]');
+      if (existing) return existing.querySelector('iframe') !== null;
+      const slot = document.createElement('div');
+      slot.className = 'ad-slot post-reader-ad-slot';
+      slot.dataset.znewsAdSlot = 'post_reader';
+      slot.hidden = true;
+      const postCard = els.postDetail.querySelector('.post-card');
+      const anchor = postCard?.querySelector('.post-copy')
+        || postCard?.querySelector('.post-title')
+        || postCard?.querySelector('.post-head');
+      if (anchor) anchor.insertAdjacentElement('afterend', slot);
+      else els.postDetail.appendChild(slot);
+      const mounted = window.ZNewsAds?.mount(slot, delivery) === true;
+      if (!mounted) slot.remove();
+      return mounted;
     } catch (_error) {
       // Ad delivery is optional and must never affect the reader.
+      return false;
     }
   }
 

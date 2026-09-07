@@ -184,6 +184,11 @@ if ($oldAgent === null) {
 } else {
     $_SERVER['HTTP_USER_AGENT'] = $oldAgent;
 }
+$selfGate = znews_creator_view_gate('U1', 'POST100', 'self-view-test', true);
+completion_expect(empty($selfGate['ad_eligible']) && ($selfGate['reason'] ?? '') === 'SELF_VIEW_NO_ADS', 'Creator self-view must remain ad blocked.');
+$otherCreatorGate = znews_creator_view_gate('U2', 'POST100', 'other-creator-view-test', false);
+completion_expect(!empty($otherCreatorGate['ad_eligible']), 'Another creator must be allowed to receive a server-gated ad.');
+completion_expect(empty($otherCreatorGate['revenue_share_eligible']), 'Authenticated creator traffic must remain excluded from revenue-share eligibility.');
 
 $web = (string)file_get_contents($root . '/znews/assets/znews.js');
 $index = (string)file_get_contents($root . '/znews/index.html');

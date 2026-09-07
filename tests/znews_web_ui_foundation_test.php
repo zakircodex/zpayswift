@@ -137,10 +137,10 @@ check(str_contains($app, 'await completeView()'), 'View completion guard is miss
 $viewStart = contents($root . '/api/znews/views/start.php');
 $viewPolicy = contents($root . '/api/znews/lib/creator_view_policy.php');
 check(str_contains($viewStart, "'ad_policy'"), 'Server ad-policy response is missing');
-check(str_contains($viewStart, "'ad_delivery' => \$adDelivery"), 'Signed Adsterra delivery is missing');
-check(str_contains($viewStart, 'znews_creator_view_gate($viewerUid, $postId, $idempotencyKey)'), 'Retry-safe guest policy is not wired');
+check(str_contains($viewStart, "'ad_delivery' => \$adDelivery"), 'Deferred Adsterra delivery state is missing');
+check(str_contains($viewStart, 'znews_creator_view_gate(') && str_contains($viewStart, "!empty(\$result['session']['self_view'])"), 'Retry-safe owner-aware policy is not wired');
 check(str_contains($viewPolicy, "'viewer_class' => 'CREATOR'"), 'Creator viewer class is missing');
-check(str_contains($viewPolicy, "'ad_eligible' => false"), 'Authenticated creators can still qualify for ads');
+check(str_contains($viewPolicy, "'ad_eligible' => !\$selfView") && str_contains($viewPolicy, 'SELF_VIEW_NO_ADS'), 'Creator self-view ad protection is missing');
 check(str_contains($viewPolicy, 'GUEST_VIEW_WINDOW_LIMIT_EXCEEDED'), 'Guest spam state is missing');
 check(str_contains($viewPolicy, "'events' => \$events"), 'Guest event idempotency ledger is missing');
 

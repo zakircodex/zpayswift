@@ -117,6 +117,7 @@ $publicEndpoints = [
     'api/znews/views/start.php',
     'api/znews/views/heartbeat.php',
     'api/znews/views/complete.php',
+    'api/znews/ads/feed.php',
 ];
 foreach ($publicEndpoints as $relative) {
     $source = znews_e2e_read($root, $relative);

@@ -210,7 +210,8 @@ function znews_guest_view_window_claim(
 function znews_creator_view_gate(
     string $viewerUid,
     string $postId,
-    string $idempotencyKey
+    string $idempotencyKey,
+    bool $selfView = false
 ): array {
     $viewerUid = trim($viewerUid);
     $userAgent = strtolower(trim((string)($_SERVER['HTTP_USER_AGENT'] ?? '')));
@@ -231,14 +232,14 @@ function znews_creator_view_gate(
     if ($viewerUid !== '') {
         return [
             'viewer_class' => 'CREATOR',
-            'ad_eligible' => false,
+            'ad_eligible' => !$selfView,
             'revenue_share_eligible' => false,
             'spam' => false,
             'count' => 0,
             'limit' => znews_guest_view_window_limit(),
             'window_seconds' => znews_guest_view_window_seconds(),
             'next_allowed_at' => 0,
-            'reason' => 'AUTHENTICATED_CREATOR_NO_ADS',
+            'reason' => $selfView ? 'SELF_VIEW_NO_ADS' : '',
             'idempotent_replay' => false,
         ];
     }

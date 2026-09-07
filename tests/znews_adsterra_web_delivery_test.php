@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $assertions = 0;
+$cooldownRows = [];
 
 function adsterra_web_expect(bool $condition, string $message): void
 {
@@ -12,6 +13,19 @@ function adsterra_web_expect(bool $condition, string $message): void
         fwrite(STDERR, "FAIL: {$message}\n");
         exit(1);
     }
+}
+
+function fb_get_with_etag(string $path): array
+{
+    global $cooldownRows;
+    return ['ok' => true, 'status' => 200, 'etag' => '"test"', 'value' => $cooldownRows[$path] ?? null];
+}
+
+function fb_put_if_match(string $path, $value, string $etag): array
+{
+    global $cooldownRows;
+    $cooldownRows[$path] = $value;
+    return ['ok' => true, 'status' => 200, 'etag' => '"test-next"'];
 }
 
 putenv('ADSTERRA_ZSKY24_WEB_ADS_ENABLED=1');
@@ -57,14 +71,25 @@ adsterra_web_expect(!empty($verified['ok']), 'Fresh delivery permit did not veri
 adsterra_web_expect(($verified['payload']['view'] ?? '') === 'VIEW_TEST_1', 'Permit lost its canonical view binding.');
 adsterra_web_expect(($verified['payload']['post'] ?? '') === 'POST_TEST_1', 'Permit lost its canonical post binding.');
 
+$inlineDelivery = znews_adsterra_web_delivery($session, $guestGate, 1000, 'post_inline');
+adsterra_web_expect(!empty($inlineDelivery['enabled']) && ($inlineDelivery['slot'] ?? '') === 'post_inline', 'Server-gated inline placement was not issued.');
+$inlineQuery = parse_url((string)$inlineDelivery['frame_url'], PHP_URL_QUERY);
+parse_str(is_string($inlineQuery) ? $inlineQuery : '', $inlineParameters);
+$inlineVerified = znews_adsterra_web_verify_permit((string)($inlineParameters['permit'] ?? ''), 1050);
+adsterra_web_expect(($inlineVerified['payload']['slot'] ?? '') === 'post_inline', 'Inline permit lost its slot binding.');
+
 $tampered = substr($permit, 0, -1) . (substr($permit, -1) === 'a' ? 'b' : 'a');
 adsterra_web_expect(empty(znews_adsterra_web_verify_permit($tampered, 1050)['ok']), 'Tampered permit was accepted.');
 adsterra_web_expect(empty(znews_adsterra_web_verify_permit($permit, 1201)['ok']), 'Expired permit was accepted.');
 
 $creator = znews_adsterra_web_delivery($session, ['viewer_class' => 'CREATOR', 'ad_eligible' => false], 1000);
+$otherCreator = znews_adsterra_web_delivery($session, ['viewer_class' => 'CREATOR', 'ad_eligible' => true], 1000);
+$selfCreator = znews_adsterra_web_delivery($session + ['self_view' => true], ['viewer_class' => 'CREATOR', 'ad_eligible' => true], 1000);
 $android = znews_adsterra_web_delivery($session, ['viewer_class' => 'ANDROID_APP', 'ad_eligible' => false], 1000);
 $blocked = znews_adsterra_web_delivery($session, ['viewer_class' => 'GUEST', 'ad_eligible' => false, 'reason' => 'GUEST_VIEW_WINDOW_LIMIT_EXCEEDED'], 1000);
 adsterra_web_expect(empty($creator['enabled']), 'Authenticated creator received an ad permit.');
+adsterra_web_expect(!empty($otherCreator['enabled']), 'A creator viewing another creator post did not receive a permit.');
+adsterra_web_expect(empty($selfCreator['enabled']), 'A creator viewing their own post received a permit.');
 adsterra_web_expect(empty($android['enabled']), 'Android app received a Web ad permit.');
 adsterra_web_expect(empty($blocked['enabled']), 'Spam-blocked guest received an ad permit.');
 
@@ -87,6 +112,25 @@ adsterra_web_expect(str_contains($frame, 'id="container-0123456789abcdef01234567
 adsterra_web_expect(str_contains($frame, 'znews:adsterra-native-size'), 'Native responsive-height bridge is missing.');
 adsterra_web_expect(!str_contains($frame, 'publisher-token-must-never-leak'), 'Publisher API token leaked into the frame.');
 
+$dwellSession = [
+    'view_id' => 'VIEW_DWELL_1',
+    'post_id' => 'POST_DWELL_1',
+    'viewer_uid' => '',
+    'fingerprint_hash' => 'fingerprint-hash-1',
+    'viewer_class' => 'GUEST',
+    'ad_eligible' => true,
+    'self_view' => false,
+    'active_seconds' => 4,
+];
+adsterra_web_expect(empty(znews_adsterra_web_delivery_after_dwell($dwellSession, 'post_reader', 2000)['enabled']), 'Ad was issued before five active seconds.');
+$dwellSession['active_seconds'] = 5;
+$firstDwellDelivery = znews_adsterra_web_delivery_after_dwell($dwellSession, 'post_reader', 2000);
+adsterra_web_expect(!empty($firstDwellDelivery['enabled']), 'Five-second eligible reader did not receive an ad.');
+$cooldownDelivery = znews_adsterra_web_delivery_after_dwell(array_merge($dwellSession, ['view_id' => 'VIEW_DWELL_2']), 'post_reader', 2200);
+adsterra_web_expect(empty($cooldownDelivery['enabled']) && ($cooldownDelivery['reason'] ?? '') === 'AD_POST_COOLDOWN_ACTIVE', 'Same viewer/post was not capped for five minutes.');
+$afterCooldown = znews_adsterra_web_delivery_after_dwell(array_merge($dwellSession, ['view_id' => 'VIEW_DWELL_3']), 'post_reader', 2300);
+adsterra_web_expect(!empty($afterCooldown['enabled']), 'Same viewer/post remained blocked after the five-minute cooldown.');
+
 putenv('ADSTERRA_ZSKY24_POST_READER_SCRIPT_URL=https://ads.example.test/fedcba9876543210fedcba9876543210/invoke.js');
 adsterra_web_expect(empty(znews_adsterra_web_placement()['ok']), 'Mismatched Native script key was accepted.');
 
@@ -106,20 +150,30 @@ adsterra_web_expect(empty(znews_adsterra_web_placement()['ok']), 'Unapproved ad 
 putenv('ADSTERRA_ZSKY24_WEB_ALLOWED_SCRIPT_HOSTS=ads.example.test');
 
 $startSource = (string)file_get_contents($root . '/api/znews/views/start.php');
+$heartbeatSource = (string)file_get_contents($root . '/api/znews/views/heartbeat.php');
+$feedAdSource = (string)file_get_contents($root . '/api/znews/ads/feed.php');
 $frameSource = (string)file_get_contents($root . '/api/znews/public/ad_frame.php');
 $webSource = (string)file_get_contents($root . '/znews/assets/znews-ads.js');
 $appSource = (string)file_get_contents($root . '/znews/assets/znews.js');
 $configSource = (string)file_get_contents($root . '/znews/assets/znews-config.js');
+$znewsHeaders = (string)file_get_contents($root . '/znews/.htaccess');
 
-adsterra_web_expect(str_contains($startSource, "'ad_delivery' => \$adDelivery"), 'View start does not return server-gated delivery.');
+adsterra_web_expect(str_contains($startSource, 'AD_DWELL_REQUIRED') && !str_contains($startSource, 'znews_adsterra_web_delivery('), 'View start still issues an ad before the dwell gate.');
+adsterra_web_expect(str_contains($heartbeatSource, 'znews_adsterra_web_delivery_after_dwell') && str_contains($heartbeatSource, "'ad_delivery' => \$adDelivery"), 'Heartbeat does not return the server-verified ad delivery.');
+adsterra_web_expect(str_contains($feedAdSource, 'znews_feed_load_session') && str_contains($feedAdSource, '$selfView') && str_contains($feedAdSource, "'post_inline'"), 'Inline feed endpoint lacks session, ownership, or slot enforcement.');
+adsterra_web_expect(str_contains($feedAdSource, 'znews_optional_creator_uid()') && !str_contains($feedAdSource, "\$body['creator_uid']"), 'Inline feed endpoint trusts a client-supplied creator identity.');
 adsterra_web_expect(str_contains($frameSource, "znews_adsterra_web_frame_ancestors()") && !str_contains($frameSource, 'X-Frame-Options: SAMEORIGIN'), 'Ad frame is not constrained to reciprocal trusted parent origins.');
 adsterra_web_expect(str_contains($webSource, "provider: 'ADSTERRA'") && !str_contains($webSource, 'INMOBI'), 'InMobi remains in the active Web adapter.');
 adsterra_web_expect(str_contains($webSource, 'allow-top-navigation-by-user-activation') && str_contains($webSource, 'allow-same-origin'), 'Cross-origin ad frame cannot run the approved provider runtime.');
 adsterra_web_expect(str_contains($webSource, 'event.source !== frame.contentWindow') && str_contains($webSource, 'data.channel !== safe.resizeChannel'), 'Ad resize messages are not source-and-nonce bound.');
-adsterra_web_expect(!str_contains($appSource, "dataset.znewsAdSlot = 'post_inline'"), 'Ungated feed ad insertion remains active.');
+adsterra_web_expect(str_contains($appSource, "dataset.znewsAdSlot = 'post_inline'") && str_contains($appSource, 'FEED_AD_INTERVAL = 5'), 'Five-post server-gated feed cadence is missing.');
+adsterra_web_expect(str_contains($appSource, 'result.data?.ad_delivery') && str_contains($appSource, 'heartbeatDelay'), 'Reader does not wait for heartbeat delivery.');
+adsterra_web_expect(preg_match('/requestPriority\.FEED,\s*\(\{ signal \}\) => api\.heartbeatView/s', $appSource) === 1, 'Five-second reader heartbeat can still wait behind media analytics.');
+adsterra_web_expect(str_contains($appSource, "slot.className = 'ad-slot post-reader-ad-slot'") && str_contains($appSource, "querySelector('.post-copy')"), 'Reader ad remains detached below the complete post card.');
 adsterra_web_expect(!str_contains($appSource, 'mountAll('), 'Legacy eager ad mounting remains active.');
 adsterra_web_expect(str_contains($configSource, "mode: 'SERVER_GATED'") && !str_contains($configSource, "provider: 'NONE'"), 'Adsterra server-gated client mode is not active.');
 adsterra_web_expect(!str_contains($configSource, "document.querySelectorAll('.ad-slot')"), 'Revenue UI observer still deletes live ad slots.');
+adsterra_web_expect(str_contains($znewsHeaders, "frame-src 'self' https://zsky24.com https://www.zsky24.com"), 'Z Sky CSP still blocks its isolated ad frame.');
 
 foreach ([
     'ADSTERRA_ZSKY24_WEB_ADS_ENABLED',

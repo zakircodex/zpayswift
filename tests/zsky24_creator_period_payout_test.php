@@ -64,14 +64,14 @@ zsky_creator_expect(str_contains($viewPolicy, ': 300;'), 'five-minute guest view
 zsky_creator_expect(str_contains($viewPolicy, ': 3;'), 'three-view guest limit default missing');
 zsky_creator_expect(str_contains($viewPolicy, 'ZNEWS_GUEST_VIEW_WINDOWS/'), 'rolling guest window namespace missing');
 zsky_creator_expect(str_contains($viewPolicy, "'viewer_class' => 'CREATOR'"), 'authenticated creator viewer class missing');
-zsky_creator_expect(str_contains($viewPolicy, "'ad_eligible' => false"), 'creator no-ad rule missing');
+zsky_creator_expect(str_contains($viewPolicy, "'ad_eligible' => !\$selfView") && str_contains($viewPolicy, 'SELF_VIEW_NO_ADS'), 'creator self-view no-ad rule missing');
 zsky_creator_expect(str_contains($viewPolicy, 'GUEST_VIEW_WINDOW_LIMIT_EXCEEDED'), 'guest spam reason missing');
 zsky_creator_expect(str_contains($viewPolicy, "'invalid_views' => 1") && str_contains($viewPolicy, "'suspicious_views' => 1"), 'spam views are not marked invalid and suspicious');
 zsky_creator_expect(str_contains($viewPolicy, "'events' => \$events"), 'rolling guest window lacks event-level idempotency ledger');
 zsky_creator_expect(str_contains($viewPolicy, 'idempotent_replay'), 'guest view-window retry evidence missing');
 zsky_creator_expect(str_contains($viewPolicy, "\$postId . '|' . \$idempotencyKey"), 'guest view event key is not bound to post and request idempotency');
 zsky_creator_expect(str_contains($start, 'is_array($result[\'session\'] ?? null)'), 'failed view starts can incorrectly consume the guest ad window');
-zsky_creator_expect(str_contains($start, 'znews_creator_view_gate($viewerUid, $postId, $idempotencyKey)'), 'view start does not use retry-safe creator/guest policy');
+zsky_creator_expect(str_contains($start, 'znews_creator_view_gate(') && str_contains($start, "!empty(\$result['session']['self_view'])"), 'view start does not use retry-safe owner-aware policy');
 zsky_creator_expect(str_contains($start, 'znews_creator_view_policy_apply'), 'view start bypasses creator/guest policy application');
 zsky_creator_expect(str_contains($start, "'ad_policy'"), 'view start does not return server ad policy');
 

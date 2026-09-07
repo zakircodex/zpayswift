@@ -73,8 +73,18 @@ function znews_adsterra_web_size(): array
     return $sizes[$configured] ?? [];
 }
 
-function znews_adsterra_web_placement(): array
+function znews_adsterra_web_slot(string $slot): string
 {
+    $slot = strtolower(trim($slot));
+    return in_array($slot, ['post_reader', 'post_inline'], true) ? $slot : '';
+}
+
+function znews_adsterra_web_placement(string $slot = 'post_reader'): array
+{
+    $slot = znews_adsterra_web_slot($slot);
+    if ($slot === '') {
+        return ['ok' => false, 'code' => 'ADSTERRA_WEB_SLOT_INVALID'];
+    }
     if (!znews_adsterra_web_enabled()) {
         return ['ok' => false, 'code' => 'ADSTERRA_WEB_DISABLED'];
     }
@@ -120,7 +130,7 @@ function znews_adsterra_web_placement(): array
 
     $configHash = substr(hash('sha256', implode('|', [
         'ADSTERRA',
-        'post_reader',
+        $slot,
         $creativeFormat,
         $key,
         $scriptUrl,
@@ -132,7 +142,7 @@ function znews_adsterra_web_placement(): array
     return [
         'ok' => true,
         'provider' => 'ADSTERRA',
-        'slot' => 'post_reader',
+        'slot' => $slot,
         'format' => 'iframe',
         'creative_format' => $creativeFormat,
         'key' => $key,
@@ -162,6 +172,18 @@ function znews_adsterra_web_permit_ttl(): int
 {
     $configured = (int)znews_adsterra_web_setting('ZNEWS_AD_DELIVERY_PERMIT_TTL_SECONDS');
     return max(30, min(300, $configured > 0 ? $configured : 120));
+}
+
+function znews_adsterra_web_dwell_seconds(): int
+{
+    $configured = (int)znews_adsterra_web_setting('ZNEWS_AD_POST_DWELL_SECONDS');
+    return max(5, min(10, $configured > 0 ? $configured : 5));
+}
+
+function znews_adsterra_web_cooldown_seconds(): int
+{
+    $configured = (int)znews_adsterra_web_setting('ZNEWS_AD_POST_COOLDOWN_SECONDS');
+    return max(300, min(600, $configured > 0 ? $configured : 300));
 }
 
 function znews_adsterra_web_request_host(): string
@@ -223,15 +245,23 @@ function znews_adsterra_web_safe_id($value): string
     return preg_match('/^[A-Za-z0-9_-]{1,160}$/D', $value) === 1 ? $value : '';
 }
 
-function znews_adsterra_web_delivery(array $session, array $gate, ?int $now = null): array
+function znews_adsterra_web_delivery(
+    array $session,
+    array $gate,
+    ?int $now = null,
+    string $slot = 'post_reader'
+): array
 {
-    $placement = znews_adsterra_web_placement();
+    $slot = znews_adsterra_web_slot($slot);
+    $placement = znews_adsterra_web_placement($slot);
     if (empty($placement['ok'])) {
         return ['enabled' => false, 'provider' => 'ADSTERRA', 'reason' => (string)($placement['code'] ?? 'ADSTERRA_WEB_DISABLED')];
     }
 
     $viewerClass = strtoupper(trim((string)($gate['viewer_class'] ?? '')));
-    if ($viewerClass !== 'GUEST' || empty($gate['ad_eligible'])) {
+    if (!in_array($viewerClass, ['GUEST', 'CREATOR'], true)
+        || empty($gate['ad_eligible'])
+        || !empty($session['self_view'])) {
         return [
             'enabled' => false,
             'provider' => 'ADSTERRA',
@@ -258,7 +288,7 @@ function znews_adsterra_web_delivery(array $session, array $gate, ?int $now = nu
         'v' => 1,
         'view' => $viewId,
         'post' => $postId,
-        'slot' => 'post_reader',
+        'slot' => $slot,
         'cfg' => (string)$placement['config_hash'],
         'iat' => $issuedAt,
         'exp' => $issuedAt + znews_adsterra_web_permit_ttl(),
@@ -275,7 +305,7 @@ function znews_adsterra_web_delivery(array $session, array $gate, ?int $now = nu
     $delivery = [
         'enabled' => true,
         'provider' => 'ADSTERRA',
-        'slot' => 'post_reader',
+        'slot' => $slot,
         'format' => 'iframe',
         'creative_format' => (string)$placement['creative_format'],
         'width' => (int)$placement['width'],
@@ -286,6 +316,112 @@ function znews_adsterra_web_delivery(array $session, array $gate, ?int $now = nu
     if ((string)$placement['creative_format'] === 'native_banner') {
         $delivery['resize_channel'] = $nonce;
     }
+    return $delivery;
+}
+
+function znews_adsterra_web_cooldown_path(array $session): string
+{
+    $viewerUid = trim((string)($session['viewer_uid'] ?? ''));
+    $fingerprint = trim((string)($session['fingerprint_hash'] ?? ''));
+    $identity = $viewerUid !== '' ? 'creator|' . $viewerUid : 'guest|' . $fingerprint;
+    $postId = znews_adsterra_web_safe_id($session['post_id'] ?? '');
+    if ($identity === 'guest|' || $postId === '') {
+        return '';
+    }
+    $viewerHash = hash_hmac('sha256', $identity, znews_adsterra_web_signing_key());
+    return 'ZNEWS_AD_WEB_COOLDOWNS/' . $viewerHash . '/' . $postId;
+}
+
+function znews_adsterra_web_claim_cooldown(array $session, string $slot, int $now): array
+{
+    $path = znews_adsterra_web_cooldown_path($session);
+    if ($path === '' || !function_exists('fb_get_with_etag') || !function_exists('fb_put_if_match')) {
+        return ['ok' => false, 'allowed' => false, 'reason' => 'AD_COOLDOWN_UNAVAILABLE'];
+    }
+
+    $cooldown = znews_adsterra_web_cooldown_seconds();
+    for ($attempt = 0; $attempt < 6; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+            return ['ok' => false, 'allowed' => false, 'reason' => 'AD_COOLDOWN_UNAVAILABLE'];
+        }
+        $existing = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+        $lastServedAt = max(0, (int)($existing['last_served_at'] ?? 0));
+        if ($lastServedAt > 0 && $lastServedAt + $cooldown > $now) {
+            return [
+                'ok' => true,
+                'allowed' => false,
+                'reason' => 'AD_POST_COOLDOWN_ACTIVE',
+                'next_allowed_at' => $lastServedAt + $cooldown,
+                'cooldown_seconds' => $cooldown,
+            ];
+        }
+
+        $next = [
+            'post_id' => znews_adsterra_web_safe_id($session['post_id'] ?? ''),
+            'view_id' => znews_adsterra_web_safe_id($session['view_id'] ?? ''),
+            'slot' => $slot,
+            'last_served_at' => $now,
+            'next_allowed_at' => $now + $cooldown,
+            'expires_at' => $now + $cooldown,
+            'updated_at' => $now,
+        ];
+        $write = fb_put_if_match($path, $next, (string)$snapshot['etag']);
+        if ((int)($write['status'] ?? 0) === 412) {
+            usleep(50000);
+            continue;
+        }
+        if (empty($write['ok'])) {
+            return ['ok' => false, 'allowed' => false, 'reason' => 'AD_COOLDOWN_UNAVAILABLE'];
+        }
+        return [
+            'ok' => true,
+            'allowed' => true,
+            'reason' => '',
+            'next_allowed_at' => $now + $cooldown,
+            'cooldown_seconds' => $cooldown,
+        ];
+    }
+
+    return ['ok' => false, 'allowed' => false, 'reason' => 'AD_COOLDOWN_BUSY'];
+}
+
+function znews_adsterra_web_delivery_after_dwell(
+    array $session,
+    string $slot = 'post_reader',
+    ?int $now = null,
+    bool $requireDwell = true
+): array {
+    $current = $now ?? time();
+    $slot = znews_adsterra_web_slot($slot);
+    $gate = [
+        'viewer_class' => strtoupper(trim((string)($session['viewer_class'] ?? ''))),
+        'ad_eligible' => !empty($session['ad_eligible']),
+        'reason' => trim((string)($session['ad_block_reason'] ?? '')),
+    ];
+    if ($slot === '' || !empty($session['self_view']) || !empty($session['bot_detected'])) {
+        return ['enabled' => false, 'provider' => 'ADSTERRA', 'reason' => !empty($session['self_view']) ? 'SELF_VIEW_NO_ADS' : 'AD_POLICY_NOT_ELIGIBLE'];
+    }
+    if ($requireDwell && max(0, (int)($session['active_seconds'] ?? 0)) < znews_adsterra_web_dwell_seconds()) {
+        return ['enabled' => false, 'provider' => 'ADSTERRA', 'reason' => 'AD_DWELL_REQUIRED'];
+    }
+
+    $delivery = znews_adsterra_web_delivery($session, $gate, $current, $slot);
+    if (empty($delivery['enabled'])) {
+        return $delivery;
+    }
+    $claim = znews_adsterra_web_claim_cooldown($session, $slot, $current);
+    if (empty($claim['allowed'])) {
+        return [
+            'enabled' => false,
+            'provider' => 'ADSTERRA',
+            'reason' => (string)($claim['reason'] ?? 'AD_POST_COOLDOWN_ACTIVE'),
+            'next_allowed_at' => max(0, (int)($claim['next_allowed_at'] ?? 0)),
+            'cooldown_seconds' => znews_adsterra_web_cooldown_seconds(),
+        ];
+    }
+    $delivery['cooldown_seconds'] = (int)$claim['cooldown_seconds'];
+    $delivery['next_allowed_at'] = (int)$claim['next_allowed_at'];
     return $delivery;
 }
 
@@ -307,14 +443,15 @@ function znews_adsterra_web_verify_permit(string $permit, ?int $now = null): arr
     }
 
     $payload = json_decode($json, true);
-    $placement = znews_adsterra_web_placement();
+    $slot = is_array($payload) ? znews_adsterra_web_slot((string)($payload['slot'] ?? '')) : '';
+    $placement = znews_adsterra_web_placement($slot);
     $current = $now ?? time();
     $issuedAt = (int)($payload['iat'] ?? 0);
     $expiresAt = (int)($payload['exp'] ?? 0);
     if (!is_array($payload)
         || empty($placement['ok'])
         || (int)($payload['v'] ?? 0) !== 1
-        || (string)($payload['slot'] ?? '') !== 'post_reader'
+        || $slot === ''
         || (string)($payload['cfg'] ?? '') !== (string)$placement['config_hash']
         || znews_adsterra_web_safe_id($payload['view'] ?? '') === ''
         || znews_adsterra_web_safe_id($payload['post'] ?? '') === ''

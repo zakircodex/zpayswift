@@ -94,7 +94,7 @@ async function main() {
       });
     }
 
-    window.__znewsRequestAudit = { timeline, maximum, likeStatusRequests: 0 };
+    window.__znewsRequestAudit = { timeline, maximum, likeStatusRequests: 0, feedAdRequests: 0 };
     window.fetch = async (input, init = {}) => {
       const raw = typeof input === 'string' ? input : input?.url;
       const url = new URL(raw, window.location.href);
@@ -130,6 +130,13 @@ async function main() {
         kind = 'analytics'; priority = 'P3'; delayMs = 600;
         responseFactory = () => json({
           ok: true, success: true, code: 'ZNEWS_FEED_IMPRESSIONS_RECORDED', message: 'Recorded.', data: {}
+        });
+      } else if (url.pathname.endsWith('/api/znews/ads/feed.php')) {
+        kind = 'analytics'; priority = 'P0'; delayMs = 80;
+        window.__znewsRequestAudit.feedAdRequests += 1;
+        responseFactory = () => json({
+          ok: true, success: true, code: 'ZNEWS_FEED_AD_DELIVERY_READY', message: 'Evaluated.',
+          data: { ad_delivery: { enabled: false, provider: 'ADSTERRA', reason: 'TEST_NO_FILL' } }
         });
       } else if (url.pathname.endsWith('/api/znews/likes/status.php')) {
         kind = 'like'; priority = 'P2'; delayMs = 100;
@@ -237,6 +244,7 @@ async function main() {
   assert.ok(mediaTimeline.length > 0, 'Viewport media loading was not exercised.');
   assert.ok(analyticsTimeline.length > 0, 'Queued impression analytics was not exercised.');
   assert.equal(requestAudit.likeStatusRequests, 0, 'Guest feed must make zero Like-status requests.');
+  assert.equal(requestAudit.feedAdRequests, 2, 'Ten feed posts must evaluate exactly two lazy five-post ad slots.');
   assert.equal(timeoutToast, 0, 'Background impression failure must not show a timeout toast.');
   assert.equal(horizontalOverflow, false, '390px feed must not cause page-level overflow.');
   assert.ok(firstPostMs < 5000, 'First post must appear inside five seconds.');

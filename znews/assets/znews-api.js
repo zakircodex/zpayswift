@@ -391,10 +391,21 @@
     }
 
     heartbeatView(viewId, viewToken, options = {}) {
+      const { requestAd = true, ...requestOptions } = options;
       return this.request('znews/views/heartbeat.php', {
         method: 'POST',
         appKey: false,
-        body: { view_id: viewId, view_token: viewToken },
+        body: { view_id: viewId, view_token: viewToken, request_ad: requestAd === true },
+        ...requestOptions
+      });
+    }
+
+    feedAdDelivery(feedSessionId, postId, options = {}) {
+      return this.request('znews/ads/feed.php', {
+        method: 'POST',
+        appKey: false,
+        authenticated: this.isAuthenticated(),
+        body: { feed_session_id: feedSessionId, post_id: postId },
         ...options
       });
     }

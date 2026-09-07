@@ -31,13 +31,21 @@ $viewGate = [
     'idempotent_replay' => false,
 ];
 if (is_array($result['session'] ?? null)) {
-    $viewGate = znews_creator_view_gate($viewerUid, $postId, $idempotencyKey);
+    $viewGate = znews_creator_view_gate(
+        $viewerUid,
+        $postId,
+        $idempotencyKey,
+        !empty($result['session']['self_view'])
+    );
     $result = znews_creator_view_policy_apply($result, $viewGate);
 }
-$adDelivery = znews_adsterra_web_delivery(
-    is_array($result['session'] ?? null) ? (array)$result['session'] : [],
-    $viewGate
-);
+$adDelivery = [
+    'enabled' => false,
+    'provider' => 'ADSTERRA',
+    'reason' => !empty($viewGate['ad_eligible'])
+        ? 'AD_DWELL_REQUIRED'
+        : (trim((string)($viewGate['reason'] ?? '')) ?: 'AD_POLICY_NOT_ELIGIBLE'),
+];
 
 api_response(
     !empty($result['ok']),
@@ -55,6 +63,7 @@ api_response(
             'window_limit' => max(1, (int)($viewGate['limit'] ?? 3)),
             'window_seconds' => max(1, (int)($viewGate['window_seconds'] ?? 300)),
             'next_allowed_at' => max(0, (int)($viewGate['next_allowed_at'] ?? 0)),
+            'dwell_seconds' => znews_adsterra_web_dwell_seconds(),
             'reason' => trim((string)($viewGate['reason'] ?? '')),
             'idempotent_replay' => !empty($viewGate['idempotent_replay']),
         ],

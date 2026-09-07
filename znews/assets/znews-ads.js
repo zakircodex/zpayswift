@@ -10,7 +10,7 @@
     if (typeof cleanup === 'function') cleanup();
     cleanupBySlot.delete(slot);
     slot.replaceChildren();
-    slot.classList.remove('ad-slot-live', 'ad-slot-loading', 'ad-slot-native');
+    slot.classList.remove('ad-slot-live', 'ad-slot-loading', 'ad-slot-native', 'ad-slot-awaiting-creative');
     delete slot.dataset.adDeliveryUrl;
   }
 
@@ -18,10 +18,6 @@
     clearSlot(slot);
     slot.hidden = true;
     slot.setAttribute('aria-hidden', 'true');
-  }
-
-  function authenticatedCreator() {
-    return window.ZNEWS_AUTH_VERIFIED === true;
   }
 
   function androidApp() {
@@ -56,7 +52,7 @@
     const width = Number(delivery.width || 0);
     const height = Number(delivery.height || 0);
     const size = `${width}x${height}`;
-    if (slot !== expectedSlot || slot !== 'post_reader') return null;
+    if (slot !== expectedSlot || !['post_reader', 'post_inline'].includes(slot)) return null;
 
     let resizeChannel = '';
     if (creativeFormat === 'native_banner') {
@@ -83,7 +79,7 @@
     if (!(slot instanceof HTMLElement)) return false;
     const expectedSlot = String(slot.dataset.znewsAdSlot || '').trim();
     const safe = safeDelivery(delivery, expectedSlot);
-    if (!safe || authenticatedCreator() || androidApp()) {
+    if (!safe || androidApp()) {
       hide(slot);
       return false;
     }
@@ -94,6 +90,7 @@
     slot.removeAttribute('aria-hidden');
     slot.classList.add('ad-slot-live', 'ad-slot-loading');
     slot.classList.toggle('ad-slot-native', safe.creativeFormat === 'native_banner');
+    slot.classList.toggle('ad-slot-awaiting-creative', safe.creativeFormat === 'native_banner');
     slot.dataset.adDeliveryUrl = safe.frameUrl;
 
     const label = document.createElement('span');
@@ -117,7 +114,10 @@
         const nextHeight = Math.max(90, Math.min(1600, reportedHeight));
         frame.height = String(nextHeight);
         frame.style.height = `${nextHeight}px`;
-        slot.classList.remove('ad-slot-loading');
+        slot.classList.remove('ad-slot-loading', 'ad-slot-awaiting-creative');
+        window.dispatchEvent(new CustomEvent('znews:ad-rendered', {
+          detail: { provider: 'ADSTERRA', slot: safe.slot, creative_format: safe.creativeFormat }
+        }));
       };
       window.addEventListener('message', resize);
       cleanupBySlot.set(slot, () => window.removeEventListener('message', resize));
@@ -131,7 +131,14 @@
       'sandbox',
       'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation'
     );
-    frame.addEventListener('load', () => slot.classList.remove('ad-slot-loading'), { once: true });
+    frame.addEventListener('load', () => {
+      slot.classList.remove('ad-slot-loading');
+      if (safe.creativeFormat !== 'native_banner') {
+        window.dispatchEvent(new CustomEvent('znews:ad-rendered', {
+          detail: { provider: 'ADSTERRA', slot: safe.slot, creative_format: safe.creativeFormat }
+        }));
+      }
+    }, { once: true });
     frame.addEventListener('error', () => hide(slot), { once: true });
     frame.src = safe.frameUrl;
 

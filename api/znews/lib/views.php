@@ -459,7 +459,16 @@ function znews_view_heartbeat(string $viewId, string $token): array
     if ((int)($write['status'] ?? 0) === 412) { return ['ok' => false, 'code' => 'ZNEWS_VIEW_HEARTBEAT_CONFLICT', 'message' => 'Another heartbeat updated this session.', 'http_status' => 409]; }
     if (empty($write['ok'])) { return ['ok' => false, 'code' => 'ZNEWS_VIEW_HEARTBEAT_FAILED', 'message' => 'Heartbeat could not be saved.', 'http_status' => 503]; }
     if ((int)$row['risk_score'] >= znews_view_risk_threshold()) { znews_view_risk_store($row); }
-    return ['ok' => true, 'code' => 'ZNEWS_VIEW_HEARTBEAT_ACCEPTED', 'message' => 'Heartbeat accepted.', 'accepted' => true, 'active_seconds' => (int)$row['active_seconds'], 'heartbeat_count' => (int)$row['heartbeat_count'], 'server_time' => $now];
+    return [
+        'ok' => true,
+        'code' => 'ZNEWS_VIEW_HEARTBEAT_ACCEPTED',
+        'message' => 'Heartbeat accepted.',
+        'accepted' => true,
+        'active_seconds' => (int)$row['active_seconds'],
+        'heartbeat_count' => (int)$row['heartbeat_count'],
+        'server_time' => $now,
+        'ad_context' => $row,
+    ];
 }
 
 function znews_view_complete(string $viewId, string $token): array

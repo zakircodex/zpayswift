@@ -406,7 +406,10 @@ img { display: block; max-width: 100%; }
 .ad-slot[hidden] { display: none !important; }
 .ad-slot-frame { display: block; max-width: 100%; border: 0; background: transparent; color-scheme: normal; }
 .ad-slot-loading .ad-slot-frame { opacity: .78; }
+.ad-slot-awaiting-creative { max-height: 1px; opacity: 0; pointer-events: none; }
 .ad-label { color: #8195b3; font-size: 9px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.post-reader-ad-slot { margin: 4px 0 12px; padding: 10px 0; background: rgba(255, 255, 255, .018); }
+.feed-ad-slot { margin: 2px 0 14px; padding: 10px 0; border-block: 1px solid rgba(142, 177, 226, .12); background: rgba(3, 16, 34, .32); }
 
 .modal {
   width: min(560px, calc(100% - 22px));

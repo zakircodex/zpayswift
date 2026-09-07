@@ -14,6 +14,7 @@ function testPage() {
     <article id="reader">Reader content remains visible.</article>
     <div id="slot" class="ad-slot" data-znews-ad-slot="post_reader" hidden></div>
     <div id="native-slot" class="ad-slot" data-znews-ad-slot="post_reader" hidden></div>
+    <div id="inline-slot" class="ad-slot" data-znews-ad-slot="post_inline" hidden></div>
     <script>window.ZNEWS_AUTH_VERIFIED=false;</script>
     <script src="/znews/assets/znews-ads.js"></script>
   </body></html>`;
@@ -122,16 +123,27 @@ async function main() {
 
   await page.evaluate((value) => window.ZNewsAds.mount(document.querySelector('#native-slot'), value), nativeDelivery);
   assert.equal(await page.locator('#native-slot iframe').count(), 1, 'Duplicate Native delivery mounted multiple frames.');
+  assert.equal(await page.locator('#native-slot').evaluate((element) => element.classList.contains('ad-slot-awaiting-creative')), false, 'Rendered Native slot remained visually hidden.');
 
-  await page.evaluate((value) => {
+  const inlineDelivery = {
+    ...nativeDelivery,
+    slot: 'post_inline',
+    resize_channel: 'fedcba9876543210fedcba98',
+    frame_url: `${frameOrigin}/api/znews/public/ad_frame.php?permit=INLINE_TEST_PERMIT&channel=fedcba9876543210fedcba98`
+  };
+  const inlineMounted = await page.evaluate((value) => window.ZNewsAds.mount(document.querySelector('#inline-slot'), value), inlineDelivery);
+  assert.equal(inlineMounted, true, 'Server-gated inline delivery did not mount.');
+  await page.waitForFunction(() => document.querySelector('#inline-slot iframe')?.height === '412');
+
+  const creatorMounted = await page.evaluate((value) => {
     window.ZNEWS_AUTH_VERIFIED = true;
-    window.ZNewsAds.mount(document.querySelector('#slot'), {
+    return window.ZNewsAds.mount(document.querySelector('#slot'), {
       enabled: true, provider: 'ADSTERRA', slot: 'post_reader', width: 300, height: 250,
       frame_url: value
     });
   }, `${frameOrigin}/api/znews/public/ad_frame.php?permit=CREATOR_PERMIT`);
-  assert.equal(await page.locator('#slot iframe').count(), 0, 'Authenticated creator retained an ad frame.');
-  assert.equal(await page.locator('#slot').getAttribute('aria-hidden'), 'true', 'Rejected slot is not hidden accessibly.');
+  assert.equal(creatorMounted, true, 'Server-approved creator delivery was blocked by the renderer.');
+  assert.equal(await page.locator('#slot iframe').count(), 1, 'Server-approved creator delivery did not retain one frame.');
 
   const invalid = await page.evaluate(() => {
     window.ZNEWS_AUTH_VERIFIED = false;
@@ -151,7 +163,7 @@ async function main() {
   const androidMounted = await androidPage.evaluate((value) => window.ZNewsAds.mount(document.querySelector('#slot'), value), delivery);
   assert.equal(androidMounted, false, 'Android WebView mounted a Web ad.');
 
-  assert.ok(frameRequests >= 2, 'Guest Banner and Native frames were not both requested.');
+  assert.ok(frameRequests >= 4, 'Guest, Native, inline, and creator frames were not all requested.');
   await androidContext.close();
   await context.close();
   await browser.close();
