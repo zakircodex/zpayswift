@@ -57,8 +57,8 @@ user_page_begin($page);
     </div>
     <div class="hero-hold-line">Hold Balance: <span id="heroHoldPrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroHold" class="dashboard-placeholder dashboard-placeholder-compact">--</span></div>
 
-    <div class="hero-grid">
-      <div class="hero-mini">
+    <div class="hero-grid" id="heroGrid">
+      <div class="hero-mini" id="heroRateCard">
         <div class="hero-mini-label hero-rate-label">Today Rate</div>
         <div class="hero-mini-value dashboard-placeholder dashboard-placeholder-rate" id="heroRate">Loading rate</div>
       </div>

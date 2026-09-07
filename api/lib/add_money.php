@@ -1425,21 +1425,46 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
     ];
 }
 
-function add_money_list_user_history(string $uid, int $limit = 100): array
+function add_money_list_user_history(string $uid, int $limit = 100, string $month = ''): array
 {
-    $rows = fb_get('ADD_MONEY_BY_USER/' . trim($uid));
+    $uid = trim($uid);
+    $limit = max(1, min(300, $limit));
+    $month = trim($month);
+    $query = [];
+    $monthPrefix = '';
+
+    if (preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $month)) {
+        $monthPrefix = 'AM' . str_replace('-', '', $month);
+        $query = [
+            'orderBy' => json_encode('$key'),
+            'startAt' => json_encode($monthPrefix),
+            'endAt' => json_encode($monthPrefix . '~'),
+            'limitToLast' => $limit,
+        ];
+    } else {
+        $month = '';
+    }
+
+    $rows = fb_get('ADD_MONEY_BY_USER/' . $uid, $query);
     $rows = is_array($rows) ? $rows : [];
     $items = [];
     foreach ($rows as $id => $row) {
         if (!is_array($row)) {
             continue;
         }
+        if ($month !== '') {
+            $createdAt = (int)($row['created_at'] ?? 0);
+            $rowMonth = $createdAt > 0 ? date('Y-m', $createdAt) : '';
+            if ($rowMonth !== $month && !str_starts_with((string)$id, $monthPrefix)) {
+                continue;
+            }
+        }
         $row['request_id'] = (string)($row['request_id'] ?? $id);
         $items[] = $row;
     }
 
     usort($items, static fn(array $a, array $b): int => (int)($b['created_at'] ?? 0) <=> (int)($a['created_at'] ?? 0));
-    return array_slice($items, 0, max(1, min(300, $limit)));
+    return array_slice($items, 0, $limit);
 }
 
 function add_money_list_user_history_page(

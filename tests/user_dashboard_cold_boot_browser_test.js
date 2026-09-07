@@ -18,7 +18,7 @@ function pageMarkup() {
     <div class="dashboard-fixed-stack"><div class="hero-card"><div class="dashboard-hero-topbar"><button id="openSidebarBtn"></button><h1 id="dashboardHeroTitle">Z-Pay Swift</h1><a href="/user/notifications"><span data-notification-badge class="hidden">0</span></a></div>
       <div class="hero-balance"><span id="heroBalancePrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroBalance" class="dashboard-placeholder dashboard-placeholder-balance">--</span></div>
       <div class="hero-hold-line"><span id="heroHoldPrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroHold" class="dashboard-placeholder dashboard-placeholder-compact">--</span></div>
-      <span id="heroRate" class="dashboard-placeholder dashboard-placeholder-rate">Loading rate</span><span id="heroRequests" class="dashboard-placeholder dashboard-placeholder-compact dashboard-deferred-placeholder">--</span><span id="heroName" class="dashboard-placeholder dashboard-placeholder-name">Loading account</span>
+      <div id="heroGrid"><span id="heroRateCard"><span id="heroRate" class="dashboard-placeholder dashboard-placeholder-rate">Loading rate</span></span><span id="heroRequests" class="dashboard-placeholder dashboard-placeholder-compact dashboard-deferred-placeholder">--</span><span id="heroName" class="dashboard-placeholder dashboard-placeholder-name">Loading account</span></div>
     </div></div>
     <section id="overviewSection" aria-busy="true"><div id="zpayQuickActions"><h2>Recommended</h2><button data-dashboard-action="shopping">Shopping</button></div></section>
     <div id="dashboardPullIndicator"><span id="dashboardPullText"></span></div>
@@ -58,10 +58,19 @@ async function main() {
     };
     if (action === 'dashboard_bootstrap') {
       dashboardCalls += 1;
+      const isBangladesh = String(request.headers.referer || '').includes('market=BD');
       setTimeout(() => reply({
-        user: { uid: 'U-TEST', name: 'TEST USER', role: 'USER', status: 'ACTIVE', pricing_country: 'MY' },
+        user: { uid: 'U-TEST', name: 'TEST USER', role: 'USER', status: 'ACTIVE', pricing_country: isBangladesh ? 'BD' : 'MY' },
         csrf: 'TEST-CSRF',
-        wallet_summary: { pricing_country: 'MY', wallet: { display_currency: 'MYR', display_available_balance: 25, display_hold_balance: 0, rate_myr_bdt: 31.1 } },
+        wallet_summary: {
+          pricing_country: isBangladesh ? 'BD' : 'MY',
+          wallet: {
+            display_currency: isBangladesh ? 'BDT' : 'MYR',
+            display_available_balance: isBangladesh ? 2500 : 25,
+            display_hold_balance: 0,
+            rate_myr_bdt: 31.1
+          }
+        },
         request_logs: { items: [], deferred: true }
       }), 900);
       return;
@@ -106,6 +115,7 @@ async function main() {
       assert.equal(await page.locator('#heroBalance').textContent(), '25.00', `${width}px loader closed before balance rendered.`);
       assert.equal(await page.locator('#appView').evaluate((node) => node.inert), false, `${width}px dashboard stayed blocked after loading.`);
       assert.equal(await page.locator('.bottom-nav').evaluate((node) => node.inert), false, `${width}px navigation stayed blocked after loading.`);
+      assert.equal(await page.locator('#zpayQuickActions button').isEnabled(), true, `${width}px dashboard actions waited for monthly activity.`);
       assert.equal(await page.locator('#heroRequests').getAttribute('class').then((value) => value.includes('dashboard-deferred-placeholder')), true, `${width}px deferred activity placeholder disappeared too early.`);
       assert.equal(await page.locator('#loadingWrap').getAttribute('aria-hidden'), 'true', `${width}px slow activity reopened the blocking modal.`);
       await page.waitForFunction(() => document.getElementById('heroRequests')?.textContent === '2');
@@ -115,9 +125,25 @@ async function main() {
       await context.close();
     }
 
-    assert.equal(dashboardCalls, widths.length, 'Dashboard bootstrap did not run exactly once per page load.');
-    assert.equal(activityCalls, widths.length, 'Dashboard activity did not run exactly once per page load.');
-    console.log(`User dashboard balance-first browser tests passed (${widths.length} mobile viewports, ${dashboardCalls} balance requests, ${activityCalls} deferred activity requests).`);
+    const bdContext = await browser.newContext({
+      viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: 'block',
+      userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36'
+    });
+    const bdPage = await bdContext.newPage();
+    await bdPage.goto(`http://127.0.0.1:${server.address().port}/?market=BD`, { waitUntil: 'domcontentloaded' });
+    await bdPage.waitForFunction(() => window.UserShell?.state?.ready === true);
+    await bdPage.waitForFunction(() => document.getElementById('loadingWrap')?.getAttribute('aria-hidden') === 'true');
+    assert.equal(await bdPage.locator('#heroBalancePrefix').textContent(), 'BDT', 'BD account did not keep BDT balance currency.');
+    assert.equal(await bdPage.locator('#heroBalance').textContent(), '2500.00', 'BD account balance did not render.');
+    assert.equal(await bdPage.locator('#heroRateCard').getAttribute('hidden'), '', 'BD account Today Rate card stayed visible.');
+    assert.equal(await bdPage.locator('#heroGrid').getAttribute('class').then((value) => value.includes('rate-hidden')), true, 'BD metric grid did not compact after hiding rate.');
+    assert.equal(await bdPage.locator('#appView').evaluate((node) => node.inert), false, 'BD dashboard stayed blocked for monthly activity.');
+    assert.equal(await bdPage.locator('#zpayQuickActions button').isEnabled(), true, 'BD dashboard actions waited for monthly activity.');
+    await bdContext.close();
+
+    assert.equal(dashboardCalls, widths.length + 1, 'Dashboard bootstrap did not run exactly once per page load.');
+    assert.equal(activityCalls, widths.length + 1, 'Dashboard activity did not run exactly once per page load.');
+    console.log(`User dashboard balance-first browser tests passed (${widths.length} MY mobile viewports + BD, ${dashboardCalls} balance requests, ${activityCalls} deferred activity requests).`);
   } finally {
     await browser.close();
     await new Promise((resolve) => server.close(resolve));

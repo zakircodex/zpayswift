@@ -3,9 +3,7 @@
 
   const shell = window.UserShell;
   const releaseInitialLoad = shell?.holdPageLoad?.('Loading history...') || (() => {});
-  const HISTORY_DAYS = 30;
   const HISTORY_LIMIT = 100;
-  const HISTORY_WINDOW_SECONDS = HISTORY_DAYS * 24 * 60 * 60;
   const SUCCESS_STATUSES = new Set(['SUCCESS', 'SUCCESSFUL', 'COMPLETED', 'APPROVED', 'DONE']);
   const FAILED_STATUSES = new Set(['FAILED', 'REJECTED', 'CANCELLED', 'REFUNDED']);
   const PROCESSING_STATUSES = new Set(['PROCESSING', 'CLAIMED', 'DIALING']);
@@ -393,10 +391,8 @@
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
   }
 
-  function recentMonthKeys() {
-    const current = new Date();
-    const previous = new Date(current.getFullYear(), current.getMonth() - 1, 1);
-    return Array.from(new Set([monthKey(current), monthKey(previous)]));
+  function currentMonthKey() {
+    return monthKey(new Date());
   }
 
   function requestRows(data) {
@@ -412,11 +408,11 @@
   }
 
   function mergeRows(groups) {
-    const cutoff = Math.floor(Date.now() / 1000) - HISTORY_WINDOW_SECONDS;
+    const currentMonth = currentMonthKey();
     const found = new Map();
     groups.flat().forEach(([source, row]) => {
       const item = normalizeItem(source, row);
-      if (!item || item.timestamp <= 0 || item.timestamp < cutoff) return;
+      if (!item || item.timestamp <= 0 || monthKey(new Date(item.timestamp * 1000)) !== currentMonth) return;
       const key = `${item.source}:${item.id}`.toUpperCase();
       const existing = found.get(key);
       if (!existing || itemQuality(item) > itemQuality(existing)) found.set(key, item);
@@ -465,8 +461,8 @@
     list.replaceChildren();
     list.setAttribute('aria-busy', 'false');
     if (!state.rows.length) {
-      list.append(element('div', 'history-state', 'No transaction history found in the last 30 days.'));
-      $('historyLive').textContent = 'No transaction history was found in the last 30 days.';
+      list.append(element('div', 'history-state', 'No transaction history found this month.'));
+      $('historyLive').textContent = 'No transaction history was found this month.';
       return;
     }
     state.rows.forEach((item, index) => list.append(historyCard(item, index)));
@@ -500,23 +496,15 @@
     state.loading = true;
     const hadRows = state.rows.length > 0;
     if (!hadRows) renderSkeletons();
-    const requests = recentMonthKeys().map((month) =>
-      shell.get('request_logs', { month, limit: HISTORY_LIMIT }, '', { busy: false })
-        .then((data) => ({ kind: 'REQUESTS', data }))
-    );
-    requests.push(shell.get('transfer_history', { limit: HISTORY_LIMIT }, '', { busy: false })
-      .then((data) => ({ kind: 'TRANSFER', data })));
-
     try {
-      const results = await Promise.allSettled(requests);
-      const fulfilled = results.filter((result) => result.status === 'fulfilled').map((result) => result.value);
-      if (!fulfilled.length) throw new Error('History could not be loaded. Please try again.');
-      const groups = fulfilled.map((result) => result.kind === 'TRANSFER'
-        ? (Array.isArray(result.data?.items) ? result.data.items.map((row) => ['TRANSFER', row]) : [])
-        : requestRows(result.data));
-      state.rows = mergeRows(groups);
+      const data = await shell.get(
+        'request_logs',
+        { month: currentMonthKey(), limit: HISTORY_LIMIT, legacy: 0 },
+        '',
+        { busy: false }
+      );
+      state.rows = mergeRows([requestRows(data)]);
       render();
-      if (results.some((result) => result.status === 'rejected')) shell.toast('Some history could not be refreshed.', 'error');
     } catch (error) {
       if (hadRows) shell.toast('History could not be refreshed. Please try again.', 'error');
       else renderError();

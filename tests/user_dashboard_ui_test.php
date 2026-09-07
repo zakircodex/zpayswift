@@ -96,9 +96,14 @@ dashboard_expect(
     'Dashboard refresh is not locked or page JavaScript loads unrelated features'
 );
 dashboard_expect(
-    str_contains($pageJs, "pricingCountry === 'MY' || currency === 'MYR'")
-    && str_contains($pageJs, ": 'Not applicable'"),
-    'Dashboard rate visibility is not pricing-country/wallet aware'
+    str_contains($dashboard, 'id="heroGrid"')
+    && str_contains($dashboard, 'id="heroRateCard"')
+    && str_contains($pageJs, "if (currency === 'MYR') return 'RM'")
+    && str_contains($pageJs, "if (currency === 'BDT') return 'BDT'")
+    && str_contains($pageJs, 'rateCard.hidden = !isMalaysiaWallet')
+    && str_contains($pageJs, "heroGrid?.classList.toggle('rate-hidden', !isMalaysiaWallet)")
+    && str_contains($pageCss, '.user-dashboard-page .hero-grid.rate-hidden'),
+    'Dashboard currency or Bangladesh rate-card behavior is incomplete'
 );
 dashboard_expect(
     str_contains($pageCss, '.user-dashboard-page .hero-card')

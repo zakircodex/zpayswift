@@ -29,13 +29,15 @@
   };
 
   function walletPrefix(wallet, user) {
-    const country = String(
-      user?.pricing_country || wallet?.pricing_country || wallet?.market_country || ''
-    ).toUpperCase();
     const currency = String(
       wallet?.display_currency || wallet?.wallet_currency || wallet?.currency || user?.wallet_currency || ''
     ).toUpperCase();
-    return country === 'MY' || currency === 'MYR' ? 'RM' : 'BDT';
+    if (currency === 'MYR') return 'RM';
+    if (currency === 'BDT') return 'BDT';
+    const country = String(
+      user?.pricing_country || wallet?.pricing_country || wallet?.market_country || ''
+    ).toUpperCase();
+    return country === 'MY' ? 'RM' : 'BDT';
   }
 
   function setDashboardLoading(on, message = 'Refreshing dashboard...') {
@@ -52,6 +54,7 @@
     const prefix = walletPrefix(wallet, user);
     const pricingCountry = String(user.pricing_country || summary.pricing_country || wallet.pricing_country || '').toUpperCase();
     const currency = String(wallet.display_currency || wallet.wallet_currency || wallet.currency || '').toUpperCase();
+    const isMalaysiaWallet = currency === 'MYR' || (currency === '' && pricingCountry === 'MY');
     const rate = Number(
       wallet.rate_myr_bdt
       ?? summary.rate_myr_bdt
@@ -80,9 +83,16 @@
     const displayName = String(user.name || summary.name || 'Z-Pay User');
     byId('heroName').textContent = displayName;
     byId('heroName').title = displayName;
-    byId('heroRate').textContent = pricingCountry === 'MY' || currency === 'MYR'
-      ? (rate > 0 ? `RM 1 = ${rate.toFixed(2)} BDT` : 'Rate unavailable')
-      : 'Not applicable';
+    const rateCard = byId('heroRateCard');
+    const heroGrid = byId('heroGrid');
+    if (rateCard) {
+      rateCard.hidden = !isMalaysiaWallet;
+      rateCard.setAttribute('aria-hidden', isMalaysiaWallet ? 'false' : 'true');
+    }
+    heroGrid?.classList.toggle('rate-hidden', !isMalaysiaWallet);
+    if (isMalaysiaWallet) {
+      byId('heroRate').textContent = rate > 0 ? `RM 1 = ${rate.toFixed(2)} BDT` : 'Rate unavailable';
+    }
   }
 
   async function loadDashboardActivity(options = {}) {

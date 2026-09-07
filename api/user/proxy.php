@@ -2125,14 +2125,34 @@ function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100, ?st
 {
     $uid = trim($uid);
     $month = user_proxy_valid_month_key($month);
+    $limit = max(1, min(300, $limit));
 
     if ($uid === '') {
         return [];
     }
 
     $map = [];
+    $monthlyMirrors = [];
+    $candidateLimit = max(25, min(300, $limit * 2));
+    $monthStart = strtotime($month . '-01 00:00:00');
+    $monthEnd = $monthStart !== false ? strtotime('+1 month', $monthStart) - 1 : 0;
+    $apiQuery = [
+        'orderBy' => json_encode('created_at'),
+        'startAt' => max(0, (int)$monthStart),
+        'endAt' => max(0, (int)$monthEnd),
+        'limitToLast' => $candidateLimit,
+    ];
 
-    $apiRows = fb_get('USER_API_REQUESTS/' . $uid);
+    $apiResponse = fb_request('GET', 'USER_API_REQUESTS/' . $uid, null, $apiQuery);
+    $apiRows = !empty($apiResponse['ok']) && is_array($apiResponse['json'] ?? null)
+        ? $apiResponse['json']
+        : [];
+    if (empty($apiResponse['ok'])) {
+        $apiRows = fb_get('USER_API_REQUESTS/' . $uid, [
+            'orderBy' => json_encode('$key'),
+            'limitToLast' => $candidateLimit,
+        ]);
+    }
 
     if (is_array($apiRows)) {
         foreach ($apiRows as $requestId => $row) {
@@ -2141,8 +2161,6 @@ function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100, ?st
             }
 
             $public = user_proxy_public_request_log($row, (string)$requestId);
-            $public = user_proxy_apply_request_status_row($public);
-
             $rid = (string)($public['request_id'] ?? $requestId);
 
             if ($rid !== '' && user_proxy_request_log_matches_month($public, $rid, $month)) {
@@ -2151,10 +2169,17 @@ function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100, ?st
         }
     }
 
-    $monthKeys = [$month];
+    $historySources = [
+        'TOPUP' => 'TOPUP_HISTORY/' . $uid . '/' . $month,
+        'BUNDLE' => 'BUNDLE_HISTORY/' . $uid . '/' . $month,
+        'MFS' => 'MFS_HISTORY/' . $uid . '/' . $month,
+    ];
 
-    foreach (array_unique($monthKeys) as $month) {
-        $histRows = fb_get('BUNDLE_HISTORY/' . $uid . '/' . $month);
+    foreach ($historySources as $requestType => $path) {
+        $histRows = fb_get($path, [
+            'orderBy' => json_encode('$key'),
+            'limitToLast' => $candidateLimit,
+        ]);
 
         if (!is_array($histRows)) {
             continue;
@@ -2165,18 +2190,25 @@ function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100, ?st
                 continue;
             }
 
-            $row['request_type'] = 'BUNDLE';
+            $row['request_type'] = $requestType;
 
             $public = user_proxy_public_request_log($row, (string)$requestId);
-            $public = user_proxy_apply_request_status_row($public);
-
             $rid = (string)($public['request_id'] ?? $requestId);
 
             $rowMonth = user_proxy_request_log_month($public, $rid);
 
             if ($rid !== '' && ($rowMonth === '' || $rowMonth === $month)) {
                 $map[$rid] = array_merge($map[$rid] ?? [], $public);
+                $monthlyMirrors[$rid] = true;
             }
+        }
+    }
+
+    $activeStatuses = ['', 'PENDING', 'WAITING_ADMIN', 'WAITING_APPROVAL', 'PROCESSING', 'CLAIMED', 'DIALING'];
+    foreach ($map as $requestId => $row) {
+        $status = strtoupper(trim((string)($row['status'] ?? '')));
+        if (!isset($monthlyMirrors[$requestId]) && in_array($status, $activeStatuses, true)) {
+            $map[$requestId] = user_proxy_apply_request_status_row($row);
         }
     }
 
@@ -2188,7 +2220,7 @@ function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100, ?st
         return $bTime <=> $aTime;
     });
 
-    if ($limit > 0 && count($rows) > $limit) {
+    if (count($rows) > $limit) {
         $rows = array_slice($rows, 0, $limit);
     }
 
@@ -4537,7 +4569,7 @@ switch ($action) {
             'month' => $month,
             'items' => user_proxy_collect_request_logs($uid, $limit, $legacy, $month),
             'wallet_history' => user_proxy_collect_wallet_received($uid, $month, $limit),
-            'add_money_history' => add_money_public_request_rows(add_money_list_user_history($uid, $limit)),
+            'add_money_history' => add_money_public_request_rows(add_money_list_user_history($uid, $limit, $month)),
             'mode' => $legacy ? 'fast_with_legacy_fallback' : 'fast',
         ]);
         break;

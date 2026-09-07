@@ -6,6 +6,7 @@ $page = (string)file_get_contents($root . '/api/user/history.php');
 $css = (string)file_get_contents($root . '/api/user/assets/pages/history-page.css');
 $js = (string)file_get_contents($root . '/api/user/assets/pages/history-page.js');
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
+$addMoney = (string)file_get_contents($root . '/api/lib/add_money.php');
 $bottomNav = (string)file_get_contents($root . '/api/user/includes/bottom-nav.php');
 $assertions = 0;
 
@@ -47,13 +48,26 @@ history_ui_expect(
 );
 
 history_ui_expect(
-    str_contains($js, 'const HISTORY_DAYS = 30')
-    && str_contains($js, 'recentMonthKeys()')
-    && str_contains($js, "shell.get('request_logs'")
-    && str_contains($js, "shell.get('transfer_history'")
-    && str_contains($js, 'Promise.allSettled(requests)')
+    !str_contains($js, 'HISTORY_DAYS')
+    && str_contains($js, 'currentMonthKey()')
+    && str_contains($js, "'request_logs',")
+    && str_contains($js, '{ month: currentMonthKey(), limit: HISTORY_LIMIT, legacy: 0 }')
+    && !str_contains($js, "shell.get('transfer_history'")
+    && !str_contains($js, 'Promise.allSettled(requests)')
     && str_contains($js, '.slice(0, HISTORY_LIMIT)'),
-    'Bounded recent 30-day multi-source loading is incomplete'
+    'History must load one bounded current-month aggregate request'
+);
+
+history_ui_expect(
+    str_contains($proxy, "'orderBy' => json_encode('created_at')")
+    && str_contains($proxy, "'limitToLast' => \$candidateLimit")
+    && str_contains($proxy, "'TOPUP' => 'TOPUP_HISTORY/' . \$uid . '/' . \$month")
+    && str_contains($proxy, "'MFS' => 'MFS_HISTORY/' . \$uid . '/' . \$month")
+    && str_contains($proxy, 'if (!isset($monthlyMirrors[$requestId])')
+    && str_contains($proxy, 'add_money_list_user_history($uid, $limit, $month)')
+    && str_contains($addMoney, "'startAt' => json_encode(\$monthPrefix)")
+    && str_contains($addMoney, "'limitToLast' => \$limit"),
+    'Current-month backend reads are not bounded or status hydration is still per-row'
 );
 
 foreach (['TOPUP', 'BUNDLE', 'MFS', 'ADD_MONEY', 'TRANSFER'] as $source) {
@@ -169,7 +183,7 @@ history_ui_expect(
 );
 
 history_ui_expect(
-    str_contains($js, 'No transaction history found in the last 30 days.')
+    str_contains($js, 'No transaction history found this month.')
     && str_contains($js, 'History could not be loaded. Please try again.')
     && str_contains($js, 'if (hadRows) shell.toast'),
     'History empty/error/refresh fallback behavior is incomplete'
