@@ -51,23 +51,23 @@ user_page_begin($page);
 
     <div class="hero-balance-label">Available Balance</div>
     <div class="hero-balance-row">
-      <div class="hero-balance"><span id="heroBalancePrefix">BDT</span> <span id="heroBalance">0.00</span></div>
+      <div class="hero-balance"><span id="heroBalancePrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroBalance" class="dashboard-placeholder dashboard-placeholder-balance">--</span></div>
       <a class="hero-add-money" href="/user/add-money">Add Money <span aria-hidden="true">&rsaquo;</span></a>
     </div>
-    <div class="hero-hold-line">Hold Balance: <span id="heroHoldPrefix">BDT</span> <span id="heroHold">0.00</span></div>
+    <div class="hero-hold-line">Hold Balance: <span id="heroHoldPrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroHold" class="dashboard-placeholder dashboard-placeholder-compact">--</span></div>
 
     <div class="hero-grid">
       <div class="hero-mini">
         <div class="hero-mini-label hero-rate-label">Today Rate</div>
-        <div class="hero-mini-value" id="heroRate">Rate unavailable</div>
+        <div class="hero-mini-value dashboard-placeholder dashboard-placeholder-rate" id="heroRate">Loading rate</div>
       </div>
       <div class="hero-mini">
         <div class="hero-mini-label">This Month</div>
-        <div class="hero-mini-value">Requests: <span id="heroRequests">0</span></div>
+        <div class="hero-mini-value">Requests: <span id="heroRequests" class="dashboard-placeholder dashboard-placeholder-compact">--</span></div>
       </div>
       <div class="hero-mini">
         <div class="hero-mini-label">Hello</div>
-        <div class="hero-mini-value" id="heroName">Z-Pay User</div>
+        <div class="hero-mini-value dashboard-placeholder dashboard-placeholder-name" id="heroName">Loading account</div>
       </div>
     </div>
   </div>
@@ -81,6 +81,7 @@ user_page_begin($page);
 </div>
 
 <section id="overviewSection" class="page-section dashboard-scroll-body active" aria-busy="true">
+  <p id="dashboardInitialStatus" class="sr-only" role="status" aria-live="polite">Loading account summary.</p>
   <div id="dashboardPullIndicator" class="user-dashboard-pull-indicator" role="status" aria-live="polite" aria-hidden="true">
     <span class="user-dashboard-pull-spinner" aria-hidden="true"></span>
     <span id="dashboardPullText">Pull to refresh</span>

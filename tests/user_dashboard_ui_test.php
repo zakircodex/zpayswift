@@ -144,6 +144,17 @@ dashboard_expect(
     'Dashboard local loading lifecycle or accessibility fallback is incomplete'
 );
 dashboard_expect(
+    str_contains($pageCss, 'body.user-dashboard-page.user-service-checking #appView')
+    && str_contains($pageCss, 'visibility: visible')
+    && str_contains($dashboard, 'id="dashboardInitialStatus"')
+    && str_contains($dashboard, 'dashboard-placeholder-balance')
+    && str_contains($pageJs, 'function setDashboardInitialLoading(on)')
+    && str_contains($pageJs, 'setDashboardInitialLoading(true)')
+    && str_contains($pageJs, 'setDashboardInitialLoading(false)')
+    && !preg_match('/async function init\(\)\s*\{\s*setDashboardLoading\(true\)/', $pageJs),
+    'Dashboard initial shell is still blocked by the account bootstrap request'
+);
+dashboard_expect(
     str_contains($loginPage, 'id="loginLoadingModal"')
     && str_contains($loginPage, 'id="loginLoadingText"')
     && !str_contains($loginPage, 'id="loadingWrap"')

@@ -1,0 +1,110 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const http = require('node:http');
+const path = require('node:path');
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+
+const root = path.resolve(__dirname, '..');
+const asset = (...parts) => path.join(root, 'api', 'user', 'assets', ...parts);
+
+function pageMarkup() {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="/user-shell.css"><link rel="stylesheet" href="/dashboard-page.css"></head>
+  <body class="user-authenticated user-service-checking user-dashboard-page" data-user-page="dashboard" data-active-section="overviewSection">
+  <section id="userMaintenanceView" class="hidden" aria-hidden="true"><button id="retryUserMaintenance">Retry</button></section>
+  <div id="appView"><div class="app-shell"><main class="main-panel"><div class="user-page-panel"><div class="user-page-content">
+    <div class="dashboard-fixed-stack"><div class="hero-card"><div class="dashboard-hero-topbar"><button id="openSidebarBtn"></button><h1 id="dashboardHeroTitle">Z-Pay Swift</h1><a href="/user/notifications"><span data-notification-badge class="hidden">0</span></a></div>
+      <div class="hero-balance"><span id="heroBalancePrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroBalance" class="dashboard-placeholder dashboard-placeholder-balance">--</span></div>
+      <div class="hero-hold-line"><span id="heroHoldPrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroHold" class="dashboard-placeholder dashboard-placeholder-compact">--</span></div>
+      <span id="heroRate" class="dashboard-placeholder dashboard-placeholder-rate">Loading rate</span><span id="heroRequests" class="dashboard-placeholder dashboard-placeholder-compact">--</span><span id="heroName" class="dashboard-placeholder dashboard-placeholder-name">Loading account</span>
+    </div></div>
+    <section id="overviewSection" aria-busy="true"><p id="dashboardInitialStatus" role="status">Loading account summary.</p><div id="zpayQuickActions"><h2>Recommended</h2><button data-dashboard-action="shopping">Shopping</button></div></section>
+    <div id="dashboardLoadingModal" aria-hidden="true" inert><p id="dashboardLoadingText"></p></div><div id="dashboardPullIndicator"><span id="dashboardPullText"></span></div>
+  </div></div></main></div></div>
+  <nav class="bottom-nav"></nav><aside id="sidebar" aria-hidden="true" inert></aside><div id="sidebarOverlay"></div><div id="toastWrap"></div>
+  <script>window.USER_PROXY_URL='/api/user/proxy.php';window.USER_LOGIN_URL='/user/';window.USER_PAGE_KEY='dashboard';window.USER_BOOTSTRAP_ACTION='dashboard_bootstrap';window.USER_BOOTSTRAP_PARAMS={limit:50,summary_only:'1'};</script>
+  <script src="/user-shell.js"></script><script src="/dashboard-page.js"></script></body></html>`;
+}
+
+function sendFile(response, file, type) {
+  response.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+  fs.createReadStream(file).pipe(response);
+}
+
+async function main() {
+  let dashboardCalls = 0;
+  const server = http.createServer((request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1');
+    if (url.pathname === '/') {
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      response.end(pageMarkup());
+      return;
+    }
+    if (url.pathname === '/user-shell.css') return sendFile(response, asset('user-shell.css'), 'text/css');
+    if (url.pathname === '/dashboard-page.css') return sendFile(response, asset('pages', 'dashboard-page.css'), 'text/css');
+    if (url.pathname === '/user-shell.js') return sendFile(response, asset('user-shell.js'), 'application/javascript');
+    if (url.pathname === '/dashboard-page.js') return sendFile(response, asset('pages', 'dashboard-page.js'), 'application/javascript');
+    if (url.pathname !== '/api/user/proxy.php') return response.writeHead(404).end();
+
+    const action = url.searchParams.get('action') || '';
+    const reply = (data) => {
+      response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      response.end(JSON.stringify({ ok: true, code: 'SUCCESS', data }));
+    };
+    if (action === 'dashboard_bootstrap') {
+      dashboardCalls += 1;
+      setTimeout(() => reply({
+        user: { uid: 'U-TEST', name: 'TEST USER', role: 'USER', status: 'ACTIVE', pricing_country: 'MY' },
+        csrf: 'TEST-CSRF',
+        wallet_summary: { pricing_country: 'MY', wallet: { display_currency: 'MYR', display_available_balance: 25, display_hold_balance: 0, rate_myr_bdt: 31.1 } },
+        request_logs: { items: [{ request_id: 'R-1' }] }
+      }), 2200);
+      return;
+    }
+    if (action === 'notifications_unread') return reply({ unread_count: 0 });
+    response.writeHead(404, { 'Content-Type': 'application/json' });
+    response.end(JSON.stringify({ ok: false, code: 'NOT_FOUND', data: {} }));
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'chrome' });
+  const widths = [320, 360, 390, 412, 430];
+
+  try {
+    for (const width of widths) {
+      const context = await browser.newContext({
+        viewport: { width, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: 'block',
+        userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36'
+      });
+      const page = await context.newPage();
+      const startedAt = Date.now();
+      await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(120);
+
+      assert.equal(await page.locator('#appView').evaluate((node) => getComputedStyle(node).visibility), 'visible', `${width}px shell stayed hidden.`);
+      assert.equal(await page.locator('#dashboardLoadingModal').getAttribute('aria-hidden'), 'true', `${width}px initial load opened the blocking modal.`);
+      assert.equal(await page.locator('#dashboardHeroTitle').isVisible(), true, `${width}px dashboard shell is not visible.`);
+      assert.equal(await page.locator('body').evaluate((node) => node.classList.contains('user-service-checking')), true, `${width}px fixture resolved before the cold-shell assertion.`);
+      assert.ok(Date.now() - startedAt < 1000, `${width}px shell was not useful within one second.`);
+
+      await page.waitForFunction(() => window.UserShell?.state?.ready === true);
+      assert.equal(await page.locator('#heroName').textContent(), 'TEST USER', `${width}px resolved dashboard did not render.`);
+      assert.equal(await page.locator('body').evaluate((node) => node.classList.contains('dashboard-initial-loading')), false, `${width}px initial loading state remained stuck.`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true, `${width}px dashboard overflows horizontally.`);
+      await context.close();
+    }
+
+    assert.equal(dashboardCalls, widths.length, 'Dashboard bootstrap did not run exactly once per page load.');
+    console.log(`User dashboard cold-boot browser tests passed (${widths.length} mobile viewports, ${dashboardCalls} bootstrap requests).`);
+  } finally {
+    await browser.close();
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

@@ -4,6 +4,56 @@ body.user-dashboard-page {
   overflow: hidden;
 }
 
+body.user-dashboard-page.user-service-checking #appView,
+body.user-dashboard-page.user-service-checking .bottom-nav {
+  visibility: visible;
+}
+
+.user-dashboard-page .dashboard-placeholder {
+  border-radius: 5px;
+}
+
+body.user-dashboard-page.user-service-checking .dashboard-placeholder,
+body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder {
+  min-width: 28px;
+  display: inline-block;
+  overflow: hidden;
+  color: transparent;
+  background: linear-gradient(100deg, rgba(255, 255, 255, 0.1) 22%, rgba(255, 255, 255, 0.24) 42%, rgba(255, 255, 255, 0.1) 62%);
+  background-size: 220% 100%;
+  animation: dashboardPlaceholderPulse 1.25s ease-in-out infinite;
+  user-select: none;
+}
+
+body.user-dashboard-page.user-service-checking .dashboard-placeholder-prefix,
+body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-prefix {
+  width: 42px;
+}
+
+body.user-dashboard-page.user-service-checking .dashboard-placeholder-balance,
+body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-balance {
+  width: 118px;
+}
+
+body.user-dashboard-page.user-service-checking .dashboard-placeholder-compact,
+body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-compact {
+  width: 36px;
+}
+
+body.user-dashboard-page.user-service-checking .dashboard-placeholder-rate,
+body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-rate {
+  width: 78px;
+}
+
+body.user-dashboard-page.user-service-checking .dashboard-placeholder-name,
+body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder-name {
+  width: 82px;
+}
+
+@keyframes dashboardPlaceholderPulse {
+  to { background-position-x: -220%; }
+}
+
 .user-dashboard-page #appView,
 .user-dashboard-page .app-shell,
 .user-dashboard-page .main-panel,
@@ -443,9 +493,15 @@ body.user-dashboard-page {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  body.user-dashboard-page.user-service-checking .dashboard-placeholder,
+  body.user-dashboard-page.dashboard-initial-loading .dashboard-placeholder,
   .user-dashboard-page .user-dashboard-loading-spinner,
   .user-dashboard-page .user-dashboard-pull-spinner {
     animation: none;
+  }
+
+  .user-dashboard-page .user-dashboard-loading-spinner,
+  .user-dashboard-page .user-dashboard-pull-spinner {
     border-color: rgba(50, 230, 134, 0.45);
   }
 

@@ -10,6 +10,7 @@
   const byId = (id) => document.getElementById(id);
   const loadingModal = byId('dashboardLoadingModal');
   const loadingText = byId('dashboardLoadingText');
+  const initialStatus = byId('dashboardInitialStatus');
   const pullIndicator = byId('dashboardPullIndicator');
   const pullText = byId('dashboardPullText');
   const pullThreshold = 72;
@@ -47,6 +48,15 @@
     loadingModal.inert = !open;
     pageRoot.setAttribute('aria-busy', open ? 'true' : 'false');
     document.body.classList.toggle('user-dashboard-loading-open', open);
+  }
+
+  function setDashboardInitialLoading(on) {
+    const loading = Boolean(on);
+    document.body.classList.toggle('dashboard-initial-loading', loading);
+    pageRoot.setAttribute('aria-busy', loading ? 'true' : 'false');
+    if (initialStatus) {
+      initialStatus.textContent = loading ? 'Loading account summary.' : 'Dashboard ready.';
+    }
   }
 
   function renderDashboard(data) {
@@ -222,7 +232,7 @@
   }
 
   async function init() {
-    setDashboardLoading(true);
+    setDashboardInitialLoading(true);
     bindActions();
     bindSwipeRefresh();
     try {
@@ -231,7 +241,7 @@
     } catch (_) {
       // The shared shell already presents a safe bootstrap error or redirects an expired session.
     } finally {
-      setDashboardLoading(false);
+      setDashboardInitialLoading(false);
     }
   }
 
