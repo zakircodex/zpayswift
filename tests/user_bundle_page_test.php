@@ -210,6 +210,21 @@ bundle_page_expect(
 );
 
 bundle_page_expect(
+    str_contains($bundleSubmit, "header('Content-Length: '")
+    && str_contains($bundleSubmit, 'bundle_submit_finish_response(')
+    && str_contains($bundleSubmit, "'telegram_skip' => true"),
+    'Bundle submit must flush committed success before deferred Telegram delivery.'
+);
+
+bundle_page_expect(
+    str_contains($proxy, 'user_proxy_forward_bundle_submit(')
+    && str_contains($proxy, 'bundle_recover_request_from_preview_token')
+    && str_contains($proxy, "'canonical_only' => true")
+    && str_contains($proxy, "'BUNDLE_SUBMIT_STATUS_UNKNOWN'"),
+    'Bundle Web submit must use one canonical attempt and recover an uncertain committed request.'
+);
+
+bundle_page_expect(
     str_contains($bundle, "'wallet_hold_amount' => \$walletHoldAmount")
     && str_contains($bundle, "'wallet_debit_currency' => \$walletCurrency")
     && !str_contains($bundle, 'topup_commission'),

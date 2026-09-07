@@ -8,6 +8,88 @@ require_once dirname(__DIR__) . '/lib/wallet.php';
 require_once dirname(__DIR__) . '/lib/topup.php';
 require_once dirname(__DIR__) . '/lib/bundle.php';
 
+function bundle_submit_finish_response(array $payload, ?array $telegramRow = null, array $logPayload = []): void
+{
+    $encoded = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (!is_string($encoded)) {
+        $encoded = '{"ok":false,"success":false,"code":"RESPONSE_ENCODING_FAILED","message":"Bundle response could not be encoded.","data":{}}';
+    }
+    http_response_code(200);
+    header('Content-Type: application/json; charset=utf-8');
+    header('Content-Length: ' . strlen($encoded));
+    echo $encoded;
+
+    $canContinue = false;
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+        $canContinue = true;
+    } elseif (function_exists('litespeed_finish_request')) {
+        litespeed_finish_request();
+        $canContinue = true;
+    } else {
+        while (ob_get_level() > 0) {
+            @ob_end_flush();
+        }
+        @flush();
+    }
+
+    if ($canContinue && is_array($telegramRow) && $telegramRow !== []) {
+        ignore_user_abort(true);
+        try {
+            if ($logPayload !== [] && function_exists('system_log')) {
+                system_log(
+                    (string)($logPayload['type'] ?? 'BUNDLE_SUBMIT'),
+                    (string)($logPayload['ref_id'] ?? ''),
+                    (string)($logPayload['message'] ?? 'Bundle request created successfully'),
+                    (array)($logPayload['context'] ?? [])
+                );
+            }
+
+            $requestId = trim((string)($telegramRow['request_id'] ?? ''));
+            if ($requestId !== '') {
+                $telegram = bundle_notify_telegram_bundle_request($telegramRow);
+                $now = bundle_now();
+                if (!empty($telegram['ok'])) {
+                    fb_patch('BUNDLE_REQUESTS/PENDING/' . $requestId, [
+                        'telegram_sent' => true,
+                        'telegram_sent_at' => $now,
+                        'telegram_message_id' => (int)($telegram['data']['message_id'] ?? 0),
+                        'telegram_chat_id' => (string)($telegram['data']['chat_id'] ?? ''),
+                        'telegram_error' => '',
+                        'updated_at' => $now,
+                    ]);
+                } else {
+                    fb_patch('BUNDLE_REQUESTS/PENDING/' . $requestId, [
+                        'telegram_sent' => false,
+                        'telegram_error' => (string)($telegram['message'] ?? $telegram['code'] ?? 'Telegram send failed'),
+                        'updated_at' => $now,
+                    ]);
+                }
+            }
+        } catch (Throwable $exception) {
+            $requestId = trim((string)($telegramRow['request_id'] ?? ''));
+            if ($requestId !== '') {
+                @fb_patch('BUNDLE_REQUESTS/PENDING/' . $requestId, [
+                    'telegram_sent' => false,
+                    'telegram_error' => 'Telegram notification failed after response',
+                    'updated_at' => bundle_now(),
+                ]);
+            }
+        }
+    } elseif (is_array($telegramRow) && $telegramRow !== []) {
+        $requestId = trim((string)($telegramRow['request_id'] ?? ''));
+        if ($requestId !== '') {
+            @fb_patch('BUNDLE_REQUESTS/PENDING/' . $requestId, [
+                'telegram_sent' => false,
+                'telegram_error' => 'Telegram notification deferred after fast app response',
+                'updated_at' => bundle_now(),
+            ]);
+        }
+    }
+
+    exit;
+}
+
 api_require_method('POST');
 api_require_app_key();
 
@@ -279,6 +361,7 @@ $extra = [
     'hold_settled_at' => 0,
     'hold_settlement_status' => 'PENDING',
     'idempotency_key_hash' => $idempotencyKey !== '' ? hash('sha256', $idempotencyKey) : '',
+    'telegram_skip' => true,
 ];
 
 $saved = create_bundle_pending_request(
@@ -332,24 +415,27 @@ if ($hasPreviewToken) {
     bundle_mark_preview_used($tokenHash, $requestId);
 }
 
-if (function_exists('system_log')) {
-    system_log('BUNDLE_SUBMIT', $requestId, 'Bundle request created successfully', [
+$deferredLog = [
+    'type' => 'BUNDLE_SUBMIT',
+    'ref_id' => $requestId,
+    'message' => 'Bundle request created successfully',
+    'context' => [
         'uid' => $uid,
         'offer_id' => $offerId,
         'operator' => $operator,
         'wallet_debit_amount' => $walletDebit,
         'wallet_debit_currency' => $walletCurrency,
         'rate_used' => (float)($data['rate_used'] ?? 0),
-    ]);
-}
+    ],
+];
 
 $savedRow = fb_get('BUNDLE_REQUESTS/PENDING/' . $requestId);
 $savedRow = is_array($savedRow) ? $savedRow : [];
+$savedRow['_bucket'] = 'PENDING';
 
-$responseData = [
+$responseData = bundle_submit_response_data($savedRow, [
     'request_id' => $requestId,
     'status' => 'WAITING_ADMIN',
-    'display_status' => 'Pending',
     'offer_id' => $offerId,
     'operator' => $operator,
     'operator_name' => (string)($data['operator_name'] ?? $operator),
@@ -371,17 +457,23 @@ $responseData = [
     'balance_after' => (float)($hold['after_available'] ?? $data['balance_after'] ?? 0),
     'telegram_sent' => (bool)($savedRow['telegram_sent'] ?? false),
     'telegram_message' => (string)($savedRow['telegram_error'] ?? ''),
-];
+]);
 
 wallet_financial_operation_mark_completed($financialClaim, [
     'wallet_applied' => true,
     'ledger_written' => true,
     'request_finalized' => true,
     'history_written' => true,
-    'notification_written' => true,
+    'notification_written' => false,
     'request_id' => $requestId,
     'ledger_id' => (string)($hold['ledger_id'] ?? ''),
     'result_data' => $responseData,
 ]);
 
-api_response(true, 'BUNDLE_REQUEST_CREATED', 'Bundle request submitted', $responseData);
+bundle_submit_finish_response([
+    'ok' => true,
+    'success' => true,
+    'code' => 'BUNDLE_REQUEST_CREATED',
+    'message' => 'Bundle request submitted',
+    'data' => $responseData,
+], $savedRow, $deferredLog);

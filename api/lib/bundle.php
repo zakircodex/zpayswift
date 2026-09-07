@@ -250,6 +250,113 @@ function bundle_mark_preview_failed(string $tokenHash, string $code, string $mes
     ]);
 }
 
+function bundle_find_request(string $requestId): ?array
+{
+    $requestId = trim($requestId);
+    if ($requestId === '') {
+        return null;
+    }
+
+    foreach (['PENDING', 'DONE'] as $bucket) {
+        $row = fb_get('BUNDLE_REQUESTS/' . $bucket . '/' . $requestId);
+        if (is_array($row)) {
+            $row['_bucket'] = $bucket;
+            $row['request_id'] = (string)($row['request_id'] ?? $requestId);
+            return $row;
+        }
+    }
+
+    return null;
+}
+
+function bundle_recover_request_from_preview_token(
+    string $uid,
+    string $previewToken,
+    int $pollAttempts = 1
+): array {
+    $uid = trim($uid);
+    $previewToken = trim($previewToken);
+    if ($uid === '' || $previewToken === '') {
+        return ['ok' => false, 'code' => 'BUNDLE_RECOVERY_INVALID', 'request' => []];
+    }
+
+    $previewPath = 'BUNDLE_PREVIEWS/' . bundle_preview_token_hash($previewToken);
+    $pollAttempts = max(1, min(12, $pollAttempts));
+
+    for ($attempt = 0; $attempt < $pollAttempts; $attempt++) {
+        $preview = fb_get($previewPath);
+        if (!is_array($preview)) {
+            return ['ok' => false, 'code' => 'BUNDLE_RECOVERY_NOT_FOUND', 'request' => []];
+        }
+        if (!hash_equals($uid, trim((string)($preview['uid'] ?? '')))) {
+            return ['ok' => false, 'code' => 'BUNDLE_RECOVERY_FORBIDDEN', 'request' => []];
+        }
+
+        $requestId = trim((string)($preview['request_id'] ?? ''));
+        if ($requestId !== '') {
+            $request = bundle_find_request($requestId);
+            if (is_array($request) && hash_equals($uid, trim((string)($request['uid'] ?? '')))) {
+                return [
+                    'ok' => true,
+                    'code' => 'SUCCESS',
+                    'request_id' => $requestId,
+                    'request' => $request,
+                ];
+            }
+            if (is_array($request)) {
+                return ['ok' => false, 'code' => 'BUNDLE_RECOVERY_FORBIDDEN', 'request' => []];
+            }
+        }
+
+        $status = strtoupper(trim((string)($preview['status'] ?? '')));
+        if (!in_array($status, ['PROCESSING', 'USED'], true) || $attempt + 1 >= $pollAttempts) {
+            break;
+        }
+        usleep(250000);
+    }
+
+    return ['ok' => false, 'code' => 'BUNDLE_RECOVERY_PENDING', 'request' => []];
+}
+
+function bundle_submit_response_data(array $row, array $fallback = []): array
+{
+    $requestId = (string)($row['request_id'] ?? $fallback['request_id'] ?? '');
+    $status = (string)($row['status'] ?? $fallback['status'] ?? 'WAITING_ADMIN');
+    $serviceAmount = (float)($row['service_amount_bdt'] ?? $row['price_amount'] ?? $row['amount'] ?? $fallback['service_amount_bdt'] ?? $fallback['amount'] ?? 0);
+    $data = [
+        'request_id' => $requestId,
+        'status' => $status !== '' ? $status : 'WAITING_ADMIN',
+        'display_status' => 'Pending',
+        'offer_id' => (string)($row['offer_id'] ?? $fallback['offer_id'] ?? ''),
+        'operator' => (string)($row['operator'] ?? $fallback['operator'] ?? ''),
+        'operator_name' => (string)($row['operator_name'] ?? $fallback['operator_name'] ?? $row['operator'] ?? $fallback['operator'] ?? ''),
+        'bundle_number' => (string)($row['bundle_number'] ?? $fallback['bundle_number'] ?? ''),
+        'bundle_name' => (string)($row['bundle_name'] ?? $fallback['bundle_name'] ?? ''),
+        'amount' => $serviceAmount,
+        'service_amount' => (float)($row['service_amount'] ?? $fallback['service_amount'] ?? $serviceAmount),
+        'service_amount_bdt' => $serviceAmount,
+        'service_currency' => (string)($row['service_currency'] ?? $fallback['service_currency'] ?? 'BDT'),
+        'bundle_commission' => (float)($row['bundle_commission'] ?? $fallback['bundle_commission'] ?? 0),
+        'commission_currency' => (string)($row['commission_currency'] ?? $fallback['commission_currency'] ?? 'BDT'),
+        'wallet_debit_amount' => (float)($row['wallet_debit_amount'] ?? $fallback['wallet_debit_amount'] ?? 0),
+        'wallet_debit_currency' => (string)($row['wallet_debit_currency'] ?? $fallback['wallet_debit_currency'] ?? 'BDT'),
+        'rate_used' => (float)($row['rate_used'] ?? $row['rate_snapshot'] ?? $fallback['rate_used'] ?? $fallback['rate_snapshot'] ?? 0),
+        'rate_snapshot' => $row['rate_snapshot'] ?? $fallback['rate_snapshot'] ?? null,
+        'rate_applicable' => (bool)($row['rate_applicable'] ?? $fallback['rate_applicable'] ?? false),
+        'wallet_debit_bdt' => (float)($row['wallet_debit_bdt'] ?? $fallback['wallet_debit_bdt'] ?? 0),
+        'wallet_debit_myr' => (float)($row['wallet_debit_myr'] ?? $fallback['wallet_debit_myr'] ?? 0),
+        'balance_after' => (float)($row['balance_after'] ?? $fallback['balance_after'] ?? 0),
+        'telegram_sent' => (bool)($row['telegram_sent'] ?? $fallback['telegram_sent'] ?? false),
+        'telegram_message' => (string)($row['telegram_error'] ?? $fallback['telegram_message'] ?? ''),
+    ];
+
+    if (!empty($row['duplicate']) || !empty($fallback['duplicate'])) {
+        $data['duplicate'] = true;
+    }
+
+    return $data;
+}
+
 function bundle_notification_amount_text(array $row): string
 {
     $amount = bundle_round_money((float)($row['you_pay'] ?? $row['payable_amount'] ?? $row['amount'] ?? 0));
@@ -1752,6 +1859,8 @@ function create_bundle_pending_request(
     array $extra = []
 ): bool {
     $now = bundle_now();
+    $skipTelegram = !empty($extra['telegram_skip']) || $telegramSent === true;
+    unset($extra['telegram_skip']);
 
     $priceAmount = bundle_round_money((float)(
         $extra['price_amount']
@@ -1889,8 +1998,6 @@ function create_bundle_pending_request(
      * Telegram notification request create আটকাবে না।
      * Telegram fail হলেও request save থাকবে।
      */
-    $skipTelegram = !empty($extra['telegram_skip']) || $telegramSent === true;
-
     if (!$skipTelegram) {
         $tg = bundle_notify_telegram_bundle_request($row);
         $patchNow = bundle_now();

@@ -2009,6 +2009,92 @@ function user_proxy_forward_topup_submit(array $body, array $sessionUser): void
     );
 }
 
+function user_proxy_recover_bundle_submit_result(
+    string $uid,
+    string $previewToken,
+    int $pollAttempts = 1
+): array {
+    $uid = trim($uid);
+    $previewToken = trim($previewToken);
+    if ($uid === '' || $previewToken === '' || !function_exists('bundle_recover_request_from_preview_token')) {
+        return ['ok' => false];
+    }
+
+    $recovered = bundle_recover_request_from_preview_token($uid, $previewToken, $pollAttempts);
+    $request = is_array($recovered['request'] ?? null) ? (array)$recovered['request'] : [];
+    if (empty($recovered['ok']) || !$request) {
+        return ['ok' => false];
+    }
+
+    return [
+        'ok' => true,
+        'request_id' => (string)($recovered['request_id'] ?? ''),
+        'data' => bundle_submit_response_data($request),
+    ];
+}
+
+function user_proxy_forward_bundle_submit(array $body, array $sessionUser): void
+{
+    $res = user_proxy_internal_api_request(
+        'POST',
+        'bundle/submit.php',
+        $body,
+        user_proxy_authenticated_headers(),
+        [
+            'canonical_only' => true,
+            'max_attempts' => 1,
+            'connect_timeout' => 5,
+            'timeout' => 40,
+        ]
+    );
+    $json = is_array($res['json'] ?? null) ? (array)$res['json'] : [];
+    if (!empty($res['ok'])) {
+        user_proxy_response(
+            true,
+            (string)($json['code'] ?? 'BUNDLE_REQUEST_CREATED'),
+            (string)($json['message'] ?? 'Bundle request submitted'),
+            (array)($json['data'] ?? []),
+            (int)($res['status'] ?? 200)
+        );
+    }
+
+    $code = strtoupper(trim((string)($json['code'] ?? '')));
+    $transportUncertain = !is_array($res['json'] ?? null) || (int)($res['status'] ?? 0) === 0;
+    $submissionUncertain = in_array($code, ['BUNDLE_ALREADY_SUBMITTED', 'BUNDLE_PREVIEW_CLAIM_FAILED'], true);
+    if ($transportUncertain || $submissionUncertain) {
+        $recovered = user_proxy_recover_bundle_submit_result(
+            (string)($sessionUser['uid'] ?? ''),
+            (string)($body['preview_token'] ?? ''),
+            12
+        );
+        if (!empty($recovered['ok'])) {
+            user_proxy_response(
+                true,
+                'BUNDLE_REQUEST_CREATED',
+                'Bundle request submitted',
+                (array)($recovered['data'] ?? []),
+                200
+            );
+        }
+
+        user_proxy_response(
+            false,
+            'BUNDLE_SUBMIT_STATUS_UNKNOWN',
+            'Request status could not be confirmed. Check History before trying again.',
+            ['retry_safe' => false],
+            503
+        );
+    }
+
+    user_proxy_response(
+        false,
+        $code !== '' ? $code : 'BUNDLE_SUBMIT_FAILED',
+        (string)($json['message'] ?? 'Bundle request could not be submitted.'),
+        (array)($json['data'] ?? []),
+        (int)(($res['status'] ?? 0) > 0 ? $res['status'] : 502)
+    );
+}
+
 function user_proxy_forward_authenticated_multipart(
     string $relativePath,
     array $fields,
@@ -4935,15 +5021,9 @@ switch ($action) {
     case 'bundle_submit':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
-        user_proxy_require_login(true, false);
+        $sessionUser = user_proxy_require_login(true, false);
         $body = user_proxy_read_json_body();
-        user_proxy_forward_authenticated_json(
-            'POST',
-            'bundle/submit.php',
-            $body,
-            'BUNDLE_SUBMIT_FAILED',
-            'Bundle request could not be submitted.'
-        );
+        user_proxy_forward_bundle_submit($body, $sessionUser);
         break;
 
     case 'bundle_favorites':
