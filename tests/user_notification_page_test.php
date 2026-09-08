@@ -55,7 +55,8 @@ notification_expect(
     && str_contains($page, 'data-notification-filter="UNREAD"')
     && str_contains($page, 'class="notification-page-fixed-area"')
     && str_contains($page, 'class="notification-page-scroll-body"')
-    && str_contains($page, 'id="notificationPageLive"'),
+    && str_contains($page, 'id="notificationPageLive"')
+    && str_contains($page, 'id="notificationLoadMore"'),
     'Notification tabs/fixed-scroll architecture is incomplete'
 );
 notification_expect(
@@ -75,6 +76,11 @@ notification_expect(
     && str_contains($js, "addEventListener('touchstart'")
     && str_contains($js, "addEventListener('touchmove'")
     && str_contains($js, "addEventListener('touchend'")
+    && str_contains($js, 'const pageSize = 10;')
+    && str_contains($js, 'function loadMore()')
+    && str_contains($js, 'bindProgressiveLoading()')
+    && str_contains($js, 'const before = state.nextBefore;')
+    && str_contains($js, 'before_id: beforeId')
     && str_contains($js, "holdPageLoad?.('Loading notifications...')")
     && !str_contains($js, 'notificationModal'),
     'Notification safe rendering, error handling, refresh, or loading lifecycle is incomplete'
@@ -90,6 +96,7 @@ notification_expect(
     && str_contains($css, '.notification-page-scroll-body')
     && str_contains($css, 'overflow-y: auto')
     && str_contains($css, '.notification-page-card-meta')
+    && str_contains($css, '.notification-load-more')
     && str_contains($css, '.notification-detail-retry')
     && str_contains($css, '@media (max-width: 360px)'),
     'Responsive notification page styling is incomplete'
@@ -103,10 +110,10 @@ notification_expect(
     && str_contains($library, 'function notification_timestamp_seconds')
     && str_contains($library, '30 * 24 * 60 * 60')
     && str_contains($library, 'function notification_list_from_rows')
+    && str_contains($library, 'function notification_page_from_rows')
     && str_contains($library, 'function notification_unread_count_from_rows')
     && str_contains($listEndpoint, '$rows = notification_rows_for_user($uid);')
-    && str_contains($listEndpoint, 'notification_list_from_rows($rows')
-    && str_contains($listEndpoint, 'notification_unread_count_from_rows($rows)')
+    && str_contains($listEndpoint, 'notification_page_from_rows($rows')
     && !str_contains($listEndpoint, 'notification_unread_count($uid)'),
     'Notification list endpoint still performs duplicate user-tree reads'
 );
@@ -121,6 +128,21 @@ notification_expect(
     && str_contains($js, 'data.deleted_count : data.marked_count')
     && str_contains($js, 'Notification could not be deleted.'),
     'Notification read/delete results are not applied defensively'
+);
+notification_expect(
+    str_contains($library, 'function notification_mark_many_read_result')
+    && str_contains($library, 'function notification_delete_many_result')
+    && str_contains($library, 'fb_patch(\'USER_NOTIFICATIONS/\' . $uid, $updates)')
+    && !str_contains($proxy, "'notifications/mark_read.php'")
+    && !str_contains($proxy, "'notifications/delete.php'"),
+    'Notification bulk actions are not using the direct batched write path'
+);
+notification_expect(
+    str_contains($proxy, '$notificationBefore = max(0, (int)($_GET[\'before\'] ?? 0));')
+    && str_contains($proxy, '$notificationBeforeId = trim((string)($_GET[\'before_id\'] ?? \'\'));')
+    && str_contains($proxy, 'notification_page_from_rows(')
+    && !str_contains($proxy, "'notifications/list.php?'"),
+    'Notification list proxy is not using direct cursor pagination'
 );
 notification_expect(
     str_contains($shell, "!== 'notifications') loadUnread()"),

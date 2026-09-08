@@ -7,6 +7,7 @@
 
   const releaseInitialLoad = shell.holdPageLoad?.('Loading notifications...') || (() => {});
   const scrollBody = document.querySelector('.notification-page-scroll-body');
+  const pageSize = 10;
   const pullThreshold = 68;
   const pullLimit = 108;
   const state = {
@@ -15,7 +16,12 @@
     selected: new Set(),
     editing: false,
     loading: false,
+    loadingMore: false,
+    loadMoreError: false,
     loaded: false,
+    hasMore: false,
+    nextBefore: 0,
+    nextBeforeId: '',
     active: null,
     opener: null,
     listSerial: 0,
@@ -66,20 +72,21 @@
   }
 
   function updateControls() {
+    const busy = state.loading || state.loadingMore;
     document.querySelectorAll('[data-notification-filter]').forEach((tab) => {
       const active = tab.dataset.notificationFilter === state.filter;
       tab.classList.toggle('active', active);
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
-      tab.disabled = state.loading;
+      tab.disabled = busy;
     });
     $('notificationUnreadCount').textContent = String(shell.state.unread || 0);
     $('notificationsEditButton').setAttribute('aria-pressed', state.editing ? 'true' : 'false');
     $('notificationsEditButton').setAttribute('aria-label', state.editing ? 'Finish selecting notifications' : 'Select notifications');
-    $('notificationsEditButton').disabled = state.loading || !state.loaded;
+    $('notificationsEditButton').disabled = busy || !state.loaded;
     $('notificationEditBar').classList.toggle('hidden', !state.editing);
-    $('notificationsDeleteButton').disabled = !state.selected.size || state.loading;
-    $('notificationsMarkSelectedButton').disabled = !state.selected.size || state.loading;
-    $('notificationsSelectAllButton').disabled = state.loading || !state.items.length;
+    $('notificationsDeleteButton').disabled = !state.selected.size || busy;
+    $('notificationsMarkSelectedButton').disabled = !state.selected.size || busy;
+    $('notificationsSelectAllButton').disabled = busy || !state.items.length;
     $('notificationsSelectAllButton').textContent =
       state.items.length && state.items.every((item) => state.selected.has(String(item.notification_id || '')))
         ? 'Clear All' : 'Select All';
@@ -89,6 +96,7 @@
     const list = $('notificationList');
     list.setAttribute('aria-busy', 'true');
     list.innerHTML = '<div class="notification-page-skeleton"></div><div class="notification-page-skeleton"></div><div class="notification-page-skeleton"></div>';
+    updateLoadMore();
     $('notificationPageLive').textContent = 'Loading notifications.';
   }
 
@@ -97,6 +105,8 @@
     const list = $('notificationList');
     list.setAttribute('aria-busy', 'false');
     list.innerHTML = `<div class="notification-page-state notification-page-error"><span class="notification-page-state-icon">!</span><h3>Notifications could not be loaded</h3><p>${shell.escapeHtml(message)}</p><button id="notificationRetry" class="notification-page-retry" type="button">Retry</button></div>`;
+    state.hasMore = false;
+    updateLoadMore();
     $('notificationRetry')?.addEventListener('click', () => load({ preserve: false }));
     $('notificationPageLive').textContent = 'Notifications could not be loaded.';
   }
@@ -106,6 +116,7 @@
     list.setAttribute('aria-busy', 'false');
     if (!state.items.length) {
       list.innerHTML = `<div class="notification-page-state"><span class="notification-page-state-icon">Z</span><h3>${state.filter === 'UNREAD' ? 'You are all caught up' : 'No notifications yet'}</h3><p>Important account and transaction updates will appear here.</p></div>`;
+      updateLoadMore();
       $('notificationPageLive').textContent = state.filter === 'UNREAD' ? 'No unread notifications.' : 'No notifications.';
       return;
     }
@@ -133,7 +144,20 @@
       button.addEventListener('click', () => state.editing ? toggle(id) : openDetail(item, button));
       list.appendChild(button);
     });
+    updateLoadMore();
     $('notificationPageLive').textContent = `${state.items.length} notifications loaded.`;
+  }
+
+  function updateLoadMore() {
+    const footer = $('notificationLoadMore');
+    const button = $('notificationLoadMoreButton');
+    if (!footer || !button) return;
+    const visible = state.loaded && state.items.length > 0 && (state.hasMore || state.loadingMore || state.loadMoreError);
+    footer.classList.toggle('hidden', !visible);
+    footer.classList.toggle('is-loading', state.loadingMore);
+    footer.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    button.disabled = state.loadingMore;
+    button.textContent = state.loadingMore ? 'Loading more...' : (state.loadMoreError ? 'Retry loading more' : 'Load more');
   }
 
   async function load(options = {}) {
@@ -148,13 +172,19 @@
     try {
       const data = await shell.get(
         'notifications_list',
-        { limit: 50, filter: state.filter },
+        { limit: pageSize, filter: state.filter },
         'Loading notifications...',
         { busy: false }
       );
       if (serial !== state.listSerial) return;
       state.items = Array.isArray(data.items) ? data.items : [];
       state.loaded = true;
+      state.nextBefore = Number(data.next_before || 0);
+      state.nextBeforeId = String(data.next_before_id || '');
+      state.hasMore = data.has_more === true && state.nextBefore > 0 && state.nextBeforeId !== '';
+      state.loadMoreError = false;
+      const visibleIds = new Set(state.items.map((item) => String(item.notification_id || '')));
+      state.selected = new Set(Array.from(state.selected).filter((id) => visibleIds.has(id)));
       shell.state.unread = Number(data.unread_count || 0);
       render();
     } catch (error) {
@@ -171,6 +201,69 @@
         updateControls();
       }
     }
+  }
+
+  async function loadMore() {
+    if (state.loading || state.loadingMore || !state.loaded || !state.hasMore || state.nextBefore <= 0) return;
+    const serial = state.listSerial;
+    const before = state.nextBefore;
+    const beforeId = state.nextBeforeId;
+    state.loadingMore = true;
+    state.loadMoreError = false;
+    updateControls();
+    updateLoadMore();
+
+    try {
+      const data = await shell.get(
+        'notifications_list',
+        { limit: pageSize, filter: state.filter, before, before_id: beforeId },
+        'Loading more notifications...',
+        { busy: false }
+      );
+      if (serial !== state.listSerial) return;
+      const incoming = Array.isArray(data.items) ? data.items : [];
+      const known = new Set(state.items.map((item) => String(item.notification_id || '')));
+      incoming.forEach((item) => {
+        const id = String(item.notification_id || '');
+        if (id && !known.has(id)) {
+          known.add(id);
+          state.items.push(item);
+        }
+      });
+      const nextBefore = Number(data.next_before || 0);
+      const nextBeforeId = String(data.next_before_id || '');
+      state.nextBefore = nextBefore;
+      state.nextBeforeId = nextBeforeId;
+      state.hasMore = data.has_more === true
+        && incoming.length > 0
+        && nextBefore > 0
+        && nextBeforeId !== ''
+        && (nextBefore !== before || nextBeforeId !== beforeId);
+      state.loadMoreError = false;
+      shell.state.unread = Number(data.unread_count ?? shell.state.unread);
+      render();
+    } catch (error) {
+      if (serial !== state.listSerial) return;
+      state.loadMoreError = true;
+      shell.toast('More notifications could not be loaded.', 'error');
+      $('notificationPageLive').textContent = 'More notifications could not be loaded. Retry is available.';
+    } finally {
+      if (serial === state.listSerial) {
+        state.loadingMore = false;
+        updateControls();
+        updateLoadMore();
+      }
+    }
+  }
+
+  function bindProgressiveLoading() {
+    if (!scrollBody) return;
+    scrollBody.addEventListener('scroll', () => {
+      if (scrollBody.scrollTop <= 0) return;
+      const remaining = scrollBody.scrollHeight - scrollBody.scrollTop - scrollBody.clientHeight;
+      if (remaining <= 180) loadMore();
+    }, { passive: true });
+    $('notificationLoadMoreButton')?.addEventListener('click', () => loadMore());
   }
 
   function updatePullIndicator(distance, refreshing = false) {
@@ -208,7 +301,7 @@
     if (!scrollBody) return;
     scrollBody.addEventListener('touchstart', (event) => {
       const active = document.activeElement;
-      if (state.loading || state.editing || notificationDetailOpen() || scrollBody.scrollTop > 0
+      if (state.loading || state.loadingMore || state.editing || notificationDetailOpen() || scrollBody.scrollTop > 0
         || event.touches.length !== 1
         || (active instanceof HTMLElement && active.matches('input, select, textarea, [contenteditable="true"]'))) {
         resetPullIndicator(false);
@@ -326,7 +419,7 @@
   }
 
   function openDetail(item, opener) {
-    if (state.loading) return;
+    if (state.loading || state.loadingMore) return;
     state.active = item;
     state.opener = opener;
     const modal = $('notificationDetailModal');
@@ -352,7 +445,8 @@
   }
 
   async function mutate(action, ids) {
-    if (!ids.length || state.loading) return;
+    if (!ids.length || state.loading || state.loadingMore) return;
+    let refill = false;
     state.loading = true;
     updateControls();
     try {
@@ -372,6 +466,7 @@
       state.selected.clear();
       shell.state.unread = Number(data.unread_count ?? shell.state.unread);
       render();
+      refill = state.hasMore && state.items.length < pageSize;
       shell.toast(action === 'notifications_delete' ? 'Notification deleted.' : 'Notification marked as read.', 'ok');
     } catch (error) {
       shell.toast(safeError(error, 'Notifications could not be updated.'), 'error');
@@ -379,6 +474,7 @@
       state.loading = false;
       updateControls();
     }
+    if (refill) await loadMore();
   }
 
   async function init() {
@@ -392,6 +488,7 @@
         load({ preserve: false });
       }));
       bindPullToRefresh();
+      bindProgressiveLoading();
       $('notificationsEditButton').addEventListener('click', () => {
         state.editing = !state.editing;
         state.selected.clear();

@@ -45,6 +45,10 @@ user_page_begin($page);
       </div>
       <div id="notificationPageLive" class="notification-page-live" aria-live="polite"></div>
       <div id="notificationList" class="notification-page-list" aria-busy="true"></div>
+      <div id="notificationLoadMore" class="notification-load-more hidden" aria-hidden="true">
+        <span class="notification-load-more-spinner" aria-hidden="true"></span>
+        <button id="notificationLoadMoreButton" type="button">Load more</button>
+      </div>
     </div>
     <div id="notificationEditBar" class="notification-edit-bar hidden" role="toolbar" aria-label="Selected notification actions">
       <button id="notificationsSelectAllButton" type="button">Select All</button>

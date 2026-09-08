@@ -18,7 +18,7 @@ function markup() {
   <section id="notificationsSection" class="page-section notification-page-section active"><div class="notification-page-shell">
     <div class="notification-page-fixed-area"><header class="notification-page-header"><a class="notification-page-icon-button" href="#">Back</a><div class="notification-page-heading"><h1 id="notificationsPageTitle">Notifications</h1><p>Account and transaction updates</p></div><div class="notification-page-header-actions"><button id="notificationsEditButton" class="notification-page-icon-button notification-edit-button" aria-pressed="false">E</button></div></header>
     <div class="notification-page-tabs"><button class="notification-page-tab active" data-notification-filter="ALL">All Notifications</button><button class="notification-page-tab" data-notification-filter="UNREAD">Unread <span id="notificationUnreadCount">0</span></button></div></div>
-    <div class="notification-page-scroll-body"><div id="notificationPullIndicator" class="notification-pull-indicator" aria-hidden="true"><span class="notification-pull-spinner"></span><span id="notificationPullText">Pull to refresh</span></div><div id="notificationPageLive" class="notification-page-live"></div><div id="notificationList" class="notification-page-list" aria-busy="true"></div></div>
+    <div class="notification-page-scroll-body"><div id="notificationPullIndicator" class="notification-pull-indicator" aria-hidden="true"><span class="notification-pull-spinner"></span><span id="notificationPullText">Pull to refresh</span></div><div id="notificationPageLive" class="notification-page-live"></div><div id="notificationList" class="notification-page-list" aria-busy="true"></div><div id="notificationLoadMore" class="notification-load-more hidden" aria-hidden="true"><span class="notification-load-more-spinner"></span><button id="notificationLoadMoreButton">Load more</button></div></div>
     <div id="notificationEditBar" class="notification-edit-bar hidden"><button id="notificationsSelectAllButton">Select All</button><button id="notificationsDeleteButton" disabled>Delete</button><button id="notificationsMarkSelectedButton" disabled>Mark Read</button></div>
   </div>
   <div id="notificationDetailModal" class="notification-detail-modal hidden" aria-modal="true" aria-hidden="true" inert><div class="notification-detail-backdrop" data-notification-detail-close></div><div class="notification-detail-sheet"><div class="notification-detail-handle"></div><header><span id="notificationDetailIcon" class="notification-page-card-icon">Z</span><h3 id="notificationDetailTitle">Notification</h3><button id="notificationDetailCloseButton">Close</button></header><div class="notification-detail-content"><time id="notificationDetailTime"></time><p id="notificationDetailBody">Loading notification...</p><button id="notificationDetailRetryButton" class="notification-detail-retry hidden">Retry</button></div><div class="notification-detail-actions"><button id="notificationDetailDeleteButton">Delete</button><button id="notificationDetailOpenButton">Open Related Page</button></div></div></div>
@@ -41,6 +41,15 @@ async function main() {
   let markCalls = 0;
   let deleteCalls = 0;
   let failNextList = false;
+  const notifications = Array.from({ length: 14 }, (_, index) => ({
+    notification_id: `N-${index + 1}`,
+    type: 'TRANSFER_SUCCESS',
+    category: 'TRANSACTIONS',
+    title: `Transfer ${index + 1} complete`,
+    body: 'Your transfer is complete.',
+    is_read: false,
+    created_at: 1788750000 - index
+  }));
   const server = http.createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
     if (url.pathname === '/') {
@@ -75,7 +84,19 @@ async function main() {
         }, 180);
         return;
       }
-      return reply({ items: [{ notification_id: 'N-1', type: 'TRANSFER_SUCCESS', category: 'TRANSACTIONS', title: 'Transfer complete', body: 'Your transfer is complete.', is_read: false, created_at: 1788750000 }], unread_count: 1 }, 650);
+      const before = Number(url.searchParams.get('before') || 0);
+      const beforeId = String(url.searchParams.get('before_id') || '');
+      const candidates = before > 0
+        ? notifications.filter((item) => item.created_at < before || (item.created_at === before && item.notification_id < beforeId))
+        : notifications;
+      const items = candidates.slice(0, 10);
+      return reply({
+        items,
+        unread_count: notifications.length,
+        next_before: items.at(-1)?.created_at || 0,
+        next_before_id: items.at(-1)?.notification_id || '',
+        has_more: candidates.length > items.length
+      }, 650);
     }
     if (action === 'notification_details') {
       detailCalls += 1;
@@ -88,11 +109,11 @@ async function main() {
     }
     if (action === 'notification_mark_read') {
       markCalls += 1;
-      return reply({ unread_count: 0, marked_count: 1 }, 40);
+      return reply({ unread_count: 0, marked_count: markCalls === 1 ? 1 : notifications.length }, 40);
     }
     if (action === 'notifications_delete') {
       deleteCalls += 1;
-      return reply({ unread_count: 0, deleted_count: 1 }, 40);
+      return reply({ unread_count: 0, deleted_count: notifications.length }, 40);
     }
     response.writeHead(404, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({ ok: false, code: 'NOT_FOUND', data: {} }));
@@ -112,7 +133,8 @@ async function main() {
       await page.waitForTimeout(260);
       assert.equal(await page.locator('#loadingWrap').getAttribute('aria-hidden'), 'false', `${width}px loader closed before notifications loaded.`);
       if (captureDir && width === 390) await page.screenshot({ path: path.join(captureDir, 'notifications-loading.png'), fullPage: true });
-      await page.locator('.notification-page-card').waitFor();
+      await page.locator('.notification-page-card').first().waitFor();
+      assert.equal(await page.locator('.notification-page-card').count(), 10, `${width}px initial notification batch is not 10 items.`);
       await page.waitForFunction(() => document.getElementById('loadingWrap')?.getAttribute('aria-hidden') === 'true');
       assert.equal(await page.locator('#appView').evaluate((node) => node.inert), false, `${width}px app stayed locked.`);
       const geometry = await page.evaluate(() => ({
@@ -135,17 +157,18 @@ async function main() {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, serviceWorkers: 'block' });
     const page = await context.newPage();
     await page.goto(`http://127.0.0.1:${server.address().port}/`);
-    await page.locator('.notification-page-card').waitFor();
-    await page.locator('.notification-page-card').click();
+    await page.locator('.notification-page-card').first().waitFor();
+    await page.locator('.notification-page-card').first().click();
     await page.locator('#notificationDetailRetryButton:not(.hidden)').waitFor();
     assert.equal(await page.locator('#notificationDetailBody').textContent(), 'Notification details could not be loaded.');
-    assert.equal(await page.locator('.notification-page-card.unread').count(), 0, 'Successful mark-read was overwritten by stale detail data.');
+    assert.equal(await page.locator('[data-notification-id="N-1"].unread').count(), 0, 'Successful mark-read was overwritten by stale detail data.');
     await page.locator('#notificationDetailRetryButton').click();
     await page.waitForFunction(() => document.getElementById('notificationDetailBody')?.textContent === 'Canonical notification details.');
     await page.locator('#notificationDetailCloseButton').click();
     failNextList = true;
     assert.equal(await page.locator('#notificationsRefreshButton').count(), 0, 'Header refresh button is still rendered.');
     await page.locator('.notification-page-scroll-body').evaluate((node) => {
+      node.scrollTop = 0;
       const dispatch = (type, touches) => {
         const event = new Event(type, { bubbles: true, cancelable: true });
         Object.defineProperty(event, 'touches', { value: touches });
@@ -156,20 +179,30 @@ async function main() {
       dispatch('touchend', []);
     });
     await page.waitForTimeout(300);
-    assert.equal(await page.locator('.notification-page-card').count(), 1, 'Failed refresh removed existing notifications.');
+    assert.equal(await page.locator('.notification-page-card').count(), 10, 'Failed refresh removed existing notifications.');
     assert.equal(await page.locator('#notificationList').getAttribute('aria-busy'), 'false');
     assert.equal(await page.locator('#notificationPullIndicator').getAttribute('aria-hidden'), 'true', 'Pull indicator did not reset.');
+    await page.locator('.notification-page-scroll-body').evaluate((node) => {
+      node.style.height = '420px';
+      node.style.flex = '0 0 420px';
+      node.scrollTop = node.scrollHeight;
+      node.dispatchEvent(new Event('scroll'));
+    });
+    await page.waitForFunction(() => document.querySelectorAll('.notification-page-card').length === 14);
     await page.locator('#notificationsEditButton').click();
-    await page.locator('.notification-page-card').click();
+    await page.locator('#notificationsSelectAllButton').click();
+    await page.locator('#notificationsMarkSelectedButton').click();
+    await page.waitForFunction(() => document.querySelectorAll('.notification-page-card.unread').length === 0);
+    await page.locator('#notificationsSelectAllButton').click();
     await page.locator('#notificationsDeleteButton').click();
     await page.waitForFunction(() => document.querySelectorAll('.notification-page-card').length === 0);
     await context.close();
 
     assert.equal(unreadCalls, 0, 'Notification page started redundant unread requests.');
-    assert.equal(listCalls, widths.length + 2, 'Notification list request count is unexpected.');
+    assert.equal(listCalls, widths.length + 3, 'Notification list pagination request count is unexpected.');
     assert.equal(detailCalls, 2, 'Notification detail Retry did not issue exactly one replacement request.');
-    assert.equal(markCalls, 1, 'Notification detail Retry duplicated the mark-read request.');
-    assert.equal(deleteCalls, 1, 'Notification delete did not issue exactly one request.');
+    assert.equal(markCalls, 2, 'Notification detail and bulk mark-read did not each issue exactly one request.');
+    assert.equal(deleteCalls, 1, 'Bulk notification delete did not issue exactly one request.');
     console.log(`User loading/notification browser tests passed (${widths.length} mobile viewports).`);
   } finally {
     await browser.close();

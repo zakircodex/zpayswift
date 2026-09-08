@@ -5562,16 +5562,21 @@ switch ($action) {
 
     case 'notifications_list':
         user_proxy_require_method('GET');
-        user_proxy_require_login(true, false);
+        require_once dirname(__DIR__) . '/lib/notifications.php';
+        $notificationUser = user_proxy_require_login(true, false);
         $notificationLimit = max(1, min(50, (int)($_GET['limit'] ?? 30)));
+        $notificationBefore = max(0, (int)($_GET['before'] ?? 0));
+        $notificationBeforeId = trim((string)($_GET['before_id'] ?? ''));
         $notificationFilter = strtoupper(trim((string)($_GET['filter'] ?? 'ALL')));
-        user_proxy_forward_authenticated_json(
-            'GET',
-            'notifications/list.php?' . http_build_query(['limit' => $notificationLimit, 'filter' => $notificationFilter]),
-            null,
-            'NOTIFICATIONS_LOAD_FAILED',
-            'Notifications could not be loaded.'
+        $notificationRows = notification_rows_for_user((string)($notificationUser['uid'] ?? ''));
+        $notificationPage = notification_page_from_rows(
+            $notificationRows,
+            $notificationLimit,
+            $notificationBefore,
+            $notificationFilter,
+            $notificationBeforeId
         );
+        user_proxy_response(true, 'NOTIFICATIONS_LIST_OK', 'Notifications loaded.', $notificationPage);
         break;
 
     case 'notifications_unread':
@@ -5582,22 +5587,28 @@ switch ($action) {
 
     case 'notification_mark_read':
         user_proxy_require_method('POST');
-        user_proxy_require_login(true, false);
+        require_once dirname(__DIR__) . '/lib/notifications.php';
+        $notificationUser = user_proxy_require_login(true, false);
         user_proxy_require_csrf();
         $body = user_proxy_read_json_body();
-        $markReadPayload = [];
-        if (is_array($body['notification_ids'] ?? null)) {
-            $markReadPayload['notification_ids'] = array_values((array)$body['notification_ids']);
-        } else {
-            $markReadPayload['notification_id'] = trim((string)($body['notification_id'] ?? ''));
+        $notificationIds = is_array($body['notification_ids'] ?? null)
+            ? array_values((array)$body['notification_ids'])
+            : [trim((string)($body['notification_id'] ?? ''))];
+        $notificationIds = notification_normalize_ids($notificationIds);
+        if ($notificationIds === []) {
+            user_proxy_response(false, 'NOTIFICATION_ID_REQUIRED', 'Notification ID is required.', [], 422);
         }
-        user_proxy_forward_authenticated_json(
-            'POST',
-            'notifications/mark_read.php',
-            $markReadPayload,
-            'NOTIFICATION_UPDATE_FAILED',
-            'Notification could not be updated.'
+        $notificationResult = notification_mark_many_read_result(
+            (string)($notificationUser['uid'] ?? ''),
+            $notificationIds
         );
+        if (empty($notificationResult['ok'])) {
+            user_proxy_response(false, 'NOTIFICATION_UPDATE_FAILED', 'Notification could not be updated.', [], 503);
+        }
+        user_proxy_response(true, 'NOTIFICATIONS_READ_OK', 'Notifications marked as read.', [
+            'marked_count' => (int)($notificationResult['marked_count'] ?? 0),
+            'unread_count' => (int)($notificationResult['unread_count'] ?? 0),
+        ]);
         break;
 
     case 'notification_details':
@@ -5615,19 +5626,28 @@ switch ($action) {
 
     case 'notifications_delete':
         user_proxy_require_method('POST');
-        user_proxy_require_login(true, false);
+        require_once dirname(__DIR__) . '/lib/notifications.php';
+        $notificationUser = user_proxy_require_login(true, false);
         user_proxy_require_csrf();
         $body = user_proxy_read_json_body();
         $notificationIds = is_array($body['notification_ids'] ?? null)
             ? array_values((array)$body['notification_ids'])
             : [trim((string)($body['notification_id'] ?? ''))];
-        user_proxy_forward_authenticated_json(
-            'POST',
-            'notifications/delete.php',
-            ['notification_ids' => $notificationIds],
-            'NOTIFICATION_DELETE_FAILED',
-            'Notifications could not be deleted.'
+        $notificationIds = notification_normalize_ids($notificationIds);
+        if ($notificationIds === []) {
+            user_proxy_response(false, 'NOTIFICATION_ID_REQUIRED', 'Notification ID is required.', [], 422);
+        }
+        $notificationResult = notification_delete_many_result(
+            (string)($notificationUser['uid'] ?? ''),
+            $notificationIds
         );
+        if (empty($notificationResult['ok'])) {
+            user_proxy_response(false, 'NOTIFICATION_DELETE_FAILED', 'Notifications could not be deleted.', [], 503);
+        }
+        user_proxy_response(true, 'NOTIFICATIONS_DELETED_OK', 'Notifications deleted.', [
+            'deleted_count' => (int)($notificationResult['deleted_count'] ?? 0),
+            'unread_count' => (int)($notificationResult['unread_count'] ?? 0),
+        ]);
         break;
 
     case 'notifications_mark_all_read':

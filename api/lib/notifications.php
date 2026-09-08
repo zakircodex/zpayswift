@@ -587,9 +587,16 @@ function notification_rows_for_user(string $uid): array
     return is_array($fallback) ? $fallback : [];
 }
 
-function notification_list_from_rows(array $rows, int $limit = 20, int $before = 0, string $filter = 'ALL'): array
+function notification_list_from_rows(
+    array $rows,
+    int $limit = 20,
+    int $before = 0,
+    string $filter = 'ALL',
+    string $beforeId = ''
+): array
 {
     $cutoff = notification_recent_cutoff();
+    $beforeId = notification_clean_text($beforeId, 80);
     $items = [];
     foreach ($rows as $id => $row) {
         if (!is_array($row)) {
@@ -600,7 +607,11 @@ function notification_list_from_rows(array $rows, int $limit = 20, int $before =
         }
         $row['notification_id'] = (string)($row['notification_id'] ?? $id);
         $createdAt = notification_timestamp_seconds($row['created_at'] ?? 0);
-        if ($createdAt <= 0 || $createdAt < $cutoff || ($before > 0 && $createdAt >= $before)) {
+        if ($createdAt <= 0 || $createdAt < $cutoff) {
+            continue;
+        }
+        if ($before > 0 && ($createdAt > $before
+            || ($createdAt === $before && ($beforeId === '' || strcmp($row['notification_id'], $beforeId) >= 0)))) {
             continue;
         }
         if (!notification_filter_match($row, $filter)) {
@@ -608,15 +619,48 @@ function notification_list_from_rows(array $rows, int $limit = 20, int $before =
         }
         $items[] = notification_public_row($row);
     }
-    usort($items, static fn(array $a, array $b): int =>
-        ((int)($b['created_at'] ?? 0) <=> (int)($a['created_at'] ?? 0))
-    );
-    return array_slice($items, 0, max(1, min(50, $limit)));
+    usort($items, static function (array $a, array $b): int {
+        $timestampOrder = (int)($b['created_at'] ?? 0) <=> (int)($a['created_at'] ?? 0);
+        return $timestampOrder !== 0
+            ? $timestampOrder
+            : strcmp((string)($b['notification_id'] ?? ''), (string)($a['notification_id'] ?? ''));
+    });
+    return array_slice($items, 0, max(1, min(notification_recent_query_limit(), $limit)));
 }
 
 function notification_list_for_user(string $uid, int $limit = 20, int $before = 0, string $filter = 'ALL'): array
 {
     return notification_list_from_rows(notification_rows_for_user($uid), $limit, $before, $filter);
+}
+
+function notification_page_from_rows(
+    array $rows,
+    int $limit = 20,
+    int $before = 0,
+    string $filter = 'ALL',
+    string $beforeId = ''
+): array
+{
+    $limit = max(1, min(50, $limit));
+    $candidates = notification_list_from_rows($rows, $limit + 1, $before, $filter, $beforeId);
+    $hasMore = count($candidates) > $limit;
+    $items = array_slice($candidates, 0, $limit);
+    $nextBefore = 0;
+    $nextBeforeId = '';
+    if ($items !== []) {
+        $last = end($items);
+        $nextBefore = (int)($last['created_at'] ?? 0);
+        $nextBeforeId = (string)($last['notification_id'] ?? '');
+    }
+
+    return [
+        'items' => $items,
+        'limit' => $limit,
+        'next_before' => $nextBefore,
+        'next_before_id' => $nextBeforeId,
+        'has_more' => $hasMore,
+        'unread_count' => notification_unread_count_from_rows($rows),
+    ];
 }
 
 function notification_unread_count_from_rows(array $rows): int
@@ -647,20 +691,8 @@ function notification_unread_count(string $uid): int
 
 function notification_mark_read(string $uid, string $notificationId): bool
 {
-    $uid = trim($uid);
-    $notificationId = notification_clean_text($notificationId, 80);
-    if ($uid === '' || $notificationId === '') {
-        return false;
-    }
-    $path = 'USER_NOTIFICATIONS/' . $uid . '/' . $notificationId;
-    $row = fb_get($path);
-    if (!is_array($row) || !empty($row['deleted'])) {
-        return false;
-    }
-    return fb_patch($path, [
-        'is_read' => true,
-        'read_at' => notification_now(),
-    ]);
+    $result = notification_mark_many_read_result($uid, [$notificationId]);
+    return !empty($result['ok']) && (int)($result['marked_count'] ?? 0) === 1;
 }
 
 function notification_mark_entity_read(string $uid, string $entityType, string $entityId): void
@@ -733,43 +765,131 @@ function notification_details_for_user(string $uid, string $notificationId): arr
 
 function notification_mark_many_read(string $uid, array $notificationIds): int
 {
-    $count = 0;
+    $result = notification_mark_many_read_result($uid, $notificationIds);
+    return !empty($result['ok']) ? (int)($result['marked_count'] ?? 0) : 0;
+}
+
+function notification_normalize_ids(array $notificationIds): array
+{
+    $normalized = [];
     foreach ($notificationIds as $notificationId) {
-        if (notification_mark_read($uid, (string)$notificationId)) {
-            $count++;
+        $notificationId = notification_clean_text($notificationId, 80);
+        if ($notificationId === '' || preg_match('/[.#$\[\]\/]/', $notificationId) === 1) {
+            continue;
+        }
+        $normalized[$notificationId] = true;
+        if (count($normalized) >= notification_recent_query_limit()) {
+            break;
         }
     }
-    return $count;
+
+    return array_keys($normalized);
+}
+
+function notification_mark_many_read_result(string $uid, array $notificationIds): array
+{
+    $uid = trim($uid);
+    $notificationIds = notification_normalize_ids($notificationIds);
+    if ($uid === '' || $notificationIds === []) {
+        return ['ok' => false, 'code' => 'NOTIFICATION_ID_REQUIRED', 'marked_count' => 0, 'unread_count' => 0];
+    }
+
+    $rows = notification_rows_for_user($uid);
+    $now = notification_now();
+    $updates = [];
+    $changedIds = [];
+    $accepted = 0;
+    foreach ($notificationIds as $notificationId) {
+        $row = $rows[$notificationId] ?? null;
+        if (!is_array($row) || !empty($row['deleted'])) {
+            continue;
+        }
+        $accepted++;
+        if (!empty($row['is_read']) || !empty($row['read'])) {
+            continue;
+        }
+        $updates[$notificationId . '/is_read'] = true;
+        $updates[$notificationId . '/read_at'] = $now;
+        $changedIds[] = $notificationId;
+    }
+
+    if ($updates !== [] && !fb_patch('USER_NOTIFICATIONS/' . $uid, $updates)) {
+        return [
+            'ok' => false,
+            'code' => 'NOTIFICATION_UPDATE_FAILED',
+            'marked_count' => 0,
+            'unread_count' => notification_unread_count_from_rows($rows),
+        ];
+    }
+    foreach ($changedIds as $notificationId) {
+        $rows[$notificationId]['is_read'] = true;
+        $rows[$notificationId]['read_at'] = $now;
+    }
+
+    return [
+        'ok' => true,
+        'code' => 'NOTIFICATIONS_READ_OK',
+        'marked_count' => $accepted,
+        'unread_count' => notification_unread_count_from_rows($rows),
+    ];
+}
+
+function notification_delete_many_result(string $uid, array $notificationIds): array
+{
+    $uid = trim($uid);
+    $notificationIds = notification_normalize_ids($notificationIds);
+    if ($uid === '' || $notificationIds === []) {
+        return ['ok' => false, 'code' => 'NOTIFICATION_ID_REQUIRED', 'deleted_count' => 0, 'unread_count' => 0];
+    }
+
+    $rows = notification_rows_for_user($uid);
+    $now = notification_now();
+    $updates = [];
+    $changedIds = [];
+    $accepted = 0;
+    foreach ($notificationIds as $notificationId) {
+        $row = $rows[$notificationId] ?? null;
+        if (!is_array($row)) {
+            continue;
+        }
+        $accepted++;
+        if (!empty($row['deleted'])) {
+            continue;
+        }
+        $updates[$notificationId . '/deleted'] = true;
+        $updates[$notificationId . '/deleted_at'] = $now;
+        $updates[$notificationId . '/is_read'] = true;
+        $updates[$notificationId . '/read_at'] = (int)($row['read_at'] ?? 0) ?: $now;
+        $changedIds[] = $notificationId;
+    }
+
+    if ($updates !== [] && !fb_patch('USER_NOTIFICATIONS/' . $uid, $updates)) {
+        return [
+            'ok' => false,
+            'code' => 'NOTIFICATION_DELETE_FAILED',
+            'deleted_count' => 0,
+            'unread_count' => notification_unread_count_from_rows($rows),
+        ];
+    }
+    foreach ($changedIds as $notificationId) {
+        $rows[$notificationId]['deleted'] = true;
+        $rows[$notificationId]['deleted_at'] = $now;
+        $rows[$notificationId]['is_read'] = true;
+        $rows[$notificationId]['read_at'] = (int)($rows[$notificationId]['read_at'] ?? 0) ?: $now;
+    }
+
+    return [
+        'ok' => true,
+        'code' => 'NOTIFICATIONS_DELETED_OK',
+        'deleted_count' => $accepted,
+        'unread_count' => notification_unread_count_from_rows($rows),
+    ];
 }
 
 function notification_delete_many(string $uid, array $notificationIds): int
 {
-    $uid = trim($uid);
-    if ($uid === '') {
-        return 0;
-    }
-    $now = notification_now();
-    $count = 0;
-    foreach ($notificationIds as $notificationId) {
-        $notificationId = notification_clean_text($notificationId, 80);
-        if ($notificationId === '') {
-            continue;
-        }
-        $path = 'USER_NOTIFICATIONS/' . $uid . '/' . $notificationId;
-        $row = fb_get($path);
-        if (!is_array($row) || !empty($row['deleted'])) {
-            continue;
-        }
-        if (fb_patch($path, [
-            'deleted' => true,
-            'deleted_at' => $now,
-            'is_read' => true,
-            'read_at' => (int)($row['read_at'] ?? 0) ?: $now,
-        ])) {
-            $count++;
-        }
-    }
-    return $count;
+    $result = notification_delete_many_result($uid, $notificationIds);
+    return !empty($result['ok']) ? (int)($result['deleted_count'] ?? 0) : 0;
 }
 
 function notification_private_storage_root(): string

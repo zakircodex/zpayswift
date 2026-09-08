@@ -20,8 +20,11 @@ if ($ids === []) {
     api_response(false, 'NOTIFICATION_ID_REQUIRED', 'Notification ID is required.', [], 422);
 }
 
-$deleted = notification_delete_many($uid, $ids);
+$result = notification_delete_many_result($uid, $ids);
+if (empty($result['ok'])) {
+    api_response(false, (string)($result['code'] ?? 'NOTIFICATION_DELETE_FAILED'), 'Notifications could not be deleted.', [], 503);
+}
 api_response(true, 'NOTIFICATIONS_DELETED_OK', 'Notifications deleted.', [
-    'deleted_count' => $deleted,
-    'unread_count' => notification_unread_count($uid),
+    'deleted_count' => (int)($result['deleted_count'] ?? 0),
+    'unread_count' => (int)($result['unread_count'] ?? 0),
 ]);

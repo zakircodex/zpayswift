@@ -295,6 +295,52 @@ body.user-authenticated[data-active-section='notificationsSection'] #notificatio
   padding: 2px 0 0;
 }
 
+.notification-load-more {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 0 2px;
+}
+
+.notification-load-more.hidden {
+  display: none;
+}
+
+.notification-load-more-spinner {
+  display: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(148, 178, 218, 0.28);
+  border-top-color: var(--z-green);
+  border-radius: 50%;
+}
+
+.notification-load-more.is-loading .notification-load-more-spinner {
+  display: block;
+  animation: notificationSpin 0.75s linear infinite;
+}
+
+.notification-load-more button {
+  min-width: 120px;
+  min-height: 40px;
+  padding: 8px 18px;
+  border: 1px solid rgba(50, 230, 134, 0.48);
+  border-radius: 16px;
+  color: var(--z-text);
+  background: rgba(18, 53, 91, 0.92);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.notification-load-more button:disabled {
+  opacity: 0.66;
+  cursor: wait;
+}
+
 .notification-page-card {
   width: 100%;
   min-width: 0;
@@ -821,6 +867,7 @@ body.notification-detail-open {
 
   .notification-page-skeleton,
   .notification-pull-indicator.is-refreshing .notification-pull-spinner,
+  .notification-load-more.is-loading .notification-load-more-spinner,
   .notification-detail-modal.is-loading .notification-detail-content p::before {
     animation: none;
   }

@@ -37,6 +37,20 @@ function fb_get(string $path, array $query = [])
             'is_read' => true,
             'created_at' => $now - 20,
         ],
+        'N-TIE-B' => [
+            'type' => 'ADMIN_NOTICE',
+            'title' => 'Tie B',
+            'body' => 'Same timestamp page boundary',
+            'is_read' => true,
+            'created_at' => $now - 20,
+        ],
+        'N-TIE-A' => [
+            'type' => 'ADMIN_NOTICE',
+            'title' => 'Tie A',
+            'body' => 'Same timestamp next page',
+            'is_read' => true,
+            'created_at' => $now - 20,
+        ],
         'N-DELETED' => [
             'type' => 'ADMIN_NOTICE',
             'title' => 'Deleted',
@@ -71,7 +85,7 @@ if (($queriesSeen[0]['orderBy'] ?? '') !== '"created_at"'
     fwrite(STDERR, "FAIL: notification snapshot is not bounded to the recent 30-day window.\n");
     exit(1);
 }
-if (count($items) !== 2
+if (count($items) !== 4
     || ($items[0]['notification_id'] ?? '') !== 'N-NEW'
     || (int)($items[0]['created_at'] ?? 0) !== $now - 10) {
     fwrite(STDERR, "FAIL: shared snapshot changed notification list semantics.\n");
@@ -79,6 +93,23 @@ if (count($items) !== 2
 }
 if ($unread !== 1) {
     fwrite(STDERR, "FAIL: shared snapshot changed unread count semantics.\n");
+    exit(1);
+}
+$firstTiePage = notification_page_from_rows($rows, 2, 0, 'ALL');
+$secondTiePage = notification_page_from_rows(
+    $rows,
+    2,
+    (int)($firstTiePage['next_before'] ?? 0),
+    'ALL',
+    (string)($firstTiePage['next_before_id'] ?? '')
+);
+$pagedIds = array_column(array_merge($firstTiePage['items'] ?? [], $secondTiePage['items'] ?? []), 'notification_id');
+if (count($firstTiePage['items'] ?? []) !== 2
+    || empty($firstTiePage['has_more'])
+    || count($secondTiePage['items'] ?? []) !== 2
+    || !empty($secondTiePage['has_more'])
+    || count(array_unique($pagedIds)) !== 4) {
+    fwrite(STDERR, "FAIL: stable notification cursor skipped a same-timestamp row.\n");
     exit(1);
 }
 
