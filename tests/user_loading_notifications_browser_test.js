@@ -16,9 +16,9 @@ function markup() {
   <section id="userMaintenanceView" class="hidden" aria-hidden="true"><button id="retryUserMaintenance">Retry</button></section>
   <div id="appView" inert aria-busy="true"><div id="sidebarOverlay"></div><aside id="sidebar" aria-hidden="true" inert></aside><div class="app-shell"><main class="main-panel"><div class="user-page-panel"><div class="user-page-content">
   <section id="notificationsSection" class="page-section notification-page-section active"><div class="notification-page-shell">
-    <div class="notification-page-fixed-area"><header class="notification-page-header"><a class="notification-page-icon-button" href="#">Back</a><div class="notification-page-heading"><h1 id="notificationsPageTitle">Notifications</h1><p>Account and transaction updates</p></div><div class="notification-page-header-actions"><button id="notificationsRefreshButton" class="notification-page-icon-button">R</button><button id="notificationsEditButton" class="notification-page-icon-button notification-edit-button" aria-pressed="false">E</button></div></header>
+    <div class="notification-page-fixed-area"><header class="notification-page-header"><a class="notification-page-icon-button" href="#">Back</a><div class="notification-page-heading"><h1 id="notificationsPageTitle">Notifications</h1><p>Account and transaction updates</p></div><div class="notification-page-header-actions"><button id="notificationsEditButton" class="notification-page-icon-button notification-edit-button" aria-pressed="false">E</button></div></header>
     <div class="notification-page-tabs"><button class="notification-page-tab active" data-notification-filter="ALL">All Notifications</button><button class="notification-page-tab" data-notification-filter="UNREAD">Unread <span id="notificationUnreadCount">0</span></button></div></div>
-    <div class="notification-page-scroll-body"><div id="notificationPageLive" class="notification-page-live"></div><div id="notificationList" class="notification-page-list" aria-busy="true"></div></div>
+    <div class="notification-page-scroll-body"><div id="notificationPullIndicator" class="notification-pull-indicator" aria-hidden="true"><span class="notification-pull-spinner"></span><span id="notificationPullText">Pull to refresh</span></div><div id="notificationPageLive" class="notification-page-live"></div><div id="notificationList" class="notification-page-list" aria-busy="true"></div></div>
     <div id="notificationEditBar" class="notification-edit-bar hidden"><button id="notificationsSelectAllButton">Select All</button><button id="notificationsDeleteButton" disabled>Delete</button><button id="notificationsMarkSelectedButton" disabled>Mark Read</button></div>
   </div>
   <div id="notificationDetailModal" class="notification-detail-modal hidden" aria-modal="true" aria-hidden="true" inert><div class="notification-detail-backdrop" data-notification-detail-close></div><div class="notification-detail-sheet"><div class="notification-detail-handle"></div><header><span id="notificationDetailIcon" class="notification-page-card-icon">Z</span><h3 id="notificationDetailTitle">Notification</h3><button id="notificationDetailCloseButton">Close</button></header><div class="notification-detail-content"><time id="notificationDetailTime"></time><p id="notificationDetailBody">Loading notification...</p><button id="notificationDetailRetryButton" class="notification-detail-retry hidden">Retry</button></div><div class="notification-detail-actions"><button id="notificationDetailDeleteButton">Delete</button><button id="notificationDetailOpenButton">Open Related Page</button></div></div></div>
@@ -144,10 +144,21 @@ async function main() {
     await page.waitForFunction(() => document.getElementById('notificationDetailBody')?.textContent === 'Canonical notification details.');
     await page.locator('#notificationDetailCloseButton').click();
     failNextList = true;
-    await page.locator('#notificationsRefreshButton').click();
+    assert.equal(await page.locator('#notificationsRefreshButton').count(), 0, 'Header refresh button is still rendered.');
+    await page.locator('.notification-page-scroll-body').evaluate((node) => {
+      const dispatch = (type, touches) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.defineProperty(event, 'touches', { value: touches });
+        node.dispatchEvent(event);
+      };
+      dispatch('touchstart', [{ clientX: 190, clientY: 20 }]);
+      dispatch('touchmove', [{ clientX: 190, clientY: 170 }]);
+      dispatch('touchend', []);
+    });
     await page.waitForTimeout(300);
     assert.equal(await page.locator('.notification-page-card').count(), 1, 'Failed refresh removed existing notifications.');
     assert.equal(await page.locator('#notificationList').getAttribute('aria-busy'), 'false');
+    assert.equal(await page.locator('#notificationPullIndicator').getAttribute('aria-hidden'), 'true', 'Pull indicator did not reset.');
     await page.locator('#notificationsEditButton').click();
     await page.locator('.notification-page-card').click();
     await page.locator('#notificationsDeleteButton').click();

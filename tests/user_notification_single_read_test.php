@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 $reads = 0;
 $now = 1788750000;
-$querySeen = [];
+$queriesSeen = [];
 
 function now_ts(): int
 {
@@ -13,11 +13,14 @@ function now_ts(): int
 
 function fb_get(string $path, array $query = [])
 {
-    global $reads, $now, $querySeen;
+    global $reads, $now, $queriesSeen;
     $reads++;
-    $querySeen = $query;
+    $queriesSeen[] = $query;
     if ($path !== 'USER_NOTIFICATIONS/U-TEST') {
         throw new RuntimeException('Unexpected Firebase path: ' . $path);
+    }
+    if (($query['orderBy'] ?? '') === '"created_at"') {
+        return null;
     }
     return [
         'N-NEW' => [
@@ -25,7 +28,7 @@ function fb_get(string $path, array $query = [])
             'title' => 'Transfer complete',
             'body' => 'Done',
             'is_read' => false,
-            'created_at' => $now - 10,
+            'created_at' => ($now - 10) * 1000,
         ],
         'N-READ' => [
             'type' => 'ADMIN_NOTICE',
@@ -56,17 +59,21 @@ $rows = notification_rows_for_user('U-TEST');
 $items = notification_list_from_rows($rows, 50, 0, 'ALL');
 $unread = notification_unread_count_from_rows($rows);
 
-if ($reads !== 1) {
-    fwrite(STDERR, "FAIL: notification list snapshot was read {$reads} times.\n");
+if ($reads !== 2) {
+    fwrite(STDERR, "FAIL: notification compatibility read count was {$reads}.\n");
     exit(1);
 }
-if (($querySeen['orderBy'] ?? '') !== '"created_at"'
-    || (int)($querySeen['startAt'] ?? 0) !== $now - (30 * 24 * 60 * 60)
-    || (int)($querySeen['limitToLast'] ?? 0) !== 250) {
+if (($queriesSeen[0]['orderBy'] ?? '') !== '"created_at"'
+    || (int)($queriesSeen[0]['startAt'] ?? 0) !== $now - (30 * 24 * 60 * 60)
+    || (int)($queriesSeen[0]['limitToLast'] ?? 0) !== 250
+    || ($queriesSeen[1]['orderBy'] ?? '') !== '"$key"'
+    || (int)($queriesSeen[1]['limitToLast'] ?? 0) !== 250) {
     fwrite(STDERR, "FAIL: notification snapshot is not bounded to the recent 30-day window.\n");
     exit(1);
 }
-if (count($items) !== 2 || ($items[0]['notification_id'] ?? '') !== 'N-NEW') {
+if (count($items) !== 2
+    || ($items[0]['notification_id'] ?? '') !== 'N-NEW'
+    || (int)($items[0]['created_at'] ?? 0) !== $now - 10) {
     fwrite(STDERR, "FAIL: shared snapshot changed notification list semantics.\n");
     exit(1);
 }
@@ -75,4 +82,4 @@ if ($unread !== 1) {
     exit(1);
 }
 
-echo "User notification single-read test passed (1 Firebase snapshot).\n";
+echo "User notification bounded fallback test passed (2 Firebase snapshots).\n";

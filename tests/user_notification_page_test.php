@@ -9,6 +9,7 @@ $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $library = (string)file_get_contents($root . '/api/lib/notifications.php');
 $listEndpoint = (string)file_get_contents($root . '/api/notifications/list.php');
 $shell = (string)file_get_contents($root . '/api/user/assets/user-shell.js');
+$rules = (string)file_get_contents($root . '/database.rules.json');
 $tests = 0;
 
 function notification_expect(bool $condition, string $message): void
@@ -37,10 +38,11 @@ notification_expect(
     'Notification detail sheet is missing'
 );
 notification_expect(
-    str_contains($page, 'id="notificationsRefreshButton"')
+    !str_contains($page . $js, 'notificationsRefreshButton')
     && str_contains($page, 'Updates from the last 30 days')
+    && str_contains($page, 'id="notificationPullIndicator"')
     && str_contains($page, 'id="notificationDetailRetryButton"'),
-    'Notification refresh, heading, or detail retry UI is missing'
+    'Notification pull refresh, heading, or detail retry UI is incomplete'
 );
 notification_expect(
     str_contains($page, "'show_drawer' => false")
@@ -70,6 +72,9 @@ notification_expect(
     && str_contains($js, "$('notificationDetailBody').textContent")
     && str_contains($js, "results[0].status === 'rejected'")
     && str_contains($js, "load({ preserve: true })")
+    && str_contains($js, "addEventListener('touchstart'")
+    && str_contains($js, "addEventListener('touchmove'")
+    && str_contains($js, "addEventListener('touchend'")
     && str_contains($js, "holdPageLoad?.('Loading notifications...')")
     && !str_contains($js, 'notificationModal'),
     'Notification safe rendering, error handling, refresh, or loading lifecycle is incomplete'
@@ -93,7 +98,9 @@ notification_expect(
     str_contains($library, 'function notification_rows_for_user')
     && str_contains($library, 'function notification_recent_cutoff')
     && str_contains($library, "'orderBy' => json_encode('created_at'")
+    && str_contains($library, "'orderBy' => json_encode('\$key'")
     && str_contains($library, "'limitToLast' => notification_recent_query_limit()")
+    && str_contains($library, 'function notification_timestamp_seconds')
     && str_contains($library, '30 * 24 * 60 * 60')
     && str_contains($library, 'function notification_list_from_rows')
     && str_contains($library, 'function notification_unread_count_from_rows')
@@ -102,6 +109,11 @@ notification_expect(
     && str_contains($listEndpoint, 'notification_unread_count_from_rows($rows)')
     && !str_contains($listEndpoint, 'notification_unread_count($uid)'),
     'Notification list endpoint still performs duplicate user-tree reads'
+);
+notification_expect(
+    str_contains($rules, '"USER_NOTIFICATIONS"')
+    && str_contains($rules, '".indexOn": ["created_at"]'),
+    'Notification created_at Firebase index is missing'
 );
 notification_expect(
     strpos($js, 'Object.assign(item, results[0].value.notification || {});')

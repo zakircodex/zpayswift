@@ -236,6 +236,46 @@ body.user-authenticated[data-active-section='notificationsSection'] #notificatio
   scrollbar-color: rgba(50, 230, 134, 0.42) rgba(7, 23, 47, 0.18);
 }
 
+.notification-pull-indicator {
+  height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  overflow: hidden;
+  color: var(--z-hint);
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0;
+  transition: height 80ms linear, opacity 120ms ease;
+}
+
+.notification-pull-indicator[aria-hidden='false'] {
+  opacity: 1;
+}
+
+.notification-pull-indicator.is-resetting {
+  transition: height 200ms ease, opacity 160ms ease;
+}
+
+.notification-pull-spinner {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border: 2px solid rgba(148, 178, 218, 0.28);
+  border-top-color: var(--z-green);
+  border-radius: 50%;
+  transform: rotate(calc(var(--notification-pull-rotation, 0) * 1deg));
+}
+
+.notification-pull-indicator.is-ready {
+  color: var(--z-text);
+}
+
+.notification-pull-indicator.is-refreshing .notification-pull-spinner {
+  animation: notificationSpin 0.75s linear infinite;
+}
+
 .notification-page-scroll-body::-webkit-scrollbar {
   width: 6px;
 }
@@ -780,7 +820,7 @@ body.notification-detail-open {
   }
 
   .notification-page-skeleton,
-  .notification-page-icon-button.is-loading svg,
+  .notification-pull-indicator.is-refreshing .notification-pull-spinner,
   .notification-detail-modal.is-loading .notification-detail-content p::before {
     animation: none;
   }

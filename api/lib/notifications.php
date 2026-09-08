@@ -521,8 +521,8 @@ function notification_public_row(array $row): array
         'has_image' => $hasImage,
         'image_endpoint' => $hasImage ? 'notifications/image.php?notification_id=' . rawurlencode($notificationId) : '',
         'is_read' => !empty($row['is_read']) || !empty($row['read']),
-        'created_at' => (int)($row['created_at'] ?? 0),
-        'read_at' => (int)($row['read_at'] ?? 0),
+        'created_at' => notification_timestamp_seconds($row['created_at'] ?? 0),
+        'read_at' => notification_timestamp_seconds($row['read_at'] ?? 0),
     ];
 }
 
@@ -552,19 +552,39 @@ function notification_recent_query_limit(): int
     return 250;
 }
 
+function notification_timestamp_seconds($value): int
+{
+    $timestamp = is_numeric($value) ? (int)$value : 0;
+    if ($timestamp >= 1000000000000) {
+        return (int)floor($timestamp / 1000);
+    }
+    return max(0, $timestamp);
+}
+
 function notification_rows_for_user(string $uid): array
 {
     $uid = trim($uid);
     if ($uid === '') {
         return [];
     }
-    $rows = fb_get('USER_NOTIFICATIONS/' . $uid, [
+    $path = 'USER_NOTIFICATIONS/' . $uid;
+    $rows = fb_get($path, [
         'orderBy' => json_encode('created_at', JSON_UNESCAPED_SLASHES),
         'startAt' => notification_recent_cutoff(),
         'endAt' => notification_now() + 300,
         'limitToLast' => notification_recent_query_limit(),
     ]);
-    return is_array($rows) ? $rows : [];
+    if (is_array($rows) && $rows !== []) {
+        return $rows;
+    }
+
+    // Built-in key ordering keeps this compatibility read bounded while the
+    // created_at index is being deployed or legacy millisecond rows remain.
+    $fallback = fb_get($path, [
+        'orderBy' => json_encode('$key', JSON_UNESCAPED_SLASHES),
+        'limitToLast' => notification_recent_query_limit(),
+    ]);
+    return is_array($fallback) ? $fallback : [];
 }
 
 function notification_list_from_rows(array $rows, int $limit = 20, int $before = 0, string $filter = 'ALL'): array
@@ -579,7 +599,7 @@ function notification_list_from_rows(array $rows, int $limit = 20, int $before =
             continue;
         }
         $row['notification_id'] = (string)($row['notification_id'] ?? $id);
-        $createdAt = (int)($row['created_at'] ?? 0);
+        $createdAt = notification_timestamp_seconds($row['created_at'] ?? 0);
         if ($createdAt <= 0 || $createdAt < $cutoff || ($before > 0 && $createdAt >= $before)) {
             continue;
         }
@@ -610,7 +630,7 @@ function notification_unread_count_from_rows(array $rows): int
         if (!empty($row['deleted'])) {
             continue;
         }
-        if ((int)($row['created_at'] ?? 0) < $cutoff) {
+        if (notification_timestamp_seconds($row['created_at'] ?? 0) < $cutoff) {
             continue;
         }
         if (empty($row['is_read']) && empty($row['read'])) {

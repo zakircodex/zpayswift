@@ -28,9 +28,6 @@ user_page_begin($page);
           <p>Updates from the last 30 days</p>
         </div>
         <div class="notification-page-header-actions">
-          <button id="notificationsRefreshButton" class="notification-page-icon-button" type="button" aria-label="Refresh notifications">
-            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17.7 6.3A8 8 0 1 0 20 12h-2a6 6 0 1 1-1.76-4.24L13 11h8V3l-3.3 3.3Z"/></svg>
-          </button>
           <button id="notificationsEditButton" class="notification-page-icon-button notification-edit-button" type="button" aria-label="Select notifications" aria-pressed="false">
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 16.6 9.9-9.9 3.4 3.4L7.4 20H4v-3.4ZM18.7 8.7l-3.4-3.4 1.4-1.4a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8l-1.4 1.4Z"/></svg>
           </button>
@@ -42,6 +39,10 @@ user_page_begin($page);
       </div>
     </div>
     <div class="notification-page-scroll-body">
+      <div id="notificationPullIndicator" class="notification-pull-indicator" aria-hidden="true">
+        <span class="notification-pull-spinner" aria-hidden="true"></span>
+        <span id="notificationPullText">Pull to refresh</span>
+      </div>
       <div id="notificationPageLive" class="notification-page-live" aria-live="polite"></div>
       <div id="notificationList" class="notification-page-list" aria-busy="true"></div>
     </div>

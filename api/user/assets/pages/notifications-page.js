@@ -6,6 +6,9 @@
   if (!shell || !$('notificationsSection')) return;
 
   const releaseInitialLoad = shell.holdPageLoad?.('Loading notifications...') || (() => {});
+  const scrollBody = document.querySelector('.notification-page-scroll-body');
+  const pullThreshold = 68;
+  const pullLimit = 108;
   const state = {
     filter: 'ALL',
     items: [],
@@ -16,7 +19,12 @@
     active: null,
     opener: null,
     listSerial: 0,
-    detailSerial: 0
+    detailSerial: 0,
+    pullTracking: false,
+    pullDirectionLocked: false,
+    pullStartX: 0,
+    pullStartY: 0,
+    pullDistance: 0
   };
 
   function dateText(value) {
@@ -68,8 +76,6 @@
     $('notificationsEditButton').setAttribute('aria-pressed', state.editing ? 'true' : 'false');
     $('notificationsEditButton').setAttribute('aria-label', state.editing ? 'Finish selecting notifications' : 'Select notifications');
     $('notificationsEditButton').disabled = state.loading || !state.loaded;
-    $('notificationsRefreshButton').disabled = state.loading;
-    $('notificationsRefreshButton').classList.toggle('is-loading', state.loading && state.loaded);
     $('notificationEditBar').classList.toggle('hidden', !state.editing);
     $('notificationsDeleteButton').disabled = !state.selected.size || state.loading;
     $('notificationsMarkSelectedButton').disabled = !state.selected.size || state.loading;
@@ -165,6 +171,86 @@
         updateControls();
       }
     }
+  }
+
+  function updatePullIndicator(distance, refreshing = false) {
+    const indicator = $('notificationPullIndicator');
+    const label = $('notificationPullText');
+    if (!indicator || !label) return;
+    const safeDistance = Math.max(0, Math.min(pullLimit, Number(distance || 0)));
+    state.pullDistance = safeDistance;
+    indicator.style.height = `${Math.round(safeDistance * 0.72)}px`;
+    indicator.style.setProperty('--notification-pull-rotation', String(Math.round((safeDistance / pullThreshold) * 250)));
+    indicator.classList.toggle('is-ready', safeDistance >= pullThreshold && !refreshing);
+    indicator.classList.toggle('is-refreshing', refreshing);
+    indicator.setAttribute('aria-hidden', safeDistance > 0 || refreshing ? 'false' : 'true');
+    label.textContent = refreshing
+      ? 'Refreshing...'
+      : (safeDistance >= pullThreshold ? 'Release to refresh' : 'Pull to refresh');
+  }
+
+  function resetPullIndicator(animate = true) {
+    const indicator = $('notificationPullIndicator');
+    indicator?.classList.toggle('is-resetting', animate);
+    updatePullIndicator(0, false);
+    if (animate) window.setTimeout(() => indicator?.classList.remove('is-resetting'), 220);
+    state.pullTracking = false;
+    state.pullDirectionLocked = false;
+    state.pullStartX = 0;
+    state.pullStartY = 0;
+  }
+
+  function notificationDetailOpen() {
+    return !$('notificationDetailModal')?.classList.contains('hidden');
+  }
+
+  function bindPullToRefresh() {
+    if (!scrollBody) return;
+    scrollBody.addEventListener('touchstart', (event) => {
+      const active = document.activeElement;
+      if (state.loading || state.editing || notificationDetailOpen() || scrollBody.scrollTop > 0
+        || event.touches.length !== 1
+        || (active instanceof HTMLElement && active.matches('input, select, textarea, [contenteditable="true"]'))) {
+        resetPullIndicator(false);
+        return;
+      }
+      const touch = event.touches[0];
+      state.pullTracking = true;
+      state.pullDirectionLocked = false;
+      state.pullStartX = touch.clientX;
+      state.pullStartY = touch.clientY;
+      updatePullIndicator(0);
+    }, { passive: true });
+
+    scrollBody.addEventListener('touchmove', (event) => {
+      if (!state.pullTracking || event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      const deltaX = touch.clientX - state.pullStartX;
+      const deltaY = touch.clientY - state.pullStartY;
+      if (!state.pullDirectionLocked && (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8)) {
+        state.pullDirectionLocked = true;
+        if (Math.abs(deltaX) >= Math.abs(deltaY) || deltaY <= 0) {
+          resetPullIndicator(false);
+          return;
+        }
+      }
+      if (!state.pullDirectionLocked || deltaY <= 0 || scrollBody.scrollTop > 0) return;
+      event.preventDefault();
+      updatePullIndicator(Math.min(pullLimit, deltaY * 0.58));
+    }, { passive: false });
+
+    scrollBody.addEventListener('touchend', () => {
+      if (!state.pullTracking) return;
+      const shouldRefresh = state.pullDistance >= pullThreshold;
+      if (!shouldRefresh) {
+        resetPullIndicator();
+        return;
+      }
+      state.pullTracking = false;
+      updatePullIndicator(54, true);
+      load({ preserve: true }).finally(() => resetPullIndicator());
+    }, { passive: true });
+    scrollBody.addEventListener('touchcancel', () => resetPullIndicator(), { passive: true });
   }
 
   function toggle(id) {
@@ -305,7 +391,7 @@
         state.loaded = false;
         load({ preserve: false });
       }));
-      $('notificationsRefreshButton').addEventListener('click', () => load({ preserve: true }));
+      bindPullToRefresh();
       $('notificationsEditButton').addEventListener('click', () => {
         state.editing = !state.editing;
         state.selected.clear();
@@ -337,6 +423,7 @@
       });
       window.addEventListener('popstate', () => closeDetail(true));
       document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDetail(); });
+      window.addEventListener('pagehide', () => resetPullIndicator(false));
       await load({ preserve: false });
     } finally {
       releaseInitialLoad();
