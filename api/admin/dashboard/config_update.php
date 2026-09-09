@@ -9,8 +9,7 @@ api_require_app_key();
 $auth = auth_require_admin_session(true);
 $actor = is_array($auth['user'] ?? null) ? $auth['user'] : [];
 $body = api_read_json_body();
-$existingConfig = fb_get('DASHBOARD_CONFIG');
-$existingConfig = is_array($existingConfig) ? $existingConfig : [];
+$existingConfig = zpay_dash_config_source();
 
 $payload = [
     'notice_active' => zpay_dash_bool($body['notice_active'] ?? ($existingConfig['notice_active'] ?? true), true),
@@ -22,12 +21,13 @@ $payload = [
     'updated_by_role' => (string)($actor['role'] ?? ''),
 ];
 
-if (!fb_patch('DASHBOARD_CONFIG', $payload)) {
+$storagePath = zpay_dash_save_config($payload);
+if ($storagePath === '') {
     api_response(false, 'SERVER_ERROR', 'Failed to save dashboard config.', [], 500);
 }
 
 if (function_exists('admin_action_log')) {
-    admin_action_log('DASHBOARD_CONFIG_UPDATE', 'DASHBOARD_CONFIG', 'Dashboard config updated', [
+    admin_action_log('DASHBOARD_CONFIG_UPDATE', $storagePath, 'Dashboard config updated', [
         'updated_by' => (string)($actor['uid'] ?? ''),
         'updated_by_role' => (string)($actor['role'] ?? ''),
         'notice_active' => $payload['notice_active'],

@@ -59,5 +59,10 @@ progressive_dashboard_expect(
     && str_contains($adminJs, "proxyPost('dashboard_config_save'"),
     'Admin tagline API wiring is incomplete'
 );
+progressive_dashboard_expect(
+    str_contains($mobileDashboard, "'APP_CONFIG/DASHBOARD'")
+    && str_contains($mobileDashboard, 'function zpay_dash_save_config(array $payload): string'),
+    'Dashboard config must use the established writable app-config namespace'
+);
 
 echo "Android dashboard progressive API tests passed ({$tests} assertions).\n";

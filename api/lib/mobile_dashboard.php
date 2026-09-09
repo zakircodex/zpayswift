@@ -33,8 +33,15 @@ function zpay_dash_clean_string($value, int $max = 200): string
 {
     $text = trim((string)$value);
     $text = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F]+/', '', $text) ?? '';
-    if ($max > 0 && strlen($text) > $max) {
-        $text = substr($text, 0, $max);
+    if ($max > 0) {
+        if (function_exists('mb_substr')) {
+            $text = mb_substr($text, 0, $max, 'UTF-8');
+        } elseif (preg_match('//u', $text) === 1) {
+            $characters = preg_split('//u', $text, -1, PREG_SPLIT_NO_EMPTY);
+            $text = is_array($characters) ? implode('', array_slice($characters, 0, $max)) : $text;
+        } elseif (strlen($text) > $max) {
+            $text = substr($text, 0, $max);
+        }
     }
     return $text;
 }
@@ -164,10 +171,40 @@ function zpay_dash_mask_name(string $name): string
     return substr($name, 0, 1) . str_repeat('*', max(2, min(8, strlen($name) - 1)));
 }
 
+function zpay_dash_config_storage_paths(): array
+{
+    return [
+        'APP_CONFIG/DASHBOARD',
+        'DASHBOARD_CONFIG',
+    ];
+}
+
+function zpay_dash_config_source(): array
+{
+    foreach (zpay_dash_config_storage_paths() as $path) {
+        $row = fb_get($path);
+        if (is_array($row) && $row !== []) {
+            return $row;
+        }
+    }
+
+    return [];
+}
+
+function zpay_dash_save_config(array $payload): string
+{
+    foreach (zpay_dash_config_storage_paths() as $path) {
+        if (fb_patch($path, $payload)) {
+            return $path;
+        }
+    }
+
+    return '';
+}
+
 function zpay_dash_config(): array
 {
-    $row = fb_get('DASHBOARD_CONFIG');
-    $row = is_array($row) ? $row : [];
+    $row = zpay_dash_config_source();
     if (!array_key_exists('notice_text', $row)) {
         $row['notice_text'] = 'টাকা পাঠানোর সব থেকে সহজ উপায় "Z-Pay Swift"';
     }
