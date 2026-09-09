@@ -98,12 +98,15 @@ dashboard_expect(
 dashboard_expect(
     str_contains($dashboard, 'id="heroGrid"')
     && str_contains($dashboard, 'id="heroRateCard"')
+    && str_contains($dashboard, 'id="heroRateLabel"')
     && str_contains($pageJs, "if (currency === 'MYR') return 'RM'")
     && str_contains($pageJs, "if (currency === 'BDT') return 'BDT'")
-    && str_contains($pageJs, 'rateCard.hidden = !isMalaysiaWallet')
-    && str_contains($pageJs, "heroGrid?.classList.toggle('rate-hidden', !isMalaysiaWallet)")
-    && str_contains($pageCss, '.user-dashboard-page .hero-grid.rate-hidden'),
-    'Dashboard currency or Bangladesh rate-card behavior is incomplete'
+    && str_contains($pageJs, "pricingCountry === 'MY' || (pricingCountry === '' && currency === 'MYR')")
+    && str_contains($pageJs, "isMalaysiaAccount ? 'Today Rate' : 'Account Type'")
+    && str_contains($pageJs, "role === 'RETAILER' ? 'RETAILER' : 'USER'")
+    && !str_contains($pageJs, 'rateCard.hidden = !isMalaysiaWallet')
+    && !str_contains($pageCss, '.user-dashboard-page .hero-grid.rate-hidden'),
+    'Dashboard currency or Bangladesh account-type behavior is incomplete'
 );
 dashboard_expect(
     str_contains($pageCss, '.user-dashboard-page .hero-card')

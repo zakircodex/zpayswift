@@ -166,6 +166,59 @@ function wallet_write_count(string $uid): int
     return (int)($walletWrites['USER_WALLETS/' . $uid] ?? 0);
 }
 
+test_set('CONFIG/ADD_MONEY_ACCOUNTS/BD_BKASH', [
+    'account_id' => 'BD_BKASH',
+    'country' => 'BD',
+    'currency' => 'BDT',
+    'method' => 'BKASH',
+    'display_name' => 'bKash Payment',
+    'account_holder' => 'Z-Pay Swift',
+    'account_number' => '01700000000',
+    'active' => true,
+]);
+test_set('CONFIG/ADD_MONEY_ACCOUNTS/BD_NAGAD', [
+    'account_id' => 'BD_NAGAD',
+    'country' => 'BD',
+    'currency' => 'BDT',
+    'method' => 'NAGAD',
+    'display_name' => 'Nagad Payment',
+    'account_holder' => 'Z-Pay Swift',
+    'account_number' => '01800000000',
+    'active' => true,
+]);
+test_set('CONFIG/ADD_MONEY_ACCOUNTS/MY_BANK', [
+    'account_id' => 'MY_BANK',
+    'country' => 'MY',
+    'currency' => 'MYR',
+    'method' => 'BANK',
+    'display_name' => 'Malaysia Bank',
+    'account_holder' => 'Z-Pay Swift',
+    'account_number' => '1234567890',
+    'active' => true,
+]);
+$bdPaymentProfile = add_money_user_payload(
+    ['pricing_country' => 'BD', 'wallet_currency' => 'BDT'],
+    ['wallet_currency' => 'BDT']
+);
+$bdPaymentMethods = array_column((array)($bdPaymentProfile['accounts'] ?? []), 'method');
+sort($bdPaymentMethods);
+assert_true(
+    ($bdPaymentProfile['pricing_country'] ?? '') === 'BD'
+    && ($bdPaymentProfile['currency'] ?? '') === 'BDT'
+    && $bdPaymentMethods === ['BKASH', 'NAGAD'],
+    'BD Add Money profile must expose only BDT bKash and Nagad accounts'
+);
+$myPaymentProfile = add_money_user_payload(
+    ['pricing_country' => 'MY', 'wallet_currency' => 'MYR'],
+    ['wallet_currency' => 'MYR']
+);
+assert_true(
+    count((array)($myPaymentProfile['accounts'] ?? [])) === 1
+    && (($myPaymentProfile['accounts'][0]['country'] ?? '') === 'MY'),
+    'MY Add Money profile must not leak BD payment accounts'
+);
+test_delete('CONFIG/ADD_MONEY_ACCOUNTS');
+
 $stalePath = 'ADD_MONEY_TXN_IDS/BKASH/stale';
 test_set($stalePath, [
     'uid' => 'UID_OLD',

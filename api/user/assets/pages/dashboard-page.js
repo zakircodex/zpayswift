@@ -29,15 +29,17 @@
   };
 
   function walletPrefix(wallet, user) {
+    const country = String(
+      user?.pricing_country || wallet?.pricing_country || wallet?.market_country || ''
+    ).toUpperCase();
+    if (country === 'MY') return 'RM';
+    if (country === 'BD') return 'BDT';
     const currency = String(
       wallet?.display_currency || wallet?.wallet_currency || wallet?.currency || user?.wallet_currency || ''
     ).toUpperCase();
     if (currency === 'MYR') return 'RM';
     if (currency === 'BDT') return 'BDT';
-    const country = String(
-      user?.pricing_country || wallet?.pricing_country || wallet?.market_country || ''
-    ).toUpperCase();
-    return country === 'MY' ? 'RM' : 'BDT';
+    return 'BDT';
   }
 
   function setDashboardLoading(on, message = 'Refreshing dashboard...') {
@@ -54,7 +56,7 @@
     const prefix = walletPrefix(wallet, user);
     const pricingCountry = String(user.pricing_country || summary.pricing_country || wallet.pricing_country || '').toUpperCase();
     const currency = String(wallet.display_currency || wallet.wallet_currency || wallet.currency || '').toUpperCase();
-    const isMalaysiaWallet = currency === 'MYR' || (currency === '' && pricingCountry === 'MY');
+    const isMalaysiaAccount = pricingCountry === 'MY' || (pricingCountry === '' && currency === 'MYR');
     const rate = Number(
       wallet.rate_myr_bdt
       ?? summary.rate_myr_bdt
@@ -83,16 +85,17 @@
     const displayName = String(user.name || summary.name || 'Z-Pay User');
     byId('heroName').textContent = displayName;
     byId('heroName').title = displayName;
+    const role = String(user.account_type || user.role || 'USER').trim().toUpperCase();
+    const accountType = role === 'RETAILER' ? 'RETAILER' : 'USER';
     const rateCard = byId('heroRateCard');
-    const heroGrid = byId('heroGrid');
     if (rateCard) {
-      rateCard.hidden = !isMalaysiaWallet;
-      rateCard.setAttribute('aria-hidden', isMalaysiaWallet ? 'false' : 'true');
+      rateCard.hidden = false;
+      rateCard.setAttribute('aria-hidden', 'false');
     }
-    heroGrid?.classList.toggle('rate-hidden', !isMalaysiaWallet);
-    if (isMalaysiaWallet) {
-      byId('heroRate').textContent = rate > 0 ? `RM 1 = ${rate.toFixed(2)} BDT` : 'Rate unavailable';
-    }
+    byId('heroRateLabel').textContent = isMalaysiaAccount ? 'Today Rate' : 'Account Type';
+    byId('heroRate').textContent = isMalaysiaAccount
+      ? (rate > 0 ? `RM 1 = ${rate.toFixed(2)} BDT` : 'Rate unavailable')
+      : accountType;
   }
 
   async function loadDashboardActivity(options = {}) {

@@ -489,6 +489,15 @@ $bdMarketPreview = mfs_preview_payload('MFS_TIER_BD_MARKET', mfs_create_body('BK
 assert_true(!empty($bdMarketPreview['ok']), 'BD market preview should remain available at the new maximum');
 assert_true((string)($bdMarketPreview['data']['country_code'] ?? '') === 'BD', 'phone_country must not switch a BD pricing account into MY fees');
 assert_true((float)($bdMarketPreview['data']['fee_rm'] ?? -1) === 0.00, 'BD local fee rules must not receive an MY fee');
+assert_true((float)($bdMarketPreview['data']['amount_rm'] ?? -1) === 0.00, 'BD local amount must not be converted to MYR');
+assert_true((float)($bdMarketPreview['data']['exchange_rate'] ?? -1) === 0.00, 'BD local preview must not expose an MYR exchange rate');
+assert_true((float)($bdMarketPreview['data']['available_balance_myr'] ?? -1) === 0.00, 'BD wallet balance must not be converted to MYR');
+
+$mfsPreviewEndpoint = (string)file_get_contents(dirname(__DIR__) . '/api/mfs/preview.php');
+assert_true(
+    str_contains($mfsPreviewEndpoint, "\$exchangeRate = \$countryCode === 'MY' ? mfs_preview_exchange_rate(\$config) : 0.0;"),
+    'Canonical MFS preview endpoint must skip MYR rate lookup for BD accounts'
+);
 
 $maximumPreview = mfs_preview_payload('MFS_TIER_USER', mfs_create_body('BKASH', 'PREVIEW_MAX', 100000.00));
 assert_true(!empty($maximumPreview['ok']), 'BDT 100,000 must be accepted');
@@ -775,6 +784,7 @@ assert_true(!empty($bdConfirm['preview']['ok']), 'BD MFS preview must succeed');
 assert_true(!empty($bdCreate['ok']), 'BD MFS confirm must create a request');
 assert_true((float)($bdCreate['data']['total_debit'] ?? 0) === (float)($bdCreate['data']['amount_bdt'] ?? 0) + (float)($bdCreate['data']['fee_bdt'] ?? 0), 'BD fee and total debit must remain consistent');
 assert_true((string)($bdCreate['data']['wallet_currency'] ?? '') === 'BDT', 'BD wallet currency must remain BDT');
+assert_true((float)($bdCreate['data']['exchange_rate'] ?? -1) === 0.00, 'BD MFS request must not snapshot an MYR exchange rate');
 
 put_mfs_create_user('MFS_CREATE_NAGAD_BD', 'BD', 'BDT');
 $nagadBdConfirm = mfs_confirm_from_preview('MFS_CREATE_NAGAD_BD', 'NAGAD', 'MFS_CREATE_NAGAD_BD_ONCE');

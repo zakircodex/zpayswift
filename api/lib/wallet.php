@@ -207,7 +207,7 @@ function wallet_service_bdt_to_native(
     }
 
     $currency = wallet_account_currency($user, $wallet);
-    $rate = wallet_myr_to_bdt_rate();
+    $rate = $currency === 'MYR' ? wallet_myr_to_bdt_rate() : 0.0;
     $walletAmount = $currency === 'MYR' && $rate > 0
         ? wallet_round_money($amountBdt / $rate)
         : $amountBdt;

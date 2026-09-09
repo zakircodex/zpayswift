@@ -3619,7 +3619,7 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
     $countryCode = user_proxy_country_code_from_user($user, $wallet);
     $walletCurrency = user_proxy_wallet_currency_for_user($user, $wallet);
     $serviceMode = user_proxy_mfs_service_mode($countryCode, $walletCurrency);
-    $rate = user_proxy_mfs_rate_myr_to_bdt();
+    $rate = $serviceMode === 'REMITTANCE' ? user_proxy_mfs_rate_myr_to_bdt() : 0.00;
 
     if ($serviceMode === 'REMITTANCE' && $mfsType !== 'SEND_MONEY') {
         return ['ok' => false, 'code' => 'VALIDATION_ERROR', 'message' => 'Malaysia users can only use personal send money', 'data' => []];
@@ -3658,7 +3658,7 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
         $totalPayBdt = user_proxy_round_money($amountBdt + $feeBdt);
         $walletHoldAmount = $walletCurrency === 'MYR' ? $totalPayMyr : $totalPayBdt;
     } else {
-        $amountBdt = $amountBdtInput > 0 ? $amountBdtInput : user_proxy_round_money($amountMyrInput * $rate);
+        $amountBdt = $amountBdtInput;
 
         $limitCheck = mfs_validate_bdt_transfer_amount($amountBdt);
         if (empty($limitCheck['ok'])) {
@@ -3667,9 +3667,9 @@ function user_proxy_mfs_preview_payload(string $uid, array $body): array
 
         $feeBdt = user_proxy_mfs_bd_fee_bdt($provider, $mfsType, $amountBdt);
         $totalPayBdt = user_proxy_round_money($amountBdt + $feeBdt);
-        $amountMyr = $rate > 0 ? user_proxy_round_money($amountBdt / $rate) : 0.00;
-        $feeMyr = $rate > 0 ? user_proxy_round_money($feeBdt / $rate) : 0.00;
-        $totalPayMyr = $rate > 0 ? user_proxy_round_money($totalPayBdt / $rate) : 0.00;
+        $amountMyr = 0.00;
+        $feeMyr = 0.00;
+        $totalPayMyr = 0.00;
         $walletHoldAmount = $totalPayBdt;
     }
 

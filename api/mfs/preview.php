@@ -593,7 +593,7 @@ $countryCode = mfs_preview_country_from_user($user, $wallet);
 $walletCurrency = mfs_preview_currency_from_user_wallet($user, $wallet, $countryCode);
 $expectedCurrency = mfs_preview_expected_currency_for_country($countryCode);
 $serviceMode = mfs_preview_service_mode($walletCurrency);
-$exchangeRate = mfs_preview_exchange_rate($config);
+$exchangeRate = $countryCode === 'MY' ? mfs_preview_exchange_rate($config) : 0.0;
 
 if ($userStatus !== 'ACTIVE') {
     api_response(false, 'ACCOUNT_INACTIVE', 'Account is inactive', [], 403);

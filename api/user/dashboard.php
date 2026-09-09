@@ -71,7 +71,7 @@ user_page_begin($page);
 
     <div class="hero-grid" id="heroGrid">
       <div class="hero-mini" id="heroRateCard">
-        <div class="hero-mini-label hero-rate-label">Today Rate</div>
+        <div class="hero-mini-label hero-rate-label" id="heroRateLabel">Today Rate</div>
         <div class="hero-mini-value dashboard-placeholder dashboard-placeholder-rate" id="heroRate">Loading rate</div>
       </div>
       <div class="hero-mini">

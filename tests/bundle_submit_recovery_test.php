@@ -3,10 +3,12 @@ declare(strict_types=1);
 
 $_SERVER['SCRIPT_FILENAME'] = __FILE__;
 $GLOBALS['bundle_recovery_store'] = [];
+$GLOBALS['bundle_recovery_reads'] = [];
 $assertions = 0;
 
 function fb_get(string $path)
 {
+    $GLOBALS['bundle_recovery_reads'][] = $path;
     return $GLOBALS['bundle_recovery_store'][$path] ?? null;
 }
 
@@ -21,6 +23,21 @@ function bundle_recovery_expect(bool $condition, string $message): void
 }
 
 require_once dirname(__DIR__) . '/api/lib/bundle.php';
+
+$bdRateReadsBefore = count($GLOBALS['bundle_recovery_reads']);
+$bdBreakdown = bundle_wallet_breakdown(
+    'BUNDLE_BD_USER',
+    100.0,
+    ['uid' => 'BUNDLE_BD_USER', 'pricing_country' => 'BD', 'wallet_currency' => 'BDT'],
+    ['available_balance' => 500.0, 'wallet_currency' => 'BDT']
+);
+bundle_recovery_expect(
+    count($GLOBALS['bundle_recovery_reads']) === $bdRateReadsBefore
+    && ($bdBreakdown['wallet_currency'] ?? '') === 'BDT'
+    && (float)($bdBreakdown['wallet_hold_amount'] ?? 0) === 100.0
+    && (float)($bdBreakdown['rate_used'] ?? -1) === 0.0,
+    'BD Bundle calculation must remain BDT-only and skip MYR rate lookup.'
+);
 
 $previewToken = 'bundle-recovery-token';
 $previewPath = 'BUNDLE_PREVIEWS/' . bundle_preview_token_hash($previewToken);

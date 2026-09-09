@@ -1601,7 +1601,7 @@ function mfs_wallet_display_payload(array $user, array $wallet): array
 {
     $country = mfs_user_country_code($user, $wallet);
     $walletCurrency = mfs_wallet_currency($user, $wallet);
-    $rate = mfs_myr_to_bdt_rate();
+    $rate = ($country === 'MY' || $walletCurrency === 'MYR') ? mfs_myr_to_bdt_rate() : 0.0;
     $available = mfs_round_money((float)($wallet['available_balance'] ?? 0));
     $hold = mfs_round_money((float)($wallet['hold_balance'] ?? 0));
 
@@ -1614,8 +1614,8 @@ function mfs_wallet_display_payload(array $user, array $wallet): array
         $walletCurrency = $walletCurrency ?: 'BDT';
         $availableBdt = $available;
         $holdBdt = $hold;
-        $availableMyr = $rate > 0 ? mfs_round_money($available / $rate) : 0.0;
-        $holdMyr = $rate > 0 ? mfs_round_money($hold / $rate) : 0.0;
+        $availableMyr = $country === 'MY' && $rate > 0 ? mfs_round_money($available / $rate) : 0.0;
+        $holdMyr = $country === 'MY' && $rate > 0 ? mfs_round_money($hold / $rate) : 0.0;
     }
 
     $displayCurrency = $country === 'MY' ? 'MYR' : ($walletCurrency === 'MYR' ? 'MYR' : 'BDT');
@@ -1843,7 +1843,7 @@ function mfs_calculate_amounts(array $user, array $wallet, string $provider, str
     $walletCurrency = (string)$check['wallet_currency'];
     $serviceMode = (string)$check['service_mode'];
     $role = mfs_user_role($user);
-    $rate = mfs_myr_to_bdt_rate();
+    $rate = $countryCode === 'MY' ? mfs_myr_to_bdt_rate() : 0.0;
 
     $inputCurrency = mfs_normalize_currency((string)(
         $body['currency']
@@ -1876,7 +1876,7 @@ function mfs_calculate_amounts(array $user, array $wallet, string $provider, str
             'country_code' => 'BD',
             'wallet_currency' => $walletCurrency,
             'service_mode' => 'LOCAL',
-            'exchange_rate' => 1.0,
+            'exchange_rate' => 0.0,
 
             'amount_bdt' => $amountBdt,
             'amount_rm' => 0.0,

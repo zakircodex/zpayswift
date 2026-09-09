@@ -18,7 +18,7 @@ function pageMarkup() {
     <div class="dashboard-fixed-stack"><div class="hero-card"><div class="dashboard-hero-topbar"><button id="openSidebarBtn"></button><h1 id="dashboardHeroTitle">Z-Pay Swift</h1><a href="/user/notifications"><span data-notification-badge class="hidden">0</span></a></div>
       <div class="hero-balance"><span id="heroBalancePrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroBalance" class="dashboard-placeholder dashboard-placeholder-balance">--</span></div>
       <div class="hero-hold-line"><span id="heroHoldPrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroHold" class="dashboard-placeholder dashboard-placeholder-compact">--</span></div>
-      <div id="heroGrid"><span id="heroRateCard"><span id="heroRate" class="dashboard-placeholder dashboard-placeholder-rate">Loading rate</span></span><span id="heroRequests" class="dashboard-placeholder dashboard-placeholder-compact dashboard-deferred-placeholder">--</span><span id="heroName" class="dashboard-placeholder dashboard-placeholder-name">Loading account</span></div>
+      <div id="heroGrid"><span id="heroRateCard"><span id="heroRateLabel">Today Rate</span><span id="heroRate" class="dashboard-placeholder dashboard-placeholder-rate">Loading rate</span></span><span id="heroRequests" class="dashboard-placeholder dashboard-placeholder-compact dashboard-deferred-placeholder">--</span><span id="heroName" class="dashboard-placeholder dashboard-placeholder-name">Loading account</span></div>
     </div></div>
     <section id="overviewSection" aria-busy="true"><div id="zpayQuickActions"><h2>Recommended</h2><button data-dashboard-action="shopping">Shopping</button></div></section>
     <div id="dashboardPullIndicator"><span id="dashboardPullText"></span></div>
@@ -65,7 +65,7 @@ async function main() {
         wallet_summary: {
           pricing_country: isBangladesh ? 'BD' : 'MY',
           wallet: {
-            display_currency: isBangladesh ? 'BDT' : 'MYR',
+            display_currency: 'MYR',
             display_available_balance: isBangladesh ? 2500 : 25,
             display_hold_balance: 0,
             rate_myr_bdt: 31.1
@@ -135,8 +135,9 @@ async function main() {
     await bdPage.waitForFunction(() => document.getElementById('loadingWrap')?.getAttribute('aria-hidden') === 'true');
     assert.equal(await bdPage.locator('#heroBalancePrefix').textContent(), 'BDT', 'BD account did not keep BDT balance currency.');
     assert.equal(await bdPage.locator('#heroBalance').textContent(), '2500.00', 'BD account balance did not render.');
-    assert.equal(await bdPage.locator('#heroRateCard').getAttribute('hidden'), '', 'BD account Today Rate card stayed visible.');
-    assert.equal(await bdPage.locator('#heroGrid').getAttribute('class').then((value) => value.includes('rate-hidden')), true, 'BD metric grid did not compact after hiding rate.');
+    assert.equal(await bdPage.locator('#heroRateCard').isVisible(), true, 'BD account type card is not visible.');
+    assert.equal(await bdPage.locator('#heroRateLabel').textContent(), 'Account Type', 'BD account still labels the metric as Today Rate.');
+    assert.equal(await bdPage.locator('#heroRate').textContent(), 'USER', 'BD account role did not replace Today Rate.');
     assert.equal(await bdPage.locator('#appView').evaluate((node) => node.inert), false, 'BD dashboard stayed blocked for monthly activity.');
     assert.equal(await bdPage.locator('#zpayQuickActions button').isEnabled(), true, 'BD dashboard actions waited for monthly activity.');
     await bdContext.close();
