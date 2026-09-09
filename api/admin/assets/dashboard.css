@@ -374,6 +374,8 @@ html,body{margin:0;padding:0;background:linear-gradient(180deg,var(--bg),var(--b
     .panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:16px 16px 0}
     .panel-head h3{margin:0;font-size:18px}
     .panel-head p{margin:4px 0 0;color:var(--muted)}
+    .dashboard-tagline-card{margin-bottom:18px}
+    .dashboard-tagline-card textarea{min-height:88px;resize:vertical}
     .toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:16px}
     .toolbar-left,.toolbar-right{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .toolbar.add-money-filter-row{

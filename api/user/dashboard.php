@@ -11,6 +11,18 @@ if ($zpayMobileAppKey !== '') {
     api_require_app_key();
 
     $auth = zpay_dash_require_mobile_user(true);
+    $scope = strtolower(trim((string)($_GET['scope'] ?? 'full')));
+
+    if ($scope === 'core') {
+        api_response(true, 'DASHBOARD_CORE_OK', 'Dashboard core loaded', zpay_dash_dashboard_core_payload($auth));
+    }
+    if ($scope === 'deferred') {
+        api_response(true, 'DASHBOARD_DEFERRED_OK', 'Dashboard details loaded', zpay_dash_dashboard_deferred_payload($auth));
+    }
+    if ($scope !== '' && $scope !== 'full') {
+        api_response(false, 'DASHBOARD_SCOPE_INVALID', 'Invalid dashboard scope.', [], 422);
+    }
+
     api_response(true, 'DASHBOARD_OK', 'Dashboard loaded', zpay_dash_dashboard_payload($auth));
 }
 

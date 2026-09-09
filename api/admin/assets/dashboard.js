@@ -67,7 +67,8 @@ const state = {
     users: false,
     workers: false,
     operators: false,
-    appConfig: false
+    appConfig: false,
+    dashboardConfig: false
   },
 
   backgroundStarted: false,
@@ -1155,7 +1156,8 @@ async function doLogout(){
     users: false,
     workers: false,
     operators: false,
-    appConfig: false
+    appConfig: false,
+    dashboardConfig: false
   };
 
   updateInteractiveState();
@@ -1171,6 +1173,44 @@ async function doLogout(){
    FAST LOADING SYSTEM
 ========================= */
 
+function renderDashboardConfig(data = {}){
+  const text = document.getElementById('dashboardTaglineText');
+  const active = document.getElementById('dashboardTaglineActive');
+  const status = document.getElementById('dashboardTaglineStatus');
+  if (text) text.value = String(data.notice_text || '');
+  if (active) active.checked = data.notice_active !== false;
+  if (status) status.textContent = 'Current tagline loaded.';
+}
+
+async function loadDashboardConfig(options = {}){
+  const data = await proxyGet('dashboard_config_get', {}, options);
+  renderDashboardConfig(data);
+  state.loaded.dashboardConfig = true;
+  return data;
+}
+
+async function saveDashboardConfig(){
+  const text = String(document.getElementById('dashboardTaglineText')?.value || '').trim();
+  const active = !!document.getElementById('dashboardTaglineActive')?.checked;
+  const status = document.getElementById('dashboardTaglineStatus');
+
+  if (active && !text) {
+    showToast('Enter a tagline or turn it off.', 'error');
+    document.getElementById('dashboardTaglineText')?.focus();
+    return;
+  }
+
+  const data = await proxyPost('dashboard_config_save', {
+    notice_text: text,
+    notice_active: active
+  }, true, { busyText: 'Saving app dashboard tagline...' });
+
+  renderDashboardConfig(data);
+  state.loaded.dashboardConfig = true;
+  if (status) status.textContent = 'Saved. The app will use this text on its next dashboard refresh.';
+  showToast('Dashboard tagline saved', 'ok');
+}
+
 async function loadDashboardFast(){
   setBusy(true, 'Loading dashboard...');
 
@@ -1179,7 +1219,8 @@ async function loadDashboardFast(){
       safeLoad('Counts', loadCounts, { busy:false, silentLog:true }),
       safeLoad('Pending Topups', loadTopups, { busy:false, silentLog:true }),
       safeLoad('Pending Bundles', loadBundles, { busy:false, silentLog:true }),
-      safeLoad('App Config', loadAppConfigStatus, { busy:false, silentLog:true })
+      safeLoad('App Config', loadAppConfigStatus, { busy:false, silentLog:true }),
+      safeLoad('Dashboard Config', loadDashboardConfig, { busy:false, silentLog:true })
     ]);
 
     state.lastRefreshAt = Date.now();
@@ -1246,6 +1287,10 @@ async function loadSectionData(sectionId, force = false){
 
     if (force || !state.loaded.appConfig) {
       await loadAppConfigStatus({ busy:false, silentLog:true });
+    }
+
+    if (force || !state.loaded.dashboardConfig) {
+      await loadDashboardConfig({ busy:false, silentLog:true });
     }
 
     startBackgroundDashboardLoad();
@@ -5681,6 +5726,13 @@ document.getElementById('supportNextBtn')?.addEventListener('click', () => curso
 document.getElementById('walletHistoryBtn')?.addEventListener('click', openWalletTransferHistory);
 document.getElementById('reloadOperatorsBtn')?.addEventListener('click', () => loadOperators({ busyText:'Reloading operators...' }));
 document.getElementById('reloadWorkersBtn')?.addEventListener('click', () => loadWorkersStatus({ busyText:'Reloading workers...' }));
+document.getElementById('reloadDashboardTaglineBtn')?.addEventListener('click', () =>
+  loadDashboardConfig({ busyText:'Loading app dashboard tagline...' })
+    .catch(err => showToast(err.message || 'Tagline could not be loaded.', 'error'))
+);
+document.getElementById('saveDashboardTaglineBtn')?.addEventListener('click', () =>
+  saveDashboardConfig().catch(err => showToast(err.message || 'Tagline could not be saved.', 'error'))
+);
 
 document.getElementById('logoutBtn')?.addEventListener('click', doLogout);
 document.getElementById('directTopupBtn')?.addEventListener('click', openDirectTopupModal);

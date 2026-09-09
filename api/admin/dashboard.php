@@ -13,7 +13,7 @@ header('Pragma: no-cache');
   <title>Z-Pay Swift Admin Dashboard</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
-  <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=23">
+  <link rel="stylesheet" href="/api/admin/assets/dashboard.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/dashboard.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-ux.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-ux.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-users.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-users.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-operations.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-operations.css') ?: 1)) ?>">
@@ -222,7 +222,31 @@ header('Pragma: no-cache');
             </div>
           </div>
         </div>
-        
+
+        <div class="card dashboard-tagline-card">
+          <div class="panel-head">
+            <div>
+              <h3>App Dashboard Tagline</h3>
+              <p>This text scrolls from right to left below the Android dashboard hero.</p>
+            </div>
+            <div class="row-actions">
+              <button class="btn ghost" id="reloadDashboardTaglineBtn" type="button">Reload</button>
+              <button class="btn brand" id="saveDashboardTaglineBtn" type="button">Save Tagline</button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <label for="dashboardTaglineText">Tagline</label>
+              <textarea class="input" id="dashboardTaglineText" rows="3" maxlength="300" placeholder="Enter the Android dashboard tagline"></textarea>
+            </div>
+            <label class="check-row" for="dashboardTaglineActive">
+              <input type="checkbox" id="dashboardTaglineActive" checked>
+              <span>Show tagline on the app dashboard</span>
+            </label>
+            <div class="muted" id="dashboardTaglineStatus" role="status" aria-live="polite">Loading current tagline...</div>
+          </div>
+        </div>
+
         <div class="card worker-status-card">
   <div class="panel-head">
     <div>
@@ -926,7 +950,7 @@ header('Pragma: no-cache');
 <script>
 window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
-<script src="/api/admin/assets/dashboard.js?v=42"></script>
+<script src="/api/admin/assets/dashboard.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/dashboard.js') ?: 1)) ?>"></script>
 <script src="/api/admin/assets/zsky24-admin.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.js') ?: 1)) ?>"></script>
 <script src="/api/admin/assets/admin-dashboard-ux.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-dashboard-ux.js') ?: 1)) ?>"></script>
 

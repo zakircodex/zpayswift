@@ -1816,6 +1816,16 @@ switch ($action) {
         proxy_forward_admin_post('config/save.php', proxy_read_json_body());
         break;
 
+    case 'dashboard_config_get':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('dashboard/config_get.php');
+        break;
+
+    case 'dashboard_config_save':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('dashboard/config_update.php', proxy_read_json_body());
+        break;
+
     case 'workers_status':
         proxy_require_method('GET');
         proxy_forward_admin_get('workers/status.php', [

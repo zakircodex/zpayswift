@@ -503,16 +503,13 @@ function zpay_dash_public_app_config(): array
     ];
 }
 
-function zpay_dash_dashboard_payload(array $auth): array
+function zpay_dash_dashboard_core_payload(array $auth): array
 {
     $user = is_array($auth['user'] ?? null) ? $auth['user'] : [];
     $uid = (string)($user['uid'] ?? '');
     $role = strtoupper(trim((string)($user['role'] ?? 'USER'))) ?: 'USER';
     $wallet = zpay_dash_wallet_payload($uid, $user);
     $rate = function_exists('wallet_myr_to_bdt_rate') ? wallet_myr_to_bdt_rate() : 31.00;
-    $config = zpay_dash_config();
-    $noticeText = $config['notice_active'] ? $config['notice_text'] : '';
-    $appConfig = zpay_dash_public_app_config();
 
     return [
         'user' => [
@@ -528,6 +525,20 @@ function zpay_dash_dashboard_payload(array $auth): array
             'myr_to_bdt' => (float)$rate,
             'text' => 'RM 1 = ' . number_format((float)$rate, 2, '.', '') . ' BDT',
         ],
+        'server_time' => date('c', now_ts()),
+    ];
+}
+
+function zpay_dash_dashboard_deferred_payload(array $auth): array
+{
+    $user = is_array($auth['user'] ?? null) ? $auth['user'] : [];
+    $uid = (string)($user['uid'] ?? '');
+    $role = strtoupper(trim((string)($user['role'] ?? 'USER'))) ?: 'USER';
+    $config = zpay_dash_config();
+    $noticeText = $config['notice_active'] ? $config['notice_text'] : '';
+    $appConfig = zpay_dash_public_app_config();
+
+    return [
         'stats' => zpay_dash_stats_for_user($uid),
         'notice' => [
             'active' => $config['notice_active'] && $noticeText !== '',
@@ -542,6 +553,14 @@ function zpay_dash_dashboard_payload(array $auth): array
         'theme' => $config['theme'],
         'server_time' => date('c', now_ts()),
     ];
+}
+
+function zpay_dash_dashboard_payload(array $auth): array
+{
+    return array_merge(
+        zpay_dash_dashboard_core_payload($auth),
+        zpay_dash_dashboard_deferred_payload($auth)
+    );
 }
 
 function zpay_dash_request_data(): array
