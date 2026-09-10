@@ -891,10 +891,16 @@
     state.registerOtp.otpRequestId = String(data.otp_request_id || state.registerOtp.otpRequestId || '');
     state.registerOtp.maskedPhone = String(data.masked_phone || state.registerOtp.maskedPhone || '');
     const serverExpiresAt = Number(data.expires_at || 0);
-    const expiresIn = Math.max(0, Number(data.expires_in_seconds || data.expires_in || 300));
-    state.registerOtp.expiresAt = serverExpiresAt > 0
-      ? (serverExpiresAt < 1000000000000 ? serverExpiresAt * 1000 : serverExpiresAt)
-      : Date.now() + expiresIn * 1000;
+    const relativeExpiry = data.expires_in_seconds ?? data.expires_in;
+    const hasRelativeExpiry = relativeExpiry !== undefined
+      && relativeExpiry !== null
+      && Number.isFinite(Number(relativeExpiry));
+    const expiresIn = hasRelativeExpiry ? Math.max(0, Number(relativeExpiry)) : 300;
+    state.registerOtp.expiresAt = hasRelativeExpiry
+      ? Date.now() + expiresIn * 1000
+      : (serverExpiresAt > 0
+          ? (serverExpiresAt < 1000000000000 ? serverExpiresAt * 1000 : serverExpiresAt)
+          : Date.now() + expiresIn * 1000);
     el('otpMaskedPhone').textContent = state.registerOtp.maskedPhone || '-';
     el('otpCode').value = '';
     el('otpStatus').textContent = 'Enter the OTP to create your account.';
@@ -969,7 +975,7 @@
     const otp = el('otpCode').value.trim();
     if (!state.registerOtp.preAuthToken || !state.registerOtp.otpRequestId) return showFeedback('Registration session expired. Please start again.');
     if (Date.now() >= state.registerOtp.expiresAt) return showFeedback('OTP is incorrect or expired.');
-    if (!/^\d{4,6}$/.test(otp)) return showFeedback('Please enter the OTP sent to your phone.');
+    if (!/^\d{6}$/.test(otp)) return showFeedback('Please enter the 6-digit OTP sent to your phone.');
     state.requestInFlight = true;
     try {
       const response = await proxyPost('register_confirm', {

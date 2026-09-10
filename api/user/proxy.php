@@ -4197,6 +4197,16 @@ function user_proxy_forward_auth_post(
     );
 }
 
+function user_proxy_registration_request_policy(int $timeoutSeconds = 60): array
+{
+    return [
+        'canonical_only' => true,
+        'max_attempts' => 1,
+        'connect_timeout' => 5,
+        'timeout' => max(30, $timeoutSeconds),
+    ];
+}
+
 function user_proxy_forward_auth_multipart(
     string $relativePath,
     array $fields,
@@ -5775,7 +5785,7 @@ switch ($action) {
             'email' => trim((string)($body['email'] ?? '')),
             'identity_type' => strtoupper(trim((string)($body['identity_type'] ?? ''))),
             'identity_number' => trim((string)($body['identity_number'] ?? '')),
-        ], 'REGISTER_KYC_PREPARE_FAILED', 'Registration verification could not be prepared.');
+        ], 'REGISTER_KYC_PREPARE_FAILED', 'Registration verification could not be prepared.', user_proxy_registration_request_policy(40));
         break;
 
     case 'register_upload_kyc':
@@ -5818,7 +5828,7 @@ switch ($action) {
             'gps_lng' => $body['gps_lng'] ?? null,
             'gps_accuracy' => $body['gps_accuracy'] ?? null,
             'kyc_register_token' => trim((string)($body['kyc_register_token'] ?? '')),
-        ], 'REGISTER_OTP_SEND_FAILED', 'Failed to send register OTP');
+        ], 'REGISTER_OTP_SEND_FAILED', 'Failed to send register OTP', user_proxy_registration_request_policy());
         break;
 
     case 'register_resend_otp':
@@ -5836,7 +5846,7 @@ switch ($action) {
         user_proxy_forward_auth_post('auth/user_register_resend_otp.php', [
             'pre_auth_token' => $preAuthToken,
             'otp_request_id' => $otpRequestId,
-        ], 'REGISTER_OTP_RESEND_FAILED', 'Failed to resend register OTP');
+        ], 'REGISTER_OTP_RESEND_FAILED', 'Failed to resend register OTP', user_proxy_registration_request_policy());
         break;
 
     case 'register_confirm':
@@ -5856,7 +5866,7 @@ switch ($action) {
             'pre_auth_token' => $preAuthToken,
             'otp_request_id' => $otpRequestId,
             'otp' => $otp,
-        ], 'REGISTER_CONFIRM_FAILED', 'Failed to confirm registration');
+        ], 'REGISTER_CONFIRM_FAILED', 'Failed to confirm registration', user_proxy_registration_request_policy());
         break;
 
     case 'forgot_start':

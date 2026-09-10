@@ -133,6 +133,8 @@ if (empty($resendState['ok'])) {
 
 $otpRow = [
     'otp_request_id' => $newOtpRequestId,
+    'register_token' => $preAuthToken,
+    'pre_auth_token' => $preAuthToken,
     'uid' => $uid,
     'phone' => $phone,
     'phone_e164' => (string)($preAuthRow['phone_e164'] ?? $phone),

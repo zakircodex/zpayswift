@@ -29,6 +29,8 @@ $js = register_flow_source($root . '/api/user/assets/register.js');
 $css = register_flow_source($root . '/api/user/assets/register.css');
 $proxy = register_flow_source($root . '/api/user/proxy.php');
 $sendOtp = register_flow_source($root . '/api/auth/user_register_send_otp.php');
+$resendOtp = register_flow_source($root . '/api/auth/user_register_resend_otp.php');
+$verifyAndroidOtp = register_flow_source($root . '/api/auth/register_verify_otp.php');
 $confirm = register_flow_source($root . '/api/auth/user_register_confirm.php');
 $androidRegister = register_flow_source($root . '/api/lib/register_android.php');
 $credentials = register_flow_source($root . '/api/lib/user_web_credentials.php');
@@ -86,6 +88,9 @@ register_flow_expect(str_contains($js, "proxyPost('register_send_otp'") && strpo
 register_flow_expect(str_contains($page, 'Already have an account? <strong>Log in</strong>') && !str_contains($page, 'Forgot Password &amp; PIN'), 'Register bottom action must be Login only');
 register_flow_expect(str_contains($page, 'id="sendRegisterOtpBtn" class="register-primary" type="button" disabled') && str_contains($js, 'updateCreateAvailability'), 'Create Account must remain gated by location and terms');
 register_flow_expect(str_contains($js, 'expires_in_seconds') && str_contains($js, 'formatCountdown') && str_contains($js, "proxyPost('register_resend_otp'"), 'Registration OTP expiry/resend handling is incomplete');
+register_flow_expect(str_contains($js, '/^\\d{6}$/.test(otp)') && str_contains($js, 'const relativeExpiry = data.expires_in_seconds ?? data.expires_in'), 'Registration OTP input or clock-safe expiry handling is incomplete');
+register_flow_expect(str_contains($resendOtp, "'register_token' => \$preAuthToken") && str_contains($resendOtp, "'pre_auth_token' => \$preAuthToken") && str_contains($verifyAndroidOtp, "\$otpRow['register_token']"), 'Resent Android registration OTP must remain bound to its registration token');
+register_flow_expect(str_contains($proxy, 'function user_proxy_registration_request_policy') && substr_count($proxy, 'user_proxy_registration_request_policy()') >= 3, 'Registration OTP and confirmation proxy calls must use a single extended request budget');
 register_flow_expect(str_contains($confirm, 'auth_otp_claim_verification') && str_contains($confirm, 'auth_otp_complete_verification'), 'OTP claim/finalization protection is missing');
 register_flow_expect(str_contains($confirm, 'account_review_send_telegram') && str_contains($confirm, "\$accountStatus !== 'ACTIVE'"), 'ACTIVE/REVIEW and Telegram review compatibility is missing');
 
