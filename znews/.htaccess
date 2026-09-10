@@ -5,7 +5,7 @@ DirectoryIndex index.html
   RewriteEngine On
   RewriteBase /znews/
 
-  RewriteRule ^post/([A-Za-z0-9_-]+)/?$ index.html [L]
+  RewriteRule ^post/([A-Za-z0-9_-]+)/?$ post.php?post_id=$1 [L,QSA]
   RewriteRule ^creator/([A-Za-z0-9_-]+)/?$ index.html [L]
   RewriteRule ^policy/?$ index.html [L]
   RewriteRule ^$ index.html [L]

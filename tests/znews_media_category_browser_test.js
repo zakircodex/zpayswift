@@ -86,6 +86,12 @@ async function main() {
       bold_ranges: number === 1 ? [{ start: 5, end: 9 }] : [],
       formatting_runs: number === 1 ? [{ start: 5, end: 9, bold: true, color: 'orange' }] : [],
       category,
+      device_type: number === 3 ? 'MOBILE' : '',
+      device_specs: number === 3 ? [
+        { label: 'RAM', value: '12 GB' },
+        { label: 'Storage / ROM', value: '512 GB' },
+        { label: 'Camera', value: '50 MP' }
+      ] : [],
       image_media_id: `MEDIA_${number}`,
       image_url: `/api/znews/public/media.php?media_id=MEDIA_${number}`,
       image_preview_url: `/api/znews/media/owner.php?media_id=MEDIA_${number}`,
@@ -219,6 +225,8 @@ async function main() {
           category: body.category,
           updated_at: post.updated_at + 1
         });
+        if (Object.prototype.hasOwnProperty.call(body, 'device_type')) post.device_type = body.device_type;
+        if (Object.prototype.hasOwnProperty.call(body, 'device_specs')) post.device_specs = body.device_specs;
         if (Object.prototype.hasOwnProperty.call(body, 'media_id')) {
           post.image_media_id = body.media_id;
           post.image_url = body.media_id ? `/api/znews/public/media.php?media_id=${body.media_id}` : '';
@@ -298,11 +306,13 @@ async function main() {
     const failedHeight = await page.locator('#feedList [data-post-id="POST_4"] .media-failed').evaluate((element) => element.getBoundingClientRect().height);
     assert.ok(failedHeight <= 70, `Broken image placeholder remained too tall (${failedHeight}px).`);
 
-    await page.getByRole('button', { name: /Micro job/ }).dispatchEvent('click');
-    const microFeedRequests = await page.evaluate(() => window.__zskyMediaCategoryTest.requests.filter((value) => value.includes('/public/feed.php') && value.includes('category=MICRO_JOB')).length);
-    assert.equal(microFeedRequests, 0, 'Micro Job triggered a category feed request.');
-    await page.getByRole('button', { name: 'BD news', exact: true }).click();
-    await page.waitForFunction(() => [...document.querySelectorAll('#feedList .post-card')].every((card) => card.textContent.includes('BD news')));
+    const deviceCard = page.locator('#feedList [data-post-id="POST_3"] .post-device-specs');
+    await deviceCard.scrollIntoViewIfNeeded();
+    assert.match(await deviceCard.textContent(), /Mobile[\s\S]*RAM[\s\S]*12 GB[\s\S]*Storage \/ ROM[\s\S]*512 GB[\s\S]*Camera[\s\S]*50 MP/, 'Device specifications were not rendered in their saved order.');
+
+    assert.equal(await page.locator('[data-feed-category="MICRO_JOB"]').count(), 0, 'Removed Micro Job category remains visible.');
+    await page.getByRole('button', { name: 'Bangladesh News', exact: true }).click();
+    await page.waitForFunction(() => [...document.querySelectorAll('#feedList .post-card')].every((card) => card.textContent.includes('Bangladesh News')));
     const categoryAudit = await page.evaluate(() => ({
       ids: [...document.querySelectorAll('#feedList .post-card')].map((card) => card.dataset.postId),
       requests: window.__zskyMediaCategoryTest.requests.filter((value) => value.includes('/public/feed.php') && value.includes('category=BD_NEWS'))
@@ -555,15 +565,35 @@ async function main() {
     for (const [postId, category] of [
       ['POST_1', 'INTERNATIONAL_NEWS'],
       ['POST_2', 'BD_NEWS'],
-      ['POST_3', 'MOBILE_PRICING']
+      ['POST_7', 'MOBILE_PRICING']
     ]) {
       await openEdit({ postId });
       const beforeCategorySave = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.length);
       await fillRichText('#creatorEditText', `Text-only edit for ${category}`);
       await page.locator('#creatorEditSubmitBottom').click();
-      await page.waitForFunction((before) => window.__zskyMediaCategoryTest.updates.length === before + 1, beforeCategorySave);
-      const savedCategory = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.at(-1).category);
-      assert.equal(savedCategory, category, `Text-only Edit changed ${category}.`);
+      try {
+        await page.waitForFunction((before) => window.__zskyMediaCategoryTest.updates.length === before + 1, beforeCategorySave, { timeout: 5000 });
+      } catch (error) {
+        const diagnostics = await page.evaluate(() => ({
+          updates: window.__zskyMediaCategoryTest.updates.length,
+          dialogOpen: document.querySelector('#creatorEditDialog')?.open === true,
+          formBusy: document.querySelector('#creatorEditForm')?.getAttribute('aria-busy') || '',
+          formError: document.querySelector('#creatorEditError')?.textContent || '',
+          saveDisabled: document.querySelector('#creatorEditSubmitBottom')?.disabled === true,
+          valid: document.querySelector('#creatorEditForm')?.checkValidity() === true,
+          category: document.querySelector('#creatorEditCategory')?.value || '',
+          deviceVisible: document.querySelector('#creatorEditDeviceEditor')?.hidden === false,
+          deviceRequired: document.querySelector('#creatorEditDeviceType')?.required === true,
+          deviceType: document.querySelector('#creatorEditDeviceType')?.value || ''
+        }));
+        throw new Error(`Category edit did not submit after ${beforeCategorySave}: ${JSON.stringify(diagnostics)}`, { cause: error });
+      }
+      const savedUpdate = await page.evaluate(() => window.__zskyMediaCategoryTest.updates.at(-1));
+      assert.equal(savedUpdate.category, category, `Text-only Edit changed ${category}.`);
+      if (postId === 'POST_7') {
+        assert.equal(Object.prototype.hasOwnProperty.call(savedUpdate, 'device_type'), false, 'Legacy device post sent an empty device type.');
+        assert.equal(Object.prototype.hasOwnProperty.call(savedUpdate, 'device_specs'), false, 'Legacy device post sent empty device specifications.');
+      }
       await page.waitForFunction(() => !document.querySelector('#creatorEditDialog')?.open);
     }
 
@@ -812,12 +842,17 @@ async function main() {
       options: [...document.querySelectorAll('#postCategoryDialog [data-category-option]')].map((button) => button.dataset.categoryOption),
       nativeSelect: document.querySelector('#postCategory')?.tagName === 'SELECT'
     }));
-    assert.deepEqual(pickerAudit.options, ['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'], 'Custom category picker options are incorrect.');
+    assert.deepEqual(pickerAudit.options, [
+      'BD_NEWS', 'INTERNATIONAL_NEWS', 'HEALTH', 'SPORTS', 'ISLAMIC', 'JOKES', 'MOBILE_PRICING'
+    ], 'Custom category picker options are incorrect.');
     assert.equal(pickerAudit.nativeSelect, false, 'Create category still uses a native select.');
     if (process.env.ZNEWS_UI_SCREENSHOT_DIR) {
       await page.screenshot({ path: path.join(process.env.ZNEWS_UI_SCREENSHOT_DIR, 'category-picker-390.png'), fullPage: true });
     }
     await page.locator('#postCategoryDialog [data-category-option="MOBILE_PRICING"]').click();
+    await page.locator('#postDeviceType').selectOption('MOBILE');
+    await page.locator('#postDeviceEditor [data-device-spec-label="RAM"]').fill('12 GB');
+    await page.locator('#postDeviceEditor [data-device-spec-label="Storage / ROM"]').fill('512 GB');
     for (const width of [320, 360, 390, 412, 430]) {
       await page.setViewportSize({ width, height: 844 });
       const composerLayout = await page.evaluate(() => {
@@ -910,6 +945,11 @@ async function main() {
       progressActive: document.querySelector('#znewsTopProgress')?.classList.contains('active') === true
     }));
     assert.equal(createAudit.body.category, 'MOBILE_PRICING', 'Create did not persist selected category.');
+    assert.equal(createAudit.body.device_type, 'MOBILE', 'Create did not persist the selected device type.');
+    assert.deepEqual(createAudit.body.device_specs, [
+      { label: 'RAM', value: '12 GB' },
+      { label: 'Storage / ROM', value: '512 GB' }
+    ], 'Create did not persist ordered device specifications.');
     assert.equal(createAudit.body.text, 'Created middle bold text', 'Create sent editor markers instead of canonical plain text.');
     assert.deepEqual(createAudit.body.bold_ranges, [{ start: 8, end: 19 }], 'Create did not send the selected middle bold range.');
     assert.deepEqual(createAudit.body.formatting_runs, [{ start: 8, end: 19, bold: true, color: 'green' }], 'Create did not send combined bold/color formatting.');

@@ -166,7 +166,7 @@ check(($rootManifest['start_url'] ?? '') === '/', 'Standalone manifest start URL
 check(($rootManifest['scope'] ?? '') === '/', 'Standalone manifest scope is incorrect');
 
 $htaccess = contents($root . '/znews/.htaccess');
-check(str_contains($htaccess, 'RewriteRule ^post/([A-Za-z0-9_-]+)/?$ index.html [L]'), 'Clean post route is missing');
+check(str_contains($htaccess, 'RewriteRule ^post/([A-Za-z0-9_-]+)/?$ post.php?post_id=$1 [L,QSA]'), 'Server-rendered clean post route is missing');
 check(str_contains($htaccess, 'RewriteRule ^creator/([A-Za-z0-9_-]+)/?$ index.html [L]'), 'Clean creator route is missing');
 check(str_contains($htaccess, 'Options -Indexes'), 'Directory listing protection is missing');
 

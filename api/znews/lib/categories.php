@@ -9,8 +9,12 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 function znews_active_categories(): array
 {
     return [
-        'INTERNATIONAL_NEWS',
         'BD_NEWS',
+        'INTERNATIONAL_NEWS',
+        'HEALTH',
+        'SPORTS',
+        'ISLAMIC',
+        'JOKES',
         'MOBILE_PRICING',
     ];
 }

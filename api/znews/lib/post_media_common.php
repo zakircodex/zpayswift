@@ -11,6 +11,7 @@ require_once __DIR__ . '/posts.php';
 require_once __DIR__ . '/post_access.php';
 require_once __DIR__ . '/post_mutations.php';
 require_once __DIR__ . '/categories.php';
+require_once __DIR__ . '/device_specs.php';
 
 function znews_post_media_public_url(string $mediaId): string
 {
@@ -108,7 +109,8 @@ function znews_post_media_payload_hash(
     array $formattingRuns,
     string $mediaId,
     string $contentType,
-    string $category = ''
+    string $category = '',
+    array $deviceDetails = []
 ): string {
     return hash('sha256', json_encode([
         'uid' => $uid,
@@ -119,6 +121,8 @@ function znews_post_media_payload_hash(
         'media_id' => $mediaId,
         'content_type' => $contentType,
         'category' => $category,
+        'device_type' => (string)($deviceDetails['device_type'] ?? ''),
+        'device_specs' => znews_format_device_specs($deviceDetails['device_specs'] ?? []),
         'visibility' => 'PUBLIC',
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 }

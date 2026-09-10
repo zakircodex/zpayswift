@@ -51,10 +51,14 @@ headline_expect(str_contains($updateEndpoint, "array_key_exists('title', \$body)
 headline_expect(str_contains($createService, "'title' => \$title"), 'Headline is not stored on create.');
 headline_expect(str_contains($updateService, "\$updated['title'] = \$targetTitle"), 'Headline is not stored on update.');
 headline_expect(str_contains($posts, "'title' => trim((string)(\$post['title'] ?? ''))"), 'Existing title-less posts are not safely formatted.');
-headline_expect(str_contains($createService, 'trim($title . "\\n" . $text)'), 'Headline is not included in create moderation.');
-headline_expect(str_contains($updateService, 'trim($targetTitle . "\\n" . $text)'), 'Headline is not included in update moderation.');
+headline_expect(str_contains($createService, '$title . "\\n" . $text'), 'Headline is not included in create moderation.');
+headline_expect(str_contains($updateService, '$targetTitle . "\\n" . $text'), 'Headline is not included in update moderation.');
 
-headline_expect(str_contains($apiClient, "createPost({ title = '', text = '', boldRanges = [], formattingRuns = [], mediaId = '', category = '' })"), 'Web API client does not send headlines/categories/formatting.');
+headline_expect(
+    str_contains($apiClient, 'createPost({')
+    && str_contains($apiClient, "deviceType = '', deviceSpecs = []"),
+    'Web API client does not send headlines/categories/device specifications/formatting.'
+);
 headline_expect(
     str_contains($app, 'title: postTitle')
     && str_contains($app, 'text: postText')

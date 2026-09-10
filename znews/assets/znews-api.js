@@ -248,7 +248,10 @@
       });
     }
 
-    createPost({ title = '', text = '', boldRanges = [], formattingRuns = [], mediaId = '', category = '' }) {
+    createPost({
+      title = '', text = '', boldRanges = [], formattingRuns = [], mediaId = '', category = '',
+      deviceType = '', deviceSpecs = []
+    }) {
       return this.request('znews/posts/create.php', {
         method: 'POST',
         authenticated: true,
@@ -259,6 +262,8 @@
           formatting_runs: Array.isArray(formattingRuns) ? formattingRuns : [],
           media_id: mediaId,
           category,
+          device_type: deviceType,
+          device_specs: Array.isArray(deviceSpecs) ? deviceSpecs : [],
           idempotency_key: this.idempotencyKey('post')
         }
       });

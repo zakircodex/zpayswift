@@ -5,6 +5,7 @@
   window.ZNEWS_APP_INITIALIZED = true;
 
   const config = window.ZNEWS_CONFIG;
+  const deviceCatalog = window.ZNewsDeviceSpecs;
   const api = window.ZNEWS_API_CLIENT || new window.ZNewsApiClient(config);
   const requestScheduler = window.ZNEWS_REQUEST_SCHEDULER;
   const requestPriority = window.ZNewsRequestScheduler?.PRIORITY || {
@@ -62,6 +63,7 @@
     createPostForm: $('#createPostForm'),
     feedCategories: $('#feedCategories'),
     postCategory: $('#postCategory'),
+    postDeviceEditor: $('#postDeviceEditor'),
     postTitle: $('#postTitle'),
     postTitleCount: $('#postTitleCount'),
     postText: $('#postText'),
@@ -440,11 +442,7 @@
   }
 
   function categoryLabel(category) {
-    return ({
-      INTERNATIONAL_NEWS: 'International news',
-      BD_NEWS: 'BD news',
-      MOBILE_PRICING: 'Mobile pricing'
-    })[text(category).toUpperCase()] || '';
+    return deviceCatalog?.categoryLabel(category) || '';
   }
 
   function avatarMarkup(name, photo, { deferred = false, group = 'avatar' } = {}) {
@@ -466,6 +464,7 @@
     const body = text(post.text);
     const bodyHtml = richText.formattedTextHtml(body, post.formatting_runs, post.bold_ranges);
     const category = categoryLabel(post.category);
+    const deviceDetails = deviceCatalog?.detailsMarkup(post, escapeHtml) || '';
     const imageWidth = Math.max(0, Number(post.image_width || 0));
     const imageHeight = Math.max(0, Number(post.image_height || 0));
     const hasImageRatio = imageWidth > 0 && imageHeight > 0;
@@ -494,6 +493,7 @@
         ${title ? `<button class="post-title" type="button" data-action="open">${escapeHtml(title)}</button>` : ''}
         ${body ? `<div class="post-copy ${!detail && body.length > 700 ? 'truncated' : ''}" data-action="open">${bodyHtml}</div>` : ''}
         ${image ? `<div class="post-media-frame${feed ? ` feed-media-frame media-pending${mediaFrameClass}` : ''}"${mediaFrameStyle} data-action="open"><img class="post-media" ${feed ? deferredMediaAttributes(image, `post-${id}`, priority) : `src="${escapeHtml(image)}" loading="${priority ? 'eager' : 'lazy'}" decoding="async"${priority ? ' fetchpriority="high"' : ''}`} alt="Image shared by ${escapeHtml(name)}"${mediaDimensions}></div>` : ''}
+        ${deviceDetails}
         <div class="post-meta"><span>${Number(post.like_count || 0)} likes</span><span>${Number(post.comment_count || 0)} comments • ${Number(post.share_count || 0)} shares</span></div>
         <div class="post-actions">
           ${creatorActions}
@@ -1203,9 +1203,11 @@
     const parsedText = richText.getEditorPayload(els.postText);
     const postText = parsedText.text;
     const category = text(els.postCategory?.value).trim();
+    const deviceDetails = deviceCatalog?.readEditor(document, 'post') || { deviceType: '', deviceSpecs: [] };
     const file = els.postImage.files?.[0] || null;
     if (!postTitle) return toast('Add a news headline.', 'error');
-    if (!['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(category)) return toast('Choose a post category.', 'error');
+    if (!deviceCatalog?.categoryIds.includes(category)) return toast('Choose a post category.', 'error');
+    if (!deviceCatalog.isComplete(category, deviceDetails)) return toast('Choose a device type and add at least one specification.', 'error');
     if (!postText && !file) return toast('Add post details or a photo.', 'error');
     if (file && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) return toast('Choose a JPEG, PNG or WebP photo.', 'error');
     if (file && file.size > 8 * 1024 * 1024) return toast('Image must be 8 MB or smaller.', 'error');
@@ -1232,12 +1234,16 @@
         boldRanges: parsedText.boldRanges,
         formattingRuns: parsedText.formattingRuns,
         mediaId,
-        category
+        category,
+        deviceType: deviceDetails.deviceType,
+        deviceSpecs: deviceDetails.deviceSpecs
       });
       state.feedDirty = true;
       els.createPostForm.reset();
       richText.setEditorContent(els.postText, '');
       window.ZNewsCategoryPicker?.set(els.postCategory, '', { notify: false });
+      deviceCatalog?.setEditor(document, 'post', {});
+      deviceCatalog?.syncEditor(document, 'post', '');
       els.imagePreview.hidden = true;
       els.imagePreview.textContent = '';
       els.postTitleCount.textContent = '0 / 160';
@@ -1474,12 +1480,16 @@
   function syncComposerState() {
     const titleLength = els.postTitle.value.length;
     const editorPayload = richText.getEditorPayload(els.postText);
+    const category = text(els.postCategory?.value);
+    const deviceDetails = deviceCatalog?.readEditor(document, 'post') || { deviceType: '', deviceSpecs: [] };
+    deviceCatalog?.syncEditor(document, 'post', category);
     const length = Array.from(editorPayload.text).length;
     els.postTitleCount.textContent = `${titleLength} / 160`;
     els.postTextCount.textContent = `${length} / 5000`;
     const hasContent = Boolean(
       els.postTitle.value.trim()
-      && ['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(text(els.postCategory?.value))
+      && deviceCatalog?.categoryIds.includes(category)
+      && deviceCatalog.isComplete(category, deviceDetails)
       && (editorPayload.text || els.postImage.files?.[0])
     );
     els.createPostForm.classList.toggle('has-media', Boolean(els.postImage.files?.[0]));
@@ -1521,7 +1531,7 @@
     });
     els.authForm.addEventListener('submit', submitAuth);
     els.createPostForm.addEventListener('submit', submitPost);
-    els.postCategory?.addEventListener('change', syncComposerState);
+    deviceCatalog?.bindEditor(document, 'post', els.postCategory, syncComposerState);
     els.postTitle.addEventListener('input', syncComposerState);
     els.postText.addEventListener('input', (event) => {
       if (event.isComposing || event.inputType === 'insertCompositionText') return;
@@ -1537,10 +1547,6 @@
       const button = event.target.closest('[data-feed-category]');
       if (!button) return;
       const category = text(button.dataset.feedCategory).toUpperCase();
-      if (category === 'MICRO_JOB') {
-        toast('Micro job is coming soon.');
-        return;
-      }
       if (category === state.feedCategory) return;
       state.feedCategory = category;
       $$('.feed-category', els.feedCategories).forEach((item) => {

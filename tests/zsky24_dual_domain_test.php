@@ -33,7 +33,7 @@ $index = zsky_source('znews/index.html');
 $znewsRewrite = zsky_source('znews/.htaccess');
 
 zsky_expect(str_contains($rootRewrite, 'zsky24\.com'), 'Standalone host routing is missing.');
-zsky_expect(str_contains($rootRewrite, 'RewriteRule ^(?:post|creator)/'), 'Standalone clean routes are missing.');
+zsky_expect(str_contains($rootRewrite, 'RewriteRule ^post/') && str_contains($rootRewrite, 'RewriteRule ^creator/'), 'Standalone clean routes are missing.');
 zsky_expect(str_contains($rootRewrite, 'RewriteRule ^policy/?$'), 'Standalone policy route is missing.');
 zsky_expect(str_contains($rootRewrite, 'api/(?!znews'), 'Standalone host API restriction is missing.');
 zsky_expect(str_contains($rootRewrite, 'RewriteRule ^deploy_version\\.txt$ - [L,NC]'), 'Standalone deployment marker allowlist is missing.');
@@ -60,9 +60,9 @@ zsky_expect(str_contains($handoff, 'ZNEWS_HANDOFF_REPLAYED'), 'Replay response i
 zsky_expect(str_contains($handoff, 'auth_session_epoch') && str_contains($handoff, 'device_id'), 'Session/device binding is missing.');
 zsky_expect(str_contains($handoff, 'znews_request_host()'), 'Intended-host validation is missing.');
 
-zsky_expect(str_contains($embeddedWorker, 'zsky24-embedded-shell-v35'), 'Embedded PWA namespace is missing.');
+zsky_expect(str_contains($embeddedWorker, 'zsky24-embedded-shell-v36'), 'Embedded PWA namespace is missing.');
 zsky_expect(str_contains($embeddedWorker, "key.startsWith('zsky24-embedded-')"), 'Embedded worker may delete unrelated origin caches.');
-zsky_expect(str_contains($standaloneWorker, 'zsky24-standalone-shell-v35'), 'Standalone PWA namespace is missing.');
+zsky_expect(str_contains($standaloneWorker, 'zsky24-standalone-shell-v36'), 'Standalone PWA namespace is missing.');
 zsky_expect(str_contains($standaloneWorker, "key.startsWith('zsky24-standalone-')"), 'Standalone worker may delete unrelated origin caches.');
 zsky_expect(str_contains($embeddedWorker, "url.pathname.startsWith('/api/')"), 'Embedded worker may cache API responses.');
 zsky_expect(str_contains($standaloneWorker, "url.pathname.startsWith('/api/')"), 'Standalone worker may cache API responses.');

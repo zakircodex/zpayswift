@@ -33,6 +33,12 @@ $categoryProvided = array_key_exists('category', $body);
 $category = $categoryProvided
     ? znews_normalize_category($body['category'], false)
     : '';
+$deviceDetailsProvided = array_key_exists('device_type', $body)
+    || array_key_exists('device_specs', $body);
+$requestedDeviceDetails = [
+    'device_type' => $body['device_type'] ?? '',
+    'device_specs' => $body['device_specs'] ?? [],
+];
 $mediaProvided = array_key_exists('media_id', $body)
     || array_key_exists('image_media_id', $body);
 $requestedMediaId = $mediaProvided
@@ -60,6 +66,8 @@ $result = znews_update_post_with_media(
     $requestedMediaId,
     $category,
     $categoryProvided,
+    $requestedDeviceDetails,
+    $deviceDetailsProvided,
     (int)$expectedUpdatedAt,
     $idempotencyKey
 );

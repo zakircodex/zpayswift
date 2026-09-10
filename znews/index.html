@@ -10,21 +10,27 @@
   <meta property="og:description" content="News, stories and community updates.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://zsky24.com/">
+  <meta property="og:image" content="https://zsky24.com/assets/brand/zpay-icon.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Z Sky 24">
+  <meta name="twitter:description" content="News, stories and community updates.">
+  <meta name="twitter:image" content="https://zsky24.com/assets/brand/zpay-icon.png">
   <link rel="canonical" href="https://zsky24.com/">
   <title>Z Sky 24</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link id="appManifest" rel="manifest" href="/znews/manifest.webmanifest">
   <link rel="stylesheet" href="/znews/assets/znews.css?v=6">
-  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=17">
+  <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=18">
   <script defer src="/znews/assets/znews-config.js?v=10"></script>
-  <script defer src="/znews/assets/znews-api.js?v=17"></script>
+  <script defer src="/znews/assets/znews-device-specs.js?v=1"></script>
+  <script defer src="/znews/assets/znews-api.js?v=18"></script>
   <script defer src="/znews/assets/znews-request-scheduler.js?v=1"></script>
   <script defer src="/znews/assets/znews-progressive-feed.js?v=3"></script>
   <script defer src="/znews/assets/znews-feed-ui.js?v=3"></script>
   <script defer src="/znews/assets/znews-ads.js?v=6"></script>
-  <script defer src="/znews/assets/znews-rich-editor.js?v=5"></script>
-  <script defer src="/znews/assets/znews-bootstrap.js?v=36"></script>
-  <script defer src="/znews/assets/znews.js?v=32"></script>
+  <script defer src="/znews/assets/znews-rich-editor.js?v=6"></script>
+  <script defer src="/znews/assets/znews-bootstrap.js?v=37"></script>
+  <script defer src="/znews/assets/znews.js?v=33"></script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -98,10 +104,13 @@
       <section id="feedView" class="view active" data-view="feed">
         <nav class="feed-categories" id="feedCategories" aria-label="Feed categories">
           <button class="feed-category active" type="button" data-feed-category="" aria-pressed="true">News feed all</button>
-          <button class="feed-category" type="button" data-feed-category="INTERNATIONAL_NEWS" aria-pressed="false">International news</button>
-          <button class="feed-category" type="button" data-feed-category="BD_NEWS" aria-pressed="false">BD news</button>
-          <button class="feed-category" type="button" data-feed-category="MOBILE_PRICING" aria-pressed="false">Mobile pricing</button>
-          <button class="feed-category coming-soon" type="button" data-feed-category="MICRO_JOB" aria-disabled="true">Micro job <small>Coming soon</small></button>
+          <button class="feed-category" type="button" data-feed-category="BD_NEWS" aria-pressed="false">Bangladesh News</button>
+          <button class="feed-category" type="button" data-feed-category="INTERNATIONAL_NEWS" aria-pressed="false">International News</button>
+          <button class="feed-category" type="button" data-feed-category="HEALTH" aria-pressed="false">Health</button>
+          <button class="feed-category" type="button" data-feed-category="SPORTS" aria-pressed="false">Sports</button>
+          <button class="feed-category" type="button" data-feed-category="ISLAMIC" aria-pressed="false">Islamic</button>
+          <button class="feed-category" type="button" data-feed-category="JOKES" aria-pressed="false">Jokes</button>
+          <button class="feed-category" type="button" data-feed-category="MOBILE_PRICING" aria-pressed="false">Device Specs &amp; Pricing</button>
         </nav>
         <div class="composer-card card" data-auth-only hidden>
           <div class="avatar" id="composerAvatar">Z</div>
@@ -149,13 +158,43 @@
                   <div class="category-picker-sheet">
                     <header><h2 id="postCategoryDialogTitle">Choose category</h2><button type="button" data-category-close aria-label="Close category picker">×</button></header>
                     <div class="category-picker-options" role="radiogroup" aria-label="Post category">
-                      <button type="button" role="radio" aria-checked="false" data-category-option="INTERNATIONAL_NEWS"><span>International news</span><i aria-hidden="true"></i></button>
-                      <button type="button" role="radio" aria-checked="false" data-category-option="BD_NEWS"><span>BD news</span><i aria-hidden="true"></i></button>
-                      <button type="button" role="radio" aria-checked="false" data-category-option="MOBILE_PRICING"><span>Mobile pricing</span><i aria-hidden="true"></i></button>
+                      <button type="button" role="radio" aria-checked="false" data-category-option="BD_NEWS"><span>Bangladesh News</span><i aria-hidden="true"></i></button>
+                      <button type="button" role="radio" aria-checked="false" data-category-option="INTERNATIONAL_NEWS"><span>International News</span><i aria-hidden="true"></i></button>
+                      <button type="button" role="radio" aria-checked="false" data-category-option="HEALTH"><span>Health</span><i aria-hidden="true"></i></button>
+                      <button type="button" role="radio" aria-checked="false" data-category-option="SPORTS"><span>Sports</span><i aria-hidden="true"></i></button>
+                      <button type="button" role="radio" aria-checked="false" data-category-option="ISLAMIC"><span>Islamic</span><i aria-hidden="true"></i></button>
+                      <button type="button" role="radio" aria-checked="false" data-category-option="JOKES"><span>Jokes</span><i aria-hidden="true"></i></button>
+                      <button type="button" role="radio" aria-checked="false" data-category-option="MOBILE_PRICING"><span>Device Specs &amp; Pricing</span><i aria-hidden="true"></i></button>
                     </div>
                   </div>
                 </dialog>
               </div>
+              <section class="device-spec-editor" id="postDeviceEditor" hidden aria-labelledby="postDeviceHeading">
+                <header><h2 id="postDeviceHeading">Device specifications</h2><p>Add only the details that apply to this device.</p></header>
+                <label class="device-type-field" for="postDeviceType"><span>Device type</span>
+                  <select id="postDeviceType" required>
+                    <option value="">Choose device type</option>
+                    <option value="MOBILE">Mobile phone</option><option value="LAPTOP">Laptop</option><option value="TABLET">Tablet</option>
+                    <option value="SMARTWATCH">Smartwatch</option><option value="CAMERA">Camera</option><option value="ACCESSORY">Accessory</option><option value="OTHER">Other device</option>
+                  </select>
+                </label>
+                <div class="device-spec-inputs">
+                  <label><span>Brand</span><input type="text" maxlength="300" data-device-spec-label="Brand" placeholder="e.g. Samsung"></label>
+                  <label><span>Model</span><input type="text" maxlength="300" data-device-spec-label="Model" placeholder="e.g. Galaxy S26 Ultra"></label>
+                  <label><span>Price</span><input type="text" maxlength="300" data-device-spec-label="Price" placeholder="e.g. BDT 149,999"></label>
+                  <label><span>Processor</span><input type="text" maxlength="300" data-device-spec-label="Processor" placeholder="e.g. Snapdragon 8 Elite"></label>
+                  <label><span>RAM</span><input type="text" maxlength="300" data-device-spec-label="RAM" placeholder="e.g. 12 GB"></label>
+                  <label><span>Storage / ROM</span><input type="text" maxlength="300" data-device-spec-label="Storage / ROM" placeholder="e.g. 512 GB"></label>
+                  <label><span>Display</span><input type="text" maxlength="300" data-device-spec-label="Display" placeholder="e.g. 6.8-inch AMOLED, 120 Hz"></label>
+                  <label><span>Camera</span><input type="text" maxlength="300" data-device-spec-label="Camera" placeholder="e.g. 200 MP + 50 MP"></label>
+                  <label><span>Graphics</span><input type="text" maxlength="300" data-device-spec-label="Graphics" placeholder="e.g. RTX 5070 8 GB"></label>
+                  <label><span>Battery</span><input type="text" maxlength="300" data-device-spec-label="Battery" placeholder="e.g. 5000 mAh, 45 W"></label>
+                  <label><span>Operating system</span><input type="text" maxlength="300" data-device-spec-label="Operating system" placeholder="e.g. Android 16"></label>
+                  <label><span>Connectivity</span><input type="text" maxlength="300" data-device-spec-label="Connectivity" placeholder="e.g. 5G, Wi-Fi 7, Bluetooth 5.4"></label>
+                  <label><span>Warranty</span><input type="text" maxlength="300" data-device-spec-label="Warranty" placeholder="e.g. 1 year official"></label>
+                  <label><span>Other specifications</span><input type="text" maxlength="300" data-device-spec-label="Other specifications" placeholder="Add any remaining important features"></label>
+                </div>
+              </section>
               <div class="composer-field composer-title-field">
                 <label for="postTitle">News headline</label>
                 <input id="postTitle" name="title" type="text" maxlength="160" placeholder="Add a clear headline" required aria-describedby="postTitleCount">

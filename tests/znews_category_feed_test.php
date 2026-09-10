@@ -21,12 +21,20 @@ function api_response(bool $success, string $code, string $message, array $data 
 
 require_once $root . '/api/znews/lib/categories.php';
 
-category_expect(znews_active_categories() === ['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'], 'Canonical category allowlist changed.');
+category_expect(znews_active_categories() === [
+    'BD_NEWS',
+    'INTERNATIONAL_NEWS',
+    'HEALTH',
+    'SPORTS',
+    'ISLAMIC',
+    'JOKES',
+    'MOBILE_PRICING',
+], 'Canonical category allowlist changed.');
 category_expect(znews_normalize_category('bd_news', false) === 'BD_NEWS', 'Category normalization failed.');
 category_expect(znews_normalize_category('', true) === '', 'Legacy empty category compatibility failed.');
 category_expect(znews_category_created_at('MOBILE_PRICING', 42) === 'MOBILE_PRICING|000000000042', 'Composite category index value is unstable.');
 
-foreach (['MICRO_JOB', 'SPORTS', '', 'BD NEWS'] as $invalid) {
+foreach (['MICRO_JOB', 'TECH_NEWS', '', 'BD NEWS'] as $invalid) {
     $rejected = false;
     try {
         znews_normalize_category($invalid, false);
@@ -45,10 +53,10 @@ $updateEndpoint = file_get_contents($root . '/api/znews/posts/update.php');
 $projection = file_get_contents($root . '/api/znews/lib/public_projection.php');
 $rules = json_decode((string)file_get_contents($root . '/database.rules.json'), true);
 
-foreach (['News feed all', 'International news', 'BD news', 'Mobile pricing', 'Micro job', 'Coming soon'] as $label) {
+foreach (['News feed all', 'Bangladesh News', 'International News', 'Health', 'Sports', 'Islamic', 'Jokes', 'Device Specs &amp; Pricing'] as $label) {
     category_expect(str_contains((string)$index, $label), 'Category UI label is missing: ' . $label);
 }
-category_expect(str_contains((string)$app, "if (category === 'MICRO_JOB')"), 'Micro Job does not stay local/disabled.');
+category_expect(!str_contains((string)$index, 'MICRO_JOB'), 'Removed Micro Job placeholder remains visible.');
 category_expect(str_contains((string)$api, 'params: { limit, cursor, category }'), 'Web feed does not send optional category.');
 category_expect(str_contains((string)$feedEndpoint, "\$_GET['category'] ?? ''"), 'Feed API lacks optional category input.');
 category_expect(str_contains((string)$createEndpoint, "array_key_exists('category', \$body)"), 'Create API lacks category compatibility/validation.');
@@ -61,4 +69,3 @@ category_expect(
 category_expect(($rules['rules']['.read'] ?? null) === false && ($rules['rules']['.write'] ?? null) === false, 'RTDB root deny policy changed.');
 
 echo "PASS: {$assertions} Z Sky category assertions.\n";
-

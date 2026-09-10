@@ -26,6 +26,14 @@ $title = znews_post_validate_title($body['title'] ?? '');
 $category = array_key_exists('category', $body)
     ? znews_normalize_category($body['category'], false)
     : '';
+$deviceDetailsProvided = array_key_exists('device_type', $body)
+    || array_key_exists('device_specs', $body);
+$deviceDetails = znews_validate_device_details(
+    $category,
+    $body['device_type'] ?? '',
+    $body['device_specs'] ?? [],
+    $deviceDetailsProvided
+);
 $idempotencyKey = znews_idempotency_key(
     $body['idempotency_key']
     ?? $body['client_request_id']
@@ -41,6 +49,7 @@ $result = znews_create_post_with_media(
     (string)$content['media_id'],
     (string)$content['content_type'],
     $category,
+    $deviceDetails,
     $idempotencyKey
 );
 

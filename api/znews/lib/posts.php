@@ -6,6 +6,8 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
     exit('Not Found');
 }
 
+require_once __DIR__ . '/device_specs.php';
+
 function znews_post_payload_hash(string $uid, string $text): string
 {
     return hash('sha256', json_encode([
@@ -23,6 +25,7 @@ function znews_deterministic_post_id(string $uid, string $idempotencyKey): strin
 
 function znews_format_post(array $post): array
 {
+    $device = znews_device_details_from_post($post);
     return [
         'post_id' => trim((string)($post['post_id'] ?? '')),
         'creator_uid' => trim((string)($post['creator_uid'] ?? '')),
@@ -43,6 +46,8 @@ function znews_format_post(array $post): array
             (string)($post['text'] ?? '')
         ),
         'category' => strtoupper(trim((string)($post['category'] ?? ''))),
+        'device_type' => (string)$device['device_type'],
+        'device_specs' => (array)$device['device_specs'],
         'image_url' => trim((string)($post['image_url'] ?? '')),
         'image_width' => max(0, (int)($post['image_width'] ?? 0)),
         'image_height' => max(0, (int)($post['image_height'] ?? 0)),

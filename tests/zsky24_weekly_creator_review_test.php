@@ -272,8 +272,8 @@ weekly_expect(str_contains($weeklyJs, 'requestScheduler.schedule'), 'Weekly mobi
 weekly_expect(!str_contains($weeklyJs, 'balanceSummary'), 'Weekly performance still invokes the retired balance API.');
 
 foreach ([
-    [$embeddedWorker, 'zsky24-embedded-shell-v35'],
-    [$standaloneWorker, 'zsky24-standalone-shell-v35'],
+    [$embeddedWorker, 'zsky24-embedded-shell-v36'],
+    [$standaloneWorker, 'zsky24-standalone-shell-v36'],
 ] as [$worker, $cacheName]) {
     weekly_expect(str_contains($worker, $cacheName), "Weekly review service-worker generation is missing: {$cacheName}");
     weekly_expect(str_contains($worker, 'znews-weekly-review.js?v=4'), 'Weekly review JavaScript is missing from a service-worker shell.');

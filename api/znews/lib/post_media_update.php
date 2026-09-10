@@ -24,6 +24,8 @@ function znews_update_post_with_media(
     string $requestedMediaId,
     string $category,
     bool $categoryProvided,
+    array $requestedDeviceDetails,
+    bool $deviceDetailsProvided,
     int $expectedUpdatedAt,
     string $idempotencyKey
 ): array {
@@ -61,6 +63,17 @@ function znews_update_post_with_media(
     $targetTitle = $titleProvided ? znews_post_validate_title($title) : $currentTitle;
     $currentCategory = strtoupper(trim((string)($post['category'] ?? '')));
     $targetCategory = $categoryProvided ? znews_normalize_category($category, false) : $currentCategory;
+    $currentDeviceDetails = znews_device_details_from_post($post);
+    $targetDeviceDetails = $deviceDetailsProvided
+        ? znews_validate_device_details(
+            $targetCategory,
+            $requestedDeviceDetails['device_type'] ?? '',
+            $requestedDeviceDetails['device_specs'] ?? [],
+            true
+        )
+        : ($targetCategory === znews_device_category()
+            ? $currentDeviceDetails
+            : ['device_type' => '', 'device_specs' => []]);
     $currentMediaId = trim((string)($post['image_media_id'] ?? ''));
     $targetMediaId = $mediaProvided ? trim($requestedMediaId) : $currentMediaId;
     if ($targetMediaId !== '') {
@@ -111,6 +124,9 @@ function znews_update_post_with_media(
         'target_media_id' => $targetMediaId,
         'category' => $targetCategory,
         'category_provided' => $categoryProvided,
+        'device_type' => (string)$targetDeviceDetails['device_type'],
+        'device_specs' => (array)$targetDeviceDetails['device_specs'],
+        'device_details_provided' => $deviceDetailsProvided,
         'expected_updated_at' => $expectedUpdatedAt,
     ]);
 
@@ -143,14 +159,17 @@ function znews_update_post_with_media(
     }
 
     $now = znews_now();
-    $decision = znews_post_publication_decision($newMediaRow, trim($targetTitle . "\n" . $text));
+    $moderationText = trim($targetTitle . "\n" . $text . "\n" . znews_device_specs_moderation_text($targetDeviceDetails));
+    $decision = znews_post_publication_decision($newMediaRow, $moderationText);
     $updated = $post;
-    $updated['schema_version'] = max(7, (int)($post['schema_version'] ?? 1));
+    $updated['schema_version'] = max(8, (int)($post['schema_version'] ?? 1));
     $updated['title'] = $targetTitle;
     $updated['text'] = $text;
     $updated['bold_ranges'] = $boldRanges;
     $updated['formatting_runs'] = $formattingRuns;
     $updated['category'] = $targetCategory;
+    $updated['device_type'] = (string)$targetDeviceDetails['device_type'];
+    $updated['device_specs'] = (array)$targetDeviceDetails['device_specs'];
     $updated['image_media_id'] = $targetMediaId;
     $updated['image_url'] = znews_post_media_public_url($targetMediaId);
     $updated['content_type'] = $contentType;

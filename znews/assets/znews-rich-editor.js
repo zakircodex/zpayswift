@@ -11,11 +11,9 @@
     orange: 'Orange',
     red: 'Red'
   });
-  const CATEGORY_LABELS = Object.freeze({
-    INTERNATIONAL_NEWS: 'International news',
-    BD_NEWS: 'BD news',
-    MOBILE_PRICING: 'Mobile pricing'
-  });
+  const CATEGORY_LABELS = Object.freeze(Object.fromEntries(
+    window.ZNewsDeviceSpecs?.categories || []
+  ));
   const editorStates = new WeakMap();
   const pickerStates = new WeakMap();
   const progressTokens = new Set();

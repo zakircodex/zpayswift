@@ -18,6 +18,7 @@ function znews_create_post_with_media(
     string $mediaId,
     string $contentType,
     string $category,
+    array $deviceDetails,
     string $idempotencyKey
 ): array {
     $user = is_array($auth['user'] ?? null) ? (array)$auth['user'] : [];
@@ -31,7 +32,8 @@ function znews_create_post_with_media(
         $formattingRuns,
         $mediaId,
         $contentType,
-        $category
+        $category,
+        $deviceDetails
     );
     $postId = znews_deterministic_post_id($uid, $idempotencyKey);
 
@@ -62,9 +64,10 @@ function znews_create_post_with_media(
     $now = znews_now();
     $imageWidth = max(0, (int)($mediaRow['optimized_width'] ?? $mediaRow['width'] ?? 0));
     $imageHeight = max(0, (int)($mediaRow['optimized_height'] ?? $mediaRow['height'] ?? 0));
-    $decision = znews_post_publication_decision($mediaRow, trim($title . "\n" . $text));
+    $moderationText = trim($title . "\n" . $text . "\n" . znews_device_specs_moderation_text($deviceDetails));
+    $decision = znews_post_publication_decision($mediaRow, $moderationText);
     $post = [
-        'schema_version' => 7,
+        'schema_version' => 8,
         'post_id' => $postId,
         'creator_uid' => $uid,
         'creator_name' => (string)($creator['name'] ?? 'Z-Pay User'),
@@ -74,6 +77,8 @@ function znews_create_post_with_media(
         'bold_ranges' => $boldRanges,
         'formatting_runs' => $formattingRuns,
         'category' => $category,
+        'device_type' => (string)($deviceDetails['device_type'] ?? ''),
+        'device_specs' => znews_format_device_specs($deviceDetails['device_specs'] ?? []),
         'image_media_id' => $mediaId,
         'image_url' => znews_post_media_public_url($mediaId),
         'image_width' => $imageWidth,
@@ -97,6 +102,7 @@ function znews_create_post_with_media(
         'post_id' => $postId,
         'status' => (string)$post['status'],
         'content_type' => $contentType,
+        'category' => $category,
         'has_image' => $mediaId !== '',
         'created_at' => $now,
         'updated_at' => $now,

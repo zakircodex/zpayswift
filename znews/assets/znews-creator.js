@@ -2,7 +2,8 @@
   'use strict';
 
   const config = window.ZNEWS_CONFIG;
-  const EDITABLE_CATEGORIES = Object.freeze(['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING']);
+  const deviceCatalog = window.ZNewsDeviceSpecs;
+  const EDITABLE_CATEGORIES = deviceCatalog?.categoryIds || Object.freeze([]);
   const form = document.querySelector('#createPostForm');
   const mineList = document.querySelector('#mineList');
   const toastRegion = document.querySelector('#toastRegion');
@@ -42,9 +43,7 @@
         <div class="category-picker-sheet">
           <header><h2 id="${prefix}DialogTitle">Choose category</h2><button type="button" data-category-close aria-label="Close category picker">×</button></header>
           <div class="category-picker-options" role="radiogroup" aria-label="Post category">
-            <button type="button" role="radio" aria-checked="false" data-category-option="INTERNATIONAL_NEWS"><span>International news</span><i aria-hidden="true"></i></button>
-            <button type="button" role="radio" aria-checked="false" data-category-option="BD_NEWS"><span>BD news</span><i aria-hidden="true"></i></button>
-            <button type="button" role="radio" aria-checked="false" data-category-option="MOBILE_PRICING"><span>Mobile pricing</span><i aria-hidden="true"></i></button>
+            ${deviceCatalog?.categoryOptionsMarkup() || ''}
           </div>
         </div>
       </dialog>`;
@@ -196,6 +195,7 @@
           <div class="composer-field composer-category-field">
             ${categoryPickerMarkup('creatorEditCategoryPicker', 'creatorEditCategory')}
           </div>
+          ${deviceCatalog?.editorMarkup('creatorEdit') || ''}
           <div class="composer-field composer-title-field">
             <label for="creatorEditTitle">News headline</label>
             <input id="creatorEditTitle" type="text" maxlength="160" placeholder="Add a clear headline" required aria-describedby="creatorEditTitleCount">
@@ -259,6 +259,7 @@
       dialog.querySelector('#creatorEditCategoryPickerButton'),
       dialog.querySelector('#creatorEditCategoryPickerDialog')
     );
+    deviceCatalog?.bindEditor(dialog, 'creatorEdit', categoryInput, () => syncEditor(dialog));
     dialog.querySelector('#creatorEditImage')?.addEventListener('change', () => {
       dialog.querySelector('#creatorRemoveImage').checked = false;
       renderEditPreview(dialog);
@@ -288,9 +289,12 @@
       editForm.dataset.initialState = '';
       editForm.dataset.originalCategory = '';
       editForm.dataset.categoryTouched = 'false';
+      editForm.dataset.allowLegacyDeviceDetails = 'false';
     }
     richText.setEditorContent(dialog.querySelector('#creatorEditText'), '');
     window.ZNewsCategoryPicker?.set(dialog.querySelector('#creatorEditCategory'), '', { notify: false });
+    deviceCatalog?.setEditor(dialog, 'creatorEdit', {});
+    deviceCatalog?.syncEditor(dialog, 'creatorEdit', '');
     const preview = dialog.querySelector('#creatorEditPreview');
     if (preview) {
       preview.textContent = '';
@@ -357,11 +361,14 @@
     const body = dialog.querySelector('#creatorEditText');
     const replacement = dialog.querySelector('#creatorEditImage').files?.[0] || null;
     const parsedBody = richText.getEditorPayload(body);
+    const deviceDetails = deviceCatalog?.readEditor(dialog, 'creatorEdit') || { deviceType: '', deviceSpecs: [] };
     return JSON.stringify({
       title: dialog.querySelector('#creatorEditTitle').value.trim(),
       text: parsedBody.text,
       formattingRuns: parsedBody.formattingRuns,
       category: dialog.querySelector('#creatorEditCategory').value,
+      deviceType: deviceDetails.deviceType,
+      deviceSpecs: deviceDetails.deviceSpecs,
       replacement: replacement ? `${replacement.name}:${replacement.size}:${replacement.lastModified}` : '',
       removeImage: dialog.querySelector('#creatorRemoveImage').checked,
       hasCurrentImage: formElement.dataset.hasCurrentImage === 'true'
@@ -378,10 +385,21 @@
       && !dialog.querySelector('#creatorRemoveImage').checked;
     dialog.querySelector('#creatorEditTitleCount').textContent = `${title.value.length} / 160`;
     const parsedBody = richText.getEditorPayload(body);
+    const deviceDetails = deviceCatalog?.readEditor(dialog, 'creatorEdit') || { deviceType: '', deviceSpecs: [] };
+    deviceCatalog?.syncEditor(dialog, 'creatorEdit', category.value);
+    const legacyDeviceDetailsAllowed = formElement.dataset.allowLegacyDeviceDetails === 'true'
+      && category.value === deviceCatalog?.DEVICE_CATEGORY
+      && !deviceDetails.deviceType
+      && deviceDetails.deviceSpecs.length === 0;
+    const deviceTypeSelect = dialog.querySelector('#creatorEditDeviceType');
+    if (deviceTypeSelect) {
+      deviceTypeSelect.required = category.value === deviceCatalog?.DEVICE_CATEGORY && !legacyDeviceDetailsAllowed;
+    }
     dialog.querySelector('#creatorEditTextCount').textContent = `${Array.from(parsedBody.text).length} / 5000`;
     const valid = Boolean(
       title.value.trim()
-      && ['INTERNATIONAL_NEWS', 'BD_NEWS', 'MOBILE_PRICING'].includes(category.value)
+      && EDITABLE_CATEGORIES.includes(category.value)
+      && (deviceCatalog?.isComplete(category.value, deviceDetails) || legacyDeviceDetailsAllowed)
       && (parsedBody.text || replacement || currentImageKept)
     );
     const currentState = editorSnapshot(dialog);
@@ -534,6 +552,8 @@
         initialCategory,
         { notify: false }
       );
+      deviceCatalog?.setEditor(dialog, 'creatorEdit', post);
+      deviceCatalog?.syncEditor(dialog, 'creatorEdit', initialCategory);
       dialog.querySelector('#creatorEditImage').value = '';
       dialog.querySelector('#creatorRemoveImage').checked = false;
       dialog.querySelector('#creatorEditName').textContent = creatorName;
@@ -544,6 +564,11 @@
       editForm.dataset.updatedAt = text(post.updated_at);
       editForm.dataset.originalCategory = initialCategory;
       editForm.dataset.categoryTouched = 'false';
+      editForm.dataset.allowLegacyDeviceDetails = initialCategory === deviceCatalog?.DEVICE_CATEGORY
+        && !text(post.device_type)
+        && (!Array.isArray(post.device_specs) || post.device_specs.length === 0)
+        ? 'true'
+        : 'false';
       renderEditPreview(dialog);
       editForm.dataset.initialState = editorSnapshot(dialog);
       syncEditor(dialog);
@@ -587,6 +612,11 @@
     const selectedCategory = canonicalCategory(editForm.querySelector('#creatorEditCategory').value);
     const originalCategory = canonicalCategory(editForm.dataset.originalCategory);
     const category = editForm.dataset.categoryTouched === 'true' ? selectedCategory : originalCategory;
+    const deviceDetails = deviceCatalog?.readEditor(editForm, 'creatorEdit') || { deviceType: '', deviceSpecs: [] };
+    const legacyDeviceDetailsOmitted = editForm.dataset.allowLegacyDeviceDetails === 'true'
+      && category === deviceCatalog?.DEVICE_CATEGORY
+      && !deviceDetails.deviceType
+      && deviceDetails.deviceSpecs.length === 0;
     const replacement = editForm.querySelector('#creatorEditImage').files?.[0] || null;
     const removeImage = editForm.querySelector('#creatorRemoveImage').checked;
 
@@ -597,6 +627,11 @@
     }
     if (!EDITABLE_CATEGORIES.includes(category)) {
       error.textContent = 'Choose a post category.';
+      error.hidden = false;
+      return;
+    }
+    if (!deviceCatalog?.isComplete(category, deviceDetails) && !legacyDeviceDetailsOmitted) {
+      error.textContent = 'Choose a device type and add at least one specification.';
       error.hidden = false;
       return;
     }
@@ -632,6 +667,10 @@
         expected_updated_at: expectedUpdatedAt,
         idempotency_key: idempotency('post-edit')
       };
+      if (!legacyDeviceDetailsOmitted) {
+        body.device_type = deviceDetails.deviceType;
+        body.device_specs = deviceDetails.deviceSpecs;
+      }
 
       if (replacement) {
         body.media_id = await uploadImage(api, replacement, (stage) => {
@@ -656,7 +695,9 @@
             text: postText,
             bold_ranges: parsedText.boldRanges,
             formatting_runs: parsedText.formattingRuns,
-            category
+            category,
+            device_type: deviceDetails.deviceType,
+            device_specs: deviceDetails.deviceSpecs
           };
       ensureEditor().close();
       window.dispatchEvent(new CustomEvent('znews:creator-post-mutated', {

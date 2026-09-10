@@ -9,6 +9,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 require_once __DIR__ . '/rich_text.php';
 require_once __DIR__ . '/ranking_snapshot.php';
 require_once __DIR__ . '/categories.php';
+require_once __DIR__ . '/device_specs.php';
 
 function znews_public_projection_engagement_defaults(): array
 {
@@ -83,6 +84,7 @@ function znews_public_projection_item(array $row): ?array
     }
 
     $engagement = znews_public_projection_engagement($row);
+    $device = znews_device_details_from_post($row);
     $public = [
         'post_id' => (string)$row['post_id'],
         'creator_uid' => (string)$row['creator_uid'],
@@ -103,6 +105,8 @@ function znews_public_projection_item(array $row): ?array
             (string)$row['text']
         ),
         'category' => strtoupper(trim((string)($row['category'] ?? ''))),
+        'device_type' => (string)$device['device_type'],
+        'device_specs' => (array)$device['device_specs'],
         'image_url' => (string)$row['image_url'],
         'image_width' => max(0, (int)($row['image_width'] ?? 0)),
         'image_height' => max(0, (int)($row['image_height'] ?? 0)),
@@ -125,6 +129,7 @@ function znews_public_projection_format_public(array $post): array
         return znews_format_public_post($post);
     }
 
+    $device = znews_device_details_from_post($post);
     return [
         'post_id' => trim((string)($post['post_id'] ?? '')),
         'creator_uid' => trim((string)($post['creator_uid'] ?? '')),
@@ -145,6 +150,8 @@ function znews_public_projection_format_public(array $post): array
             (string)($post['text'] ?? '')
         ),
         'category' => strtoupper(trim((string)($post['category'] ?? ''))),
+        'device_type' => (string)$device['device_type'],
+        'device_specs' => (array)$device['device_specs'],
         'image_url' => trim((string)($post['image_url'] ?? '')),
         'image_width' => max(0, (int)($post['image_width'] ?? 0)),
         'image_height' => max(0, (int)($post['image_height'] ?? 0)),
@@ -191,6 +198,8 @@ function znews_public_projection_for_post(
         'bold_ranges' => (array)($formatted['bold_ranges'] ?? []),
         'formatting_runs' => (array)($formatted['formatting_runs'] ?? []),
         'category' => $category,
+        'device_type' => (string)($formatted['device_type'] ?? ''),
+        'device_specs' => (array)($formatted['device_specs'] ?? []),
         'category_created_at' => $category !== ''
             ? znews_category_created_at($category, (int)$formatted['created_at'])
             : '',

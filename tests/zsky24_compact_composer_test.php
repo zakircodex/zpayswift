@@ -72,19 +72,19 @@ foreach ([
     composer_expect(str_contains($premium, $contract), "Compact composer style is missing: {$contract}");
 }
 
-composer_expect(str_contains($index, 'znews-premium.css?v=17'), 'Composer stylesheet cachebuster is missing.');
-composer_expect(str_contains($index, 'znews-bootstrap.js?v=36'), 'Reload-safe composer bootstrap cachebuster is missing.');
-composer_expect(str_contains($index, 'znews.js?v=32'), 'Latest composer behavior is not loaded.');
-composer_expect(str_contains($index, 'znews-rich-editor.js?v=5'), 'Single-surface rich editor module is not loaded.');
-composer_expect(str_contains($bootstrap, 'znews-creator.js?v=14'), 'Latest creator behavior is not loaded.');
+composer_expect(str_contains($index, 'znews-premium.css?v=18'), 'Composer stylesheet cachebuster is missing.');
+composer_expect(str_contains($index, 'znews-bootstrap.js?v=37'), 'Reload-safe composer bootstrap cachebuster is missing.');
+composer_expect(str_contains($index, 'znews.js?v=33'), 'Latest composer behavior is not loaded.');
+composer_expect(str_contains($index, 'znews-rich-editor.js?v=6'), 'Single-surface rich editor module is not loaded.');
+composer_expect(str_contains($bootstrap, 'znews-creator.js?v=15'), 'Latest creator behavior is not loaded.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
-    composer_expect(str_contains($worker, 'znews-premium.css?v=17'), 'Latest composer stylesheet is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=36'), 'Latest reload-safe bootstrap is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews.js?v=32'), 'Latest app behavior is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-rich-editor.js?v=5'), 'Single-surface rich editor is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-creator.js?v=14'), 'Latest creator behavior is missing from a PWA shell.');
-    composer_expect(str_contains($worker, "SHELL_REVISION = 'adsterra-cross-origin-frame-v1'"), 'Adsterra cache revision is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-premium.css?v=18'), 'Latest composer stylesheet is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=37'), 'Latest reload-safe bootstrap is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews.js?v=33'), 'Latest app behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-rich-editor.js?v=6'), 'Single-surface rich editor is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-creator.js?v=15'), 'Latest creator behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, "SHELL_REVISION = 'categories-device-share-v1'"), 'Current cache revision is missing from a PWA shell.');
     composer_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'PWA shell must continue excluding API responses.');
     composer_expect(str_contains($worker, 'networkFirst(request'), 'PWA shell must refresh composer assets while online.');
 }
