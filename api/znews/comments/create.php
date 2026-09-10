@@ -11,13 +11,14 @@ $auth = znews_require_creator(true);
 $body = api_read_json_body();
 $postId = znews_firebase_key($body['post_id'] ?? '', 'post_id');
 $text = znews_comment_text($body['text'] ?? '');
+$parentCommentId = znews_comment_parent_id($body['parent_comment_id'] ?? '');
 $idempotencyKey = znews_idempotency_key(
     $body['idempotency_key']
     ?? $body['client_request_id']
     ?? ''
 );
 
-$result = znews_comment_create($auth, $postId, $text, $idempotencyKey);
+$result = znews_comment_create($auth, $postId, $text, $idempotencyKey, $parentCommentId);
 if (empty($result['ok'])) {
     api_response(
         false,

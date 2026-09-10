@@ -13,6 +13,9 @@
   const form = document.querySelector('#commentForm');
   const input = document.querySelector('#commentText');
   const sendButton = form?.querySelector('button[type="submit"]');
+  const replyContext = document.querySelector('#commentReplyContext');
+  const replyName = document.querySelector('#commentReplyName');
+  const replyCancel = document.querySelector('#commentReplyCancel');
   const composerAvatar = document.querySelector('#commentComposerAvatar');
   const guestCta = document.querySelector('#commentGuestCta');
   const title = document.querySelector('#postReaderTitle');
@@ -140,6 +143,29 @@
       guestCta.setAttribute('aria-hidden', authenticated ? 'true' : 'false');
     }
     setAvatar(composerAvatar, profileName(), profilePhoto());
+    if (!authenticated) clearReply();
+  }
+
+  function clearReply() {
+    delete form.dataset.parentCommentId;
+    delete form.dataset.replyToName;
+    if (replyContext) replyContext.hidden = true;
+    if (replyName) replyName.textContent = '';
+    input.placeholder = 'Write a comment…';
+  }
+
+  function beginReply(commentId, authorName) {
+    const id = text(commentId);
+    const name = text(authorName || 'Z-Pay user');
+    if (!id || window.ZNewsAccess?.authenticated !== true) return;
+    form.dataset.parentCommentId = id;
+    form.dataset.replyToName = name;
+    if (replyName) replyName.textContent = name;
+    if (replyContext) replyContext.hidden = false;
+    input.placeholder = `Reply to ${name}…`;
+    input.focus({ preventScroll: true });
+    readerScroll?.scrollTo({ top: readerScroll.scrollHeight, behavior: 'smooth' });
+    resizeComposer();
   }
 
   function resizeComposer() {
@@ -221,8 +247,20 @@
     if (cached) {
       row.dataset.commentId = text(cached.comment_id);
       row.dataset.authorUid = text(cached.author_uid);
+      row.dataset.parentCommentId = text(cached.parent_comment_id);
+      row.dataset.replyToName = text(cached.reply_to_name);
       const cachedPhoto = safeUrl(cached.author_photo_url);
       if (cachedPhoto && !avatar.querySelector('img')) setAvatar(avatar, cached.author_name, cachedPhoto);
+    }
+
+    const parentCommentId = text(row.dataset.parentCommentId);
+    const replyToName = text(row.dataset.replyToName);
+    row.classList.toggle('is-reply', parentCommentId !== '');
+    if (replyToName && !bubble.querySelector('.comment-reply-target')) {
+      const target = document.createElement('span');
+      target.className = 'comment-reply-target';
+      target.textContent = `Replying to ${replyToName}`;
+      bubble.prepend(target);
     }
 
     const content = document.createElement('div');
@@ -236,6 +274,16 @@
     const time = document.createElement('span');
     time.textContent = cached ? formatTime(cached.created_at) : text(oldTime?.textContent);
     actionRow.appendChild(time);
+    if (window.ZNewsAccess?.authenticated === true && text(row.dataset.commentId)) {
+      const reply = document.createElement('button');
+      reply.type = 'button';
+      reply.className = 'comment-reply-button';
+      reply.dataset.commentReply = 'true';
+      reply.dataset.commentId = text(row.dataset.commentId);
+      reply.dataset.authorName = text(cached?.author_name || bubble.querySelector('strong')?.textContent || 'Z-Pay user');
+      reply.textContent = 'Reply';
+      actionRow.appendChild(reply);
+    }
     oldTime?.remove();
     content.appendChild(actionRow);
 
@@ -275,9 +323,12 @@
 
   function buildCommentRow(comment) {
     const row = document.createElement('div');
-    row.className = 'comment';
+    const parentCommentId = text(comment.parent_comment_id);
+    row.className = `comment${parentCommentId ? ' is-reply' : ''}`;
     row.dataset.commentId = text(comment.comment_id);
     row.dataset.authorUid = text(comment.author_uid);
+    row.dataset.parentCommentId = parentCommentId;
+    row.dataset.replyToName = text(comment.reply_to_name);
 
     const avatar = document.createElement('span');
     avatar.className = 'avatar';
@@ -287,6 +338,12 @@
     bubble.className = 'comment-bubble';
     const author = document.createElement('strong');
     author.textContent = text(comment.author_name || 'Z-Pay user');
+    if (text(comment.reply_to_name)) {
+      const target = document.createElement('span');
+      target.className = 'comment-reply-target';
+      target.textContent = `Replying to ${text(comment.reply_to_name)}`;
+      bubble.appendChild(target);
+    }
     const body = document.createElement('p');
     body.textContent = text(comment.text || comment.message);
     bubble.append(author, body);
@@ -361,6 +418,7 @@
   function dialogClosed() {
     if (!state.active) return;
     state.active = false;
+    clearReply();
     unlockUnderlyingPage();
     state.openedFromFeed = false;
   }
@@ -377,6 +435,12 @@
   document.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    const reply = target.closest('[data-comment-reply]');
+    if (reply) {
+      event.preventDefault();
+      beginReply(reply.dataset.commentId, reply.dataset.authorName);
+      return;
+    }
     const action = target.closest('[data-action]')?.dataset.action;
     const feedCard = target.closest('#feedList [data-post-id], #creatorList [data-profile-post-id]');
     if (feedCard && (action === 'open' || action === 'comment' || target.closest('[data-profile-action="open"]'))) {
@@ -388,6 +452,8 @@
       window.history.replaceState({ ...current, znewsFeedScrollY: state.feedScrollY }, '', window.location.href);
     }
   }, true);
+
+  replyCancel?.addEventListener('click', clearReply);
 
   closeButton.addEventListener('click', (event) => {
     if (!state.openedFromFeed || config.parseRoute().kind !== 'post') return;
@@ -434,6 +500,7 @@
   window.addEventListener('znews:comments-page', () => window.setTimeout(dedupeAndDecorateComments, 0));
   window.addEventListener('znews:comment-created', (event) => {
     const comment = event.detail?.comment;
+    clearReply();
     if (!comment || event.detail?.published !== true) return;
     state.comments = mergeComments(state.comments, [comment]);
     window.setTimeout(dedupeAndDecorateComments, 0);

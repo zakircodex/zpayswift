@@ -32,7 +32,7 @@ $bootstrap = reader_source('znews/assets/znews-bootstrap.js');
 $serviceWorker = reader_source('znews/sw.js');
 
 reader_expect(str_contains($index, 'interactive-widget=resizes-content'), 'Android keyboard resize viewport mode is missing.');
-reader_expect(str_contains($bootstrap, 'znews-reader.css?v=3'), 'Latest reader stylesheet is not activated after first paint.');
+reader_expect(str_contains($bootstrap, 'znews-reader.css?v=4'), 'Latest reader stylesheet is not activated after first paint.');
 reader_expect(str_contains($index, 'class="post-reader-shell"'), 'Post reader shell is missing.');
 reader_expect(str_contains($index, 'class="post-reader-header"'), 'Sticky post reader header is missing.');
 reader_expect(str_contains($index, 'id="postDialogClose"'), 'Reader Back control is missing.');
@@ -45,7 +45,7 @@ reader_expect(str_contains($index, 'class="comment-send-button"'), 'Compact send
 reader_expect(str_contains($index, 'id="commentGuestCta"'), 'Guest comment CTA is missing.');
 reader_expect(str_contains($index, 'Join Z-Pay to comment'), 'Guest comment CTA wording is missing.');
 reader_expect(!str_contains($index, '<button class="primary-button compact" type="submit">Send</button>'), 'Legacy oversized Send button remains.');
-reader_expect(str_contains($index, 'znews-bootstrap.js?v=37'), 'Reload-safe reader bootstrap version is not activated.');
+reader_expect(str_contains($index, 'znews-bootstrap.js?v=38'), 'Reload-safe reader bootstrap version is not activated.');
 
 reader_expect(str_contains($reader, "wrapApiMethod('comments'"), 'Reader does not capture comment pagination responses.');
 reader_expect(str_contains($reader, "wrapApiMethod('publicPost'"), 'Reader title is not connected to the opened post.');
@@ -69,7 +69,7 @@ reader_expect(str_contains($reader, 'lockUnderlyingPage()'), 'Underlying feed pa
 reader_expect(str_contains($reader, '--znews-reader-page-top'), 'Feed scroll lock offset is missing.');
 reader_expect(str_contains($reader, "input.addEventListener('focus'"), 'Composer focus viewport refresh is missing.');
 reader_expect(str_contains($reader, "input.addEventListener('blur'"), 'Composer blur viewport restore is missing.');
-reader_expect(!str_contains($reader, 'Reply'), 'UI must not expose a fake Reply action without backend support.');
+reader_expect(str_contains($reader, 'beginReply(') && str_contains($reader, 'data-comment-reply'), 'Verified comment Reply action is missing.');
 
 reader_expect(str_contains($instant, 'appendPublishedComment(comment)'), 'Published comments are not appended immediately.');
 reader_expect(str_contains($instant, "new CustomEvent('znews:comment-created'"), 'Instant comment event is missing.');
@@ -98,17 +98,17 @@ reader_expect(str_contains($readerCss, '#postDetail>.ad-slot:empty,#postDetail>.
 reader_expect(str_contains($readerCss, '#postDetail .post-media'), 'Full reader media style is missing.');
 reader_expect(str_contains($readerCss, 'object-fit:contain'), 'Reader media is still cropped.');
 
-reader_expect(str_contains($bootstrap, 'znews-reader.js?v=4'), 'Latest reader interaction module is not loaded.');
+reader_expect(str_contains($bootstrap, 'znews-reader.js?v=5'), 'Latest reader interaction module is not loaded.');
 reader_expect(str_contains($bootstrap, 'publicContentReady.then'), 'Reader enhancement must be deferred until public content is ready.');
-reader_expect(str_contains($bootstrap, 'znews-instant-comments.js?v=4'), 'Updated instant-comment module is not loaded.');
+reader_expect(str_contains($bootstrap, 'znews-instant-comments.js?v=5'), 'Updated instant-comment module is not loaded.');
 reader_expect(str_contains($bootstrap, 'void prepareServiceWorker();'), 'Reader shell refresh is not started in the background.');
 
-reader_expect(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v36'"), 'Mobile viewport PWA cache version is stale.');
-reader_expect(str_contains($serviceWorker, 'znews-reader.css?v=3'), 'Latest reader CSS is missing from the shell cache.');
-reader_expect(str_contains($serviceWorker, 'znews-reader.js?v=4'), 'Latest reader JS is missing from the shell cache.');
+reader_expect(str_contains($serviceWorker, "const CACHE_NAME = 'zsky24-embedded-shell-v37'"), 'Mobile viewport PWA cache version is stale.');
+reader_expect(str_contains($serviceWorker, 'znews-reader.css?v=4'), 'Latest reader CSS is missing from the shell cache.');
+reader_expect(str_contains($serviceWorker, 'znews-reader.js?v=5'), 'Latest reader JS is missing from the shell cache.');
 reader_expect(str_contains($serviceWorker, 'znews-weekly-review.js?v=4'), 'Weekly creator report JS is missing from the shell cache.');
-reader_expect(str_contains($serviceWorker, 'znews-bootstrap.js?v=37'), 'Reload-safe bootstrap is missing from the shell cache.');
-reader_expect(str_contains($serviceWorker, 'znews-instant-comments.js?v=4'), 'Latest comment module is missing from the shell cache.');
+reader_expect(str_contains($serviceWorker, 'znews-bootstrap.js?v=38'), 'Reload-safe bootstrap is missing from the shell cache.');
+reader_expect(str_contains($serviceWorker, 'znews-instant-comments.js?v=5'), 'Latest comment module is missing from the shell cache.');
 reader_expect(str_contains($serviceWorker, 'networkFirst(request'), 'Reader shell may serve stale JavaScript while online.');
 
 $node = trim((string)shell_exec('command -v node 2>/dev/null'));

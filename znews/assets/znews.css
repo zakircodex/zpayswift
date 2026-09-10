@@ -270,7 +270,7 @@ img { display: block; max-width: 100%; }
   cursor: pointer;
 }
 .post-action:hover { background: rgba(255, 255, 255, .045); color: var(--text); }
-.post-action.active { color: #77e8a3; }
+.post-action.active { color: #ff5d73; }
 .post-action:disabled { opacity: .5; cursor: wait; }
 .load-more { width: 100%; min-height: 48px; margin-top: 15px; border-radius: 15px; background: var(--surface-2); color: var(--text); font-weight: 850; }
 .empty-state { padding: 38px 20px; text-align: center; color: var(--muted); }
@@ -458,8 +458,10 @@ img { display: block; max-width: 100%; }
 .comment-composer input { min-height: 43px; padding: 0 13px; }
 .comment-list { display: grid; gap: 11px; margin-top: 16px; }
 .comment { display: flex; gap: 9px; }
+.comment.is-reply { margin-left: 34px; }
 .comment-bubble { padding: 10px 12px; border-radius: 5px 16px 16px 16px; background: rgba(255, 255, 255, .055); }
 .comment-bubble strong { display: block; font-size: 12px; }
+.comment-reply-target { display: block; margin-bottom: 3px; color: #77e8a3; font-size: 10px; font-weight: 800; }
 .comment-bubble p { margin: 3px 0 0; color: #dfebfb; font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .comment-bubble small { display: block; margin-top: 4px; color: var(--muted); font-size: 9px; }
 

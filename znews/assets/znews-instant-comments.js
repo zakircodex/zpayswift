@@ -7,6 +7,8 @@
   const input = document.querySelector('#commentText');
   const list = document.querySelector('#commentList');
   const toastRegion = document.querySelector('#toastRegion');
+  const replyContext = document.querySelector('#commentReplyContext');
+  const replyName = document.querySelector('#commentReplyName');
 
   if (!config || !ApiClient || !form || !input || !list) return;
 
@@ -56,9 +58,13 @@
 
   function commentElement(comment) {
     const row = document.createElement('div');
-    row.className = 'comment';
+    const parentCommentId = text(comment.parent_comment_id);
+    const replyToName = text(comment.reply_to_name);
+    row.className = `comment${parentCommentId ? ' is-reply' : ''}`;
     row.dataset.commentId = text(comment.comment_id);
     row.dataset.authorUid = text(comment.author_uid);
+    row.dataset.parentCommentId = parentCommentId;
+    row.dataset.replyToName = replyToName;
 
     const avatar = document.createElement('span');
     avatar.className = 'avatar';
@@ -78,6 +84,12 @@
     bubble.className = 'comment-bubble';
     const author = document.createElement('strong');
     author.textContent = name;
+    if (replyToName) {
+      const target = document.createElement('span');
+      target.className = 'comment-reply-target';
+      target.textContent = `Replying to ${replyToName}`;
+      bubble.appendChild(target);
+    }
     const body = document.createElement('p');
     body.textContent = text(comment.text || comment.message);
     const time = document.createElement('small');
@@ -85,6 +97,14 @@
     bubble.append(author, body, time);
     row.append(avatar, bubble);
     return row;
+  }
+
+  function clearReplyContext() {
+    delete form.dataset.parentCommentId;
+    delete form.dataset.replyToName;
+    if (replyContext) replyContext.hidden = true;
+    if (replyName) replyName.textContent = '';
+    input.placeholder = 'Write a comment…';
   }
 
   function removeEmptyState() {
@@ -131,13 +151,14 @@
     setSending(button, true);
 
     try {
-      const result = await api.createComment(postId, value);
+      const result = await api.createComment(postId, value, text(form.dataset.parentCommentId));
       const comment = result.data?.comment || {};
       const published = result.data?.published_immediately === true;
       updateCommentCount(result.data?.counts || {});
 
       input.value = '';
       input.dispatchEvent(new Event('input', { bubbles: true }));
+      clearReplyContext();
 
       if (published) {
         appendPublishedComment(comment);

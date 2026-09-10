@@ -81,6 +81,33 @@ function znews_comment_id(string $uid, string $idempotencyKey): string
     ), 0, 29));
 }
 
+function znews_comment_parent_id($value): string
+{
+    $parentId = trim((string)$value);
+    return $parentId === ''
+        ? ''
+        : znews_firebase_key($parentId, 'parent_comment_id');
+}
+
+function znews_comment_reply_target(string $postId, string $parentCommentId): array
+{
+    if ($parentCommentId === '') {
+        return [];
+    }
+
+    $parent = fb_get(znews_comment_path($postId, $parentCommentId));
+    if (!is_array($parent) || !znews_comment_is_public($parent)) {
+        return [];
+    }
+
+    return [
+        'parent_comment_id' => $parentCommentId,
+        'root_comment_id' => trim((string)($parent['root_comment_id'] ?? $parentCommentId)),
+        'reply_to_uid' => trim((string)($parent['author_uid'] ?? '')),
+        'reply_to_name' => trim((string)($parent['author_name'] ?? 'Z-Pay User')),
+    ];
+}
+
 function znews_comment_is_public(array $comment): bool
 {
     return strtoupper(trim((string)($comment['status'] ?? ''))) === 'ACTIVE'
@@ -96,6 +123,10 @@ function znews_comment_format(array $comment, bool $ownerView = false): array
         'author_uid' => trim((string)($comment['author_uid'] ?? '')),
         'author_name' => trim((string)($comment['author_name'] ?? 'Z-Pay User')),
         'author_photo_url' => trim((string)($comment['author_photo_url'] ?? '')),
+        'parent_comment_id' => trim((string)($comment['parent_comment_id'] ?? '')),
+        'root_comment_id' => trim((string)($comment['root_comment_id'] ?? '')),
+        'reply_to_uid' => trim((string)($comment['reply_to_uid'] ?? '')),
+        'reply_to_name' => trim((string)($comment['reply_to_name'] ?? '')),
         'text' => (string)($comment['text'] ?? ''),
         'created_at' => max(0, (int)($comment['created_at'] ?? 0)),
         'updated_at' => max(0, (int)($comment['updated_at'] ?? 0)),

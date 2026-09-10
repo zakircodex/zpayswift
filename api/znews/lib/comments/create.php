@@ -10,11 +10,13 @@ function znews_comment_create(
     array $auth,
     string $postId,
     string $text,
-    string $idempotencyKey
+    string $idempotencyKey,
+    string $parentCommentId = ''
 ): array {
     $user = is_array($auth['user'] ?? null) ? (array)$auth['user'] : [];
     $uid = znews_firebase_key((string)($user['uid'] ?? ''), 'uid');
     $postId = znews_firebase_key($postId, 'post_id');
+    $parentCommentId = znews_comment_parent_id($parentCommentId);
     znews_engagement_require_public_post($postId);
 
     $claim = znews_engagement_claim(
@@ -22,7 +24,10 @@ function znews_comment_create(
         $postId,
         'COMMENT_CREATE',
         $idempotencyKey,
-        ['text' => $text]
+        [
+            'text' => $text,
+            'parent_comment_id' => $parentCommentId,
+        ]
     );
     if (empty($claim['ok'])) {
         return $claim;
@@ -62,16 +67,31 @@ function znews_comment_create(
         ];
     }
 
+    $replyTarget = znews_comment_reply_target($postId, $parentCommentId);
+    if ($parentCommentId !== '' && !$replyTarget) {
+        znews_engagement_fail($claim, 'ZNEWS_COMMENT_REPLY_TARGET_UNAVAILABLE');
+        return [
+            'ok' => false,
+            'code' => 'ZNEWS_COMMENT_REPLY_TARGET_UNAVAILABLE',
+            'message' => 'The comment you are replying to is no longer available.',
+            'http_status' => 422,
+        ];
+    }
+
     $author = znews_public_creator_snapshot($user);
     $now = znews_now();
     $decision = znews_comment_publication_decision($text);
     $comment = [
-        'schema_version' => 2,
+        'schema_version' => 3,
         'comment_id' => $commentId,
         'post_id' => $postId,
         'author_uid' => $uid,
         'author_name' => (string)($author['name'] ?? 'Z-Pay User'),
         'author_photo_url' => (string)($author['profile_photo_url'] ?? ''),
+        'parent_comment_id' => (string)($replyTarget['parent_comment_id'] ?? ''),
+        'root_comment_id' => (string)($replyTarget['root_comment_id'] ?? ''),
+        'reply_to_uid' => (string)($replyTarget['reply_to_uid'] ?? ''),
+        'reply_to_name' => (string)($replyTarget['reply_to_name'] ?? ''),
         'text' => $text,
         'moderation_note' => '',
         'created_at' => $now,
@@ -84,6 +104,7 @@ function znews_comment_create(
     $index = [
         'comment_id' => $commentId,
         'post_id' => $postId,
+        'parent_comment_id' => (string)($replyTarget['parent_comment_id'] ?? ''),
         'status' => (string)$comment['status'],
         'created_at' => $now,
         'updated_at' => $now,

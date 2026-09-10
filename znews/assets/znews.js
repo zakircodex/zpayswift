@@ -478,7 +478,7 @@
       : '';
     const liked = state.localLikes.has(id);
     const creatorActions = hasVerifiedSession()
-      ? `<button class="post-action ${liked ? 'active' : ''}" type="button" data-action="like">${liked ? '♥ Unlike' : '♡ Like'}</button>
+      ? `<button class="post-action ${liked ? 'active' : ''}" type="button" data-action="like">${liked ? '♥ Liked' : '♡ Like'}</button>
           <button class="post-action" type="button" data-action="comment">◯ Comment</button>`
       : '';
 
@@ -738,7 +738,7 @@
       const liked = result.data?.liked === true;
       if (liked) state.localLikes.add(postId); else state.localLikes.delete(postId);
       button.classList.toggle('active', liked);
-      button.textContent = liked ? '♥ Unlike' : '♡ Like';
+      button.textContent = liked ? '♥ Liked' : '♡ Like';
       card.dataset.likeStateLoaded = 'true';
       return result;
     }).catch((_error) => {
@@ -926,7 +926,7 @@
       const canonicalLiked = result.data?.liked === true;
       if (canonicalLiked) state.localLikes.add(postId); else state.localLikes.delete(postId);
       button.classList.toggle('active', canonicalLiked);
-      button.textContent = canonicalLiked ? '♥ Unlike' : '♡ Like';
+      button.textContent = canonicalLiked ? '♥ Liked' : '♡ Like';
       const count = Number(result.data?.counts?.like_count ?? 0);
       const meta = $('.post-meta span', card);
       if (meta) meta.textContent = `${count} likes`;
@@ -934,7 +934,7 @@
       toast(errorMessage(error), 'error');
     } finally {
       setBusy(button, false);
-      button.textContent = state.localLikes.has(postId) ? '♥ Unlike' : '♡ Like';
+      button.textContent = state.localLikes.has(postId) ? '♥ Liked' : '♡ Like';
     }
   }
 
@@ -979,6 +979,7 @@
     window.ZNewsAds?.hideAll(els.postDetail);
     els.postDetail.innerHTML = '<div class="skeleton-card"><div class="skeleton line short"></div><div class="skeleton block"></div></div>';
     els.commentList.textContent = '';
+    clearCommentReply();
     if (!els.postDialog.open) els.postDialog.showModal();
     if (syncHistory) {
       state.lastBoundaryBackAt = 0;
@@ -1020,8 +1021,21 @@
     }
     els.commentList.innerHTML = comments.map((comment) => {
       const name = text(comment.author_name || comment.creator_name || 'Z-Pay user');
-      return `<div class="comment">${avatarMarkup(name, comment.author_photo_url)}<div class="comment-bubble"><strong>${escapeHtml(name)}</strong><p>${escapeHtml(comment.text || comment.message || '')}</p><small>${escapeHtml(formatTime(comment.created_at))}</small></div></div>`;
+      const commentId = text(comment.comment_id);
+      const parentId = text(comment.parent_comment_id);
+      const replyName = text(comment.reply_to_name);
+      return `<div class="comment${parentId ? ' is-reply' : ''}" data-comment-id="${escapeHtml(commentId)}" data-author-uid="${escapeHtml(comment.author_uid || '')}" data-parent-comment-id="${escapeHtml(parentId)}" data-reply-to-name="${escapeHtml(replyName)}">${avatarMarkup(name, comment.author_photo_url)}<div class="comment-bubble">${replyName ? `<span class="comment-reply-target">Replying to ${escapeHtml(replyName)}</span>` : ''}<strong>${escapeHtml(name)}</strong><p>${escapeHtml(comment.text || comment.message || '')}</p><small>${escapeHtml(formatTime(comment.created_at))}</small></div></div>`;
     }).join('');
+  }
+
+  function clearCommentReply() {
+    delete els.commentForm.dataset.parentCommentId;
+    delete els.commentForm.dataset.replyToName;
+    const context = $('#commentReplyContext');
+    if (context) context.hidden = true;
+    const name = $('#commentReplyName');
+    if (name) name.textContent = '';
+    els.commentText.placeholder = 'Write a comment…';
   }
 
   async function submitComment(event) {
@@ -1029,11 +1043,12 @@
     if (!requireSession()) return;
     const value = els.commentText.value.trim();
     if (!value) return toast('Write a comment first.', 'error');
-    const button = $('button', els.commentForm);
+    const button = $('button[type="submit"]', els.commentForm);
     setBusy(button, true, 'Sending…');
     try {
-      await api.createComment(state.currentPostId, value);
+      await api.createComment(state.currentPostId, value, text(els.commentForm.dataset.parentCommentId));
       els.commentText.value = '';
+      clearCommentReply();
       toast('Comment submitted for review.');
     } catch (error) {
       toast(errorMessage(error), 'error');

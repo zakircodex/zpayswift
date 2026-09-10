@@ -19,18 +19,18 @@
   <title>Z Sky 24</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link id="appManifest" rel="manifest" href="/znews/manifest.webmanifest">
-  <link rel="stylesheet" href="/znews/assets/znews.css?v=6">
+  <link rel="stylesheet" href="/znews/assets/znews.css?v=7">
   <link rel="stylesheet" href="/znews/assets/znews-premium.css?v=18">
   <script defer src="/znews/assets/znews-config.js?v=10"></script>
   <script defer src="/znews/assets/znews-device-specs.js?v=1"></script>
-  <script defer src="/znews/assets/znews-api.js?v=18"></script>
+  <script defer src="/znews/assets/znews-api.js?v=19"></script>
   <script defer src="/znews/assets/znews-request-scheduler.js?v=1"></script>
   <script defer src="/znews/assets/znews-progressive-feed.js?v=3"></script>
   <script defer src="/znews/assets/znews-feed-ui.js?v=3"></script>
   <script defer src="/znews/assets/znews-ads.js?v=6"></script>
   <script defer src="/znews/assets/znews-rich-editor.js?v=6"></script>
-  <script defer src="/znews/assets/znews-bootstrap.js?v=37"></script>
-  <script defer src="/znews/assets/znews.js?v=33"></script>
+  <script defer src="/znews/assets/znews-bootstrap.js?v=38"></script>
+  <script defer src="/znews/assets/znews.js?v=34"></script>
 </head>
 <body>
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -362,6 +362,10 @@
         <form id="commentForm" class="comment-composer" data-auth-only hidden>
           <div class="avatar" id="commentComposerAvatar">Z</div>
           <div class="comment-input-shell">
+            <div class="comment-reply-context" id="commentReplyContext" hidden>
+              <span>Replying to <strong id="commentReplyName"></strong></span>
+              <button id="commentReplyCancel" type="button" aria-label="Cancel reply">×</button>
+            </div>
             <label class="visually-hidden" for="commentText">Write a comment</label>
             <textarea id="commentText" maxlength="1000" rows="1" placeholder="Write a comment…" autocomplete="off"></textarea>
             <button class="comment-send-button" type="submit" aria-label="Send comment" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3.4 20.4 17.8-8a.45.45 0 0 0 0-.8l-17.8-8a.5.5 0 0 0-.69.55L4 10.5l9 1.5-9 1.5-1.29 6.35a.5.5 0 0 0 .69.55Z"/></svg></button>

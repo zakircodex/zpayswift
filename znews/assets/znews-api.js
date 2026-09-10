@@ -347,13 +347,14 @@
       });
     }
 
-    createComment(postId, text) {
+    createComment(postId, text, parentCommentId = '') {
       return this.request('znews/comments/create.php', {
         method: 'POST',
         authenticated: true,
         body: {
           post_id: postId,
           text,
+          parent_comment_id: parentCommentId,
           idempotency_key: this.idempotencyKey('comment')
         }
       });

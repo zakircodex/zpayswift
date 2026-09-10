@@ -73,18 +73,18 @@ foreach ([
 }
 
 composer_expect(str_contains($index, 'znews-premium.css?v=18'), 'Composer stylesheet cachebuster is missing.');
-composer_expect(str_contains($index, 'znews-bootstrap.js?v=37'), 'Reload-safe composer bootstrap cachebuster is missing.');
-composer_expect(str_contains($index, 'znews.js?v=33'), 'Latest composer behavior is not loaded.');
+composer_expect(str_contains($index, 'znews-bootstrap.js?v=38'), 'Reload-safe composer bootstrap cachebuster is missing.');
+composer_expect(str_contains($index, 'znews.js?v=34'), 'Latest composer behavior is not loaded.');
 composer_expect(str_contains($index, 'znews-rich-editor.js?v=6'), 'Single-surface rich editor module is not loaded.');
 composer_expect(str_contains($bootstrap, 'znews-creator.js?v=15'), 'Latest creator behavior is not loaded.');
 
 foreach ([$embeddedWorker, $standaloneWorker] as $worker) {
     composer_expect(str_contains($worker, 'znews-premium.css?v=18'), 'Latest composer stylesheet is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=37'), 'Latest reload-safe bootstrap is missing from a PWA shell.');
-    composer_expect(str_contains($worker, 'znews.js?v=33'), 'Latest app behavior is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews-bootstrap.js?v=38'), 'Latest reload-safe bootstrap is missing from a PWA shell.');
+    composer_expect(str_contains($worker, 'znews.js?v=34'), 'Latest app behavior is missing from a PWA shell.');
     composer_expect(str_contains($worker, 'znews-rich-editor.js?v=6'), 'Single-surface rich editor is missing from a PWA shell.');
     composer_expect(str_contains($worker, 'znews-creator.js?v=15'), 'Latest creator behavior is missing from a PWA shell.');
-    composer_expect(str_contains($worker, "SHELL_REVISION = 'categories-device-share-v1'"), 'Current cache revision is missing from a PWA shell.');
+    composer_expect(str_contains($worker, "SHELL_REVISION = 'social-ui-replies-v1'"), 'Current cache revision is missing from a PWA shell.');
     composer_expect(str_contains($worker, "url.pathname.startsWith('/api/')"), 'PWA shell must continue excluding API responses.');
     composer_expect(str_contains($worker, 'networkFirst(request'), 'PWA shell must refresh composer assets while online.');
 }

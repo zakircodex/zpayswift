@@ -64,7 +64,7 @@ znews_contract_expect(str_contains($index, 'id="commentGuestCta"'), 'Guest reade
 znews_contract_expect(str_contains($index, 'href="https://zpayswift.com/user" data-guest-only data-zpay-login'), 'Join Z-Pay must link directly to the Z-Pay login page.');
 znews_contract_expect(!str_contains($index, 'data-zpay-register'), 'The retired Join Z-Pay registration target must not remain in the page.');
 znews_contract_expect(str_contains($index, 'interactive-widget=resizes-content'), 'Android keyboard resize mode is missing.');
-znews_contract_expect(str_contains($index, 'znews-bootstrap.js?v=37'), 'Reload-safe handoff bootstrap must be activated.');
+znews_contract_expect(str_contains($index, 'znews-bootstrap.js?v=38'), 'Reload-safe handoff bootstrap must be activated.');
 znews_contract_expect(str_contains($bootstrap, 'znews-weekly-review.js?v=4'), 'Creator weekly report module must remain available after verified access.');
 znews_contract_expect(!str_contains($index, 'znews-quick-login.js'), 'Standalone Z News PIN login must not be loaded.');
 
@@ -84,15 +84,15 @@ znews_contract_expect(str_contains($bootstrap, 'sessionValidationIsTerminal(erro
 znews_contract_expect(str_contains($bootstrap, 'let pendingHandoffCode = handoffCode().trim()'), 'Handoff code must be captured before app history can remove the URL fragment.');
 znews_contract_expect(str_contains($bootstrap, "if (pendingHandoffCode) clearHandoffFragment()"), 'Captured handoff code must be removed from the visible URL immediately.');
 znews_contract_expect(str_contains($bootstrap, "pendingHandoffCode = ''"), 'One-time handoff code must be consumed from memory before exchange.');
-znews_contract_expect(str_contains($bootstrap, 'znews-reader.js?v=4'), 'Latest post reader module must load after public content.');
+znews_contract_expect(str_contains($bootstrap, 'znews-reader.js?v=5'), 'Latest post reader module must load after public content.');
 znews_contract_expect(str_contains($bootstrap, 'void prepareServiceWorker();'), 'Service-worker refresh must remain non-blocking.');
 znews_contract_expect(str_contains($config, 'zpayLoginUrl: `${zpayOrigin}/user`'), 'Canonical Z-Pay login URL is missing from frontend configuration.');
 znews_contract_expect(!str_contains($config, 'zpayRegisterUrl'), 'Guest navigation must not retain the registration URL.');
 znews_contract_expect(str_contains($access, "['create', 'mine', 'performance']"), 'Guest-only route guard must cover creator sections.');
 znews_contract_expect(str_contains($access, 'config.zpayLoginUrl'), 'Guest join action must open the existing Z-Pay login page.');
 znews_contract_expect(str_contains($access, '[data-action="like"]'), 'Guest readers must not receive authenticated like controls.');
-znews_contract_expect(str_contains($serviceWorker, 'zsky24-embedded-shell-v36'), 'Current embedded PWA cache namespace is missing.');
-znews_contract_expect(str_contains($serviceWorker, 'znews-reader.js?v=4'), 'Latest reader module must be cached.');
+znews_contract_expect(str_contains($serviceWorker, 'zsky24-embedded-shell-v37'), 'Current embedded PWA cache namespace is missing.');
+znews_contract_expect(str_contains($serviceWorker, 'znews-reader.js?v=5'), 'Latest reader module must be cached.');
 znews_contract_expect(str_contains($serviceWorker, 'znews-weekly-review.js?v=4'), 'Creator weekly report module must be cached.');
 znews_contract_expect(str_contains($serviceWorker, "url.pathname.startsWith('/api/')"), 'Service worker must not cache API responses.');
 znews_contract_expect(!str_contains($serviceWorker, 'znews-quick-login.js'), 'Removed login module must not remain in the PWA cache.');
