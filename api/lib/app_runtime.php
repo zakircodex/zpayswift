@@ -54,6 +54,30 @@ function app_runtime_update_message($value, string $default = APP_RUNTIME_DEFAUL
     return $message;
 }
 
+function app_runtime_android_update_required(
+    int $currentVersionCode,
+    string $currentVersionName,
+    int $latestVersionCode,
+    string $latestVersionName
+): bool {
+    $currentVersionCode = max(0, $currentVersionCode);
+    $latestVersionCode = max(1, $latestVersionCode);
+    $currentVersionName = app_runtime_version_name($currentVersionName, '');
+    $latestVersionName = app_runtime_version_name($latestVersionName);
+
+    if ($currentVersionCode > 0) {
+        if ($currentVersionCode !== $latestVersionCode) {
+            return $currentVersionCode < $latestVersionCode;
+        }
+
+        return $currentVersionName !== ''
+            && version_compare($currentVersionName, $latestVersionName, '<');
+    }
+
+    return $currentVersionName === ''
+        || version_compare($currentVersionName, $latestVersionName, '<');
+}
+
 function app_runtime_android_update(array $config, int $currentVersionCode = 0, string $currentVersionName = ''): array
 {
     $latestVersionCode = app_runtime_positive_int(
@@ -66,7 +90,12 @@ function app_runtime_android_update(array $config, int $currentVersionCode = 0, 
     $currentVersionCode = max(0, $currentVersionCode);
 
     return [
-        'required' => $currentVersionCode > 0 && $currentVersionCode < $latestVersionCode,
+        'required' => app_runtime_android_update_required(
+            $currentVersionCode,
+            $currentVersionName,
+            $latestVersionCode,
+            $latestVersionName
+        ),
         'current_version_code' => $currentVersionCode,
         'current_version_name' => app_runtime_version_name($currentVersionName, ''),
         'latest_version_code' => $latestVersionCode,
@@ -74,4 +103,39 @@ function app_runtime_android_update(array $config, int $currentVersionCode = 0, 
         'update_url' => app_runtime_https_url($config['android_update_url'] ?? APP_RUNTIME_DEFAULT_ANDROID_UPDATE_URL),
         'message' => app_runtime_update_message($config['android_update_message'] ?? APP_RUNTIME_DEFAULT_ANDROID_UPDATE_MESSAGE),
     ];
+}
+
+function app_runtime_is_android_client_request(array $request): bool
+{
+    return strtoupper(trim((string)($request['device_id'] ?? ''))) !== 'USER_WEB'
+        && strtoupper(trim((string)($request['app_version'] ?? ''))) !== 'WEB';
+}
+
+function app_runtime_require_current_android_client(array $request): void
+{
+    if (!app_runtime_is_android_client_request($request)) {
+        return;
+    }
+
+    $configRead = fb_get_with_etag('APP_CONFIG');
+    if (empty($configRead['ok'])) {
+        api_response(false, 'APP_CONFIG_UNAVAILABLE', 'App configuration is temporarily unavailable.', [], 503);
+    }
+
+    $config = is_array($configRead['value'] ?? null) ? (array)$configRead['value'] : [];
+    $versionCodeValue = $request['app_version_code'] ?? 0;
+    $versionCode = (is_int($versionCodeValue)
+        || (is_string($versionCodeValue) && preg_match('/^\d+$/', trim($versionCodeValue)) === 1))
+        ? max(0, (int)$versionCodeValue)
+        : 0;
+    $versionName = trim((string)($request['app_version'] ?? ''));
+    $update = app_runtime_android_update($config, $versionCode, $versionName);
+
+    if (empty($update['required'])) {
+        return;
+    }
+
+    api_response(false, 'APP_UPDATE_REQUIRED', (string)$update['message'], [
+        'android_update' => $update,
+    ], 426);
 }

@@ -9,6 +9,7 @@ api_require_app_key();
 system_require_user_service_available();
 
 $body = api_read_json_body();
+app_runtime_require_current_android_client($body);
 $deviceId = auth_app_device_id($body);
 $deviceName = auth_app_device_name($body);
 $preAuthToken = trim((string)($body['pre_auth_token'] ?? ''));

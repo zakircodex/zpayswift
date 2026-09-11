@@ -9,6 +9,7 @@ api_require_app_key();
 system_require_user_service_available();
 
 $body = api_read_json_body();
+app_runtime_require_current_android_client($body);
 $deviceId = auth_app_device_id($body);
 $trustedDeviceCookie = trim((string)($body['trusted_device_cookie'] ?? ''));
 $phoneInput = trim((string)($body['phone'] ?? $body['account'] ?? ''));
