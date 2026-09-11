@@ -37,13 +37,13 @@ app_update_expect(
     'Unsafe update URLs must fall back to the canonical HTTPS download page.'
 );
 
-$endpoint = (string)file_get_contents($root . '/api/app/bootstrap.php');
+$endpoint = (string)file_get_contents($root . '/api/app/runtime.php');
 $adminGet = (string)file_get_contents($root . '/api/admin/config/get.php');
 $adminSave = (string)file_get_contents($root . '/api/admin/config/save.php');
 $adminUi = (string)file_get_contents($root . '/api/admin/assets/dashboard.js');
 
-app_update_expect(str_contains($endpoint, 'api_require_app_key()'), 'Public app bootstrap must require the Android app key.');
-app_update_expect(str_contains($endpoint, 'app_runtime_android_update'), 'Public app bootstrap must use the shared version policy.');
+app_update_expect(str_contains($endpoint, 'api_require_app_key()'), 'Public app runtime endpoint must require the Android app key.');
+app_update_expect(str_contains($endpoint, 'app_runtime_android_update'), 'Public app runtime endpoint must use the shared version policy.');
 app_update_expect(
     str_contains($endpoint, "fb_get_with_etag('APP_CONFIG')")
         && str_contains($endpoint, "'APP_CONFIG_UNAVAILABLE'"),

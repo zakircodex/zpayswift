@@ -18,7 +18,7 @@ if ((int)($_GET['version_code'] ?? 0) <= 0) {
 }
 $currentVersionName = trim((string)($_GET['version_name'] ?? ''));
 
-api_response(true, 'APP_BOOTSTRAP_READY', 'App configuration loaded', [
+api_response(true, 'APP_RUNTIME_READY', 'App configuration loaded', [
     'android_update' => app_runtime_android_update($config, $currentVersionCode, $currentVersionName),
     'service_hours' => [
         'closed_from' => '00:00',
