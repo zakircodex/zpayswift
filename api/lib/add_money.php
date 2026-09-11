@@ -1184,6 +1184,11 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         }
     }
 
+    $serviceRestriction = service_hours_manual_service_restriction($user, $wallet, 'ADD_MONEY');
+    if ($serviceRestriction !== []) {
+        return $serviceRestriction;
+    }
+
     $transactionId = trim((string)($body['transaction_id'] ?? ''));
     $senderNumber = trim((string)($body['sender_number'] ?? ''));
     $note = trim((string)($body['note'] ?? $body['reference'] ?? ''));

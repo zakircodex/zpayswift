@@ -26,6 +26,23 @@ $privacyPolicyUrl = app_config_public_https_url(
 $termsConditionsUrl = app_config_public_https_url(
     array_key_exists('terms_conditions_url', $body) ? $body['terms_conditions_url'] : ($existing['terms_conditions_url'] ?? '')
 );
+$androidLatestVersionCodeValue = $body['android_latest_version_code']
+    ?? $existing['android_latest_version_code']
+    ?? APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE;
+$androidLatestVersionCode = filter_var($androidLatestVersionCodeValue, FILTER_VALIDATE_INT, [
+    'options' => ['min_range' => 1],
+]);
+$androidLatestVersionName = trim((string)($body['android_latest_version_name']
+    ?? $existing['android_latest_version_name']
+    ?? APP_RUNTIME_DEFAULT_ANDROID_VERSION_NAME));
+$androidUpdateUrl = app_config_public_https_url(
+    $body['android_update_url']
+        ?? $existing['android_update_url']
+        ?? APP_RUNTIME_DEFAULT_ANDROID_UPDATE_URL
+);
+$androidUpdateMessage = trim((string)($body['android_update_message']
+    ?? $existing['android_update_message']
+    ?? APP_RUNTIME_DEFAULT_ANDROID_UPDATE_MESSAGE));
 
 if ($minTopupAmount < 0) {
     api_response(false, 'VALIDATION_ERROR', 'min_topup_amount cannot be negative', ['field' => 'min_topup_amount'], 422);
@@ -63,12 +80,48 @@ if (!$termsConditionsUrl['ok']) {
     ], 422);
 }
 
+if ($androidLatestVersionCode === false) {
+    api_response(false, 'VALIDATION_ERROR', 'Android version code must be at least 1.', [
+        'field' => 'android_latest_version_code',
+    ], 422);
+}
+$androidLatestVersionCode = (int)$androidLatestVersionCode;
+
+if ($androidLatestVersionName === '' || strlen($androidLatestVersionName) > 40
+    || preg_match('/[\x00-\x1F\x7F]/', $androidLatestVersionName) === 1
+) {
+    api_response(false, 'VALIDATION_ERROR', 'Android version name is invalid.', [
+        'field' => 'android_latest_version_name',
+    ], 422);
+}
+
+if (!$androidUpdateUrl['ok'] || $androidUpdateUrl['url'] === '') {
+    api_response(false, 'VALIDATION_ERROR', 'Android Update URL must be a valid HTTPS URL.', [
+        'field' => 'android_update_url',
+    ], 422);
+}
+
+$androidUpdateMessageLength = function_exists('mb_strlen')
+    ? mb_strlen($androidUpdateMessage, 'UTF-8')
+    : strlen($androidUpdateMessage);
+if ($androidUpdateMessage === '' || $androidUpdateMessageLength > 240
+    || preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $androidUpdateMessage) === 1
+) {
+    api_response(false, 'VALIDATION_ERROR', 'Android update message must be between 1 and 240 characters.', [
+        'field' => 'android_update_message',
+    ], 422);
+}
+
 $payload = [
     'topup_enabled' => $topupEnabled,
     'bundle_enabled' => $bundleEnabled,
     'maintenance_mode' => $maintenanceMode,
     'privacy_policy_url' => $privacyPolicyUrl['url'],
     'terms_conditions_url' => $termsConditionsUrl['url'],
+    'android_latest_version_code' => $androidLatestVersionCode,
+    'android_latest_version_name' => $androidLatestVersionName,
+    'android_update_url' => $androidUpdateUrl['url'],
+    'android_update_message' => $androidUpdateMessage,
 
     'min_topup_amount' => $minTopupAmount,
     'max_topup_amount' => $maxTopupAmount,
@@ -90,6 +143,9 @@ admin_action_log('SAVE_APP_CONFIG', 'APP_CONFIG', 'Admin updated app config', [
     'maintenance_mode' => $maintenanceMode,
     'privacy_policy_url_configured' => $privacyPolicyUrl['url'] !== '',
     'terms_conditions_url_configured' => $termsConditionsUrl['url'] !== '',
+    'android_latest_version_code' => $androidLatestVersionCode,
+    'android_latest_version_name' => $androidLatestVersionName,
+    'android_update_url_configured' => $androidUpdateUrl['url'] !== '',
     'min_topup_amount' => $minTopupAmount,
     'max_topup_amount' => $maxTopupAmount,
     'min_bundle_amount' => $minBundleAmount,
@@ -103,6 +159,9 @@ system_log('ADMIN_SAVE_APP_CONFIG', 'APP_CONFIG', 'Admin updated app config', [
     'maintenance_mode' => $maintenanceMode,
     'privacy_policy_url_configured' => $privacyPolicyUrl['url'] !== '',
     'terms_conditions_url_configured' => $termsConditionsUrl['url'] !== '',
+    'android_latest_version_code' => $androidLatestVersionCode,
+    'android_latest_version_name' => $androidLatestVersionName,
+    'android_update_url_configured' => $androidUpdateUrl['url'] !== '',
     'min_topup_amount' => $minTopupAmount,
     'max_topup_amount' => $maxTopupAmount,
     'min_bundle_amount' => $minBundleAmount,

@@ -51,14 +51,19 @@ if (empty($res['ok'])) {
         'PAYMENT_ACCOUNT_UNAVAILABLE',
         'REQUEST_IN_PROGRESS',
         'ADD_MONEY_DISABLED',
+        'SERVICE_HOURS_CLOSED',
     ];
+
+    $httpStatus = $code === 'SERVICE_HOURS_CLOSED'
+        ? 503
+        : (in_array($code, $clientCodes, true) ? 422 : 500);
 
     api_response(
         false,
         $code,
         (string)($res['message'] ?? 'Failed to submit add money request'),
         (array)($res['data'] ?? []),
-        in_array($code, $clientCodes, true) ? 422 : 500
+        $httpStatus
     );
 }
 

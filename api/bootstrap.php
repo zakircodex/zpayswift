@@ -29,9 +29,11 @@ if (!is_file($privateConfigPath) || !is_readable($privateConfigPath)) {
 require_once $privateConfigPath;
 require_once __DIR__ . '/lib/helpers.php';
 require_once __DIR__ . '/lib/firebase.php';
+require_once __DIR__ . '/lib/app_runtime.php';
 require_once __DIR__ . '/lib/system_maintenance.php';
 require_once __DIR__ . '/lib/security.php';
 require_once __DIR__ . '/lib/phone_country.php';
+require_once __DIR__ . '/lib/service_hours.php';
 require_once __DIR__ . '/lib/market_detection.php';
 require_once __DIR__ . '/lib/auth.php';
 require_once __DIR__ . '/lib/roles.php';

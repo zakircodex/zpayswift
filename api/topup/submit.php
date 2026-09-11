@@ -77,6 +77,9 @@ $uid = (string)$user['uid'];
 $userPhone = (string)$user['phone'];
 
 $body = api_read_json_body();
+$serviceWallet = get_user_wallet($uid);
+$serviceWallet = is_array($serviceWallet) ? $serviceWallet : [];
+$serviceRestriction = service_hours_manual_service_restriction($user, $serviceWallet, 'TOPUP');
 
 $previewToken = trim((string)($body['preview_token'] ?? ''));
 if ($previewToken === '') {
@@ -122,6 +125,17 @@ if (!empty($claim['duplicate']) && $duplicateRequestId !== '') {
 $failPreview = static function (string $code, string $message) use ($tokenHash): void {
     topup_mark_preview_failed($tokenHash, $code, $message);
 };
+
+if ($serviceRestriction !== []) {
+    $failPreview((string)$serviceRestriction['code'], (string)$serviceRestriction['message']);
+    api_response(
+        false,
+        (string)$serviceRestriction['code'],
+        (string)$serviceRestriction['message'],
+        (array)$serviceRestriction['data'],
+        (int)$serviceRestriction['http_status']
+    );
+}
 
 $operator = normalize_operator($preview['operator'] ?? '');
 $amount = topup_money($preview['amount'] ?? 0);

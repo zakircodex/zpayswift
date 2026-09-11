@@ -2745,6 +2745,10 @@ function user_proxy_create_topup_request(string $uid, array $body): array
     }
 
     $walletRow = user_proxy_load_wallet($uid);
+    $serviceRestriction = service_hours_manual_service_restriction($userRow, $walletRow, 'TOPUP');
+    if ($serviceRestriction !== []) {
+        return $serviceRestriction;
+    }
     $financials = topup_calculate_payment_context($uid, $amount, $userRow, $walletRow, $roleSettings, $countryCode);
     if (empty($financials['ok'])) {
         return [
@@ -3089,6 +3093,10 @@ function user_proxy_create_bundle_request(string $uid, string $offerId, string $
     $requestId = user_proxy_make_id('BR');
     $userPhone = trim((string)($user['phone'] ?? ''));
     $wallet = user_proxy_load_wallet($uid);
+    $serviceRestriction = service_hours_manual_service_restriction($user, $wallet, 'BUNDLE');
+    if ($serviceRestriction !== []) {
+        return $serviceRestriction;
+    }
     $bundleFinancials = bundle_wallet_breakdown($uid, $payableAmount, $user, $wallet);
     $walletHoldAmount = (float)$bundleFinancials['wallet_hold_amount'];
     $operationSeed = hash('sha256', implode('|', [
@@ -4782,7 +4790,11 @@ switch ($action) {
                 'PAYMENT_ACCOUNT_UNAVAILABLE',
                 'REQUEST_IN_PROGRESS',
                 'ADD_MONEY_DISABLED',
+                'SERVICE_HOURS_CLOSED',
             ], true) ? 422 : 500;
+            if ($code === 'SERVICE_HOURS_CLOSED') {
+                $httpStatus = 503;
+            }
             user_proxy_response(false, $code, (string)($res['message'] ?? 'Failed to submit add money request'), (array)($res['data'] ?? []), $httpStatus);
         }
 
@@ -4980,6 +4992,8 @@ switch ($action) {
 
             if (in_array($code, ['VALIDATION_ERROR', 'INSUFFICIENT_BALANCE', 'BUNDLE_DISABLED', 'OFFER_INACTIVE', 'INVALID_OFFER'], true)) {
                 $httpStatus = 422;
+            } elseif ($code === 'SERVICE_HOURS_CLOSED') {
+                $httpStatus = 503;
             } elseif (in_array($code, ['ACCOUNT_INACTIVE', 'INVALID_PIN'], true)) {
                 $httpStatus = 403;
             } elseif (in_array($code, ['USER_NOT_FOUND', 'OFFER_NOT_FOUND'], true)) {
@@ -5169,6 +5183,8 @@ switch ($action) {
 
             if (in_array($code, ['VALIDATION_ERROR', 'INSUFFICIENT_BALANCE', 'TOPUP_DISABLED'], true)) {
                 $httpStatus = 422;
+            } elseif ($code === 'SERVICE_HOURS_CLOSED') {
+                $httpStatus = 503;
             } elseif (in_array($code, ['ACCOUNT_INACTIVE', 'INVALID_PIN'], true)) {
                 $httpStatus = 403;
             } elseif ($code === 'USER_NOT_FOUND') {

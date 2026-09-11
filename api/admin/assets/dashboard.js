@@ -4589,6 +4589,34 @@ async function openAppConfigModal(){
             </div>
           </section>
 
+          <section class="admin-settings-group">
+            <div class="admin-settings-group-head">
+              <span class="settings-kicker">Android release</span>
+              <h4>Required App Update</h4>
+            </div>
+            <div class="form-grid">
+              <label class="admin-settings-field">
+                <span>Latest Version Code</span>
+                <input class="input" id="cfgAndroidVersionCode" type="number" step="1" min="1" value="${esc(data.android_latest_version_code || 2)}">
+              </label>
+
+              <label class="admin-settings-field">
+                <span>Latest Version Name</span>
+                <input class="input" id="cfgAndroidVersionName" maxlength="40" placeholder="1.1" value="${esc(data.android_latest_version_name || '1.1')}">
+              </label>
+
+              <label class="admin-settings-field form-full">
+                <span>APK Update URL</span>
+                <input class="input" id="cfgAndroidUpdateUrl" type="url" inputmode="url" placeholder="https://zpayswift.com/download.php" value="${esc(data.android_update_url || 'https://zpayswift.com/download.php')}">
+              </label>
+
+              <label class="admin-settings-field form-full">
+                <span>Update Message</span>
+                <textarea class="input" id="cfgAndroidUpdateMessage" maxlength="240" rows="3">${esc(data.android_update_message || 'A new version of Z-Pay Swift is ready. Update now to continue.')}</textarea>
+              </label>
+            </div>
+          </section>
+
           <section class="admin-settings-group settings-maintenance-card">
             <div class="admin-settings-group-head">
               <span class="settings-kicker">System state</span>
@@ -4636,6 +4664,10 @@ async function saveAppConfig(){
     max_bundle_amount: Number(document.getElementById('cfgMaxBundleAmount')?.value || 0),
     privacy_policy_url: (document.getElementById('cfgPrivacyPolicyUrl')?.value || '').trim(),
     terms_conditions_url: (document.getElementById('cfgTermsConditionsUrl')?.value || '').trim(),
+    android_latest_version_code: Number(document.getElementById('cfgAndroidVersionCode')?.value || 0),
+    android_latest_version_name: (document.getElementById('cfgAndroidVersionName')?.value || '').trim(),
+    android_update_url: (document.getElementById('cfgAndroidUpdateUrl')?.value || '').trim(),
+    android_update_message: (document.getElementById('cfgAndroidUpdateMessage')?.value || '').trim(),
   };
 
   try{

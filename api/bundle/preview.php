@@ -19,6 +19,10 @@ $offerId = trim((string)($body['offer_id'] ?? ''));
 $bundleNumber = trim((string)($body['bundle_number'] ?? $body['number'] ?? ''));
 $checkOnly = (bool)($body['check_only'] ?? false);
 
+$serviceWallet = get_user_wallet($uid);
+$serviceWallet = is_array($serviceWallet) ? $serviceWallet : [];
+service_hours_require_manual_service_available($user, $serviceWallet, 'BUNDLE');
+
 $res = bundle_preview_for_user($uid, $offerId, $bundleNumber, $user);
 if (!($res['ok'] ?? false)) {
     $code = (string)($res['code'] ?? 'BUNDLE_PREVIEW_FAILED');

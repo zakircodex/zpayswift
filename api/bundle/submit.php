@@ -215,6 +215,26 @@ if ($hasPreviewToken) {
     }
 }
 
+$serviceWallet = get_user_wallet($uid);
+$serviceWallet = is_array($serviceWallet) ? $serviceWallet : [];
+$serviceRestriction = service_hours_manual_service_restriction($user, $serviceWallet, 'BUNDLE');
+if ($serviceRestriction !== []) {
+    if ($hasPreviewToken) {
+        bundle_mark_preview_failed(
+            $tokenHash,
+            (string)$serviceRestriction['code'],
+            (string)$serviceRestriction['message']
+        );
+    }
+    api_response(
+        false,
+        (string)$serviceRestriction['code'],
+        (string)$serviceRestriction['message'],
+        (array)$serviceRestriction['data'],
+        (int)$serviceRestriction['http_status']
+    );
+}
+
 $preview = bundle_preview_for_user($uid, $offerId, $bundleNumber, $user);
 if (!($preview['ok'] ?? false)) {
     $code = (string)($preview['code'] ?? 'BUNDLE_PREVIEW_FAILED');

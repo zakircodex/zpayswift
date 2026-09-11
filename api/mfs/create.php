@@ -405,6 +405,30 @@ if ($previewToken !== '') {
     $body['reference'] = substr(trim((string)($body['reference'] ?? $body['ref'] ?? $preview['reference'] ?? '')), 0, 80);
 }
 
+$serviceWallet = fb_get('USER_WALLETS/' . $uid);
+$serviceWallet = is_array($serviceWallet) ? $serviceWallet : [];
+$serviceRestriction = service_hours_manual_service_restriction(
+    $user,
+    $serviceWallet,
+    (string)($body['provider'] ?? 'MFS')
+);
+if ($serviceRestriction !== []) {
+    if ($previewHash !== '') {
+        mfs_mark_preview_failed(
+            $previewHash,
+            (string)$serviceRestriction['code'],
+            (string)$serviceRestriction['message']
+        );
+    }
+    api_response(
+        false,
+        (string)$serviceRestriction['code'],
+        (string)$serviceRestriction['message'],
+        (array)$serviceRestriction['data'],
+        (int)$serviceRestriction['http_status']
+    );
+}
+
 $res = mfs_create_request(
     $uid,
     $body,

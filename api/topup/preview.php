@@ -51,6 +51,8 @@ if (!is_array($wallet)) {
     api_response(false, 'WALLET_NOT_FOUND', 'Wallet not found or unavailable.', [], 422);
 }
 
+service_hours_require_manual_service_available($user, $wallet, 'TOPUP');
+
 $financials = topup_calculate_payment_context($uid, $amount, $user, $wallet, [], $countryCode);
 if (empty($financials['ok'])) {
     $code = (string)($financials['code'] ?? 'TOPUP_PREVIEW_FAILED');
