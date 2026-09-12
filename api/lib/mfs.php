@@ -9,6 +9,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/mfs_fee_tiers.php';
+require_once __DIR__ . '/referral.php';
 require_once __DIR__ . '/admin_pagination.php';
 
 /*
@@ -3236,6 +3237,7 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         : mfs_round_money((float)$amounts['fee_bdt']);
     $totalDebitText = mfs_money_text($totalDebit, $walletCurrency);
     $userRole = mfs_user_role($user);
+    $referralSnapshot = referral_mfs_snapshot($user, $wallet, $amounts, $provider);
 
     $idempotencyKey = trim((string)($body['idempotency_key'] ?? $body['client_request_id'] ?? ''));
     $idempotencyKey = preg_replace('/[^A-Za-z0-9:_-]/', '', $idempotencyKey) ?? '';
@@ -3408,6 +3410,10 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
         'fee_rm' => (float)$amounts['fee_rm'],
         'fee_currency' => $feeCurrency,
         'fee_amount' => $feeAmount,
+        'fee_tier_id' => (string)($amounts['fee_tier_id'] ?? ''),
+        'fee_tier_min_bdt' => (float)($amounts['fee_tier_min_bdt'] ?? 0),
+        'fee_tier_max_bdt' => (float)($amounts['fee_tier_max_bdt'] ?? 0),
+        'fee_role' => (string)($amounts['fee_role'] ?? $userRole),
         'total_debit_bdt' => (float)$amounts['total_debit_bdt'],
         'total_debit_rm' => (float)$amounts['total_debit_rm'],
         'total_debit' => $totalDebit,
@@ -3449,6 +3455,8 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
 
         'telegram_sent' => false,
         'telegram_queue_id' => '',
+
+        'referral' => $referralSnapshot,
 
         'created_by_uid' => (string)($actor['uid'] ?? $uid),
         'created_by_role' => (string)($actor['role'] ?? mfs_user_role($user)),
@@ -3564,6 +3572,7 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
             'fee_rm' => (float)$amounts['fee_rm'],
             'fee_currency' => $feeCurrency,
             'fee_amount' => $feeAmount,
+            'fee_tier_id' => (string)($amounts['fee_tier_id'] ?? ''),
             'total_debit_bdt' => (float)$amounts['total_debit_bdt'],
             'total_debit_rm' => (float)$amounts['total_debit_rm'],
             'total_debit' => $totalDebit,
@@ -3919,6 +3928,27 @@ function mfs_mark_processing(string $requestId, string $message = 'Request is pr
     ];
 }
 
+function mfs_process_referral_payout(string $requestId, array $row): array
+{
+    $result = referral_process_mfs_success($requestId, $row);
+    $patch = [
+        'referral_payout_status' => !empty($result['ok'])
+            ? (string)($result['code'] ?? 'SUCCESS')
+            : 'RETRY_REQUIRED',
+        'referral_payout_updated_at' => mfs_now(),
+    ];
+    if (!empty($result['data']['payout_id'])) {
+        $patch['referral_payout_id'] = (string)$result['data']['payout_id'];
+    }
+    if (empty($result['ok'])) {
+        $patch['referral_payout_error_code'] = (string)($result['code'] ?? 'REFERRAL_PAYOUT_FAILED');
+    } else {
+        $patch['referral_payout_error_code'] = '';
+    }
+    mfs_fb_patch('MFS_REQUESTS/DONE/' . $requestId, $patch);
+    return $result;
+}
+
 function mfs_mark_success(string $requestId, string $message = 'Transaction successful', string $trxid = '', array $actor = []): array
 {
     $requestId = trim($requestId);
@@ -3949,6 +3979,9 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
     $currentStatus = strtoupper(trim((string)($row['status'] ?? '')));
 
     if (($row['_bucket'] ?? '') === 'DONE' && in_array($currentStatus, ['SUCCESSFUL', 'FAILED'], true)) {
+        if ($currentStatus === 'SUCCESSFUL') {
+            mfs_process_referral_payout($requestId, $row);
+        }
         return [
             'ok' => false,
             'code' => 'ALREADY_COMPLETED',
@@ -4125,6 +4158,8 @@ function mfs_mark_success(string $requestId, string $message = 'Transaction succ
         'notification_written' => $notificationWritten,
         'final_status' => 'SUCCESSFUL',
     ]);
+
+    mfs_process_referral_payout($requestId, $row);
 
     return [
         'ok' => true,

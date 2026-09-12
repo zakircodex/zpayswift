@@ -295,6 +295,16 @@ function zpay_dash_default_services(): array
             'action_value' => 'CONTACT_US',
             'allowed_roles' => ['USER', 'RETAILER'],
         ],
+        'REFERRAL' => [
+            'service_key' => 'REFERRAL',
+            'title' => 'Refer & Earn',
+            'icon_key' => 'referral',
+            'active' => true,
+            'sort_order' => 75,
+            'action_type' => 'SCREEN',
+            'action_value' => 'REFERRAL',
+            'allowed_roles' => ['USER', 'RETAILER'],
+        ],
         'INFO' => [
             'service_key' => 'INFO',
             'title' => 'Info',

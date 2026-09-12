@@ -6,6 +6,7 @@ require_once dirname(__DIR__) . '/lib/mfs.php';
 require_once dirname(__DIR__) . '/lib/add_money.php';
 require_once dirname(__DIR__) . '/lib/rates.php';
 require_once dirname(__DIR__) . '/lib/mfs_admin_settings.php';
+require_once dirname(__DIR__) . '/lib/referral.php';
 require_once dirname(__DIR__) . '/lib/currency_conversion.php';
 require_once dirname(__DIR__) . '/lib/support.php';
 
@@ -1352,6 +1353,63 @@ switch ($action) {
             'settings' => ['fees' => $fees],
             'raw' => ['fees' => $fees],
         ]);
+        break;
+
+    case 'referral_config_get':
+        proxy_require_method('GET');
+        proxy_require_admin_login(true);
+
+        proxy_response(true, 'SUCCESS', 'Referral settings loaded', [
+            'config' => referral_config(true),
+            'mfs_fees' => referral_current_my_fees(),
+        ]);
+        break;
+
+    case 'referral_config_save':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+        $adminUser = proxy_require_admin_login(true);
+        $save = referral_save_admin_config(proxy_read_json_body(), (string)($adminUser['uid'] ?? ''));
+        if (empty($save['ok'])) {
+            proxy_response(
+                false,
+                (string)($save['code'] ?? 'REFERRAL_CONFIG_SAVE_FAILED'),
+                (string)($save['message'] ?? 'Failed to save referral settings'),
+                (array)($save['data'] ?? []),
+                422
+            );
+        }
+        proxy_response(true, 'SUCCESS', 'Referral settings saved', (array)($save['data'] ?? []));
+        break;
+
+    case 'referral_payouts':
+        proxy_require_method('GET');
+        proxy_require_admin_login(true);
+
+        proxy_response(true, 'SUCCESS', 'Referral payouts loaded', [
+            'items' => referral_admin_payouts(
+                max(1, min(200, (int)($_GET['limit'] ?? 50))),
+                trim((string)($_GET['status'] ?? ''))
+            ),
+        ]);
+        break;
+
+    case 'referral_payout_retry':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+        proxy_require_admin_login(true);
+        $body = proxy_read_json_body();
+        $retry = referral_retry_payout((string)($body['payout_id'] ?? ''));
+        if (empty($retry['ok'])) {
+            proxy_response(
+                false,
+                (string)($retry['code'] ?? 'REFERRAL_PAYOUT_RETRY_FAILED'),
+                (string)($retry['message'] ?? 'Referral payout retry failed'),
+                (array)($retry['data'] ?? []),
+                422
+            );
+        }
+        proxy_response(true, 'SUCCESS', 'Referral payout completed', (array)($retry['data'] ?? []));
         break;
 
     case 'mfs_pending':

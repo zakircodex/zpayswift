@@ -363,6 +363,11 @@ body.user-dashboard-page.user-page-loading .dashboard-placeholder-name {
   gap: 8px;
 }
 
+.user-dashboard-page .zpay-service-grid-secondary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 8px;
+}
+
 .user-dashboard-page .zpay-service-btn {
   width: 100%;
   min-width: 0;

@@ -25,6 +25,11 @@
     rateMutating:false,
     feesMutating:false,
     tierFeesMutating:false,
+    referralLoaded:false,
+    referralLoading:false,
+    referralMutating:false,
+    referralPayoutsLoading:false,
+    referralPayouts:[],
     viewReceiptUrl:'',
     pages:{
       pending:{page:1,cursor:'',next_cursor:'',has_more:false,history:['']},
@@ -554,6 +559,8 @@
     if(state.section==='settings'){
       if(!state.rateLoaded)loadRate(null,false);
       if(!state.feesLoaded)loadFees(null,false);
+      if(!state.referralLoaded)loadReferralSettings(null,false);
+      if(!state.referralPayouts.length)loadReferralPayouts(null,false);
     }
     toggleSidebar(false);
   }
@@ -718,6 +725,157 @@
     }finally{
       setButtonBusy(button,false);
       state.tierFeesMutating=false;
+    }
+  }
+
+  function localDateTimeValue(timestamp){
+    var n=Number(timestamp||0);
+    if(!n)return '';
+    var date=new Date(n*1000);
+    if(isNaN(date.getTime()))return '';
+    return new Date(date.getTime()-date.getTimezoneOffset()*60000).toISOString().slice(0,16);
+  }
+
+  function localDateTimeTimestamp(value){
+    var date=new Date(String(value||''));
+    return isNaN(date.getTime())?0:Math.floor(date.getTime()/1000);
+  }
+
+  function populateReferralSettings(config){
+    config=config||{};
+    var providers=config.providers||{};
+    var commissions=config.my_commissions||{};
+    var user=commissions.USER||{};
+    var retailer=commissions.RETAILER||{};
+    el('referralEnabled').checked=config.enabled!==false;
+    el('referralClaimWindow').value=String(Number(config.claim_window_days||7));
+    el('referralEligibleAfter').value=localDateTimeValue(config.eligible_after||0);
+    el('referralBdReward').value=money(config.bd_reward_bdt||0);
+    el('referralProviderBkash').checked=providers.BKASH!==false;
+    el('referralProviderNagad').checked=providers.NAGAD!==false;
+    setVal('referralUserTier1',user.TIER1===undefined?1:user.TIER1);
+    setVal('referralUserTier2',user.TIER2===undefined?1.2:user.TIER2);
+    setVal('referralUserTier3',user.TIER3===undefined?2:user.TIER3);
+    setVal('referralRetailerTier1',retailer.TIER1===undefined ? 0.1 : retailer.TIER1);
+    setVal('referralRetailerTier2',retailer.TIER2===undefined ? 0.15 : retailer.TIER2);
+    setVal('referralRetailerTier3',retailer.TIER3===undefined ? 0.2 : retailer.TIER3);
+    state.referralLoaded=true;
+  }
+
+  function referralSettingsPayload(){
+    return {
+      enabled:el('referralEnabled').checked,
+      claim_window_days:Number(el('referralClaimWindow').value||0),
+      eligible_after:localDateTimeTimestamp(el('referralEligibleAfter').value),
+      bd_reward_bdt:num('referralBdReward'),
+      providers:{
+        BKASH:el('referralProviderBkash').checked,
+        NAGAD:el('referralProviderNagad').checked
+      },
+      my_commissions:{
+        USER:{TIER1:num('referralUserTier1'),TIER2:num('referralUserTier2'),TIER3:num('referralUserTier3')},
+        RETAILER:{TIER1:num('referralRetailerTier1'),TIER2:num('referralRetailerTier2'),TIER3:num('referralRetailerTier3')}
+      }
+    };
+  }
+
+  async function loadReferralSettings(button,notify){
+    if(state.referralLoading)return;
+    state.referralLoading=true;
+    setButtonBusy(button,true,'Loading...');
+    try{
+      var data=await get('referral_config_get',{});
+      populateReferralSettings(data.config||{});
+      if(notify)showFeedback('success','Referral settings loaded','The current referral configuration was reloaded.');
+    }catch(err){
+      if(handleSessionExpired(err))return;
+      if(notify!==false)showFeedback('error','Unable to load referral settings',friendlyError(err));
+    }finally{
+      setButtonBusy(button,false);
+      state.referralLoading=false;
+    }
+  }
+
+  async function saveReferralSettings(e){
+    e.preventDefault();
+    if(state.referralMutating)return;
+    var button=el('referralSettingsSaveBtn');
+    state.referralMutating=true;
+    setButtonBusy(button,true,'Saving...');
+    try{
+      await ensureCsrf();
+      var data=await post('referral_config_save',referralSettingsPayload());
+      populateReferralSettings(data.config||{});
+      showFeedback('success','Referral settings saved','New claims and future MY requests will use the updated referral configuration.');
+    }catch(err){
+      if(handleSessionExpired(err))return;
+      showFeedback('error','Unable to save referral settings',friendlyError(err));
+    }finally{
+      setButtonBusy(button,false);
+      state.referralMutating=false;
+    }
+  }
+
+  function referralPayoutAmount(row){
+    return (String(row.currency||'').toUpperCase()==='MYR'?'RM ':'BDT ')+money(row.amount||0);
+  }
+
+  function renderReferralPayouts(){
+    var box=el('referralPayoutList');
+    if(!box)return;
+    if(!state.referralPayouts.length){
+      box.innerHTML='<div class="empty">No referral payouts found.</div>';
+      return;
+    }
+    box.innerHTML=state.referralPayouts.map(function(row){
+      var status=String(row.status||'UNKNOWN').toUpperCase();
+      var retry=status==='RETRY_REQUIRED'||status==='PROCESSING';
+      var source=row.source_request_id||row.relation_id||row.payout_id||'-';
+      return '<article class="admin-referral-payout-row">'
+        +'<div><strong>'+esc(row.payout_type==='BD_ONETIME'?'BD one-time reward':'MY recurring commission')+'</strong><small>'+esc(source)+'</small><small>'+esc(row.last_error_message||'')+'</small></div>'
+        +'<div><strong>'+esc(referralPayoutAmount(row))+'</strong><small>'+esc(row.provider||row.country||'-')+'</small></div>'
+        +'<div class="admin-referral-payout-status '+(status==='COMPLETED'?'completed':'')+'">'+esc(status.replace(/_/g,' '))+'<small>'+esc(ts(row.updated_at||row.created_at))+'</small></div>'
+        +(retry?'<button class="btn ghost" type="button" data-referral-retry="'+esc(row.payout_id||'')+'">Retry</button>':'<span></span>')
+        +'</article>';
+    }).join('');
+  }
+
+  async function loadReferralPayouts(button,notify){
+    if(state.referralPayoutsLoading)return;
+    state.referralPayoutsLoading=true;
+    setButtonBusy(button,true,'Loading...');
+    try{
+      var data=await get('referral_payouts',{limit:50});
+      state.referralPayouts=Array.isArray(data.items)?data.items:[];
+      renderReferralPayouts();
+      if(notify)showFeedback('success','Payout log loaded','Referral payout history was reloaded.');
+    }catch(err){
+      if(handleSessionExpired(err))return;
+      el('referralPayoutList').innerHTML='<div class="empty">Referral payouts could not be loaded.</div>';
+      if(notify!==false)showFeedback('error','Unable to load payouts',friendlyError(err));
+    }finally{
+      setButtonBusy(button,false);
+      state.referralPayoutsLoading=false;
+    }
+  }
+
+  async function retryReferralPayout(button){
+    if(state.referralMutating)return;
+    var payoutId=button.getAttribute('data-referral-retry')||'';
+    if(!payoutId)return;
+    state.referralMutating=true;
+    setButtonBusy(button,true,'Retrying...');
+    try{
+      await ensureCsrf();
+      await post('referral_payout_retry',{payout_id:payoutId});
+      await loadReferralPayouts(null,false);
+      showFeedback('success','Payout completed','The referral payout was credited safely.');
+    }catch(err){
+      if(handleSessionExpired(err))return;
+      showFeedback('error','Payout retry failed',friendlyError(err));
+    }finally{
+      state.referralMutating=false;
+      setButtonBusy(button,false);
     }
   }
 
@@ -1138,6 +1296,10 @@
     el('mfsTierFeesForm').addEventListener('submit',saveTierFees);
     el('mfsTierFeesReloadBtn').addEventListener('click',function(){loadFees(el('mfsTierFeesReloadBtn'),true);});
     el('mfsSettingsForm').addEventListener('submit',saveFeeSettings);
+    el('referralSettingsForm').addEventListener('submit',saveReferralSettings);
+    el('referralSettingsReloadBtn').addEventListener('click',function(){loadReferralSettings(el('referralSettingsReloadBtn'),true);});
+    el('referralPayoutsReloadBtn').addEventListener('click',function(){loadReferralPayouts(el('referralPayoutsReloadBtn'),true);});
+    el('referralPayoutList').addEventListener('click',function(e){var button=e.target.closest('[data-referral-retry]');if(button)retryReferralPayout(button);});
     ['mfsCreateUid','mfsCreateProvider','mfsCreateReceiver','mfsCreateAmountBdt','mfsCreateAmountRm'].forEach(function(id){el(id).addEventListener('input',updateCreatePreview); el(id).addEventListener('change',updateCreatePreview);});
     el('mfsReloadBtn').addEventListener('click',function(){load(el('mfsReloadBtn'),true);});
     el('mfsApplyFilterBtn').addEventListener('click',function(){resetAllPages();load(el('mfsApplyFilterBtn'),true);});

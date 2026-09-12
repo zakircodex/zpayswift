@@ -130,6 +130,7 @@ DirectoryIndex index.html
   RewriteRule ^user/information/?$ /api/user/information.php [L,QSA,NC]
   RewriteRule ^user/info/?$ /api/user/information.php [L,QSA,NC]
   RewriteRule ^user/notifications/?$ /api/user/notifications.php [L,QSA,NC]
+  RewriteRule ^user/referral/?$ /api/user/referral.php [L,QSA,NC]
   RewriteRule ^user/profile/?$ /api/user/profile.php [L,QSA,NC]
   RewriteRule ^user/contact-us/?$ /api/user/contact-us.php [L,QSA,NC]
   RewriteRule ^user/support/?$ /api/user/support.php [L,QSA,NC]

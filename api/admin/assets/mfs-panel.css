@@ -1278,3 +1278,65 @@
   .admin-mfs-pagination span{min-width:0;flex:1;font-size:12px}
   .admin-mfs-pagination .btn{min-width:78px;padding-inline:9px}
 }
+
+.admin-referral-settings,
+.admin-referral-payouts{
+  gap:16px;
+}
+.admin-referral-toggle{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:var(--text,#eef5ff);
+  font-weight:800;
+}
+.admin-referral-toggle input,
+.admin-referral-provider-box input{
+  width:18px;
+  height:18px;
+  accent-color:#2fe88b;
+}
+.admin-referral-base-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+.admin-referral-provider-box{
+  min-height:76px;
+  display:grid;
+  grid-template-columns:1fr auto auto;
+  align-items:center;
+  gap:14px;
+  padding:12px 14px;
+  border:1px solid rgba(120,156,207,.35);
+  border-radius:14px;
+  color:var(--muted,#9eb0c8);
+  background:rgba(8,30,61,.72);
+}
+.admin-referral-provider-box > span{font-weight:800;color:var(--text,#eef5ff)}
+.admin-referral-provider-box label{display:flex;align-items:center;gap:5px;font-weight:700}
+.admin-referral-tier-head,
+.admin-referral-tier-row{grid-template-columns:minmax(190px,1.3fr) repeat(2,minmax(130px,1fr))}
+.admin-referral-payout-list{display:grid;gap:9px}
+.admin-referral-payout-row{
+  display:grid;
+  grid-template-columns:minmax(0,1.4fr) minmax(120px,.7fr) minmax(110px,.6fr) auto;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  border:1px solid rgba(120,156,207,.32);
+  border-radius:14px;
+  background:rgba(8,30,61,.72);
+}
+.admin-referral-payout-row strong,.admin-referral-payout-row small{display:block}
+.admin-referral-payout-row small{margin-top:3px;color:var(--muted,#9eb0c8)}
+.admin-referral-payout-status{font-weight:900;color:#ffd078}
+.admin-referral-payout-status.completed{color:#2fe88b}
+@media(max-width:760px){
+  .admin-referral-base-grid{grid-template-columns:1fr}
+  .admin-referral-provider-box{grid-template-columns:1fr 1fr}
+  .admin-referral-provider-box > span{grid-column:1/-1}
+  .admin-referral-tier-row{grid-template-columns:1fr}
+  .admin-referral-payout-row{grid-template-columns:1fr 1fr}
+  .admin-referral-payout-row .btn{grid-column:1/-1}
+}

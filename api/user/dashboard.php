@@ -27,6 +27,17 @@ if ($zpayMobileAppKey !== '') {
 }
 
 require_once __DIR__ . '/includes/page-bootstrap.php';
+user_page_start_session();
+$pendingReferralCode = strtoupper(preg_replace('/[^A-Z0-9]/', '', (string)($_SESSION['pending_referral_code'] ?? '')) ?? '');
+if (strlen($pendingReferralCode) >= 8 && strlen($pendingReferralCode) <= 20
+    && trim((string)($_SESSION['user_session_token'] ?? '')) !== ''
+) {
+    header('Location: /user/referral?code=' . rawurlencode($pendingReferralCode), true, 302);
+    exit;
+}
+if ($pendingReferralCode !== '' && (strlen($pendingReferralCode) < 8 || strlen($pendingReferralCode) > 20)) {
+    unset($_SESSION['pending_referral_code']);
+}
 $page = user_page_config([
     'key' => 'dashboard',
     'title' => 'Z-Pay Swift',
@@ -109,6 +120,9 @@ user_page_begin($page);
       <a class="zpay-service-btn" href="/user/bundle" aria-label="Bundle"><span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z"/></svg></span><span class="zpay-service-name">Bundle</span></a>
       <a class="zpay-service-btn zpay-service-btn-znews" href="/user/znews" target="_blank" rel="noopener" aria-label="Z Sky 24 (opens in a new tab)"><span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4V4Zm3 3v2h7V7H7Zm0 4v2h10v-2H7Zm0 4v2h10v-2H7Zm9-8v2h1V7h-1Z"/></svg></span><span class="zpay-service-name">Z Sky 24</span></a>
       <button class="zpay-service-btn" type="button" data-dashboard-action="shopping" aria-label="Shopping"><span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 7V6a5 5 0 0 1 10 0v1h3l-1 14H5L4 7h3Zm2 0h6V6a3 3 0 0 0-6 0v1Zm0 3v2h2v-2H9Zm4 0v2h2v-2h-2Z"/></svg></span><span class="zpay-service-name">Shopping</span></button>
+      <a class="zpay-service-btn" href="/user/referral" aria-label="Refer and Earn"><span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM8 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm8 0c-1.33 0-2.53.32-3.48.88A7.1 7.1 0 0 1 15 19v1h7v-1c0-3.31-2.69-6-6-6ZM8 15c-3.87 0-7 2.24-7 5v1h14v-1c0-2.76-3.13-5-7-5Z"/></svg></span><span class="zpay-service-name">Refer &amp; Earn</span></a>
+    </div>
+    <div class="zpay-service-grid zpay-service-grid-secondary">
       <a class="zpay-service-btn" href="/user/contact-us" aria-label="Contact Us"><span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9v4a3 3 0 0 0 3 3h2v-8H5.1a7 7 0 0 1 13.8 0H16v8h2.1A3.1 3.1 0 0 1 15 21h-3v-2h3a1 1 0 0 0 1-1v-7h3v5h1v-4a7 7 0 0 0-14 0v5h1v-6h3v8H6a3 3 0 0 1-3-3v-4a9 9 0 0 1 9-9Z"/></svg></span><span class="zpay-service-name">Contact Us</span></a>
       <a class="zpay-service-btn" href="/user/information" aria-label="Information"><span class="zpay-service-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M11 10h2v8h-2v-8Zm0-4h2v2h-2V6Zm1-4a10 10 0 1 1 0 20 10 10 0 0 1 0-20Zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Z"/></svg></span><span class="zpay-service-name">Info</span></a>
     </div>

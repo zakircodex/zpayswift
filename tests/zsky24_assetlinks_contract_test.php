@@ -5,7 +5,7 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $assetLinksPath = $root . '/.well-known/assetlinks.json';
 $rewritePath = $root . '/.htaccess';
-$expectedFingerprint = '52:4C:8C:47:60:48:E8:3F:57:73:0C:A6:E1:82:0B:F2:BE:02:1B:22:54:F4:F0:0D:2B:73:C0:8F:97:26:3F:C9';
+$expectedFingerprint = '34:BD:DD:99:05:1F:70:9A:4E:66:05:39:DF:A3:A7:AC:28:97:F1:60:CB:49:05:D9:73:13:58:EA:B8:C8:C7:80';
 
 function app_links_expect(bool $condition, string $message): void
 {

@@ -10,6 +10,7 @@ require_once dirname(__DIR__) . '/lib/bundle.php';
 require_once dirname(__DIR__) . '/lib/mfs.php';
 require_once dirname(__DIR__) . '/lib/add_money.php';
 require_once dirname(__DIR__) . '/lib/favorites.php';
+require_once dirname(__DIR__) . '/lib/referral.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -4723,6 +4724,40 @@ switch ($action) {
             'items' => $items,
             'count' => count($items),
         ]);
+        break;
+
+    case 'referral_status':
+        user_proxy_require_method('GET');
+
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = referral_clean_uid($sessionUser['uid'] ?? '');
+        $limit = max(1, min(50, (int)($_GET['limit'] ?? 10)));
+        $before = max(0, (int)($_GET['before'] ?? 0));
+
+        user_proxy_response(true, 'SUCCESS', 'Referral details loaded', referral_status_payload($uid, $limit, $before));
+        break;
+
+    case 'referral_claim':
+        user_proxy_require_method('POST');
+        user_proxy_require_csrf();
+
+        $sessionUser = user_proxy_require_login(true, false);
+        $uid = referral_clean_uid($sessionUser['uid'] ?? '');
+        $body = user_proxy_read_json_body();
+        $claim = referral_claim($uid, (string)($body['referral_code'] ?? $body['code'] ?? ''), 'WEB');
+        $data = referral_public_action_data($claim);
+        if (empty($claim['ok'])) {
+            $code = (string)($claim['code'] ?? 'REFERRAL_CLAIM_FAILED');
+            $httpStatus = in_array($code, ['INVALID_REFERRAL_CODE'], true) ? 404 : (in_array($code, [
+                'REFERRAL_ALREADY_CLAIMED',
+                'SELF_REFERRAL_NOT_ALLOWED',
+                'REFERRAL_CYCLE_NOT_ALLOWED',
+                'REFERRAL_MARKET_MISMATCH',
+            ], true) ? 409 : 422);
+            user_proxy_response(false, $code, (string)($claim['message'] ?? 'Referral code could not be claimed.'), $data, $httpStatus);
+        }
+
+        user_proxy_response(true, (string)($claim['code'] ?? 'SUCCESS'), (string)($claim['message'] ?? 'Referral linked.'), $data);
         break;
 
     case 'add_money_settings':

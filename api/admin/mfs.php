@@ -292,6 +292,72 @@ header('Pragma: no-cache');
               <button class="btn brand" id="mfsSettingsSaveBtn" type="submit">Save Bangladesh Fees</button>
             </div>
           </form>
+
+          <form id="referralSettingsForm" class="admin-mfs-settings-grid admin-referral-settings" novalidate>
+            <div class="admin-mfs-settings-subhead">
+              <div>
+                <div class="mfs-section-kicker">Refer &amp; Earn</div>
+                <h3>Referral Settings</h3>
+                <p>Manage Malaysia recurring commissions, Bangladesh one-time rewards and claim eligibility.</p>
+              </div>
+              <label class="admin-referral-toggle"><input id="referralEnabled" type="checkbox"><span>Program enabled</span></label>
+            </div>
+
+            <div class="admin-referral-base-grid">
+              <label class="mfs-field"><span>Claim Window (days)</span><input class="input" id="referralClaimWindow" type="number" min="1" max="90" step="1" required></label>
+              <label class="mfs-field"><span>Eligible Accounts Created After</span><input class="input" id="referralEligibleAfter" type="datetime-local" required></label>
+              <label class="mfs-field"><span>Bangladesh One-time Reward (BDT)</span><input class="input" id="referralBdReward" type="number" min="0" max="10000" step="0.01" required></label>
+              <div class="admin-referral-provider-box">
+                <span>Malaysia Reward Services</span>
+                <label><input id="referralProviderBkash" type="checkbox"> bKash</label>
+                <label><input id="referralProviderNagad" type="checkbox"> Nagad</label>
+              </div>
+            </div>
+
+            <section class="admin-mfs-fee-group" aria-labelledby="referralCommissionHeading">
+              <div class="admin-mfs-fee-group-head">
+                <h3 id="referralCommissionHeading">Malaysia Commission Per Successful Request</h3>
+                <p>Commission is saved in RM and cannot exceed the matching MFS fee.</p>
+              </div>
+              <div class="admin-mfs-tier-table" role="table" aria-label="Malaysia referral commissions">
+                <div class="admin-mfs-tier-row admin-mfs-tier-head admin-referral-tier-head" role="row">
+                  <span role="columnheader">Amount Range</span><span role="columnheader">USER RM</span><span role="columnheader">RETAILER RM</span>
+                </div>
+                <div class="admin-mfs-tier-row admin-referral-tier-row" role="row">
+                  <strong role="cell">BDT 500 - 50,000</strong>
+                  <label class="mfs-field" role="cell"><span>USER RM</span><input class="input" id="referralUserTier1" type="number" min="0" step="0.01" required></label>
+                  <label class="mfs-field" role="cell"><span>RETAILER RM</span><input class="input" id="referralRetailerTier1" type="number" min="0" step="0.01" required></label>
+                </div>
+                <div class="admin-mfs-tier-row admin-referral-tier-row" role="row">
+                  <strong role="cell">BDT 50,000.01 - 70,000</strong>
+                  <label class="mfs-field" role="cell"><span>USER RM</span><input class="input" id="referralUserTier2" type="number" min="0" step="0.01" required></label>
+                  <label class="mfs-field" role="cell"><span>RETAILER RM</span><input class="input" id="referralRetailerTier2" type="number" min="0" step="0.01" required></label>
+                </div>
+                <div class="admin-mfs-tier-row admin-referral-tier-row" role="row">
+                  <strong role="cell">BDT 70,000.01 - 100,000</strong>
+                  <label class="mfs-field" role="cell"><span>USER RM</span><input class="input" id="referralUserTier3" type="number" min="0" step="0.01" required></label>
+                  <label class="mfs-field" role="cell"><span>RETAILER RM</span><input class="input" id="referralRetailerTier3" type="number" min="0" step="0.01" required></label>
+                </div>
+              </div>
+            </section>
+
+            <div class="admin-mfs-submit admin-mfs-settings-actions">
+              <button class="btn brand" id="referralSettingsSaveBtn" type="submit">Save Referral Settings</button>
+              <button class="btn ghost" id="referralSettingsReloadBtn" type="button">Reload</button>
+            </div>
+          </form>
+
+          <section class="admin-mfs-settings-grid admin-referral-payouts" aria-labelledby="referralPayoutsHeading">
+            <div class="admin-mfs-settings-subhead">
+              <div>
+                <div class="mfs-section-kicker">Payout Safety</div>
+                <h3 id="referralPayoutsHeading">Referral Payout Log</h3>
+                <p>Retry only rows marked Retry Required. Completed payouts remain idempotent.</p>
+              </div>
+              <button class="btn ghost" id="referralPayoutsReloadBtn" type="button">Reload Payouts</button>
+            </div>
+            <div class="admin-referral-payout-list" id="referralPayoutList"><div class="empty">Open settings to load payout history.</div></div>
+          </section>
         </div>
       </section>
 
