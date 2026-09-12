@@ -8,6 +8,7 @@
     history: [],
     nextBefore: 0,
     hasMore: false,
+    historyLoading: false,
     loadingMore: false,
     claiming: false
   };
@@ -62,18 +63,28 @@
     if (data.country === 'BD') {
       container.innerHTML = [
         `<div class="referral-rule-row"><span>One-time reward</span><strong>${money(rules.bd_reward_bdt, 'BDT')}</strong></div>`,
+        '<div class="referral-rule-row"><span>Eligibility</span><strong>New account + unused device</strong></div>',
         '<div class="referral-rule-row"><span>Reward timing</span><strong>After Android verification</strong></div>',
+        '<div class="referral-rule-row"><span>Recurring commission</span><strong>Not applicable</strong></div>',
         `<div class="referral-rule-row"><span>Claim period</span><strong>${Number(rules.claim_window_days || 7)} days</strong></div>`
       ].join('');
       return;
     }
-    const role = String(window.userState?.user?.role || 'USER').toUpperCase() === 'RETAILER' ? 'RETAILER' : 'USER';
-    const tiers = rules.my_commissions?.[role] || {};
+    const fees = rules.my_fees || {};
+    const commissions = rules.my_commissions || {};
+    const tierIds = ['TIER1', 'TIER2', 'TIER3'];
+    const rowsFor = (role, label) => tierIds.map((tier) => {
+      const fee = Number(fees?.[tier]?.[role] || 0);
+      const reward = Number(commissions?.[role]?.[tier] || 0);
+      return `<div class="referral-rule-row"><span>Referred ${label} &middot; ${money(fee, 'MYR')} fee</span><strong>${money(reward, 'MYR')}</strong></div>`;
+    });
+    const providers = ['BKASH', 'NAGAD'].filter((provider) => rules.providers?.[provider] !== false)
+      .map((provider) => provider === 'BKASH' ? 'bKash' : 'Nagad');
     container.innerHTML = [
-      `<div class="referral-rule-row"><span>BDT 500 - 50,000 success</span><strong>${money(tiers.TIER1, 'MYR')}</strong></div>`,
-      `<div class="referral-rule-row"><span>BDT 50,000.01 - 70,000 success</span><strong>${money(tiers.TIER2, 'MYR')}</strong></div>`,
-      `<div class="referral-rule-row"><span>BDT 70,000.01 - 100,000 success</span><strong>${money(tiers.TIER3, 'MYR')}</strong></div>`,
-      '<div class="referral-rule-row"><span>Eligible services</span><strong>bKash &amp; Nagad</strong></div>'
+      '<div class="referral-rule-note">Commission follows the referred user\'s account type at the time of a successful request.</div>',
+      ...rowsFor('USER', 'user'),
+      ...rowsFor('RETAILER', 'retailer'),
+      `<div class="referral-rule-row"><span>Eligible services</span><strong>${providers.length ? providers.join(' &amp; ') : 'Paused'}</strong></div>`
     ].join('');
   }
 
@@ -103,14 +114,8 @@
     if ($('referralSeeMore')) $('referralSeeMore').disabled = state.loadingMore;
   }
 
-  function render(data, appendHistory) {
+  function renderCore(data) {
     state.data = data;
-    const history = data.history || {};
-    const items = Array.isArray(history.items) ? history.items : [];
-    state.history = appendHistory ? state.history.concat(items) : items;
-    state.hasMore = Boolean(history.has_more);
-    state.nextBefore = Number(history.next_before || 0);
-
     $('referralTotalEarned').textContent = money(data.total_earned, data.reward_currency);
     $('referralCount').textContent = String(Number(data.referred_count || 0));
     $('referralRewardedCount').textContent = String(Number(data.rewarded_count || 0));
@@ -125,15 +130,38 @@
       showStatus('This device is already linked to another account, so this account will not receive referral rewards.', 'error');
     }
     renderRules(data);
-    renderHistory();
     $('referralSection')?.setAttribute('aria-busy', 'false');
   }
 
-  async function loadStatus(appendHistory) {
-    const params = { limit: 10 };
-    if (appendHistory && state.nextBefore) params.before = state.nextBefore;
-    const data = await window.proxyGet('referral_status', params, appendHistory ? 'Loading more rewards...' : 'Loading referral details...', { busy: !appendHistory });
-    render(data, appendHistory);
+  function renderHistoryPage(data, appendHistory) {
+    const history = data.history || {};
+    const items = Array.isArray(history.items) ? history.items : [];
+    state.history = appendHistory ? state.history.concat(items) : items;
+    state.hasMore = Boolean(history.has_more);
+    state.nextBefore = Number(history.next_before || 0);
+    renderHistory();
+  }
+
+  async function loadCore() {
+    const data = await window.proxyGet('referral_status', { scope: 'core' }, 'Loading referral details...', { busy: false });
+    renderCore(data);
+  }
+
+  async function loadHistory(appendHistory) {
+    if (state.historyLoading || (appendHistory && (!state.hasMore || !state.nextBefore))) return;
+    state.historyLoading = true;
+    state.loadingMore = appendHistory;
+    if (appendHistory) setButtonBusy($('referralSeeMore'), true, 'Loading...');
+    try {
+      const params = { scope: 'history', limit: 10 };
+      if (appendHistory) params.before = state.nextBefore;
+      const data = await window.proxyGet('referral_status', params, '', { busy: false });
+      renderHistoryPage(data, appendHistory);
+    } finally {
+      state.historyLoading = false;
+      state.loadingMore = false;
+      if (appendHistory) setButtonBusy($('referralSeeMore'), false);
+    }
   }
 
   async function copyText(value, successMessage) {
@@ -160,7 +188,8 @@
     try {
       const data = await window.proxyPost('referral_claim', { referral_code: code }, 'Linking referral...');
       showStatus('Referral linked. Open this account in the Android app to activate rewards.', 'success');
-      await loadStatus(false);
+      await loadCore();
+      loadHistory(false).catch(() => {});
       if (data?.relation) $('referralDevicePanel')?.classList.remove('hidden');
     } catch (error) {
       showStatus(safeMessage(error, 'Referral code could not be linked.'), 'error');
@@ -172,7 +201,6 @@
 
   function bind() {
     $('referralCopyCode')?.addEventListener('click', () => copyText(state.data?.referral_code, 'Referral code copied.'));
-    $('referralCopyLink')?.addEventListener('click', () => copyText(state.data?.share_url, 'Referral link copied.'));
     $('referralShare')?.addEventListener('click', async () => {
       const url = String(state.data?.share_url || '');
       const text = 'Join Z-Pay Swift with my referral code ' + String(state.data?.referral_code || '') + '.';
@@ -188,16 +216,11 @@
     });
     $('referralClaimForm')?.addEventListener('submit', claimReferral);
     $('referralSeeMore')?.addEventListener('click', async () => {
-      if (state.loadingMore || !state.hasMore) return;
-      state.loadingMore = true;
-      setButtonBusy($('referralSeeMore'), true, 'Loading...');
+      if (state.historyLoading || !state.hasMore) return;
       try {
-        await loadStatus(true);
+        await loadHistory(true);
       } catch (error) {
         showStatus(safeMessage(error, 'More rewards could not be loaded.'), 'error');
-      } finally {
-        state.loadingMore = false;
-        setButtonBusy($('referralSeeMore'), false);
       }
     });
   }
@@ -208,12 +231,18 @@
       bind();
       const pendingCode = String($('referralSection')?.dataset.pendingCode || '').toUpperCase();
       if (pendingCode && $('referralClaimCode')) $('referralClaimCode').value = pendingCode;
-      await loadStatus(false);
+      await loadCore();
     } catch (error) {
       $('referralSection')?.setAttribute('aria-busy', 'false');
       showStatus(safeMessage(error, 'Referral details could not be loaded.'), 'error');
     } finally {
       releaseInitialLoad();
+    }
+    try {
+      await loadHistory(false);
+    } catch (_) {
+      const list = $('referralHistoryList');
+      if (list && !state.history.length) list.innerHTML = '<div class="referral-empty">Reward history could not be loaded. Pull down to retry.</div>';
     }
   }
 

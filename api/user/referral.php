@@ -59,10 +59,10 @@ user_page_begin($page);
         <span class="referral-panel-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M18 16a3 3 0 0 0-2.4 1.2l-6.7-3.35a3.2 3.2 0 0 0 0-1.7l6.7-3.35A3 3 0 1 0 15 7c0 .15.01.3.04.44L8.3 10.81a3 3 0 1 0 0 4.38l6.74 3.37A3 3 0 1 0 18 16Z"/></svg></span>
         <div><h2 id="referralShareTitle">Your referral link</h2><p>Share it with a new Z-Pay Swift user in your country.</p></div>
       </div>
-      <div class="referral-code-row"><code id="referralCode">Loading...</code><button id="referralCopyCode" type="button" aria-label="Copy referral code">Copy</button></div>
+      <div class="referral-code-row"><code id="referralCode">Loading...</code></div>
       <div class="referral-actions">
-        <button id="referralCopyLink" type="button">Copy Link</button>
-        <button id="referralShare" class="primary" type="button">Share</button>
+        <button id="referralCopyCode" type="button">Copy code</button>
+        <button id="referralShare" class="primary" type="button">Share link</button>
       </div>
     </section>
 

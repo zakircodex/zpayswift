@@ -938,9 +938,20 @@ function referral_history_for_user(string $uid, int $limit = 10, int $before = 0
     ];
 }
 
-function referral_status_payload(string $uid, int $limit = 10, int $before = 0): array
+function referral_status_payload(string $uid, int $limit = 10, int $before = 0, string $scope = 'full'): array
 {
     $uid = referral_clean_uid($uid);
+    $scope = strtolower(trim($scope));
+    if (!in_array($scope, ['core', 'history', 'full'], true)) {
+        $scope = 'full';
+    }
+    if ($scope === 'history') {
+        return [
+            'scope' => 'history',
+            'history' => referral_history_for_user($uid, $limit, $before),
+        ];
+    }
+
     $user = referral_load_user($uid);
     $wallet = referral_load_wallet($uid);
     $config = referral_config();
@@ -952,7 +963,7 @@ function referral_status_payload(string $uid, int $limit = 10, int $before = 0):
         ? referral_claim_eligibility($user, $config, true)
         : ['eligible' => false, 'code' => 'REFERRAL_ALREADY_CLAIMED', 'message' => 'A referral is already linked.'];
 
-    $members = fb_get('REFERRAL_MEMBERS/' . $uid);
+    $members = fb_get('REFERRAL_MEMBERS/' . $uid, ['shallow' => 'true']);
     $members = is_array($members) ? $members : [];
     $historyAll = fb_get('USER_REFERRAL_PAYOUTS/' . $uid);
     $historyAll = is_array($historyAll) ? $historyAll : [];
@@ -965,9 +976,8 @@ function referral_status_payload(string $uid, int $limit = 10, int $before = 0):
         $total += referral_money($row['amount'] ?? 0);
         $rewarded++;
     }
-    $history = referral_history_for_user($uid, $limit, $before);
-
-    return [
+    $payload = [
+        'scope' => $scope,
         'enabled' => !empty($config['enabled']),
         'country' => $country,
         'account_role' => referral_user_role($user),
@@ -988,8 +998,11 @@ function referral_status_payload(string $uid, int $limit = 10, int $before = 0):
             'my_fees' => referral_current_my_fees(),
             'providers' => $config['providers'],
         ],
-        'history' => $history,
     ];
+    if ($scope === 'full') {
+        $payload['history'] = referral_history_for_user($uid, $limit, $before);
+    }
+    return $payload;
 }
 
 function referral_admin_payouts(int $limit = 50, string $status = ''): array

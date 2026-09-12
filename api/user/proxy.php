@@ -4733,8 +4733,12 @@ switch ($action) {
         $uid = referral_clean_uid($sessionUser['uid'] ?? '');
         $limit = max(1, min(50, (int)($_GET['limit'] ?? 10)));
         $before = max(0, (int)($_GET['before'] ?? 0));
+        $scope = strtolower(trim((string)($_GET['scope'] ?? 'full')));
+        if (!in_array($scope, ['core', 'history', 'full'], true)) {
+            user_proxy_response(false, 'INVALID_SCOPE', 'Invalid referral data scope.', [], 422);
+        }
 
-        user_proxy_response(true, 'SUCCESS', 'Referral details loaded', referral_status_payload($uid, $limit, $before));
+        user_proxy_response(true, 'SUCCESS', 'Referral details loaded', referral_status_payload($uid, $limit, $before, $scope));
         break;
 
     case 'referral_claim':

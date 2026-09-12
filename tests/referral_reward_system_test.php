@@ -172,7 +172,7 @@ referral_expect(empty($lateClaim['ok']) && ($lateClaim['code'] ?? '') === 'FIRST
 $publicClaim = referral_public_action_data($bdClaim);
 referral_expect(!isset($publicClaim['relation']['referrer_uid']) && !isset($publicClaim['reward']['data']), 'Public claim response exposed internal referral data');
 
-referral_seed_account('MY_REFERRER', 'MY', 'USER', 50.00);
+referral_seed_account('MY_REFERRER', 'MY', 'RETAILER', 50.00);
 referral_seed_account('MY_NEW', 'MY', 'USER', 0.00);
 $myCode = referral_ensure_code('MY_REFERRER');
 $myClaim = referral_claim('MY_NEW', $myCode, 'ANDROID', $secondDevice);
@@ -185,7 +185,7 @@ $snapshot = referral_mfs_snapshot(
     ['wallet_currency' => 'MYR', 'fee_tier_id' => 'TIER1', 'fee_rm' => 5.00],
     'BKASH'
 );
-referral_expect(!empty($snapshot['eligible']) && (float)$snapshot['commission_amount'] === 1.00, 'MY USER Tier 1 commission snapshot is incorrect');
+referral_expect(!empty($snapshot['eligible']) && (float)$snapshot['commission_amount'] === 1.00, 'A retailer referrer changed the referred USER Tier 1 commission');
 
 $myPayout = referral_process_mfs_success('MFS-SUCCESS-1', ['uid' => 'MY_NEW', 'provider' => 'BKASH', 'referral' => $snapshot]);
 referral_expect(!empty($myPayout['ok']), 'MY successful request commission failed');
@@ -228,6 +228,22 @@ $firstPage = referral_history_for_user('MY_REFERRER', 10, 0);
 $secondPage = referral_history_for_user('MY_REFERRER', 10, (int)$firstPage['next_before']);
 referral_expect(count($firstPage['items']) === 10 && !empty($firstPage['has_more']), 'Referral history did not return a lazy page of 10');
 referral_expect(count($secondPage['items']) >= 2, 'Referral history cursor did not load remaining rows');
+
+$corePayload = referral_status_payload('MY_REFERRER', 10, 0, 'core');
+$historyPayload = referral_status_payload('MY_REFERRER', 10, 0, 'history');
+referral_expect(!isset($corePayload['history']) && isset($corePayload['referral_code']), 'Referral core payload was not separated from history');
+referral_expect(count($historyPayload['history']['items'] ?? []) === 10 && !isset($historyPayload['referral_code']), 'Referral history scope did not return one isolated page');
+
+$webReferralScript = (string)file_get_contents(dirname(__DIR__) . '/api/user/assets/pages/referral-page.js');
+referral_expect(str_contains($webReferralScript, "scope: 'core'") && str_contains($webReferralScript, "scope: 'history'"), 'Web referral page is not progressively loaded');
+referral_expect(str_contains($webReferralScript, "rowsFor('USER', 'user')") && str_contains($webReferralScript, "rowsFor('RETAILER', 'retailer')"), 'Web reward rules still depend on the referrer account type');
+
+$webReferralMarkup = (string)file_get_contents(dirname(__DIR__) . '/api/user/referral.php');
+$webReferralStyles = (string)file_get_contents(dirname(__DIR__) . '/api/user/assets/pages/referral-page.css');
+$webDashboardStyles = (string)file_get_contents(dirname(__DIR__) . '/api/user/assets/pages/dashboard-page.css');
+referral_expect(!str_contains($webReferralMarkup, 'referralCopyLink') && str_contains($webReferralMarkup, '>Copy code<') && str_contains($webReferralMarkup, '>Share link<'), 'Web referral card does not expose exactly the requested actions');
+referral_expect(str_contains($webReferralStyles, '.referral-page-section.active') && str_contains($webReferralStyles, 'touch-action: pan-y'), 'Web referral page scrolling contract is missing');
+referral_expect((bool)preg_match('/\.user-dashboard-page\s+\.zpay-service-grid-secondary\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s', $webDashboardStyles), 'Web dashboard utility cards do not match the three-column service grid');
 
 $mfsSource = (string)file_get_contents(dirname(__DIR__) . '/api/lib/mfs.php');
 $successStart = strpos($mfsSource, 'function mfs_mark_success');

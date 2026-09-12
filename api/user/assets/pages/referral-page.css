@@ -20,7 +20,7 @@ body.user-referral-page {
 }
 
 .user-referral-page .user-page-content {
-  width: min(100%, 580px);
+  width: min(100%, 560px);
   height: 100%;
   min-height: 0;
   margin: 0 auto;
@@ -28,9 +28,15 @@ body.user-referral-page {
   overflow: hidden;
 }
 
-.referral-page-section {
+.user-referral-page #referralSection {
+  width: 100%;
   height: 100%;
   min-height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.referral-page-section.active {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
@@ -90,6 +96,7 @@ body.user-referral-page {
   padding: 0 0 28px;
   overscroll-behavior: contain;
   scrollbar-width: none;
+  touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -203,11 +210,15 @@ body.user-referral-page {
   fill: currentColor;
 }
 
-.referral-code-row,
 .referral-claim-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
+  margin-top: 16px;
+}
+
+.referral-code-row {
+  width: 100%;
   margin-top: 16px;
 }
 
@@ -226,6 +237,14 @@ body.user-referral-page {
   letter-spacing: 0;
 }
 
+.referral-code-row code {
+  min-height: 62px;
+  justify-content: center;
+  color: #31e58b;
+  font-size: 22px;
+  text-align: center;
+}
+
 .referral-claim-row input {
   width: 100%;
   outline: none;
@@ -236,7 +255,6 @@ body.user-referral-page {
   box-shadow: 0 0 0 3px rgba(47, 232, 139, 0.12);
 }
 
-.referral-code-row button,
 .referral-actions button,
 .referral-claim-row button,
 .referral-see-more {
@@ -265,7 +283,6 @@ body.user-referral-page {
   background: #31e58b;
 }
 
-.referral-code-row button:disabled,
 .referral-actions button:disabled,
 .referral-claim-row button:disabled,
 .referral-see-more:disabled {
@@ -296,6 +313,16 @@ body.user-referral-page {
   margin-top: 12px;
 }
 
+.referral-rule-note {
+  padding: 11px 12px;
+  border-left: 3px solid #31e58b;
+  border-radius: 8px;
+  color: #dce7f7;
+  background: rgba(49, 229, 139, 0.08);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .referral-rule-row {
   display: flex;
   justify-content: space-between;
@@ -308,9 +335,17 @@ body.user-referral-page {
   font-size: 12px;
 }
 
+.referral-rule-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .referral-rule-row strong {
   flex: 0 0 auto;
+  max-width: 52%;
   color: #31e58b;
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .referral-history-section {
@@ -393,7 +428,6 @@ body.user-referral-page {
     font-size: 15px;
   }
 
-  .referral-code-row,
   .referral-claim-row {
     grid-template-columns: 1fr;
   }
@@ -402,7 +436,6 @@ body.user-referral-page {
     padding: 15px;
   }
 
-  .referral-code-row button,
   .referral-claim-row button {
     padding-right: 12px;
     padding-left: 12px;

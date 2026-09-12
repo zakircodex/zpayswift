@@ -317,7 +317,7 @@ header('Pragma: no-cache');
             <section class="admin-mfs-fee-group" aria-labelledby="referralCommissionHeading">
               <div class="admin-mfs-fee-group-head">
                 <h3 id="referralCommissionHeading">Malaysia Commission Per Successful Request</h3>
-                <p>Commission is saved in RM and cannot exceed the matching MFS fee.</p>
+                <p>The referred user's account type at request time selects the USER or RETAILER commission. The referrer's own account type does not affect it.</p>
               </div>
               <div class="admin-mfs-tier-table" role="table" aria-label="Malaysia referral commissions">
                 <div class="admin-mfs-tier-row admin-mfs-tier-head admin-referral-tier-head" role="row">
