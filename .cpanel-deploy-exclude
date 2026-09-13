@@ -25,7 +25,6 @@ error_log
 *.tar
 *.gz
 .env
-.well-known/
 cgi-bin/
 zawtopup/
 zpayswift/

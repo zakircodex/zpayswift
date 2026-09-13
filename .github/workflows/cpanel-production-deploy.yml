@@ -119,7 +119,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p deployment/api
-          for path in .htaccess index.html download.php track.html privacy.html terms.html apply-subadmin.html assets docs images logo znews; do
+          for path in .htaccess .well-known index.html download.php track.html privacy.html terms.html apply-subadmin.html assets docs images logo znews; do
             if [ -e "$path" ]; then
               cp -a "$path" deployment/
             fi
@@ -147,6 +147,7 @@ jobs:
           test -f deployment/api/znews/reviews/mine.php
           test -f deployment/znews/assets/znews-weekly-review.js
           test -f deployment/znews/assets/znews-weekly-review.css
+          test -f deployment/.well-known/assetlinks.json
 
           if find deployment -type f \
             ! -path 'deployment/api/support/config.php' \
@@ -203,8 +204,27 @@ jobs:
               exit 1
             fi
           }
+          verify_assetlinks() {
+            local marker_url="$1"
+            local origin="${marker_url%/deploy_version.txt}"
+            local body
+            body="$(curl --fail --silent --show-error --location \
+              --retry 3 --retry-delay 3 \
+              -H 'Cache-Control: no-cache' \
+              "${origin}/.well-known/assetlinks.json?v=${GITHUB_SHA}")"
+            if ! printf '%s' "$body" | grep -Fq 'com.zpayswift.app'; then
+              echo "Live Asset Links package is invalid at $origin"
+              exit 1
+            fi
+            if ! printf '%s' "$body" | grep -Fq '34:BD:DD:99:05:1F:70:9A:4E:66:05:39:DF:A3:A7:AC:28:97:F1:60:CB:49:05:D9:73:13:58:EA:B8:C8:C7:80'; then
+              echo "Live Asset Links fingerprint is invalid at $origin"
+              exit 1
+            fi
+          }
           verify_url "$PRIMARY_VERIFY_URL"
+          verify_assetlinks "$PRIMARY_VERIFY_URL"
           if [ -n "$SECONDARY_VERIFY_URL" ]; then
             verify_url "$SECONDARY_VERIFY_URL"
+            verify_assetlinks "$SECONDARY_VERIFY_URL"
           fi
           echo "Verified production commit: $GITHUB_SHA"
