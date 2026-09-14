@@ -62,7 +62,10 @@ $operatorEditor = ($operatorEditorStart !== false && $operatorEditorEnd !== fals
 admin_settings_ui_expect($operatorEditor !== '', 'Operator editor source could not be isolated');
 admin_settings_ui_expect(!str_contains($operatorEditor, 'retailer_secret_pin_masked'), 'Existing private credential indicator is rendered in the Operator editor');
 admin_settings_ui_expect(!str_contains($operatorEditor, 'Current PIN'), 'Operator editor reveals a private credential representation');
-admin_settings_ui_expect(str_contains($operatorEditor, 'id="opRetailerPin" type="password" autocomplete="new-password" value=""'), 'Private credential replacement input is not blank/password-safe');
+admin_settings_ui_expect(str_contains($operatorEditor, '<span>Retailer PIN</span>'), 'Retailer PIN field is not clearly labelled');
+admin_settings_ui_expect(str_contains($operatorEditor, 'id="opRetailerPin" type="password" inputmode="numeric" autocomplete="new-password" value=""'), 'Private credential replacement input is not blank/password-safe');
+admin_settings_ui_expect(str_contains($operatorEditor, 'data-pin-set="${data.retailer_secret_pin_set'), 'Retailer PIN saved-state indicator is missing');
+admin_settings_ui_expect(strpos($operatorEditor, 'id="opRetailerPin"') < strpos($operatorEditor, 'id="opDialTemplate"'), 'Retailer PIN field is hidden below the Worker templates');
 admin_settings_ui_expect(str_contains($operatorEditor, "setModalPresentationScope('operator-settings')"), 'Operator modal presentation scope is missing');
 
 foreach ([

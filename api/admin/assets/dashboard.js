@@ -3880,11 +3880,17 @@ async function editOperator(operator){
           </label>
 
           <label class="admin-settings-field">
-            <span>Protected Credential Required</span>
+            <span>Retailer PIN Required</span>
             <select id="opRequiresPin">
               <option value="true" ${data.requires_secret_pin ? 'selected' : ''}>Yes</option>
               <option value="false" ${!data.requires_secret_pin ? 'selected' : ''}>No</option>
             </select>
+          </label>
+
+          <label class="admin-settings-field form-full operator-pin-field">
+            <span>Retailer PIN</span>
+            <input class="input" id="opRetailerPin" type="password" inputmode="numeric" autocomplete="new-password" value="" data-pin-set="${data.retailer_secret_pin_set ? 'true' : 'false'}" placeholder="${data.retailer_secret_pin_set ? 'Enter a new PIN to replace the saved PIN' : 'Enter retailer PIN'}">
+            <small class="settings-field-note">${data.retailer_secret_pin_set ? 'PIN is saved securely. Leave this blank to keep it.' : 'No retailer PIN is saved.'}</small>
           </label>
             </div>
           </section>
@@ -3945,18 +3951,6 @@ async function editOperator(operator){
             </div>
           </section>
 
-          <section class="admin-settings-group">
-            <div class="admin-settings-group-head">
-              <span class="settings-kicker">Private runtime</span>
-              <h4>Worker Credential</h4>
-              <p>${data.retailer_secret_pin_set ? 'A private credential is configured.' : 'No private credential is configured.'}</p>
-            </div>
-            <label class="admin-settings-field">
-              <span>Replace Credential</span>
-              <input class="input" id="opRetailerPin" type="password" autocomplete="new-password" value="" placeholder="${data.retailer_secret_pin_set ? 'Leave blank to keep existing credential' : 'Enter a new credential'}">
-              <small class="settings-field-note">Existing private values are never displayed.</small>
-            </label>
-          </section>
         </div>
       `,
       `
@@ -3971,6 +3965,7 @@ async function editOperator(operator){
 }
 
 async function saveOperator(){
+  const retailerPinInput = document.getElementById('opRetailerPin');
   const body = {
     operator: document.getElementById('opOperator')?.value.trim() || '',
     name: document.getElementById('opName')?.value.trim() || '',
@@ -3985,8 +3980,14 @@ async function saveOperator(){
     requires_secret_pin: document.getElementById('opRequiresPin')?.value === 'true',
     dial_template: document.getElementById('opDialTemplate')?.value.trim() || '',
     masked_template: document.getElementById('opMaskedTemplate')?.value.trim() || '',
-    retailer_secret_pin: document.getElementById('opRetailerPin')?.value.trim() || '',
+    retailer_secret_pin: retailerPinInput?.value.trim() || '',
   };
+
+  if(body.requires_secret_pin && body.retailer_secret_pin === '' && retailerPinInput?.dataset.pinSet !== 'true'){
+    alert('Retailer PIN is required.');
+    retailerPinInput?.focus();
+    return;
+  }
 
   try{
     await proxyPost('operator_save', body, true, { busyText: 'Saving operator...' });
