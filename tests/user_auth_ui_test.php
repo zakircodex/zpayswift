@@ -60,6 +60,7 @@ auth_ui_expect(str_contains($loginJs, 'ignore_trusted_device: state.ignoreTruste
 auth_ui_expect(str_contains($loginJs, 'window.visualViewport') && str_contains($loginJs, 'ensureLoginControlVisible') && str_contains($loginJs, 'actionForInput'), 'Login keyboard handling must keep inputs and action buttons visible');
 auth_ui_expect(str_contains($loginJs, "window.addEventListener('pagehide'") && str_contains($loginJs, "window.addEventListener('pageshow'"), 'Login transition/BFCache cleanup is missing');
 auth_ui_expect(!str_contains($loginJs, 'localStorage') && !str_contains($loginJs, 'console.log'), 'Login must not store/log credentials or auth tokens');
+auth_ui_expect(str_contains($loginJs, "post('country_defaults'") && str_contains($loginJs, 'browser_timezone:') && str_contains($loginJs, 'browser_locale:'), 'Login country detection hints are incomplete');
 auth_ui_expect(str_contains($loginCss, '.user-login-page .login-card') && str_contains($loginCss, '.login-page-loading'), 'Login CSS is not page-scoped or loader-compatible');
 auth_ui_expect(str_contains($loginCss, '--login-keyboard-inset') && str_contains($loginCss, '.user-login-page.login-keyboard-open'), 'Login keyboard viewport CSS is missing');
 auth_ui_expect(str_contains($proxy, "case 'login_check_number':") && str_contains($proxy, "case 'login_verify_password':") && str_contains($proxy, "case 'login_verify_pin':") && str_contains($proxy, "case 'login_send_otp':"), 'Web proxy staged login routes are missing');
@@ -87,6 +88,7 @@ auth_ui_expect(str_contains($registerJs, "proxyPost('register_precheck'") && str
 auth_ui_expect(str_contains($registerJs, 'navigator.geolocation.getCurrentPosition'), 'Registration must require browser GPS location');
 auth_ui_expect(str_contains($registerJs, 'window.visualViewport') && str_contains($registerJs, 'ensureControlVisible') && str_contains($registerCss, '--register-keyboard-inset'), 'Register keyboard viewport handling is missing');
 auth_ui_expect(!str_contains($registerJs, 'localStorage') && !str_contains($registerJs, 'console.log'), 'Register must not store/log password, PIN or OTP');
+auth_ui_expect(str_contains($registerJs, "proxyPost('country_defaults'") && str_contains($registerJs, 'browser_timezone:') && str_contains($registerJs, 'browser_locale:'), 'Register country detection hints are incomplete');
 auth_ui_expect(str_contains($registerCss, '.user-register-page .register-card') && !str_contains($registerCss, "\n.card{"), 'Register CSS must remain page scoped');
 
 foreach (['phone', 'identity', 'otp', 'credential'] as $step) {
@@ -106,9 +108,11 @@ auth_ui_expect(str_contains($forgotJs, 'expires_in_seconds') && str_contains($fo
 auth_ui_expect(str_contains($forgotJs, "code.includes('ATTEMPTS_EXCEEDED')") && str_contains($forgotJs, "code.includes('FORGOT_SESSION')") && str_contains($forgotJs, "code.includes('RESET_TOKEN')"), 'Forgot identity/session/reset-token error recovery is missing');
 auth_ui_expect(str_contains($forgotJs, 'window.visualViewport') && str_contains($forgotJs, 'ensureControlVisible') && str_contains($forgotCss, '--forgot-keyboard-inset'), 'Forgot keyboard viewport handling is missing');
 auth_ui_expect(!str_contains($forgotJs, 'localStorage') && !str_contains($forgotJs, 'console.log'), 'Forgot must not store/log reset secrets');
+auth_ui_expect(str_contains($forgotJs, "proxyPost('country_defaults'") && str_contains($forgotJs, 'browser_timezone:') && str_contains($forgotJs, 'browser_locale:'), 'Forgot country detection hints are incomplete');
 auth_ui_expect(str_contains($forgotCss, '.user-forgot-page .forgot-card') && !str_contains($forgotCss, "\n.card{"), 'Forgot CSS must remain page scoped');
 
 auth_ui_expect(str_contains($loginCss, 'height: 100dvh') && str_contains($registerCss, 'height: 100dvh') && str_contains($forgotCss, 'height: 100dvh'), 'Auth pages must use stable mobile viewport sizing');
+auth_ui_expect(str_contains($proxy, 'market_ui_default_country($body)'), 'Web country defaults must use the UI-safe country fallback');
 auth_ui_expect(str_contains($loginJs, "window.addEventListener('popstate'") && str_contains($registerJs, "window.addEventListener('popstate'") && str_contains($forgotJs, "window.addEventListener('popstate'"), 'Auth step Back/history handling is incomplete');
 auth_ui_expect(str_contains($loginCss, '@media (prefers-reduced-motion: reduce)') && str_contains($registerCss, '@media (prefers-reduced-motion: reduce)') && str_contains($forgotCss, '@media (prefers-reduced-motion: reduce)'), 'Auth reduced-motion support is incomplete');
 

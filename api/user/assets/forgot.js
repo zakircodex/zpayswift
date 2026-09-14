@@ -458,7 +458,10 @@
   async function loadCountryDefault() {
     el('forgotPhoneContinue').disabled = true;
     try {
-      const data = await proxyPost('country_defaults', {}, 'Detecting country...');
+      const data = await proxyPost('country_defaults', {
+        browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+        browser_locale: navigator.language || ''
+      }, 'Detecting country...');
       const country = String(data.phone_country || '').toUpperCase();
       if (!['BD', 'MY'].includes(country)) throw new Error('Phone country is unavailable.');
       state.phoneCountry = country;

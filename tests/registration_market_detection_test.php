@@ -198,6 +198,23 @@ market_test_server([
 $spoofed = market_request_ip_country_details();
 market_test_expect($spoofed['country'] === 'UNKNOWN', 'untrusted direct request controlled country with spoofed Cloudflare headers');
 market_test_expect(market_request_ip() === '198.51.100.20', 'untrusted X-Forwarded-For or Cloudflare header controlled visitor IP');
+market_test_expect(market_ui_default_country() === 'MY', 'UI-only Cloudflare fallback did not preserve the Malaysia display country');
+
+market_test_server([
+    'REMOTE_ADDR' => '198.51.100.23',
+    'HTTP_CF_IPCOUNTRY' => 'BD',
+]);
+market_test_expect(market_request_ip_country() === 'UNKNOWN', 'UI fallback weakened trusted Bangladesh country detection');
+market_test_expect(market_ui_default_country() === 'BD', 'UI-only Cloudflare fallback did not preserve the Bangladesh display country');
+
+market_test_server([
+    'REMOTE_ADDR' => '198.51.100.24',
+]);
+market_test_expect(market_ui_default_country(['browser_timezone' => 'Asia/Dhaka']) === 'BD', 'Dhaka browser timezone did not select Bangladesh');
+market_test_expect(market_ui_default_country(['browser_timezone' => 'Asia/Kuala_Lumpur']) === 'MY', 'Kuala Lumpur browser timezone did not select Malaysia');
+market_test_expect(market_ui_default_country(['browser_locale' => 'bn-BD']) === 'BD', 'Bangladesh browser locale did not select Bangladesh');
+market_test_expect(market_ui_default_country(['browser_locale' => 'ms-MY']) === 'MY', 'Malaysia browser locale did not select Malaysia');
+market_test_expect(market_ui_default_country(['browser_timezone' => 'UTC', 'browser_locale' => 'en-US']) === '', 'Unsupported browser hints guessed a market country');
 
 market_test_server([
     'REMOTE_ADDR' => '198.51.100.21',

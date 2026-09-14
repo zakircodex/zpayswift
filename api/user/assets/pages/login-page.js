@@ -633,7 +633,10 @@
   async function loadCountryDefault() {
     $('loginPhoneContinue').disabled = true;
     try {
-      const data = await post('country_defaults', {}, 'Detecting country...');
+      const data = await post('country_defaults', {
+        browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+        browser_locale: navigator.language || ''
+      }, 'Detecting country...');
       const country = String(data.phone_country || '').toUpperCase();
       if (!['BD', 'MY'].includes(country)) throw Object.assign(new Error('Country unavailable'), { code: 'INVALID_RESPONSE' });
       state.phoneCountry = country;

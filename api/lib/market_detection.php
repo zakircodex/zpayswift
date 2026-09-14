@@ -358,6 +358,49 @@ function market_request_ip_country_details(array $body = []): array
     ];
 }
 
+function market_ui_country_from_browser_hints(array $body = []): string
+{
+    $timezone = strtolower(trim(substr((string)($body['browser_timezone'] ?? ''), 0, 80)));
+    if (in_array($timezone, ['asia/dhaka', 'asia/dacca'], true)) {
+        return 'BD';
+    }
+    if (in_array($timezone, ['asia/kuala_lumpur', 'asia/kuching'], true)) {
+        return 'MY';
+    }
+
+    $locale = strtolower(trim(substr((string)(
+        $body['browser_locale']
+        ?? $_SERVER['HTTP_ACCEPT_LANGUAGE']
+        ?? ''
+    ), 0, 160)));
+    if (preg_match('/(?:^|[-_])bd(?=$|[-_,;])/', $locale) === 1) {
+        return 'BD';
+    }
+    if (preg_match('/(?:^|[-_])my(?=$|[-_,;])/', $locale) === 1) {
+        return 'MY';
+    }
+
+    return '';
+}
+
+function market_ui_default_country(array $body = []): string
+{
+    $trustedCountry = market_request_ip_country($body);
+    if (in_array($trustedCountry, ['BD', 'MY'], true)) {
+        return $trustedCountry;
+    }
+
+    // Some hosting proxy chains preserve Cloudflare's country header but hide
+    // the original connection peer from PHP. This fallback is for UI defaults
+    // only; registration and other security decisions use the trusted detector.
+    $edgeCountry = market_ip_country_code($_SERVER['HTTP_CF_IPCOUNTRY'] ?? '');
+    if (in_array($edgeCountry, ['BD', 'MY'], true)) {
+        return $edgeCountry;
+    }
+
+    return market_ui_country_from_browser_hints($body);
+}
+
 function market_float_value($value): ?float
 {
     if (!is_numeric($value)) {

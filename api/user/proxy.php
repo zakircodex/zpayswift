@@ -4221,7 +4221,10 @@ switch ($action) {
         $ipCountry = function_exists('market_request_ip_country')
             ? market_request_ip_country($body)
             : '';
-        $defaultCountry = in_array($ipCountry, ['BD', 'MY'], true) ? $ipCountry : 'MY';
+        $uiCountry = function_exists('market_ui_default_country')
+            ? market_ui_default_country($body)
+            : '';
+        $defaultCountry = in_array($uiCountry, ['BD', 'MY'], true) ? $uiCountry : 'MY';
 
         user_proxy_response(true, 'SUCCESS', 'Country defaults loaded', [
             'ip_country' => $ipCountry,

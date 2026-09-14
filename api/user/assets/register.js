@@ -1003,7 +1003,10 @@
   async function loadCountryDefaults() {
     el('registerPhoneContinue').disabled = true;
     try {
-      const data = await proxyPost('country_defaults', { browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '' }, 'Detecting country...');
+      const data = await proxyPost('country_defaults', {
+        browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+        browser_locale: navigator.language || ''
+      }, 'Detecting country...');
       const phoneCountry = String(data.phone_country || '').toUpperCase();
       if (!['BD', 'MY'].includes(phoneCountry)) throw new Error('Phone country is unavailable.');
       state.ipCountry = String(data.ip_country || '').toUpperCase();

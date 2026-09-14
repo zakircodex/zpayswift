@@ -4286,7 +4286,10 @@ function updateLoginCountryUi(){
 
 async function loadLoginCountryDefault(){
   try {
-    const data = await proxyPost('country_defaults', {}, 'Detecting country...');
+    const data = await proxyPost('country_defaults', {
+      browser_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+      browser_locale: navigator.language || ''
+    }, 'Detecting country...');
     const country = String(data.phone_country || 'BD').toUpperCase();
     if (el('loginPhoneCountry') && ['BD','MY'].includes(country)) {
       el('loginPhoneCountry').value = country;
