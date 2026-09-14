@@ -10,6 +10,7 @@ require_once __DIR__ . '/subadmin_api.php';
 require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/topup_config.php';
 require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/admin_push.php';
 
 function topup_now(): int
 {
@@ -847,6 +848,8 @@ function topup_notify_telegram_request(array $row): array
             'data' => [],
         ];
     }
+
+    admin_push_notify_request('TOPUP', $requestId, $row);
 
     if (!topup_telegram_enabled()) {
         topup_telegram_patch_request($requestId, [

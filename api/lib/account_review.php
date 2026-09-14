@@ -7,6 +7,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 }
 
 require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/admin_push.php';
 
 function account_review_telegram_bot_token(): string
 {
@@ -257,6 +258,7 @@ function account_review_send_telegram(string $uid, array $user): array
         ];
     }
 
+    admin_push_notify_request('ACCOUNT_REVIEW', $uid, ['uid' => $uid]);
     $res = account_review_telegram_api('sendMessage', [
         'chat_id' => account_review_telegram_chat_id(),
         'text' => account_review_message($user),

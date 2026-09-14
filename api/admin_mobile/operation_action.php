@@ -3,8 +3,53 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/admin_mobile.php';
+require_once dirname(__DIR__) . '/lib/wallet.php';
 require_once dirname(__DIR__) . '/lib/add_money.php';
+require_once dirname(__DIR__) . '/lib/topup.php';
+require_once dirname(__DIR__) . '/lib/bundle.php';
 require_once dirname(__DIR__) . '/lib/mfs.php';
+
+function admin_mobile_operation_status(string $type, string $requestId): string
+{
+    if ($type === 'BKASH' || $type === 'NAGAD') {
+        $row = mfs_find_request($requestId);
+        return strtoupper(trim((string)($row['status'] ?? '')));
+    }
+    if ($type === 'TOPUP') {
+        $row = topup_find_request($requestId);
+        return strtoupper(trim((string)($row['status'] ?? '')));
+    }
+    if ($type === 'BUNDLE') {
+        $row = fb_get('BUNDLE_REQUESTS/DONE/' . $requestId);
+        if (!is_array($row)) {
+            $row = fb_get('BUNDLE_REQUESTS/PENDING/' . $requestId);
+        }
+        return strtoupper(trim((string)($row['status'] ?? '')));
+    }
+    return '';
+}
+
+function admin_mobile_operation_is_requested_terminal_status(string $decision, string $status): bool
+{
+    $status = strtoupper(trim($status));
+    return $decision === 'SUCCESS'
+        ? in_array($status, ['SUCCESS', 'SUCCESSFUL', 'DONE', 'COMPLETED'], true)
+        : in_array($status, ['FAILED', 'REJECTED'], true);
+}
+
+function admin_mobile_operation_http_status(string $code): int
+{
+    if ($code === 'NOT_FOUND') {
+        return 404;
+    }
+    if (in_array($code, ['ALREADY_DONE', 'ALREADY_COMPLETED', 'REQUEST_BUSY', 'FINANCIAL_OPERATION_BUSY'], true)) {
+        return 409;
+    }
+    if (in_array($code, ['VALIDATION_ERROR', 'INVALID_REQUEST', 'SENDER_DETAILS_REQUIRED'], true)) {
+        return 422;
+    }
+    return 500;
+}
 
 api_require_method('POST');
 $auth = admin_mobile_require_session(true);
@@ -13,7 +58,6 @@ $type = strtoupper(trim((string)($body['type'] ?? '')));
 $decision = strtoupper(trim((string)($body['decision'] ?? '')));
 $requestId = trim((string)($body['request_id'] ?? ''));
 $message = trim((string)($body['message'] ?? ''));
-$deviceId = admin_mobile_device_id(true);
 
 if (!in_array($type, ['TOPUP', 'BUNDLE', 'BKASH', 'NAGAD', 'ADD_MONEY'], true)
     || !in_array($decision, ['SUCCESS', 'FAILED', 'APPROVE', 'REJECT'], true)
@@ -57,35 +101,68 @@ if ($type === 'BKASH' || $type === 'NAGAD') {
     }
 }
 
-$routes = [
-    'TOPUP' => [
-        'SUCCESS' => 'admin/topup/mark_success.php',
-        'FAILED' => 'admin/topup/mark_failed.php',
-    ],
-    'BUNDLE' => [
-        'SUCCESS' => 'admin/bundle/mark_success.php',
-        'FAILED' => 'admin/bundle/mark_failed.php',
-    ],
-    'BKASH' => [
-        'SUCCESS' => 'admin/mfs/mark_success.php',
-        'FAILED' => 'admin/mfs/mark_failed.php',
-    ],
-    'NAGAD' => [
-        'SUCCESS' => 'admin/mfs/mark_success.php',
-        'FAILED' => 'admin/mfs/mark_failed.php',
-    ],
+$actor = [
+    'uid' => (string)($auth['user']['uid'] ?? ''),
+    'role' => 'ADMIN',
 ];
-$payload = [
+$result = [];
+
+if ($type === 'TOPUP') {
+    $defaultMessage = $decision === 'SUCCESS' ? 'Topup completed manually' : 'Topup failed manually';
+    $result = $decision === 'SUCCESS'
+        ? topup_mark_success($requestId, $message !== '' ? $message : $defaultMessage)
+        : topup_mark_failed($requestId, $message !== '' ? $message : $defaultMessage);
+} elseif ($type === 'BUNDLE') {
+    $defaultMessage = $decision === 'SUCCESS' ? 'Bundle sent manually' : 'Failed to send bundle';
+    $result = $decision === 'SUCCESS'
+        ? bundle_mark_success($requestId, $message !== '' ? $message : $defaultMessage)
+        : bundle_mark_failed($requestId, $message !== '' ? $message : $defaultMessage);
+} elseif ($decision === 'SUCCESS') {
+    $senderDetails = trim((string)($body['sender_details'] ?? ''));
+    if ($senderDetails === '') {
+        api_response(false, 'VALIDATION_ERROR', 'Sender details are required.', [], 422);
+    }
+    $saved = mfs_save_sender_details($requestId, $senderDetails);
+    if (empty($saved['ok'])) {
+        $savedStatus = admin_mobile_operation_status($type, $requestId);
+        if (admin_mobile_operation_is_requested_terminal_status($decision, $savedStatus)) {
+            api_response(true, 'ALREADY_APPLIED', 'This request was already marked successful.', [
+                'request_id' => $requestId,
+                'status' => $savedStatus,
+                'idempotent_replay' => true,
+            ]);
+        }
+        $savedCode = (string)($saved['code'] ?? 'SERVER_ERROR');
+        api_response(false, $savedCode, (string)($saved['message'] ?? 'Sender details could not be saved.'), (array)($saved['data'] ?? []), admin_mobile_operation_http_status($savedCode));
+    }
+    $successMessage = $message !== '' ? $message : 'Transaction successful. Sender details: ' . $senderDetails;
+    $result = mfs_mark_success($requestId, $successMessage, trim((string)($body['trxid'] ?? '')), $actor);
+} else {
+    $result = mfs_mark_failed($requestId, $message !== '' ? $message : 'Transaction failed', $actor);
+}
+
+if (empty($result['ok'])) {
+    $status = admin_mobile_operation_status($type, $requestId);
+    if (admin_mobile_operation_is_requested_terminal_status($decision, $status)) {
+        api_response(true, 'ALREADY_APPLIED', 'This request was already updated.', [
+            'request_id' => $requestId,
+            'status' => $status,
+            'idempotent_replay' => true,
+        ]);
+    }
+    $code = (string)($result['code'] ?? 'SERVER_ERROR');
+    api_response(false, $code, (string)($result['message'] ?? 'Operation action failed.'), (array)($result['data'] ?? []), admin_mobile_operation_http_status($code));
+}
+
+if (function_exists('admin_action_log')) {
+    admin_action_log('ADMIN_MOBILE_' . $type . '_' . $decision, $requestId, 'Admin mobile processed request', [
+        'request_id' => $requestId,
+        'admin_uid' => (string)($auth['user']['uid'] ?? ''),
+        'result_code' => (string)($result['code'] ?? ''),
+    ]);
+}
+
+api_response(true, (string)($result['code'] ?? 'SUCCESS'), (string)($result['message'] ?? 'Request updated.'), [
     'request_id' => $requestId,
-    'message' => $message,
-    'trxid' => trim((string)($body['trxid'] ?? '')),
-    'sender_details' => trim((string)($body['sender_details'] ?? '')),
-];
-$result = admin_mobile_internal_request(
-    'POST',
-    $routes[$type][$decision],
-    $payload,
-    admin_mobile_current_token(),
-    $deviceId
-);
-admin_mobile_emit_internal($result);
+    'status' => admin_mobile_operation_status($type, $requestId),
+]);

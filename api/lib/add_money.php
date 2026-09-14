@@ -9,6 +9,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/admin_pagination.php';
+require_once __DIR__ . '/admin_push.php';
 
 function add_money_now(): int
 {
@@ -1435,6 +1436,7 @@ function add_money_create_request(string $uid, array $user, array $wallet, array
         return ['ok' => false, 'code' => 'SAVE_FAILED', 'message' => 'Request saved but idempotency finalization must be retried'];
     }
 
+    admin_push_notify_request('ADD_MONEY', $requestId, $row);
     $telegram = add_money_notify_telegram($row);
 
     return [

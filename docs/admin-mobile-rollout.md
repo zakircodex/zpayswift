@@ -9,8 +9,10 @@ The admin Android API is opt-in and disabled by default. It reuses the existing 
 3. Run the PHP contract and regression tests.
 4. Build the admin app with the private app key and a separate admin signing key.
 5. Test login, OTP, session lock, and one non-production request of every supported type.
-6. Set `ADMIN_MOBILE_ENABLED` to true in the private `api/config.php`.
-7. Monitor admin audit logs and request states before wider use.
+6. Allow notification permission, then verify one new-request alert while the app is backgrounded.
+7. Verify that success and failed decisions create a notification in the customer app.
+8. Set `ADMIN_MOBILE_ENABLED` to true in the private `api/config.php`.
+9. Monitor admin audit logs and request states before wider use.
 
 Private server configuration:
 
@@ -24,6 +26,7 @@ define('ADMIN_MOBILE_MIN_VERSION_CODE', 1);
 
 - Set `ADMIN_MOBILE_ENABLED` to false to reject new logins and invalidate all active admin-mobile requests.
 - Set an admin device row under `ADMIN_MOBILE_DEVICES/{adminUid}/{deviceKey}` to `REVOKED` to block a lost device.
+- Admin push tokens are bound to active admin devices under `ADMIN_MOBILE_PUSH_TOKENS`; logout deactivates the current device tokens.
 - Increase `ADMIN_MOBILE_MIN_VERSION_CODE` to require a newer app build.
 - Use the existing web admin panel while the mobile channel is disabled.
 

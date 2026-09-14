@@ -75,6 +75,7 @@ $endpoints = [
     'maintenance.php',
     'support.php',
     'reviews.php',
+    'device_token.php',
 ];
 
 foreach ($endpoints as $endpoint) {
@@ -95,8 +96,29 @@ $operationAction = admin_mobile_source('api/admin_mobile/operation_action.php');
 admin_mobile_expect(
     str_contains($operationAction, 'add_money_process_request')
         && str_contains($operationAction, 'mfs_find_request')
-        && str_contains($operationAction, 'admin_mobile_internal_request'),
-    'Financial actions must reuse canonical domain operations and verify the MFS provider.'
+        && str_contains($operationAction, 'mfs_mark_success')
+        && str_contains($operationAction, 'topup_mark_success')
+        && str_contains($operationAction, 'bundle_mark_success')
+        && !str_contains($operationAction, 'admin_mobile_internal_request'),
+    'Financial actions must call canonical domain operations directly and verify the MFS provider.'
+);
+admin_mobile_expect(
+    str_contains($operationAction, 'ALREADY_APPLIED')
+        && str_contains($operationAction, 'idempotent_replay'),
+    'Repeated terminal actions must return an idempotent success when the requested result already exists.'
+);
+
+$dashboard = admin_mobile_source('api/admin_mobile/dashboard.php');
+admin_mobile_expect(
+    str_contains($dashboard, "require_once dirname(__DIR__) . '/lib/rates.php'"),
+    'Dashboard rate state must load the canonical rate helper.'
+);
+
+$supportLibrary = admin_mobile_source('api/lib/support.php');
+admin_mobile_expect(
+    str_contains($supportLibrary, 'realpath(__FILE__)')
+        && !str_contains($supportLibrary, 'basename(__FILE__) === basename'),
+    'Support direct-access protection must compare full paths so the mobile support endpoint can include it.'
 );
 
 $rate = admin_mobile_source('api/admin_mobile/rate.php');
@@ -119,5 +141,49 @@ admin_mobile_expect(
         && str_contains($support, "'source' => 'ADMIN_MOBILE'"),
     'Support replies must be idempotent and identify their mobile source.'
 );
+
+$deviceToken = admin_mobile_source('api/admin_mobile/device_token.php');
+admin_mobile_expect(
+    str_contains($deviceToken, 'admin_mobile_require_session(true)')
+        && str_contains($deviceToken, 'admin_push_register_device_token')
+        && str_contains($deviceToken, 'admin_push_deactivate_device'),
+    'Admin push token registration must require a bound admin mobile session.'
+);
+
+$adminPush = admin_mobile_source('api/lib/admin_push.php');
+admin_mobile_expect(
+    str_contains($adminPush, 'ADMIN_MOBILE_PUSH_TOKENS/')
+        && str_contains($adminPush, 'ADMIN_NEW_REQUEST')
+        && str_contains($adminPush, 'role !== \'ADMIN\''),
+    'Admin request push must target active authenticated admin devices only.'
+);
+
+$pushHookFiles = [
+    'api/lib/topup.php' => "admin_push_notify_request('TOPUP'",
+    'api/lib/bundle.php' => "admin_push_notify_request('BUNDLE'",
+    'api/lib/add_money.php' => "admin_push_notify_request('ADD_MONEY'",
+    'api/lib/mfs.php' => 'admin_push_notify_request($provider',
+    'api/lib/support.php' => "admin_push_notify_request('SUPPORT'",
+    'api/lib/account_review.php' => "admin_push_notify_request('ACCOUNT_REVIEW'",
+];
+foreach ($pushHookFiles as $file => $needle) {
+    admin_mobile_expect(
+        str_contains(admin_mobile_source($file), $needle),
+        "{$file} must notify the admin app when a new actionable request is created."
+    );
+}
+
+$userNotificationFiles = [
+    'api/lib/topup.php' => 'topup_record_user_notification',
+    'api/lib/bundle.php' => 'bundle_record_user_notification',
+    'api/lib/add_money.php' => 'notification_emit_request_status_notification',
+    'api/lib/mfs.php' => 'mfs_record_user_notification',
+];
+foreach ($userNotificationFiles as $file => $needle) {
+    admin_mobile_expect(
+        str_contains(admin_mobile_source($file), $needle),
+        "{$file} must retain user notification delivery for terminal admin decisions."
+    );
+}
 
 echo "Admin mobile API contract tests passed ({$assertions} assertions).\n";

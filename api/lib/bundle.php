@@ -9,6 +9,7 @@ if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
 require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/topup_config.php';
+require_once __DIR__ . '/admin_push.php';
 
 function bundle_now(): int
 {
@@ -758,6 +759,11 @@ function bundle_telegram_request_keyboard(string $requestId): array
 
 function bundle_notify_telegram_bundle_request(array $row): array
 {
+    $requestId = trim((string)($row['request_id'] ?? ''));
+    if ($requestId !== '') {
+        admin_push_notify_request('BUNDLE', $requestId, $row);
+    }
+
     if (!bundle_telegram_enabled()) {
         return [
             'ok' => false,
@@ -767,7 +773,6 @@ function bundle_notify_telegram_bundle_request(array $row): array
         ];
     }
 
-    $requestId = trim((string)($row['request_id'] ?? ''));
     if ($requestId === '') {
         return [
             'ok' => false,

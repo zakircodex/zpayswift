@@ -1,15 +1,18 @@
 <?php
 declare(strict_types=1);
 
-if (basename(__FILE__) === basename($_SERVER['SCRIPT_FILENAME'] ?? '')) {
+$supportScriptFilename = realpath((string)($_SERVER['SCRIPT_FILENAME'] ?? ''));
+if ($supportScriptFilename !== false && $supportScriptFilename === realpath(__FILE__)) {
     http_response_code(404);
     exit('Not Found');
 }
+unset($supportScriptFilename);
 
 require_once __DIR__ . '/telegram.php';
 require_once __DIR__ . '/fcm.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/admin_pagination.php';
+require_once __DIR__ . '/admin_push.php';
 
 function support_now(): int
 {
@@ -1543,6 +1546,7 @@ function support_create_ticket(array $auth, array $body, array $files = []): arr
     }
     fb_put('SUPPORT_RATE_LIMIT/' . $uid, ['last_created_at' => $now]);
     support_save_auto_first_message($ticketId);
+    admin_push_notify_request('SUPPORT', 'CREATE:' . $ticketId, $ticket);
     support_notify_telegram_new_ticket($ticket, $msg);
     return ['ok' => true, 'ticket' => $ticket];
 }
@@ -2198,6 +2202,11 @@ function support_reply_run_side_effects(array $ticket, array $message, array $at
         (string)($ticket['ticket_id'] ?? ''),
         'New User Reply',
         'User replied to support ticket ' . (string)($ticket['ticket_id'] ?? '')
+    );
+    admin_push_notify_request(
+        'SUPPORT',
+        'REPLY:' . (string)($ticket['ticket_id'] ?? '') . ':' . $messageId,
+        ['request_id' => (string)($ticket['ticket_id'] ?? '')]
     );
     $telegram = support_notify_telegram_user_reply($ticket, $message, $attachments);
     return [

@@ -10,6 +10,7 @@ require_once dirname(__DIR__) . '/lib/add_money.php';
 require_once dirname(__DIR__) . '/lib/bundle.php';
 require_once dirname(__DIR__) . '/lib/mfs.php';
 require_once dirname(__DIR__) . '/lib/mfs_admin_settings.php';
+require_once dirname(__DIR__) . '/lib/rates.php';
 require_once dirname(__DIR__) . '/lib/support.php';
 
 api_require_method('GET');

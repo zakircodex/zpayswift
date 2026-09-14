@@ -11,6 +11,7 @@ require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/mfs_fee_tiers.php';
 require_once __DIR__ . '/referral.php';
 require_once __DIR__ . '/admin_pagination.php';
+require_once __DIR__ . '/admin_push.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -3557,6 +3558,7 @@ function mfs_create_request(string $uid, array $body, string $source = 'USER_PAN
     mfs_create_request_status($requestId, $uid, 'PENDING', 'MFS request created');
     mfs_write_user_request_log($uid, $requestId, $row);
     mfs_write_history($uid, $requestId, $row);
+    admin_push_notify_request($provider, $requestId, $row);
 
     if (function_exists('system_log')) {
         try {
