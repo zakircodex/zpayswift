@@ -174,6 +174,7 @@ test_set('CONFIG/ADD_MONEY_ACCOUNTS/BD_BKASH', [
     'display_name' => 'bKash Payment',
     'account_holder' => 'Z-Pay Swift',
     'account_number' => '01700000000',
+    'logo_url' => 'http://zpayswift.com/uploads/bkash.png',
     'active' => true,
 ]);
 test_set('CONFIG/ADD_MONEY_ACCOUNTS/BD_NAGAD', [
@@ -184,6 +185,7 @@ test_set('CONFIG/ADD_MONEY_ACCOUNTS/BD_NAGAD', [
     'display_name' => 'Nagad Payment',
     'account_holder' => 'Z-Pay Swift',
     'account_number' => '01800000000',
+    'logo_url' => '//zpayswift.com/uploads/nagad.png',
     'active' => true,
 ]);
 test_set('CONFIG/ADD_MONEY_ACCOUNTS/MY_BANK', [
@@ -202,11 +204,20 @@ $bdPaymentProfile = add_money_user_payload(
 );
 $bdPaymentMethods = array_column((array)($bdPaymentProfile['accounts'] ?? []), 'method');
 sort($bdPaymentMethods);
+$bdPaymentLogos = [];
+foreach ((array)($bdPaymentProfile['accounts'] ?? []) as $paymentAccount) {
+    $bdPaymentLogos[(string)($paymentAccount['method'] ?? '')] = (string)($paymentAccount['logo_url'] ?? '');
+}
 assert_true(
     ($bdPaymentProfile['pricing_country'] ?? '') === 'BD'
     && ($bdPaymentProfile['currency'] ?? '') === 'BDT'
     && $bdPaymentMethods === ['BKASH', 'NAGAD'],
     'BD Add Money profile must expose only BDT bKash and Nagad accounts'
+);
+assert_true(
+    ($bdPaymentLogos['BKASH'] ?? '') === 'https://zpayswift.com/uploads/bkash.png'
+    && ($bdPaymentLogos['NAGAD'] ?? '') === 'https://zpayswift.com/uploads/nagad.png',
+    'BD Add Money logos must be normalized to Android-safe HTTPS URLs'
 );
 $myPaymentProfile = add_money_user_payload(
     ['pricing_country' => 'MY', 'wallet_currency' => 'MYR'],

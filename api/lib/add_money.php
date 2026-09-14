@@ -441,6 +441,24 @@ function add_money_normalize_method(string $method, string $country = ''): strin
     return $method;
 }
 
+function add_money_normalize_logo_url($value): string
+{
+    $value = trim((string)$value);
+    if ($value === '') {
+        return '';
+    }
+
+    if (str_starts_with($value, '//')) {
+        return 'https:' . $value;
+    }
+
+    if (preg_match('#^http://#i', $value) === 1) {
+        return 'https://' . substr($value, 7);
+    }
+
+    return $value;
+}
+
 function add_money_normalize_payment_account(array $row, string $id = ''): array
 {
     $country = strtoupper(trim((string)($row['country'] ?? '')));
@@ -451,7 +469,7 @@ function add_money_normalize_payment_account(array $row, string $id = ''): array
 
     $displayName = trim((string)($row['display_name'] ?? $row['name'] ?? ''));
     $accountHolder = trim((string)($row['account_holder'] ?? $row['holder_name'] ?? ''));
-    $logoUrl = trim((string)($row['logo_url'] ?? $row['logo'] ?? $row['image_url'] ?? $row['icon_url'] ?? ''));
+    $logoUrl = add_money_normalize_logo_url($row['logo_url'] ?? $row['logo'] ?? $row['image_url'] ?? $row['icon_url'] ?? '');
 
     return [
         'id' => $accountId,

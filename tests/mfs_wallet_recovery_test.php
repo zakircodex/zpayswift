@@ -440,17 +440,34 @@ function mfs_create_body(string $provider, string $idempotencyKey, float $amount
     ];
 }
 
+fb_put('MFS_CONFIG', [
+    'fees' => [
+        'BD' => [
+            'BKASH' => ['SEND_MONEY' => ['type' => 'fixed', 'fixed' => 0.00]],
+            'NAGAD' => ['SEND_MONEY' => ['type' => 'fixed', 'fixed' => 0.00]],
+        ],
+    ],
+]);
 fb_put('MFS_SETTINGS', [
     'rate_myr_bdt' => 31.00,
     'fees' => [
         'MY' => [
             'TIERS' => mfs_my_fee_tier_storage(),
         ],
+        'BD' => [
+            'BKASH' => ['type' => 'fixed', 'fixed' => 12.00, 'percent' => 0.00, 'min_fee' => 0.00, 'max_fee' => 0.00],
+            'NAGAD' => ['type' => 'fixed', 'fixed' => 8.00, 'percent' => 0.00, 'min_fee' => 0.00, 'max_fee' => 0.00],
+        ],
     ],
 ]);
 mfs_config(true);
 $publicFeeSettings = mfs_public_settings();
 assert_true(!isset($publicFeeSettings['fees']['MY']['TIERS']), 'Public MFS settings must not expose the Admin tier matrix');
+assert_true(
+    (float)($publicFeeSettings['fees']['BD']['BKASH']['fixed'] ?? 0) === 12.00
+    && (float)($publicFeeSettings['fees']['BD']['NAGAD']['fixed'] ?? 0) === 8.00,
+    'Admin provider-level BD fees must override stale service-level compatibility rows'
+);
 
 $roleCases = [
     ['MFS_TIER_USER', 'USER', 50000.01, 7.00],
@@ -782,7 +799,15 @@ $bdConfirm = mfs_confirm_from_preview('MFS_CREATE_BD', 'BKASH', 'MFS_CREATE_BD_O
 $bdCreate = (array)$bdConfirm['result'];
 assert_true(!empty($bdConfirm['preview']['ok']), 'BD MFS preview must succeed');
 assert_true(!empty($bdCreate['ok']), 'BD MFS confirm must create a request');
+assert_true((float)($bdConfirm['preview']['data']['fee_bdt'] ?? 0) === 12.00, 'BD bKash preview must use the Admin fixed fee');
+assert_true((float)($bdCreate['data']['fee_bdt'] ?? 0) === 12.00, 'BD bKash create must preserve and debit the previewed fee');
 assert_true((float)($bdCreate['data']['total_debit'] ?? 0) === (float)($bdCreate['data']['amount_bdt'] ?? 0) + (float)($bdCreate['data']['fee_bdt'] ?? 0), 'BD fee and total debit must remain consistent');
+$bdWalletAfterCreate = (array)fb_get('USER_WALLETS/MFS_CREATE_BD');
+assert_true(
+    (float)($bdWalletAfterCreate['available_balance'] ?? 0) === 9368.00
+    && (float)($bdWalletAfterCreate['hold_balance'] ?? 0) === 632.00,
+    'BD bKash wallet must hold the amount plus Admin fixed fee'
+);
 assert_true((string)($bdCreate['data']['wallet_currency'] ?? '') === 'BDT', 'BD wallet currency must remain BDT');
 assert_true((float)($bdCreate['data']['exchange_rate'] ?? -1) === 0.00, 'BD MFS request must not snapshot an MYR exchange rate');
 
@@ -791,6 +816,14 @@ $nagadBdConfirm = mfs_confirm_from_preview('MFS_CREATE_NAGAD_BD', 'NAGAD', 'MFS_
 $nagadBdCreate = (array)$nagadBdConfirm['result'];
 assert_true(!empty($nagadBdConfirm['preview']['ok']), 'Nagad BD MFS preview must succeed');
 assert_true(!empty($nagadBdCreate['ok']), 'Nagad BD MFS confirm must create a request');
+assert_true((float)($nagadBdConfirm['preview']['data']['fee_bdt'] ?? 0) === 8.00, 'BD Nagad preview must use the Admin fixed fee');
+assert_true((float)($nagadBdCreate['data']['fee_bdt'] ?? 0) === 8.00, 'BD Nagad create must preserve and debit the previewed fee');
+$nagadBdWalletAfterCreate = (array)fb_get('USER_WALLETS/MFS_CREATE_NAGAD_BD');
+assert_true(
+    (float)($nagadBdWalletAfterCreate['available_balance'] ?? 0) === 9372.00
+    && (float)($nagadBdWalletAfterCreate['hold_balance'] ?? 0) === 628.00,
+    'BD Nagad wallet must hold the amount plus Admin fixed fee'
+);
 assert_true((string)($nagadBdCreate['data']['provider'] ?? '') === 'NAGAD', 'Nagad BD provider must remain canonical');
 assert_true((string)($nagadBdCreate['data']['wallet_currency'] ?? '') === 'BDT', 'Nagad BD wallet currency must remain BDT');
 assert_true((float)($nagadBdCreate['data']['amount_rm'] ?? 0) === 0.00, 'Nagad BD request must not apply MYR conversion');

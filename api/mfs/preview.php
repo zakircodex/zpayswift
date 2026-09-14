@@ -442,119 +442,12 @@ function mfs_preview_mfs_enabled(array $config): bool
     return true;
 }
 
-function mfs_preview_fee_from_rule($rule, float $amount): float
-{
-    if ($rule === null || $rule === '' || $rule === false) {
-        return 0.0;
-    }
-
-    if (is_numeric($rule)) {
-        return mfs_preview_round($rule);
-    }
-
-    if (!is_array($rule)) {
-        return 0.0;
-    }
-
-    if (array_key_exists('active', $rule) && !mfs_preview_bool($rule['active'], true)) {
-        return 0.0;
-    }
-
-    if (!empty($rule['tiers']) && is_array($rule['tiers'])) {
-        foreach ($rule['tiers'] as $tier) {
-            if (!is_array($tier)) {
-                continue;
-            }
-
-            $min = isset($tier['min']) ? (float)$tier['min'] : 0.0;
-            $max = isset($tier['max']) ? (float)$tier['max'] : 0.0;
-
-            if ($amount < $min) {
-                continue;
-            }
-
-            if ($max > 0 && $amount > $max) {
-                continue;
-            }
-
-            return mfs_preview_fee_from_rule($tier, $amount);
-        }
-    }
-
-    $type = strtoupper(trim((string)($rule['type'] ?? $rule['fee_type'] ?? 'FLAT')));
-
-    if (in_array($type, ['PERCENT', 'PERCENTAGE', 'RATE'], true)) {
-        $percent = 0.0;
-
-        foreach (['percent', 'percentage', 'rate', 'fee_percent'] as $key) {
-            if (isset($rule[$key]) && is_numeric($rule[$key])) {
-                $percent = (float)$rule[$key];
-                break;
-            }
-        }
-
-        $fee = ($amount * $percent) / 100.0;
-    } elseif (in_array($type, ['PER_1000', 'PER_THOUSAND'], true)) {
-        $per1000 = 0.0;
-
-        foreach (['per_1000', 'fee_per_1000', 'amount'] as $key) {
-            if (isset($rule[$key]) && is_numeric($rule[$key])) {
-                $per1000 = (float)$rule[$key];
-                break;
-            }
-        }
-
-        $fee = ($amount / 1000.0) * $per1000;
-    } else {
-        $fee = 0.0;
-
-        foreach (['amount', 'fee', 'flat', 'fee_amount'] as $key) {
-            if (isset($rule[$key]) && is_numeric($rule[$key])) {
-                $fee = (float)$rule[$key];
-                break;
-            }
-        }
-    }
-
-    if (isset($rule['min']) && is_numeric($rule['min'])) {
-        $fee = max($fee, (float)$rule['min']);
-    }
-
-    if (isset($rule['max']) && is_numeric($rule['max']) && (float)$rule['max'] > 0) {
-        $fee = min($fee, (float)$rule['max']);
-    }
-
-    return mfs_preview_round($fee);
-}
-
-function mfs_preview_bd_fee_bdt(array $config, string $provider, string $serviceType, string $accountType, float $amountBdt): float
+function mfs_preview_bd_fee_bdt(string $provider, string $serviceType, float $amountBdt): float
 {
     $provider = mfs_preview_normalize_provider($provider);
     $serviceType = mfs_preview_normalize_service_type($serviceType);
-    $accountType = mfs_preview_normalize_account_type($accountType);
 
-    $paths = [
-        ['fees', 'BD', $provider, $serviceType, $accountType],
-        ['fees', 'BD', $provider, $serviceType],
-        ['fees', 'BD', $serviceType, $accountType],
-        ['fees', 'BD', $serviceType],
-        ['bd_fees', $provider, $serviceType, $accountType],
-        ['bd_fees', $provider, $serviceType],
-    ];
-
-    foreach ($paths as $path) {
-        $rule = mfs_preview_config_path($config, $path, null);
-
-        if ($rule !== null) {
-            return mfs_preview_fee_from_rule($rule, $amountBdt);
-        }
-    }
-
-    /*
-     * Default: 0.
-     * Official fee DB/config থেকে set করাই safe, কারণ bKash/Nagad fee পরিবর্তন হতে পারে।
-     */
-    return 0.0;
+    return mfs_bd_official_fee_bdt($provider, $serviceType, $amountBdt);
 }
 
 function mfs_preview_make_preview_id(): string
@@ -777,7 +670,7 @@ $totalDebit = 0.0;
 $totalDebitCurrency = $walletCurrency;
 
 if ($countryCode === 'BD') {
-    $feeBdt = mfs_preview_bd_fee_bdt($config, $provider, $serviceType, $accountType, $amountBdt);
+    $feeBdt = mfs_preview_bd_fee_bdt($provider, $serviceType, $amountBdt);
     $feeRm = 0.0;
     $totalDebit = mfs_preview_round($amountBdt + $feeBdt);
 } else {

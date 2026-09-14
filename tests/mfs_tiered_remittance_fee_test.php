@@ -88,6 +88,8 @@ $configExample = (string)file_get_contents($root . '/api/config.example.php');
 
 tier_expect(str_contains($mfs, 'mfs_resolve_my_fee_tier($amountBdt, $role'), 'Canonical MFS calculator does not use the shared tier helper');
 tier_expect(str_contains($preview, 'mfs_resolve_my_fee_tier($amountBdt, $userRole'), 'Public MFS preview does not use the shared tier helper');
+tier_expect(str_contains($preview, 'mfs_bd_official_fee_bdt($provider, $serviceType, $amountBdt)'), 'Public BD preview bypasses the canonical Admin fee calculator');
+tier_expect(str_contains($userProxy, 'return mfs_bd_official_fee_bdt($provider, $mfsType, $amountBdt);'), 'Compatibility BD preview bypasses the canonical Admin fee calculator');
 tier_expect(str_contains($userProxy, 'mfs_resolve_my_fee_tier($amountBdt, $role'), 'Compatibility MFS preview does not use the shared tier helper');
 tier_expect(!str_contains($preview, 'function mfs_preview_my_fee_rm'), 'Standalone preview still contains duplicate flat MY fee logic');
 tier_expect(str_contains($mfs, '$role = mfs_user_role($user);'), 'Canonical target account role is not authoritative');

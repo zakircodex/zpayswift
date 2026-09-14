@@ -56,6 +56,12 @@ expect_add_money(
     'Account copy action or fallback is missing'
 );
 expect_add_money(
+    str_contains($js, "url.protocol === 'http:'")
+    && str_contains($js, "window.location.protocol === 'https:'")
+    && str_contains($backend, 'add_money_normalize_logo_url'),
+    'Payment logos are not upgraded safely for HTTPS web and Android clients'
+);
+expect_add_money(
     str_contains($js, 'Holder:')
     && str_contains($js, 'Account:')
     && str_contains($js, 'name="payment_account_id"')

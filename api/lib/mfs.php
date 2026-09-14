@@ -1645,10 +1645,51 @@ function mfs_wallet_display_payload(array $user, array $wallet): array
    Fee / Amount Calculation
 ========================================================= */
 
+function mfs_fee_row_has_rule(array $row): bool
+{
+    foreach ([
+        'type',
+        'fee_type',
+        'fixed_fee',
+        'fixed',
+        'fee_fixed',
+        'flat_fee',
+        'percent_fee',
+        'percent',
+        'fee_percent',
+        'rate_percent',
+        'min_fee',
+        'minimum_fee',
+        'max_fee',
+        'maximum_fee',
+        'tiers',
+    ] as $key) {
+        if (array_key_exists($key, $row)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 function mfs_official_fee_row(string $provider, string $serviceType): array
 {
     $provider = mfs_normalize_provider($provider);
     $serviceType = mfs_normalize_service_type($serviceType);
+
+    $config = mfs_config();
+    $settingsPaths = [
+        'MFS_SETTINGS.fees.BD.' . $provider . '.' . $serviceType,
+        'MFS_SETTINGS.fees.BD.' . $provider,
+    ];
+
+    foreach ($settingsPaths as $path) {
+        $row = mfs_nested_value($config, $path, null);
+
+        if (is_array($row) && mfs_fee_row_has_rule($row)) {
+            return $row;
+        }
+    }
 
     $paths = [
         'BD.' . $provider . '.' . $serviceType,
@@ -1664,12 +1705,10 @@ function mfs_official_fee_row(string $provider, string $serviceType): array
         'fees.LOCAL.' . $provider,
     ];
 
-    $config = mfs_config();
-
     foreach ($paths as $path) {
         $row = mfs_nested_value($config, $path, null);
 
-        if (is_array($row)) {
+        if (is_array($row) && mfs_fee_row_has_rule($row)) {
             return $row;
         }
     }

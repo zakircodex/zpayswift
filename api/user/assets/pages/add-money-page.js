@@ -90,6 +90,7 @@ function addMoneySafeLogoUrl(value){
   if (!raw) return '';
   try {
     const url = new URL(raw, window.location.origin);
+    if (url.protocol === 'http:' && window.location.protocol === 'https:') url.protocol = 'https:';
     return ['http:', 'https:'].includes(url.protocol) ? url.href : '';
   } catch (_) {
     return '';

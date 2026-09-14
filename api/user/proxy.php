@@ -3540,49 +3540,7 @@ function user_proxy_mfs_bd_fee_bdt(string $provider, string $mfsType, float $amo
     $mfsType = user_proxy_mfs_type($mfsType);
     $amountBdt = user_proxy_round_money($amountBdt);
 
-    $paths = [
-        'MFS_SETTINGS/fees/BD/' . $provider . '/' . $mfsType,
-        'MFS_SETTINGS/fees/BD/' . $provider,
-        'MFS_CONFIG/BD_FEES/' . $provider . '/' . $mfsType,
-        'MFS_CONFIG/LOCAL_FEES/' . $provider . '/' . $mfsType,
-        'APP_CONFIG/MFS/BD_FEES/' . $provider . '/' . $mfsType,
-    ];
-
-    foreach ($paths as $path) {
-        $row = fb_get($path);
-
-        if (is_numeric($row)) {
-            return user_proxy_round_money($row);
-        }
-
-        if (!is_array($row)) {
-            continue;
-        }
-
-        $fixed = user_proxy_round_money($row['fixed_bdt'] ?? $row['fixed'] ?? 0);
-        $percent = (float)($row['percent'] ?? $row['rate'] ?? 0);
-
-        if ($percent > 1) {
-            $percent = $percent / 100;
-        }
-
-        $minFee = user_proxy_round_money($row['min_fee_bdt'] ?? $row['min_fee'] ?? 0);
-        $maxFee = user_proxy_round_money($row['max_fee_bdt'] ?? $row['max_fee'] ?? 0);
-
-        $fee = user_proxy_round_money($fixed + ($amountBdt * $percent));
-
-        if ($minFee > 0 && $fee < $minFee) {
-            $fee = $minFee;
-        }
-
-        if ($maxFee > 0 && $fee > $maxFee) {
-            $fee = $maxFee;
-        }
-
-        return user_proxy_round_money($fee);
-    }
-
-    return 0.00;
+    return mfs_bd_official_fee_bdt($provider, $mfsType, $amountBdt);
 }
 
 function user_proxy_mfs_preview_payload(string $uid, array $body): array
