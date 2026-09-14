@@ -10,6 +10,7 @@ api_require_method('GET');
 auth_require_admin_session();
 
 $config = topup_config();
+$privateConfigs = get_operator_private_config_map();
 $countries = [];
 $items = [];
 
@@ -30,8 +31,8 @@ foreach ((array)($config['countries'] ?? []) as $country) {
             continue;
         }
 
-        $runtime = get_operator_runtime($operator) ?: [];
-        $private = get_operator_private_config($operator) ?: [];
+        $runtime = topup_runtime_row($operator) ?: [];
+        $private = $privateConfigs[$operator] ?? [];
         $pinSet = trim((string)($private['retailer_secret_pin'] ?? '')) !== '';
 
         $items[] = [

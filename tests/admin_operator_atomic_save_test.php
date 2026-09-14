@@ -41,6 +41,7 @@ function fb_patch(string $path, array $data): bool
 
 require_once $root . '/api/lib/helpers.php';
 require_once $root . '/api/lib/operators.php';
+require_once $root . '/api/lib/operator_private.php';
 
 function operator_records(string $inputCode, int $revision, bool $active = true, array $extra = []): array
 {
@@ -180,6 +181,17 @@ operator_expect(strpos($saveSource, 'operator_config_save_atomic(') < strpos($sa
 operator_expect(str_contains($saveSource, "'Failed to save operator settings'"), 'database failure is not mapped to a safe generic error');
 operator_expect(str_contains($proxySource, "case 'operator_save':") && str_contains($proxySource, "operators/save.php"), 'Admin proxy action/route changed');
 operator_expect(str_contains($workerSource, "'dial_template'") && str_contains($workerSource, "'retailer_secret_pin'") && str_contains($workerSource, "'assigned_slot'"), 'Worker-facing field names changed');
+operator_expect(str_contains($listSource, 'topup_runtime_row($operator)') && !str_contains($listSource, 'get_operator_runtime($operator)'), 'operator list performs per-operator runtime reads');
+operator_expect(str_contains($listSource, 'get_operator_private_config_map()') && !str_contains($listSource, 'get_operator_private_config($operator)'), 'operator list performs per-operator private config reads');
+
+$operatorDb['OPERATOR_PRIVATE'] = [
+    'GP' => ['retailer_secret_pin' => '1234', 'updated_at' => 900],
+    'robi' => ['operator' => 'ROBI', 'retailer_secret_pin' => '5678', 'updated_at' => 901],
+];
+$privateConfigs = get_operator_private_config_map();
+operator_expect(count($privateConfigs) === 2, 'bulk private config loader omitted operator rows');
+operator_expect(($privateConfigs['GP']['retailer_secret_pin'] ?? '') === '1234', 'bulk private config loader changed the configured PIN');
+operator_expect(($privateConfigs['ROBI']['updated_at'] ?? 0) === 901, 'bulk private config loader did not normalize operator keys');
 
 $getResponse = substr($getSource, (int)strrpos($getSource, 'api_response('));
 $listResponse = substr($listSource, (int)strrpos($listSource, 'api_response('));
