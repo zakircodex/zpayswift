@@ -1356,7 +1356,105 @@ function auth_require_role(string $requiredRole, bool $touchSession = true): arr
 
 function auth_require_admin_session(bool $touchSession = true): array
 {
-    return auth_require_role('ADMIN', $touchSession);
+    $auth = auth_require_role('ADMIN', $touchSession);
+    auth_enforce_admin_mobile_device($auth);
+    return $auth;
+}
+
+function auth_admin_mobile_feature_enabled(): bool
+{
+    if (defined('ADMIN_MOBILE_ENABLED')) {
+        $value = constant('ADMIN_MOBILE_ENABLED');
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        return in_array(strtoupper(trim((string)$value)), ['1', 'TRUE', 'YES', 'ON'], true);
+    }
+
+    $stored = fb_get('APP_CONFIG/admin_mobile_enabled');
+    if (is_bool($stored)) {
+        return $stored;
+    }
+
+    return in_array(strtoupper(trim((string)$stored)), ['1', 'TRUE', 'YES', 'ON'], true);
+}
+
+function auth_admin_mobile_min_version_code(): int
+{
+    $value = defined('ADMIN_MOBILE_MIN_VERSION_CODE')
+        ? (int)constant('ADMIN_MOBILE_MIN_VERSION_CODE')
+        : 1;
+
+    return max(1, $value);
+}
+
+function auth_admin_mobile_device_key(string $deviceId): string
+{
+    return hash('sha256', trim($deviceId));
+}
+
+function auth_enforce_admin_mobile_device(array $auth): void
+{
+    $session = is_array($auth['session'] ?? null) ? $auth['session'] : [];
+    $channel = strtoupper(trim((string)($session['channel'] ?? '')));
+    if ($channel !== 'ADMIN_MOBILE') {
+        return;
+    }
+
+    $sessionHash = trim((string)($auth['session_hash'] ?? ''));
+    if (!auth_admin_mobile_feature_enabled()) {
+        if ($sessionHash !== '') {
+            fb_patch('USER_SESSIONS/' . $sessionHash, [
+                'status' => 'ADMIN_MOBILE_DISABLED',
+                'updated_at' => now_ts(),
+            ]);
+        }
+        api_response(false, 'ADMIN_MOBILE_DISABLED', 'Admin mobile access is disabled.', [], 503);
+    }
+
+    $deviceId = function_exists('api_get_header')
+        ? trim((string)(api_get_header('X-ADMIN-DEVICE-ID') ?? ''))
+        : trim((string)($_SERVER['HTTP_X_ADMIN_DEVICE_ID'] ?? ''));
+    $sessionDeviceId = trim((string)($session['device_id'] ?? ''));
+    if ($deviceId === '' || $sessionDeviceId === '' || !hash_equals($sessionDeviceId, $deviceId)) {
+        api_response(false, 'ADMIN_DEVICE_MISMATCH', 'This admin session is not valid on this device.', [], 403);
+    }
+
+    $deviceKey = auth_admin_mobile_device_key($deviceId);
+    $sessionDeviceKey = trim((string)($session['admin_mobile_device_key'] ?? ''));
+    if ($sessionDeviceKey === '' || !hash_equals($sessionDeviceKey, $deviceKey)) {
+        api_response(false, 'ADMIN_DEVICE_MISMATCH', 'This admin session is not valid on this device.', [], 403);
+    }
+
+    $sessionVersionCode = max(0, (int)($session['admin_mobile_version_code'] ?? 0));
+    if ($sessionVersionCode < auth_admin_mobile_min_version_code()) {
+        api_response(false, 'ADMIN_MOBILE_UPDATE_REQUIRED', 'Please update the admin app to continue.', [
+            'minimum_version_code' => auth_admin_mobile_min_version_code(),
+        ], 426);
+    }
+
+    $uid = trim((string)($auth['user']['uid'] ?? ''));
+    $device = $uid !== '' ? fb_get('ADMIN_MOBILE_DEVICES/' . $uid . '/' . $deviceKey) : null;
+    if (!is_array($device) || strtoupper(trim((string)($device['status'] ?? ''))) !== 'ACTIVE') {
+        if ($sessionHash !== '') {
+            fb_patch('USER_SESSIONS/' . $sessionHash, [
+                'status' => 'DEVICE_REVOKED',
+                'updated_at' => now_ts(),
+            ]);
+        }
+        api_response(false, 'ADMIN_DEVICE_REVOKED', 'This admin device has been revoked.', [], 403);
+    }
+
+    $lastSeenAt = max(0, (int)($device['last_seen_at'] ?? 0));
+    if ($lastSeenAt < now_ts() - 300) {
+        fb_patch('ADMIN_MOBILE_DEVICES/' . $uid . '/' . $deviceKey, [
+            'last_seen_at' => now_ts(),
+            'last_ip_hash' => function_exists('security_ip_hash')
+                ? security_ip_hash(function_exists('security_client_ip') ? security_client_ip() : '')
+                : '',
+        ]);
+    }
 }
 
 function auth_role_requires_active_device(string $role): bool

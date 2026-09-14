@@ -26,6 +26,10 @@ define('FIREBASE_DB_SECRET', '');
 define('SESSION_TTL_SECONDS', 60 * 60 * 24 * 7);
 define('ADMIN_PANEL_SESSION_TTL_SECONDS', 60 * 60 * 2);
 define('ADMIN_SESSION_TTL_SECONDS', 60 * 60 * 2);
+/* Admin Android companion app is opt-in and uses short, device-bound sessions. */
+define('ADMIN_MOBILE_ENABLED', false);
+define('ADMIN_MOBILE_SESSION_TTL_SECONDS', 60 * 60 * 2);
+define('ADMIN_MOBILE_MIN_VERSION_CODE', 1);
 define('MIN_PASSWORD_LENGTH', 6);
 define('USER_PIN_LENGTH', 4);
 define('OTP_MAX_ATTEMPTS', 5);
