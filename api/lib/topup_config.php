@@ -824,6 +824,10 @@ function topup_claim_preview_token(string $tokenHash, string $uid): array
         }
 
         $row = $res['value'];
+        if ((string)($row['uid'] ?? '') !== $uid) {
+            return topup_validation_error('TOPUP_PREVIEW_INVALID', 'Top-up preview does not belong to this account.', [], 403);
+        }
+
         $status = strtoupper((string)($row['status'] ?? 'READY'));
 
         if (!empty($row['used']) || $status === 'USED') {
@@ -840,7 +844,13 @@ function topup_claim_preview_token(string $tokenHash, string $uid): array
             return topup_validation_error('TOPUP_ALREADY_SUBMITTED', 'This top-up preview was already submitted.');
         }
         if ($status === 'PROCESSING') {
-            return topup_validation_error('TOPUP_ALREADY_SUBMITTED', 'This top-up request is already being submitted.');
+            $row['_token_hash'] = $tokenHash;
+            return [
+                'ok' => true,
+                'resume' => true,
+                'request_id' => trim((string)($row['request_id'] ?? '')),
+                'preview' => $row,
+            ];
         }
         if ((int)($row['expires_at'] ?? 0) < now_ts()) {
             @fb_patch($path, [
@@ -848,9 +858,6 @@ function topup_claim_preview_token(string $tokenHash, string $uid): array
                 'updated_at' => now_ts(),
             ]);
             return topup_validation_error('TOPUP_PREVIEW_EXPIRED', 'Top-up preview expired. Please preview again.');
-        }
-        if ((string)($row['uid'] ?? '') !== $uid) {
-            return topup_validation_error('TOPUP_PREVIEW_INVALID', 'Top-up preview does not belong to this account.', [], 403);
         }
         if (!in_array($status, ['READY', 'ACTIVE', 'FAILED'], true)) {
             return topup_validation_error('TOPUP_ALREADY_SUBMITTED', 'This top-up request is already being submitted.');
@@ -889,6 +896,22 @@ function topup_mark_preview_used(string $tokenHash, string $requestId): void
         'used_at' => now_ts(),
         'status' => 'USED',
         'request_id' => $requestId,
+        'updated_at' => now_ts(),
+    ]);
+}
+
+function topup_mark_preview_processing(string $tokenHash, string $requestId, string $operationRef): bool
+{
+    $tokenHash = trim($tokenHash);
+    $requestId = trim($requestId);
+    if ($tokenHash === '' || $requestId === '') {
+        return false;
+    }
+
+    return fb_patch('TOPUP_PREVIEWS/' . $tokenHash, [
+        'status' => 'PROCESSING',
+        'request_id' => $requestId,
+        'operation_ref' => trim($operationRef),
         'updated_at' => now_ts(),
     ]);
 }

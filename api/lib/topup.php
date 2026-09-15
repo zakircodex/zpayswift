@@ -1289,21 +1289,14 @@ function topup_public_history_row(array $row): array
     return array_replace($row, topup_normalized_history_fields($row));
 }
 
-function topup_write_history(array $done): bool
+function topup_history_row(array $done): array
 {
-    $uid = (string)($done['uid'] ?? '');
-    $requestId = (string)($done['request_id'] ?? '');
-
-    if ($uid === '' || $requestId === '') {
-        return false;
-    }
-
     $requestSource = (string)($done['request_source'] ?? $done['source'] ?? '');
     $normalized = topup_normalized_history_fields($done);
 
-    return fb_put('TOPUP_HISTORY/' . $uid . '/' . topup_history_month_key($done) . '/' . $requestId, [
+    return [
         'type' => 'MOBILE_TOPUP',
-        'request_id' => $requestId,
+        'request_id' => (string)($done['request_id'] ?? ''),
         'topup_number' => (string)($done['topup_number'] ?? ''),
         'operator' => (string)($done['operator'] ?? ''),
         'operator_code' => (string)($done['operator_code'] ?? $done['operator'] ?? ''),
@@ -1359,7 +1352,75 @@ function topup_write_history(array $done): bool
         'completed_at' => (int)($done['completed_at'] ?? 0),
         'created_by_admin' => (bool)($done['created_by_admin'] ?? false),
         'request_source' => $requestSource,
-    ]);
+    ];
+}
+
+function topup_write_history(array $done): bool
+{
+    $uid = (string)($done['uid'] ?? '');
+    $requestId = (string)($done['request_id'] ?? '');
+
+    if ($uid === '' || $requestId === '') {
+        return false;
+    }
+
+    return fb_put(
+        'TOPUP_HISTORY/' . $uid . '/' . topup_history_month_key($done) . '/' . $requestId,
+        topup_history_row($done)
+    );
+}
+
+function topup_commit_pending_submission(array $pendingRow, string $tokenHash, int $attempts = 3): bool
+{
+    $requestId = trim((string)($pendingRow['request_id'] ?? ''));
+    $uid = trim((string)($pendingRow['uid'] ?? ''));
+    $tokenHash = trim($tokenHash);
+    if ($requestId === '' || $uid === '' || $tokenHash === '') {
+        return false;
+    }
+
+    $now = topup_now();
+    $updates = [
+        'TOPUP_REQUESTS/PENDING/' . $requestId => $pendingRow,
+        'REQUEST_STATUS/' . $requestId => [
+            'request_id' => $requestId,
+            'type' => 'TOPUP',
+            'uid' => $uid,
+            'status' => 'PENDING',
+            'message' => 'Topup request created successfully',
+            'updated_at' => $now,
+        ],
+        'TOPUP_HISTORY/' . $uid . '/' . topup_history_month_key($pendingRow) . '/' . $requestId => topup_history_row($pendingRow),
+        'TOPUP_PREVIEWS/' . $tokenHash . '/used' => true,
+        'TOPUP_PREVIEWS/' . $tokenHash . '/used_at' => $now,
+        'TOPUP_PREVIEWS/' . $tokenHash . '/status' => 'USED',
+        'TOPUP_PREVIEWS/' . $tokenHash . '/request_id' => $requestId,
+        'TOPUP_PREVIEWS/' . $tokenHash . '/updated_at' => $now,
+    ];
+
+    $attempts = max(1, min(5, $attempts));
+    for ($attempt = 0; $attempt < $attempts; $attempt++) {
+        try {
+            if (fb_patch('', $updates)) {
+                return true;
+            }
+        } catch (Throwable) {
+        }
+
+        $existing = topup_find_request($requestId);
+        if (is_array($existing)
+            && hash_equals($uid, trim((string)($existing['uid'] ?? '')))
+            && hash_equals($tokenHash, trim((string)($existing['preview_token_hash'] ?? '')))
+        ) {
+            return true;
+        }
+
+        if ($attempt + 1 < $attempts) {
+            usleep(200000);
+        }
+    }
+
+    return false;
 }
 
 function topup_mark_processing(string $requestId, string $message): array

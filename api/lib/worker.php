@@ -499,6 +499,14 @@ function worker_finalize_success(string $requestId, string $deviceId, string $re
 {
     $processing = fb_get('TOPUP_REQUESTS/PROCESSING/' . $requestId);
     if (!is_array($processing)) {
+        $done = fb_get('TOPUP_REQUESTS/DONE/' . $requestId);
+        if (is_array($done) && hash_equals($deviceId, (string)($done['assigned_device_id'] ?? ''))) {
+            return [
+                'ok' => true,
+                'code' => 'ALREADY_FINALIZED',
+                'message' => 'Worker result was already finalized',
+            ];
+        }
         return [
             'ok' => false,
             'code' => 'NOT_FOUND',
@@ -694,6 +702,14 @@ function worker_finalize_failed(string $requestId, string $deviceId, string $res
 {
     $processing = fb_get('TOPUP_REQUESTS/PROCESSING/' . $requestId);
     if (!is_array($processing)) {
+        $done = fb_get('TOPUP_REQUESTS/DONE/' . $requestId);
+        if (is_array($done) && hash_equals($deviceId, (string)($done['assigned_device_id'] ?? ''))) {
+            return [
+                'ok' => true,
+                'code' => 'ALREADY_FINALIZED',
+                'message' => 'Worker result was already finalized',
+            ];
+        }
         return [
             'ok' => false,
             'code' => 'NOT_FOUND',

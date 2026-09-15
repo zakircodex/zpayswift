@@ -230,4 +230,16 @@ assert_true(worker_mark_processing('REQ_PROCESS', 'DEVICE_A', 'SIM1', '*masked#'
 assert_true(worker_mark_processing('REQ_PROCESS', 'DEVICE_A', 'SIM1', '*masked#'), 'same worker retry should be idempotent');
 assert_true(!worker_mark_processing('REQ_PROCESS', 'DEVICE_B', 'SIM1', '*masked#'), 'different worker must not replay processing transition');
 
+test_set('TOPUP_REQUESTS/DONE/REQ_FINALIZED', [
+    'request_id' => 'REQ_FINALIZED',
+    'status' => 'SUCCESS',
+    'assigned_device_id' => 'DEVICE_A',
+]);
+$successReplay = worker_finalize_success('REQ_FINALIZED', 'DEVICE_A', 'Delivered', 'carrier response');
+assert_true(($successReplay['ok'] ?? false) === true, 'completed success result retry should be acknowledged');
+assert_true(($successReplay['code'] ?? '') === 'ALREADY_FINALIZED', 'completed success retry should be idempotent');
+$failedReplay = worker_finalize_failed('REQ_FINALIZED', 'DEVICE_A', 'Failed', 'carrier response');
+assert_true(($failedReplay['ok'] ?? false) === true, 'completed failed result retry should be acknowledged');
+assert_true(($failedReplay['code'] ?? '') === 'ALREADY_FINALIZED', 'completed failed retry should be idempotent');
+
 echo "worker claim CAS tests passed\n";

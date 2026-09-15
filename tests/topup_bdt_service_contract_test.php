@@ -11,6 +11,37 @@ function fb_get(string $path)
     return $GLOBALS['topup_contract_store'][$path] ?? null;
 }
 
+function fb_get_with_etag(string $path): array
+{
+    return [
+        'ok' => array_key_exists($path, $GLOBALS['topup_contract_store']),
+        'status' => 200,
+        'etag' => 'etag-' . hash('sha256', $path),
+        'value' => $GLOBALS['topup_contract_store'][$path] ?? null,
+        'error' => null,
+    ];
+}
+
+function fb_put_if_match(string $path, mixed $data, string $etag): array
+{
+    $GLOBALS['topup_contract_store'][$path] = $data;
+    return ['ok' => true, 'status' => 200];
+}
+
+function fb_patch(string $path, array $data): bool
+{
+    if ($path === '') {
+        foreach ($data as $childPath => $value) {
+            $GLOBALS['topup_contract_store'][$childPath] = $value;
+        }
+        return true;
+    }
+
+    $current = $GLOBALS['topup_contract_store'][$path] ?? [];
+    $GLOBALS['topup_contract_store'][$path] = array_merge(is_array($current) ? $current : [], $data);
+    return true;
+}
+
 function normalize_operator($value): string
 {
     $value = strtoupper(trim((string)$value));
@@ -24,6 +55,11 @@ function normalize_operator($value): string
 function now_ts(): int
 {
     return 1700000000;
+}
+
+function month_key(?int $timestamp = null): string
+{
+    return gmdate('Y-m', $timestamp ?? now_ts());
 }
 
 require_once dirname(__DIR__) . '/api/lib/topup_config.php';
@@ -170,6 +206,31 @@ $recovered = topup_recover_request_from_preview_token('MY_USER', $previewToken);
 topup_contract_expect(!empty($recovered['ok']) && ($recovered['request_id'] ?? '') === 'REQ_V5', 'committed Top-Up must recover from its preview token');
 $forbiddenRecovery = topup_recover_request_from_preview_token('OTHER_USER', $previewToken);
 topup_contract_expect(empty($forbiddenRecovery['ok']) && ($forbiddenRecovery['code'] ?? '') === 'TOPUP_RECOVERY_FORBIDDEN', 'Top-Up recovery must enforce preview ownership');
+
+$processingPath = 'TOPUP_PREVIEWS/PROCESSING_TOKEN';
+$GLOBALS['topup_contract_store'][$processingPath] = [
+    'uid' => 'MY_USER',
+    'status' => 'PROCESSING',
+    'used' => false,
+    'request_id' => 'REQ_RESUME',
+    'expires_at' => now_ts() + 300,
+];
+$processingClaim = topup_claim_preview_token('PROCESSING_TOKEN', 'MY_USER');
+topup_contract_expect(!empty($processingClaim['ok']) && !empty($processingClaim['resume']), 'Interrupted Top-Up preview must resume the same submission');
+topup_contract_expect(($processingClaim['request_id'] ?? '') === 'REQ_RESUME', 'Resumed Top-Up preview must preserve its request ID');
+$foreignProcessingClaim = topup_claim_preview_token('PROCESSING_TOKEN', 'OTHER_USER');
+topup_contract_expect(empty($foreignProcessingClaim['ok']) && ($foreignProcessingClaim['code'] ?? '') === 'TOPUP_PREVIEW_INVALID', 'Top-Up resume must enforce preview ownership');
+
+$commitRow = topup_pending_request_row('REQ_ATOMIC', 'MY_USER', '60123456789', '01712345678', 'GP', 20, $myUser, [
+    'country_code' => 'BD',
+    'preview_token_hash' => 'ATOMIC_TOKEN',
+]);
+topup_contract_expect(topup_commit_pending_submission($commitRow, 'ATOMIC_TOKEN'), 'Top-Up canonical submission commit failed');
+$commitMonth = topup_history_month_key($commitRow);
+topup_contract_expect(isset($GLOBALS['topup_contract_store']['TOPUP_REQUESTS/PENDING/REQ_ATOMIC']), 'Atomic Top-Up commit omitted the worker queue row');
+topup_contract_expect(isset($GLOBALS['topup_contract_store']['REQUEST_STATUS/REQ_ATOMIC']), 'Atomic Top-Up commit omitted request status');
+topup_contract_expect(isset($GLOBALS['topup_contract_store']['TOPUP_HISTORY/MY_USER/' . $commitMonth . '/REQ_ATOMIC']), 'Atomic Top-Up commit omitted user history');
+topup_contract_expect(($GLOBALS['topup_contract_store']['TOPUP_PREVIEWS/ATOMIC_TOKEN/status'] ?? '') === 'USED', 'Atomic Top-Up commit did not finalize the preview');
 
 $workerSource = (string)file_get_contents(dirname(__DIR__) . '/api/lib/worker.php');
 topup_contract_expect(str_contains($workerSource, "\$claimed['topup_amount_bdt'] ?? \$claimed['amount_bdt'] ?? \$claimed['amount']"), 'Worker payload must prefer canonical BDT service amount');

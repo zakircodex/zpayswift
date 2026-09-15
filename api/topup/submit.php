@@ -93,33 +93,15 @@ if (empty($claim['ok'])) {
 }
 
 $preview = (array)($claim['preview'] ?? []);
+$resumingSubmission = !empty($claim['resume']);
 $duplicateRequestId = trim((string)($claim['request_id'] ?? $preview['request_id'] ?? ''));
-if (!empty($claim['duplicate']) && $duplicateRequestId !== '') {
+if ((!empty($claim['duplicate']) || $resumingSubmission) && $duplicateRequestId !== '') {
     $existingRow = topup_find_request($duplicateRequestId);
-    $fallbackData = topup_submit_response_data([], [
-        'request_id' => $duplicateRequestId,
-        'status' => 'PENDING',
-        'topup_number' => (string)($preview['topup_number'] ?? $preview['number'] ?? ''),
-        'operator' => (string)($preview['operator'] ?? ''),
-        'amount' => (float)($preview['amount'] ?? 0),
-        'topup_amount' => (float)($preview['topup_amount'] ?? $preview['amount'] ?? 0),
-        'topup_currency' => (string)($preview['topup_currency'] ?? $preview['currency'] ?? 'BDT'),
-        'amount_bdt' => (float)($preview['amount_bdt'] ?? 0),
-        'topup_amount_bdt' => (float)($preview['topup_amount_bdt'] ?? $preview['amount_bdt'] ?? 0),
-        'service_amount_bdt' => (float)($preview['service_amount_bdt'] ?? $preview['topup_amount_bdt'] ?? $preview['amount_bdt'] ?? 0),
-        'amount_myr' => (float)($preview['amount_myr'] ?? 0),
-        'topup_amount_myr' => (float)($preview['topup_amount_myr'] ?? $preview['amount_myr'] ?? 0),
-        'wallet_debit_amount' => (float)($preview['wallet_debit_amount'] ?? $preview['amount'] ?? 0),
-        'wallet_debit_bdt' => (float)($preview['wallet_debit_bdt'] ?? 0),
-        'wallet_debit_myr' => (float)($preview['wallet_debit_myr'] ?? 0),
-        'wallet_debit_currency' => (string)($preview['wallet_currency'] ?? $preview['wallet_debit_currency'] ?? 'BDT'),
-        'rate_used' => (float)($preview['rate'] ?? 0),
-    ]);
-    $data = is_array($existingRow)
-        ? topup_submit_response_data($existingRow, $fallbackData)
-        : $fallbackData;
-    $data['idempotent_replay'] = true;
-    api_response(true, 'TOPUP_REQUEST_CREATED', 'Topup request submitted', $data);
+    if (is_array($existingRow) && hash_equals($uid, trim((string)($existingRow['uid'] ?? '')))) {
+        $data = topup_submit_response_data($existingRow);
+        $data['idempotent_replay'] = true;
+        api_response(true, 'TOPUP_REQUEST_CREATED', 'Topup request submitted', $data);
+    }
 }
 
 $failPreview = static function (string $code, string $message) use ($tokenHash): void {
@@ -215,7 +197,7 @@ if ($previewAccountCountry !== (string)$currentContext['account_country']
     api_response(false, 'ACCOUNT_CURRENCY_INVALID', 'Your account currency could not be verified.', [], 422);
 }
 
-$requestId = make_topup_request_id();
+$requestId = $duplicateRequestId !== '' ? $duplicateRequestId : make_topup_request_id();
 $walletDebit = topup_money($preview['wallet_debit_amount'] ?? $preview['wallet_debit'] ?? $financials['wallet_debit_amount'] ?? 0);
 if ($walletDebit <= 0) {
     $failPreview('TOPUP_PREVIEW_INVALID', 'Top-up preview debit amount is invalid.');
@@ -235,6 +217,26 @@ $operationRef = 'ANDROID_TOPUP_CREATE:' . hash('sha256', implode('|', [
     number_format($amount, 2, '.', ''),
     number_format($walletDebit, 2, '.', ''),
 ]));
+$existingCreation = $resumingSubmission
+    ? fb_get(wallet_financial_operation_scope_path($operationRef, 'REQUEST_CREATE'))
+    : null;
+if (is_array($existingCreation)
+    && wallet_financial_operation_binding_issue(
+        $existingCreation,
+        $operationRef,
+        'ANDROID_TOPUP_CREATE_HOLD',
+        'REQUEST_CREATE',
+        $uid,
+        $walletDebit,
+        $previewWalletCurrency
+    ) === []
+    && hash_equals($tokenHash, trim((string)($existingCreation['meta']['preview_token_hash'] ?? '')))
+) {
+    $existingRequestId = trim((string)($existingCreation['meta']['request_id'] ?? ''));
+    if ($existingRequestId !== '') {
+        $requestId = $existingRequestId;
+    }
+}
 $operation = wallet_financial_operation_begin(
     $operationRef,
     'ANDROID_TOPUP_CREATE_HOLD',
@@ -251,16 +253,43 @@ $operation = wallet_financial_operation_begin(
 );
 if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
     $data = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+    if ($data === []) {
+        $completedRequestId = trim((string)($operation['operation']['meta']['request_id'] ?? $requestId));
+        $completedRow = $completedRequestId !== '' ? topup_find_request($completedRequestId) : null;
+        if (is_array($completedRow) && hash_equals($uid, trim((string)($completedRow['uid'] ?? '')))) {
+            $data = topup_submit_response_data($completedRow);
+        }
+    }
     $data['idempotent_replay'] = true;
     api_response(true, 'TOPUP_REQUEST_CREATED', 'Topup request submitted', $data);
 }
 if (empty($operation['ok']) || empty($operation['claim'])) {
-    $failPreview((string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'), (string)($operation['message'] ?? 'Wallet operation is unavailable'));
-    api_response(false, (string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE'), (string)($operation['message'] ?? 'Wallet operation is unavailable'), [], 409);
+    $operationCode = strtoupper(trim((string)($operation['code'] ?? 'FINANCIAL_OPERATION_UNAVAILABLE')));
+    $operationRow = is_array($operation['operation'] ?? null) ? (array)$operation['operation'] : [];
+    $boundRequestId = trim((string)($operationRow['meta']['request_id'] ?? $requestId));
+    if ($boundRequestId !== '') {
+        $requestId = $boundRequestId;
+        topup_mark_preview_processing($tokenHash, $requestId, $operationRef);
+    }
+
+    if ($operationCode === 'FINANCIAL_OPERATION_IN_PROGRESS') {
+        $retryAfter = max(2, (int)($operationRow['lease_expires_at'] ?? 0) - now_ts());
+        api_response(false, 'TOPUP_SUBMIT_PROCESSING', 'Your top-up request is still being finalized. Please wait and try again.', [
+            'request_id' => $requestId,
+            'status' => 'PROCESSING',
+            'retry_after_seconds' => min(120, $retryAfter),
+            'retry_safe' => true,
+        ], 409);
+    }
+
+    $failPreview($operationCode, (string)($operation['message'] ?? 'Wallet operation is unavailable'));
+    api_response(false, $operationCode, (string)($operation['message'] ?? 'Wallet operation is unavailable'), [], 409);
 }
 $financialClaim = (array)$operation['claim'];
 $requestId = trim((string)($financialClaim['meta']['request_id'] ?? $requestId));
+topup_mark_preview_processing($tokenHash, $requestId, $operationRef);
 
+try {
 $hold = wallet_hold_amount($uid, $walletDebit, $operationRef, 'ANDROID_TOPUP_HOLD', [
     'financial_operation' => $financialClaim,
     'ledger_extra' => [
@@ -357,7 +386,7 @@ $pendingRow = topup_pending_request_row(
     $financials,
     $pendingExtra
 );
-$pendingSaved = fb_put('TOPUP_REQUESTS/PENDING/' . $requestId, $pendingRow);
+$pendingSaved = topup_commit_pending_submission($pendingRow, $tokenHash, 3);
 
 if (!$pendingSaved) {
     wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_CREATE_FAILED', 'Topup request could not be saved after wallet hold', [
@@ -367,37 +396,13 @@ if (!$pendingSaved) {
         'request_row' => $pendingRow,
         'request_finalized' => false,
     ]);
-    $failPreview('SERVER_ERROR', 'Failed to create topup request');
-    api_response(false, 'SERVER_ERROR', 'Failed to create topup request', [], 500);
-}
-
-/*
-|--------------------------------------------------------------------------
-| Save request status
-|--------------------------------------------------------------------------
-*/
-$statusSaved = create_request_status(
-    $requestId,
-    'TOPUP',
-    $uid,
-    'PENDING',
-    'Topup request created successfully'
-);
-
-if (!$statusSaved) {
-    wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_STATUS_CREATE_FAILED', 'Topup request status could not be saved after wallet hold', [
-        'wallet_applied' => true,
-        'ledger_written' => true,
+    $failPreview('TOPUP_SUBMIT_INTERRUPTED', 'Topup request is ready to resume');
+    api_response(false, 'TOPUP_SUBMIT_RETRY_REQUIRED', 'Your balance is safe. Please submit this same preview again to finish the request.', [
         'request_id' => $requestId,
-        'request_row' => $pendingRow,
-        'request_finalized' => false,
-    ]);
-    $failPreview('SERVER_ERROR', 'Failed to create request status');
-    api_response(false, 'SERVER_ERROR', 'Failed to create request status', [], 500);
+        'status' => 'PROCESSING',
+        'retry_safe' => true,
+    ], 503);
 }
-
-topup_write_history($pendingRow);
-topup_mark_preview_used($tokenHash, $requestId);
 
 $deferredLog = [
     'type' => 'TOPUP_SUBMIT',
@@ -475,3 +480,31 @@ topup_submit_finish_response([
     'message' => 'Topup request submitted',
     'data' => $responseData,
 ], $topupRow, $deferredLog);
+} catch (Throwable $exception) {
+    $failurePatch = [
+        'request_id' => $requestId,
+        'request_finalized' => false,
+    ];
+    $operationKey = wallet_financial_operation_key($operationRef, 'ANDROID_TOPUP_CREATE_HOLD');
+    $walletMarker = wallet_financial_operation_marker_from_wallet($uid, $operationKey);
+    if ($walletMarker !== [] && wallet_financial_operation_marker_matches_claim($uid, $financialClaim, $walletMarker)) {
+        $failurePatch['wallet_applied'] = true;
+        $failurePatch['ledger_written'] = trim((string)($walletMarker['ledger_id'] ?? '')) !== '';
+        $failurePatch['ledger_id'] = (string)($walletMarker['ledger_id'] ?? '');
+    }
+
+    wallet_financial_operation_mark_failed(
+        $financialClaim,
+        'TOPUP_SUBMIT_INTERRUPTED',
+        'Topup submit was interrupted before the canonical request commit',
+        $failurePatch
+    );
+    $failPreview('TOPUP_SUBMIT_INTERRUPTED', 'Topup request is ready to resume');
+    error_log('Topup submit interrupted for request ' . $requestId . ': ' . $exception->getMessage());
+
+    api_response(false, 'TOPUP_SUBMIT_RETRY_REQUIRED', 'Your balance is safe. Please submit this same preview again to finish the request.', [
+        'request_id' => $requestId,
+        'status' => 'PROCESSING',
+        'retry_safe' => true,
+    ], 503);
+}
