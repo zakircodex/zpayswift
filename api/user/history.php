@@ -39,6 +39,10 @@ user_page_begin($page);
           </div>
         <?php endfor; ?>
       </div>
+      <div id="historyLoadMore" class="history-load-more" aria-busy="false" hidden>
+        <button id="historyLoadMoreButton" type="button">Load 10 more</button>
+        <span id="historyLoadMoreStatus" aria-live="polite"></span>
+      </div>
     </main>
   </div>
 

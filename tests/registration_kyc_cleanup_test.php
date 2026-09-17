@@ -345,11 +345,21 @@ $configSource = file_get_contents($root . '/api/config.example.php') ?: '';
 $confirmSource = file_get_contents($root . '/api/auth/user_register_confirm.php') ?: '';
 $reviewSource = file_get_contents($root . '/api/lib/account_review.php') ?: '';
 cleanup_expect(str_contains($configSource, 'REGISTRATION_KYC_TEMP_TTL_SECONDS') && str_contains($configSource, '60 * 60 * 72'), 'example config must document the conservative 72-hour retention');
-cleanup_expect(str_contains($cliSource, "PHP_SAPI !== 'cli'") && str_contains($cliSource, '--dry-run') && str_contains($cliSource, '--limit='), 'cleanup command must be CLI-only with dry-run and batch controls');
+cleanup_expect(str_contains($configSource, 'REGISTRATION_KYC_AUTO_CLEANUP_INTERVAL_SECONDS'), 'example config must document automatic cleanup scheduling');
+cleanup_expect(str_contains($cliSource, "PHP_SAPI !== 'cli'") && str_contains($cliSource, '--dry-run') && str_contains($cliSource, '--status') && str_contains($cliSource, '--limit='), 'cleanup command must be CLI-only with status, dry-run and batch controls');
 cleanup_expect(str_contains($cliSource, 'app_private_config_path()') && str_contains($cliSource, 'exit(1);'), 'missing cleanup configuration must fail with a non-zero CLI exit');
 cleanup_expect(!str_contains($cliSource, 'document_path_private') && !str_contains($cliSource, 'selfie_path_private'), 'CLI output must not expose private KYC paths');
 cleanup_expect(str_contains($helperSource, 'fb_put_if_match') && str_contains($helperSource, 'fb_delete_if_match'), 'cleanup metadata must use Firebase CAS claim/delete');
+cleanup_expect(str_contains($helperSource, 'function user_registration_kyc_schedule_cleanup()') && str_contains($helperSource, 'LOCK_EX | LOCK_NB'), 'registration traffic must schedule a single bounded automatic cleanup run');
 cleanup_expect(!str_contains($helperSource, "fb_get_with_etag('USERS')"), 'cleanup must not read the full user tree');
+$scheduledEndpoints = [
+    $root . '/api/auth/register_upload_kyc.php',
+    $root . '/api/auth/user_register_send_otp.php',
+    $root . '/api/auth/user_register_confirm.php',
+];
+foreach ($scheduledEndpoints as $scheduledEndpoint) {
+    cleanup_expect(str_contains((string)file_get_contents($scheduledEndpoint), 'user_registration_kyc_schedule_cleanup();'), basename($scheduledEndpoint) . ' must schedule cleanup after app authentication');
+}
 cleanup_expect(str_contains($confirmSource, "'status' => 'COMPLETED'") && str_contains($confirmSource, "'KYC' => \$userKyc"), 'completed Web registrations must keep permanent KYC references');
 cleanup_expect(str_contains($reviewSource, 'account_review_send_telegram'), 'Telegram account review integration must remain available');
 

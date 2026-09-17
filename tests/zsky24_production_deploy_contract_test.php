@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $workflowPath = $root . '/.github/workflows/cpanel-production-deploy.yml';
+$ftpsPromoterPath = $root . '/scripts/promote_public_deployment_ftps.sh';
 $dashboardPath = $root . '/api/admin/dashboard.php';
 $assertions = 0;
 
@@ -19,6 +20,9 @@ function deploy_expect(bool $condition, string $message): void
 deploy_expect(is_file($workflowPath), 'production deploy workflow is missing');
 $workflow = file_get_contents($workflowPath);
 deploy_expect(is_string($workflow), 'production deploy workflow could not be read');
+deploy_expect(is_file($ftpsPromoterPath), 'production FTPS promoter is missing');
+$ftpsPromoter = file_get_contents($ftpsPromoterPath);
+deploy_expect(is_string($ftpsPromoter), 'production FTPS promoter could not be read');
 
 // Production remains an explicit, main-only operation.
 deploy_expect(str_contains($workflow, 'workflow_dispatch:'), 'production deploy is not manual');
@@ -78,7 +82,12 @@ deploy_expect(str_contains($dashboard, "filemtime(__DIR__ . '/assets/zsky24-admi
 deploy_expect(!str_contains($dashboard, 'zsky24-admin.css?v=1'), 'fixed Z Sky admin CSS cache version remains');
 deploy_expect(!str_contains($dashboard, 'zsky24-admin.js?v=2'), 'fixed Z Sky admin JavaScript cache version remains');
 
-deploy_expect(str_contains($workflow, 'mirror --reverse --verbose --parallel=2 deployment/ ${FTP_REMOTE_PATH}'), 'approved deployment directory is not the FTPS source');
+deploy_expect(
+    str_contains($workflow, 'promote_public_deployment_ftps.sh deployment')
+        && str_contains($ftpsPromoter, 'mirror --reverse --verbose --parallel=2')
+        && str_contains($ftpsPromoter, '${PACKAGE_ROOT}/ ${REMOTE_ROOT}/;'),
+    'approved deployment directory is not the FTPS source'
+);
 deploy_expect(str_contains($workflow, 'Verified production commit: $GITHUB_SHA'), 'live commit verification is missing');
 
 echo "Z Sky 24 production deploy contract passed ({$assertions} assertions).\n";

@@ -432,21 +432,21 @@ if (!empty($_SESSION['subadmin_session_token']) && !empty($_SESSION['subadmin_us
 
     <div class="box">
       <div class="field">
-        <label>Phone Country</label>
-        <select id="loginPhoneCountry" class="input">
+        <label for="loginPhoneCountry">Phone Country</label>
+        <select id="loginPhoneCountry" name="phone_country" class="input" autocomplete="country">
           <option value="BD">Bangladesh (+880)</option>
           <option value="MY">Malaysia (+60)</option>
         </select>
       </div>
 
       <div class="field">
-        <label>Phone</label>
-        <input id="loginPhone" class="input" placeholder="01XXXXXXXXX">
+        <label for="loginPhone">Phone</label>
+        <input id="loginPhone" name="phone" class="input" type="tel" inputmode="tel" autocomplete="username" placeholder="01XXXXXXXXX">
       </div>
 
       <div class="field">
-        <label>Password</label>
-        <input id="loginPassword" class="input" type="password" placeholder="Enter password">
+        <label for="loginPassword">Password</label>
+        <input id="loginPassword" name="password" class="input" type="password" autocomplete="current-password" placeholder="Enter password">
       </div>
 
       <label class="checkline">
@@ -483,8 +483,8 @@ if (!empty($_SESSION['subadmin_session_token']) && !empty($_SESSION['subadmin_us
     </div>
 
     <div class="field" style="margin-top:16px">
-      <label>OTP Code</label>
-      <input id="loginOtpCode" class="input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6 digit OTP">
+      <label for="loginOtpCode">OTP Code</label>
+      <input id="loginOtpCode" name="otp" class="input" maxlength="6" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter 6 digit OTP">
     </div>
 
     <div class="actions">

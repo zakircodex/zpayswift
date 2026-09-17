@@ -74,6 +74,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          php tests/run_core_web_tests.php
+          find . -path './.git' -prune -o -type f -name '*.php' -print0 \
+            | sort -z \
+            | xargs -0 -n1 php -l >/dev/null
+          find assets api znews tests -type f -name '*.js' -print0 \
+            | sort -z \
+            | xargs -0 -n1 node --check
           php tests/znews_backend_foundation_test.php
           php tests/znews_web_ui_foundation_test.php
           php tests/znews_end_to_end_contract_test.php
@@ -118,18 +125,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p deployment/api
-          for path in .htaccess .well-known index.html download.php track.html privacy.html terms.html apply-subadmin.html assets docs images logo znews; do
-            if [ -e "$path" ]; then
-              cp -a "$path" deployment/
-            fi
-          done
-          rsync -a --exclude-from=.cpanel-deploy-exclude api/ deployment/api/
-          if [ -d document-ai ]; then
-            mkdir -p deployment/api/document-ai
-            rsync -a --exclude-from=.cpanel-deploy-exclude document-ai/ deployment/api/document-ai/
-          fi
-          printf '%s\n%s\n' "$GITHUB_SHA" "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" > deployment/deploy_version.txt
+          bash scripts/build_public_deployment.sh "$PWD" "$PWD/deployment" "$GITHUB_SHA"
 
           test -f deployment/api/admin/zsky24_creator_admin.php
           test -f deployment/api/admin/assets/zsky24-admin.js
@@ -148,20 +144,7 @@ jobs:
           test -f deployment/znews/assets/znews-weekly-review.js
           test -f deployment/znews/assets/znews-weekly-review.css
           test -f deployment/.well-known/assetlinks.json
-
-          if find deployment -type f \
-            ! -path 'deployment/api/support/config.php' \
-            ! -path 'deployment/api/admin/support/config.php' \( \
-            -name '.env' -o -name 'config.php' -o -name 'error_log' -o \
-            -name '*.log' -o -name '*.sql' -o -name '*.bak' -o \
-            -name '*.zip' -o -name '*.tar' -o -name '*.gz' \
-          \) -print -quit | grep -q .; then
-            echo 'Deployment package contains a forbidden private file.'
-            exit 1
-          fi
-          test ! -e deployment/private
-          test ! -e deployment/.git
-          test ! -e deployment/.github
+          test -s deployment/.deploy-manifest
 
       - name: Install FTPS client
         shell: bash
@@ -169,24 +152,18 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq lftp
 
-      - name: Upload approved public files over FTPS
+      - name: Promote approved public release over FTPS
         shell: bash
         run: |
           set -euo pipefail
-          FTP_PORT="${FTP_PORT:-21}"
-          FTP_USER_URI="$(jq -rn --arg value "$FTP_USER" '$value|@uri')"
-          FTP_PASSWORD_URI="$(jq -rn --arg value "$FTP_PASSWORD" '$value|@uri')"
-          FTP_URL="ftp://${FTP_USER_URI}:${FTP_PASSWORD_URI}@${FTP_HOST}:${FTP_PORT}"
-          lftp "$FTP_URL" -e "
-            set cmd:fail-exit true;
-            set net:max-retries 2;
-            set net:timeout 20;
-            set ftp:ssl-force true;
-            set ftp:ssl-protect-data true;
-            set ssl:verify-certificate true;
-            mirror --reverse --verbose --parallel=2 deployment/ ${FTP_REMOTE_PATH};
-            bye
-          "
+          bash scripts/promote_public_deployment_ftps.sh deployment
+
+      - name: Explain locked failed promotion
+        if: failure()
+        shell: bash
+        run: |
+          echo "If promotion entered maintenance, a failure intentionally keeps .deploy-in-progress in place."
+          echo "Fix the failed check and rerun this workflow to complete the release safely."
 
       - name: Verify deployed commit
         shell: bash

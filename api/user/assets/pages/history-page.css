@@ -82,6 +82,42 @@
   gap: 7px;
 }
 
+.history-load-more {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  min-height: 72px;
+  padding: 14px 0 4px;
+}
+
+.history-load-more[hidden] {
+  display: none;
+}
+
+.history-load-more button {
+  min-width: 148px;
+  min-height: 44px;
+  border: 1px solid rgba(50, 230, 134, 0.5);
+  border-radius: 14px;
+  color: #062014;
+  background: var(--z-green);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.history-load-more button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.history-load-more span {
+  min-height: 18px;
+  color: var(--z-muted);
+  font-size: 12px;
+}
+
 .history-transaction-card,
 .history-state,
 .history-skeleton {

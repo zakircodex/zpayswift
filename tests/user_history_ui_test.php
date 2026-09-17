@@ -36,6 +36,13 @@ history_ui_expect(
     'Android-style History header actions are incomplete'
 );
 
+history_ui_expect(
+    str_contains($page, 'id="historyLoadMore"')
+    && str_contains($page, 'id="historyLoadMoreButton"')
+    && str_contains($page, 'Load 10 more'),
+    'History progressive loading control is missing'
+);
+
 foreach (['My History', 'History Month', 'historyMonthInput', 'Refresh History', 'data-filter="PENDING"'] as $legacyText) {
     history_ui_expect(!str_contains($page, $legacyText), "legacy History control remains: {$legacyText}");
 }
@@ -51,11 +58,20 @@ history_ui_expect(
     !str_contains($js, 'HISTORY_DAYS')
     && str_contains($js, 'currentMonthKey()')
     && str_contains($js, "'request_logs',")
-    && str_contains($js, '{ month: currentMonthKey(), limit: HISTORY_LIMIT, legacy: 0 }')
+    && str_contains($js, 'const HISTORY_PAGE_SIZE = 10')
+    && str_contains($js, '{ month: currentMonthKey(), limit: requestLimit, legacy: 0 }')
     && !str_contains($js, "shell.get('transfer_history'")
     && !str_contains($js, 'Promise.allSettled(requests)')
-    && str_contains($js, '.slice(0, HISTORY_LIMIT)'),
+    && str_contains($js, '.slice(0, HISTORY_MAX_LIMIT)'),
     'History must load one bounded current-month aggregate request'
+);
+
+history_ui_expect(
+    str_contains($js, 'state.visibleCount + HISTORY_PAGE_SIZE')
+    && str_contains($js, 'new IntersectionObserver')
+    && str_contains($js, 'loadMoreHistory()')
+    && str_contains($proxy, "'has_more' => \$hasMore"),
+    'History must reveal and request current-month rows in 10-item pages'
 );
 
 history_ui_expect(

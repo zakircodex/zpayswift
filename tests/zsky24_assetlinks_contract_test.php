@@ -8,6 +8,7 @@ $rewritePath = $root . '/.htaccess';
 $cpanelDeploymentPath = $root . '/.cpanel.yml';
 $deploymentExcludePath = $root . '/.cpanel-deploy-exclude';
 $pushWorkflowPath = $root . '/.github/workflows/cpanel-production-deploy.yml';
+$buildScriptPath = $root . '/scripts/build_public_deployment.sh';
 $expectedFingerprint = '34:BD:DD:99:05:1F:70:9A:4E:66:05:39:DF:A3:A7:AC:28:97:F1:60:CB:49:05:D9:73:13:58:EA:B8:C8:C7:80';
 
 function app_links_expect(bool $condition, string $message): void
@@ -46,8 +47,10 @@ app_links_expect(str_contains($rewrite, 'Header always set Cache-Control "public
 $cpanelDeployment = (string) file_get_contents($cpanelDeploymentPath);
 $deploymentExclude = (string) file_get_contents($deploymentExcludePath);
 $pushWorkflow = (string) file_get_contents($pushWorkflowPath);
+$buildScript = (string) file_get_contents($buildScriptPath);
 app_links_expect(
-    preg_match('/for p in [^;]*\.well-known/', $cpanelDeployment) === 1,
+    str_contains($cpanelDeployment, 'build_public_deployment.sh')
+        && preg_match('/for path in [^;]*\.well-known/', $buildScript) === 1,
     'cPanel Git deployment must publish the .well-known directory.'
 );
 app_links_expect(
@@ -55,7 +58,8 @@ app_links_expect(
     'Deployment excludes must not remove the .well-known directory.'
 );
 app_links_expect(
-    preg_match('/for path in [^;]*\.well-known/', $pushWorkflow) === 1,
+    str_contains($pushWorkflow, 'build_public_deployment.sh')
+        && preg_match('/for path in [^;]*\.well-known/', $buildScript) === 1,
     'FTPS deployment must publish the .well-known directory.'
 );
 app_links_expect(
@@ -63,7 +67,8 @@ app_links_expect(
     'FTPS deployment must fail when assetlinks.json is missing from the package.'
 );
 app_links_expect(
-    str_contains($cpanelDeployment, '/usr/bin/test -f "$DEPLOYPATH/.well-known/assetlinks.json"'),
+    str_contains($buildScript, 'test -f "$SOURCE_ROOT/.well-known/assetlinks.json"')
+        && str_contains($buildScript, 'test -f "$TARGET_ROOT/.well-known/assetlinks.json"'),
     'cPanel Git deployment must fail when assetlinks.json was not published.'
 );
 app_links_expect(

@@ -12,6 +12,9 @@ header('Content-Type: application/json; charset=utf-8');
 ini_set('display_errors', '0');
 ini_set('html_errors', '0');
 
+require_once __DIR__ . '/lib/api_error.php';
+api_error_register_handlers();
+
 require_once __DIR__ . '/lib/app_paths.php';
 $privateConfigPath = app_private_config_path();
 if (!is_file($privateConfigPath) || !is_readable($privateConfigPath)) {
@@ -44,7 +47,7 @@ security_enforce_request([
     'file' => 'bootstrap.php',
 ]);
 
-function api_response(bool $ok, string $code, string $message, array $data = [], int $httpStatus = 200): void
+function api_response(bool $ok, string $code, string $message, ?array $data = [], int $httpStatus = 200): void
 {
     http_response_code($httpStatus);
 
@@ -53,7 +56,7 @@ function api_response(bool $ok, string $code, string $message, array $data = [],
         'success' => $ok,
         'code' => $code,
         'message' => $message,
-        'data' => $data,
+        'data' => $data ?? [],
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     exit;

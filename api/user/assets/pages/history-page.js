@@ -3,7 +3,8 @@
 
   const shell = window.UserShell;
   const releaseInitialLoad = shell?.holdPageLoad?.('Loading history...') || (() => {});
-  const HISTORY_LIMIT = 100;
+  const HISTORY_PAGE_SIZE = 10;
+  const HISTORY_MAX_LIMIT = 100;
   const SUCCESS_STATUSES = new Set(['SUCCESS', 'SUCCESSFUL', 'COMPLETED', 'APPROVED', 'DONE']);
   const FAILED_STATUSES = new Set(['FAILED', 'REJECTED', 'CANCELLED', 'REFUNDED']);
   const PROCESSING_STATUSES = new Set(['PROCESSING', 'CLAIMED', 'DIALING']);
@@ -30,7 +31,13 @@
   });
   const state = {
     rows: [],
+    visibleCount: HISTORY_PAGE_SIZE,
+    requestLimit: HISTORY_PAGE_SIZE,
+    serverHasMore: false,
     loading: false,
+    observer: null,
+    observerArmed: true,
+    observerBlockedUntil: 0,
     active: null,
     opener: null,
     modalHistory: false,
@@ -419,7 +426,7 @@
     });
     return Array.from(found.values())
       .sort((left, right) => right.timestamp - left.timestamp)
-      .slice(0, HISTORY_LIMIT);
+      .slice(0, HISTORY_MAX_LIMIT);
   }
 
   function element(tag, className = '', value = '') {
@@ -463,11 +470,28 @@
     if (!state.rows.length) {
       list.append(element('div', 'history-state', 'No transaction history found this month.'));
       $('historyLive').textContent = 'No transaction history was found this month.';
+      $('historyLoadMore').hidden = true;
       return;
     }
-    state.rows.forEach((item, index) => list.append(historyCard(item, index)));
-    $('historyLive').textContent = `${state.rows.length} recent transactions loaded.`;
+    const visibleRows = state.rows.slice(0, state.visibleCount);
+    visibleRows.forEach((item, index) => list.append(historyCard(item, index)));
+    $('historyLive').textContent = `${visibleRows.length} recent transactions loaded.`;
+    updateLoadMore();
     openPendingTarget();
+  }
+
+  function updateLoadMore() {
+    const control = $('historyLoadMore');
+    const button = $('historyLoadMoreButton');
+    const status = $('historyLoadMoreStatus');
+    const hasBufferedRows = state.visibleCount < state.rows.length;
+    const canRequestMore = state.serverHasMore && state.requestLimit < HISTORY_MAX_LIMIT;
+    const canLoadMore = hasBufferedRows || canRequestMore;
+    control.hidden = !canLoadMore;
+    control.setAttribute('aria-busy', state.loading ? 'true' : 'false');
+    button.disabled = state.loading;
+    button.textContent = state.loading ? 'Loading...' : 'Load 10 more';
+    status.textContent = state.loading ? 'Loading more transactions.' : '';
   }
 
   function renderSkeletons() {
@@ -489,28 +513,83 @@
     list.replaceChildren(element('div', 'history-state', 'History could not be loaded. Please try again.'));
     list.setAttribute('aria-busy', 'false');
     $('historyLive').textContent = 'History could not be loaded.';
+    $('historyLoadMore').hidden = true;
   }
 
-  async function loadHistory() {
+  function responseHasMore(data, requestLimit) {
+    if (typeof data?.pagination?.has_more === 'boolean') return data.pagination.has_more;
+    return [data?.items, data?.wallet_history, data?.add_money_history]
+      .some((rows) => Array.isArray(rows) && rows.length >= requestLimit);
+  }
+
+  async function loadHistory(requestLimit = HISTORY_PAGE_SIZE, revealNextPage = false) {
     if (state.loading) return;
     state.loading = true;
     const hadRows = state.rows.length > 0;
     if (!hadRows) renderSkeletons();
+    else updateLoadMore();
     try {
       const data = await shell.get(
         'request_logs',
-        { month: currentMonthKey(), limit: HISTORY_LIMIT, legacy: 0 },
+        { month: currentMonthKey(), limit: requestLimit, legacy: 0 },
         '',
         { busy: false }
       );
       state.rows = mergeRows([requestRows(data)]);
+      state.requestLimit = requestLimit;
+      state.serverHasMore = responseHasMore(data, requestLimit);
+      state.visibleCount = hadRows && revealNextPage
+        ? Math.min(state.rows.length, state.visibleCount + HISTORY_PAGE_SIZE)
+        : Math.min(state.rows.length, HISTORY_PAGE_SIZE);
       render();
     } catch (error) {
       if (hadRows) shell.toast('History could not be refreshed. Please try again.', 'error');
       else renderError();
     } finally {
       state.loading = false;
+      updateLoadMore();
     }
+  }
+
+  async function loadMoreHistory() {
+    if (state.loading) return;
+    if (state.visibleCount < state.rows.length) {
+      state.visibleCount = Math.min(state.rows.length, state.visibleCount + HISTORY_PAGE_SIZE);
+      render();
+      return;
+    }
+    if (!state.serverHasMore || state.requestLimit >= HISTORY_MAX_LIMIT) {
+      updateLoadMore();
+      return;
+    }
+
+    await loadHistory(Math.min(HISTORY_MAX_LIMIT, state.requestLimit + HISTORY_PAGE_SIZE), true);
+  }
+
+  function setupProgressiveLoading() {
+    $('historyLoadMoreButton').addEventListener('click', () => {
+      state.observerArmed = false;
+      state.observerBlockedUntil = performance.now() + 750;
+      loadMoreHistory();
+    });
+    if (!('IntersectionObserver' in window)) return;
+    state.observer = new IntersectionObserver((entries) => {
+      const visible = entries.some((entry) => entry.isIntersecting);
+      if (!visible) {
+        state.observerArmed = true;
+        return;
+      }
+      if (!state.observerArmed) return;
+      if (performance.now() < state.observerBlockedUntil) return;
+      state.observerArmed = false;
+      state.observerBlockedUntil = performance.now() + 750;
+      loadMoreHistory();
+    }, { rootMargin: '0px 0px 180px' });
+    state.observer.observe($('historyLoadMore'));
+    window.addEventListener('scroll', () => {
+      const rect = $('historyLoadMore').getBoundingClientRect();
+      if (rect.top > window.innerHeight + 40 || rect.bottom < -40) state.observerArmed = true;
+    }, { passive: true });
   }
 
   function setModalStatus(value) {
@@ -771,6 +850,7 @@
     $('historyDetailModal').querySelector('[data-history-modal-close]').addEventListener('click', closeDetails);
     document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDetails(); });
     window.addEventListener('popstate', () => hideDetails(false));
+    setupProgressiveLoading();
     await loadHistory();
   }
 

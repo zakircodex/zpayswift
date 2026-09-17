@@ -104,6 +104,140 @@ function user_registration_kyc_cleanup_batch_limit(): int
     return max(1, min(1000, $limit));
 }
 
+function user_registration_kyc_auto_cleanup_enabled(): bool
+{
+    return !defined('REGISTRATION_KYC_AUTO_CLEANUP_ENABLED')
+        || (bool)constant('REGISTRATION_KYC_AUTO_CLEANUP_ENABLED');
+}
+
+function user_registration_kyc_auto_cleanup_interval_seconds(): int
+{
+    $interval = defined('REGISTRATION_KYC_AUTO_CLEANUP_INTERVAL_SECONDS')
+        ? (int)constant('REGISTRATION_KYC_AUTO_CLEANUP_INTERVAL_SECONDS')
+        : 60 * 60;
+
+    return max(5 * 60, min(24 * 60 * 60, $interval));
+}
+
+function user_registration_kyc_auto_cleanup_batch_limit(): int
+{
+    $limit = defined('REGISTRATION_KYC_AUTO_CLEANUP_BATCH_LIMIT')
+        ? (int)constant('REGISTRATION_KYC_AUTO_CLEANUP_BATCH_LIMIT')
+        : 25;
+
+    return max(1, min(user_registration_kyc_cleanup_batch_limit(), $limit));
+}
+
+function user_registration_kyc_cleanup_state_path(): string
+{
+    return dirname(user_registration_kyc_private_root()) . '/register_kyc_cleanup_state.json';
+}
+
+function user_registration_kyc_cleanup_status(): array
+{
+    $path = user_registration_kyc_cleanup_state_path();
+    $raw = is_file($path) && is_readable($path) ? @file_get_contents($path) : false;
+    $state = is_string($raw) ? json_decode($raw, true) : null;
+
+    return is_array($state) ? $state : [
+        'status' => 'NEVER_RUN',
+        'last_attempt_at' => 0,
+        'last_completed_at' => 0,
+        'ok' => null,
+    ];
+}
+
+function user_registration_kyc_cleanup_write_state($handle, array $state): void
+{
+    $encoded = json_encode($state, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (!is_string($encoded)) {
+        return;
+    }
+
+    rewind($handle);
+    ftruncate($handle, 0);
+    fwrite($handle, $encoded . PHP_EOL);
+    fflush($handle);
+}
+
+function user_registration_kyc_schedule_cleanup(): void
+{
+    static $scheduled = false;
+    if ($scheduled || PHP_SAPI === 'cli' || !user_registration_kyc_auto_cleanup_enabled()) {
+        return;
+    }
+    $scheduled = true;
+
+    register_shutdown_function(static function (): void {
+        $statePath = user_registration_kyc_cleanup_state_path();
+        $stateDir = dirname($statePath);
+        if (!is_dir($stateDir) && !@mkdir($stateDir, 0750, true) && !is_dir($stateDir)) {
+            error_log('Registration KYC cleanup state directory could not be created.');
+            return;
+        }
+
+        $handle = @fopen($statePath, 'c+');
+        if ($handle === false || !@flock($handle, LOCK_EX | LOCK_NB)) {
+            if (is_resource($handle)) {
+                fclose($handle);
+            }
+            return;
+        }
+
+        try {
+            rewind($handle);
+            $raw = stream_get_contents($handle);
+            $state = is_string($raw) ? json_decode($raw, true) : null;
+            $state = is_array($state) ? $state : [];
+            $now = time();
+            $lastAttempt = (int)($state['last_attempt_at'] ?? 0);
+            if ($lastAttempt > 0 && $now - $lastAttempt < user_registration_kyc_auto_cleanup_interval_seconds()) {
+                return;
+            }
+
+            user_registration_kyc_cleanup_write_state($handle, [
+                'status' => 'RUNNING',
+                'last_attempt_at' => $now,
+                'last_completed_at' => (int)($state['last_completed_at'] ?? 0),
+                'ok' => null,
+            ]);
+
+            if (function_exists('fastcgi_finish_request')) {
+                @fastcgi_finish_request();
+            } elseif (function_exists('litespeed_finish_request')) {
+                @litespeed_finish_request();
+            }
+
+            $result = user_registration_kyc_cleanup_run([
+                'now' => $now,
+                'limit' => user_registration_kyc_auto_cleanup_batch_limit(),
+            ]);
+            user_registration_kyc_cleanup_write_state($handle, [
+                'status' => !empty($result['ok']) ? 'COMPLETED' : 'FAILED',
+                'last_attempt_at' => $now,
+                'last_completed_at' => time(),
+                'ok' => !empty($result['ok']),
+                'scanned' => (int)($result['scanned'] ?? 0),
+                'deleted_records' => (int)($result['deleted_records'] ?? 0),
+                'deleted_files' => (int)($result['deleted_files'] ?? 0),
+                'failed' => (int)($result['failed'] ?? 0),
+            ]);
+        } catch (Throwable $exception) {
+            error_log('Registration KYC automatic cleanup failed: ' . $exception->getMessage());
+            user_registration_kyc_cleanup_write_state($handle, [
+                'status' => 'FAILED',
+                'last_attempt_at' => time(),
+                'last_completed_at' => time(),
+                'ok' => false,
+                'failed' => 1,
+            ]);
+        } finally {
+            @flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    });
+}
+
 function user_registration_kyc_cleanup_lease_seconds(): int
 {
     return 300;

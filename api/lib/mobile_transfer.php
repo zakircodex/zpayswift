@@ -13,6 +13,7 @@ if (!function_exists('fcm_send_to_user')) {
     }
 }
 require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/receipt_capability.php';
 
 function zpay_transfer_money($value): float
 {
@@ -939,7 +940,7 @@ function zpay_transfer_save_receipt(array $transfer): array
         'transfer_id' => $transferId,
         'created_at' => (int)$receipt['created_at'],
         'updated_at' => $now,
-    ])) {
+    ] + receipt_capability_metadata((int)$receipt['created_at']))) {
         fb_delete($receiptPath);
         return ['receipt_error' => 'Receipt index save failed'];
     }
@@ -957,11 +958,14 @@ function zpay_transfer_save_receipt(array $transfer): array
 function zpay_transfer_load_receipt_by_token(string $token): array
 {
     $token = trim($token);
-    if ($token === '') {
+    if ($token === '' || preg_match('/^[A-Za-z0-9_-]{24,128}$/D', $token) !== 1) {
         return [];
     }
     $index = fb_get('TRANSFER_RECEIPT_INDEX/' . $token);
     if (!is_array($index)) {
+        return [];
+    }
+    if (empty(receipt_capability_access($index)['ok'])) {
         return [];
     }
     $receiptId = trim((string)($index['receipt_id'] ?? ''));
@@ -969,7 +973,11 @@ function zpay_transfer_load_receipt_by_token(string $token): array
         return [];
     }
     $receipt = fb_get('TRANSFER_RECEIPTS/' . $receiptId);
-    return is_array($receipt) ? $receipt : [];
+    if (!is_array($receipt) || !hash_equals($token, trim((string)($receipt['receipt_token'] ?? '')))) {
+        return [];
+    }
+
+    return $receipt;
 }
 
 function zpay_transfer_public_receipt(array $receipt): array

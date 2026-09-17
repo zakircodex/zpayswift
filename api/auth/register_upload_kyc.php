@@ -8,6 +8,7 @@ require_once __DIR__ . '/../lib/user_registration_kyc.php';
 
 api_require_method('POST');
 api_require_app_key();
+user_registration_kyc_schedule_cleanup();
 
 function reg_kyc_private_storage_dir(string $registerToken): string
 {

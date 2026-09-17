@@ -10,6 +10,7 @@ require_once __DIR__ . '/wallet.php';
 require_once __DIR__ . '/notifications.php';
 require_once __DIR__ . '/admin_pagination.php';
 require_once __DIR__ . '/admin_push.php';
+require_once __DIR__ . '/receipt_capability.php';
 
 function add_money_now(): int
 {
@@ -28,68 +29,17 @@ function add_money_token(int $bytes = 24): string
 
 function add_money_receipt_token_ttl_seconds(): int
 {
-    $ttl = defined('RECEIPT_TOKEN_TTL_SECONDS')
-        ? (int)constant('RECEIPT_TOKEN_TTL_SECONDS')
-        : 30 * 24 * 60 * 60;
-
-    return max(60 * 60, min(365 * 24 * 60 * 60, $ttl));
+    return receipt_capability_ttl_seconds();
 }
 
 function add_money_receipt_token_metadata(int $issuedAt): array
 {
-    return [
-        'receipt_token_version' => 2,
-        'issued_at' => $issuedAt,
-        'expires_at' => $issuedAt + add_money_receipt_token_ttl_seconds(),
-        'status' => 'ACTIVE',
-    ];
+    return receipt_capability_metadata($issuedAt);
 }
 
 function add_money_receipt_token_access(array $tokenRow, ?int $now = null): array
 {
-    $hasVersion = array_key_exists('receipt_token_version', $tokenRow);
-    $version = (int)($tokenRow['receipt_token_version'] ?? 1);
-
-    // Historical capabilities predate expiry metadata. Keep them readable without
-    // inventing dates or rewriting production records.
-    if (!$hasVersion || $version === 1) {
-        return ['ok' => true, 'legacy' => true, 'version' => 1, 'code' => 'LEGACY_RECEIPT_TOKEN'];
-    }
-
-    if ($version !== 2) {
-        return ['ok' => false, 'legacy' => false, 'version' => $version, 'code' => 'RECEIPT_TOKEN_INVALID'];
-    }
-
-    $status = strtoupper(trim((string)($tokenRow['status'] ?? '')));
-    if ($status !== 'ACTIVE') {
-        return [
-            'ok' => false,
-            'legacy' => false,
-            'version' => $version,
-            'code' => in_array($status, ['REVOKED', 'DISABLED'], true)
-                ? 'RECEIPT_TOKEN_REVOKED'
-                : 'RECEIPT_TOKEN_INVALID',
-        ];
-    }
-
-    $issuedAt = (int)($tokenRow['issued_at'] ?? 0);
-    $expiresAt = (int)($tokenRow['expires_at'] ?? 0);
-    if ($issuedAt <= 0 || $expiresAt <= $issuedAt) {
-        return ['ok' => false, 'legacy' => false, 'version' => $version, 'code' => 'RECEIPT_TOKEN_INVALID'];
-    }
-
-    if (($now ?? add_money_now()) >= $expiresAt) {
-        return ['ok' => false, 'legacy' => false, 'version' => $version, 'code' => 'RECEIPT_TOKEN_EXPIRED'];
-    }
-
-    return [
-        'ok' => true,
-        'legacy' => false,
-        'version' => $version,
-        'code' => 'RECEIPT_TOKEN_VALID',
-        'issued_at' => $issuedAt,
-        'expires_at' => $expiresAt,
-    ];
+    return receipt_capability_access($tokenRow, $now ?? add_money_now());
 }
 
 function add_money_receipt_token_matches_request(string $token, array $tokenRow, array $requestRow): bool

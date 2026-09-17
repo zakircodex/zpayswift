@@ -18,6 +18,7 @@ function pageMarkup() {
     <section id="historySection" class="page-section history-page-section active"><div class="history-page-shell">
       <header class="history-page-header"><a id="historyBackButton" href="#">Back</a><h1>History</h1><a href="#">Notices</a></header>
       <main class="history-page-body"><div id="historyLive" class="visually-hidden"></div><div id="historyList" class="history-list" aria-busy="true"></div></main>
+      <div id="historyLoadMore" class="history-load-more" aria-busy="false" hidden><button id="historyLoadMoreButton" type="button">Load 10 more</button><span id="historyLoadMoreStatus"></span></div>
     </div>
     <div id="historyDetailModal" class="history-detail-modal hidden" aria-hidden="true" inert>
       <button data-history-modal-close>Close</button><div class="history-detail-card" tabindex="-1"><h2 id="historyDetailTitle"></h2><div id="historyDetailStatus"></div><div id="historyDetailRows"></div><div id="historyDetailActions"></div></div>
@@ -35,9 +36,10 @@ function pageMarkup() {
         const now = Math.floor(Date.now() / 1000);
         const previous = Math.floor(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 15).getTime() / 1000);
         return {
-          items: [{ request_id: 'MF-CURRENT', request_type: 'MFS', provider: 'BKASH', receiver_number: '01700000000', amount_bdt: 100, created_at: now, status: 'PENDING' }],
+          items: Array.from({ length: 25 }, (_, index) => ({ request_id: 'MF-CURRENT-' + index, request_type: 'MFS', provider: 'BKASH', receiver_number: '01700000000', amount_bdt: 100 + index, created_at: now - index, status: 'PENDING' })),
           wallet_history: [{ transfer_id: 'WT-CURRENT', direction: 'CREDIT', amount: 50, currency: 'BDT', created_at: now, status: 'SUCCESS', counterparty_name: 'TEST USER' }],
-          add_money_history: [{ request_id: 'AM-OLD', amount: 300, currency: 'BDT', created_at: previous, status: 'APPROVED' }]
+          add_money_history: [{ request_id: 'AM-OLD', amount: 300, currency: 'BDT', created_at: previous, status: 'APPROVED' }],
+          pagination: { limit: params.limit, has_more: false }
         };
       }
     };
@@ -80,9 +82,15 @@ async function main() {
       assert.equal(calls.length, 1, `${width}px History made duplicate API requests.`);
       assert.equal(calls[0].action, 'request_logs', `${width}px History used the wrong endpoint.`);
       assert.match(calls[0].params.month, /^\d{4}-(0[1-9]|1[0-2])$/, `${width}px History omitted the current month.`);
-      assert.equal(calls[0].params.limit, 100, `${width}px History limit changed unexpectedly.`);
+      assert.equal(calls[0].params.limit, 10, `${width}px History initial page must remain bounded to 10.`);
       assert.equal(calls[0].params.legacy, 0, `${width}px History enabled legacy scans.`);
-      assert.equal(await page.locator('.history-transaction-card').count(), 2, `${width}px old-month rows were rendered.`);
+      assert.equal(await page.locator('.history-transaction-card').count(), 10, `${width}px History did not render exactly the first 10 rows.`);
+      await page.locator('#historyLoadMore').scrollIntoViewIfNeeded();
+      await page.waitForFunction(() => document.querySelectorAll('.history-transaction-card').length === 20);
+      assert.equal(await page.locator('.history-transaction-card').count(), 20, `${width}px History did not reveal the next 10 rows.`);
+      await page.evaluate(() => document.getElementById('historyLoadMoreButton').click());
+      assert.equal(await page.locator('.history-transaction-card').count(), 26, `${width}px History did not reveal the final current-month rows.`);
+      assert.equal(await page.locator('#historyLoadMore').isHidden(), true, `${width}px exhausted History loader remained visible.`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true, `${width}px History overflows horizontally.`);
       await context.close();
     }

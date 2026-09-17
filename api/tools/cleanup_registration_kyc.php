@@ -18,10 +18,15 @@ require_once $apiRoot . '/bootstrap.php';
 require_once $apiRoot . '/lib/user_registration_kyc.php';
 
 $dryRun = false;
+$statusOnly = false;
 $limit = user_registration_kyc_cleanup_batch_limit();
 foreach (array_slice($argv, 1) as $argument) {
     if ($argument === '--dry-run') {
         $dryRun = true;
+        continue;
+    }
+    if ($argument === '--status') {
+        $statusOnly = true;
         continue;
     }
     if (preg_match('/^--limit=(\d{1,4})$/D', $argument, $match) === 1) {
@@ -29,8 +34,19 @@ foreach (array_slice($argv, 1) as $argument) {
         continue;
     }
 
-    fwrite(STDERR, "Usage: php api/tools/cleanup_registration_kyc.php [--dry-run] [--limit=100]\n");
+    fwrite(STDERR, "Usage: php api/tools/cleanup_registration_kyc.php [--dry-run] [--status] [--limit=100]\n");
     exit(2);
+}
+
+if ($statusOnly) {
+    $status = user_registration_kyc_cleanup_status();
+    foreach (['status', 'last_attempt_at', 'last_completed_at', 'ok', 'scanned', 'deleted_records', 'deleted_files', 'failed'] as $field) {
+        if (array_key_exists($field, $status)) {
+            $value = is_bool($status[$field]) ? ($status[$field] ? 'true' : 'false') : (string)$status[$field];
+            fwrite(STDOUT, $field . '=' . $value . PHP_EOL);
+        }
+    }
+    exit(0);
 }
 
 $result = user_registration_kyc_cleanup_run([

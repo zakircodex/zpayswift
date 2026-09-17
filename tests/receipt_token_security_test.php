@@ -28,7 +28,15 @@ receipt_assert((add_money_receipt_token_access($metadata, $issuedAt + 3600)['cod
 
 $revoked = array_merge($metadata, ['status' => 'REVOKED']);
 receipt_assert((add_money_receipt_token_access($revoked, $issuedAt)['code'] ?? '') === 'RECEIPT_TOKEN_REVOKED', 'revoked receipt token must be denied');
-receipt_assert(!empty(add_money_receipt_token_access(['created_at' => $issuedAt], $issuedAt + 999999)['ok']), 'legacy unversioned receipt token must follow explicit compatibility policy');
+$missingStatus = $metadata;
+unset($missingStatus['status']);
+receipt_assert((add_money_receipt_token_access($missingStatus, $issuedAt)['code'] ?? '') === 'RECEIPT_TOKEN_INVALID', 'versioned receipt tokens must require active status metadata');
+$missingIssuedAt = $metadata;
+unset($missingIssuedAt['issued_at']);
+$missingIssuedAt['created_at'] = $issuedAt;
+receipt_assert((add_money_receipt_token_access($missingIssuedAt, $issuedAt)['code'] ?? '') === 'RECEIPT_TOKEN_INVALID', 'versioned receipt tokens must not fall back to legacy issue timestamps');
+receipt_assert(!empty(add_money_receipt_token_access(['created_at' => $issuedAt], $issuedAt + 3599)['ok']), 'recent legacy receipt token must remain compatible');
+receipt_assert((add_money_receipt_token_access(['created_at' => $issuedAt], $issuedAt + 3600)['code'] ?? '') === 'RECEIPT_TOKEN_EXPIRED', 'legacy receipt tokens must receive a finite derived expiry');
 
 $tokenRow = array_merge($metadata, [
     'request_id' => 'AM_TEST_A',
@@ -80,5 +88,13 @@ foreach (['api/mfs/receipt.php', 'api/transfer/receipt.php'] as $publicReceiptPa
     $publicReceipt = (string)file_get_contents(dirname(__DIR__) . '/' . $publicReceiptPath);
     receipt_assert(str_contains($publicReceipt, "header('Cache-Control: private, no-store"), $publicReceiptPath . ' must not be cached');
 }
+
+$mfsSource = (string)file_get_contents(dirname(__DIR__) . '/api/lib/mfs.php');
+$transferSource = (string)file_get_contents(dirname(__DIR__) . '/api/lib/mobile_transfer.php');
+receipt_assert(str_contains($mfsSource, 'receipt_capability_metadata($receiptCreatedAt)'), 'MFS receipt indexes must include finite expiry metadata');
+receipt_assert(str_contains($mfsSource, 'receipt_capability_access($index, mfs_now())'), 'MFS receipt loading must enforce expiry');
+receipt_assert(str_contains($transferSource, "receipt_capability_metadata((int)\$receipt['created_at'])"), 'transfer receipt indexes must include finite expiry metadata');
+receipt_assert(str_contains($transferSource, 'receipt_capability_access($index)'), 'transfer receipt loading must enforce expiry');
+receipt_assert(str_contains($transferSource, 'hash_equals($token'), 'transfer receipt tokens must remain bound to the stored receipt');
 
 echo "receipt token security tests passed\n";

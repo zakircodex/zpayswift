@@ -30,6 +30,18 @@ supports it.
 3. Wait for **Audit, upload and verify** to succeed.
 4. Record the workflow URL and the exact SHA printed by **Verify deployed commit**.
 
-The upload is non-destructive: it does not delete server-only files and the
-package rejects private configuration, logs, archives, SQL dumps, Git metadata,
-and environment files.
+The release is guarded by a private `.deploy-in-progress` maintenance marker.
+Public traffic receives HTTP 503 while tracked files are promoted, so visitors
+never use a partially uploaded mix of releases. The commit marker is published
+last and the maintenance marker is removed only after promotion completes.
+
+Each successful release also publishes a validated `.deploy-manifest`. On the
+next release, only files present in the previous manifest and absent from the
+new manifest are removed. The workflow never uses a blind remote delete, and
+dynamic storage, private configuration, logs, uploads, receipts, archives, SQL
+dumps, Git metadata, and environment files cannot enter the deletion list.
+
+If promotion fails after maintenance begins, the marker intentionally remains
+in place. Fix the failed check and rerun the same workflow; the guarded upload
+is idempotent and completes the release before reopening traffic. Do not remove
+the marker manually while a package may be incomplete.

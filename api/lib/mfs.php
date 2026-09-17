@@ -12,6 +12,7 @@ require_once __DIR__ . '/mfs_fee_tiers.php';
 require_once __DIR__ . '/referral.php';
 require_once __DIR__ . '/admin_pagination.php';
 require_once __DIR__ . '/admin_push.php';
+require_once __DIR__ . '/receipt_capability.php';
 
 /*
 |--------------------------------------------------------------------------
@@ -2917,7 +2918,7 @@ function mfs_save_receipt_for_request(string $requestId, array $row, string $sta
         'request_id' => $requestId,
         'created_at' => $receiptCreatedAt,
         'updated_at' => $now,
-    ]);
+    ] + receipt_capability_metadata($receiptCreatedAt));
 
     if (!$saved || !$indexed) {
         return [
@@ -3000,6 +3001,10 @@ function mfs_load_receipt_by_token(string $token): array
     $index = mfs_fb_get('MFS_RECEIPT_INDEX/' . $token);
 
     if (!is_array($index)) {
+        return [];
+    }
+
+    if (empty(receipt_capability_access($index, mfs_now())['ok'])) {
         return [];
     }
 

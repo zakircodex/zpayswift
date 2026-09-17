@@ -53,11 +53,14 @@ define('USER_LOGIN_PIN_LOCK_SECONDS', 15 * 60);
 define('USER_LOGIN_TRANSACTION_PIN_MAX_ATTEMPTS', 5);
 define('USER_LOGIN_TRANSACTION_PIN_WINDOW_SECONDS', 15 * 60);
 define('USER_LOGIN_TRANSACTION_PIN_LOCK_SECONDS', 15 * 60);
-/* New Add Money receipt capabilities expire; historical unversioned links remain compatible. */
+/* Add Money, MFS and transfer receipt capabilities, including legacy links, expire. */
 define('RECEIPT_TOKEN_TTL_SECONDS', 60 * 60 * 24 * 30);
 /* Abandoned pre-registration KYC is eligible 72 hours after its session expires. */
 define('REGISTRATION_KYC_TEMP_TTL_SECONDS', 60 * 60 * 72);
 define('REGISTRATION_KYC_CLEANUP_BATCH_LIMIT', 100);
+define('REGISTRATION_KYC_AUTO_CLEANUP_ENABLED', true);
+define('REGISTRATION_KYC_AUTO_CLEANUP_INTERVAL_SECONDS', 60 * 60);
+define('REGISTRATION_KYC_AUTO_CLEANUP_BATCH_LIMIT', 25);
 
 /* BulkSMSBD OTP SMS */
 define('BULKSMSBD_SMS_API_URL', 'https://bulksmsbd.net/api/smsapi');

@@ -36,8 +36,9 @@ transfer_contract_expect(
     'Android transfer endpoint or read timeout changed'
 );
 transfer_contract_expect(
-    str_contains($androidTransfer, 'payload.put("preview_token", previewToken)')
-    && str_contains($androidTransfer, 'payload.put("reference", referenceText)')
+    str_contains($androidTransfer, 'activeSubmitPayload.put("preview_token", previewToken)')
+    && str_contains($androidTransfer, 'activeSubmitPayload.put("reference", referenceText)')
+    && str_contains($androidTransfer, 'new JSONObject(activeSubmitPayload.toString())')
     && str_contains($androidTransfer, 'postJson(ApiConfig.TRANSFER_CREATE, payload, ApiConfig.TOPUP_READ_TIMEOUT_MS)'),
     'Android create request contract is incomplete'
 );

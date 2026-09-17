@@ -4818,12 +4818,23 @@ switch ($action) {
             $limit = 300;
         }
 
+        $items = user_proxy_collect_request_logs($uid, $limit, $legacy, $month);
+        $walletHistory = user_proxy_collect_wallet_received($uid, $month, $limit);
+        $addMoneyHistory = add_money_public_request_rows(add_money_list_user_history($uid, $limit, $month));
+        $hasMore = count($items) >= $limit
+            || count($walletHistory) >= $limit
+            || count($addMoneyHistory) >= $limit;
+
         user_proxy_response(true, 'SUCCESS', 'Request logs loaded', [
             'uid' => $uid,
             'month' => $month,
-            'items' => user_proxy_collect_request_logs($uid, $limit, $legacy, $month),
-            'wallet_history' => user_proxy_collect_wallet_received($uid, $month, $limit),
-            'add_money_history' => add_money_public_request_rows(add_money_list_user_history($uid, $limit, $month)),
+            'items' => $items,
+            'wallet_history' => $walletHistory,
+            'add_money_history' => $addMoneyHistory,
+            'pagination' => [
+                'limit' => $limit,
+                'has_more' => $hasMore,
+            ],
             'mode' => $legacy ? 'fast_with_legacy_fallback' : 'fast',
         ]);
         break;

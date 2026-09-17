@@ -1,0 +1,71 @@
+name: Core Web Audit
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-web-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-web:
+    name: Syntax, contracts and browser flows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: curl, fileinfo, gd, mbstring, openssl
+          coverage: none
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Lint every PHP and JavaScript file
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -path './.git' -prune -o -type f -name '*.php' -print0 \
+            | sort -z \
+            | xargs -0 -n1 php -l >/dev/null
+          find assets api znews tests -type f -name '*.js' -print0 \
+            | sort -z \
+            | xargs -0 -n1 node --check
+
+      - name: Run core financial, authentication and UI contracts
+        run: php tests/run_core_web_tests.php
+
+      - name: Install browser test runtime
+        shell: bash
+        run: |
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Run core user browser flows
+        shell: bash
+        env:
+          PLAYWRIGHT_CHANNEL: chromium
+        run: |
+          set -euo pipefail
+          node tests/user_dashboard_cold_boot_browser_test.js
+          node tests/user_history_current_month_browser_test.js
+          node tests/user_loading_notifications_browser_test.js
+          node tests/user_login_otp_browser_test.js
+          node tests/user_mfs_submit_recovery_browser_test.js
+          node tests/user_referral_progressive_browser_test.js
+          node tests/user_topup_mobile_browser_test.js

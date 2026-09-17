@@ -1,6 +1,9 @@
 name: cPanel Deployment Audit
 
 on:
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
@@ -8,7 +11,14 @@ on:
       - '.github/workflows/cpanel-production-deploy.yml'
       - '.github/workflows/cpanel-deployment-audit.yml'
       - '.cpanel-deploy-exclude'
+      - '.cpanel.yml'
+      - '.htaccess'
+      - 'scripts/build_public_deployment.sh'
+      - 'scripts/deployment_manifest_diff.php'
+      - 'scripts/promote_public_deployment.sh'
+      - 'scripts/promote_public_deployment_ftps.sh'
       - 'tests/cpanel_push_deployment_test.php'
+      - 'tests/deployment_manifest_test.php'
       - 'docs/cpanel-push-deployment.md'
   workflow_dispatch:
 
@@ -26,4 +36,6 @@ jobs:
           ruby -e "require 'yaml'; YAML.safe_load_file('.github/workflows/cpanel-production-deploy.yml', aliases: true)"
           ruby -e "require 'yaml'; YAML.safe_load_file('.github/workflows/cpanel-deployment-audit.yml', aliases: true)"
       - name: Validate deployment contract
-        run: php tests/cpanel_push_deployment_test.php
+        run: |
+          php tests/cpanel_push_deployment_test.php
+          php tests/deployment_manifest_test.php

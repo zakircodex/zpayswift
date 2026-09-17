@@ -40,14 +40,17 @@ security_headers_expect(
     'Legacy same-origin frame protection is missing.'
 );
 
-$csp = "base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'";
 security_headers_expect(
-    str_contains($htaccess, 'Content-Security-Policy "' . $csp . '" env=ZPAY_MAIN_HOST'),
-    'Compatible enforced CSP is missing.'
+    str_contains($htaccess, "default-src 'self'")
+        && str_contains($htaccess, "script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com")
+        && str_contains($htaccess, "connect-src 'self' https://cloudflareinsights.com")
+        && str_contains($htaccess, "object-src 'none'")
+        && str_contains($htaccess, "frame-ancestors 'self'"),
+    'Main-host enforced CSP source boundaries are incomplete.'
 );
 security_headers_expect(
-    !str_contains($csp, '*') && !str_contains($csp, "'unsafe-inline'"),
-    'The enforced CSP must not use wildcard or unsafe-inline sources.'
+    !str_contains($htaccess, 'script-src *') && !str_contains($htaccess, 'connect-src *'),
+    'Executable and connection CSP sources must not use wildcards.'
 );
 security_headers_expect(
     str_contains($htaccess, 'Referrer-Policy "strict-origin-when-cross-origin" env=ZPAY_MAIN_HOST')
@@ -75,7 +78,10 @@ security_headers_expect(
 );
 security_headers_expect(
     str_contains($zskyHtaccess, 'Content-Security-Policy')
-        && str_contains($zskyHtaccess, 'camera=(), microphone=(), geolocation=()'),
+        && str_contains($zskyHtaccess, 'camera=(), microphone=(), geolocation=()')
+        && str_contains($zskyHtaccess, 'Strict-Transport-Security "max-age=31536000"')
+        && str_contains($zskyHtaccess, "script-src 'self' https://static.cloudflareinsights.com")
+        && str_contains($zskyHtaccess, 'https://cloudflareinsights.com'),
     'Z Sky must retain its isolated header policy.'
 );
 security_headers_expect(
@@ -92,9 +98,6 @@ $assetLinksCacheBlock = preg_match(
 ) === 1;
 security_headers_expect($swCacheBlock, 'Service-worker no-store policy must remain file-scoped.');
 security_headers_expect($assetLinksCacheBlock, 'Asset Links cache policy must remain file-scoped.');
-security_headers_expect(
-    substr_count($htaccess, 'Header always set Cache-Control') === 2,
-    'Cache-Control headers must remain limited to the two audited file scopes.'
-);
+security_headers_expect(substr_count($htaccess, 'Header always set Cache-Control') === 2, 'Cache-Control headers must remain limited to the two audited file scopes.');
 
 echo "security headers configuration test passed\n";
