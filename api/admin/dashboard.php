@@ -20,6 +20,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/admin/assets/admin-transactions.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-transactions.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-support.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-support.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-settings.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-settings.css') ?: 1)) ?>">
+  <link rel="stylesheet" href="/api/admin/assets/admin-worker-sms.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-worker-sms.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
@@ -81,6 +82,7 @@ header('Pragma: no-cache');
         
         <button class="nav-btn" data-section="usersSection">Users <span>›</span></button>
         <button class="nav-btn" data-section="operatorsSection">Operators <span>›</span></button>
+        <button class="nav-btn" data-section="workerSmsSection">Worker SMS <span>›</span></button>
         <button class="nav-btn" data-section="zsky24Section">Z Sky 24 <span>›</span></button>
       </div>
 
@@ -887,6 +889,52 @@ header('Pragma: no-cache');
             </div>
             <div class="operators-grid" id="operatorsTableBody" aria-live="polite">
               <div class="operator-empty-state">No data yet.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="workerSmsSection" aria-labelledby="workerSmsTitle">
+        <div class="card worker-sms-card">
+          <div class="panel-head worker-sms-panel-head">
+            <div>
+              <h3 id="workerSmsTitle">Worker SMS Archive</h3>
+              <p>Incoming SMS stored by worker devices for operational verification.</p>
+            </div>
+            <button class="btn ghost" id="reloadWorkerSmsBtn" type="button">Reload SMS</button>
+          </div>
+
+          <div class="worker-sms-filter-row">
+            <label class="worker-sms-filter-field" for="workerSmsSearch">
+              <span>Filter loaded records</span>
+              <input class="input" id="workerSmsSearch" type="search" autocomplete="off" placeholder="Device, sender, request or message">
+            </label>
+          </div>
+
+          <div class="table-wrap worker-sms-table-wrap">
+            <table class="worker-sms-table">
+              <thead>
+                <tr>
+                  <th>Received</th>
+                  <th>Device</th>
+                  <th>SIM</th>
+                  <th>Sender</th>
+                  <th>Message</th>
+                  <th>Request</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="workerSmsTableBody">
+                <tr><td colspan="7" class="empty">No worker SMS loaded.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="admin-pagination-bar worker-sms-pagination" id="workerSmsPagination">
+            <span id="workerSmsPaginationText">Page 1 • 0 messages</span>
+            <div class="row-actions">
+              <button class="btn ghost" id="workerSmsPrevBtn" type="button">Previous</button>
+              <button class="btn ghost" id="workerSmsNextBtn" type="button">Next</button>
             </div>
           </div>
         </div>

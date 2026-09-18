@@ -1891,6 +1891,19 @@ switch ($action) {
         ]);
         break;
 
+    case 'worker_sms_list':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('workers/sms_list.php', [
+            'limit' => (int)($_GET['limit'] ?? 10),
+            'cursor' => trim((string)($_GET['cursor'] ?? '')),
+        ]);
+        break;
+
+    case 'worker_sms_delete':
+        proxy_require_method('POST');
+        proxy_forward_admin_post('workers/sms_delete.php', proxy_read_json_body());
+        break;
+
     case 'zsky24_impressions_queue':
         proxy_require_method('GET');
         proxy_forward_admin_get('znews/ads/impressions/queue.php', [

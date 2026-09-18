@@ -1,0 +1,109 @@
+#workerSmsSection .worker-sms-card{
+  overflow:hidden;
+}
+
+#workerSmsSection .worker-sms-panel-head{
+  padding:18px;
+}
+
+#workerSmsSection .worker-sms-panel-head h3{
+  margin:0;
+  font-size:18px;
+}
+
+#workerSmsSection .worker-sms-panel-head p{
+  margin:5px 0 0;
+  color:var(--muted);
+  line-height:1.45;
+}
+
+#workerSmsSection .worker-sms-filter-row{
+  padding:0 18px 14px;
+  border-bottom:1px solid rgba(118,154,194,.14);
+}
+
+#workerSmsSection .worker-sms-filter-field{
+  display:grid;
+  gap:7px;
+  max-width:520px;
+}
+
+#workerSmsSection .worker-sms-filter-field > span{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
+}
+
+#workerSmsSection .worker-sms-table-wrap{
+  padding:0;
+}
+
+#workerSmsSection .worker-sms-table{
+  width:100%;
+  min-width:1040px;
+  table-layout:fixed;
+}
+
+#workerSmsSection .worker-sms-table th:nth-child(1){width:150px}
+#workerSmsSection .worker-sms-table th:nth-child(2){width:130px}
+#workerSmsSection .worker-sms-table th:nth-child(3){width:90px}
+#workerSmsSection .worker-sms-table th:nth-child(4){width:130px}
+#workerSmsSection .worker-sms-table th:nth-child(5){width:auto}
+#workerSmsSection .worker-sms-table th:nth-child(6){width:150px}
+#workerSmsSection .worker-sms-table th:nth-child(7){width:140px}
+
+#workerSmsSection .worker-sms-table td{
+  vertical-align:top;
+  overflow-wrap:anywhere;
+}
+
+#workerSmsSection .worker-sms-message{
+  display:-webkit-box;
+  overflow:hidden;
+  color:var(--text);
+  line-height:1.5;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:3;
+}
+
+#workerSmsSection .worker-sms-meta{
+  margin-top:4px;
+  color:var(--muted);
+  font-size:12px;
+}
+
+#workerSmsSection .worker-sms-row-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+}
+
+#workerSmsSection .worker-sms-pagination{
+  border-top:1px solid rgba(118,154,194,.14);
+}
+
+.worker-sms-detail-body,
+.worker-sms-full-message{
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  user-select:text;
+}
+
+@media (max-width:760px){
+  #workerSmsSection .worker-sms-panel-head{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  #workerSmsSection .worker-sms-panel-head .btn{
+    width:100%;
+  }
+
+  #workerSmsSection .worker-sms-filter-row{
+    padding:0 12px 12px;
+  }
+
+  #workerSmsSection .worker-sms-table-wrap{
+    padding:0 12px 12px;
+  }
+}

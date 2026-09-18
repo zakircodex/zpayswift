@@ -37,6 +37,8 @@ const state = {
   usersStatus: 'ACTIVE',
   usersRequestSerial: 0,
   workers: [],
+  workerSms: [],
+  workerSmsPagination: { page:1, limit:10, cursor:'', next_cursor:'', has_more:false, history:[''] },
   operators: [],
 
   busyCount: 0,
@@ -66,6 +68,7 @@ const state = {
     doneBundles: false,
     users: false,
     workers: false,
+    workerSms: false,
     operators: false,
     appConfig: false,
     dashboardConfig: false
@@ -1155,6 +1158,7 @@ async function doLogout(){
     doneBundles: false,
     users: false,
     workers: false,
+    workerSms: false,
     operators: false,
     appConfig: false,
     dashboardConfig: false
@@ -1342,6 +1346,13 @@ async function loadSectionData(sectionId, force = false){
   if (sectionId === 'operatorsSection') {
     if (force || !state.loaded.operators) {
       await loadOperators({ busyText:'Loading operators...' });
+    }
+    return;
+  }
+
+  if (sectionId === 'workerSmsSection') {
+    if (force || !state.loaded.workerSms) {
+      await loadWorkerSmsArchive({ busyText:'Loading worker SMS archive...' });
     }
     return;
   }
@@ -4250,6 +4261,136 @@ function viewWorkerStatus(deviceId){
 }
 
 /* =========================
+   WORKER SMS ARCHIVE
+========================= */
+
+async function loadWorkerSmsArchive(options = {}){
+  const pagination = state.workerSmsPagination;
+  const data = await proxyGet('worker_sms_list', {
+    limit: pagination.limit,
+    cursor: pagination.cursor,
+  }, options);
+
+  state.workerSms = Array.isArray(data.items) ? data.items : [];
+  applyCursorPagination(pagination, data.pagination || {}, pagination.page);
+  state.loaded.workerSms = true;
+  renderWorkerSmsArchive();
+
+  if (!options.silentLog) log('Loaded worker SMS archive.');
+}
+
+function filteredWorkerSmsRows(){
+  const term = String(document.getElementById('workerSmsSearch')?.value || '').trim().toLowerCase();
+  if (!term) return state.workerSms || [];
+
+  return (state.workerSms || []).filter(row => [
+    row.device_id,
+    row.sender,
+    row.body,
+    row.request_id,
+    row.assigned_slot,
+    row.sim_mode,
+    row.subscription_id,
+  ].some(value => String(value ?? '').toLowerCase().includes(term)));
+}
+
+function renderWorkerSmsArchive(){
+  const tbody = document.getElementById('workerSmsTableBody');
+  if (!tbody) return;
+
+  const rows = filteredWorkerSmsRows();
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">No worker SMS found.</td></tr>';
+  } else {
+    tbody.innerHTML = rows.map(row => {
+      const archiveId = String(row.archive_id || '');
+      const assignedSlot = String(row.assigned_slot || '').trim();
+      const simMode = String(row.sim_mode || '').trim();
+      const simLabel = [assignedSlot, simMode].filter(Boolean).join(' / ') || `Subscription ${Number(row.subscription_id ?? -1)}`;
+      const requestId = String(row.request_id || '').trim() || '-';
+
+      return `
+        <tr>
+          <td data-label="Received">
+            <div>${fmtTs(row.received_at || 0)}</div>
+            <div class="worker-sms-meta mono">${esc(archiveId)}</div>
+          </td>
+          <td data-label="Device"><strong>${esc(row.device_id || '-')}</strong></td>
+          <td data-label="SIM">${esc(simLabel)}</td>
+          <td data-label="Sender">${esc(row.sender || '-')}</td>
+          <td data-label="Message"><div class="worker-sms-message">${esc(row.body || '')}</div></td>
+          <td data-label="Request"><span class="mono">${esc(requestId)}</span></td>
+          <td data-label="Action">
+            <div class="worker-sms-row-actions">
+              <button class="mini-btn blue" type="button" onclick="viewWorkerSms('${jsArg(archiveId)}')">View</button>
+              <button class="mini-btn red" type="button" onclick="deleteWorkerSms('${jsArg(archiveId)}')">Delete</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  renderCursorPagination('workerSms', state.workerSmsPagination, rows.length, 'messages');
+}
+
+function findWorkerSms(archiveId){
+  return (state.workerSms || []).find(row => String(row.archive_id || '') === String(archiveId || '')) || null;
+}
+
+function viewWorkerSms(archiveId){
+  const row = findWorkerSms(archiveId);
+  if (!row) {
+    showToast('SMS record was not found on this page.', 'error');
+    return;
+  }
+
+  openModal(
+    'Worker SMS Details',
+    `
+      <div class="detail-grid">
+        <div class="detail-item"><label>Received</label><strong>${fmtTs(row.received_at || 0)}</strong></div>
+        <div class="detail-item"><label>Device ID</label><strong>${esc(row.device_id || '-')}</strong></div>
+        <div class="detail-item"><label>Sender</label><strong>${esc(row.sender || '-')}</strong></div>
+        <div class="detail-item"><label>Subscription ID</label><strong>${esc(row.subscription_id ?? -1)}</strong></div>
+        <div class="detail-item"><label>Assigned SIM</label><strong>${esc(row.assigned_slot || '-')}</strong></div>
+        <div class="detail-item"><label>SIM Mode</label><strong>${esc(row.sim_mode || '-')}</strong></div>
+        <div class="detail-item"><label>Request ID</label><strong class="mono">${esc(row.request_id || '-')}</strong></div>
+        <div class="detail-item"><label>Archive ID</label><strong class="mono">${esc(row.archive_id || '-')}</strong></div>
+      </div>
+      <div class="detail-item" style="margin-top:16px;">
+        <label>Message</label>
+        <pre class="log-box worker-sms-full-message">${esc(row.body || '')}</pre>
+      </div>
+    `,
+    '<button class="btn ghost" type="button" onclick="closeModal()">Close</button>'
+  );
+}
+
+async function deleteWorkerSms(archiveId){
+  const row = findWorkerSms(archiveId);
+  if (!row) {
+    showToast('SMS record was not found on this page.', 'error');
+    return;
+  }
+  if (!confirm('Delete this worker SMS permanently?')) return;
+
+  try {
+    await proxyPost('worker_sms_delete', { archive_id: archiveId }, true, { busyText:'Deleting worker SMS...' });
+    closeModal();
+    showToast('Worker SMS deleted', 'ok');
+
+    if (state.workerSms.length === 1 && state.workerSmsPagination.page > 1) {
+      cursorPrevious(state.workerSmsPagination, () => loadWorkerSmsArchive({ busyText:'Loading worker SMS archive...' }));
+      return;
+    }
+    await loadWorkerSmsArchive({ busy:false, silentLog:true });
+  } catch (err) {
+    showToast(err.message || 'Worker SMS could not be deleted.', 'error');
+  }
+}
+
+/* =========================
    DONE SUMMARIES
 ========================= */
 
@@ -5759,6 +5900,13 @@ document.getElementById('supportNextBtn')?.addEventListener('click', () => curso
 document.getElementById('walletHistoryBtn')?.addEventListener('click', openWalletTransferHistory);
 document.getElementById('reloadOperatorsBtn')?.addEventListener('click', () => loadOperators({ busyText:'Reloading operators...' }));
 document.getElementById('reloadWorkersBtn')?.addEventListener('click', () => loadWorkersStatus({ busyText:'Reloading workers...' }));
+document.getElementById('reloadWorkerSmsBtn')?.addEventListener('click', () => {
+  resetCursorPagination(state.workerSmsPagination);
+  loadWorkerSmsArchive({ busyText:'Reloading worker SMS archive...' }).catch(() => {});
+});
+document.getElementById('workerSmsSearch')?.addEventListener('input', renderWorkerSmsArchive);
+document.getElementById('workerSmsPrevBtn')?.addEventListener('click', () => cursorPrevious(state.workerSmsPagination, () => loadWorkerSmsArchive({ busyText:'Loading worker SMS archive...' })));
+document.getElementById('workerSmsNextBtn')?.addEventListener('click', () => cursorNext(state.workerSmsPagination, () => loadWorkerSmsArchive({ busyText:'Loading worker SMS archive...' })));
 document.getElementById('reloadDashboardTaglineBtn')?.addEventListener('click', () =>
   loadDashboardConfig({ busyText:'Loading app dashboard tagline...' })
     .catch(err => showToast(err.message || 'Tagline could not be loaded.', 'error'))
@@ -5853,6 +6001,8 @@ window.closeModal = closeModal;
 window.closeDrawer = closeDrawer;
 
 window.viewWorkerStatus = viewWorkerStatus;
+window.viewWorkerSms = viewWorkerSms;
+window.deleteWorkerSms = deleteWorkerSms;
 
 window.openUserApiKeys = openUserApiKeys;
 window.createUserApiKey = createUserApiKey;
