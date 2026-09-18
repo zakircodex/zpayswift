@@ -40,6 +40,23 @@ $markerPosition = strpos($ftpsPromoter, 'deploy_version.txt.next');
 $unlockPosition = strpos($ftpsPromoter, "rm -f %s/.deploy-in-progress");
 deploy_expect($markerPosition !== false && $unlockPosition !== false && $markerPosition < $unlockPosition, 'Commit marker must publish before the maintenance lock is removed.');
 deploy_expect(str_contains($shellPromoter, '--delay-updates'), 'cPanel shell promotion must stage file updates.');
+deploy_expect(
+    str_contains($buildScript, 'command -v rsync')
+        && str_contains($buildScript, 'cPanel-compatible copy fallback'),
+    'cPanel package build must work when rsync is unavailable.'
+);
+deploy_expect(
+    str_contains($shellPromoter, 'command -v rsync')
+        && str_contains($shellPromoter, 'validated manifest'),
+    'cPanel promotion must have a manifest-driven fallback when rsync is unavailable.'
+);
+deploy_expect(
+    str_contains($buildScript, '/usr/local/cpanel/3rdparty/bin/php')
+        && str_contains($shellPromoter, '/usr/local/cpanel/3rdparty/bin/php')
+        && str_contains($buildScript, '/opt/cpanel/ea-php*/root/usr/bin/php')
+        && str_contains($shellPromoter, '/opt/cpanel/ea-php*/root/usr/bin/php'),
+    'cPanel deployment must resolve a hosting-provided PHP CLI binary.'
+);
 deploy_expect(str_contains($shellPromoter, '.deploy-manifest.next'), 'cPanel shell promotion must atomically publish its manifest.');
 deploy_expect(str_contains($buildScript, 'deployment_manifest_diff.php'), 'Deployment package manifest validation is missing.');
 deploy_expect(str_contains($buildScript, 'outside an approved staging directory') && str_contains($buildScript, 'must not contain symbolic links'), 'Deployment package cleanup and symlink guards are incomplete.');

@@ -16,14 +16,34 @@ if [[ "$PACKAGE_ROOT" == "$PUBLIC_ROOT" ]]; then
   exit 2
 fi
 
+resolve_php() {
+  local candidate
+  for candidate in "$(command -v php 2>/dev/null || true)" \
+    /usr/local/bin/php /usr/bin/php \
+    /opt/cpanel/ea-php*/root/usr/bin/php \
+    /opt/cloudlinux/alt-php*/root/usr/bin/php \
+    /usr/local/cpanel/3rdparty/bin/php; do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
 test -f "$PACKAGE_ROOT/.htaccess"
 test -f "$PACKAGE_ROOT/.deploy-manifest"
 test -f "$PACKAGE_ROOT/deploy_version.txt"
 
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-php "$SCRIPT_ROOT/deployment_manifest_diff.php" /dev/null "$PACKAGE_ROOT/.deploy-manifest" >/dev/null
+PHP_BIN="$(resolve_php)" || {
+  echo "No cPanel PHP CLI binary is available for deployment validation." >&2
+  exit 127
+}
+"$PHP_BIN" "$SCRIPT_ROOT/deployment_manifest_diff.php" \
+  /dev/null "$PACKAGE_ROOT/.deploy-manifest" >/dev/null
 if [[ -f "$PUBLIC_ROOT/.deploy-manifest" ]]; then
-  php "$SCRIPT_ROOT/deployment_manifest_diff.php" \
+  "$PHP_BIN" "$SCRIPT_ROOT/deployment_manifest_diff.php" \
     "$PUBLIC_ROOT/.deploy-manifest" \
     "$PACKAGE_ROOT/.deploy-manifest" > "$PACKAGE_ROOT/.stale-deploy-files"
 else
@@ -37,13 +57,48 @@ printf '%s\n' "$(head -n1 "$PACKAGE_ROOT/deploy_version.txt")" > "$PUBLIC_ROOT/.
 
 # A failed promotion deliberately leaves the lock in place. Rerunning a known-good
 # release completes promotion without exposing a mixed set of files.
-rsync -a --delay-updates \
-  --exclude='deploy_version.txt' \
-  --exclude='.deploy-manifest' \
-  --exclude='.stale-deploy-files' \
-  "$PACKAGE_ROOT/" "$PUBLIC_ROOT/"
+if command -v rsync >/dev/null 2>&1; then
+  rsync -a --delay-updates \
+    --exclude='deploy_version.txt' \
+    --exclude='.deploy-manifest' \
+    --exclude='.stale-deploy-files' \
+    "$PACKAGE_ROOT/" "$PUBLIC_ROOT/"
+else
+  echo "rsync is unavailable; promoting files from the validated manifest."
+  pending_copy=""
+  cleanup_pending_copy() {
+    [[ -z "$pending_copy" ]] || rm -f -- "$pending_copy"
+  }
+  trap cleanup_pending_copy EXIT
+
+  while IFS= read -r relative_path; do
+    relative_path="${relative_path%$'\r'}"
+    [[ -n "$relative_path" ]] || continue
+    case "$relative_path" in
+      .htaccess|deploy_version.txt|.deploy-manifest|.stale-deploy-files)
+        continue
+        ;;
+    esac
+
+    source_path="$PACKAGE_ROOT/$relative_path"
+    target_path="$PUBLIC_ROOT/$relative_path"
+    [[ -f "$source_path" ]] || {
+      echo "Deployment package file is missing: $relative_path" >&2
+      exit 1
+    }
+    mkdir -p "$(dirname -- "$target_path")"
+    pending_copy="$target_path.deploy-next.$$"
+    rm -f -- "$pending_copy"
+    cp -a "$source_path" "$pending_copy"
+    mv -f "$pending_copy" "$target_path"
+    pending_copy=""
+  done < "$PACKAGE_ROOT/.deploy-manifest"
+
+  trap - EXIT
+fi
 
 while IFS= read -r stale_path; do
+  stale_path="${stale_path%$'\r'}"
   [[ -n "$stale_path" ]] || continue
   target="$PUBLIC_ROOT/$stale_path"
   if [[ -f "$target" || -L "$target" ]]; then

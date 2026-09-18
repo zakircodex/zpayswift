@@ -5,6 +5,11 @@ manual `cPanel Production Deploy` GitHub Actions workflow audits `main`, builds
 an allowlisted public package, uploads it with explicit FTPS, and verifies the
 deployed commit through `deploy_version.txt`.
 
+The repository's **Deploy HEAD Commit** action remains supported as a manual
+fallback. Its deployment scripts use `rsync` when the host provides it and a
+validated, manifest-driven `cp` path on restricted cPanel hosts without
+`rsync`.
+
 ## One-time GitHub environment setup
 
 Create a protected GitHub environment named `production` and add these secrets:
