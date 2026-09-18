@@ -33,6 +33,7 @@ if (!$claimed) {
 
 $slot = (string)$claimed['assigned_slot'];
 $dialTemplate = (string)$claimed['dial_template'];
+$simMode = worker_normalize_sim_mode($claimed['sim_mode'] ?? '');
 $number = (string)$claimed['topup_number'];
 $amount = (float)$claimed['amount'];
 $retailerPin = (string)$claimed['retailer_secret_pin'];
@@ -59,6 +60,7 @@ api_response(true, 'REQUEST_CLAIMED', 'Request claimed', [
     'amount' => $amount,
     'assigned_slot' => $slot,
     'dial_template' => $dialTemplate,
+    'sim_mode' => $simMode,
     'retailer_secret_pin' => $retailerPin,
     'dial_preview_masked' => $preview,
 ]);

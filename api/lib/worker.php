@@ -23,6 +23,26 @@ function worker_is_available(array $device): bool
         && (bool)($device['accessibility_enabled'] ?? false);
 }
 
+function worker_normalize_sim_mode($value): string
+{
+    $mode = strtoupper(trim((string)$value));
+    return in_array($mode, ['NAGAD', 'RETAILER'], true) ? $mode : '';
+}
+
+function worker_sim_mode_for_dial_template(string $template): string
+{
+    $compact = strtoupper((string)preg_replace('/\s+/', '', $template));
+    return strpos($compact, '*167') === 0 ? 'NAGAD' : 'RETAILER';
+}
+
+function worker_sim_mode_for_operator(string $operator): string
+{
+    $runtime = get_operator_runtime($operator);
+    return worker_sim_mode_for_dial_template(
+        is_array($runtime) ? (string)($runtime['dial_template'] ?? '') : ''
+    );
+}
+
 function worker_get_active_slots(array $device): array
 {
     $slots = $device['sim_slots'] ?? [];
@@ -47,6 +67,7 @@ function worker_get_active_slots(array $device): array
 
         $result[$slotName] = [
             'operator' => $operator,
+            'mode' => worker_normalize_sim_mode($slotData['mode'] ?? ''),
             'active' => true,
         ];
     }
@@ -54,10 +75,29 @@ function worker_get_active_slots(array $device): array
     return $result;
 }
 
-function worker_find_matching_slot(array $device, string $operator): ?string
+function worker_find_matching_slot(array $device, string $operator, string $requiredMode = ''): ?string
 {
     $operator = normalize_operator($operator);
+    $requiredMode = worker_normalize_sim_mode($requiredMode);
     $slots = worker_get_active_slots($device);
+
+    $roleAware = $requiredMode !== '' && count(array_filter(
+        $slots,
+        static fn(array $slot): bool => worker_normalize_sim_mode($slot['mode'] ?? '') !== ''
+    )) > 0;
+
+    if ($roleAware) {
+        foreach ($slots as $slotName => $slotData) {
+            if (worker_normalize_sim_mode($slotData['mode'] ?? '') !== $requiredMode) {
+                continue;
+            }
+            if ($requiredMode === 'RETAILER' && ($slotData['operator'] ?? '') !== $operator) {
+                continue;
+            }
+            return (string)$slotName;
+        }
+        return null;
+    }
 
     foreach ($slots as $slotName => $slotData) {
         if (($slotData['operator'] ?? '') === $operator) {
@@ -126,8 +166,16 @@ function worker_update_heartbeat(
                 continue;
             }
 
+            $existingSlot = is_array($existing['sim_slots'][$slotName] ?? null)
+                ? (array)$existing['sim_slots'][$slotName]
+                : [];
+            $mode = array_key_exists('mode', $slotData)
+                ? worker_normalize_sim_mode($slotData['mode'])
+                : worker_normalize_sim_mode($existingSlot['mode'] ?? '');
+
             $cleanSlots[$slotName] = [
                 'operator' => normalize_operator($slotData['operator'] ?? ''),
+                'mode' => $mode,
                 'active' => (bool)($slotData['active'] ?? false),
             ];
         }
@@ -306,7 +354,10 @@ function worker_reclaim_stale_request(string $deviceId, array $device, string $s
         }
 
         $operator = normalize_operator($request['operator'] ?? '');
-        $slot = $operator !== '' ? worker_find_matching_slot($device, $operator) : null;
+        $requiredMode = $operator !== '' ? worker_sim_mode_for_operator($operator) : '';
+        $slot = $operator !== ''
+            ? worker_find_matching_slot($device, $operator, $requiredMode)
+            : null;
         if ($slot === null) {
             continue;
         }
@@ -359,6 +410,7 @@ function worker_claim_payload(array $claimed): ?array
         'assigned_slot' => (string)($claimed['assigned_slot'] ?? ''),
         'assigned_device_id' => (string)($claimed['assigned_device_id'] ?? ''),
         'dial_template' => (string)($runtime['dial_template'] ?? ''),
+        'sim_mode' => worker_sim_mode_for_dial_template((string)($runtime['dial_template'] ?? '')),
         'retailer_secret_pin' => (string)($private['retailer_secret_pin'] ?? ''),
         'dial_preview_masked' => (string)($runtime['masked_template'] ?? ''),
     ];
@@ -403,7 +455,8 @@ function worker_claim_request(string $deviceId): ?array
             continue;
         }
 
-        $slot = worker_find_matching_slot($device, $operator);
+        $requiredMode = worker_sim_mode_for_operator($operator);
+        $slot = worker_find_matching_slot($device, $operator, $requiredMode);
         if ($slot === null) {
             continue;
         }
@@ -428,6 +481,7 @@ function worker_claim_request(string $deviceId): ?array
             'device_id' => $deviceId,
             'slot' => $slot,
             'operator' => $operator,
+            'sim_mode' => $requiredMode,
         ]);
 
         $claimed['request_id'] = (string)$requestId;

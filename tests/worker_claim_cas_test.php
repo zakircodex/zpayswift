@@ -202,6 +202,38 @@ $device = [
     'accessibility_enabled' => true,
     'sim_slots' => ['SIM1' => ['operator' => 'GP', 'active' => true]],
 ];
+
+assert_true(
+    worker_sim_mode_for_dial_template('*167*3*3*1*{NUMBER}*{AMOUNT}*{PIN}#') === 'NAGAD',
+    'Nagad USSD templates must require a Nagad SIM'
+);
+assert_true(
+    worker_sim_mode_for_dial_template('*123*{NUMBER}*{AMOUNT}*{PIN}#') === 'RETAILER',
+    'operator USSD templates must require a Retailer SIM'
+);
+
+$roleAwareDevice = [
+    'online' => true,
+    'worker_enabled' => true,
+    'accessibility_enabled' => true,
+    'sim_slots' => [
+        'SIM1' => ['operator' => 'ROBI', 'mode' => 'RETAILER', 'active' => true],
+        'SIM2' => ['operator' => 'GP', 'mode' => 'NAGAD', 'active' => true],
+    ],
+];
+assert_true(
+    worker_find_matching_slot($roleAwareDevice, 'ROBI', 'NAGAD') === 'SIM2',
+    'Nagad routing must use the Nagad slot regardless of the destination operator'
+);
+assert_true(
+    worker_find_matching_slot($roleAwareDevice, 'ROBI', 'RETAILER') === 'SIM1',
+    'retailer routing must match both SIM type and operator'
+);
+assert_true(
+    worker_find_matching_slot($roleAwareDevice, 'GP', 'RETAILER') === null,
+    'retailer routing must reject an operator mismatch'
+);
+
 test_set('TOPUP_REQUESTS/CLAIMED/REQ_STALE', [
     'request_id' => 'REQ_STALE',
     'uid' => 'USER_2',
