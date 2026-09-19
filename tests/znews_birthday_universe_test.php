@@ -210,6 +210,9 @@ $token = str_repeat('AB', 16);
 $draft = birthday_create_draft($payload, strtolower($token));
 birthday_test_expect(str_starts_with($draft['id'], 'ZBD'), 'Draft IDs must use the Birthday draft namespace.');
 birthday_test_expect(birthday_load_draft($draft['id'], strtolower($token))['name'] === 'Mim', 'Draft tokens must normalize consistently.');
+$draftReplay = birthday_create_draft($payload, strtolower($token));
+birthday_test_expect($draftReplay['id'] === $draft['id'], 'A retried draft request must return the same draft without creating a duplicate.');
+birthday_test_expect(str_starts_with(birthday_path('MEDIA_BLOBS', 'test-media'), 'ZNEWS_BIRTHDAY_MEDIA_BLOBS/'), 'Private media fallback data must use its isolated Firebase namespace.');
 
 $recovery = '23456789ABCDEFGHJKLM';
 $created = birthday_generate($draft['id'], strtolower($token), $recovery, 'birthday-test-first');
@@ -301,7 +304,8 @@ birthday_test_expect(is_string($routes) && str_contains($routes, 'birthday/previ
 $adSource = file_get_contents(dirname(__DIR__) . '/api/znews/birthday/ad.php');
 birthday_test_expect(is_string($adSource) && str_contains($adSource, "'event_type' => 'OFFERED'") && !str_contains($adSource, "'event_type' => 'DELIVERED'"), 'Ad capability checks must not fabricate delivery events.');
 $apiClientSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-api.js');
-birthday_test_expect(is_file(dirname(__DIR__) . '/api/znews/birthday/catalog.php') && is_string($apiClientSource) && str_contains($apiClientSource, "request('catalog.php')"), 'Public catalog configuration must use a deployable, tracked endpoint name.');
+birthday_test_expect(is_file(dirname(__DIR__) . '/api/znews/birthday/catalog.php') && is_string($apiClientSource) && str_contains($apiClientSource, "request('catalog.php'"), 'Public catalog configuration must use a deployable, tracked endpoint name.');
+birthday_test_expect(is_string($apiClientSource) && str_contains($apiClientSource, 'networkRetries: 1'), 'Critical Birthday requests must retry one transient network failure.');
 $publicClientSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-public.js');
 birthday_test_expect(is_string($publicClientSource) && str_contains($publicClientSource, "toDataURL('image/png')"), 'QR downloads must contain real PNG data.');
 $appClientSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-app.js');

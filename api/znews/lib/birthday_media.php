@@ -71,6 +71,67 @@ function birthday_media_resolve(string $key): string
     return $path;
 }
 
+function birthday_media_blob_encode(string $mediaId, string $mime, string $content, string $expectedSha256, int $createdAt): array
+{
+    $mediaId = znews_firebase_key($mediaId, 'media_id');
+    $size = strlen($content);
+    $maximum = znews_media_optimized_max_bytes();
+    if ($size <= 0 || $size > $maximum) {
+        throw new RuntimeException('Birthday Universe photo fallback is outside the allowed size.');
+    }
+    $sha256 = hash('sha256', $content);
+    $expectedSha256 = strtolower(trim($expectedSha256));
+    if (strlen($expectedSha256) !== 64 || !ctype_xdigit($expectedSha256) || !hash_equals($expectedSha256, $sha256)) {
+        throw new RuntimeException('Birthday Universe photo fallback failed integrity validation.');
+    }
+    if (!isset(znews_media_allowed_types()[strtolower(trim($mime))])) {
+        throw new RuntimeException('Birthday Universe photo fallback has an invalid content type.');
+    }
+    return [
+        'media_id' => $mediaId,
+        'mime' => strtolower(trim($mime)),
+        'size_bytes' => $size,
+        'sha256' => $sha256,
+        'content_b64' => base64_encode($content),
+        'created_at' => $createdAt,
+    ];
+}
+
+function birthday_media_blob_decode(array $blob, array $media): ?string
+{
+    $mime = strtolower(trim((string)($blob['mime'] ?? '')));
+    $mediaMime = strtolower(trim((string)($media['mime'] ?? '')));
+    $size = max(0, (int)($blob['size_bytes'] ?? 0));
+    $mediaSize = max(0, (int)($media['size_bytes'] ?? 0));
+    $sha256 = strtolower(trim((string)($blob['sha256'] ?? '')));
+    $mediaSha256 = strtolower(trim((string)($media['sha256'] ?? '')));
+    $encoded = trim((string)($blob['content_b64'] ?? ''));
+    $maximum = znews_media_optimized_max_bytes();
+    $maximumEncoded = (int)(ceil($maximum / 3) * 4) + 8;
+    if ($mime === '' || $mime !== $mediaMime || !isset(znews_media_allowed_types()[$mime])
+        || $size <= 0 || $size > $maximum || $mediaSize !== $size
+        || strlen($sha256) !== 64 || !ctype_xdigit($sha256)
+        || strlen($mediaSha256) !== 64 || !ctype_xdigit($mediaSha256) || !hash_equals($mediaSha256, $sha256)
+        || $encoded === '' || strlen($encoded) > $maximumEncoded) {
+        return null;
+    }
+    $content = base64_decode($encoded, true);
+    if (!is_string($content) || strlen($content) !== $size || !hash_equals($sha256, hash('sha256', $content))) {
+        return null;
+    }
+    return $content;
+}
+
+function birthday_media_blob_bytes(array $media): ?string
+{
+    $mediaId = trim((string)($media['id'] ?? ''));
+    if ($mediaId === '') {
+        return null;
+    }
+    $blob = fb_get(birthday_path('MEDIA_BLOBS', $mediaId));
+    return is_array($blob) ? birthday_media_blob_decode($blob, $media) : null;
+}
+
 function birthday_photo_validate(array $file): array
 {
     $size = max(0, (int)($file['size'] ?? 0));
@@ -121,7 +182,22 @@ function birthday_photo_store(array $validated, string $targetType, string $targ
             ? $now + (int)birthday_settings()['draft_ttl_seconds']
             : 0,
     ];
-    if (!fb_put(birthday_path('MEDIA', $mediaId), $row)) {
+    $content = @file_get_contents($target);
+    try {
+        $blob = is_string($content)
+            ? birthday_media_blob_encode($mediaId, (string)$optimized['mime'], $content, (string)$optimized['sha256'], $now)
+            : null;
+    } catch (Throwable $error) {
+        $blob = null;
+    }
+    if (!is_array($blob)) {
+        @unlink($target);
+        api_response(false, 'BIRTHDAY_PHOTO_VERIFY_FAILED', 'Image storage could not be verified.', [], 503);
+    }
+    if (!fb_patch('', [
+        birthday_path('MEDIA', $mediaId) => $row,
+        birthday_path('MEDIA_BLOBS', $mediaId) => $blob,
+    ])) {
         @unlink($target);
         api_response(false, 'BIRTHDAY_PHOTO_RECORD_FAILED', 'Image could not be stored.', [], 503);
     }
@@ -166,6 +242,10 @@ function birthday_photo_attach_to_universe(array $universe, array $media): array
 
 function birthday_media_delete_files(array $media): void
 {
+    $mediaId = trim((string)($media['id'] ?? ''));
+    if ($mediaId !== '') {
+        fb_delete(birthday_path('MEDIA_BLOBS', $mediaId));
+    }
     $key = trim((string)($media['storage_key'] ?? ''));
     if ($key === '') {
         return;
@@ -178,6 +258,19 @@ function birthday_media_delete_files(array $media): void
     } catch (Throwable $error) {
         // Cleanup remains idempotent even when a stale key is malformed.
     }
+}
+
+function birthday_stream_bytes(string $content, string $mime, string $cacheControl): void
+{
+    header('Content-Type: ' . $mime);
+    header('Content-Length: ' . strlen($content));
+    header('Cache-Control: ' . $cacheControl);
+    header('X-Content-Type-Options: nosniff');
+    header('Accept-Ranges: none');
+    if (strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'HEAD') {
+        echo $content;
+    }
+    exit;
 }
 
 function birthday_stream_file(string $path, string $mime, string $cacheControl, bool $allowRanges = false): void

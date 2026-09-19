@@ -193,6 +193,8 @@
     let selectedMusic = restored.music_id || '';
     let photoFile = null;
     let photoUrl = '';
+    let draftAttemptToken = randomHex(16);
+    let draftAttemptPending = false;
 
     const monthSelect = $('#birthdayMonth');
     const monthNames = currentLocale() === 'bn'
@@ -293,7 +295,8 @@
         validateStep();
         if (step < 7) { showStep(step + 1); return; }
         next.disabled = true; next.textContent = currentLocale() === 'bn' ? 'Draft তৈরি হচ্ছে…' : 'Creating preview…';
-        const draftToken = randomHex(16);
+        const draftToken = draftAttemptToken;
+        draftAttemptPending = true;
         const payload = {
           name: $('#birthdayName').value, birthday_day: $('#birthdayDay').value, birthday_month: $('#birthdayMonth').value, birthday_year: $('#birthdayYear').value,
           sender_name: $('#senderName').value, message: $('#birthdayMessage').value, template_id: selectedTemplate, music_id: selectedMusic,
@@ -313,7 +316,13 @@
         showError(errorNode, error); next.disabled = false; next.textContent = copy[currentLocale()].continueButton;
       }
     });
-    form.addEventListener('input', persist);
+    form.addEventListener('input', () => {
+      if (draftAttemptPending && !next.disabled) {
+        draftAttemptToken = randomHex(16);
+        draftAttemptPending = false;
+      }
+      persist();
+    });
     showStep(1);
   }
 

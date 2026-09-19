@@ -24,6 +24,10 @@
     "ZNEWS_BIRTHDAY_MEDIA": {
       ".indexOn": ["created_at", "status", "universe_id", "draft_id"]
     },
+    "ZNEWS_BIRTHDAY_MEDIA_BLOBS": {
+      ".read": false,
+      ".write": false
+    },
     "ZNEWS_BIRTHDAY_MUSIC": {
       ".indexOn": ["created_at", "active"]
     },

@@ -15,7 +15,7 @@ function birthday_path(string $node, string $id = ''): string
 {
     $allowed = [
         'UNIVERSES', 'DRAFTS', 'SLUGS', 'STAR_IDS', 'IDEMPOTENCY', 'OWNERS',
-        'MEDIA', 'MUSIC', 'TEMPLATE_SETTINGS', 'SETTINGS', 'EVENTS',
+        'MEDIA', 'MEDIA_BLOBS', 'MUSIC', 'TEMPLATE_SETTINGS', 'SETTINGS', 'EVENTS',
         'DAILY_ANALYTICS', 'VIEW_DEDUP', 'RATE_LIMITS', 'REPORTS', 'AD_EVENTS',
         'CLEANUP_LEASES',
     ];
@@ -394,17 +394,36 @@ function birthday_draft_token(): string
 
 function birthday_create_draft(array $payload, string $draftToken): array
 {
-    birthday_rate_limit('draft', 12, 3600, true);
     $draftToken = strtoupper(trim($draftToken));
     if (preg_match('/^[A-F0-9]{32,128}$/D', $draftToken) !== 1) {
         api_response(false, 'BIRTHDAY_DRAFT_TOKEN_INVALID', 'Draft security token is invalid.', [], 422);
     }
+    $tokenHash = birthday_token_hash($draftToken);
+    $encodedPayload = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    if (!is_string($encodedPayload)) {
+        api_response(false, 'BIRTHDAY_DRAFT_INVALID', 'Your draft could not be prepared.', [], 422);
+    }
+    $payloadHash = hash('sha256', $encodedPayload);
+    $draftId = 'ZBD' . strtoupper(substr(hash('sha256', 'birthday-draft|' . $tokenHash), 0, 29));
+    $existing = fb_get(birthday_path('DRAFTS', $draftId));
+    if (is_array($existing)) {
+        if (!hash_equals((string)($existing['draft_token_hash'] ?? ''), $tokenHash)
+            || !hash_equals((string)($existing['payload_hash'] ?? ''), $payloadHash)) {
+            api_response(false, 'BIRTHDAY_DRAFT_CONFLICT', 'This draft attempt contains different information. Please try again.', [], 409);
+        }
+        if ((int)($existing['expires_at'] ?? 0) <= birthday_now()
+            || strtoupper((string)($existing['status'] ?? '')) !== 'DRAFT') {
+            api_response(false, 'BIRTHDAY_DRAFT_EXPIRED', 'This draft has expired.', [], 410);
+        }
+        return birthday_public_draft($existing);
+    }
+    birthday_rate_limit('draft', 12, 3600, true);
     $now = birthday_now();
     $settings = birthday_settings();
-    $draftId = znews_make_id('ZBD');
     $row = array_merge($payload, [
         'id' => $draftId,
-        'draft_token_hash' => birthday_token_hash($draftToken),
+        'draft_token_hash' => $tokenHash,
+        'payload_hash' => $payloadHash,
         'photo_media_id' => '',
         'status' => 'DRAFT',
         'created_at' => $now,

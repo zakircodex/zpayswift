@@ -44,14 +44,18 @@ if ($status === 'DRAFT') {
     http_response_code(404);
     exit('Not Found');
 }
+$path = '';
 try {
-    birthday_stream_file(
-        birthday_media_resolve((string)$media['storage_key']),
-        (string)$media['mime'],
-        $cache,
-        false
-    );
+    $path = birthday_media_resolve((string)$media['storage_key']);
 } catch (Throwable $error) {
-    http_response_code(404);
-    exit('Not Found');
+    $path = '';
 }
+if ($path !== '' && is_file($path) && is_readable($path)) {
+    birthday_stream_file($path, (string)$media['mime'], $cache, false);
+}
+$content = birthday_media_blob_bytes($media);
+if (is_string($content)) {
+    birthday_stream_bytes($content, (string)$media['mime'], $cache);
+}
+http_response_code(404);
+exit('Not Found');

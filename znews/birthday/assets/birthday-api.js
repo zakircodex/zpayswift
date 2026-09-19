@@ -34,7 +34,7 @@
       sessionStorage.setItem(this.profileKey, JSON.stringify(profile || {}));
     }
 
-    async request(path, { method = 'GET', params = null, body, form, authenticated = false, draftToken = '', timeout = 20000 } = {}) {
+    async request(path, { method = 'GET', params = null, body, form, authenticated = false, draftToken = '', timeout = 20000, networkRetries = 0 } = {}) {
       const url = new URL(`${this.base}/${String(path || '').replace(/^\//, '')}`, window.location.origin);
       Object.entries(params || {}).forEach(([key, value]) => {
         if (value !== undefined && value !== null && String(value) !== '') url.searchParams.set(key, String(value));
@@ -54,17 +54,27 @@
         headers.set('Content-Type', 'application/json');
         payload = JSON.stringify(body);
       }
-      const controller = new AbortController();
-      const timer = window.setTimeout(() => controller.abort(), timeout);
       let response;
-      try {
-        response = await fetch(url, { method, headers, body: payload, credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
-      } catch (error) {
-        throw new BirthdayApiError(error?.name === 'AbortError' ? 'The request timed out. Please try again.' : 'Network connection failed.', {
-          code: error?.name === 'AbortError' ? 'REQUEST_TIMEOUT' : 'NETWORK_FAILURE'
+      let fetchError = null;
+      const retries = Math.max(0, Math.min(2, Number(networkRetries) || 0));
+      for (let attempt = 0; attempt <= retries; attempt += 1) {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeout);
+        try {
+          response = await fetch(url, { method, headers, body: payload, credentials: 'same-origin', cache: 'no-store', signal: controller.signal });
+          fetchError = null;
+          break;
+        } catch (error) {
+          fetchError = error;
+        } finally {
+          window.clearTimeout(timer);
+        }
+        if (attempt < retries) await new Promise(resolve => window.setTimeout(resolve, 450 * (attempt + 1)));
+      }
+      if (!response) {
+        throw new BirthdayApiError(fetchError?.name === 'AbortError' ? 'The request timed out. Please try again.' : 'Network connection failed.', {
+          code: fetchError?.name === 'AbortError' ? 'REQUEST_TIMEOUT' : 'NETWORK_FAILURE'
         });
-      } finally {
-        window.clearTimeout(timer);
       }
       let json;
       try { json = await response.json(); } catch (_error) { json = null; }
@@ -80,17 +90,29 @@
       return json.data || {};
     }
 
-    config() { return this.request('catalog.php'); }
-    createDraft(payload) { return this.request('draft.php', { method: 'POST', body: payload }); }
-    draft(id, token) { return this.request('draft.php', { params: { id }, draftToken: token }); }
+    config() { return this.request('catalog.php', { networkRetries: 1 }); }
+    createDraft(payload) { return this.request('draft.php', { method: 'POST', body: payload, networkRetries: 1 }); }
+    draft(id, token) { return this.request('draft.php', { params: { id }, draftToken: token, networkRetries: 1 }); }
     async draftPhotoBlob(url, token) {
-      const response = await fetch(url, { headers: { 'X-Draft-Token': token }, cache: 'no-store' });
+      let response;
+      let fetchError = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          response = await fetch(url, { headers: { 'X-Draft-Token': token }, credentials: 'same-origin', cache: 'no-store' });
+          fetchError = null;
+          break;
+        } catch (error) {
+          fetchError = error;
+          if (attempt === 0) await new Promise(resolve => window.setTimeout(resolve, 450));
+        }
+      }
+      if (!response) throw new BirthdayApiError(fetchError?.message || 'Preview photo connection failed.', { code: 'PHOTO_NETWORK_FAILURE' });
       if (!response.ok) throw new BirthdayApiError('Preview photo could not be loaded.', { code: 'PHOTO_LOAD_FAILED', status: response.status });
       return response.blob();
     }
-    uploadPhoto(form, authenticated = false) { return this.request('media_upload.php', { method: 'POST', form, authenticated, timeout: 40000 }); }
-    generate(payload) { return this.request('generate.php', { method: 'POST', body: payload, timeout: 30000 }); }
-    universe(slug) { return this.request('public.php', { params: { slug } }); }
+    uploadPhoto(form, authenticated = false) { return this.request('media_upload.php', { method: 'POST', form, authenticated, timeout: 40000, networkRetries: 1 }); }
+    generate(payload) { return this.request('generate.php', { method: 'POST', body: payload, timeout: 30000, networkRetries: 1 }); }
+    universe(slug) { return this.request('public.php', { params: { slug }, networkRetries: 1 }); }
     event(slug, eventType, metadata = {}) { return this.request('event.php', { method: 'POST', body: { slug, event_type: eventType, metadata }, timeout: 10000 }); }
     report(slug, reason, details) { return this.request('report.php', { method: 'POST', body: { slug, reason, details } }); }
     ad(params, draftToken = '') { return this.request('ad.php', { params, draftToken, timeout: 12000 }); }

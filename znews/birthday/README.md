@@ -40,8 +40,11 @@ No secrets belong in browser JavaScript or this directory.
 
 The default private path is `private/uploads/znews/birthday`. Uploaded photos
 are signature-checked, decoded and re-encoded into an optimized derivative.
-Original uploads are not served. Music uploads accept MP3, OGG and M4A only and
-require an admin rights confirmation.
+Original uploads are not served. A verified redundant copy of each optimized
+photo is stored in the server-only `ZNEWS_BIRTHDAY_MEDIA_BLOBS` namespace so a
+hosting filesystem read failure cannot break preview or public delivery. Direct
+client access remains denied by Firebase rules, and cleanup removes both copies.
+Music uploads accept MP3, OGG and M4A only and require an admin rights confirmation.
 
 The bundled QR renderer is stored under `assets/lib` with its MIT license so it
 is included in a fresh checkout and cPanel package. QR images are rendered
