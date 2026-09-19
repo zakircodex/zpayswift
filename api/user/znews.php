@@ -68,6 +68,11 @@ if (!fb_put(znews_handoff_path($code), $grant)) {
 
 $_SESSION['znews_handoff_grant_path'] = znews_handoff_path($code);
 
+$returnPath = trim((string)($_GET['return'] ?? ''));
+if (preg_match('#^/birthday/manage/[a-z0-9-]{8,100}/?$#D', $returnPath) !== 1) {
+    $returnPath = '/';
+}
+
 session_write_close();
-header('Location: https://' . znews_handoff_target_host() . '/#handoff=' . rawurlencode($code), true, 302);
+header('Location: https://' . znews_handoff_target_host() . $returnPath . '#handoff=' . rawurlencode($code), true, 302);
 exit;

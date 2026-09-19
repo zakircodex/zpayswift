@@ -76,7 +76,7 @@ function znews_adsterra_web_size(): array
 function znews_adsterra_web_slot(string $slot): string
 {
     $slot = strtolower(trim($slot));
-    return in_array($slot, ['post_reader', 'post_inline'], true) ? $slot : '';
+    return in_array($slot, ['post_reader', 'post_inline', 'birthday_preview', 'birthday_public'], true) ? $slot : '';
 }
 
 function znews_adsterra_web_placement(string $slot = 'post_reader'): array

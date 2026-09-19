@@ -1,0 +1,39 @@
+.birthday-admin-shell{display:grid;gap:14px;min-width:0}
+.birthday-admin-hero{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:20px;border:1px solid rgba(82,213,165,.26);border-radius:8px;background:rgba(8,38,43,.84)}
+.birthday-admin-hero h3{margin:4px 0 6px;font-size:31px}
+.birthday-admin-hero p{max-width:760px;margin:0;color:var(--muted);line-height:1.5}
+.birthday-admin-kicker{color:#6ce3aa;font-size:11px;font-weight:850;letter-spacing:0}
+.birthday-admin-actions,.birthday-admin-tabs{display:flex;flex-wrap:wrap;gap:8px}
+.birthday-admin-actions .btn{min-height:42px;margin:0}
+.birthday-admin-tabs{padding:5px;border:1px solid rgba(111,156,180,.2);border-radius:8px;background:rgba(5,22,35,.66)}
+.birthday-admin-tab{min-height:40px;padding:8px 13px;border:0;border-radius:8px;background:transparent;color:var(--muted);font-weight:800;cursor:pointer}
+.birthday-admin-tab.active{background:rgba(70,191,146,.2);color:#83efbd}
+.birthday-admin-view[hidden]{display:none!important}
+.birthday-admin-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.birthday-admin-metric{padding:15px;border:1px solid rgba(112,160,184,.2);border-radius:8px;background:rgba(7,29,43,.75)}
+.birthday-admin-metric span,.birthday-admin-metric small{display:block;color:var(--muted);font-size:12px}
+.birthday-admin-metric strong{display:block;margin:6px 0 2px;color:#7ae9b6;font-size:25px;overflow-wrap:anywhere}
+.birthday-admin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.birthday-admin-panel{min-width:0;padding:18px;overflow:hidden}
+.birthday-admin-panel h3{margin:0 0 5px}.birthday-admin-panel>p{margin:0 0 16px;color:var(--muted)}
+.birthday-admin-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.birthday-admin-form .wide{grid-column:1/-1}
+.birthday-admin-form label{display:grid;gap:6px;color:var(--muted);font-size:12px}
+.birthday-admin-check{display:flex!important;align-items:center;gap:9px;min-height:46px;padding:10px;border:1px solid rgba(112,160,184,.18);border-radius:8px}
+.birthday-admin-check input{width:20px;height:20px;accent-color:#58d6a0}
+.birthday-admin-list{display:grid;gap:8px;min-width:0}
+.birthday-admin-row{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(120px,.55fr) minmax(130px,.6fr) auto;align-items:center;gap:10px;padding:12px;border:1px solid rgba(112,160,184,.17);border-radius:8px;background:rgba(6,25,39,.62)}
+.birthday-admin-row-main{min-width:0}.birthday-admin-row-main strong,.birthday-admin-row-main span,.birthday-admin-row-main small{display:block;overflow-wrap:anywhere}.birthday-admin-row-main span,.birthday-admin-row-main small{color:var(--muted);font-size:12px}.birthday-admin-row-main span{margin-top:3px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.birthday-admin-badge{display:inline-flex;width:max-content;max-width:100%;padding:5px 8px;border:1px solid rgba(126,232,186,.28);border-radius:999px;color:#7ee8ba;font-size:11px;font-weight:850}.birthday-admin-badge.blocked,.birthday-admin-badge.deleted{border-color:rgba(255,101,126,.3);color:#ff8b9d}.birthday-admin-badge.expired{border-color:rgba(255,205,103,.3);color:#ffd16f}
+.birthday-admin-toolbar{display:flex;align-items:end;gap:9px;margin-bottom:13px}.birthday-admin-toolbar label{display:grid;flex:1;gap:5px;color:var(--muted);font-size:12px}.birthday-admin-toolbar .btn{min-height:46px;margin:0}
+.birthday-template-admin{display:grid;gap:11px;padding:14px;border:1px solid rgba(112,160,184,.18);border-radius:8px}.birthday-template-admin h4{margin:0}.birthday-template-colors{display:grid;grid-template-columns:1fr 1fr;gap:9px}.birthday-template-colors input[type=color]{width:100%;height:45px;padding:4px}
+.birthday-admin-empty{padding:28px;color:var(--muted);text-align:center}
+.birthday-admin-pagination{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(112,160,184,.15)}
+.birthday-admin-pagination .btn{min-height:42px;margin:0}.birthday-admin-pagination span{color:var(--muted);font-size:12px}
+.birthday-music-upload{padding-bottom:18px;border-bottom:1px solid rgba(112,160,184,.16)}
+.birthday-admin-loading{padding:30px;color:var(--muted);text-align:center}
+.birthday-admin-dialog{width:min(480px,calc(100% - 24px));padding:20px;border:1px solid rgba(112,160,184,.3);border-radius:8px;background:#071d2b;color:var(--text)}
+.birthday-admin-dialog::backdrop{background:rgba(1,8,14,.78)}
+.birthday-admin-dialog h3{margin:0}
+@media(max-width:900px){.birthday-admin-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.birthday-admin-grid{grid-template-columns:1fr}.birthday-admin-row{grid-template-columns:minmax(0,1fr) auto}.birthday-admin-row>*:nth-child(2),.birthday-admin-row>*:nth-child(3){grid-column:1}.birthday-admin-row>*:last-child{grid-column:2;grid-row:1/4}}
+@media(max-width:560px){.birthday-admin-hero{align-items:flex-start;flex-direction:column}.birthday-admin-hero h3{font-size:23px}.birthday-admin-metrics,.birthday-admin-form{grid-template-columns:1fr}.birthday-admin-form .wide{grid-column:auto}.birthday-admin-tabs{display:grid;grid-template-columns:1fr 1fr}.birthday-admin-toolbar{align-items:stretch;flex-direction:column}.birthday-admin-row{display:block}.birthday-admin-row>*{margin-top:7px}.birthday-admin-row>*:last-child{display:flex;margin-top:12px}.birthday-template-colors{grid-template-columns:1fr}}

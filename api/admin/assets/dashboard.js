@@ -1359,6 +1359,11 @@ async function loadSectionData(sectionId, force = false){
 
   if (sectionId === 'zsky24Section' && typeof window.loadZSky24Admin === 'function') {
     await window.loadZSky24Admin(force);
+    return;
+  }
+
+  if (sectionId === 'birthdayUniverseSection' && typeof window.loadBirthdayUniverseAdmin === 'function') {
+    await window.loadBirthdayUniverseAdmin(force);
   }
 }
 

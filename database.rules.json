@@ -15,6 +15,24 @@
         ".indexOn": ["created_at"]
       }
     },
+    "ZNEWS_BIRTHDAY_UNIVERSES": {
+      ".indexOn": ["created_at", "expires_at", "status", "template_id", "music_id"]
+    },
+    "ZNEWS_BIRTHDAY_DRAFTS": {
+      ".indexOn": ["created_at", "expires_at", "status"]
+    },
+    "ZNEWS_BIRTHDAY_MEDIA": {
+      ".indexOn": ["created_at", "status", "universe_id", "draft_id"]
+    },
+    "ZNEWS_BIRTHDAY_MUSIC": {
+      ".indexOn": ["created_at", "active"]
+    },
+    "ZNEWS_BIRTHDAY_EVENTS": {
+      ".indexOn": ["created_at", "event_type", "universe_id"]
+    },
+    "ZNEWS_BIRTHDAY_REPORTS": {
+      ".indexOn": ["created_at", "status", "universe_id"]
+    },
     "USER_NOTIFICATIONS": {
       "$uid": {
         ".indexOn": ["created_at"]

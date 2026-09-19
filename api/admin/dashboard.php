@@ -22,6 +22,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/admin/assets/admin-settings.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-settings.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-worker-sms.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-worker-sms.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.css') ?: 1)) ?>">
+  <link rel="stylesheet" href="/api/admin/assets/birthday-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/birthday-admin.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
 </head>
 <body class="admin-premium-body">
@@ -84,6 +85,7 @@ header('Pragma: no-cache');
         <button class="nav-btn" data-section="operatorsSection">Operators <span>›</span></button>
         <button class="nav-btn" data-section="workerSmsSection">Worker SMS <span>›</span></button>
         <button class="nav-btn" data-section="zsky24Section">Z Sky 24 <span>›</span></button>
+        <button class="nav-btn" data-section="birthdayUniverseSection">Birthday Universe <span>›</span></button>
       </div>
 
       <div class="sidebar-box">
@@ -957,6 +959,12 @@ header('Pragma: no-cache');
           </div>
         </div>
       </section>
+
+      <section class="section" id="birthdayUniverseSection" aria-labelledby="birthdayAdminTitle">
+        <div id="birthdayAdminMount" class="birthday-admin-shell">
+          <div class="card birthday-admin-loading">Loading Birthday Universe Admin...</div>
+        </div>
+      </section>
     </main>
   </div>
 
@@ -1000,6 +1008,7 @@ window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
 <script src="/api/admin/assets/dashboard.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/dashboard.js') ?: 1)) ?>"></script>
 <script src="/api/admin/assets/zsky24-admin.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.js') ?: 1)) ?>"></script>
+<script src="/api/admin/assets/birthday-admin.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/birthday-admin.js') ?: 1)) ?>"></script>
 <script src="/api/admin/assets/admin-dashboard-ux.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-dashboard-ux.js') ?: 1)) ?>"></script>
 
 </body>
