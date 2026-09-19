@@ -110,7 +110,25 @@
       if (!response.ok) throw new BirthdayApiError('Preview photo could not be loaded.', { code: 'PHOTO_LOAD_FAILED', status: response.status });
       return response.blob();
     }
+    async draftAudioBuffer(url, token) {
+      let response;
+      let fetchError = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          response = await fetch(url, { headers: { 'X-Draft-Token': token }, credentials: 'same-origin', cache: 'no-store' });
+          fetchError = null;
+          break;
+        } catch (error) {
+          fetchError = error;
+          if (attempt === 0) await new Promise(resolve => window.setTimeout(resolve, 450));
+        }
+      }
+      if (!response) throw new BirthdayApiError(fetchError?.message || 'Preview audio connection failed.', { code: 'AUDIO_NETWORK_FAILURE' });
+      if (!response.ok) throw new BirthdayApiError('Preview audio could not be loaded.', { code: 'AUDIO_LOAD_FAILED', status: response.status });
+      return response.arrayBuffer();
+    }
     uploadPhoto(form, authenticated = false) { return this.request('media_upload.php', { method: 'POST', form, authenticated, timeout: 40000, networkRetries: 1 }); }
+    uploadAudio(form, authenticated = false) { return this.request('audio_upload.php', { method: 'POST', form, authenticated, timeout: 45000, networkRetries: 1 }); }
     generate(payload) { return this.request('generate.php', { method: 'POST', body: payload, timeout: 30000, networkRetries: 1 }); }
     universe(slug) { return this.request('public.php', { params: { slug }, networkRetries: 1 }); }
     event(slug, eventType, metadata = {}) { return this.request('event.php', { method: 'POST', body: { slug, event_type: eventType, metadata }, timeout: 10000 }); }

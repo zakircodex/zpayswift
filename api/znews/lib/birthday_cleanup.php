@@ -133,13 +133,15 @@ function birthday_cleanup_run(bool $dryRun = false, int $limit = 100): array
         if ($dryRun) {
             continue;
         }
-        $mediaId = trim((string)($row['photo_media_id'] ?? ''));
-        if ($mediaId !== '') {
-            $media = fb_get(birthday_path('MEDIA', $mediaId));
-            if (is_array($media)) {
-                birthday_media_delete_files($media);
-                fb_delete(birthday_path('MEDIA', $mediaId));
-                $result['deleted_media']++;
+        foreach (['photo_media_id', 'custom_audio_media_id'] as $mediaField) {
+            $mediaId = trim((string)($row[$mediaField] ?? ''));
+            if ($mediaId !== '') {
+                $media = fb_get(birthday_path('MEDIA', $mediaId));
+                if (is_array($media)) {
+                    birthday_media_delete_files($media);
+                    fb_delete(birthday_path('MEDIA', $mediaId));
+                    $result['deleted_media']++;
+                }
             }
         }
         birthday_release_reservation('SLUGS', (string)($row['slug'] ?? ''), (string)$id);
@@ -174,13 +176,15 @@ function birthday_cleanup_run(bool $dryRun = false, int $limit = 100): array
             $result['would_delete']++;
             continue;
         }
-        $mediaId = trim((string)($draft['photo_media_id'] ?? ''));
-        if ($mediaId !== '') {
-            $media = fb_get(birthday_path('MEDIA', $mediaId));
-            if (is_array($media) && strtoupper((string)($media['status'] ?? '')) !== 'ACTIVE') {
-                birthday_media_delete_files($media);
-                fb_delete(birthday_path('MEDIA', $mediaId));
-                $result['deleted_media']++;
+        foreach (['photo_media_id', 'custom_audio_media_id'] as $mediaField) {
+            $mediaId = trim((string)($draft[$mediaField] ?? ''));
+            if ($mediaId !== '') {
+                $media = fb_get(birthday_path('MEDIA', $mediaId));
+                if (is_array($media) && strtoupper((string)($media['status'] ?? '')) !== 'ACTIVE') {
+                    birthday_media_delete_files($media);
+                    fb_delete(birthday_path('MEDIA', $mediaId));
+                    $result['deleted_media']++;
+                }
             }
         }
         if (fb_delete(birthday_path('DRAFTS', (string)$id))) {
@@ -210,11 +214,14 @@ function birthday_cleanup_run(bool $dryRun = false, int $limit = 100): array
         }
 
         $isReferenced = false;
+        $referenceField = strtoupper((string)($media['kind'] ?? '')) === 'AUDIO'
+            ? 'custom_audio_media_id'
+            : 'photo_media_id';
         $draftId = trim((string)($media['draft_id'] ?? ''));
         if ($draftId !== '') {
             $draft = fb_get(birthday_path('DRAFTS', $draftId));
             $isReferenced = is_array($draft)
-                && hash_equals((string)($draft['photo_media_id'] ?? ''), (string)$id)
+                && hash_equals((string)($draft[$referenceField] ?? ''), (string)$id)
                 && strtoupper((string)($draft['status'] ?? 'DRAFT')) === 'DRAFT'
                 && (int)($draft['expires_at'] ?? 0) > $now;
         }
@@ -222,7 +229,7 @@ function birthday_cleanup_run(bool $dryRun = false, int $limit = 100): array
         if (!$isReferenced && $universeId !== '') {
             $universe = birthday_universe_by_id($universeId);
             $isReferenced = is_array($universe)
-                && hash_equals((string)($universe['photo_media_id'] ?? ''), (string)$id)
+                && hash_equals((string)($universe[$referenceField] ?? ''), (string)$id)
                 && strtoupper((string)($universe['status'] ?? '')) === 'ACTIVE'
                 && (int)($universe['expires_at'] ?? 0) > $now;
         }

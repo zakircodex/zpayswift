@@ -96,7 +96,9 @@ img{display:block;max-width:100%}
 .date-grid{display:grid;grid-template-columns:1fr 1.5fr 1.2fr;gap:14px}
 .photo-picker{position:relative;display:grid;width:min(100%,520px);aspect-ratio:4/3;place-items:center;overflow:hidden;border:1px dashed #4b6c70;border-radius:8px;background:#081318;cursor:pointer}
 .photo-picker input{position:absolute;width:1px;height:1px;opacity:0}
-.photo-picker img{width:100%;height:100%;object-fit:cover}
+.photo-picker img{width:100%;height:100%;object-fit:contain;background:#050c10}
+.photo-picker.has-photo{aspect-ratio:auto;min-height:0}
+.photo-picker.has-photo img{height:auto;max-height:70svh}
 .photo-placeholder{display:grid;place-items:center;color:var(--muted)}
 .photo-placeholder b{display:grid;width:54px;height:54px;place-items:center;margin-bottom:10px;border:1px solid #446269;border-radius:50%;color:var(--mint);font-size:26px}
 .text-button{margin-top:12px;border:0;background:transparent;color:var(--coral);cursor:pointer;font-weight:800;text-decoration:underline}
@@ -115,6 +117,15 @@ img{display:block;max-width:100%}
 .music-option[aria-pressed="true"]{border-color:var(--mint);background:#102a27}
 .music-option>span:first-child{display:grid;width:36px;height:36px;place-items:center;border-radius:50%;background:#1d3335;color:var(--gold)}
 .music-option small{display:block;color:var(--muted)}
+.custom-audio-panel{display:grid;gap:12px;margin-top:18px;padding:16px;border:1px solid #344a51;border-radius:8px;background:#081318}
+.audio-picker{display:flex;min-height:70px;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:12px 16px;border:1px dashed #4b6c70;border-radius:6px;color:var(--mint);cursor:pointer;font-weight:850;text-align:center}
+.audio-picker input{position:absolute;width:1px;height:1px;opacity:0}
+.audio-picker>span{display:grid;gap:3px}
+.audio-picker small{color:var(--muted);font-size:12px;font-weight:650}
+.audio-selection{display:flex;min-width:0;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid #294047;border-radius:6px;background:#0c191e}
+.audio-selection strong{min-width:0;overflow-wrap:anywhere}
+.audio-selection .text-button{flex:0 0 auto;margin:0}
+.custom-audio-panel .check-row{margin:0}
 .privacy-choice{display:grid;gap:9px;margin:26px 0 0;padding:0;border:0}
 .privacy-choice legend{margin-bottom:10px;font-weight:850}
 .privacy-choice label,.check-row{display:flex;align-items:flex-start;gap:12px;padding:14px;border:1px solid #344a51;border-radius:6px;background:#09151a;cursor:pointer}
@@ -152,35 +163,50 @@ img{display:block;max-width:100%}
 .toast{position:fixed;z-index:400;right:18px;bottom:18px;max-width:min(420px,calc(100% - 36px));padding:13px 16px;border:1px solid #496268;border-radius:6px;background:#102126;color:#fff;box-shadow:0 16px 42px rgba(0,0,0,.4)}
 
 /* Standardized universe renderer */
-.birthday-universe{--template-accent:var(--mint);--template-secondary:var(--gold);position:relative;isolation:isolate;overflow:hidden;background:#061015;color:#fff}
-.birthday-universe::before{position:absolute;z-index:-2;inset:0;content:"";background:url('/znews/birthday/assets/images/birthday-universe-cosmic.webp') center/cover fixed;filter:brightness(.52) saturate(.95)}
-.birthday-universe::after{position:absolute;z-index:-1;inset:0;content:"";background:rgba(2,9,12,.34)}
-.birthday-universe.template-dreamy::before{filter:brightness(.62) saturate(.72) hue-rotate(300deg)}
-.birthday-universe.template-celebration::before{filter:brightness(.58) saturate(1.15) hue-rotate(20deg)}
-.universe-opening{display:grid;min-height:min(780px,90svh);place-items:center;padding:80px 20px;text-align:center}
-.universe-opening>div{max-width:880px}
+.birthday-universe{--template-accent:var(--mint);--template-secondary:var(--gold);position:relative;isolation:isolate;min-height:100svh;overflow:hidden;background:#02080d;color:#fff}
+.birthday-universe::before{position:absolute;z-index:0;inset:0;content:"";background:url('/znews/birthday/assets/images/birthday-universe-cosmic.webp') center top/cover fixed;filter:brightness(.25) saturate(.9)}
+.birthday-universe.template-dreamy::before{filter:brightness(.3) saturate(.68) hue-rotate(300deg)}
+.birthday-universe.template-celebration::before{filter:brightness(.28) saturate(1.15) hue-rotate(20deg)}
+.universe-space-canvas{position:fixed;z-index:1;inset:0;width:100vw;height:100svh;pointer-events:none}
+.universe-atmosphere{position:absolute;z-index:2;inset:0;pointer-events:none;background:rgba(1,6,9,.13)}
+.birthday-universe>section,.birthday-universe>.music-control{position:relative;z-index:3}
+.universe-opening{display:grid;min-height:min(820px,94svh);place-items:center;padding:88px 20px;text-align:center}
+.universe-opening>div{max-width:920px}
 .universe-opening .welcome{margin:0;color:#dae4df;font-size:18px;text-transform:uppercase}
 .universe-opening h1{margin:12px 0 0;font:600 104px/.95 Georgia,serif;text-wrap:balance}
-.universe-opening h1 span{display:block;color:var(--template-accent)}
+.universe-opening h1 span{display:block;color:var(--template-accent);overflow-wrap:anywhere}
 .universe-opening .birthday-date{margin:24px 0 0;color:#e7d7ae;font-size:17px}
-.star-reveal,.moon-section,.message-section,.photo-section{display:grid;min-height:520px;place-items:center;padding:72px 20px;border-top:1px solid rgba(255,255,255,.12);text-align:center}
+.opening-wish{margin:24px auto 0;color:#fff;font:600 28px/1.25 Georgia,serif}
+.opening-beat{opacity:0;transform:translateY(18px)}
+.universe-entered .opening-beat{animation:birthday-opening-beat .85s ease-out both}
+.universe-entered .beat-two{animation-delay:.28s}.universe-entered .beat-three{animation-delay:.72s}.universe-entered .beat-four{animation-delay:1.08s}
+.universe-entry{position:absolute;z-index:20;top:0;right:0;left:0;display:grid;min-height:100svh;place-items:center;padding:96px 20px;background:rgba(1,6,9,.56);text-align:center;backdrop-filter:blur(1px)}
+.universe-entry-content{width:min(720px,100%)}
+.universe-entry h2{max-width:680px;margin:0 auto 28px;font:600 66px/1.02 Georgia,serif;text-wrap:balance}
+.universe-entry .button{min-width:min(320px,100%)}
+.entry-sound-note{max-width:520px;margin:16px auto 0;color:#c8d4d2;font-size:13px}
+.universe-entry.leaving{animation:birthday-entry-leave .68s ease both;pointer-events:none}
+.star-reveal,.moon-section,.message-section,.photo-section{display:grid;min-height:560px;place-items:center;padding:78px 20px;border-top:1px solid rgba(255,255,255,.12);text-align:center}
+.star-reveal>div,.moon-section>div,.photo-section>div{width:min(820px,100%)}
 .star-core{position:relative;display:grid;width:100px;height:100px;margin:0 auto 26px;place-items:center;border:1px solid rgba(255,255,255,.38);border-radius:50%;background:#fff5ce;color:#3c2c00;font-size:44px;box-shadow:0 0 24px #fff,0 0 78px var(--template-secondary)}
-.star-reveal h2,.moon-section h2,.message-section h2,.photo-section h2{margin:0;font:600 64px/1.05 Georgia,serif}
-.star-id{display:inline-block;margin:20px 0 0;padding:9px 14px;border:1px solid var(--template-accent);border-radius:4px;color:var(--template-accent);font-weight:900;letter-spacing:0}
+.star-reveal h2,.moon-section h2,.message-section h2,.photo-section h2{margin:0;font:600 64px/1.05 Georgia,serif;text-wrap:balance}
+.star-id{display:inline-block;max-width:100%;margin:20px 0 0;padding:9px 14px;border:1px solid var(--template-accent);border-radius:4px;color:var(--template-accent);font-weight:900;overflow-wrap:anywhere}
 .star-reveal p,.moon-section p,.message-section p,.photo-section p{max-width:660px;margin:15px auto 0;color:#ced9d5}
 .star-disclaimer{font-size:12px!important;color:#93a6a4!important}
-.moon-visual{display:grid;width:180px;height:180px;margin:0 auto 30px;place-items:center;border-radius:50%;background:#e8e2cf;color:#5c5543;font:600 72px Georgia,serif;box-shadow:inset -35px -10px 0 #a59f91,0 0 68px rgba(232,226,207,.45)}
-.message-section{background:rgba(13,23,29,.74)}
+.moon-orbit-anchor{width:280px;height:280px;margin:0 auto 34px}
+.scene-fallback .moon-orbit-anchor{border-radius:50%;background:url('/znews/birthday/assets/images/moon-surface-v1.webp') center/cover;box-shadow:0 0 70px rgba(190,229,255,.28);animation:birthday-moon-fallback 42s linear infinite}
+.message-section{background:rgba(13,23,29,.66)}
 .message-card{width:min(680px,100%)}
 .message-toggle{margin-top:28px}
-.birthday-message{margin-top:28px;padding:26px;border-top:1px solid var(--template-accent);border-bottom:1px solid var(--template-accent);font:italic 22px/1.7 Georgia,serif;white-space:pre-wrap}
+.birthday-message{margin-top:28px;padding:26px;border-top:1px solid var(--template-accent);border-bottom:1px solid var(--template-accent);font:italic 22px/1.7 Georgia,serif;white-space:pre-wrap;overflow-wrap:anywhere}
 .message-signature{margin-top:15px;color:var(--template-secondary);font-weight:800}
-.photo-frame{width:min(620px,100%);margin:28px auto 0;padding:10px;border:1px solid rgba(255,255,255,.4);background:#071015;box-shadow:18px 18px 0 rgba(0,0,0,.24)}
-.photo-frame img{width:100%;max-height:700px;object-fit:cover}
-.music-control{position:sticky;z-index:10;bottom:18px;display:flex;width:max-content;max-width:calc(100% - 32px);min-height:46px;align-items:center;gap:10px;margin:0 auto 24px;padding:10px 14px;border:1px solid rgba(255,255,255,.3);border-radius:6px;background:rgba(5,13,16,.9);color:#fff;cursor:pointer}
-.universe-finale{padding:90px 20px;text-align:center}.universe-finale h2{margin:0;font:600 78px/1 Georgia,serif}.universe-finale p{color:#ced9d5}
-.template-celebration .universe-finale,.template-celebration .message-section{background:rgba(55,16,25,.58)}
-.template-dreamy .moon-section{background:rgba(34,19,42,.5)}
+.photo-frame{width:min(760px,100%);margin:28px auto 0;padding:10px;border:1px solid rgba(255,255,255,.4);background:#050c10;box-shadow:18px 18px 0 rgba(0,0,0,.24)}
+.photo-frame img{width:100%;max-width:100%;height:auto;max-height:none;margin:auto;object-fit:contain}
+.music-control{position:sticky;z-index:10;bottom:18px;display:flex;width:max-content;max-width:calc(100% - 32px);min-height:46px;align-items:center;gap:10px;margin:0 auto 24px;padding:10px 14px;border:1px solid rgba(255,255,255,.3);border-radius:6px;background:rgba(5,13,16,.9);color:#fff;cursor:pointer;backdrop-filter:blur(10px)}
+.music-control-icon{display:grid;width:24px;height:24px;place-items:center;color:var(--template-accent);font-weight:900}
+.universe-finale{min-height:470px;padding:110px 20px;text-align:center}.universe-finale h2{margin:0;font:600 78px/1 Georgia,serif;text-wrap:balance}.universe-finale p{color:#ced9d5}
+.template-celebration .universe-finale,.template-celebration .message-section{background:rgba(55,16,25,.48)}
+.template-dreamy .moon-section{background:rgba(34,19,42,.42)}
 .public-universe-page .public-universe-header{position:absolute;right:0;left:0;background:rgba(4,12,16,.52)}
 .public-mount{min-height:100svh}
 .public-share-panel{padding:80px max(20px,calc((100% - 980px)/2));background:#0c1a1f;text-align:center}
@@ -196,8 +222,10 @@ img{display:block;max-width:100%}
 @keyframes birthday-scene-drift{0%{transform:scale(1.01) translate3d(0,0,0)}50%{transform:scale(1.055) translate3d(-.6%,.4%,0)}100%{transform:scale(1.01) translate3d(0,0,0)}}
 @keyframes birthday-star-breathe{0%,100%{transform:scale(1);box-shadow:0 0 24px #fff,0 0 68px var(--template-secondary)}50%{transform:scale(1.06);box-shadow:0 0 30px #fff,0 0 92px var(--template-secondary)}}
 @keyframes birthday-reveal{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes birthday-opening-beat{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+@keyframes birthday-entry-leave{to{opacity:0;visibility:hidden}}
+@keyframes birthday-moon-fallback{to{background-position:calc(50% + 768px) center}}
 .birthday-hero-visual{animation:birthday-scene-drift 24s ease-in-out infinite}
-.universe-opening>div{animation:birthday-reveal .9s ease-out both}
 .star-core{animation:birthday-star-breathe 4.8s ease-in-out infinite}
 
 @media(max-width:980px){
@@ -216,12 +244,12 @@ img{display:block;max-width:100%}
   .template-picker,.template-catalog{grid-template-columns:1fr}.template-option{display:grid;grid-template-columns:126px 1fr}.template-option img{height:100%;aspect-ratio:1/1}.template-catalog article{min-height:0}
   .generation-panel{grid-template-columns:1fr;padding:20px 4px}.generation-panel .button{width:100%}.success-panel{padding:22px 4px}.share-link-row{grid-template-columns:minmax(0,1fr) 44px}.recovery-box code{font-size:18px}
   .manage-form{grid-template-columns:1fr}.manage-form .wide{grid-column:auto}
-  .birthday-universe::before{background-attachment:scroll}.universe-opening{min-height:88svh;padding-top:100px}.universe-opening h1{font-size:52px}.star-reveal,.moon-section,.message-section,.photo-section{min-height:460px;padding:62px 18px}.star-reveal h2,.moon-section h2,.message-section h2,.photo-section h2{font-size:40px}.moon-visual{width:150px;height:150px}.birthday-message{font-size:19px}.universe-finale h2{font-size:46px}.public-share-panel h2{font-size:38px}
+  .birthday-universe::before{background-attachment:scroll}.universe-opening{min-height:90svh;padding:92px 18px 70px}.universe-opening h1{font-size:52px}.opening-wish{font-size:22px}.universe-entry{padding:86px 18px 48px}.universe-entry h2{font-size:44px}.star-reveal,.moon-section,.message-section,.photo-section{min-height:480px;padding:64px 18px}.star-reveal h2,.moon-section h2,.message-section h2,.photo-section h2{font-size:40px}.moon-orbit-anchor{width:220px;height:220px}.birthday-message{font-size:19px}.photo-frame{padding:6px;box-shadow:10px 10px 0 rgba(0,0,0,.24)}.universe-finale h2{font-size:46px}.public-share-panel h2{font-size:38px}
   .qr-panel{grid-template-columns:1fr;text-align:center}.qr-panel #qrCode{margin:auto}.share-buttons{display:grid;grid-template-columns:1fr 1fr}.share-buttons .button:first-child{grid-column:1/-1}
 }
 @media(max-width:380px){
   .birthday-brand>span:last-child{display:none}.birthday-hero h1{font-size:43px}.template-option{grid-template-columns:105px 1fr}.share-buttons{grid-template-columns:1fr}.share-buttons .button:first-child{grid-column:auto}.qr-panel{padding:20px 0}.recovery-box{padding:16px}
 }
 @media(prefers-reduced-motion:reduce){
-  html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;animation-iteration-count:1!important;transition-duration:.01ms!important}.opening-beat{opacity:1;transform:none}
 }

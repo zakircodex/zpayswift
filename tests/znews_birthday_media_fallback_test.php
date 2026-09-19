@@ -48,6 +48,13 @@ function fb_patch(string $path, array $data): bool
     return true;
 }
 
+function fb_put(string $path, mixed $data): bool
+{
+    global $firebase;
+    $firebase[$path] = $data;
+    return true;
+}
+
 function fb_get(string $path, array $query = []): mixed
 {
     global $firebase;
@@ -96,16 +103,58 @@ $fixture = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQV
 if (!is_string($fixture) || file_put_contents($sourceAsset, $fixture) === false) {
     throw new RuntimeException('Birthday media test fixture could not be created.');
 }
-$stored = birthday_photo_store(['tmp' => $sourceAsset, 'mime' => 'image/png'], 'DRAFT', 'ZBD_TEST_DRAFT');
+$requestId = 'PHOTOUPLOADTOKEN01';
+$stored = birthday_photo_store(['tmp' => $sourceAsset, 'mime' => 'image/png'], 'DRAFT', 'ZBD_TEST_DRAFT', $requestId);
 $storedBlob = fb_get(birthday_path('MEDIA_BLOBS', (string)$stored['id']));
-birthday_media_test_expect(is_array($storedBlob), 'Photo storage must write its protected fallback copy atomically.');
-birthday_media_test_expect(birthday_media_blob_decode($storedBlob, $stored) !== null, 'Stored fallback copy must pass integrity verification.');
+birthday_media_test_expect($storedBlob === null, 'New photos must not be duplicated as oversized Firebase Base64 blobs.');
+birthday_media_test_expect(($stored['storage_driver'] ?? '') === 'PRIVATE_FILESYSTEM', 'New photos must use private filesystem storage.');
+birthday_media_test_expect((int)($stored['width'] ?? 0) > 0 && (int)($stored['height'] ?? 0) > 0, 'Optimized photo dimensions must be recorded.');
 $storedPath = birthday_media_resolve((string)$stored['storage_key']);
 birthday_media_test_expect(is_file($storedPath), 'Optimized filesystem photo must still be written as the primary copy.');
+$replayed = birthday_photo_store(['tmp' => $sourceAsset, 'mime' => 'image/png'], 'DRAFT', 'ZBD_TEST_DRAFT', $requestId);
+birthday_media_test_expect(($replayed['id'] ?? '') === ($stored['id'] ?? ''), 'Retrying the same upload token must return the same verified media record.');
+$draft = ['id' => 'ZBD_TEST_DRAFT', 'photo_media_id' => ''];
+$draft = birthday_photo_attach_to_draft($draft, $stored);
+$draft = birthday_photo_attach_to_draft($draft, $replayed);
+birthday_media_test_expect(
+    fb_get(birthday_path('MEDIA', (string)$stored['id']) . '/status') === null,
+    'Retrying the current photo attachment must not mark that photo as replaced.'
+);
 birthday_media_delete_files($stored);
 birthday_media_test_expect(!is_file($storedPath), 'Photo cleanup must remove the filesystem copy.');
-birthday_media_test_expect(fb_get(birthday_path('MEDIA_BLOBS', (string)$stored['id'])) === null, 'Photo cleanup must remove the fallback copy.');
+birthday_media_test_expect(fb_get(birthday_path('MEDIA_BLOBS', (string)$stored['id'])) === null, 'Photo cleanup must remain compatible with old fallback records.');
+
+$mp3Frame = "\xFF\xFB\x90\x00" . str_repeat("\0", 413);
+$mp3Duration = birthday_audio_mp3_duration(str_repeat($mp3Frame, 40));
+birthday_media_test_expect($mp3Duration > 1.0 && $mp3Duration < 1.1, 'MP3 duration must be verified from frame data.');
+$mvhdPayload = "\0\0\0\0" . pack('N', 0) . pack('N', 0) . pack('N', 1000) . pack('N', 30000);
+$mvhd = pack('N', 8 + strlen($mvhdPayload)) . 'mvhd' . $mvhdPayload;
+$moov = pack('N', 8 + strlen($mvhd)) . 'moov' . $mvhd;
+birthday_media_test_expect(abs(birthday_audio_mp4_duration($moov) - 30.0) < 0.01, 'M4A duration must be verified from MP4 metadata.');
 @unlink($sourceAsset);
+
+$largeSource = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'zsky_birthday_large_' . bin2hex(random_bytes(6)) . '.png';
+$largePng = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAFAAAAB4CAMAAABSMIXEAAAAA1BMVEUtqtKr2g/yAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAIElEQVRo3u3BAQ0AAADCoPdPbQ43oAAAAAAAAAAAAHgyJfgAAdQN+TQAAAAASUVORK5CYII=', true);
+$largePng = is_string($largePng) ? $largePng . str_repeat("\0", 760 * 1024) : '';
+if ($largePng === '' || file_put_contents($largeSource, $largePng) === false) {
+    throw new RuntimeException('Large Birthday media fixture could not be created.');
+}
+$prepared = birthday_photo_prepare([
+    'tmp' => $largeSource,
+    'size' => strlen($largePng),
+    'mime' => 'image/png',
+    'extension' => 'png',
+    'width' => 80,
+    'height' => 120,
+    'sha256' => hash('sha256', $largePng),
+]);
+birthday_media_test_expect(!empty($prepared['ok']) && is_file((string)($prepared['tmp'] ?? '')), 'A validated phone photo must remain storable when server-side re-encoding is unavailable.');
+birthday_media_test_expect((int)($prepared['width'] ?? 0) === 80 && (int)($prepared['height'] ?? 0) === 120, 'Photo preparation must preserve the complete aspect ratio.');
+if (!extension_loaded('gd')) {
+    birthday_media_test_expect(!empty($prepared['optimization_fallback']), 'Hosts without GD must use the verified no-crop photo fallback.');
+}
+@unlink((string)($prepared['tmp'] ?? ''));
+@unlink($largeSource);
 
 if (is_dir($storageRoot)) {
     $iterator = new RecursiveIteratorIterator(

@@ -5,8 +5,10 @@ const fs = require('node:fs');
 const http = require('node:http');
 const net = require('node:net');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { spawn } = require('node:child_process');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const sharp = require('sharp');
 
 const repo = path.resolve(__dirname, '..');
 const php = process.env.PHP_EXECUTABLE || 'C:\\xampp\\php\\php.exe';
@@ -60,6 +62,23 @@ async function noOverflow(page, label) {
   assert.ok(audit.overflow <= 1, `${label} overflow audit: ${JSON.stringify(audit)}`);
 }
 
+async function animatedCanvasAudit(page, label) {
+  const canvas = page.locator('.universe-space-canvas');
+  await canvas.waitFor({ state: 'visible' });
+  await page.waitForTimeout(250);
+  const first = await canvas.screenshot();
+  const stats = await sharp(first).stats();
+  const variation = Math.max(...stats.channels.slice(0, 3).map(channel => channel.stdev));
+  assert.ok(variation > 3, `${label} canvas must contain visible scene pixels (stdev ${variation}).`);
+  await page.waitForTimeout(450);
+  const second = await canvas.screenshot();
+  assert.notEqual(
+    crypto.createHash('sha256').update(first).digest('hex'),
+    crypto.createHash('sha256').update(second).digest('hex'),
+    `${label} canvas must animate between frames.`
+  );
+}
+
 async function run() {
   const port = await freePort();
   const origin = `http://127.0.0.1:${port}`;
@@ -105,14 +124,29 @@ async function run() {
     await page.locator('#nextStep').click();
     await page.locator('#birthdayMessage').fill('Happy birthday! Keep shining.');
     await page.locator('#nextStep').click();
+    await page.locator('#birthdayPhoto').setInputFiles({
+      name: 'portrait-memory.png',
+      mimeType: 'image/png',
+      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAB4AAAAyCAMAAAB8gJvdAAAABlBMVEXmUHgetNzqln3RAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAGElEQVQ4y2NgxAsYRqVHpUeC9CgYBaMAAFSUAu9FHD8JAAAAAElFTkSuQmCC', 'base64')
+    });
+    await page.locator('#photoPreview:not([hidden])').waitFor();
+    assert.equal(await page.locator('#photoPreview').evaluate(node => getComputedStyle(node).objectFit), 'contain', 'Selected photo preview must never crop the original image.');
     await page.locator('#nextStep').click();
     await page.locator('[data-template-id="cosmic"]').click();
     await page.locator('#nextStep').click();
+    await page.locator('[data-audio-mode="CUSTOM"]').click();
+    assert.equal(await page.locator('#customAudioPanel').isVisible(), true, 'Custom audio selection must reveal the protected 30-second upload controls.');
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'birthday-audio-390.png') });
+    await page.locator('[data-audio-mode="AMBIENT"]').click();
     await page.locator('#consentConfirmed').check();
     await page.locator('#nextStep').click();
     await page.waitForURL('**/birthday/preview/ZBD_BROWSER_001');
     await page.locator('#previewUniverse .birthday-universe').waitFor();
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'birthday-entry-390.png') });
+    await page.locator('#previewUniverse .universe-enter-button').click();
     assert.match(await page.locator('#previewUniverse').innerText(), /MIM-247-PREVIEW/);
+    assert.equal(await page.locator('#previewUniverse .photo-frame img').evaluate(node => getComputedStyle(node).objectFit), 'contain', 'Preview photo must preserve its original aspect ratio.');
+    await animatedCanvasAudit(page, 'Preview Universe');
     await noOverflow(page, '390px preview page');
 
     await page.locator('#generateUniverse').click();
@@ -126,9 +160,19 @@ async function run() {
     await page.waitForURL('**/u/mim-247-x8k2browser');
     await page.locator('#publicUniverse .birthday-universe').waitFor();
     await page.locator('#qrCode img').waitFor();
+    await page.locator('#publicUniverse .universe-enter-button').click();
     assert.match(await page.locator('#publicUniverse').innerText(), /MIM-247-X8K2/);
     assert.equal(await page.locator('#qrCode img').getAttribute('src').then(value => String(value).startsWith('data:image/png;base64,')), true, 'QR code must be generated locally as a PNG from the public URL.');
     await noOverflow(page, '390px public Universe before message reveal');
+    await animatedCanvasAudit(page, 'Public Universe');
+    assert.equal(await page.locator('#publicUniverse .photo-frame img').evaluate(node => getComputedStyle(node).objectFit), 'contain', 'Published photo must remain uncropped.');
+    await page.locator('.moon-section').scrollIntoViewIfNeeded();
+    await page.waitForTimeout(350);
+    assert.equal(await page.locator('.moon-orbit-anchor').evaluate(node => {
+      const rect = node.getBoundingClientRect();
+      return rect.width >= 200 && rect.height >= 200 && rect.top < innerHeight && rect.bottom > 0;
+    }), true, 'The rotating moon must have a stable visible viewport anchor.');
+    if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'birthday-moon-390.png') });
     await page.locator('.message-toggle').click();
     assert.equal(await page.locator('.birthday-message').isVisible(), true, 'Birthday message must reveal on demand.');
     await noOverflow(page, '390px public Universe');
@@ -146,6 +190,7 @@ async function run() {
     await page.setViewportSize({ width: 320, height: 760 });
     await page.goto(`${origin}/u/mim-247-x8k2browser`, { waitUntil: 'networkidle' });
     await page.locator('#publicUniverse .birthday-universe').waitFor();
+    await page.locator('#publicUniverse .universe-enter-button').click();
     await noOverflow(page, '320px public Universe');
     assert.deepEqual(errors, [], `Browser console errors: ${errors.join(' | ')}`);
     console.log('Z Sky 24 Birthday Universe browser flow passed.');

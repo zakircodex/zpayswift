@@ -30,6 +30,8 @@ define('BIRTHDAY_UNIVERSE_RENEWAL_DAYS', 90);
 define('BIRTHDAY_UNIVERSE_GENERATION_PER_HOUR', 5);
 define('BIRTHDAY_UNIVERSE_DRAFT_TTL_SECONDS', 86400);
 define('BIRTHDAY_UNIVERSE_PHOTO_MAX_BYTES', 5 * 1024 * 1024);
+define('BIRTHDAY_UNIVERSE_AUDIO_MAX_BYTES', 10 * 1024 * 1024);
+define('BIRTHDAY_UNIVERSE_AUDIO_MAX_DURATION_SECONDS', 30);
 define('BIRTHDAY_UNIVERSE_STORAGE_DIR', '');
 ```
 
@@ -40,11 +42,39 @@ No secrets belong in browser JavaScript or this directory.
 
 The default private path is `private/uploads/znews/birthday`. Uploaded photos
 are signature-checked, decoded and re-encoded into an optimized derivative.
-Original uploads are not served. A verified redundant copy of each optimized
-photo is stored in the server-only `ZNEWS_BIRTHDAY_MEDIA_BLOBS` namespace so a
-hosting filesystem read failure cannot break preview or public delivery. Direct
-client access remains denied by Firebase rules, and cleanup removes both copies.
-Music uploads accept MP3, OGG and M4A only and require an admin rights confirmation.
+The complete image composition and aspect ratio are preserved; no crop is
+performed. Media is served only through the protected endpoint. New media uses
+an atomic private filesystem write with size/hash read-back verification, while the old
+`ZNEWS_BIRTHDAY_MEDIA_BLOBS` namespace remains readable only for legacy pages.
+This avoids Firebase payload-size failures on normal phone photos. Direct client
+access remains denied, and cleanup removes both current files and any legacy
+fallback record. When the host provides GD, images are resized and re-encoded;
+when GD is unavailable, a fully validated file up to 5 MB is retained without
+cropping rather than rejecting an otherwise valid phone photo.
+
+Creators may use the built-in procedural cosmic ambience, silence, a licensed
+platform track, or one MP3/OGG/M4A file up to 30 seconds. Custom audio is checked
+by MIME type, file signature and parsed media duration on the server, requires a
+rights confirmation, and is delivered from private storage. Browser autoplay
+rules are respected: sound starts only after the recipient presses **Enter
+Birthday Universe**.
+
+## Immersive renderer
+
+Public and preview pages use a self-hosted Three.js `0.186.0` renderer with an
+adaptive GPU star field, opening celebration, comet, satellite and textured
+rotating decorative moon. Device memory and CPU hints reduce particle density
+and pixel ratio on lower-end phones. `prefers-reduced-motion` disables continuous
+motion without hiding any content. The renderer has a static CSS/image fallback
+when WebGL is unavailable.
+
+The generated moon texture is documented in `assets/images/README.md`. Three.js
+is vendored in `assets/lib` with its MIT license so cPanel deployment does not
+depend on a CDN or third-party runtime request.
+
+For custom audio uploads, configure PHP `upload_max_filesize` to at least `10M`
+and `post_max_size` to at least `12M`. The application still enforces its own
+stricter MIME, signature, byte-size and 30-second duration checks.
 
 The bundled QR renderer is stored under `assets/lib` with its MIT license so it
 is included in a fresh checkout and cPanel package. QR images are rendered

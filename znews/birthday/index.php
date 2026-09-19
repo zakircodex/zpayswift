@@ -48,12 +48,14 @@ $canonicalPaths = [
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
   <link rel="canonical" href="https://zsky24.com<?= htmlspecialchars($canonicalPaths[$page], ENT_QUOTES, 'UTF-8') ?>">
   <link rel="preload" as="image" href="/znews/birthday/assets/images/birthday-universe-cosmic.webp" fetchpriority="high">
-  <link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=1">
+  <link rel="preload" as="image" href="/znews/birthday/assets/images/moon-surface-v1.webp">
+  <link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=3">
   <title><?= htmlspecialchars($titles[$page] . ' | Z Sky 24', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></title>
-  <script defer src="/znews/birthday/assets/birthday-api.js?v=2"></script>
+  <script defer src="/znews/birthday/assets/birthday-api.js?v=3"></script>
   <script defer src="/znews/birthday/assets/birthday-ad-service.js?v=1"></script>
-  <script defer src="/znews/birthday/assets/birthday-templates.js?v=1"></script>
-  <script defer src="/znews/birthday/assets/birthday-app.js?v=2"></script>
+  <script type="module" src="/znews/birthday/assets/birthday-scene.js?v=1"></script>
+  <script defer src="/znews/birthday/assets/birthday-templates.js?v=3"></script>
+  <script defer src="/znews/birthday/assets/birthday-app.js?v=3"></script>
 </head>
 <body data-page="<?= htmlspecialchars($page, ENT_QUOTES, 'UTF-8') ?>" data-draft-id="<?= htmlspecialchars($draftId, ENT_QUOTES, 'UTF-8') ?>" data-slug="<?= htmlspecialchars($slug, ENT_QUOTES, 'UTF-8') ?>">
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -148,11 +150,16 @@ $canonicalPaths = [
           <div class="template-picker" id="templatePicker" aria-live="polite"></div>
         </section>
         <section class="form-step" data-step="7" aria-labelledby="stepSevenTitle" hidden>
-          <p class="step-kicker">07</p><h2 id="stepSevenTitle" data-copy="stepMusicTitle">Choose the finishing touch</h2><p data-copy="stepMusicText">Music never autoplays. The recipient stays in control.</p>
+          <p class="step-kicker">07</p><h2 id="stepSevenTitle" data-copy="stepMusicTitle">Choose the finishing touch</h2><p data-copy="stepMusicText">Sound begins after the recipient enters the Universe.</p>
           <div class="music-picker" id="musicPicker" aria-live="polite"></div>
+          <section class="custom-audio-panel" id="customAudioPanel" hidden>
+            <label class="audio-picker" id="customAudioPicker"><input id="birthdayAudio" name="audio" type="file" accept="audio/mpeg,audio/mp4,audio/ogg"><span><strong data-copy="audioChoose">Choose your audio</strong><small data-copy="audioLimit">MP3, M4A or OGG, up to 30 seconds.</small></span></label>
+            <div class="audio-selection" id="audioSelection" hidden><span id="audioFileName"></span><button class="text-button" id="removeAudio" type="button" data-copy="audioRemove">Remove audio</button></div>
+            <label class="check-row"><input id="audioRightsConfirmed" type="checkbox"><span data-copy="audioRightsLabel">I have permission to use this audio on a public birthday page.</span></label>
+          </section>
           <fieldset class="privacy-choice"><legend data-copy="visibilityTitle">Search visibility</legend><label><input type="radio" name="visibility" value="UNLISTED" checked><span><strong data-copy="unlistedTitle">Unlisted</strong><small data-copy="unlistedText">Only people with the link can open it.</small></span></label><label id="publicVisibilityOption"><input type="radio" name="visibility" value="PUBLIC"><span><strong data-copy="publicTitle">Public</strong><small data-copy="publicText">Search engines may index the page.</small></span></label></fieldset>
           <label class="check-row"><input id="sharePhoto" type="checkbox"><span data-copy="sharePhotoLabel">Use the uploaded photo in social link previews.</span></label>
-          <label class="check-row"><input id="consentConfirmed" type="checkbox" required><span data-copy="consentLabel">I have permission to publish this name, message and photo.</span></label>
+          <label class="check-row"><input id="consentConfirmed" type="checkbox" required><span data-copy="consentLabel">I have permission to publish this name, message, photo and audio.</span></label>
         </section>
         <p class="form-error" id="formError" role="alert" hidden></p>
         <div class="form-actions"><button class="button secondary" id="previousStep" type="button" hidden data-copy="backButton">Back</button><button class="button primary" id="nextStep" type="button" data-copy="continueButton">Continue</button></div>

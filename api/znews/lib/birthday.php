@@ -284,6 +284,17 @@ function birthday_validate_payload(array $body): array
             api_response(false, 'BIRTHDAY_MUSIC_INVALID', 'Please choose an available music track.', [], 422);
         }
     }
+    $audioModeRaw = strtoupper(trim((string)($body['audio_mode'] ?? '')));
+    $audioMode = $audioModeRaw !== '' ? $audioModeRaw : ($musicId !== '' ? 'PLATFORM' : 'AMBIENT');
+    if (!in_array($audioMode, ['AMBIENT', 'NONE', 'PLATFORM', 'CUSTOM'], true)) {
+        api_response(false, 'BIRTHDAY_AUDIO_MODE_INVALID', 'Please choose an available soundtrack option.', [], 422);
+    }
+    if ($audioMode === 'PLATFORM' && $musicId === '') {
+        api_response(false, 'BIRTHDAY_MUSIC_REQUIRED', 'Please choose an available music track.', [], 422);
+    }
+    if ($audioMode !== 'PLATFORM') {
+        $musicId = '';
+    }
 
     return [
         'name' => $name,
@@ -294,6 +305,7 @@ function birthday_validate_payload(array $body): array
         'message' => $message,
         'template_id' => $templateId,
         'music_id' => $musicId,
+        'audio_mode' => $audioMode,
         'locale' => birthday_locale($body['locale'] ?? $settings['default_locale']),
         'visibility' => birthday_visibility($body['visibility'] ?? 'UNLISTED', $settings),
         'share_photo' => znews_bool($body['share_photo'] ?? false, false),
@@ -425,6 +437,7 @@ function birthday_create_draft(array $payload, string $draftToken): array
         'draft_token_hash' => $tokenHash,
         'payload_hash' => $payloadHash,
         'photo_media_id' => '',
+        'custom_audio_media_id' => '',
         'status' => 'DRAFT',
         'created_at' => $now,
         'updated_at' => $now,
@@ -451,6 +464,53 @@ function birthday_load_draft(string $draftId, string $draftToken): array
     return $row;
 }
 
+function birthday_audio_mode(array $row): string
+{
+    $stored = strtoupper(trim((string)($row['audio_mode'] ?? '')));
+    if (in_array($stored, ['AMBIENT', 'NONE', 'PLATFORM', 'CUSTOM'], true)) {
+        return $stored;
+    }
+    return trim((string)($row['music_id'] ?? '')) !== '' ? 'PLATFORM' : 'NONE';
+}
+
+function birthday_soundtrack(array $row, bool $draft = false): array
+{
+    $mode = birthday_audio_mode($row);
+    if ($mode === 'AMBIENT') {
+        return [
+            'mode' => 'AMBIENT',
+            'id' => 'cosmic-ambient',
+            'name' => 'Cosmic ambience',
+            'duration' => 0,
+            'url' => '',
+        ];
+    }
+    if ($mode === 'PLATFORM') {
+        $music = birthday_music_by_id((string)($row['music_id'] ?? ''));
+        return is_array($music)
+            ? array_merge($music, ['mode' => 'PLATFORM'])
+            : ['mode' => 'NONE', 'id' => '', 'name' => '', 'duration' => 0, 'url' => ''];
+    }
+    if ($mode === 'CUSTOM') {
+        $mediaId = trim((string)($row['custom_audio_media_id'] ?? ''));
+        $media = $mediaId !== '' ? fb_get(birthday_path('MEDIA', $mediaId)) : null;
+        if (is_array($media) && strtoupper((string)($media['kind'] ?? '')) === 'AUDIO') {
+            $url = '/api/znews/birthday/custom_audio.php?id=' . rawurlencode($mediaId);
+            if ($draft) {
+                $url .= '&draft=' . rawurlencode((string)($row['id'] ?? ''));
+            }
+            return [
+                'mode' => 'CUSTOM',
+                'id' => 'custom',
+                'name' => 'Custom birthday audio',
+                'duration' => max(1, (int)ceil(((int)($media['duration_ms'] ?? 0)) / 1000)),
+                'url' => $url,
+            ];
+        }
+    }
+    return ['mode' => 'NONE', 'id' => '', 'name' => '', 'duration' => 0, 'url' => ''];
+}
+
 function birthday_public_draft(array $row): array
 {
     $template = birthday_template((string)($row['template_id'] ?? 'cosmic'));
@@ -465,10 +525,15 @@ function birthday_public_draft(array $row): array
         'message' => (string)($row['message'] ?? ''),
         'template' => $template,
         'music' => $music,
+        'audio_mode' => birthday_audio_mode($row),
+        'soundtrack' => birthday_soundtrack($row, true),
         'locale' => birthday_locale($row['locale'] ?? 'en'),
         'visibility' => birthday_visibility($row['visibility'] ?? 'UNLISTED'),
         'share_photo' => !empty($row['share_photo']),
         'photo_media_id' => (string)($row['photo_media_id'] ?? ''),
+        'photo_width' => max(0, (int)($row['photo_width'] ?? 0)),
+        'photo_height' => max(0, (int)($row['photo_height'] ?? 0)),
+        'custom_audio_media_id' => (string)($row['custom_audio_media_id'] ?? ''),
         'photo_url' => (string)($row['photo_media_id'] ?? '') !== ''
             ? '/api/znews/birthday/media.php?id=' . rawurlencode((string)$row['photo_media_id']) . '&draft=' . rawurlencode((string)$row['id'])
             : '',
@@ -597,6 +662,20 @@ function birthday_generate(string $draftId, string $draftToken, string $recovery
     }
 
     $draft = birthday_load_draft($draftId, $draftToken);
+    $audioMode = birthday_audio_mode($draft);
+    $customAudioId = trim((string)($draft['custom_audio_media_id'] ?? ''));
+    if ($audioMode === 'CUSTOM') {
+        $customAudio = $customAudioId !== '' ? fb_get(birthday_path('MEDIA', $customAudioId)) : null;
+        if (!is_array($customAudio)
+            || strtoupper((string)($customAudio['kind'] ?? '')) !== 'AUDIO'
+            || strtoupper((string)($customAudio['status'] ?? '')) !== 'DRAFT'
+            || !hash_equals($draftId, (string)($customAudio['draft_id'] ?? ''))
+            || empty($customAudio['rights_confirmed'])) {
+            api_response(false, 'BIRTHDAY_AUDIO_REQUIRED', 'Upload a valid custom audio file before generating.', [], 422);
+        }
+    } else {
+        $customAudioId = '';
+    }
     birthday_rate_limit('generate', (int)birthday_settings()['generation_per_hour'], 3600, true);
     $recoveryCode = birthday_recovery_code($recoveryCode);
     $now = birthday_now();
@@ -632,8 +711,12 @@ function birthday_generate(string $draftId, string $draftToken, string $recovery
         'sender_name' => (string)$draft['sender_name'],
         'message' => (string)$draft['message'],
         'photo_media_id' => (string)($draft['photo_media_id'] ?? ''),
+        'photo_width' => max(0, (int)($draft['photo_width'] ?? 0)),
+        'photo_height' => max(0, (int)($draft['photo_height'] ?? 0)),
         'template_id' => (string)$draft['template_id'],
-        'music_id' => (string)$draft['music_id'],
+        'music_id' => (string)($draft['music_id'] ?? ''),
+        'audio_mode' => $audioMode,
+        'custom_audio_media_id' => $customAudioId,
         'locale' => birthday_locale($draft['locale'] ?? 'en'),
         'visibility' => birthday_visibility($draft['visibility'] ?? 'UNLISTED', $settings),
         'share_photo' => !empty($draft['share_photo']),
@@ -666,6 +749,11 @@ function birthday_generate(string $draftId, string $draftToken, string $recovery
         $updates[birthday_path('MEDIA', $mediaId) . '/status'] = 'ACTIVE';
         $updates[birthday_path('MEDIA', $mediaId) . '/universe_id'] = $universeId;
         $updates[birthday_path('MEDIA', $mediaId) . '/updated_at'] = $now;
+    }
+    if ($customAudioId !== '') {
+        $updates[birthday_path('MEDIA', $customAudioId) . '/status'] = 'ACTIVE';
+        $updates[birthday_path('MEDIA', $customAudioId) . '/universe_id'] = $universeId;
+        $updates[birthday_path('MEDIA', $customAudioId) . '/updated_at'] = $now;
     }
     if (!fb_patch('', $updates)) {
         birthday_release_reservation('SLUGS', $identifiers['slug'], $universeId);
@@ -738,8 +826,12 @@ function birthday_public_universe(array $row, ?array $templateLookup = null, ?ar
         'sender_name' => (string)($row['sender_name'] ?? ''),
         'message' => (string)($row['message'] ?? ''),
         'photo_url' => $mediaId !== '' ? '/api/znews/birthday/media.php?id=' . rawurlencode($mediaId) : '',
+        'photo_width' => max(0, (int)($row['photo_width'] ?? 0)),
+        'photo_height' => max(0, (int)($row['photo_height'] ?? 0)),
         'template' => $template,
         'music' => $music,
+        'audio_mode' => birthday_audio_mode($row),
+        'soundtrack' => birthday_soundtrack($row, false),
         'locale' => birthday_locale($row['locale'] ?? 'en'),
         'visibility' => birthday_visibility($row['visibility'] ?? 'UNLISTED'),
         'share_photo' => !empty($row['share_photo']),
@@ -907,6 +999,7 @@ function birthday_update_owned(array $row, array $payload): array
 {
     $now = birthday_now();
     $oldStar = (string)$row['star_id'];
+    $oldCustomAudioId = trim((string)($row['custom_audio_media_id'] ?? ''));
     $identityChanged = (string)$row['name'] !== (string)$payload['name']
         || (int)$row['birthday_day'] !== (int)$payload['birthday_day']
         || (int)$row['birthday_month'] !== (int)$payload['birthday_month'];
@@ -927,11 +1020,20 @@ function birthday_update_owned(array $row, array $payload): array
         }
         $row['star_id'] = $newIdentifiers;
     }
-    foreach (['name', 'birthday_day', 'birthday_month', 'birthday_year', 'sender_name', 'message', 'template_id', 'music_id', 'locale', 'visibility', 'share_photo'] as $field) {
+    if ((string)$payload['audio_mode'] === 'CUSTOM' && $oldCustomAudioId === '') {
+        api_response(false, 'BIRTHDAY_AUDIO_REQUIRED', 'Upload a custom audio file before selecting custom audio.', [], 422);
+    }
+    foreach (['name', 'birthday_day', 'birthday_month', 'birthday_year', 'sender_name', 'message', 'template_id', 'music_id', 'audio_mode', 'locale', 'visibility', 'share_photo'] as $field) {
         $row[$field] = $payload[$field];
     }
+    $row['custom_audio_media_id'] = (string)$payload['audio_mode'] === 'CUSTOM' ? $oldCustomAudioId : '';
     $row['updated_at'] = $now;
-    if (!fb_put(birthday_path('UNIVERSES', (string)$row['id']), $row)) {
+    $updates = [birthday_path('UNIVERSES', (string)$row['id']) => $row];
+    if ($oldCustomAudioId !== '' && (string)$payload['audio_mode'] !== 'CUSTOM') {
+        $updates[birthday_path('MEDIA', $oldCustomAudioId) . '/status'] = 'REPLACED';
+        $updates[birthday_path('MEDIA', $oldCustomAudioId) . '/updated_at'] = $now;
+    }
+    if (!fb_patch('', $updates)) {
         if ($identityChanged) {
             birthday_release_reservation('STAR_IDS', (string)$row['star_id'], (string)$row['id']);
             $row['star_id'] = $oldStar;
@@ -967,6 +1069,8 @@ function birthday_remove_photo_owned(array $row): array
     }
     $now = birthday_now();
     $row['photo_media_id'] = '';
+    $row['photo_width'] = 0;
+    $row['photo_height'] = 0;
     $row['share_photo'] = false;
     $row['updated_at'] = $now;
     $updates = [

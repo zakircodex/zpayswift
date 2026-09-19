@@ -206,6 +206,7 @@ $payload = birthday_validate_payload([
     'share_photo' => false, 'consent_confirmed' => true,
 ]);
 birthday_require_consent($payload);
+birthday_test_expect(($payload['audio_mode'] ?? '') === 'AMBIENT', 'New Birthday Universes must default to the tap-to-start cosmic ambience.');
 $token = str_repeat('AB', 16);
 $draft = birthday_create_draft($payload, strtolower($token));
 birthday_test_expect(str_starts_with($draft['id'], 'ZBD'), 'Draft IDs must use the Birthday draft namespace.');
@@ -221,6 +222,7 @@ birthday_test_expect(empty($created['idempotent_replay']), 'First generation mus
 birthday_test_expect((bool)preg_match('/^mim-247-[a-z0-9]{12}$/', $universe['slug']), 'Public slug must be readable and collision-resistant.');
 birthday_test_expect((bool)preg_match('/^MIM-247-[A-Z0-9]{4}$/', $universe['star_id']), 'Personal star ID must use the normalized name and birthday.');
 birthday_test_expect(!array_key_exists('id', $universe) && !array_key_exists('recovery_hash', $universe), 'Public output must not expose database IDs or recovery hashes.');
+birthday_test_expect(($universe['soundtrack']['mode'] ?? '') === 'AMBIENT', 'Generated Universes must expose only the safe ambient soundtrack contract.');
 
 $replayed = birthday_generate($draft['id'], $token, $recovery, 'birthday-test-first');
 birthday_test_expect(!empty($replayed['idempotent_replay']), 'A completed generation must replay after the draft is marked generated.');
@@ -299,6 +301,11 @@ $sharedMediaSource = file_get_contents(dirname(__DIR__) . '/api/znews/lib/media.
 birthday_test_expect(is_string($source) && is_string($sharedMediaSource) && str_contains($sharedMediaSource, 'getimagesize') && str_contains($source, 'INVALID_SIGNATURE'), 'Media code must validate decoded images and audio signatures.');
 $templateSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-templates.js');
 birthday_test_expect(is_string($templateSource) && str_contains($templateSource, 'textContent') && !str_contains($templateSource, 'innerHTML'), 'Public template rendering must not inject user HTML.');
+$sceneSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-scene.js');
+birthday_test_expect(is_string($sceneSource) && str_contains($sceneSource, 'moon-surface-v1.webp') && str_contains($sceneSource, 'prefers-reduced-motion'), 'Immersive scene must include the textured moon and reduced-motion support.');
+birthday_test_expect(is_file(dirname(__DIR__) . '/znews/birthday/assets/lib/three.module.js') && is_file(dirname(__DIR__) . '/znews/birthday/assets/lib/three.core.js'), 'Self-hosted Three.js runtime files must be deployable without a CDN.');
+$birthdayCss = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday.css');
+birthday_test_expect(is_string($birthdayCss) && str_contains($birthdayCss, '.photo-frame img{width:100%;max-width:100%;height:auto;max-height:none') && str_contains($birthdayCss, 'object-fit:contain'), 'Birthday photos must preserve their full aspect ratio without cropping.');
 $routes = file_get_contents(dirname(__DIR__) . '/.htaccess');
 birthday_test_expect(is_string($routes) && str_contains($routes, 'birthday/preview/') && str_contains($routes, 'birthday/public.php?slug=$1'), 'Clean preview and public Universe routes must be deployed.');
 $adSource = file_get_contents(dirname(__DIR__) . '/api/znews/birthday/ad.php');

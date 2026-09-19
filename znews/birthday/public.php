@@ -46,13 +46,15 @@ header('Cache-Control: ' . ($robots === 'index,follow' ? 'public, max-age=120, s
   <meta name="twitter:description" content="<?= htmlspecialchars($description, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
   <meta name="twitter:image" content="<?= htmlspecialchars($photoUrl, ENT_QUOTES, 'UTF-8') ?>">
   <link rel="preload" as="image" href="/znews/birthday/assets/images/birthday-universe-cosmic.webp" fetchpriority="high">
-  <link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=1">
+  <link rel="preload" as="image" href="/znews/birthday/assets/images/moon-surface-v1.webp">
+  <link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=3">
   <title><?= htmlspecialchars($title . ' | Z Sky 24', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></title>
   <script defer src="/znews/birthday/assets/lib/qrcode.min.js?v=1"></script>
-  <script defer src="/znews/birthday/assets/birthday-api.js?v=2"></script>
+  <script defer src="/znews/birthday/assets/birthday-api.js?v=3"></script>
   <script defer src="/znews/birthday/assets/birthday-ad-service.js?v=1"></script>
-  <script defer src="/znews/birthday/assets/birthday-templates.js?v=1"></script>
-  <script defer src="/znews/birthday/assets/birthday-public.js?v=1"></script>
+  <script type="module" src="/znews/birthday/assets/birthday-scene.js?v=1"></script>
+  <script defer src="/znews/birthday/assets/birthday-templates.js?v=3"></script>
+  <script defer src="/znews/birthday/assets/birthday-public.js?v=2"></script>
 </head>
 <body class="public-universe-page" data-slug="<?= htmlspecialchars($slug, ENT_QUOTES, 'UTF-8') ?>" data-available="<?= $available ? 'true' : 'false' ?>">
   <a class="skip-link" href="#mainContent">Skip to birthday universe</a>
