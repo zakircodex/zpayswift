@@ -36,6 +36,59 @@
     return node;
   }
 
+  function visualRandom(value) {
+    let state = 2166136261;
+    for (const character of String(value || 'birthday-universe')) {
+      state ^= character.charCodeAt(0);
+      state = Math.imul(state, 16777619);
+    }
+    return () => {
+      state += 0x6D2B79F5;
+      let result = state;
+      result = Math.imul(result ^ (result >>> 15), result | 1);
+      result ^= result + Math.imul(result ^ (result >>> 7), result | 61);
+      return ((result ^ (result >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function twinkleField(seed) {
+    const layer = element('div', 'universe-twinkles');
+    layer.setAttribute('aria-hidden', 'true');
+    const fragment = document.createDocumentFragment();
+    const random = visualRandom(`${seed}|page-stars`);
+    const count = window.innerWidth <= 600 ? 104 : 156;
+    for (let index = 0; index < count; index += 1) {
+      const star = element('span', `twinkle-star${index % 9 === 0 ? ' twinkle-star-accent' : ''}`);
+      star.style.setProperty('--star-x', `${(random() * 100).toFixed(2)}%`);
+      star.style.setProperty('--star-y', `${(random() * 100).toFixed(2)}%`);
+      star.style.setProperty('--star-size', `${(1 + random() * 2.2).toFixed(2)}px`);
+      star.style.setProperty('--star-delay', `${(-random() * 7).toFixed(2)}s`);
+      star.style.setProperty('--star-duration', `${(2.1 + random() * 3.8).toFixed(2)}s`);
+      star.style.setProperty('--star-opacity', `${(.34 + random() * .58).toFixed(2)}`);
+      fragment.append(star);
+    }
+    layer.append(fragment);
+    return layer;
+  }
+
+  function moonSparkles(seed) {
+    const layer = element('span', 'moon-twinkles');
+    layer.setAttribute('aria-hidden', 'true');
+    const random = visualRandom(`${seed}|moon-stars`);
+    for (let index = 0; index < 24; index += 1) {
+      const angle = (index / 24) * Math.PI * 2 + random() * .18;
+      const radius = 54 + random() * 22;
+      const star = element('i', 'moon-twinkle');
+      star.style.setProperty('--star-x', `${(50 + Math.cos(angle) * radius).toFixed(2)}%`);
+      star.style.setProperty('--star-y', `${(50 + Math.sin(angle) * radius).toFixed(2)}%`);
+      star.style.setProperty('--star-size', `${(1.2 + random() * 2.4).toFixed(2)}px`);
+      star.style.setProperty('--star-delay', `${(-random() * 6).toFixed(2)}s`);
+      star.style.setProperty('--star-duration', `${(1.8 + random() * 3.1).toFixed(2)}s`);
+      layer.append(star);
+    }
+    return layer;
+  }
+
   function audioContext() {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     return AudioContext ? new AudioContext() : null;
@@ -50,17 +103,35 @@
     const chime = () => {
       if (!context || context.state !== 'running' || !master) return;
       const now = context.currentTime;
+      const startFrequency = 440 + Math.random() * 260;
       const oscillator = context.createOscillator();
+      const harmonic = context.createOscillator();
       const gain = context.createGain();
+      const harmonicGain = context.createGain();
+      const panner = typeof context.createStereoPanner === 'function' ? context.createStereoPanner() : null;
       oscillator.type = 'sine';
-      oscillator.frequency.setValueAtTime(440 + Math.random() * 260, now);
+      harmonic.type = 'sine';
+      oscillator.frequency.setValueAtTime(startFrequency, now);
       oscillator.frequency.exponentialRampToValueAtTime(220 + Math.random() * 120, now + 2.8);
+      harmonic.frequency.setValueAtTime(startFrequency * 1.5, now);
+      harmonic.frequency.exponentialRampToValueAtTime(startFrequency * .76, now + 2.8);
       gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(.045, now + .08);
+      gain.gain.exponentialRampToValueAtTime(.11, now + .08);
       gain.gain.exponentialRampToValueAtTime(.0001, now + 3.1);
-      oscillator.connect(gain).connect(master);
+      harmonicGain.gain.setValueAtTime(0.0001, now);
+      harmonicGain.gain.exponentialRampToValueAtTime(.035, now + .12);
+      harmonicGain.gain.exponentialRampToValueAtTime(.0001, now + 2.7);
+      const destination = panner || master;
+      if (panner) {
+        panner.pan.value = Math.random() * 1.4 - .7;
+        panner.connect(master);
+      }
+      oscillator.connect(gain).connect(destination);
+      harmonic.connect(harmonicGain).connect(destination);
       oscillator.start(now);
+      harmonic.start(now);
       oscillator.stop(now + 3.2);
+      harmonic.stop(now + 3.2);
     };
 
     const initialize = () => {
@@ -68,20 +139,45 @@
       context = audioContext();
       if (!context) throw new Error('Audio is not supported in this browser.');
       master = context.createGain();
-      master.gain.value = .115;
-      master.connect(context.destination);
-      [55, 82.4, 123.5].forEach((frequency, index) => {
+      master.gain.value = .26;
+      const compressor = context.createDynamicsCompressor();
+      compressor.threshold.value = -24;
+      compressor.knee.value = 18;
+      compressor.ratio.value = 4;
+      compressor.attack.value = .02;
+      compressor.release.value = .45;
+      const reverb = context.createConvolver();
+      const wet = context.createGain();
+      const impulse = context.createBuffer(2, Math.round(context.sampleRate * 1.7), context.sampleRate);
+      for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
+        const samples = impulse.getChannelData(channel);
+        for (let index = 0; index < samples.length; index += 1) {
+          samples[index] = (Math.random() * 2 - 1) * Math.pow(1 - index / samples.length, 2.8);
+        }
+      }
+      reverb.buffer = impulse;
+      wet.gain.value = .3;
+      master.connect(compressor);
+      master.connect(reverb).connect(wet).connect(compressor);
+      compressor.connect(context.destination);
+      [55, 82.4, 110, 164.8].forEach((frequency, index) => {
         const oscillator = context.createOscillator();
         const gain = context.createGain();
         const filter = context.createBiquadFilter();
-        oscillator.type = index === 2 ? 'sine' : 'triangle';
+        const lfo = context.createOscillator();
+        const lfoGain = context.createGain();
+        oscillator.type = index >= 2 ? 'sine' : 'triangle';
         oscillator.frequency.value = frequency;
         oscillator.detune.value = index * 4 - 3;
         filter.type = 'lowpass';
-        filter.frequency.value = 420 + index * 170;
-        gain.gain.value = index === 0 ? .18 : .08;
+        filter.frequency.value = 460 + index * 150;
+        gain.gain.value = [.22, .13, .075, .04][index];
+        lfo.frequency.value = .025 + index * .009;
+        lfoGain.gain.value = 45 + index * 12;
+        lfo.connect(lfoGain).connect(filter.frequency);
         oscillator.connect(filter).connect(gain).connect(master);
         oscillator.start();
+        lfo.start();
       });
       const noiseBuffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
       const samples = noiseBuffer.getChannelData(0);
@@ -93,7 +189,7 @@
       noise.loop = true;
       noiseFilter.type = 'lowpass';
       noiseFilter.frequency.value = 310;
-      noiseGain.gain.value = .055;
+      noiseGain.gain.value = .04;
       noise.connect(noiseFilter).connect(noiseGain).connect(master);
       noise.start();
       initialized = true;
@@ -122,6 +218,7 @@
   function mediaController(url) {
     const audio = new Audio(String(url || ''));
     audio.preload = 'metadata';
+    audio.volume = 1;
     return {
       get paused() { return audio.paused; },
       play: () => audio.play(),
@@ -235,6 +332,7 @@
     const atmosphere = element('div', 'universe-atmosphere');
     atmosphere.setAttribute('aria-hidden', 'true');
     shell.append(atmosphere);
+    shell.append(twinkleField(`${universe.star_id || 'preview'}|${universe.name || 'birthday'}`));
 
     const opening = element('section', 'universe-opening');
     opening.tabIndex = -1;
@@ -265,6 +363,7 @@
     const moonAnchor = element('div', 'moon-orbit-anchor');
     moonAnchor.setAttribute('role', 'img');
     moonAnchor.setAttribute('aria-label', copy(universe, 'A slowly rotating decorative moon', 'ধীরে ঘূর্ণায়মান অলংকারিক চাঁদ'));
+    moonAnchor.append(moonSparkles(`${universe.star_id || 'preview'}|${universe.name || 'birthday'}`));
     moonInner.append(moonAnchor);
     addText(moonInner, 'p', 'eyebrow', dateLabel(universe));
     addText(moonInner, 'h2', '', copy(universe, `${universe.name}'s Birthday Moon`, `${universe.name}-এর জন্মদিনের চাঁদ`));

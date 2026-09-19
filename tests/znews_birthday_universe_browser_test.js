@@ -124,10 +124,16 @@ async function run() {
     await page.locator('#nextStep').click();
     await page.locator('#birthdayMessage').fill('Happy birthday! Keep shining.');
     await page.locator('#nextStep').click();
+    const phoneWidth = 2800;
+    const phoneHeight = 2100;
+    const phonePhoto = await sharp(crypto.randomBytes(phoneWidth * phoneHeight * 3), {
+      raw: { width: phoneWidth, height: phoneHeight, channels: 3 }
+    }).jpeg({ quality: 68, mozjpeg: true }).toBuffer();
+    assert.ok(phonePhoto.length > 2 * 1024 * 1024 && phonePhoto.length < 5 * 1024 * 1024, 'The browser fixture must exercise a camera-sized photo above the host upload limit.');
     await page.locator('#birthdayPhoto').setInputFiles({
-      name: 'portrait-memory.png',
-      mimeType: 'image/png',
-      buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAB4AAAAyCAMAAAB8gJvdAAAABlBMVEXmUHgetNzqln3RAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAGElEQVQ4y2NgxAsYRqVHpUeC9CgYBaMAAFSUAu9FHD8JAAAAAElFTkSuQmCC', 'base64')
+      name: 'large-phone-photo.jpg',
+      mimeType: 'image/jpeg',
+      buffer: phonePhoto
     });
     await page.locator('#photoPreview:not([hidden])').waitFor();
     assert.equal(await page.locator('#photoPreview').evaluate(node => getComputedStyle(node).objectFit), 'contain', 'Selected photo preview must never crop the original image.');
@@ -145,7 +151,12 @@ async function run() {
     if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'birthday-entry-390.png') });
     await page.locator('#previewUniverse .universe-enter-button').click();
     assert.match(await page.locator('#previewUniverse').innerText(), /MIM-247-PREVIEW/);
+    assert.ok(await page.locator('#previewUniverse .twinkle-star').count() >= 100, 'The full Universe must include a dense CSS twinkle field independent of WebGL support.');
+    assert.equal(await page.locator('#previewUniverse .moon-twinkle').count(), 24, 'The moon must have its own surrounding sparkle field.');
+    assert.match(await page.locator('#previewUniverse .twinkle-star').first().evaluate(node => getComputedStyle(node).animationName), /birthday-twinkle/);
     assert.equal(await page.locator('#previewUniverse .photo-frame img').evaluate(node => getComputedStyle(node).objectFit), 'contain', 'Preview photo must preserve its original aspect ratio.');
+    await page.locator('#birthdayPreviewAd iframe').waitFor();
+    assert.ok(await page.locator('#birthdayPreviewAd iframe').evaluate(node => node.getBoundingClientRect().height <= 421), 'Preview ad height must be capped on mobile.');
     await animatedCanvasAudit(page, 'Preview Universe');
     await noOverflow(page, '390px preview page');
 
@@ -160,9 +171,15 @@ async function run() {
     await page.waitForURL('**/u/mim-247-x8k2browser');
     await page.locator('#publicUniverse .birthday-universe').waitFor();
     await page.locator('#qrCode img').waitFor();
+    await page.locator('#birthdayPublicAd iframe').waitFor();
+    assert.ok(await page.locator('#birthdayPublicAd iframe').evaluate(node => node.getBoundingClientRect().height <= 421), 'Public ad height must be capped so sharing controls are reachable.');
     await page.locator('#publicUniverse .universe-enter-button').click();
     assert.match(await page.locator('#publicUniverse').innerText(), /MIM-247-X8K2/);
     assert.equal(await page.locator('#qrCode img').getAttribute('src').then(value => String(value).startsWith('data:image/png;base64,')), true, 'QR code must be generated locally as a PNG from the public URL.');
+    await page.locator('.public-share-panel').scrollIntoViewIfNeeded();
+    assert.equal(await page.locator('#nativeShare').isVisible(), true, 'Public Share action must remain visible below the Universe.');
+    assert.equal(await page.locator('#copyPublicLink').isVisible(), true, 'Copy Link action must remain visible below the Universe.');
+    assert.equal(await page.locator('#downloadQr').isVisible(), true, 'QR download action must remain visible below the Universe.');
     await noOverflow(page, '390px public Universe before message reveal');
     await animatedCanvasAudit(page, 'Public Universe');
     assert.equal(await page.locator('#publicUniverse .photo-frame img').evaluate(node => getComputedStyle(node).objectFit), 'contain', 'Published photo must remain uncropped.');

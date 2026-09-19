@@ -103,28 +103,84 @@
     }
   }
 
+  function dataUrlBlob(dataUrl) {
+    const [header, encoded = ''] = String(dataUrl || '').split(',', 2);
+    const mime = /^data:([^;,]+)/i.exec(header)?.[1] || 'image/jpeg';
+    const binary = atob(encoded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new Blob([bytes], { type: mime });
+  }
+
+  async function canvasPhotoBlob(canvas, type, quality) {
+    if (typeof canvas.toBlob === 'function') {
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, type, quality));
+      if (blob instanceof Blob && blob.size > 0) return blob;
+    }
+    try {
+      const fallback = dataUrlBlob(canvas.toDataURL(type, quality));
+      return fallback.size > 0 ? fallback : null;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function namedPhotoBlob(blob, originalName) {
+    const type = ['image/webp', 'image/jpeg', 'image/png'].includes(blob.type) ? blob.type : 'image/jpeg';
+    const extension = type === 'image/webp' ? 'webp' : (type === 'image/png' ? 'png' : 'jpg');
+    const baseName = String(originalName || 'birthday-photo').replace(/\.[^.]+$/u, '').slice(0, 100) || 'birthday-photo';
+    try {
+      return new File([blob], `${baseName}.${extension}`, { type, lastModified: Date.now() });
+    } catch (_error) {
+      Object.defineProperty(blob, 'name', { configurable: true, value: `${baseName}.${extension}` });
+      return blob;
+    }
+  }
+
   async function preparePhotoUpload(file) {
     let decoded = null;
     try {
       decoded = await decodePhoto(file);
-      const maximumEdge = 1600;
-      const maximumOptimizedBytes = 700 * 1024;
-      const scale = Math.min(1, maximumEdge / Math.max(decoded.width, decoded.height));
-      if (scale === 1 && file.size <= maximumOptimizedBytes) return file;
+      const targetBytes = 900 * 1024;
+      const safeRawBytes = 1400 * 1024;
+      const longestEdge = Math.max(decoded.width, decoded.height);
+      if (longestEdge <= 1440 && file.size <= targetBytes) return file;
       const canvas = document.createElement('canvas');
-      canvas.width = Math.max(1, Math.round(decoded.width * scale));
-      canvas.height = Math.max(1, Math.round(decoded.height * scale));
       const context = canvas.getContext('2d', { alpha: true });
-      if (!context) return file;
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = 'high';
-      context.drawImage(decoded.source, 0, 0, canvas.width, canvas.height);
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', .88));
-      if (!(blob instanceof Blob) || blob.size <= 0 || blob.size > 5 * 1024 * 1024) return file;
-      const baseName = String(file.name || 'birthday-photo').replace(/\.[^.]+$/u, '').slice(0, 100) || 'birthday-photo';
-      return new File([blob], `${baseName}.webp`, { type: 'image/webp', lastModified: file.lastModified || Date.now() });
-    } catch (_error) {
-      return file;
+      if (!context) {
+        if (file.size <= safeRawBytes) return file;
+        throw new Error('This photo could not be prepared on this phone. Please choose another photo.');
+      }
+      const attempts = [
+        { edge: 1440, type: 'image/webp', quality: .84 },
+        { edge: 1280, type: 'image/webp', quality: .74 },
+        { edge: 1280, type: 'image/jpeg', quality: .78 },
+        { edge: 1080, type: 'image/jpeg', quality: .68 }
+      ];
+      let smallest = null;
+      for (const attempt of attempts) {
+        const scale = Math.min(1, attempt.edge / longestEdge);
+        canvas.width = Math.max(1, Math.round(decoded.width * scale));
+        canvas.height = Math.max(1, Math.round(decoded.height * scale));
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        if (attempt.type === 'image/jpeg') {
+          context.fillStyle = '#ffffff';
+          context.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        context.drawImage(decoded.source, 0, 0, canvas.width, canvas.height);
+        const blob = await canvasPhotoBlob(canvas, attempt.type, attempt.quality);
+        if (!(blob instanceof Blob) || blob.size <= 0) continue;
+        if (!smallest || blob.size < smallest.size) smallest = blob;
+        if (blob.size <= targetBytes) return namedPhotoBlob(blob, file.name);
+      }
+      if (smallest && smallest.size <= safeRawBytes) return namedPhotoBlob(smallest, file.name);
+      if (file.size <= safeRawBytes) return file;
+      throw new Error('This photo could not be compressed safely. Please choose another photo.');
+    } catch (error) {
+      if (file.size <= 1400 * 1024) return file;
+      throw new Error(error?.message || 'This photo could not be prepared on this phone. Please choose another photo.');
     } finally {
       decoded?.close();
     }
@@ -214,14 +270,19 @@
     frame.referrerPolicy = 'strict-origin-when-cross-origin';
     frame.setAttribute('credentialless', '');
     frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
+    const maximumHeight = window.innerWidth <= 600 ? 420 : 720;
+    const setFrameHeight = value => {
+      const height = Math.max(90, Math.min(maximumHeight, Math.ceil(Number(value || 0) || 300)));
+      frame.height = String(height);
+      frame.style.height = `${height}px`;
+    };
     frame.width = delivery.width || '100%';
-    frame.height = delivery.height || 300;
+    setFrameHeight(delivery.height);
     const channel = String(delivery.resize_channel || '');
     if (channel) {
       window.addEventListener('message', event => {
         if (event.source !== frame.contentWindow || event.data?.type !== 'znews:adsterra-native-size' || event.data?.channel !== channel) return;
-        const height = Math.max(90, Math.min(1600, Math.ceil(Number(event.data.height || 0))));
-        if (Number.isFinite(height)) frame.height = String(height);
+        setFrameHeight(event.data.height);
       });
     }
     container.append(frame);

@@ -303,9 +303,11 @@ $templateSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/b
 birthday_test_expect(is_string($templateSource) && str_contains($templateSource, 'textContent') && !str_contains($templateSource, 'innerHTML'), 'Public template rendering must not inject user HTML.');
 $sceneSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-scene.js');
 birthday_test_expect(is_string($sceneSource) && str_contains($sceneSource, 'moon-surface-v1.webp') && str_contains($sceneSource, 'prefers-reduced-motion'), 'Immersive scene must include the textured moon and reduced-motion support.');
+birthday_test_expect(is_string($sceneSource) && str_contains($sceneSource, 'stars.material.opacity') && str_contains($sceneSource, "? .15 : .18"), 'WebGL stars must remain bright and visibly pulse on phone displays.');
 birthday_test_expect(is_file(dirname(__DIR__) . '/znews/birthday/assets/lib/three.module.js') && is_file(dirname(__DIR__) . '/znews/birthday/assets/lib/three.core.js'), 'Self-hosted Three.js runtime files must be deployable without a CDN.');
 $birthdayCss = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday.css');
 birthday_test_expect(is_string($birthdayCss) && str_contains($birthdayCss, '.photo-frame img{width:100%;max-width:100%;height:auto;max-height:none') && str_contains($birthdayCss, 'object-fit:contain'), 'Birthday photos must preserve their full aspect ratio without cropping.');
+birthday_test_expect(is_string($birthdayCss) && str_contains($birthdayCss, '.universe-twinkles') && str_contains($birthdayCss, '@keyframes birthday-twinkle'), 'A CSS twinkle layer must keep stars visible throughout the full page even when WebGL points are limited.');
 $routes = file_get_contents(dirname(__DIR__) . '/.htaccess');
 birthday_test_expect(is_string($routes) && str_contains($routes, 'birthday/preview/') && str_contains($routes, 'birthday/public.php?slug=$1'), 'Clean preview and public Universe routes must be deployed.');
 $adSource = file_get_contents(dirname(__DIR__) . '/api/znews/birthday/ad.php');
@@ -315,8 +317,14 @@ birthday_test_expect(is_file(dirname(__DIR__) . '/api/znews/birthday/catalog.php
 birthday_test_expect(is_string($apiClientSource) && str_contains($apiClientSource, 'networkRetries: 1'), 'Critical Birthday requests must retry one transient network failure.');
 $publicClientSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-public.js');
 birthday_test_expect(is_string($publicClientSource) && str_contains($publicClientSource, "toDataURL('image/png')"), 'QR downloads must contain real PNG data.');
+birthday_test_expect(is_string($publicClientSource) && str_contains($publicClientSource, 'window.innerWidth <= 600 ? 420 : 720'), 'Public Birthday ads must have a responsive height cap so sharing controls remain reachable.');
 $appClientSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-app.js');
 birthday_test_expect(is_string($appClientSource) && !str_contains($appClientSource, 'localStorage.setItem(`birthday_recovery_'), 'Recovery codes must not persist in localStorage.');
+birthday_test_expect(is_string($appClientSource) && str_contains($appClientSource, 'targetBytes = 900 * 1024') && str_contains($appClientSource, "type: 'image/jpeg'"), 'Large Android photos must be iteratively compressed below the host multipart limit without cropping.');
+$templateClientSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-templates.js');
+birthday_test_expect(is_string($templateClientSource) && str_contains($templateClientSource, 'moonSparkles') && str_contains($templateClientSource, 'master.gain.value = .26') && str_contains($templateClientSource, 'createConvolver'), 'Birthday rendering must include moon sparkles and the louder layered ambient soundtrack.');
+$birthdayUploadIni = file_get_contents(dirname(__DIR__) . '/api/znews/birthday/.user.ini');
+birthday_test_expect(is_string($birthdayUploadIni) && str_contains($birthdayUploadIni, 'upload_max_filesize = 12M') && str_contains($birthdayUploadIni, 'post_max_size = 14M'), 'Birthday uploads must carry a cPanel-scoped PHP size configuration.');
 $birthdayCsp = file_get_contents(dirname(__DIR__) . '/znews/.htaccess');
 birthday_test_expect(is_string($birthdayCsp) && str_contains($birthdayCsp, "style-src 'self';") && !str_contains($birthdayCsp, "style-src 'self' 'unsafe-inline'"), 'Birthday pages must retain the strict style CSP.');
 $birthdayAdminSource = file_get_contents(dirname(__DIR__) . '/api/admin/birthday_admin.php');

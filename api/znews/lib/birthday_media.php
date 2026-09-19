@@ -256,6 +256,13 @@ function birthday_media_blob_bytes(array $media): ?string
 
 function birthday_photo_validate(array $file): array
 {
+    $uploadError = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+    if (in_array($uploadError, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
+        api_response(false, 'BIRTHDAY_PHOTO_SERVER_LIMIT', 'The photo reached the server before it could be resized. Please try again.', [
+            'upload_error' => $uploadError,
+            'max_bytes' => birthday_media_max_bytes(),
+        ], 422);
+    }
     $size = max(0, (int)($file['size'] ?? 0));
     if ($size > birthday_media_max_bytes()) {
         api_response(false, 'BIRTHDAY_PHOTO_TOO_LARGE', 'Your image is too large. Maximum size is 5 MB.', [

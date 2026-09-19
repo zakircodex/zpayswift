@@ -6,6 +6,12 @@ $path = (string)(parse_url((string)($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PAT
 
 header("Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self'");
 
+if ($path === '/api/znews/public/ad_frame.php') {
+    header('Content-Type: text/html; charset=UTF-8');
+    echo '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>Birthday ad fixture</body></html>';
+    return true;
+}
+
 if (str_starts_with($path, '/api/znews/birthday/')) {
     session_name('birthday_browser_fixture');
     session_start();
@@ -71,10 +77,18 @@ if (str_starts_with($path, '/api/znews/birthday/')) {
         $respond(['draft' => $draft]);
     }
     if ($endpoint === 'media_upload.php') {
+        $uploaded = is_array($_FILES['image'] ?? null) ? (array)$_FILES['image'] : [];
+        $uploadedSize = max(0, (int)($uploaded['size'] ?? 0));
+        $uploadedMime = strtolower(trim((string)($uploaded['type'] ?? '')));
+        if ($uploadedSize <= 0 || $uploadedSize > 1400 * 1024
+            || !in_array($uploadedMime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            $respond(['uploaded_size' => $uploadedSize, 'uploaded_mime' => $uploadedMime], 'BIRTHDAY_TEST_PHOTO_NOT_OPTIMIZED', 422);
+        }
         $draft['photo_url'] = '/api/znews/birthday/media.php?id=ZBM_BROWSER_PHOTO&draft=ZBD_BROWSER_001';
         $draft['photo_width'] = 300;
         $draft['photo_height'] = 500;
         $draft['share_photo'] = true;
+        $draft['browser_upload_size'] = $uploadedSize;
         $_SESSION['birthday_draft'] = $draft;
         $respond(['media_id' => 'ZBM_BROWSER_PHOTO', 'draft' => $draft], 'BIRTHDAY_PHOTO_UPLOADED', 201);
     }
@@ -85,7 +99,13 @@ if (str_starts_with($path, '/api/znews/birthday/')) {
         exit;
     }
     if ($endpoint === 'ad.php') {
-        $respond(['can_reward' => false, 'generation_requires_reward' => false, 'delivery' => ['enabled' => false]]);
+        $origin = 'http://' . (string)($_SERVER['HTTP_HOST'] ?? '127.0.0.1');
+        $respond(['can_reward' => false, 'generation_requires_reward' => false, 'delivery' => [
+            'enabled' => true,
+            'frame_url' => $origin . '/api/znews/public/ad_frame.php?permit=birthday-test',
+            'width' => '100%',
+            'height' => 1400,
+        ]]);
     }
     if ($endpoint === 'generate.php') {
         $origin = 'http://' . (string)($_SERVER['HTTP_HOST'] ?? '127.0.0.1');
@@ -139,13 +159,13 @@ if (preg_match('#^/u/([a-z0-9-]{8,100})$#D', $path, $matches) === 1) {
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">';
     echo '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">';
     echo '<link rel="icon" type="image/png" href="/assets/brand/favicon.png">';
-    echo '<link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=3">';
+    echo '<link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=4">';
     echo '<script defer src="/znews/birthday/assets/lib/qrcode.min.js?v=1"></script>';
     echo '<script defer src="/znews/birthday/assets/birthday-api.js?v=3"></script>';
     echo '<script defer src="/znews/birthday/assets/birthday-ad-service.js?v=1"></script>';
-    echo '<script type="module" src="/znews/birthday/assets/birthday-scene.js?v=1"></script>';
-    echo '<script defer src="/znews/birthday/assets/birthday-templates.js?v=3"></script>';
-    echo '<script defer src="/znews/birthday/assets/birthday-public.js?v=2"></script>';
+    echo '<script type="module" src="/znews/birthday/assets/birthday-scene.js?v=2"></script>';
+    echo '<script defer src="/znews/birthday/assets/birthday-templates.js?v=4"></script>';
+    echo '<script defer src="/znews/birthday/assets/birthday-public.js?v=3"></script>';
     echo '<title>Birthday Universe browser test</title></head>';
     echo '<body class="public-universe-page" data-slug="' . $slug . '" data-available="true">';
     echo '<header class="public-universe-header"><a class="birthday-brand" href="/birthday"><span class="birthday-logo" aria-hidden="true"><span>*</span></span><span><strong>Birthday Universe</strong><small>by Z Sky 24</small></span></a><button class="icon-button" id="publicShareTop" type="button" aria-label="Share this Birthday Universe">&#8599;</button></header>';

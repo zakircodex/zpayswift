@@ -77,10 +77,10 @@ function createStarField(count, theme, random, particleTexture) {
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   const material = new THREE.PointsMaterial({
-    size: window.innerWidth < 500 ? .11 : .13,
+    size: window.innerWidth < 500 ? .15 : .18,
     sizeAttenuation: true,
     transparent: true,
-    opacity: .88,
+    opacity: .96,
     vertexColors: true,
     map: particleTexture,
     alphaTest: .015,
@@ -279,6 +279,7 @@ function mount(shell, options = {}) {
       const elapsed = now / 1000;
       stars.rotation.y += delta * .007;
       stars.rotation.x = Math.sin(elapsed * .045) * .035;
+      stars.material.opacity = .82 + Math.sin(elapsed * 1.35) * .12;
       moon.moon.rotation.y += delta * .055;
       moon.moon.rotation.x = Math.sin(elapsed * .11) * .05;
       camera.position.x += (pointerX * .18 - camera.position.x) * .025;
