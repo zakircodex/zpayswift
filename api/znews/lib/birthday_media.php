@@ -342,12 +342,19 @@ function birthday_photo_store(array $validated, string $targetType, string $targ
             }
         } catch (Throwable $error) {
         }
+        if (birthday_media_blob_bytes($existing) !== null) {
+            return $existing;
+        }
         fb_delete(birthday_path('MEDIA', $mediaId));
     }
 
     $optimized = birthday_photo_prepare($validated);
     if (empty($optimized['ok']) || !is_file((string)($optimized['tmp'] ?? ''))) {
         api_response(false, 'BIRTHDAY_PHOTO_OPTIMIZATION_FAILED', 'Image could not be optimized.', [], 422);
+    }
+    if (max(0, (int)($optimized['size_bytes'] ?? 0)) > znews_media_optimized_max_bytes()) {
+        @unlink((string)$optimized['tmp']);
+        api_response(false, 'BIRTHDAY_PHOTO_OPTIMIZATION_REQUIRED', 'The photo could not be reduced to a safe delivery size. Please select it again.', [], 422);
     }
     $now = birthday_now();
     $key = birthday_media_key('photos', $mediaId, (string)$optimized['extension'], $now);
@@ -385,7 +392,7 @@ function birthday_photo_store(array $validated, string $targetType, string $targ
         'sha256' => (string)$optimized['sha256'],
         'source_sha256' => $sourceSha256,
         'optimization_fallback' => !empty($optimized['optimization_fallback']),
-        'storage_driver' => 'PRIVATE_FILESYSTEM',
+        'storage_driver' => 'PRIVATE_FILESYSTEM_WITH_FIREBASE_FALLBACK',
         'status' => $targetType === 'UNIVERSE' ? 'ACTIVE' : 'DRAFT',
         'created_at' => $now,
         'updated_at' => $now,
@@ -393,7 +400,27 @@ function birthday_photo_store(array $validated, string $targetType, string $targ
             ? $now + (int)birthday_settings()['draft_ttl_seconds']
             : 0,
     ];
-    if (!fb_put(birthday_path('MEDIA', $mediaId), $row)) {
+    $storedContent = @file_get_contents($target);
+    if (!is_string($storedContent)) {
+        @unlink($target);
+        api_response(false, 'BIRTHDAY_PHOTO_FALLBACK_FAILED', 'Image could not be prepared for reliable delivery.', [], 503);
+    }
+    try {
+        $blob = birthday_media_blob_encode(
+            $mediaId,
+            (string)$row['mime'],
+            $storedContent,
+            (string)$row['sha256'],
+            $now
+        );
+    } catch (Throwable $error) {
+        @unlink($target);
+        api_response(false, 'BIRTHDAY_PHOTO_FALLBACK_FAILED', 'Image could not be prepared for reliable delivery.', [], 503);
+    }
+    if (!fb_patch('', [
+        birthday_path('MEDIA', $mediaId) => $row,
+        birthday_path('MEDIA_BLOBS', $mediaId) => $blob,
+    ])) {
         @unlink($target);
         api_response(false, 'BIRTHDAY_PHOTO_RECORD_FAILED', 'Image could not be stored.', [], 503);
     }

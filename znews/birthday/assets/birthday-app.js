@@ -141,8 +141,8 @@
     let decoded = null;
     try {
       decoded = await decodePhoto(file);
-      const targetBytes = 900 * 1024;
-      const safeRawBytes = 1400 * 1024;
+      const targetBytes = 600 * 1024;
+      const safeRawBytes = 680 * 1024;
       const longestEdge = Math.max(decoded.width, decoded.height);
       if (longestEdge <= 1440 && file.size <= targetBytes) return file;
       const canvas = document.createElement('canvas');
@@ -152,10 +152,11 @@
         throw new Error('This photo could not be prepared on this phone. Please choose another photo.');
       }
       const attempts = [
-        { edge: 1440, type: 'image/webp', quality: .84 },
-        { edge: 1280, type: 'image/webp', quality: .74 },
-        { edge: 1280, type: 'image/jpeg', quality: .78 },
-        { edge: 1080, type: 'image/jpeg', quality: .68 }
+        { edge: 1440, type: 'image/webp', quality: .82 },
+        { edge: 1280, type: 'image/webp', quality: .72 },
+        { edge: 1120, type: 'image/jpeg', quality: .68 },
+        { edge: 960, type: 'image/jpeg', quality: .62 },
+        { edge: 840, type: 'image/jpeg', quality: .56 }
       ];
       let smallest = null;
       for (const attempt of attempts) {
@@ -179,7 +180,7 @@
       if (file.size <= safeRawBytes) return file;
       throw new Error('This photo could not be compressed safely. Please choose another photo.');
     } catch (error) {
-      if (file.size <= 1400 * 1024) return file;
+      if (file.size <= 680 * 1024) return file;
       throw new Error(error?.message || 'This photo could not be prepared on this phone. Please choose another photo.');
     } finally {
       decoded?.close();
@@ -270,7 +271,7 @@
     frame.referrerPolicy = 'strict-origin-when-cross-origin';
     frame.setAttribute('credentialless', '');
     frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
-    const maximumHeight = window.innerWidth <= 600 ? 420 : 720;
+    const maximumHeight = window.innerWidth <= 600 ? 320 : 520;
     const setFrameHeight = value => {
       const height = Math.max(90, Math.min(maximumHeight, Math.ceil(Number(value || 0) || 300)));
       frame.height = String(height);
@@ -525,6 +526,7 @@
     try {
       const result = await api.draft(draftId, token);
       const draft = result.draft;
+      let photoReady = true;
       if (draft.photo_url) {
         try {
           const blob = await api.draftPhotoBlob(draft.photo_url, token);
@@ -532,10 +534,11 @@
           draft.photo_url = objectUrl;
           window.addEventListener('pagehide', () => URL.revokeObjectURL(objectUrl), { once: true });
         } catch (_photoError) {
+          photoReady = false;
           draft.photo_url = '';
           showError(errorNode, new Error(currentLocale() === 'bn'
-            ? 'Photo preview এখন load হয়নি। ছবিটি draft-এ নিরাপদে যুক্ত আছে; generate করলে আবার চেষ্টা হবে।'
-            : 'The photo preview is temporarily unavailable. It remains safely attached and will be retried after generation.'));
+            ? 'ছবিটি server থেকে load হয়নি, তাই Generate বন্ধ রাখা হয়েছে। Back করে ছবিটি আবার select করে Preview করুন।'
+            : 'The photo did not load from the server, so generation is paused. Go back, select the photo again, and preview once more.'));
         }
       }
       draft.star_id = `${String(draft.name || 'STAR').replace(/[^A-Za-z0-9]/g,'').slice(0,3).toUpperCase() || 'ZST'}-${draft.birthday_day}${draft.birthday_month}-PREVIEW`;
@@ -545,6 +548,7 @@
           ? () => api.draftAudioBuffer(draft.soundtrack.url, token)
           : null
       });
+      generate.disabled = !photoReady;
       window.BirthdayAdService.capability({ context: 'preview', draft_id: draftId }, token).then(data => mountAd($('#birthdayPreviewAd'), data.delivery)).catch(() => {});
       generate.addEventListener('click', async () => {
         const recoveryKey = `birthday_generation_recovery_${draftId}`;
@@ -566,7 +570,7 @@
           sessionStorage.removeItem(recoveryKey);
           sessionStorage.removeItem(idempotencyKey);
           $('#generationSuccess').scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } catch (error) { showError(errorNode, error); generate.disabled = false; generate.textContent = copy[currentLocale()].generateButton; }
+        } catch (error) { showError(errorNode, error); generate.disabled = !photoReady; generate.textContent = copy[currentLocale()].generateButton; }
       });
     } catch (error) { showError(errorNode, error); generate.disabled = true; }
   }

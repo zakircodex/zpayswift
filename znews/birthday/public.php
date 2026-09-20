@@ -47,14 +47,14 @@ header('Cache-Control: ' . ($robots === 'index,follow' ? 'public, max-age=120, s
   <meta name="twitter:image" content="<?= htmlspecialchars($photoUrl, ENT_QUOTES, 'UTF-8') ?>">
   <link rel="preload" as="image" href="/znews/birthday/assets/images/birthday-universe-cosmic.webp" fetchpriority="high">
   <link rel="preload" as="image" href="/znews/birthday/assets/images/moon-surface-v1.webp">
-  <link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=4">
+  <link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=5">
   <title><?= htmlspecialchars($title . ' | Z Sky 24', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></title>
   <script defer src="/znews/birthday/assets/lib/qrcode.min.js?v=1"></script>
   <script defer src="/znews/birthday/assets/birthday-api.js?v=3"></script>
   <script defer src="/znews/birthday/assets/birthday-ad-service.js?v=1"></script>
-  <script type="module" src="/znews/birthday/assets/birthday-scene.js?v=2"></script>
+  <script type="module" src="/znews/birthday/assets/birthday-scene.js?v=3"></script>
   <script defer src="/znews/birthday/assets/birthday-templates.js?v=4"></script>
-  <script defer src="/znews/birthday/assets/birthday-public.js?v=3"></script>
+  <script defer src="/znews/birthday/assets/birthday-public.js?v=4"></script>
 </head>
 <body class="public-universe-page" data-slug="<?= htmlspecialchars($slug, ENT_QUOTES, 'UTF-8') ?>" data-available="<?= $available ? 'true' : 'false' ?>">
   <a class="skip-link" href="#mainContent">Skip to birthday universe</a>
@@ -62,12 +62,12 @@ header('Cache-Control: ' . ($robots === 'index,follow' ? 'public, max-age=120, s
   <main id="mainContent">
     <?php if ($available): ?>
       <div class="universe-mount public-mount" id="publicUniverse"><div class="loading-state"><?= htmlspecialchars($text('Opening ' . $name . "'s universe...", $name . '-এর Universe খোলা হচ্ছে...'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></div></div>
-      <div class="ad-slot public-ad-slot" id="birthdayPublicAd" hidden><span>Advertisement</span></div>
       <section class="public-share-panel" aria-labelledby="shareTitle">
         <p class="eyebrow"><?= htmlspecialchars($text('Keep the celebration moving', 'উদযাপনটি সবার সঙ্গে ভাগ করুন'), ENT_QUOTES, 'UTF-8') ?></p><h2 id="shareTitle"><?= htmlspecialchars($text('Share this Birthday Universe', 'এই Birthday Universe শেয়ার করুন'), ENT_QUOTES, 'UTF-8') ?></h2>
         <div class="share-buttons"><button class="button primary" id="nativeShare" type="button"><?= htmlspecialchars($text('Share', 'শেয়ার'), ENT_QUOTES, 'UTF-8') ?></button><button class="button secondary" id="copyPublicLink" type="button"><?= htmlspecialchars($text('Copy Link', 'লিংক কপি'), ENT_QUOTES, 'UTF-8') ?></button><a class="button secondary" id="whatsappShare" href="#" rel="noopener">WhatsApp</a><a class="button secondary" id="telegramShare" href="#" rel="noopener">Telegram</a><a class="button secondary" id="facebookShare" href="#" rel="noopener">Facebook</a></div>
         <div class="qr-panel"><div id="qrCode" aria-label="QR code for this Birthday Universe"></div><div><strong><?= htmlspecialchars($text('Scan to Open This Birthday Universe', 'Birthday Universe খুলতে স্ক্যান করুন'), ENT_QUOTES, 'UTF-8') ?></strong><p><?= htmlspecialchars($text('The QR contains only this public URL.', 'QR code-এ শুধু এই public URL রয়েছে।'), ENT_QUOTES, 'UTF-8') ?></p><button class="button secondary" id="downloadQr" type="button"><?= htmlspecialchars($text('Download QR PNG', 'QR PNG ডাউনলোড'), ENT_QUOTES, 'UTF-8') ?></button></div></div>
       </section>
+      <div class="ad-slot public-ad-slot" id="birthdayPublicAd" hidden><span>Advertisement</span></div>
       <section class="public-owner-actions"><a href="/birthday/manage/<?= rawurlencode($slug) ?>"><?= htmlspecialchars($text('Manage this Universe', 'এই Universe পরিচালনা করুন'), ENT_QUOTES, 'UTF-8') ?></a><button id="reportUniverse" type="button"><?= htmlspecialchars($text('Report', 'রিপোর্ট'), ENT_QUOTES, 'UTF-8') ?></button></section>
     <?php else: ?>
       <section class="unavailable-state"><span aria-hidden="true">✦</span><h1>This Universe is unavailable</h1><p>It may have expired, been deleted, or the link may be incorrect.</p><a class="button primary" href="/birthday/create">Create a Birthday Universe</a></section>

@@ -106,13 +106,17 @@ if (!is_string($fixture) || file_put_contents($sourceAsset, $fixture) === false)
 $requestId = 'PHOTOUPLOADTOKEN01';
 $stored = birthday_photo_store(['tmp' => $sourceAsset, 'mime' => 'image/png'], 'DRAFT', 'ZBD_TEST_DRAFT', $requestId);
 $storedBlob = fb_get(birthday_path('MEDIA_BLOBS', (string)$stored['id']));
-birthday_media_test_expect($storedBlob === null, 'New photos must not be duplicated as oversized Firebase Base64 blobs.');
-birthday_media_test_expect(($stored['storage_driver'] ?? '') === 'PRIVATE_FILESYSTEM', 'New photos must use private filesystem storage.');
+birthday_media_test_expect(is_array($storedBlob), 'New photos must keep a verified delivery fallback when private storage is unavailable.');
+birthday_media_test_expect(($stored['storage_driver'] ?? '') === 'PRIVATE_FILESYSTEM_WITH_FIREBASE_FALLBACK', 'New photos must record both private storage and the delivery fallback.');
 birthday_media_test_expect((int)($stored['width'] ?? 0) > 0 && (int)($stored['height'] ?? 0) > 0, 'Optimized photo dimensions must be recorded.');
 $storedPath = birthday_media_resolve((string)$stored['storage_key']);
 birthday_media_test_expect(is_file($storedPath), 'Optimized filesystem photo must still be written as the primary copy.');
+$storedContent = file_get_contents($storedPath);
+birthday_media_test_expect(is_string($storedContent) && birthday_media_blob_decode($storedBlob, $stored) === $storedContent, 'The delivery fallback must match the verified filesystem copy.');
+unlink($storedPath);
 $replayed = birthday_photo_store(['tmp' => $sourceAsset, 'mime' => 'image/png'], 'DRAFT', 'ZBD_TEST_DRAFT', $requestId);
-birthday_media_test_expect(($replayed['id'] ?? '') === ($stored['id'] ?? ''), 'Retrying the same upload token must return the same verified media record.');
+birthday_media_test_expect(($replayed['id'] ?? '') === ($stored['id'] ?? ''), 'Retrying the same upload token must recover the verified fallback record.');
+birthday_media_test_expect(birthday_media_blob_bytes($replayed) === $storedContent, 'A missing private file must remain deliverable from the verified fallback.');
 $draft = ['id' => 'ZBD_TEST_DRAFT', 'photo_media_id' => ''];
 $draft = birthday_photo_attach_to_draft($draft, $stored);
 $draft = birthday_photo_attach_to_draft($draft, $replayed);
@@ -122,7 +126,7 @@ birthday_media_test_expect(
 );
 birthday_media_delete_files($stored);
 birthday_media_test_expect(!is_file($storedPath), 'Photo cleanup must remove the filesystem copy.');
-birthday_media_test_expect(fb_get(birthday_path('MEDIA_BLOBS', (string)$stored['id'])) === null, 'Photo cleanup must remain compatible with old fallback records.');
+birthday_media_test_expect(fb_get(birthday_path('MEDIA_BLOBS', (string)$stored['id'])) === null, 'Photo cleanup must remove the verified delivery fallback.');
 
 $mp3Frame = "\xFF\xFB\x90\x00" . str_repeat("\0", 413);
 $mp3Duration = birthday_audio_mp3_duration(str_repeat($mp3Frame, 40));

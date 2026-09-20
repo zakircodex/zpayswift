@@ -156,7 +156,7 @@
     frame.referrerPolicy = 'strict-origin-when-cross-origin';
     frame.setAttribute('credentialless', '');
     frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-top-navigation-by-user-activation');
-    const maximumHeight = window.innerWidth <= 600 ? 420 : 720;
+    const maximumHeight = window.innerWidth <= 600 ? 320 : 520;
     const setFrameHeight = value => {
       const height = Math.max(90, Math.min(maximumHeight, Math.ceil(Number(value || 0) || 300)));
       frame.height = String(height);

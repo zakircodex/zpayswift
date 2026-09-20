@@ -148,6 +148,8 @@ async function run() {
     await page.locator('#nextStep').click();
     await page.waitForURL('**/birthday/preview/ZBD_BROWSER_001');
     await page.locator('#previewUniverse .birthday-universe').waitFor();
+    assert.equal(await page.locator('#generateUniverse').isEnabled(), true, 'Generate must become available only after the private preview is ready.');
+    assert.equal(await page.locator('#generationPanel').evaluate((panel, preview) => panel.getBoundingClientRect().top < document.querySelector(preview).getBoundingClientRect().top, '#previewUniverse'), true, 'Generate controls must appear before the long preview and its advertisement.');
     if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'birthday-entry-390.png') });
     await page.locator('#previewUniverse .universe-enter-button').click();
     assert.match(await page.locator('#previewUniverse').innerText(), /MIM-247-PREVIEW/);
@@ -156,7 +158,7 @@ async function run() {
     assert.match(await page.locator('#previewUniverse .twinkle-star').first().evaluate(node => getComputedStyle(node).animationName), /birthday-twinkle/);
     assert.equal(await page.locator('#previewUniverse .photo-frame img').evaluate(node => getComputedStyle(node).objectFit), 'contain', 'Preview photo must preserve its original aspect ratio.');
     await page.locator('#birthdayPreviewAd iframe').waitFor();
-    assert.ok(await page.locator('#birthdayPreviewAd iframe').evaluate(node => node.getBoundingClientRect().height <= 421), 'Preview ad height must be capped on mobile.');
+    assert.ok(await page.locator('#birthdayPreviewAd iframe').evaluate(node => node.getBoundingClientRect().height <= 321), 'Preview ad height must be compact on mobile.');
     await animatedCanvasAudit(page, 'Preview Universe');
     await noOverflow(page, '390px preview page');
 
@@ -172,16 +174,19 @@ async function run() {
     await page.locator('#publicUniverse .birthday-universe').waitFor();
     await page.locator('#qrCode img').waitFor();
     await page.locator('#birthdayPublicAd iframe').waitFor();
-    assert.ok(await page.locator('#birthdayPublicAd iframe').evaluate(node => node.getBoundingClientRect().height <= 421), 'Public ad height must be capped so sharing controls are reachable.');
+    assert.ok(await page.locator('#birthdayPublicAd iframe').evaluate(node => node.getBoundingClientRect().height <= 321), 'Public ad height must be compact on mobile.');
     await page.locator('#publicUniverse .universe-enter-button').click();
     assert.match(await page.locator('#publicUniverse').innerText(), /MIM-247-X8K2/);
     assert.equal(await page.locator('#qrCode img').getAttribute('src').then(value => String(value).startsWith('data:image/png;base64,')), true, 'QR code must be generated locally as a PNG from the public URL.');
+    await animatedCanvasAudit(page, 'Public Universe');
+    assert.equal(await page.locator('.public-share-panel').evaluate((panel, ad) => panel.offsetTop < document.querySelector(ad).offsetTop, '#birthdayPublicAd'), true, 'Sharing and QR controls must appear before the advertisement.');
     await page.locator('.public-share-panel').scrollIntoViewIfNeeded();
     assert.equal(await page.locator('#nativeShare').isVisible(), true, 'Public Share action must remain visible below the Universe.');
     assert.equal(await page.locator('#copyPublicLink').isVisible(), true, 'Copy Link action must remain visible below the Universe.');
     assert.equal(await page.locator('#downloadQr').isVisible(), true, 'QR download action must remain visible below the Universe.');
+    assert.ok(await page.locator('.public-share-panel').evaluate(node => node.getBoundingClientRect().height < 650), 'Mobile sharing and QR controls must use a compact layout.');
+    assert.equal(await page.locator('.universe-space-canvas').evaluate(node => getComputedStyle(node).position), 'absolute', 'The animated canvas must stay bounded to the Universe on Android.');
     await noOverflow(page, '390px public Universe before message reveal');
-    await animatedCanvasAudit(page, 'Public Universe');
     assert.equal(await page.locator('#publicUniverse .photo-frame img').evaluate(node => getComputedStyle(node).objectFit), 'contain', 'Published photo must remain uncropped.');
     await page.locator('.moon-section').scrollIntoViewIfNeeded();
     await page.waitForTimeout(350);

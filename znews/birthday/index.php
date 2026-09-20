@@ -49,13 +49,13 @@ $canonicalPaths = [
   <link rel="canonical" href="https://zsky24.com<?= htmlspecialchars($canonicalPaths[$page], ENT_QUOTES, 'UTF-8') ?>">
   <link rel="preload" as="image" href="/znews/birthday/assets/images/birthday-universe-cosmic.webp" fetchpriority="high">
   <link rel="preload" as="image" href="/znews/birthday/assets/images/moon-surface-v1.webp">
-  <link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=4">
+  <link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=5">
   <title><?= htmlspecialchars($titles[$page] . ' | Z Sky 24', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></title>
   <script defer src="/znews/birthday/assets/birthday-api.js?v=3"></script>
   <script defer src="/znews/birthday/assets/birthday-ad-service.js?v=1"></script>
-  <script type="module" src="/znews/birthday/assets/birthday-scene.js?v=2"></script>
+  <script type="module" src="/znews/birthday/assets/birthday-scene.js?v=3"></script>
   <script defer src="/znews/birthday/assets/birthday-templates.js?v=4"></script>
-  <script defer src="/znews/birthday/assets/birthday-app.js?v=4"></script>
+  <script defer src="/znews/birthday/assets/birthday-app.js?v=5"></script>
 </head>
 <body data-page="<?= htmlspecialchars($page, ENT_QUOTES, 'UTF-8') ?>" data-draft-id="<?= htmlspecialchars($draftId, ENT_QUOTES, 'UTF-8') ?>" data-slug="<?= htmlspecialchars($slug, ENT_QUOTES, 'UTF-8') ?>">
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -168,11 +168,9 @@ $canonicalPaths = [
   <?php elseif ($page === 'preview'): ?>
     <section class="preview-shell" data-draft="<?= htmlspecialchars($draftId, ENT_QUOTES, 'UTF-8') ?>">
       <header class="preview-toolbar"><a class="icon-link" href="/birthday/create" aria-label="Back to editor">←</a><div><p class="eyebrow" data-copy="previewEyebrow">Private preview</p><h1 data-copy="previewTitle">Your Universe is almost ready</h1></div></header>
-      <div class="universe-mount preview-mount" id="previewUniverse" aria-live="polite"><div class="loading-state" data-copy="loadingPreview">Loading your preview…</div></div>
-      <div class="ad-slot" id="birthdayPreviewAd" hidden><span>Advertisement</span></div>
       <section class="generation-panel" id="generationPanel">
         <div><h2 data-copy="generateTitle">Ready to make it real?</h2><p data-copy="generateText">Generation is automatic. Ads never block access to your birthday page.</p></div>
-        <button class="button primary" id="generateUniverse" type="button" data-copy="generateButton">Generate Universe</button>
+        <button class="button primary" id="generateUniverse" type="button" data-copy="generateButton" disabled>Generate Universe</button>
         <p class="form-error" id="previewError" role="alert" hidden></p>
       </section>
       <section class="success-panel" id="generationSuccess" hidden>
@@ -181,6 +179,8 @@ $canonicalPaths = [
         <div class="recovery-box"><strong data-copy="recoveryTitle">Save this recovery code</strong><code id="recoveryCode"></code><p data-copy="recoveryText">You will need this code plus Z-Pay login to edit or delete the Universe.</p><button class="button secondary" id="copyRecoveryCode" type="button" data-copy="copyRecovery">Copy recovery code</button></div>
         <div class="success-actions"><a class="button primary" id="openUniverse" href="#" data-copy="openUniverse">Open Universe</a><button class="button secondary" id="shareGenerated" type="button" data-copy="shareButton">Share</button></div>
       </section>
+      <div class="universe-mount preview-mount" id="previewUniverse" aria-live="polite"><div class="loading-state" data-copy="loadingPreview">Loading your preview…</div></div>
+      <div class="ad-slot" id="birthdayPreviewAd" hidden><span>Advertisement</span></div>
     </section>
   <?php elseif ($page === 'templates'): ?>
     <section class="catalog-shell"><header class="catalog-heading"><p class="eyebrow" data-copy="templatesEyebrow">Three ways to celebrate</p><h1 data-copy="templatesTitle">Choose the feeling of the moment</h1><p data-copy="templatesLead">Every template is responsive, accessible and built for a personal birthday story.</p></header><div class="template-catalog" id="templateCatalog"></div><a class="button primary" href="/birthday/create" data-copy="createCta">Create My Universe</a></section>

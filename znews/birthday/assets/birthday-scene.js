@@ -235,6 +235,7 @@ function mount(shell, options = {}) {
   let pointerX = 0;
   let pointerY = 0;
   let disposed = false;
+  let canvasOffset = -1;
 
   const resize = () => {
     width = Math.max(1, window.innerWidth);
@@ -265,7 +266,17 @@ function mount(shell, options = {}) {
     moon.group.scale.setScalar(scale);
   };
 
+  const positionCanvas = () => {
+    const shellRect = shell.getBoundingClientRect();
+    const maximumOffset = Math.max(0, shell.clientHeight - height);
+    const nextOffset = Math.round(clamp(-shellRect.top, 0, maximumOffset));
+    if (nextOffset === canvasOffset) return;
+    canvasOffset = nextOffset;
+    canvas.style.transform = `translate3d(0, ${nextOffset}px, 0)`;
+  };
+
   const render = () => {
+    positionCanvas();
     positionMoon();
     renderer.render(scene, camera);
     needsRender = false;

@@ -80,7 +80,7 @@ if (str_starts_with($path, '/api/znews/birthday/')) {
         $uploaded = is_array($_FILES['image'] ?? null) ? (array)$_FILES['image'] : [];
         $uploadedSize = max(0, (int)($uploaded['size'] ?? 0));
         $uploadedMime = strtolower(trim((string)($uploaded['type'] ?? '')));
-        if ($uploadedSize <= 0 || $uploadedSize > 1400 * 1024
+        if ($uploadedSize <= 0 || $uploadedSize > 680 * 1024
             || !in_array($uploadedMime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
             $respond(['uploaded_size' => $uploadedSize, 'uploaded_mime' => $uploadedMime], 'BIRTHDAY_TEST_PHOTO_NOT_OPTIMIZED', 422);
         }
@@ -159,18 +159,18 @@ if (preg_match('#^/u/([a-z0-9-]{8,100})$#D', $path, $matches) === 1) {
     echo '<!doctype html><html lang="en"><head><meta charset="utf-8">';
     echo '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">';
     echo '<link rel="icon" type="image/png" href="/assets/brand/favicon.png">';
-    echo '<link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=4">';
+    echo '<link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=5">';
     echo '<script defer src="/znews/birthday/assets/lib/qrcode.min.js?v=1"></script>';
     echo '<script defer src="/znews/birthday/assets/birthday-api.js?v=3"></script>';
     echo '<script defer src="/znews/birthday/assets/birthday-ad-service.js?v=1"></script>';
-    echo '<script type="module" src="/znews/birthday/assets/birthday-scene.js?v=2"></script>';
+    echo '<script type="module" src="/znews/birthday/assets/birthday-scene.js?v=3"></script>';
     echo '<script defer src="/znews/birthday/assets/birthday-templates.js?v=4"></script>';
-    echo '<script defer src="/znews/birthday/assets/birthday-public.js?v=3"></script>';
+    echo '<script defer src="/znews/birthday/assets/birthday-public.js?v=4"></script>';
     echo '<title>Birthday Universe browser test</title></head>';
     echo '<body class="public-universe-page" data-slug="' . $slug . '" data-available="true">';
     echo '<header class="public-universe-header"><a class="birthday-brand" href="/birthday"><span class="birthday-logo" aria-hidden="true"><span>*</span></span><span><strong>Birthday Universe</strong><small>by Z Sky 24</small></span></a><button class="icon-button" id="publicShareTop" type="button" aria-label="Share this Birthday Universe">&#8599;</button></header>';
-    echo '<main id="mainContent"><div class="universe-mount public-mount" id="publicUniverse"><div class="loading-state">Opening universe...</div></div><div class="ad-slot public-ad-slot" id="birthdayPublicAd" hidden><span>Advertisement</span></div>';
-    echo '<section class="public-share-panel" aria-labelledby="shareTitle"><p class="eyebrow">Keep the celebration moving</p><h2 id="shareTitle">Share this Birthday Universe</h2><div class="share-buttons"><button class="button primary" id="nativeShare" type="button">Share</button><button class="button secondary" id="copyPublicLink" type="button">Copy Link</button><a class="button secondary" id="whatsappShare" href="#">WhatsApp</a><a class="button secondary" id="telegramShare" href="#">Telegram</a><a class="button secondary" id="facebookShare" href="#">Facebook</a></div><div class="qr-panel"><div id="qrCode" aria-label="QR code for this Birthday Universe"></div><div><strong>Scan to Open This Birthday Universe</strong><p>The QR contains only this public URL.</p><button class="button secondary" id="downloadQr" type="button">Download QR PNG</button></div></div></section>';
+    echo '<main id="mainContent"><div class="universe-mount public-mount" id="publicUniverse"><div class="loading-state">Opening universe...</div></div>';
+    echo '<section class="public-share-panel" aria-labelledby="shareTitle"><p class="eyebrow">Keep the celebration moving</p><h2 id="shareTitle">Share this Birthday Universe</h2><div class="share-buttons"><button class="button primary" id="nativeShare" type="button">Share</button><button class="button secondary" id="copyPublicLink" type="button">Copy Link</button><a class="button secondary" id="whatsappShare" href="#">WhatsApp</a><a class="button secondary" id="telegramShare" href="#">Telegram</a><a class="button secondary" id="facebookShare" href="#">Facebook</a></div><div class="qr-panel"><div id="qrCode" aria-label="QR code for this Birthday Universe"></div><div><strong>Scan to Open This Birthday Universe</strong><p>The QR contains only this public URL.</p><button class="button secondary" id="downloadQr" type="button">Download QR PNG</button></div></div></section><div class="ad-slot public-ad-slot" id="birthdayPublicAd" hidden><span>Advertisement</span></div>';
     echo '<section class="public-owner-actions"><a href="/birthday/manage/' . $slug . '">Manage this Universe</a><button id="reportUniverse" type="button">Report</button></section></main>';
     echo '<footer class="birthday-footer"><span>Digital Birthday Universe - Z Sky 24</span><p>This personalized star is fictional and does not represent ownership of a real astronomical object.</p></footer>';
     echo '<dialog class="report-dialog" id="reportDialog"><form method="dialog" id="reportForm"><button value="cancel">Close</button><select id="reportReason"><option value="OTHER">Other</option></select><textarea id="reportDetails"></textarea><button value="submit">Submit report</button></form></dialog><div class="toast" id="birthdayToast" role="status" hidden></div></body></html>';
