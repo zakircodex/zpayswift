@@ -51,11 +51,11 @@ $canonicalPaths = [
   <link rel="preload" as="image" href="/znews/birthday/assets/images/moon-surface-v1.webp">
   <link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=5">
   <title><?= htmlspecialchars($titles[$page] . ' | Z Sky 24', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></title>
-  <script defer src="/znews/birthday/assets/birthday-api.js?v=3"></script>
+  <script defer src="/znews/birthday/assets/birthday-api.js?v=4"></script>
   <script defer src="/znews/birthday/assets/birthday-ad-service.js?v=1"></script>
   <script type="module" src="/znews/birthday/assets/birthday-scene.js?v=3"></script>
-  <script defer src="/znews/birthday/assets/birthday-templates.js?v=4"></script>
-  <script defer src="/znews/birthday/assets/birthday-app.js?v=5"></script>
+  <script defer src="/znews/birthday/assets/birthday-templates.js?v=5"></script>
+  <script defer src="/znews/birthday/assets/birthday-app.js?v=6"></script>
 </head>
 <body data-page="<?= htmlspecialchars($page, ENT_QUOTES, 'UTF-8') ?>" data-draft-id="<?= htmlspecialchars($draftId, ENT_QUOTES, 'UTF-8') ?>" data-slug="<?= htmlspecialchars($slug, ENT_QUOTES, 'UTF-8') ?>">
   <a class="skip-link" href="#mainContent">Skip to content</a>
@@ -141,7 +141,7 @@ $canonicalPaths = [
           <label class="field"><span data-copy="messageLabel">Birthday message</span><textarea id="birthdayMessage" name="message" maxlength="500" rows="7"></textarea><small><span id="messageCount">0</span>/500</small></label>
         </section>
         <section class="form-step" data-step="5" aria-labelledby="stepFiveTitle" hidden>
-          <p class="step-kicker">05</p><h2 id="stepFiveTitle" data-copy="stepPhotoTitle">Add a photo</h2><p data-copy="stepPhotoText">Optional. JPEG, PNG or WebP, up to 5 MB.</p>
+          <p class="step-kicker">05</p><h2 id="stepFiveTitle" data-copy="stepPhotoTitle">Add a photo</h2><p data-copy="stepPhotoText">Optional. JPEG, PNG or WebP up to 5 MB; optimized automatically.</p>
           <label class="photo-picker" id="photoPicker"><input id="birthdayPhoto" name="photo" type="file" accept="image/jpeg,image/png,image/webp"><span class="photo-placeholder" id="photoPlaceholder"><b aria-hidden="true">＋</b><strong data-copy="photoChoose">Choose photo</strong></span><img id="photoPreview" alt="Selected birthday preview" hidden></label>
           <button class="text-button" id="removePhoto" type="button" hidden data-copy="photoRemove">Remove photo</button>
         </section>

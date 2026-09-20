@@ -145,7 +145,11 @@ async function run() {
     if (screenshotDir) await page.screenshot({ path: path.join(screenshotDir, 'birthday-audio-390.png') });
     await page.locator('[data-audio-mode="AMBIENT"]').click();
     await page.locator('#consentConfirmed').check();
+    const photoUploadResponsePromise = page.waitForResponse(response => response.url().includes('/api/znews/birthday/media_upload.php') && response.request().method() === 'POST');
     await page.locator('#nextStep').click();
+    const photoUploadResponse = await photoUploadResponsePromise;
+    const browserUploadSize = Number(await photoUploadResponse.headerValue('x-birthday-test-upload-size') || 0);
+    assert.ok(browserUploadSize > 0 && browserUploadSize <= 100 * 1024, `Camera photo must upload at or below 100 KB, received ${browserUploadSize} bytes.`);
     await page.waitForURL('**/birthday/preview/ZBD_BROWSER_001');
     await page.locator('#previewUniverse .birthday-universe').waitFor();
     assert.equal(await page.locator('#generateUniverse').isEnabled(), true, 'Generate must become available only after the private preview is ready.');

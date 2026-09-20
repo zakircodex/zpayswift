@@ -80,7 +80,7 @@ if (str_starts_with($path, '/api/znews/birthday/')) {
         $uploaded = is_array($_FILES['image'] ?? null) ? (array)$_FILES['image'] : [];
         $uploadedSize = max(0, (int)($uploaded['size'] ?? 0));
         $uploadedMime = strtolower(trim((string)($uploaded['type'] ?? '')));
-        if ($uploadedSize <= 0 || $uploadedSize > 680 * 1024
+        if ($uploadedSize <= 0 || $uploadedSize > 100 * 1024
             || !in_array($uploadedMime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
             $respond(['uploaded_size' => $uploadedSize, 'uploaded_mime' => $uploadedMime], 'BIRTHDAY_TEST_PHOTO_NOT_OPTIMIZED', 422);
         }
@@ -90,6 +90,7 @@ if (str_starts_with($path, '/api/znews/birthday/')) {
         $draft['share_photo'] = true;
         $draft['browser_upload_size'] = $uploadedSize;
         $_SESSION['birthday_draft'] = $draft;
+        header('X-Birthday-Test-Upload-Size: ' . $uploadedSize);
         $respond(['media_id' => 'ZBM_BROWSER_PHOTO', 'draft' => $draft], 'BIRTHDAY_PHOTO_UPLOADED', 201);
     }
     if ($endpoint === 'media.php') {
@@ -161,10 +162,10 @@ if (preg_match('#^/u/([a-z0-9-]{8,100})$#D', $path, $matches) === 1) {
     echo '<link rel="icon" type="image/png" href="/assets/brand/favicon.png">';
     echo '<link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=5">';
     echo '<script defer src="/znews/birthday/assets/lib/qrcode.min.js?v=1"></script>';
-    echo '<script defer src="/znews/birthday/assets/birthday-api.js?v=3"></script>';
+    echo '<script defer src="/znews/birthday/assets/birthday-api.js?v=4"></script>';
     echo '<script defer src="/znews/birthday/assets/birthday-ad-service.js?v=1"></script>';
     echo '<script type="module" src="/znews/birthday/assets/birthday-scene.js?v=3"></script>';
-    echo '<script defer src="/znews/birthday/assets/birthday-templates.js?v=4"></script>';
+    echo '<script defer src="/znews/birthday/assets/birthday-templates.js?v=5"></script>';
     echo '<script defer src="/znews/birthday/assets/birthday-public.js?v=4"></script>';
     echo '<title>Birthday Universe browser test</title></head>';
     echo '<body class="public-universe-page" data-slug="' . $slug . '" data-available="true">';

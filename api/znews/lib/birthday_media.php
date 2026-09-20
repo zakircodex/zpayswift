@@ -16,6 +16,11 @@ function birthday_media_max_bytes(): int
     return max(1024 * 1024, min(5 * 1024 * 1024, $configured));
 }
 
+function birthday_photo_delivery_target_bytes(): int
+{
+    return 100 * 1024;
+}
+
 function birthday_audio_max_bytes(): int
 {
     $configured = defined('BIRTHDAY_UNIVERSE_AUDIO_MAX_BYTES')
@@ -272,13 +277,8 @@ function birthday_photo_validate(array $file): array
     return znews_media_validate_upload($file);
 }
 
-function birthday_photo_prepare(array $validated): array
+function birthday_photo_copy_validated(array $validated, bool $deliveryPassthrough = false): array
 {
-    $optimized = znews_media_optimize_file((string)$validated['tmp'], (string)$validated['mime']);
-    if (!empty($optimized['ok']) && is_file((string)($optimized['tmp'] ?? ''))) {
-        return $optimized;
-    }
-
     $source = (string)($validated['tmp'] ?? '');
     $size = max(0, (int)($validated['size'] ?? (is_file($source) ? filesize($source) : 0)));
     $mime = strtolower(trim((string)($validated['mime'] ?? '')));
@@ -318,7 +318,27 @@ function birthday_photo_prepare(array $validated): array
         'height' => $height,
         'sha256' => $sha256,
         'optimization_fallback' => true,
+        'delivery_passthrough' => $deliveryPassthrough,
     ];
+}
+
+function birthday_photo_prepare(array $validated): array
+{
+    $sourceSize = max(0, (int)($validated['size'] ?? 0));
+    $sourceWidth = max(0, (int)($validated['width'] ?? 0));
+    $sourceHeight = max(0, (int)($validated['height'] ?? 0));
+    if ($sourceSize > 0 && $sourceSize <= birthday_photo_delivery_target_bytes()
+        && $sourceWidth >= 80 && $sourceHeight >= 80
+        && max($sourceWidth, $sourceHeight) <= znews_media_optimized_max_edge()) {
+        return birthday_photo_copy_validated($validated, true);
+    }
+
+    $optimized = znews_media_optimize_file((string)$validated['tmp'], (string)$validated['mime']);
+    if (!empty($optimized['ok']) && is_file((string)($optimized['tmp'] ?? ''))) {
+        return $optimized;
+    }
+
+    return birthday_photo_copy_validated($validated);
 }
 
 function birthday_photo_store(array $validated, string $targetType, string $targetId, string $requestId = ''): array

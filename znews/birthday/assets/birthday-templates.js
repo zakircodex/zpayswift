@@ -94,6 +94,117 @@
     return AudioContext ? new AudioContext() : null;
   }
 
+  function celebrationEffectsController(universe, enabled) {
+    let context = null;
+    let closeTimer = 0;
+    let greetingTimer = 0;
+    let played = false;
+
+    const speakGreeting = () => {
+      if (!enabled || typeof window.SpeechSynthesisUtterance !== 'function' || !window.speechSynthesis) return;
+      const name = String(universe?.name || '').replace(/\s+/g, ' ').trim().slice(0, 50);
+      if (!name) return;
+      const language = locale(universe);
+      const utterance = new SpeechSynthesisUtterance(copy(
+        universe,
+        `Happy birthday, ${name}!`,
+        `শুভ জন্মদিন, ${name}!`
+      ));
+      utterance.lang = language;
+      utterance.volume = 1;
+      utterance.rate = .8;
+      utterance.pitch = 1.08;
+      const languageRoot = language.toLowerCase().split('-')[0];
+      const voices = window.speechSynthesis.getVoices?.() || [];
+      utterance.voice = voices.find(voice => voice.localService && String(voice.lang || '').toLowerCase().startsWith(languageRoot))
+        || voices.find(voice => String(voice.lang || '').toLowerCase().startsWith(languageRoot))
+        || null;
+      window.speechSynthesis.speak(utterance);
+    };
+
+    const schedulePop = (audio, destination, when, intensity, panValue) => {
+      const length = Math.max(1, Math.round(audio.sampleRate * .28));
+      const buffer = audio.createBuffer(1, length, audio.sampleRate);
+      const samples = buffer.getChannelData(0);
+      for (let index = 0; index < samples.length; index += 1) {
+        const envelope = Math.pow(1 - index / samples.length, 2.4);
+        samples[index] = (Math.random() * 2 - 1) * envelope;
+      }
+      const noise = audio.createBufferSource();
+      const highpass = audio.createBiquadFilter();
+      const crackGain = audio.createGain();
+      const panner = typeof audio.createStereoPanner === 'function' ? audio.createStereoPanner() : null;
+      noise.buffer = buffer;
+      highpass.type = 'highpass';
+      highpass.frequency.value = 720 + intensity * 620;
+      crackGain.gain.setValueAtTime(.0001, when);
+      crackGain.gain.exponentialRampToValueAtTime(.48 * intensity, when + .008);
+      crackGain.gain.exponentialRampToValueAtTime(.0001, when + .24);
+      if (panner) {
+        panner.pan.value = panValue;
+        noise.connect(highpass).connect(crackGain).connect(panner);
+        panner.connect(destination);
+      } else {
+        noise.connect(highpass).connect(crackGain).connect(destination);
+      }
+      const boom = audio.createOscillator();
+      const boomGain = audio.createGain();
+      boom.type = 'sine';
+      boom.frequency.setValueAtTime(145 + intensity * 35, when);
+      boom.frequency.exponentialRampToValueAtTime(48, when + .42);
+      boomGain.gain.setValueAtTime(.0001, when);
+      boomGain.gain.exponentialRampToValueAtTime(.34 * intensity, when + .012);
+      boomGain.gain.exponentialRampToValueAtTime(.0001, when + .45);
+      boom.connect(boomGain).connect(destination);
+      noise.start(when);
+      noise.stop(when + .29);
+      boom.start(when);
+      boom.stop(when + .46);
+    };
+
+    return {
+      play() {
+        if (!enabled || played) return;
+        played = true;
+        greetingTimer = window.setTimeout(speakGreeting, 520);
+        context = audioContext();
+        if (!context) return;
+        void context.resume().then(() => {
+          if (!context || context.state !== 'running') return;
+          const now = context.currentTime + .025;
+          const master = context.createGain();
+          const compressor = context.createDynamicsCompressor();
+          master.gain.value = .82;
+          compressor.threshold.value = -18;
+          compressor.knee.value = 12;
+          compressor.ratio.value = 8;
+          compressor.attack.value = .002;
+          compressor.release.value = .3;
+          master.connect(compressor);
+          compressor.connect(context.destination);
+          [
+            [0, 1, -.45],
+            [.14, .78, .5],
+            [.32, .9, -.12],
+            [.53, .72, .62],
+            [.78, .86, -.58]
+          ].forEach(([delay, intensity, pan]) => schedulePop(context, master, now + delay, intensity, pan));
+          window.clearTimeout(closeTimer);
+          closeTimer = window.setTimeout(() => {
+            if (context && context.state !== 'closed') void context.close();
+            context = null;
+          }, 4200);
+        }).catch(() => undefined);
+      },
+      destroy() {
+        window.clearTimeout(greetingTimer);
+        window.clearTimeout(closeTimer);
+        if (context && context.state !== 'closed') void context.close();
+        context = null;
+      }
+    };
+  }
+
   function ambientController() {
     let context = null;
     let master = null;
@@ -116,10 +227,10 @@
       harmonic.frequency.setValueAtTime(startFrequency * 1.5, now);
       harmonic.frequency.exponentialRampToValueAtTime(startFrequency * .76, now + 2.8);
       gain.gain.setValueAtTime(0.0001, now);
-      gain.gain.exponentialRampToValueAtTime(.11, now + .08);
+      gain.gain.exponentialRampToValueAtTime(.16, now + .08);
       gain.gain.exponentialRampToValueAtTime(.0001, now + 3.1);
       harmonicGain.gain.setValueAtTime(0.0001, now);
-      harmonicGain.gain.exponentialRampToValueAtTime(.035, now + .12);
+      harmonicGain.gain.exponentialRampToValueAtTime(.055, now + .12);
       harmonicGain.gain.exponentialRampToValueAtTime(.0001, now + 2.7);
       const destination = panner || master;
       if (panner) {
@@ -139,13 +250,15 @@
       context = audioContext();
       if (!context) throw new Error('Audio is not supported in this browser.');
       master = context.createGain();
-      master.gain.value = .26;
+      master.gain.value = .44;
       const compressor = context.createDynamicsCompressor();
-      compressor.threshold.value = -24;
-      compressor.knee.value = 18;
-      compressor.ratio.value = 4;
+      compressor.threshold.value = -22;
+      compressor.knee.value = 16;
+      compressor.ratio.value = 5;
       compressor.attack.value = .02;
       compressor.release.value = .45;
+      const output = context.createGain();
+      output.gain.value = 1.08;
       const reverb = context.createConvolver();
       const wet = context.createGain();
       const impulse = context.createBuffer(2, Math.round(context.sampleRate * 1.7), context.sampleRate);
@@ -156,10 +269,11 @@
         }
       }
       reverb.buffer = impulse;
-      wet.gain.value = .3;
+      wet.gain.value = .4;
       master.connect(compressor);
       master.connect(reverb).connect(wet).connect(compressor);
-      compressor.connect(context.destination);
+      compressor.connect(output);
+      output.connect(context.destination);
       [55, 82.4, 110, 164.8].forEach((frequency, index) => {
         const oscillator = context.createOscillator();
         const gain = context.createGain();
@@ -171,6 +285,7 @@
         oscillator.detune.value = index * 4 - 3;
         filter.type = 'lowpass';
         filter.frequency.value = 460 + index * 150;
+        filter.Q.value = .65;
         gain.gain.value = [.22, .13, .075, .04][index];
         lfo.frequency.value = .025 + index * .009;
         lfoGain.gain.value = 45 + index * 12;
@@ -189,7 +304,7 @@
       noise.loop = true;
       noiseFilter.type = 'lowpass';
       noiseFilter.frequency.value = 310;
-      noiseGain.gain.value = .04;
+      noiseGain.gain.value = .055;
       noise.connect(noiseFilter).connect(noiseGain).connect(master);
       noise.start();
       initialized = true;
@@ -435,6 +550,7 @@
     shell.append(finale);
 
     const sound = soundtrackController(universe, options);
+    const celebrationEffects = celebrationEffectsController(universe, sound.mode !== 'NONE');
     let playedEvent = false;
     let musicButton = null;
     const updateMusic = () => {
@@ -494,6 +610,7 @@
       shell.classList.remove('awaiting-entry');
       shell.classList.add('universe-entered');
       entry.classList.add('leaving');
+      celebrationEffects.play();
       scene.celebrate();
       void playSound().catch(() => {
         if (musicButton) musicButton.replaceChildren(element('span', 'music-control-icon', '!'), element('span', '', copy(universe, 'Sound unavailable', 'Sound চালানো যায়নি')));
@@ -506,6 +623,7 @@
 
     root._birthdayDestroy = () => {
       scene.destroy();
+      celebrationEffects.destroy();
       sound.controller?.destroy?.();
       root._birthdayDestroy = null;
     };

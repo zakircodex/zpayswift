@@ -43,21 +43,21 @@ No secrets belong in browser JavaScript or this directory.
 The default private path is `private/uploads/znews/birthday`. Uploaded photos
 are signature-checked, decoded and re-encoded into an optimized derivative.
 The complete image composition and aspect ratio are preserved; no crop is
-performed. Media is served only through the protected endpoint. New media uses
-an atomic private filesystem write with size/hash read-back verification, while the old
-`ZNEWS_BIRTHDAY_MEDIA_BLOBS` namespace remains readable only for legacy pages.
-This avoids Firebase payload-size failures on normal phone photos. Direct client
-access remains denied, and cleanup removes both current files and any legacy
-fallback record. When the host provides GD, images are resized and re-encoded;
-when GD is unavailable, a fully validated file up to 5 MB is retained without
-cropping rather than rejecting an otherwise valid phone photo.
+performed. Before upload, supported browsers reduce phone photos to a verified
+delivery derivative of at most 100 KB. The server preserves that derivative
+instead of enlarging it again, then performs an atomic private filesystem write
+with size/hash read-back verification and stores a verified delivery fallback.
+This keeps uploads reliable on mobile connections and cPanel deployments while
+media remains available through the protected endpoint. Direct client storage
+access remains denied, and cleanup removes both copies.
 
 Creators may use the built-in procedural cosmic ambience, silence, a licensed
 platform track, or one MP3/OGG/M4A file up to 30 seconds. Custom audio is checked
 by MIME type, file signature and parsed media duration on the server, requires a
 rights confirmation, and is delivered from private storage. Browser autoplay
 rules are respected: sound starts only after the recipient presses **Enter
-Birthday Universe**.
+Birthday Universe**. That gesture also starts the short firework effect and a
+browser-generated personalized birthday greeting when sound is enabled.
 
 ## Immersive renderer
 

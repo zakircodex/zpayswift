@@ -127,7 +127,7 @@
       if (!response.ok) throw new BirthdayApiError('Preview audio could not be loaded.', { code: 'AUDIO_LOAD_FAILED', status: response.status });
       return response.arrayBuffer();
     }
-    uploadPhoto(form, authenticated = false) { return this.request('media_upload.php', { method: 'POST', form, authenticated, timeout: 40000, networkRetries: 1 }); }
+    uploadPhoto(form, authenticated = false) { return this.request('media_upload.php', { method: 'POST', form, authenticated, timeout: 60000, networkRetries: 2 }); }
     uploadAudio(form, authenticated = false) { return this.request('audio_upload.php', { method: 'POST', form, authenticated, timeout: 45000, networkRetries: 1 }); }
     generate(payload) { return this.request('generate.php', { method: 'POST', body: payload, timeout: 30000, networkRetries: 1 }); }
     universe(slug) { return this.request('public.php', { params: { slug }, networkRetries: 1 }); }

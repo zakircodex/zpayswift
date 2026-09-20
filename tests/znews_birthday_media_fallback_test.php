@@ -137,6 +137,27 @@ $moov = pack('N', 8 + strlen($mvhd)) . 'moov' . $mvhd;
 birthday_media_test_expect(abs(birthday_audio_mp4_duration($moov) - 30.0) < 0.01, 'M4A duration must be verified from MP4 metadata.');
 @unlink($sourceAsset);
 
+$deliverySource = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'zsky_birthday_delivery_' . bin2hex(random_bytes(6)) . '.png';
+$deliveryPng = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAFAAAAB4CAMAAABSMIXEAAAAA1BMVEUtqtKr2g/yAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAIElEQVRo3u3BAQ0AAADCoPdPbQ43oAAAAAAAAAAAAHgyJfgAAdQN+TQAAAAASUVORK5CYII=', true);
+$deliveryPng = is_string($deliveryPng) ? $deliveryPng . str_repeat("\0", 90 * 1024) : '';
+if ($deliveryPng === '' || file_put_contents($deliverySource, $deliveryPng) === false) {
+    throw new RuntimeException('Birthday delivery fixture could not be created.');
+}
+$deliveryPrepared = birthday_photo_prepare([
+    'tmp' => $deliverySource,
+    'size' => strlen($deliveryPng),
+    'mime' => 'image/png',
+    'extension' => 'png',
+    'width' => 80,
+    'height' => 120,
+    'sha256' => hash('sha256', $deliveryPng),
+]);
+birthday_media_test_expect(!empty($deliveryPrepared['delivery_passthrough']), 'A verified 100 KB client derivative must not be enlarged by server re-encoding.');
+birthday_media_test_expect((int)($deliveryPrepared['size_bytes'] ?? 0) === strlen($deliveryPng), 'The verified delivery derivative size must remain unchanged.');
+birthday_media_test_expect(hash_file('sha256', (string)$deliveryPrepared['tmp']) === hash('sha256', $deliveryPng), 'The passthrough derivative must retain its verified bytes.');
+@unlink((string)($deliveryPrepared['tmp'] ?? ''));
+@unlink($deliverySource);
+
 $largeSource = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'zsky_birthday_large_' . bin2hex(random_bytes(6)) . '.png';
 $largePng = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAFAAAAB4CAMAAABSMIXEAAAAA1BMVEUtqtKr2g/yAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAIElEQVRo3u3BAQ0AAADCoPdPbQ43oAAAAAAAAAAAAHgyJfgAAdQN+TQAAAAASUVORK5CYII=', true);
 $largePng = is_string($largePng) ? $largePng . str_repeat("\0", 760 * 1024) : '';
