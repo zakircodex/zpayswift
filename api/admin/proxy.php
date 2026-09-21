@@ -190,7 +190,7 @@ function proxy_base_headers(string $sessionToken = ''): array
     return $headers;
 }
 
-function proxy_internal_api_request(string $method, string $relativePath, ?array $body = null, array $headers = []): array
+function proxy_internal_api_request(string $method, string $relativePath, ?array $body = null, array $headers = [], int $timeoutSeconds = 20): array
 {
     $url = proxy_api_base_url() . '/' . ltrim($relativePath, '/');
 
@@ -210,7 +210,7 @@ function proxy_internal_api_request(string $method, string $relativePath, ?array
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CUSTOMREQUEST => strtoupper($method),
         CURLOPT_CONNECTTIMEOUT => 8,
-        CURLOPT_TIMEOUT => 20,
+        CURLOPT_TIMEOUT => max(20, $timeoutSeconds),
         CURLOPT_HTTPHEADER => $finalHeaders,
         CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
     ]);
@@ -936,7 +936,7 @@ switch ($action) {
             'ip_country' => auth_request_ip_country(),
             'user_agent' => security_user_agent(),
             'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
-        ], proxy_base_headers());
+        ], proxy_base_headers(), 60);
 
         if (!$loginRes['ok']) {
             $json = $loginRes['json'] ?? [];
@@ -1052,7 +1052,7 @@ switch ($action) {
         $resendRes = proxy_internal_api_request('POST', 'auth/admin_login_resend_otp.php', [
             'pre_auth_token' => $preAuthToken,
             'otp_request_id' => $otpRequestId,
-        ], proxy_base_headers());
+        ], proxy_base_headers(), 60);
 
         if (!$resendRes['ok']) {
             $json = $resendRes['json'] ?? [];

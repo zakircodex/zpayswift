@@ -48,6 +48,23 @@ function smss360_xml_value(string $xml, array $names): string
     return '';
 }
 
+function smss360_parse_response(string $raw, int $httpStatus, string $referenceId): array
+{
+    $raw = trim($raw);
+    $statusCode = smss360_xml_value($raw, ['statuscode', 'status_code', 'code']);
+    $statusMessage = smss360_xml_value($raw, ['statusmsg', 'statusmessage', 'status_message', 'message', 'status']);
+    $providerReference = smss360_xml_value($raw, ['referenceID', 'reference_id', 'reference']);
+
+    return [
+        'ok' => $statusCode === '1606',
+        'code' => $statusCode !== '' ? $statusCode : 'SMS360_UNKNOWN_RESPONSE',
+        'message' => $statusMessage !== '' ? $statusMessage : ($statusCode === '1606' ? 'SMS submitted successfully' : 'SMS360 request failed'),
+        'reference_id' => $providerReference !== '' ? $providerReference : $referenceId,
+        'raw' => substr($raw, 0, 1000),
+        'http_status' => $httpStatus,
+    ];
+}
+
 function smss360_send_sms(string $phone, string $message, string $referenceId): array
 {
     $phone = function_exists('normalize_phone_by_country')
@@ -125,17 +142,5 @@ function smss360_send_sms(string $phone, string $message, string $referenceId): 
         ];
     }
 
-    $raw = trim((string)$raw);
-    $statusCode = smss360_xml_value($raw, ['statuscode', 'status_code', 'code']);
-    $statusMessage = smss360_xml_value($raw, ['statusmessage', 'status_message', 'message', 'status']);
-    $providerReference = smss360_xml_value($raw, ['referenceID', 'reference_id', 'reference']);
-
-    return [
-        'ok' => $statusCode === '1606',
-        'code' => $statusCode !== '' ? $statusCode : 'SMS360_UNKNOWN_RESPONSE',
-        'message' => $statusMessage !== '' ? $statusMessage : ($statusCode === '1606' ? 'SMS submitted successfully' : 'SMS360 request failed'),
-        'reference_id' => $providerReference !== '' ? $providerReference : $referenceId,
-        'raw' => substr($raw, 0, 1000),
-        'http_status' => $httpStatus,
-    ];
+    return smss360_parse_response((string)$raw, $httpStatus, $referenceId);
 }
