@@ -22,7 +22,7 @@ $personal = [
 
 $line = mfs_telegram_copy_line($personal);
 copy_line_expect($line === 'Z-Pay Swift: 01872605597=Bkash= 5100/- P', 'Personal bKash line mismatch');
-copy_line_expect(mfs_telegram_copy_block($personal) === '<pre>' . $line . '</pre>', 'Copy block mismatch');
+copy_line_expect(mfs_telegram_copy_block($personal) === '<code>' . $line . '</code>', 'Copy line markup mismatch');
 
 $agent = [
     'receiver_number' => '01309096677',

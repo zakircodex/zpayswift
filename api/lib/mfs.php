@@ -900,7 +900,7 @@ function mfs_telegram_copy_line(array $row): string
 function mfs_telegram_copy_block(array $row): string
 {
     $line = mfs_telegram_copy_line($row);
-    return $line === '' ? '' : '<pre>' . htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</pre>';
+    return $line === '' ? '' : '<code>' . htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</code>';
 }
 
 function mfs_daily_recipient_min_difference_bdt(): float
