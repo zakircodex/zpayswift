@@ -25,6 +25,11 @@ function forgot_test_source(string $path): string
 }
 
 require_once $root . '/api/lib/user_forgot_recovery.php';
+require_once $root . '/api/lib/otp_templates.php';
+
+$myResetMessage = otp_my_build_message('USER_RESET', '123456');
+forgot_test_expect($myResetMessage === 'RM0 Z-PAY SWIFT account reset OTP is 123456. Valid for 5 minutes. Do not share this code.', 'Malaysia forgot OTP must use the requested sender casing');
+forgot_test_expect(otp_my_message_is_approved($myResetMessage), 'Malaysia forgot OTP must pass local template validation');
 
 $valid = user_forgot_combined_validate_credentials('123456', '123456', '2468', '2468');
 forgot_test_expect(!empty($valid['ok']), 'six-digit password and four-digit PIN should pass');
