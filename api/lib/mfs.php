@@ -870,6 +870,39 @@ function mfs_valid_bd_mobile(string $number): bool
     return (bool)preg_match('/^01\d{9}$/', $number);
 }
 
+function mfs_telegram_copy_line(array $row): string
+{
+    $number = mfs_clean_mobile_number((string)($row['receiver_number'] ?? $row['number'] ?? ''));
+    $provider = mfs_normalize_provider((string)($row['provider'] ?? $row['provider_name'] ?? ''));
+    $accountType = strtoupper(trim((string)($row['account_type'] ?? '')));
+    $amount = (float)($row['amount_bdt'] ?? 0);
+
+    if (!mfs_valid_bd_mobile($number)
+        || !in_array($provider, ['BKASH', 'NAGAD'], true)
+        || !in_array($accountType, ['PERSONAL', 'AGENT', 'P', 'A'], true)
+        || !is_finite($amount)
+        || $amount <= 0
+    ) {
+        return '';
+    }
+
+    $amountText = number_format($amount, 2, '.', '');
+    if (str_ends_with($amountText, '.00')) {
+        $amountText = substr($amountText, 0, -3);
+    }
+
+    $providerText = $provider === 'BKASH' ? 'Bkash' : 'Nagad';
+    $accountText = in_array($accountType, ['PERSONAL', 'P'], true) ? 'P' : 'A';
+
+    return 'Z-Pay Swift: ' . $number . '=' . $providerText . '= ' . $amountText . '/- ' . $accountText;
+}
+
+function mfs_telegram_copy_block(array $row): string
+{
+    $line = mfs_telegram_copy_line($row);
+    return $line === '' ? '' : '<pre>' . htmlspecialchars($line, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</pre>';
+}
+
 function mfs_daily_recipient_min_difference_bdt(): float
 {
     return max(0.01, mfs_round_money(mfs_const_float('MFS_DAILY_RECIPIENT_MIN_DIFFERENCE_BDT', 50.00)));

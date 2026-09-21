@@ -1213,6 +1213,7 @@ function sub_proxy_mfs_telegram_api(string $method, array $payload): array
 
 function sub_proxy_mfs_message(array $row): string
 {
+    $copyBlock = mfs_telegram_copy_block($row);
     $currency = strtoupper((string)($row['wallet_currency'] ?? 'BDT'));
     $requestId = (string)($row['request_id'] ?? '-');
     $amountRm = (float)($row['amount_rm'] ?? $row['amount_myr'] ?? 0);
@@ -1245,6 +1246,7 @@ function sub_proxy_mfs_message(array $row): string
         : 'BDT ' . sub_proxy_mfs_money($row['total_debit_bdt'] ?? $row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
 
     $text = "🔔 <b>New MFS Request</b>\n\n" .
+        ($copyBlock !== '' ? $copyBlock . "\n\n" : '') .
         "<b>Request ID:</b> <code>" . sub_proxy_mfs_h($requestId) . "</code>\n" .
         "<b>UID:</b> <code>" . sub_proxy_mfs_h($row['uid'] ?? '-') . "</code>\n" .
         "<b>User Phone:</b> <code>" . sub_proxy_mfs_h($row['user_phone'] ?? '-') . "</code>\n" .

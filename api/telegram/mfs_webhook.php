@@ -295,6 +295,7 @@ function mfs_tg_keyboard_waiting(string $requestId): array
 
 function mfs_tg_text(array $row, string $status, string $message): string
 {
+    $copyBlock = mfs_telegram_copy_block($row);
     $currency = strtoupper((string)($row['wallet_currency'] ?? 'BDT'));
     $amountRm = (float)($row['amount_rm'] ?? $row['amount_myr'] ?? 0);
     $isRemittance = strtoupper((string)($row['service_mode'] ?? '')) === 'REMITTANCE'
@@ -322,6 +323,7 @@ function mfs_tg_text(array $row, string $status, string $message): string
     $icon = $status === 'SUCCESSFUL' ? '✅' : ($status === 'FAILED' ? '❌' : ($status === 'PROCESSING' ? '🔄' : '🔢'));
 
     $text = $icon . ' <b>MFS Request ' . mfs_tg_h($status) . '</b>' . "\n\n" .
+        ($copyBlock !== '' ? $copyBlock . "\n\n" : '') .
         '<b>Request ID:</b> <code>' . mfs_tg_h($row['request_id'] ?? '-') . '</code>' . "\n" .
         '<b>UID:</b> <code>' . mfs_tg_h($row['uid'] ?? '-') . '</code>' . "\n" .
         '<b>User Phone:</b> <code>' . mfs_tg_h($row['user_phone'] ?? '-') . '</code>' . "\n" .

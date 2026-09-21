@@ -158,6 +158,7 @@ function mfs_create_endpoint_h(float $value, string $currency): string
 
 function mfs_create_endpoint_build_telegram_text(array $data, array $user): string
 {
+    $copyBlock = mfs_telegram_copy_block($data);
     $provider = htmlspecialchars((string)($data['provider_name'] ?? $data['provider'] ?? '-'), ENT_QUOTES, 'UTF-8');
     $service = htmlspecialchars((string)($data['service_name'] ?? $data['service_type'] ?? '-'), ENT_QUOTES, 'UTF-8');
     $accountType = htmlspecialchars((string)($data['account_type'] ?? '-'), ENT_QUOTES, 'UTF-8');
@@ -214,6 +215,7 @@ function mfs_create_endpoint_build_telegram_text(array $data, array $user): stri
 
     return
         "📲 <b>New MFS Request</b>\n\n" .
+        ($copyBlock !== '' ? $copyBlock . "\n\n" : '') .
         "Request ID: <code>{$requestId}</code>\n" .
         "Provider: <b>{$provider}</b>\n" .
         "Service: <b>{$service}</b>\n" .

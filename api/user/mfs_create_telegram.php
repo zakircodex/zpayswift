@@ -63,6 +63,7 @@ function zpay_mfs_create_tg_api(string $method, array $payload): array
 }
 function zpay_mfs_create_text(array $row): string
 {
+    $copyBlock = mfs_telegram_copy_block($row);
     $currency = strtoupper((string)($row['wallet_currency'] ?? 'BDT'));
     $requestId = (string)($row['request_id'] ?? '-');
     $amountRm = (float)($row['amount_rm'] ?? $row['amount_myr'] ?? 0);
@@ -94,6 +95,7 @@ function zpay_mfs_create_text(array $row): string
         ? 'RM ' . zpay_mfs_create_money($totalRm)
         : 'BDT ' . zpay_mfs_create_money($row['total_debit_bdt'] ?? $row['total_debit'] ?? $row['wallet_hold_amount'] ?? $row['held_amount'] ?? 0);
     $text = "🔔 <b>New MFS Request</b>\n\n" .
+        ($copyBlock !== '' ? $copyBlock . "\n\n" : '') .
         "<b>Request ID:</b> <code>" . zpay_mfs_create_h($requestId) . "</code>\n" .
         "<b>UID:</b> <code>" . zpay_mfs_create_h($row['uid'] ?? '-') . "</code>\n" .
         "<b>User Phone:</b> <code>" . zpay_mfs_create_h($row['user_phone'] ?? '-') . "</code>\n" .
