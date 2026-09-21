@@ -5976,7 +5976,7 @@ switch ($action) {
                 'reset_type' => 'PASSWORD_PIN',
                 'device_id' => 'USER_WEB',
                 'device_name' => 'User Forgot',
-            ], 'FORGOT_OTP_SEND_FAILED', 'Failed to send forgot OTP');
+            ], 'FORGOT_OTP_SEND_FAILED', 'Failed to send forgot OTP', user_proxy_registration_request_policy());
             break;
         }
 
@@ -5994,7 +5994,7 @@ switch ($action) {
             'ip_country' => auth_request_ip_country(),
             'user_agent' => security_user_agent(),
             'browser_timezone' => trim((string)($body['browser_timezone'] ?? '')),
-        ], 'FORGOT_OTP_SEND_FAILED', 'Failed to send forgot OTP');
+        ], 'FORGOT_OTP_SEND_FAILED', 'Failed to send forgot OTP', user_proxy_registration_request_policy());
         break;
 
     case 'forgot_resend_otp':
@@ -6027,7 +6027,7 @@ switch ($action) {
             'request_id' => $otpRequestId,
             'device_id' => 'USER_WEB',
             'device_name' => 'User Forgot',
-        ], 'FORGOT_OTP_RESEND_FAILED', 'Failed to resend forgot OTP');
+        ], 'FORGOT_OTP_RESEND_FAILED', 'Failed to resend forgot OTP', user_proxy_registration_request_policy());
         break;
 
     case 'forgot_verify_otp':

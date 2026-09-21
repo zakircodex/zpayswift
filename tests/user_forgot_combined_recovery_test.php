@@ -28,7 +28,7 @@ require_once $root . '/api/lib/user_forgot_recovery.php';
 require_once $root . '/api/lib/otp_templates.php';
 
 $myResetMessage = otp_my_build_message('USER_RESET', '123456');
-forgot_test_expect($myResetMessage === 'RM0 Z-PAY SWIFT account reset OTP is 123456. Valid for 5 minutes. Do not share this code.', 'Malaysia forgot OTP must use the requested sender casing');
+forgot_test_expect($myResetMessage === 'RM0 Z-Pay Swift account reset OTP is 123456. Valid for 5 minutes. Do not share this code.', 'Malaysia forgot OTP must retain the previously delivered sender casing');
 forgot_test_expect(otp_my_message_is_approved($myResetMessage), 'Malaysia forgot OTP must pass local template validation');
 
 $valid = user_forgot_combined_validate_credentials('123456', '123456', '2468', '2468');
@@ -71,5 +71,8 @@ forgot_test_expect(str_contains($reset, 'auth_app_revoke_user_sessions_and_trust
 forgot_test_expect(str_contains($reset, "'RESET_TOKEN_USED'") && str_contains($reset, "'DEVICE_MISMATCH'"), 'reset token replay and device mismatch must be rejected');
 forgot_test_expect(str_contains($reset, "empty(\$preAuthRow['identity_verified'])") && str_contains($reset, "empty(\$preAuthRow['reset_allowed'])"), 'combined reset must enforce the full identity and OTP state machine');
 forgot_test_expect(str_contains($proxy, "case 'forgot_reset_credentials':") && str_contains($proxy, "'device_id' => 'USER_WEB'"), 'Web proxy must expose only the scoped combined reset action');
+$forgotSendStart = strpos($proxy, "case 'forgot_send_otp':");
+$forgotVerifyStart = strpos($proxy, "case 'forgot_verify_otp':", $forgotSendStart === false ? 0 : $forgotSendStart);
+forgot_test_expect($forgotSendStart !== false && $forgotVerifyStart !== false && substr_count(substr($proxy, $forgotSendStart, $forgotVerifyStart - $forgotSendStart), 'user_proxy_registration_request_policy()') === 3, 'Web forgot send and resend must use single-attempt long timeouts');
 
 echo "User forgot combined recovery tests passed ({$assertions} assertions).\n";

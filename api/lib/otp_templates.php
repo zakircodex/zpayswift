@@ -11,7 +11,7 @@ function otp_my_template_map(): array
     return [
         'USER_LOGIN' => 'RM0 Z-Pay Swift login OTP is %%. Valid for 5 minutes. Do not share this code.',
         'USER_REGISTER' => 'RM0 Z-Pay Swift registration OTP is %%. Valid for 5 minutes. Do not share this code.',
-        'USER_RESET' => 'RM0 Z-PAY SWIFT account reset OTP is %%. Valid for 5 minutes. Do not share this code.',
+        'USER_RESET' => 'RM0 Z-Pay Swift account reset OTP is %%. Valid for 5 minutes. Do not share this code.',
         'ADMIN_LOGIN' => 'RM0 Z-Pay Swift admin login OTP is %%. Valid for 5 minutes. Do not share this code.',
         'ADMIN_RESET' => 'RM0 Z-Pay Swift admin reset OTP is %%. Valid for 5 minutes. Do not share this code.',
         'SUBADMIN_LOGIN' => 'RM0 Z-Pay Swift subadmin login OTP is %%. Valid for 5 minutes. Do not share this code.',
