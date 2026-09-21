@@ -299,7 +299,7 @@ birthday_test_expect(birthday_test_get('ZNEWS_BIRTHDAY_UNIVERSES/active-first') 
 $source = file_get_contents(dirname(__DIR__) . '/api/znews/lib/birthday_media.php');
 $sharedMediaSource = file_get_contents(dirname(__DIR__) . '/api/znews/lib/media.php');
 birthday_test_expect(is_string($source) && is_string($sharedMediaSource) && str_contains($sharedMediaSource, 'getimagesize') && str_contains($source, 'INVALID_SIGNATURE'), 'Media code must validate decoded images and audio signatures.');
-birthday_test_expect(is_string($source) && str_contains($source, 'PRIVATE_FILESYSTEM_WITH_FIREBASE_FALLBACK') && str_contains($source, "birthday_path('MEDIA_BLOBS', \$mediaId) => \$blob"), 'Birthday photos must keep a verified delivery fallback when cPanel private files are unavailable.');
+birthday_test_expect(is_string($source) && str_contains($source, 'PRIVATE_FILESYSTEM_WITH_FIREBASE_FALLBACK') && str_contains($source, "fb_put(birthday_path('MEDIA_BLOBS', \$mediaId), \$blob)"), 'Birthday photos must write their verified delivery fallback directly instead of relying on a root multi-path update.');
 birthday_test_expect(is_string($source) && str_contains($source, 'birthday_photo_delivery_target_bytes') && str_contains($source, "'delivery_passthrough' => \$deliveryPassthrough"), 'Client-compressed Birthday photos must remain near 100 KB instead of being enlarged again on the server.');
 $templateSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-templates.js');
 birthday_test_expect(is_string($templateSource) && str_contains($templateSource, 'textContent') && !str_contains($templateSource, 'innerHTML'), 'Public template rendering must not inject user HTML.');
@@ -319,13 +319,14 @@ birthday_test_expect(is_string($adSource) && str_contains($adSource, "'event_typ
 $apiClientSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-api.js');
 birthday_test_expect(is_file(dirname(__DIR__) . '/api/znews/birthday/catalog.php') && is_string($apiClientSource) && str_contains($apiClientSource, "request('catalog.php'"), 'Public catalog configuration must use a deployable, tracked endpoint name.');
 birthday_test_expect(is_string($apiClientSource) && str_contains($apiClientSource, 'networkRetries: 1'), 'Critical Birthday requests must retry one transient network failure.');
-birthday_test_expect(is_string($apiClientSource) && str_contains($apiClientSource, 'timeout: 60000, networkRetries: 2'), 'Birthday photo uploads must survive two transient mobile-network failures.');
+birthday_test_expect(is_string($apiClientSource) && str_contains($apiClientSource, 'new XMLHttpRequest()') && str_contains($apiClientSource, 'Photo connection was interrupted.') && str_contains($apiClientSource, 'attempt < 2'), 'Birthday photo uploads must use the resilient Android multipart transport with a bounded retry.');
 $publicClientSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-public.js');
 birthday_test_expect(is_string($publicClientSource) && str_contains($publicClientSource, "toDataURL('image/png')"), 'QR downloads must contain real PNG data.');
 birthday_test_expect(is_string($publicClientSource) && str_contains($publicClientSource, 'window.innerWidth <= 600 ? 320 : 520'), 'Public Birthday ads must have a compact responsive height cap so sharing controls remain reachable.');
 $appClientSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/assets/birthday-app.js');
 birthday_test_expect(is_string($appClientSource) && !str_contains($appClientSource, 'localStorage.setItem(`birthday_recovery_'), 'Recovery codes must not persist in localStorage.');
 birthday_test_expect(is_string($appClientSource) && str_contains($appClientSource, 'targetBytes = 100 * 1024') && str_contains($appClientSource, "{ edge: 320, type: 'image/jpeg', quality: .24 }") && str_contains($appClientSource, "type: 'image/jpeg'"), 'Large Android photos must be reduced to a reliable 100 KB delivery file without cropping.');
+birthday_test_expect(is_string($appClientSource) && str_contains($appClientSource, 'recoverDraftPhoto') && str_contains($appClientSource, 'Verifying upload…'), 'An interrupted photo response must recover a completed upload from its protected draft.');
 $birthdayIndexSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/index.php');
 $birthdayPublicSource = file_get_contents(dirname(__DIR__) . '/znews/birthday/public.php');
 birthday_test_expect(is_string($birthdayIndexSource) && strpos($birthdayIndexSource, 'id="generationPanel"') < strpos($birthdayIndexSource, 'id="previewUniverse"'), 'Generate controls must appear before the long private preview.');

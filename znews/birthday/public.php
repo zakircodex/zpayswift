@@ -50,7 +50,7 @@ header('Cache-Control: ' . ($robots === 'index,follow' ? 'public, max-age=120, s
   <link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=5">
   <title><?= htmlspecialchars($title . ' | Z Sky 24', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></title>
   <script defer src="/znews/birthday/assets/lib/qrcode.min.js?v=1"></script>
-  <script defer src="/znews/birthday/assets/birthday-api.js?v=4"></script>
+  <script defer src="/znews/birthday/assets/birthday-api.js?v=5"></script>
   <script defer src="/znews/birthday/assets/birthday-ad-service.js?v=1"></script>
   <script type="module" src="/znews/birthday/assets/birthday-scene.js?v=3"></script>
   <script defer src="/znews/birthday/assets/birthday-templates.js?v=5"></script>

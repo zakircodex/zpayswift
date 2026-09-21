@@ -437,10 +437,12 @@ function birthday_photo_store(array $validated, string $targetType, string $targ
         @unlink($target);
         api_response(false, 'BIRTHDAY_PHOTO_FALLBACK_FAILED', 'Image could not be prepared for reliable delivery.', [], 503);
     }
-    if (!fb_patch('', [
-        birthday_path('MEDIA', $mediaId) => $row,
-        birthday_path('MEDIA_BLOBS', $mediaId) => $blob,
-    ])) {
+    if (!fb_put(birthday_path('MEDIA_BLOBS', $mediaId), $blob)) {
+        @unlink($target);
+        api_response(false, 'BIRTHDAY_PHOTO_RECORD_FAILED', 'Image could not be stored.', [], 503);
+    }
+    if (!fb_put(birthday_path('MEDIA', $mediaId), $row)) {
+        fb_delete(birthday_path('MEDIA_BLOBS', $mediaId));
         @unlink($target);
         api_response(false, 'BIRTHDAY_PHOTO_RECORD_FAILED', 'Image could not be stored.', [], 503);
     }

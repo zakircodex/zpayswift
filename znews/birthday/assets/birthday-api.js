@@ -127,7 +127,58 @@
       if (!response.ok) throw new BirthdayApiError('Preview audio could not be loaded.', { code: 'AUDIO_LOAD_FAILED', status: response.status });
       return response.arrayBuffer();
     }
-    uploadPhoto(form, authenticated = false) { return this.request('media_upload.php', { method: 'POST', form, authenticated, timeout: 60000, networkRetries: 2 }); }
+    uploadPhotoRequest(form, authenticated = false, timeout = 90000) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${this.base}/media_upload.php`, true);
+        xhr.responseType = 'text';
+        xhr.timeout = timeout;
+        xhr.withCredentials = true;
+        xhr.setRequestHeader('Accept', 'application/json');
+        if (authenticated) {
+          if (!this.sessionToken) {
+            reject(new BirthdayApiError('Z-Pay login is required.', { code: 'SESSION_EXPIRED', status: 401 }));
+            return;
+          }
+          xhr.setRequestHeader('X-APP-KEY', this.appKey);
+          xhr.setRequestHeader('X-SESSION-TOKEN', this.sessionToken);
+          xhr.setRequestHeader('Authorization', `Bearer ${this.sessionToken}`);
+        }
+        xhr.addEventListener('load', () => {
+          let json;
+          try { json = JSON.parse(xhr.responseText || ''); } catch (_error) { json = null; }
+          if (!json || typeof json !== 'object') {
+            reject(new BirthdayApiError('The server returned an invalid response.', { code: 'MALFORMED_RESPONSE', status: xhr.status }));
+            return;
+          }
+          if (xhr.status < 200 || xhr.status >= 300 || (json.ok !== true && json.success !== true)) {
+            if (xhr.status === 401 || json.code === 'SESSION_EXPIRED') this.setSession('');
+            reject(new BirthdayApiError(String(json.message || 'Request failed.'), {
+              code: String(json.code || 'BIRTHDAY_REQUEST_FAILED'), status: xhr.status, data: json.data || {}
+            }));
+            return;
+          }
+          resolve(json.data || {});
+        });
+        xhr.addEventListener('error', () => reject(new BirthdayApiError('Photo connection was interrupted.', { code: 'NETWORK_FAILURE' })));
+        xhr.addEventListener('timeout', () => reject(new BirthdayApiError('The photo upload timed out.', { code: 'REQUEST_TIMEOUT' })));
+        xhr.addEventListener('abort', () => reject(new BirthdayApiError('The photo upload was interrupted.', { code: 'NETWORK_FAILURE' })));
+        xhr.send(form);
+      });
+    }
+    async uploadPhoto(form, authenticated = false) {
+      let lastError = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          return await this.uploadPhotoRequest(form, authenticated);
+        } catch (error) {
+          lastError = error;
+          if (!['NETWORK_FAILURE', 'REQUEST_TIMEOUT'].includes(String(error?.code || '')) || attempt > 0) throw error;
+          await new Promise(resolve => window.setTimeout(resolve, 650));
+        }
+      }
+      throw lastError || new BirthdayApiError('Photo upload failed.');
+    }
     uploadAudio(form, authenticated = false) { return this.request('audio_upload.php', { method: 'POST', form, authenticated, timeout: 45000, networkRetries: 1 }); }
     generate(payload) { return this.request('generate.php', { method: 'POST', body: payload, timeout: 30000, networkRetries: 1 }); }
     universe(slug) { return this.request('public.php', { params: { slug }, networkRetries: 1 }); }

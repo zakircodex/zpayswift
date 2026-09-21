@@ -315,6 +315,18 @@
     let draftAttemptToken = randomHex(16);
     let draftAttemptPending = false;
 
+    async function recoverDraftPhoto(draftId, draftToken) {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const recovered = await api.draft(draftId, draftToken);
+          if (String(recovered?.draft?.photo_media_id || '').trim()) return recovered.draft;
+        } catch (_error) {
+        }
+        if (attempt < 2) await new Promise(resolve => window.setTimeout(resolve, 700 * (attempt + 1)));
+      }
+      return null;
+    }
+
     const monthSelect = $('#birthdayMonth');
     const monthNames = currentLocale() === 'bn'
       ? ['জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর']
@@ -494,7 +506,16 @@
           const preparedPhoto = await preparePhotoUpload(photoFile);
           next.textContent = currentLocale() === 'bn' ? 'ছবি নিরাপদে রাখা হচ্ছে…' : 'Saving photo…';
           const upload = new FormData(); upload.append('image', preparedPhoto, preparedPhoto.name || 'birthday-photo.webp'); upload.append('draft_id', draft.id); upload.append('draft_token', draftToken); upload.append('upload_request_id', photoUploadRequestId);
-          const uploaded = await api.uploadPhoto(upload); draft = uploaded.draft;
+          try {
+            const uploaded = await api.uploadPhoto(upload);
+            draft = uploaded.draft;
+          } catch (error) {
+            if (!['NETWORK_FAILURE', 'REQUEST_TIMEOUT'].includes(String(error?.code || ''))) throw error;
+            next.textContent = currentLocale() === 'bn' ? 'আপলোড যাচাই হচ্ছে…' : 'Verifying upload…';
+            const recovered = await recoverDraftPhoto(draft.id, draftToken);
+            if (!recovered) throw error;
+            draft = recovered;
+          }
         }
         if (selectedAudioMode === 'CUSTOM' && audioFile) {
           next.textContent = currentLocale() === 'bn' ? 'Audio যাচাই হচ্ছে…' : 'Checking audio…';

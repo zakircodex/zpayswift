@@ -162,7 +162,7 @@ if (preg_match('#^/u/([a-z0-9-]{8,100})$#D', $path, $matches) === 1) {
     echo '<link rel="icon" type="image/png" href="/assets/brand/favicon.png">';
     echo '<link rel="stylesheet" href="/znews/birthday/assets/birthday.css?v=5">';
     echo '<script defer src="/znews/birthday/assets/lib/qrcode.min.js?v=1"></script>';
-    echo '<script defer src="/znews/birthday/assets/birthday-api.js?v=4"></script>';
+    echo '<script defer src="/znews/birthday/assets/birthday-api.js?v=5"></script>';
     echo '<script defer src="/znews/birthday/assets/birthday-ad-service.js?v=1"></script>';
     echo '<script type="module" src="/znews/birthday/assets/birthday-scene.js?v=3"></script>';
     echo '<script defer src="/znews/birthday/assets/birthday-templates.js?v=5"></script>';
