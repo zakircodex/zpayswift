@@ -2977,9 +2977,14 @@ function mfs_create_receipt_for_success(string $requestId, array $row): array
     return mfs_save_receipt_for_request($requestId, $row, 'SUCCESSFUL');
 }
 
+function mfs_receipt_shows_payment_breakdown(array $receipt): bool
+{
+    return strtoupper(trim((string)($receipt['sender_role'] ?? ''))) === 'USER';
+}
+
 function mfs_public_receipt(array $receipt): array
 {
-    return [
+    $data = [
         'receipt_id' => (string)($receipt['receipt_id'] ?? ''),
         'request_id' => (string)($receipt['request_id'] ?? ''),
         'title' => (string)($receipt['title'] ?? 'Z-Pay Swift Remittance Receipt'),
@@ -3021,6 +3026,37 @@ function mfs_public_receipt(array $receipt): array
         'success_at' => (int)($receipt['success_at'] ?? $receipt['completed_at'] ?? 0),
         'receipt_url' => (string)($receipt['receipt_url'] ?? ''),
     ];
+
+    if (!mfs_receipt_shows_payment_breakdown($receipt)) {
+        unset(
+            $data['amount_myr'],
+            $data['amount_rm'],
+            $data['rate_myr_bdt'],
+            $data['rate_myr_to_bdt'],
+            $data['exchange_rate'],
+            $data['fee_amount'],
+            $data['fee_bdt'],
+            $data['fee_rm'],
+            $data['total_debit_rm']
+        );
+
+        $isMyrReceipt = strtoupper((string)($receipt['country_code'] ?? '')) === 'MY'
+            || strtoupper((string)($receipt['service_mode'] ?? $receipt['mode'] ?? '')) === 'REMITTANCE'
+            || strtoupper((string)($receipt['wallet_currency'] ?? '')) === 'MYR'
+            || (float)($receipt['amount_rm'] ?? $receipt['amount_myr'] ?? 0) > 0;
+        if ($isMyrReceipt) {
+            unset(
+                $data['total_pay'],
+                $data['total_debit'],
+                $data['wallet_debit'],
+                $data['total_pay_text'],
+                $data['total_debit_text'],
+                $data['wallet_debit_text']
+            );
+        }
+    }
+
+    return $data;
 }
 
 function mfs_load_receipt_by_token(string $token): array

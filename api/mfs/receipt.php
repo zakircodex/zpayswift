@@ -30,6 +30,7 @@ if ($receipt && function_exists('mfs_find_request')) {
 }
 $data = $receipt ? mfs_public_receipt($receipt) : [];
 $ok = !empty($data);
+$showPaymentBreakdown = $ok && mfs_receipt_shows_payment_breakdown($data);
 
 http_response_code($ok ? 200 : 404);
 header('Content-Type: text/html; charset=utf-8');
@@ -223,12 +224,16 @@ if (!$isMy && $totalBdt <= 0) {
             <div class="grid">
               <?= receipt_row('Received Amount', 'BDT ' . receipt_money($amountBdt)) ?>
               <?php if ($isMy): ?>
-                <?= receipt_row('Send Amount', 'RM ' . receipt_money($amountRm)) ?>
-                <?= receipt_row('Rate', 'RM 1 = BDT ' . receipt_money($rate)) ?>
-                <?= receipt_row('Fee', 'RM ' . receipt_money($feeRm)) ?>
-                <?= receipt_row('Total Paid', 'RM ' . receipt_money($totalRm)) ?>
+                <?php if ($showPaymentBreakdown): ?>
+                  <?= receipt_row('Send Amount', 'RM ' . receipt_money($amountRm)) ?>
+                  <?= receipt_row('Rate', 'RM 1 = BDT ' . receipt_money($rate)) ?>
+                  <?= receipt_row('Fee', 'RM ' . receipt_money($feeRm)) ?>
+                  <?= receipt_row('Total Paid', 'RM ' . receipt_money($totalRm)) ?>
+                <?php endif; ?>
               <?php else: ?>
-                <?= receipt_row('Fee', 'BDT ' . receipt_money($feeBdt)) ?>
+                <?php if ($showPaymentBreakdown): ?>
+                  <?= receipt_row('Fee', 'BDT ' . receipt_money($feeBdt)) ?>
+                <?php endif; ?>
                 <?= receipt_row('Total Paid', 'BDT ' . receipt_money($totalBdt)) ?>
               <?php endif; ?>
               <?php if (trim((string)($data['reference'] ?? '')) !== ''): ?>
