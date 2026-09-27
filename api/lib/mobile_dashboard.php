@@ -492,7 +492,9 @@ function zpay_dash_stats_for_user(string $uid): array
         'MFS_HISTORY/' . $uid . '/' . $month,
         'USER_WALLET_HISTORY/' . $uid . '/' . $month,
     ] as $path) {
-        $rows = fb_get($path);
+        // Firebase shallow reads return the same child count without downloading
+        // every transaction payload in the user's monthly history.
+        $rows = fb_get($path, ['shallow' => 'true']);
         if (is_array($rows)) {
             $count += count($rows);
         }

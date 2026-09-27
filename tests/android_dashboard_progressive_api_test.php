@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
+$firebaseHelper = (string)file_get_contents($root . '/api/lib/firebase.php');
 $mobileDashboard = (string)file_get_contents($root . '/api/lib/mobile_dashboard.php');
 $userDashboard = (string)file_get_contents($root . '/api/user/dashboard.php');
 $adminDashboard = (string)file_get_contents($root . '/api/admin/dashboard.php');
@@ -44,6 +45,26 @@ progressive_dashboard_expect(
     && str_contains($userDashboard, 'zpay_dash_dashboard_deferred_payload($auth)')
     && str_contains($userDashboard, 'zpay_dash_dashboard_payload($auth)'),
     'Dashboard scope routing or full-response compatibility is incomplete'
+);
+progressive_dashboard_expect(
+    str_contains($userDashboard, "zpay_dash_require_mobile_user(\$scope !== 'deferred')"),
+    'Deferred dashboard reads must not repeat the core request session touch'
+);
+progressive_dashboard_expect(
+    (static function () use ($mobileDashboard): bool {
+        $start = strpos($mobileDashboard, 'function zpay_dash_stats_for_user');
+        $end = strpos($mobileDashboard, 'function zpay_dash_wallet_payload');
+        $stats = substr($mobileDashboard, $start, $end - $start);
+        return str_contains($stats, "['shallow' => 'true']")
+            && !str_contains($stats, '$rows = fb_get($path);');
+    })(),
+    'Dashboard request counts must not download full monthly transaction payloads'
+);
+progressive_dashboard_expect(
+    str_contains($firebaseHelper, 'function fb_request_handle()')
+    && str_contains($firebaseHelper, 'curl_reset($handle)')
+    && str_contains($firebaseHelper, "CURLOPT_ENCODING => ''"),
+    'Firebase transport connection reuse or response compression is missing'
 );
 progressive_dashboard_expect(
     str_contains($adminDashboard, 'id="dashboardTaglineText"')

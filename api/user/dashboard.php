@@ -10,8 +10,10 @@ if ($zpayMobileAppKey !== '') {
     api_require_method('GET');
     api_require_app_key();
 
-    $auth = zpay_dash_require_mobile_user(true);
     $scope = strtolower(trim((string)($_GET['scope'] ?? 'full')));
+    // The core request immediately before deferred already records last_seen.
+    // Deferred still performs full session and user authorization checks.
+    $auth = zpay_dash_require_mobile_user($scope !== 'deferred');
 
     if ($scope === 'core') {
         api_response(true, 'DASHBOARD_CORE_OK', 'Dashboard core loaded', zpay_dash_dashboard_core_payload($auth));

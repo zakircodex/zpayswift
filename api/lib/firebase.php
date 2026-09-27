@@ -36,6 +36,20 @@ function fb_build_url(string $path, array $query = []): string
     return $base;
 }
 
+function fb_request_handle()
+{
+    static $handle = null;
+
+    if ($handle === null || $handle === false) {
+        $handle = curl_init();
+    } else {
+        // Keep libcurl's DNS, TLS and connection caches for this PHP request.
+        curl_reset($handle);
+    }
+
+    return $handle;
+}
+
 function fb_request(
     string $method,
     string $path,
@@ -44,7 +58,17 @@ function fb_request(
     array $headers = [],
     bool $includeHeaders = false
 ): array {
-    $ch = curl_init();
+    $ch = fb_request_handle();
+    if ($ch === false) {
+        return [
+            'ok' => false,
+            'status' => 0,
+            'headers' => [],
+            'body' => null,
+            'json' => null,
+            'error' => 'Unable to initialize cURL',
+        ];
+    }
 
     $finalHeaders = ['Accept: application/json'];
 
@@ -64,6 +88,7 @@ function fb_request(
         CURLOPT_TIMEOUT => 30,
         CURLOPT_HTTPHEADER => $finalHeaders,
         CURLOPT_HEADER => $includeHeaders,
+        CURLOPT_ENCODING => '',
     ]);
 
     if ($data !== null) {
@@ -74,8 +99,6 @@ function fb_request(
     $curlErr = curl_error($ch);
     $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
-
-    curl_close($ch);
 
     if ($raw === false) {
         return [
