@@ -34,6 +34,7 @@ $counts = admin_hardening_source('api/admin/topup/status_counts.php');
 $proxy = admin_hardening_source('api/admin/proxy.php');
 $dashboardJs = admin_hardening_source('api/admin/assets/dashboard.js');
 $mfsJs = admin_hardening_source('api/admin/assets/mfs-panel.js');
+$birthdayAdmin = admin_hardening_source('api/admin/birthday_admin.php');
 
 foreach ([$list, $get, $sharedUsers] as $source) {
     admin_hardening_expect(
@@ -85,6 +86,14 @@ admin_hardening_expect(
     str_contains($mfsJs, "throw new Error('Invalid response from server')"),
     'Admin MFS panel must redact non-JSON server responses.'
 );
+admin_hardening_expect(
+    str_contains($birthdayAdmin, "session_name('zawtopup_admin_v3')")
+        && str_contains($birthdayAdmin, "if (!in_array(\$method, ['GET', 'POST'], true))")
+        && str_contains($birthdayAdmin, "if (\$method === 'POST')")
+        && str_contains($birthdayAdmin, 'hash_equals($csrf, $provided)')
+        && str_contains($birthdayAdmin, 'auth_require_admin_session(true)'),
+    'Birthday admin gateway must enforce session, method, POST CSRF and canonical admin guards.'
+);
 
 $unguarded = [];
 $iterator = new RecursiveIteratorIterator(
@@ -101,6 +110,7 @@ foreach ($iterator as $file) {
     if (in_array($relative, [
         'api/admin/dashboard.php',
         'api/admin/dashboard_zpay.php',
+        'api/admin/birthday_admin.php',
         'api/admin/mfs.php',
         'api/admin/proxy.php',
     ], true)) {
