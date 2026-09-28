@@ -94,6 +94,7 @@ let usersSearchTimer = null;
 let topupSearchTimer = null;
 let supportSearchTimer = null;
 let bundleOfferSearchTimer = null;
+let adminNoticeReturnFocus = null;
 
 function resetCursorPagination(pagination){
   pagination.page = 1;
@@ -567,6 +568,95 @@ function showToast(message, type='ok'){
   wrap.appendChild(div);
 
   setTimeout(() => div.remove(), 3500);
+}
+
+function ensureAdminNotice(){
+  let wrap = document.getElementById('adminNoticeWrap');
+  if (wrap) return wrap;
+
+  wrap = document.createElement('div');
+  wrap.id = 'adminNoticeWrap';
+  wrap.className = 'admin-notice-wrap';
+  wrap.setAttribute('aria-hidden', 'true');
+  wrap.innerHTML = `
+    <section class="admin-notice" role="alertdialog" aria-modal="true" aria-labelledby="adminNoticeTitle" aria-describedby="adminNoticeMessage">
+      <div class="admin-notice-head">
+        <div>
+          <span class="admin-notice-label" id="adminNoticeLabel">Notice</span>
+          <h3 id="adminNoticeTitle">Notice</h3>
+        </div>
+        <button class="admin-notice-close" type="button" aria-label="Close message">&times;</button>
+      </div>
+      <p class="admin-notice-message" id="adminNoticeMessage"></p>
+      <div class="admin-notice-foot">
+        <button class="btn brand admin-notice-ok" type="button">OK</button>
+      </div>
+    </section>
+  `;
+
+  wrap.addEventListener('click', event => {
+    if (event.target === wrap || event.target.closest('.admin-notice-close, .admin-notice-ok')) {
+      closeAdminNotice();
+    }
+  });
+  wrap.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeAdminNotice();
+  });
+  document.body.appendChild(wrap);
+  return wrap;
+}
+
+function closeAdminNotice(){
+  const wrap = document.getElementById('adminNoticeWrap');
+  if (!wrap) return;
+
+  wrap.classList.remove('open');
+  wrap.setAttribute('aria-hidden', 'true');
+  if (adminNoticeReturnFocus && typeof adminNoticeReturnFocus.focus === 'function') {
+    adminNoticeReturnFocus.focus();
+  }
+  adminNoticeReturnFocus = null;
+}
+
+function showAdminNotice(message, options = {}){
+  const wrap = ensureAdminNotice();
+  const notice = wrap.querySelector('.admin-notice');
+  const title = wrap.querySelector('#adminNoticeTitle');
+  const label = wrap.querySelector('#adminNoticeLabel');
+  const messageNode = wrap.querySelector('#adminNoticeMessage');
+  const type = ['error', 'ok', 'info'].includes(String(options.type || 'info'))
+    ? String(options.type || 'info')
+    : 'info';
+
+  adminNoticeReturnFocus = document.activeElement instanceof HTMLElement
+    ? document.activeElement
+    : null;
+  notice.className = `admin-notice ${type}`;
+  title.textContent = String(options.title || (type === 'error' ? 'Action could not be completed' : 'Notice'));
+  label.textContent = type === 'error' ? 'Error' : (type === 'ok' ? 'Success' : 'Notice');
+  messageNode.textContent = String(message || 'Please try again.');
+  wrap.setAttribute('aria-hidden', 'false');
+  wrap.classList.add('open');
+  setTimeout(() => wrap.querySelector('.admin-notice-ok')?.focus(), 0);
+}
+
+function showAdminError(message, title = 'Action could not be completed'){
+  showAdminNotice(message || 'Please try again.', { title, type:'error' });
+}
+
+function setInlineFeedback(id, message = '', type = 'error'){
+  const node = document.getElementById(id);
+  if (!node) return;
+
+  const text = String(message || '').trim();
+  if (!text) {
+    node.textContent = '';
+    node.className = 'action-feedback hidden';
+    return;
+  }
+
+  node.textContent = text;
+  node.className = `action-feedback ${type === 'ok' ? 'ok' : 'error'}`;
 }
 
 function setLoginError(msg=''){
@@ -1065,13 +1155,13 @@ async function verifyAdminLoginOtp(){
   const trustDevice = document.getElementById('adminTrustDeviceOtp')?.checked !== false;
 
   if (!state.loginOtp.preAuthToken || !state.loginOtp.otpRequestId) {
-    alert('OTP session missing. Please login again.');
+    showAdminError('OTP session missing. Please login again.', 'Login verification unavailable');
     closeAdminOtpModal();
     return;
   }
 
   if (!/^\d{6}$/.test(otp)) {
-    alert('Please enter valid 6 digit OTP.');
+    showAdminError('Please enter a valid 6-digit OTP.', 'Check the OTP');
     return;
   }
 
@@ -1090,13 +1180,13 @@ async function verifyAdminLoginOtp(){
 
     await completeAdminLogin(data, 'Admin OTP verified successfully.');
   }catch(err){
-    alert(err.message || 'OTP verification failed');
+    showAdminError(err.message || 'OTP verification failed', 'OTP verification failed');
   }
 }
 
 async function resendAdminLoginOtp(){
   if (!state.loginOtp.preAuthToken || !state.loginOtp.otpRequestId) {
-    alert('OTP session missing. Please login again.');
+    showAdminError('OTP session missing. Please login again.', 'Login verification unavailable');
     closeAdminOtpModal();
     return;
   }
@@ -1122,7 +1212,7 @@ async function resendAdminLoginOtp(){
 
     showToast('OTP resent successfully', 'info');
   }catch(err){
-    alert(err.message || 'Failed to resend OTP');
+    showAdminError(err.message || 'Failed to resend OTP', 'OTP could not be resent');
   }
 }
 
@@ -1412,7 +1502,7 @@ async function refreshCurrentView(silent = false){
     }
 
     if (!silent) {
-      alert(err.message || 'Refresh failed');
+      showAdminError(err.message || 'Refresh failed', 'Dashboard refresh failed');
     }
 
     log(err.message || 'Refresh failed');
@@ -1665,7 +1755,7 @@ async function viewTopup(requestId){
       `
     );
   }catch(err){
-    alert(err.message || 'Failed to load topup details');
+    showAdminError(err.message || 'Failed to load topup details', 'Top-up details unavailable');
   }
 }
 
@@ -1808,7 +1898,7 @@ async function submitBundleAction(type){
   const message = document.getElementById('bundleMessage')?.value.trim() || '';
 
   if (!requestId){
-    alert('Request ID not found');
+    showAdminError('Request ID not found', 'Bundle request unavailable');
     return;
   }
 
@@ -1852,7 +1942,7 @@ async function submitBundleAction(type){
       loadUsers({ busy:false, silentLog:true })
     ]);
   }catch(err){
-    alert(err.message || 'Bundle action failed');
+    showAdminError(err.message || 'Bundle action failed', 'Bundle action failed');
   }finally{
     submitLocks[lockKey] = false;
     setActionBtnLoading('bundleSubmitBtn', false);
@@ -2174,32 +2264,32 @@ async function saveBundleOffer(){
   const note = document.getElementById('bundleOfferNote')?.value.trim() || '';
 
   if (!bundleName) {
-    alert('Bundle name is required');
+    showAdminError('Bundle name is required', 'Check bundle details');
     return;
   }
 
   if (!operator) {
-    alert('Operator is required');
+    showAdminError('Operator is required', 'Check bundle details');
     return;
   }
 
   if (priceAmount <= 0) {
-    alert('Offer price must be greater than zero');
+    showAdminError('Offer price must be greater than zero', 'Check bundle price');
     return;
   }
 
   if (adminCommission < 0) {
-    alert('Commission cannot be negative');
+    showAdminError('Commission cannot be negative', 'Check commission');
     return;
   }
 
   if (adminCommission > priceAmount) {
-    alert('Commission cannot be greater than offer price');
+    showAdminError('Commission cannot be greater than offer price', 'Check commission');
     return;
   }
 
   if (durationValue <= 0) {
-    alert('Duration value must be greater than zero');
+    showAdminError('Duration value must be greater than zero', 'Check bundle duration');
     return;
   }
 
@@ -2265,7 +2355,7 @@ async function saveBundleOffer(){
 
     await loadBundleOffers({ busy:false, silentLog:true });
   }catch(err){
-    alert(err.message || 'Failed to save bundle offer');
+    showAdminError(err.message || 'Failed to save bundle offer', 'Bundle offer was not saved');
   }finally{
     submitLocks[lockKey] = false;
     setActionBtnLoading('bundleOfferSaveBtn', false);
@@ -2276,7 +2366,7 @@ async function expireBundleOffer(offerId){
   offerId = String(offerId || '').trim();
 
   if (!offerId) {
-    alert('Offer ID not found');
+    showAdminError('Offer ID not found', 'Bundle offer unavailable');
     return;
   }
 
@@ -2338,7 +2428,7 @@ async function expireBundleOffer(offerId){
 
     await loadBundleOffers({ busy:false, silentLog:true });
   }catch(err){
-    alert(err.message || 'Failed to expire bundle offer');
+    showAdminError(err.message || 'Failed to expire bundle offer', 'Bundle offer was not expired');
   }
 }
 
@@ -2346,7 +2436,7 @@ async function deleteBundleOffer(offerId){
   offerId = String(offerId || '').trim();
 
   if (!offerId) {
-    alert('Offer ID not found');
+    showAdminError('Offer ID not found', 'Bundle offer unavailable');
     return;
   }
 
@@ -2361,7 +2451,7 @@ async function deleteBundleOffer(offerId){
 
     await loadBundleOffers({ busy:false, silentLog:true });
   }catch(err){
-    alert(err.message || 'Failed to delete bundle offer');
+    showAdminError(err.message || 'Failed to delete bundle offer', 'Bundle offer was not deleted');
   }
 }
 
@@ -2712,7 +2802,7 @@ async function viewUser(uid){
       `
     );
   }catch(err){
-    alert(err.message || 'Failed to load user');
+    showAdminError(err.message || 'Failed to load user', 'User details unavailable');
   }
 }
 
@@ -2839,7 +2929,7 @@ async function openEditUserModal(uid){
 
     syncEditUserRoleFields();
   }catch(err){
-    alert(err.message || 'Failed to load user for edit');
+    showAdminError(err.message || 'Failed to load user for edit', 'User editor unavailable');
   }
 }
 
@@ -2939,12 +3029,12 @@ async function submitEditUser(confirmCurrencyConversion = false){
     }
   }catch(err){
     if (err.code === 'EMAIL_EXISTS') {
-      alert('This email is already registered.');
+      showAdminError('This email is already registered.', 'Email already in use');
       return;
     }
 
     if (err.code === 'ACCOUNT_REVIEW_ALREADY_DECIDED' || err.code === 'ACCOUNT_REVIEW_CONFLICT') {
-      alert(err.message || 'Account review was already completed.');
+      showAdminError(err.message || 'Account review was already completed.', 'Account review changed');
       await loadUsers({ busy:false, silentLog:true });
 
       const drawer = document.getElementById('drawer');
@@ -2954,7 +3044,7 @@ async function submitEditUser(confirmCurrencyConversion = false){
       return;
     }
 
-    alert(err.message || 'Failed to update user');
+    showAdminError(err.message || 'Failed to update user', 'User was not updated');
   }
 }
 
@@ -2982,7 +3072,7 @@ async function approveUserAccount(uid){
     }
   } catch (err) {
     if (err.code === 'ACCOUNT_REVIEW_ALREADY_DECIDED' || err.code === 'ACCOUNT_REVIEW_CONFLICT') {
-      alert(err.message || 'Account review was already completed.');
+      showAdminError(err.message || 'Account review was already completed.', 'Account review changed');
       await loadUsers({ busy:false, silentLog:true });
 
       const drawer = document.getElementById('drawer');
@@ -2992,7 +3082,7 @@ async function approveUserAccount(uid){
       return;
     }
 
-    alert(err.message || 'Failed to approve account');
+    showAdminError(err.message || 'Failed to approve account', 'Account was not approved');
   }
 }
 
@@ -3015,7 +3105,7 @@ async function rejectUserAccount(uid){
     }
   } catch (err) {
     if (err.code === 'ACCOUNT_REVIEW_ALREADY_DECIDED' || err.code === 'ACCOUNT_REVIEW_CONFLICT') {
-      alert(err.message || 'Account review was already completed.');
+      showAdminError(err.message || 'Account review was already completed.', 'Account review changed');
       await loadUsers({ busy:false, silentLog:true });
 
       const drawer = document.getElementById('drawer');
@@ -3025,7 +3115,7 @@ async function rejectUserAccount(uid){
       return;
     }
 
-    alert(err.message || 'Failed to reject account');
+    showAdminError(err.message || 'Failed to reject account', 'Account was not rejected');
   }
 }
 
@@ -3181,16 +3271,16 @@ function openCreateUserModal(){
         await loadUsers({ busy:false, silentLog:true });
       } catch (err) {
         if (err.code === 'PHONE_EXISTS') {
-          alert('This phone number is already registered.');
+          showAdminError('This phone number is already registered.', 'Phone already in use');
           return;
         }
 
         if (err.code === 'EMAIL_EXISTS') {
-          alert('This email is already registered.');
+          showAdminError('This email is already registered.', 'Email already in use');
           return;
         }
 
-        alert(err.message || 'Failed to create user');
+        showAdminError(err.message || 'Failed to create user', 'User was not created');
       }
     };
   }
@@ -3206,7 +3296,7 @@ async function openUserApiKeys(uid){
     const role = String(user.role || 'USER').toUpperCase();
 
     if (!canManageApiKeys(role)) {
-      alert('Only SUBADMIN or ADMIN can use API keys.');
+      showAdminError('Only SUBADMIN or ADMIN can use API keys.', 'API keys unavailable');
       return;
     }
 
@@ -3281,7 +3371,7 @@ async function openUserApiKeys(uid){
       `
     );
   }catch(err){
-    alert(err.message || 'Failed to load API keys');
+    showAdminError(err.message || 'Failed to load API keys', 'API keys unavailable');
   }
 }
 
@@ -3292,16 +3382,17 @@ async function createUserApiKey(uid){
   try{
     const data = await proxyPost('subapi_create_key', { uid }, true, { busyText:'Creating API key...' });
 
-    alert(
+    showAdminNotice(
       'API key created successfully.\n\n' +
       'Save this key now. It may not be shown again in full form.\n\n' +
-      (data.plain_key || '')
+      (data.plain_key || ''),
+      { title:'API key created', type:'ok' }
     );
 
     showToast('API key created', 'ok');
     await openUserApiKeys(uid);
   }catch(err){
-    alert(err.message || 'Failed to create API key');
+    showAdminError(err.message || 'Failed to create API key', 'API key was not created');
   }
 }
 
@@ -3319,7 +3410,7 @@ async function updateUserApiKeyStatus(uid, keyId, status){
     showToast(`API key ${status}`, 'ok');
     await openUserApiKeys(uid);
   }catch(err){
-    alert(err.message || 'Failed to update API key status');
+    showAdminError(err.message || 'Failed to update API key status', 'API key was not updated');
   }
 }
 
@@ -3347,6 +3438,7 @@ function openWalletAction(type, uid){
     type === 'add' ? 'Add Balance' : 'Deduct Balance',
     `
       <div class="form-grid user-wallet-form">
+        <div class="form-full action-feedback hidden" id="walletActionFeedback" role="alert" aria-live="assertive"></div>
         <div class="form-full">
           <label>UID</label>
           <input class="input" id="walletUid" value="${esc(uid)}" readonly>
@@ -3373,6 +3465,17 @@ async function submitWalletAction(type){
   const amount = Number(document.getElementById('walletAmount')?.value || 0);
   const note = document.getElementById('walletNote')?.value.trim() || '';
   const actionId = document.getElementById('walletActionId')?.value.trim() || '';
+
+  setInlineFeedback('walletActionFeedback');
+  if (!uid) {
+    setInlineFeedback('walletActionFeedback', 'User account could not be identified. Close this window and try again.');
+    return;
+  }
+  if (!Number.isFinite(amount) || amount <= 0) {
+    setInlineFeedback('walletActionFeedback', 'Enter an amount greater than zero.');
+    document.getElementById('walletAmount')?.focus();
+    return;
+  }
 
   try{
     const action = type === 'add' ? 'wallet_add' : 'wallet_deduct_send_otp';
@@ -3408,11 +3511,18 @@ async function submitWalletAction(type){
     await viewUser(uid);
   }catch(err){
     if (err.code === 'INSUFFICIENT_BALANCE') {
-      alert(`Not enough available balance.\nAvailable: ${money(err.data.available_balance)}\nRequired: ${money(err.data.required_amount)}`);
+      setInlineFeedback(
+        'walletActionFeedback',
+        `Not enough available balance. Available: ${money(err.data.available_balance)}. Required: ${money(err.data.required_amount)}.`
+      );
       return;
     }
 
-    alert(err.message || 'Wallet action failed');
+    const finalizationPending = ['TRANSFER_HISTORY_FAILED', 'FINANCIAL_OPERATION_FINALIZATION_FAILED'].includes(String(err.code || ''));
+    const message = finalizationPending
+      ? 'The balance was updated, but its transaction record still needs finalization. Do not create a new request. Press Submit again in this window to safely retry the same operation.'
+      : (err.message || 'Wallet action failed');
+    setInlineFeedback('walletActionFeedback', message);
   }
 }
 
@@ -3531,7 +3641,7 @@ async function openLedger(uid){
       `<button class="btn ghost" onclick="closeModal()">Close</button>`
     );
   }catch(err){
-    alert(err.message || 'Failed to load ledger');
+    showAdminError(err.message || 'Failed to load ledger', 'Ledger unavailable');
   }
 }
 
@@ -3776,7 +3886,7 @@ function renderOperators(){
 async function editTopupCountry(code){
   const item = (state.topupCountries || []).find(row => String(row.code || '') === String(code || ''));
   if (!item) {
-    alert('Country not found');
+    showAdminError('Country not found', 'Country unavailable');
     return;
   }
 
@@ -3845,7 +3955,7 @@ async function saveTopupCountry(){
     showToast(`Country ${body.code} saved`, 'ok');
     await loadOperators({ busy:false, silentLog:true });
   }catch(err){
-    alert(err.message || 'Failed to save country');
+    showAdminError(err.message || 'Failed to save country', 'Country was not saved');
   }
 }
 
@@ -3976,7 +4086,7 @@ async function editOperator(operator){
     );
     setModalPresentationScope('operator-settings');
   }catch(err){
-    alert(err.message || 'Failed to load operator');
+    showAdminError(err.message || 'Failed to load operator', 'Operator unavailable');
   }
 }
 
@@ -4000,7 +4110,7 @@ async function saveOperator(){
   };
 
   if(body.requires_secret_pin && body.retailer_secret_pin === '' && retailerPinInput?.dataset.pinSet !== 'true'){
-    alert('Retailer PIN is required.');
+    showAdminError('Retailer PIN is required.', 'Check operator settings');
     retailerPinInput?.focus();
     return;
   }
@@ -4015,7 +4125,7 @@ async function saveOperator(){
 
     await loadOperators({ busy:false, silentLog:true });
   }catch(err){
-    alert(err.message || 'Failed to save operator');
+    showAdminError(err.message || 'Failed to save operator', 'Operator was not saved');
   }
 }
 
@@ -4183,7 +4293,7 @@ function viewWorkerStatus(deviceId){
   const worker = findWorkerByDeviceId(deviceId);
 
   if (!worker){
-    alert('Worker not found');
+    showAdminError('Worker not found', 'Worker unavailable');
     return;
   }
 
@@ -4553,7 +4663,7 @@ async function submitTopupAction(type){
   const message = document.getElementById('topupMessage')?.value.trim() || '';
 
   if (!requestId){
-    alert('Request ID not found');
+    showAdminError('Request ID not found', 'Top-up request unavailable');
     return;
   }
 
@@ -4598,7 +4708,7 @@ async function submitTopupAction(type){
       loadUsers({ busy:false, silentLog:true })
     ]);
   }catch(err){
-    alert(err.message || 'Topup action failed');
+    showAdminError(err.message || 'Topup action failed', 'Top-up action failed');
   }finally{
     submitLocks[lockKey] = false;
     setActionBtnLoading('topupSubmitBtn', false);
@@ -4794,7 +4904,7 @@ async function openAppConfigModal(){
     );
     setModalPresentationScope('system-settings');
   }catch(err){
-    alert(err.message || 'Failed to load system settings');
+    showAdminError(err.message || 'Failed to load system settings', 'System settings unavailable');
   }
 }
 
@@ -4827,7 +4937,7 @@ async function saveAppConfig(){
 
     await loadAppConfigStatus({ busy:false });
   }catch(err){
-    alert(err.message || 'Failed to save system settings');
+    showAdminError(err.message || 'Failed to save system settings', 'System settings were not saved');
   }
 }
 
@@ -4910,7 +5020,7 @@ async function submitDirectTopup(){
       loadUsers({ busy:false, silentLog:true })
     ]);
   }catch(err){
-    alert(err.message || 'Failed to create direct topup');
+    showAdminError(err.message || 'Failed to create direct topup', 'Direct top-up was not created');
   }
 }
 

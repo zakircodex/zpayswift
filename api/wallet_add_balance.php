@@ -485,44 +485,13 @@ $transfer = [
     'commission_amount' => 0.0,
 ];
 
-$receiverLedger = wallet_transfer_history_row($transfer, 'CREDIT', $ledgerId);
-$receiverLedger['legacy_type'] = $isSubadminTransfer
-    ? 'SUBADMIN_CREDIT_WITH_COMMISSION'
-    : 'ADMIN_CREDIT_WITH_COMMISSION';
-$receiverLedger['base_amount'] = $amount;
-$receiverLedger['total_credit'] = $totalCredit;
-$receiverLedger['note'] = $finalNote;
-$receiverLedger['ref_id'] = $transfer['reference'];
-
-$ledgerRows = [[
-    'uid' => $targetUid,
-    'row' => $receiverLedger,
-]];
-
-if ($isSubadminTransfer) {
-    $senderLedger = wallet_transfer_history_row($transfer, 'DEBIT', $actorLedgerId);
-    $senderLedger['legacy_type'] = 'SUBADMIN_TRANSFER_OUT';
-    $senderLedger['base_amount'] = $amount;
-    $senderLedger['total_debit'] = $totalCredit;
-    $senderLedger['target_uid'] = $targetUid;
-    $senderLedger['target_name'] = $receiverIdentity['name'];
-    $senderLedger['target_phone'] = $receiverIdentity['phone'];
-    $senderLedger['note'] = 'Balance transferred to user/retailer | ' . $finalNote;
-    $senderLedger['ref_id'] = $transfer['reference'];
-    $ledgerRows[] = [
-        'uid' => $actorUid,
-        'row' => $senderLedger,
-    ];
-}
-
-$historyResult = wallet_store_transfer_records($transfer, $ledgerRows);
+$historyResult = wallet_store_transfer_records($transfer);
 if (!($historyResult['ok'] ?? false)) {
     wallet_financial_operation_mark_failed($financialClaim, 'TRANSFER_HISTORY_FAILED', 'Wallet transfer history write failed', [
         'wallet_applied' => true,
         'source_debited' => $isSubadminTransfer,
         'target_credited' => true,
         'transfer' => $transfer,
-        'ledger_rows' => $ledgerRows,
     ]);
 
     if (function_exists('system_log')) {

@@ -179,4 +179,55 @@ assert_true(!empty($retryRefund['ok']), 'wallet-applied ledger failure should re
 assert_true((float)fb_get('USER_WALLETS/' . $uid)['available_balance'] === 140.00, 'ledger-failed refund should not repeat on retry');
 assert_true(ledger_count($uid) === 3, 'ledger repair should write one deterministic refund row');
 
+$adminTargetUid = 'U_ADMIN_HISTORY';
+$adminTransferId = 'WTR_ADMIN_HISTORY';
+$adminLedgerId = 'LEDGER_ADMIN_HISTORY';
+$adminReference = 'ADMIN_HISTORY_REF';
+$adminLedgerPath = 'WALLET_LEDGER/' . $adminTargetUid . '/' . month_key() . '/' . $adminLedgerId;
+$adminLedger = [
+    'ledger_id' => $adminLedgerId,
+    'uid' => $adminTargetUid,
+    'type' => 'ADMIN_BALANCE_ADD',
+    'direction' => 'CREDIT',
+    'amount' => 12.50,
+    'currency' => 'BDT',
+    'ref_id' => $adminReference,
+    'status' => 'DONE',
+    'created_at' => now_ts(),
+];
+fb_put($adminLedgerPath, $adminLedger);
+
+$adminTransfer = [
+    'transfer_id' => $adminTransferId,
+    'ledger_id' => $adminLedgerId,
+    'receiver_ledger_id' => $adminLedgerId,
+    'sender_ledger_id' => '',
+    'type' => 'ADMIN_BALANCE_ADD',
+    'direction' => 'CREDIT',
+    'amount' => 12.50,
+    'currency' => 'BDT',
+    'sender_uid' => 'ADMIN',
+    'sender_role' => 'ADMIN',
+    'receiver_uid' => $adminTargetUid,
+    'receiver_role' => 'USER',
+    'receiver_before_available' => 40.00,
+    'receiver_after_available' => 52.50,
+    'receiver_before_hold' => 0.00,
+    'receiver_after_hold' => 0.00,
+    'sender_wallet_debited' => false,
+    'reference' => $adminReference,
+    'ref_id' => $adminReference,
+    'created_at' => now_ts(),
+];
+
+$adminHistory = wallet_store_transfer_records($adminTransfer);
+assert_true(!empty($adminHistory['ok']), 'admin balance history should finalize without rewriting its existing ledger');
+assert_true((string)(fb_get($adminLedgerPath)['type'] ?? '') === 'ADMIN_BALANCE_ADD', 'admin balance ledger type must remain unchanged');
+assert_true(is_array(fb_get('WALLET_TRANSFERS/' . month_key() . '/' . $adminTransferId)), 'admin transfer audit should be stored');
+assert_true(is_array(fb_get('USER_WALLET_HISTORY/' . $adminTargetUid . '/' . month_key() . '/' . $adminTransferId)), 'admin receiver history should be stored');
+
+$adminHistoryReplay = wallet_store_transfer_records($adminTransfer);
+assert_true(!empty($adminHistoryReplay['ok']), 'admin balance history retry should be idempotent');
+assert_true((string)(fb_get($adminLedgerPath)['type'] ?? '') === 'ADMIN_BALANCE_ADD', 'admin history retry must not replace the original ledger');
+
 echo "wallet idempotency tests passed\n";
