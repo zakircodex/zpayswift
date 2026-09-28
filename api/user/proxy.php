@@ -3200,6 +3200,7 @@ function user_proxy_create_bundle_request(string $uid, string $offerId, string $
         'wallet_debit_amount' => $walletHoldAmount,
         'wallet_debit_currency' => $bundleFinancials['wallet_currency'],
         'wallet_currency' => $bundleFinancials['wallet_currency'],
+        'balance_after' => user_proxy_round_money((float)($hold['after_available'] ?? $hold['available_balance'] ?? 0)),
         'rate_used' => $bundleFinancials['rate_used'],
         'hold_settled_at' => 0,
         'hold_settlement_status' => 'PENDING',

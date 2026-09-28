@@ -373,6 +373,7 @@ $extra = [
     'wallet_debit_amount' => $walletDebit,
     'wallet_debit_currency' => $walletCurrency,
     'wallet_currency' => $walletCurrency,
+    'balance_after' => bundle_round_money((float)($hold['after_available'] ?? $hold['available_balance'] ?? 0)),
     'rate_used' => (float)($data['rate_used'] ?? 0),
     'rate_snapshot' => $data['rate_snapshot'] ?? null,
     'rate_applicable' => (bool)($data['rate_applicable'] ?? false),

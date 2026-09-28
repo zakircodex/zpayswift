@@ -2071,6 +2071,13 @@ function bundle_write_history(array $done): bool
         'completed_at' => (int)($done['completed_at'] ?? bundle_now()),
     ];
 
+    foreach (['balance_after', 'wallet_balance_after', 'balance_after_amount', 'last_balance', 'after_balance'] as $key) {
+        if (array_key_exists($key, $done) && is_numeric($done[$key])) {
+            $historyRow['balance_after'] = bundle_round_money((float)$done[$key]);
+            break;
+        }
+    }
+
     return fb_put('BUNDLE_HISTORY/' . $uid . '/' . bundle_month_key() . '/' . $requestId, bundle_with_financial_aliases($historyRow));
 }
 
@@ -2158,6 +2165,13 @@ function bundle_update_subadmin_request_log(array $row, string $status, string $
         'updated_at' => $now,
         'completed_at' => $now,
     ];
+
+    foreach (['balance_after', 'wallet_balance_after', 'balance_after_amount', 'last_balance', 'after_balance'] as $key) {
+        if (array_key_exists($key, $row) && is_numeric($row[$key])) {
+            $patch['balance_after'] = bundle_round_money((float)$row[$key]);
+            break;
+        }
+    }
     $patch = bundle_with_financial_aliases($patch);
 
     /*
@@ -2804,6 +2818,10 @@ function bundle_mark_failed(string $requestId, string $message): array
     $done['commission_credited_at'] = 0;
     $done['user_commission_credited'] = false;
     $done['subadmin_profit_credited'] = false;
+    $refundBalanceAfter = $refund['after_available'] ?? $refund['available_balance'] ?? null;
+    if (is_numeric($refundBalanceAfter)) {
+        $done['balance_after'] = bundle_round_money((float)$refundBalanceAfter);
+    }
 
     if (!fb_put('BUNDLE_REQUESTS/DONE/' . $requestId, $done)) {
         if (function_exists('wallet_financial_operation_mark_failed')) {
