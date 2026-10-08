@@ -29,7 +29,11 @@ resolve_php() {
   return 1
 }
 
-[[ -d "$REPOSITORY_ROOT/.git" ]] || fail 'the isolated repository is unavailable'
+[[ -e "$REPOSITORY_ROOT/.git" ]] || fail 'the isolated repository is unavailable'
+[[ "$(/usr/bin/git -C "$REPOSITORY_ROOT" rev-parse --is-inside-work-tree)" == "true" ]] \
+  || fail 'the isolated repository is not a Git worktree'
+[[ "$(/usr/bin/git -C "$REPOSITORY_ROOT" rev-parse --show-toplevel)" == "$REPOSITORY_ROOT" ]] \
+  || fail 'the Git worktree root does not match the isolated repository'
 [[ "$(cd "$REPOSITORY_ROOT" && pwd -P)" == "$REPOSITORY_ROOT" ]] \
   || fail 'the repository path did not resolve to the isolated checkout'
 [[ "$(/usr/bin/git -C "$REPOSITORY_ROOT" branch --show-current)" == "$EXPECTED_BRANCH" ]] \
