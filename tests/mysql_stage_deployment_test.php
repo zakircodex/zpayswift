@@ -26,8 +26,9 @@ stage_deploy_expect(
 stage_deploy_expect(
     str_contains($script, 'REPOSITORY_ROOT="/home/zedpayhe/repositories/zpayswift-stage"')
         && str_contains($script, 'PUBLIC_ROOT="/home/zedpayhe/stage.zpayswift.com"')
-        && str_contains($script, 'EXPECTED_BRANCH="codex/mysql-stage"'),
-    'the deployer is not pinned to the isolated repository, branch and document root'
+        && str_contains($script, 'EXPECTED_BRANCH="cpanel/mysql-stage"')
+        && str_contains($script, 'EXPECTED_UPSTREAM="origin/codex/mysql-stage"'),
+    'the deployer is not pinned to the isolated repository, branch, upstream and document root'
 );
 stage_deploy_expect(
     str_contains($script, 'constant("APP_ENVIRONMENT") === "stage"')

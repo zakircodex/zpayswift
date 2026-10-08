@@ -6,7 +6,8 @@ PUBLIC_ROOT="/home/zedpayhe/stage.zpayswift.com"
 PRIVATE_ROOT="/home/zedpayhe/private/zpayswift-stage"
 RUNTIME_CONFIG="$PRIVATE_ROOT/config.php"
 AUTH_FILE="/home/zedpayhe/.htpasswds/stage.zpayswift.com/passwd"
-EXPECTED_BRANCH="codex/mysql-stage"
+EXPECTED_BRANCH="cpanel/mysql-stage"
+EXPECTED_UPSTREAM="origin/codex/mysql-stage"
 
 fail() {
   printf 'Stage deployment refused: %s\n' "$1" >&2
@@ -33,6 +34,8 @@ resolve_php() {
   || fail 'the repository path did not resolve to the isolated checkout'
 [[ "$(/usr/bin/git -C "$REPOSITORY_ROOT" branch --show-current)" == "$EXPECTED_BRANCH" ]] \
   || fail 'the isolated MySQL branch is not checked out'
+[[ "$(/usr/bin/git -C "$REPOSITORY_ROOT" rev-parse --abbrev-ref '@{upstream}')" == "$EXPECTED_UPSTREAM" ]] \
+  || fail 'the isolated MySQL branch does not track the approved remote branch'
 [[ "$PUBLIC_ROOT" == "/home/zedpayhe/stage.zpayswift.com" ]] \
   || fail 'the public target is not the stage document root'
 [[ "$PUBLIC_ROOT" != "/home/zedpayhe/public_html" ]] \
