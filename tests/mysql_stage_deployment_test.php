@@ -1,0 +1,65 @@
+<?php
+declare(strict_types=1);
+
+function stage_deploy_expect(bool $condition, string $message): void
+{
+    if (!$condition) {
+        fwrite(STDERR, "FAIL: {$message}\n");
+        exit(1);
+    }
+}
+
+$root = dirname(__DIR__);
+$cpanel = (string) file_get_contents($root . '/.cpanel.yml');
+$script = (string) file_get_contents($root . '/scripts/deploy_mysql_stage.sh');
+$readme = (string) file_get_contents($root . '/database/mysql/README.md');
+
+stage_deploy_expect(
+    str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift-stage/scripts/deploy_mysql_stage.sh'),
+    'cPanel does not invoke the isolated stage deployer'
+);
+stage_deploy_expect(
+    !str_contains($cpanel, '/home/zedpayhe/public_html')
+        && !str_contains($cpanel, 'REPOPATH=/home/zedpayhe/repositories/zpayswift;'),
+    'the stage cPanel contract still targets production'
+);
+stage_deploy_expect(
+    str_contains($script, 'REPOSITORY_ROOT="/home/zedpayhe/repositories/zpayswift-stage"')
+        && str_contains($script, 'PUBLIC_ROOT="/home/zedpayhe/stage.zpayswift.com"')
+        && str_contains($script, 'EXPECTED_BRANCH="codex/mysql-stage"'),
+    'the deployer is not pinned to the isolated repository, branch and document root'
+);
+stage_deploy_expect(
+    str_contains($script, 'constant("APP_ENVIRONMENT") === "stage"')
+        && str_contains($script, 'constant("DATASTORE_DRIVER") === "mysql"')
+        && str_contains($script, 'zpay_mysql_assert_environment("STAGE")'),
+    'the deployer does not fail closed on the private runtime and database guards'
+);
+stage_deploy_expect(
+    str_contains($script, 'Live outbound integration is enabled in stage.')
+        && str_contains($script, 'SMSS360_API_KEY')
+        && str_contains($script, 'TELEGRAM_BOT_TOKEN'),
+    'the deployer does not reject enabled live outbound integrations'
+);
+stage_deploy_expect(
+    str_contains($script, '# BEGIN ZPAY STAGE AUTH')
+        && str_contains($script, 'AuthUserFile /home/zedpayhe/.htpasswds/stage.zpayswift.com/passwd')
+        && str_contains($script, 'Require valid-user'),
+    'Basic Auth is not injected before stage promotion'
+);
+stage_deploy_expect(
+    !str_contains($script, 'rm -f -- "$PUBLIC_ROOT/.stage-not-ready"')
+        && !str_contains($script, 'rm -rf -- "$PUBLIC_ROOT"'),
+    'the stage deployer may remove the release lock or document root'
+);
+stage_deploy_expect(
+    str_contains($script, 'done < "$PUBLIC_ROOT/.deploy-manifest"')
+        && !str_contains($script, 'find "$PUBLIC_ROOT" -type f -exec chmod'),
+    'permissions are not scoped to deployment-owned files'
+);
+stage_deploy_expect(
+    str_contains($readme, 'never removes `.stage-not-ready`'),
+    'the manual stage unlock boundary is undocumented'
+);
+
+echo "mysql stage deployment tests passed\n";

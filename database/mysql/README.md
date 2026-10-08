@@ -51,3 +51,15 @@ run; added or removed source trees make the run fail closed and require another
 reconciliation pass. Query parity checks separately cover shallow reads,
 ordered windows and limits against the live Firebase source.
 The final cutover remains a separate, explicitly scheduled maintenance step.
+
+## Stage deployment
+
+The `codex/mysql-stage` branch has a staging-only `.cpanel.yml`. It invokes
+`scripts/deploy_mysql_stage.sh`, which refuses any repository, branch or public
+root other than the isolated stage paths. Before promotion it verifies the
+private MySQL runtime, the `STAGE` database guard and disabled outbound
+integrations, then injects password protection into the deployment package.
+The password file stays outside both Git and the document root.
+
+The deployer never removes `.stage-not-ready`. Removing that lock is a separate
+manual release decision after DNS, TLS, authentication and smoke tests pass.
