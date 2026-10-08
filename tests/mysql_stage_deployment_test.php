@@ -13,6 +13,7 @@ $root = dirname(__DIR__);
 $cpanel = (string) file_get_contents($root . '/.cpanel.yml');
 $script = (string) file_get_contents($root . '/scripts/deploy_mysql_stage.sh');
 $readme = (string) file_get_contents($root . '/database/mysql/README.md');
+$productionDeployTest = (string) file_get_contents($root . '/tests/cpanel_push_deployment_test.php');
 
 stage_deploy_expect(
     str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift-stage/scripts/deploy_mysql_stage.sh'),
@@ -61,6 +62,11 @@ stage_deploy_expect(
 stage_deploy_expect(
     str_contains($readme, 'never removes `.stage-not-ready`'),
     'the manual stage unlock boundary is undocumented'
+);
+stage_deploy_expect(
+    str_contains($productionDeployTest, "['codex/mysql-stage', 'cpanel/mysql-stage']")
+        && str_contains($productionDeployTest, 'allowed only on an isolated MySQL stage branch'),
+    'the production deployment contract does not constrain the stage cPanel exception'
 );
 
 echo "mysql stage deployment tests passed\n";

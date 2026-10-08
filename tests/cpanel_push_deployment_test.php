@@ -18,6 +18,27 @@ function deploy_expect(bool $condition, string $message): void
     }
 }
 
+function deploy_current_branch(string $root): string
+{
+    $gitPath = $root . '/.git';
+    if (is_file($gitPath)) {
+        $pointer = trim((string) file_get_contents($gitPath));
+        if (str_starts_with($pointer, 'gitdir: ')) {
+            $gitPath = substr($pointer, 8);
+            if (!str_starts_with($gitPath, '/') && preg_match('/^[A-Za-z]:[\\\\\/]/', $gitPath) !== 1) {
+                $gitPath = $root . '/' . $gitPath;
+            }
+        }
+    }
+
+    $head = is_dir($gitPath) ? trim((string) @file_get_contents($gitPath . '/HEAD')) : '';
+    if (str_starts_with($head, 'ref: refs/heads/')) {
+        return substr($head, strlen('ref: refs/heads/'));
+    }
+
+    return trim((string) (getenv('GITHUB_HEAD_REF') ?: getenv('GITHUB_REF_NAME') ?: ''));
+}
+
 deploy_expect(str_contains($workflow, 'workflow_dispatch:'), 'Production deployment must require an explicit manual run.');
 deploy_expect(str_contains($workflow, 'environment: production'), 'Protected production environment is missing.');
 deploy_expect(str_contains($workflow, 'ref: main'), 'Deployment must check out main.');
@@ -60,7 +81,24 @@ deploy_expect(
 deploy_expect(str_contains($shellPromoter, '.deploy-manifest.next'), 'cPanel shell promotion must atomically publish its manifest.');
 deploy_expect(str_contains($buildScript, 'deployment_manifest_diff.php'), 'Deployment package manifest validation is missing.');
 deploy_expect(str_contains($buildScript, 'outside an approved staging directory') && str_contains($buildScript, 'must not contain symbolic links'), 'Deployment package cleanup and symlink guards are incomplete.');
-deploy_expect(str_contains($cpanel, 'build_public_deployment.sh') && str_contains($cpanel, 'promote_public_deployment.sh'), 'cPanel deployment must use the guarded release scripts.');
+$stageDeployment = str_contains($cpanel, 'deploy_mysql_stage.sh');
+if ($stageDeployment) {
+    deploy_expect(
+        in_array(deploy_current_branch($root), ['codex/mysql-stage', 'cpanel/mysql-stage'], true),
+        'The staging cPanel target is allowed only on an isolated MySQL stage branch.'
+    );
+    deploy_expect(
+        str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift-stage/scripts/deploy_mysql_stage.sh')
+            && !str_contains($cpanel, '/home/zedpayhe/public_html'),
+        'The staging cPanel target is not isolated from production.'
+    );
+} else {
+    deploy_expect(
+        str_contains($cpanel, 'build_public_deployment.sh')
+            && str_contains($cpanel, 'promote_public_deployment.sh'),
+        'cPanel deployment must use the guarded production release scripts.'
+    );
+}
 deploy_expect(str_contains($rootRewrite, '%{DOCUMENT_ROOT}/.deploy-in-progress'), 'Public traffic is not locked during promotion.');
 deploy_expect(str_contains($buildScript, 'deploy_version.txt'), 'Commit marker generation is missing.');
 deploy_expect(str_contains($workflow, 'Verify deployed commit'), 'Post-upload live verification is missing.');
