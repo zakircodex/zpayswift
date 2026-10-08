@@ -15,12 +15,27 @@ define('ADMIN_KEY', '');
 
 /* Canonical server origin used by authenticated internal HTTP calls. */
 define('APP_PUBLIC_ORIGIN', 'https://zpayswift.com');
+/* Point staging at a separate, normally absent bridge so it cannot send live SMS. */
+define('APP_PRIVATE_SMS_BRIDGE_PATH', '/home/zedpayhe/private/zpayswift/auth_sms_bridge.php');
 define('WORKER_CLAIM_LEASE_SECONDS', 180);
 
 /* Firebase Realtime Database */
 define('FIREBASE_DB_URL', 'https://example-default-rtdb.firebaseio.com');
 define('FIREBASE_AUTH', '');
 define('FIREBASE_DB_SECRET', '');
+define('FIREBASE_CONNECT_TIMEOUT_SECONDS', 15);
+define('FIREBASE_REQUEST_TIMEOUT_SECONDS', 30);
+
+/*
+ * Datastore selection. Production remains on "firebase" until staging import,
+ * reconciliation and cutover checks have completed successfully.
+ */
+define('DATASTORE_DRIVER', 'firebase'); // firebase | mysql
+define('MYSQL_DSN', 'mysql:host=localhost;dbname=cpanel_database;charset=utf8mb4');
+define('MYSQL_USER', 'cpanel_database_user');
+define('MYSQL_PASSWORD', '');
+define('MYSQL_TABLE_PREFIX', 'zps_');
+define('MYSQL_CONNECT_TIMEOUT_SECONDS', 5);
 
 /* Session and validation */
 define('SESSION_TTL_SECONDS', 60 * 60 * 24 * 7);

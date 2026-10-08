@@ -50,7 +50,16 @@ function fb_request_handle()
     return $handle;
 }
 
-function fb_request(
+function fb_datastore_driver(): string
+{
+    $driver = defined('DATASTORE_DRIVER')
+        ? strtolower(trim((string)constant('DATASTORE_DRIVER')))
+        : strtolower(trim((string)(getenv('DATASTORE_DRIVER') ?: 'firebase')));
+
+    return in_array($driver, ['firebase', 'mysql'], true) ? $driver : 'firebase';
+}
+
+function fb_firebase_request(
     string $method,
     string $path,
     mixed $data = null,
@@ -80,12 +89,19 @@ function fb_request(
         $finalHeaders[] = $header;
     }
 
+    $connectTimeout = defined('FIREBASE_CONNECT_TIMEOUT_SECONDS')
+        ? max(1, min(60, (int)constant('FIREBASE_CONNECT_TIMEOUT_SECONDS')))
+        : 15;
+    $requestTimeout = defined('FIREBASE_REQUEST_TIMEOUT_SECONDS')
+        ? max($connectTimeout, min(600, (int)constant('FIREBASE_REQUEST_TIMEOUT_SECONDS')))
+        : 30;
+
     curl_setopt_array($ch, [
         CURLOPT_URL => fb_build_url($path, $query),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CUSTOMREQUEST => strtoupper($method),
-        CURLOPT_CONNECTTIMEOUT => 15,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_CONNECTTIMEOUT => $connectTimeout,
+        CURLOPT_TIMEOUT => $requestTimeout,
         CURLOPT_HTTPHEADER => $finalHeaders,
         CURLOPT_HEADER => $includeHeaders,
         CURLOPT_ENCODING => '',
@@ -143,6 +159,22 @@ function fb_request(
         'json' => $decoded,
         'error' => null,
     ];
+}
+
+function fb_request(
+    string $method,
+    string $path,
+    mixed $data = null,
+    array $query = [],
+    array $headers = [],
+    bool $includeHeaders = false
+): array {
+    if (fb_datastore_driver() === 'mysql') {
+        require_once __DIR__ . '/mysql_firebase.php';
+        return mysql_fb_request($method, $path, $data, $query, $headers, $includeHeaders);
+    }
+
+    return fb_firebase_request($method, $path, $data, $query, $headers, $includeHeaders);
 }
 
 function fb_get(string $path, array $query = []): mixed

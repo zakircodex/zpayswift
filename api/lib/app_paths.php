@@ -73,6 +73,19 @@ function app_scheme(): string
     return app_is_https() ? 'https' : 'http';
 }
 
+function app_request_host_name(): string
+{
+    $requestHost = strtolower(trim((string)($_SERVER['HTTP_HOST'] ?? '')));
+    $host = parse_url('http://' . $requestHost, PHP_URL_HOST);
+
+    return is_string($host) ? strtolower($host) : '';
+}
+
+function app_is_stage_host(): bool
+{
+    return app_request_host_name() === 'stage.zpayswift.com';
+}
+
 function app_host(): string
 {
     $origin = app_public_origin();
@@ -112,8 +125,10 @@ function app_public_origin(): string
     }
 
     $requestHost = strtolower(trim((string)($_SERVER['HTTP_HOST'] ?? '')));
-    $requestHostName = parse_url('http://' . $requestHost, PHP_URL_HOST);
-    $requestHostName = is_string($requestHostName) ? strtolower($requestHostName) : '';
+    $requestHostName = app_request_host_name();
+    if ($requestHostName === 'stage.zpayswift.com') {
+        return 'https://stage.zpayswift.com';
+    }
     if (in_array($requestHostName, ['localhost', '127.0.0.1', '::1'], true)) {
         return app_scheme() . '://' . ($requestHost !== '' ? $requestHost : 'localhost');
     }
@@ -164,8 +179,16 @@ function app_api_root_dir(): string
 
 function app_private_config_path(): string
 {
-    if (defined('APP_PRIVATE_CONFIG_PATH') && trim((string)APP_PRIVATE_CONFIG_PATH) !== '') {
-        return trim((string)APP_PRIVATE_CONFIG_PATH);
+    $configured = defined('APP_PRIVATE_CONFIG_PATH')
+        ? trim((string)APP_PRIVATE_CONFIG_PATH)
+        : trim((string)(getenv('APP_PRIVATE_CONFIG_PATH') ?: ''));
+
+    if ($configured !== '') {
+        return $configured;
+    }
+
+    if (app_is_stage_host()) {
+        return '/home/zedpayhe/private/zpayswift-stage/config.php';
     }
 
     $primary = '/home/zedpayhe/private/zpayswift/config.php';
@@ -184,8 +207,16 @@ function app_private_config_path(): string
 
 function app_private_sms_bridge_path(): string
 {
-    if (defined('APP_PRIVATE_SMS_BRIDGE_PATH') && trim((string)APP_PRIVATE_SMS_BRIDGE_PATH) !== '') {
-        return trim((string)APP_PRIVATE_SMS_BRIDGE_PATH);
+    $configured = defined('APP_PRIVATE_SMS_BRIDGE_PATH')
+        ? trim((string)APP_PRIVATE_SMS_BRIDGE_PATH)
+        : trim((string)(getenv('APP_PRIVATE_SMS_BRIDGE_PATH') ?: ''));
+
+    if ($configured !== '') {
+        return $configured;
+    }
+
+    if (app_is_stage_host()) {
+        return '/home/zedpayhe/private/zpayswift-stage/auth_sms_bridge.php';
     }
 
     $primary = '/home/zedpayhe/private/zpayswift/auth_sms_bridge.php';
