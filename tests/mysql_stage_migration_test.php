@@ -33,6 +33,18 @@ $ordered = mysql_fb_apply_query($fixture['USERS'], [
 ]);
 mysql_stage_expect(array_keys((array)$ordered) === ['U1'], 'ordered range and limit query behavior changed');
 
+$restOrdered = mysql_fb_apply_query([
+    'B' => ['score' => 10],
+    'A' => ['score' => 20],
+], [
+    'orderBy' => '"score"',
+    'limitToFirst' => '2',
+]);
+mysql_stage_expect(
+    array_keys((array)$restOrdered) === ['A', 'B'],
+    'filtered MySQL results must retain Firebase REST key serialization order'
+);
+
 $equal = mysql_fb_apply_query($fixture['USERS'], [
     'orderBy' => '"enabled"',
     'equalTo' => 'true',

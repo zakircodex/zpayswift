@@ -628,6 +628,9 @@ function mysql_fb_apply_query(mixed $value, array $query): mixed
     foreach ($entries as $entry) {
         $result[(string)$entry['key']] = $entry['value'];
     }
+    // Firebase REST selects the window using orderBy, then serializes object
+    // properties in key order. Match the PHP array order seen by this app.
+    ksort($result, SORT_STRING);
 
     return $result;
 }
