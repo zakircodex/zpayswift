@@ -94,7 +94,7 @@ cleanup() {
 trap cleanup EXIT
 
 umask 022
-"$REPOSITORY_ROOT/scripts/build_public_deployment.sh" \
+/bin/bash "$REPOSITORY_ROOT/scripts/build_public_deployment.sh" \
   "$REPOSITORY_ROOT" "$PACKAGE_ROOT" "$SHA"
 
 # Authentication is injected into the package before promotion, so even the
@@ -125,7 +125,7 @@ rm -f -- "$HTACCESS_BODY"
 find "$PACKAGE_ROOT" -type d -exec chmod 755 {} +
 find "$PACKAGE_ROOT" -type f -exec chmod 644 {} +
 
-"$REPOSITORY_ROOT/scripts/promote_public_deployment.sh" \
+/bin/bash "$REPOSITORY_ROOT/scripts/promote_public_deployment.sh" \
   "$PACKAGE_ROOT" "$PUBLIC_ROOT"
 
 # Only deployment-owned paths are made web-readable. Server-only uploads and

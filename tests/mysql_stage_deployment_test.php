@@ -52,6 +52,11 @@ stage_deploy_expect(
     'Basic Auth is not injected before stage promotion'
 );
 stage_deploy_expect(
+    str_contains($script, '/bin/bash "$REPOSITORY_ROOT/scripts/build_public_deployment.sh"')
+        && str_contains($script, '/bin/bash "$REPOSITORY_ROOT/scripts/promote_public_deployment.sh"'),
+    'stage build and promotion must use the cPanel-compatible Bash entry points'
+);
+stage_deploy_expect(
     !str_contains($script, 'rm -f -- "$PUBLIC_ROOT/.stage-not-ready"')
         && !str_contains($script, 'rm -rf -- "$PUBLIC_ROOT"'),
     'the stage deployer may remove the release lock or document root'
