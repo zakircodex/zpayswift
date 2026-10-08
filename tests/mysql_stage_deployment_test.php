@@ -12,6 +12,7 @@ function stage_deploy_expect(bool $condition, string $message): void
 $root = dirname(__DIR__);
 $cpanel = (string) file_get_contents($root . '/.cpanel.yml');
 $script = (string) file_get_contents($root . '/scripts/deploy_mysql_stage.sh');
+$runtimeVerifier = (string) file_get_contents($root . '/scripts/verify_mysql_stage_runtime.php');
 $readme = (string) file_get_contents($root . '/database/mysql/README.md');
 $productionDeployTest = (string) file_get_contents($root . '/tests/cpanel_push_deployment_test.php');
 
@@ -34,15 +35,16 @@ stage_deploy_expect(
     'the deployer is not pinned to the isolated repository, branch, upstream and document root'
 );
 stage_deploy_expect(
-    str_contains($script, 'constant("APP_ENVIRONMENT") === "stage"')
-        && str_contains($script, 'constant("DATASTORE_DRIVER") === "mysql"')
-        && str_contains($script, 'zpay_mysql_assert_environment("STAGE")'),
+    str_contains($script, 'scripts/verify_mysql_stage_runtime.php')
+        && str_contains($runtimeVerifier, "constant('APP_ENVIRONMENT') === 'stage'")
+        && str_contains($runtimeVerifier, "constant('DATASTORE_DRIVER') === 'mysql'")
+        && str_contains($runtimeVerifier, "zpay_mysql_assert_environment('STAGE')"),
     'the deployer does not fail closed on the private runtime and database guards'
 );
 stage_deploy_expect(
-    str_contains($script, 'Live outbound integration is enabled in stage.')
-        && str_contains($script, 'SMSS360_API_KEY')
-        && str_contains($script, 'TELEGRAM_BOT_TOKEN'),
+    str_contains($runtimeVerifier, 'Live outbound integration is enabled in stage.')
+        && str_contains($runtimeVerifier, 'SMSS360_API_KEY')
+        && str_contains($runtimeVerifier, 'TELEGRAM_BOT_TOKEN'),
     'the deployer does not reject enabled live outbound integrations'
 );
 stage_deploy_expect(
