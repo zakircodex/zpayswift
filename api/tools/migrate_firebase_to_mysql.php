@@ -127,16 +127,17 @@ function migration_source_paths(array $requestedPaths, ?string &$rootEtag = null
         'GET',
         '',
         null,
-        ['shallow' => 'true'],
-        ['X-Firebase-ETag: true'],
-        true
+        ['shallow' => 'true']
     );
     if (empty($response['ok'])) {
         throw new RuntimeException('Firebase source inventory failed with HTTP ' . (int)($response['status'] ?? 0));
     }
 
     $inventory = $response['json'] ?? null;
-    $rootEtag = trim((string)($response['headers']['etag'] ?? ''));
+    // Firebase rejects requests that combine shallow=true with ETag headers.
+    // A canonical inventory signature still detects added or removed root trees;
+    // every selected tree is independently read twice and content-verified below.
+    $rootEtag = 'sha256:' . bin2hex(mysql_migration_hash($inventory));
     if ($inventory === null) {
         return [];
     }

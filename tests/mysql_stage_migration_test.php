@@ -87,6 +87,11 @@ mysql_stage_expect(
     'migration writes must be pinned to the stage target'
 );
 mysql_stage_expect(
+    !str_contains($migrationSource, "['shallow' => 'true'],\n        ['X-Firebase-ETag: true']")
+        && str_contains($migrationSource, 'mysql_migration_hash($inventory)'),
+    'Firebase inventory must not combine incompatible shallow and ETag requests'
+);
+mysql_stage_expect(
     str_contains($schema, 'ENGINE=InnoDB')
         && str_contains($schema, 'zps_firebase_versions')
         && str_contains($schema, 'zps_environment_guard'),
