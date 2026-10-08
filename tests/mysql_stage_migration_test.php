@@ -107,6 +107,7 @@ mysql_stage_expect(
 mysql_stage_expect(
     str_contains($queryParitySource, "zpay_mysql_assert_environment('STAGE')")
         && str_contains($queryParitySource, 'mysql_migration_values_match')
+        && str_contains($queryParitySource, '!isset($query[\'shallow\'])')
         && !str_contains($queryParitySource, 'json_encode($sourceValue'),
     'query parity verification must stay stage-only and avoid printing source values'
 );

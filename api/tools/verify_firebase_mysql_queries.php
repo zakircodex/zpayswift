@@ -77,7 +77,11 @@ try {
         $valuesMatch = !empty($source['ok'])
             && !empty($target['ok'])
             && mysql_migration_values_match($sourceValue, $targetValue);
-        $orderMatches = query_parity_top_level_keys($sourceValue) === query_parity_top_level_keys($targetValue);
+        // Firebase shallow responses are JSON objects with unspecified property
+        // order. Ordered query windows must preserve the observed REST order.
+        $orderChecked = !isset($query['shallow']);
+        $orderMatches = !$orderChecked
+            || query_parity_top_level_keys($sourceValue) === query_parity_top_level_keys($targetValue);
         $matched = $valuesMatch && $orderMatches;
         if (!$matched) {
             $failed++;
@@ -89,6 +93,7 @@ try {
             . ' state=' . ($matched ? 'MATCH' : 'MISMATCH')
             . ' source_status=' . (int)($source['status'] ?? 0)
             . ' target_status=' . (int)($target['status'] ?? 0)
+            . ' order_checked=' . ($orderChecked ? 'yes' : 'no')
             . PHP_EOL
         );
     }
