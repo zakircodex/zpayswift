@@ -62,6 +62,7 @@ $root = dirname(__DIR__);
 $firebaseSource = (string)file_get_contents($root . '/api/lib/firebase.php');
 $adapterSource = (string)file_get_contents($root . '/api/lib/mysql_firebase.php');
 $migrationSource = (string)file_get_contents($root . '/api/tools/migrate_firebase_to_mysql.php');
+$queryParitySource = (string)file_get_contents($root . '/api/tools/verify_firebase_mysql_queries.php');
 $schema = (string)file_get_contents($root . '/database/mysql/001_firebase_compat.sql');
 $configExample = (string)file_get_contents($root . '/api/config.example.php');
 $htaccess = (string)file_get_contents($root . '/.htaccess');
@@ -90,6 +91,12 @@ mysql_stage_expect(
     !str_contains($migrationSource, "['shallow' => 'true'],\n        ['X-Firebase-ETag: true']")
         && str_contains($migrationSource, 'mysql_migration_hash($inventory)'),
     'Firebase inventory must not combine incompatible shallow and ETag requests'
+);
+mysql_stage_expect(
+    str_contains($queryParitySource, "zpay_mysql_assert_environment('STAGE')")
+        && str_contains($queryParitySource, 'mysql_migration_values_match')
+        && !str_contains($queryParitySource, 'json_encode($sourceValue'),
+    'query parity verification must stay stage-only and avoid printing source values'
 );
 mysql_stage_expect(
     str_contains($schema, 'ENGINE=InnoDB')

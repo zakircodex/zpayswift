@@ -39,8 +39,15 @@ deliberately inactive unless a private configuration explicitly selects the
 
    `php api/tools/migrate_firebase_to_mysql.php --config=/absolute/migration.php --verify-only`
 
+8. Compare representative production query ordering and pagination without
+   printing source values:
+
+   `php api/tools/verify_firebase_mysql_queries.php --config=/absolute/migration.php`
+
 The importer reads each top-level Firebase tree twice and only marks it
 verified when the source stayed stable and its canonical hash matches MySQL.
-It also compares the root Firebase ETag before and after a full run; live writes
-make the run fail closed and require another reconciliation pass.
+It also compares a canonical root inventory signature before and after a full
+run; added or removed source trees make the run fail closed and require another
+reconciliation pass. Query parity checks separately cover shallow reads,
+ordered windows and limits against the live Firebase source.
 The final cutover remains a separate, explicitly scheduled maintenance step.
