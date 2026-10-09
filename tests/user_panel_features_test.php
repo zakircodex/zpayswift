@@ -103,10 +103,13 @@ expect_true(
     && str_contains($transferCss, '.transfer-modal-button.copy-action:not(:disabled)')
     && str_contains($transferCss, '.transfer-tracking-copy.is-pending')
     && str_contains($proxy, "case 'transfer_status':")
-    && str_contains($proxy, "fb_get('TRANSFERS/' . \$transferId)")
+    && str_contains($proxy, "fb_get('TRANSFERS/' . trim(\$transferId))")
+    && str_contains($proxy, "fb_get('TRANSFER_HISTORY/' . \$uid)")
     && str_contains($proxy, "\$uid !== \$senderUid && \$uid !== \$receiverUid")
     && str_contains($proxy, "'TRANSFER_STATUS_OK'")
+    && str_contains($proxy, "'TRANSFER_HISTORY_OK'")
     && !str_contains($proxy, "'transfer/status.php?' . http_build_query")
+    && !str_contains($proxy, "'transfer/history.php?' . http_build_query")
     && !str_contains($transferJs, '`Z-Pay Transfer ${transferId'),
     'Transfer Open/Copy does not enforce the canonical public tracking URL'
 );

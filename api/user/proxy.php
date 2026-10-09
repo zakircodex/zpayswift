@@ -1801,16 +1801,11 @@ function user_proxy_forward_authenticated_json(
     );
 }
 
-function user_proxy_transfer_status_data(string $transferId, string $uid): ?array
+function user_proxy_transfer_status_data_from_row(array $row, string $transferId, string $uid): ?array
 {
     $transferId = trim($transferId);
     $uid = trim($uid);
     if ($transferId === '' || $uid === '') {
-        return null;
-    }
-
-    $row = fb_get('TRANSFERS/' . $transferId);
-    if (!is_array($row)) {
         return null;
     }
 
@@ -1835,6 +1830,49 @@ function user_proxy_transfer_status_data(string $transferId, string $uid): ?arra
         'updated_at' => (int)($row['updated_at'] ?? 0),
         'completed_at' => (int)($row['completed_at'] ?? 0),
     ];
+}
+
+function user_proxy_transfer_status_data(string $transferId, string $uid): ?array
+{
+    $row = fb_get('TRANSFERS/' . trim($transferId));
+    if (!is_array($row)) {
+        return null;
+    }
+
+    return user_proxy_transfer_status_data_from_row($row, $transferId, $uid);
+}
+
+function user_proxy_transfer_history_data(string $uid, int $limit): array
+{
+    $uid = trim($uid);
+    if ($uid === '') {
+        return [];
+    }
+
+    $rows = fb_get('TRANSFER_HISTORY/' . $uid);
+    $items = [];
+    foreach ((array)$rows as $transferId => $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $resolvedId = trim((string)($row['transfer_id'] ?? $row['request_id'] ?? $transferId));
+        $item = user_proxy_transfer_status_data_from_row($row, $resolvedId, $uid);
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $item['direction'] = (string)($row['direction'] ?? '');
+        $item['amount'] = round((float)($row['amount'] ?? $row['transfer_amount'] ?? 0), 2);
+        $item['wallet_currency'] = (string)($row['wallet_currency'] ?? $row['currency'] ?? '');
+        $items[] = $item;
+    }
+
+    usort($items, static fn(array $left, array $right): int =>
+        (int)($right['created_at'] ?? 0) <=> (int)($left['created_at'] ?? 0)
+    );
+
+    return array_slice($items, 0, max(1, min(100, $limit)));
 }
 
 function user_proxy_forward_credential_change(
@@ -5609,15 +5647,14 @@ switch ($action) {
 
     case 'transfer_history':
         user_proxy_require_method('GET');
-        user_proxy_require_login(true, false);
+        $sessionUser = user_proxy_require_login(true, false);
         $limit = max(1, min(100, (int)($_GET['limit'] ?? 25)));
-        user_proxy_forward_authenticated_json(
-            'GET',
-            'transfer/history.php?' . http_build_query(['limit' => $limit]),
-            null,
-            'TRANSFER_HISTORY_FAILED',
-            'Transfer history could not be loaded.'
-        );
+        user_proxy_response(true, 'TRANSFER_HISTORY_OK', 'Transfer history loaded.', [
+            'items' => user_proxy_transfer_history_data(
+                (string)($sessionUser['uid'] ?? ''),
+                $limit
+            ),
+        ]);
         break;
 
     case 'support_config':
