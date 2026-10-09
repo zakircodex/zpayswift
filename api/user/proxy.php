@@ -280,6 +280,7 @@ function user_proxy_internal_api_request(
         if ($body !== null) {
             $finalHeaders[] = 'Content-Type: application/json';
         }
+        $finalHeaders = app_internal_request_headers($finalHeaders);
 
         $curlOptions = [
             CURLOPT_URL => (string)$attempt['url'],
@@ -1699,6 +1700,7 @@ function user_proxy_internal_multipart_request(string $relativePath, array $fiel
     foreach ($headers as $key => $value) {
         $finalHeaders[] = $key . ': ' . $value;
     }
+    $finalHeaders = app_internal_request_headers($finalHeaders);
 
     curl_setopt_array($ch, [
         CURLOPT_URL => $url,
@@ -1737,6 +1739,7 @@ function user_proxy_internal_binary_request(string $relativePath, array $headers
     foreach ($headers as $key => $value) {
         $finalHeaders[] = $key . ': ' . $value;
     }
+    $finalHeaders = app_internal_request_headers($finalHeaders);
 
     curl_setopt_array($ch, [
         CURLOPT_URL => $url,

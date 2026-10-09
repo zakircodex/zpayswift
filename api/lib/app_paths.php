@@ -86,6 +86,73 @@ function app_is_stage_host(): bool
     return app_request_host_name() === 'stage.zpayswift.com';
 }
 
+function app_stage_basic_authorization(): string
+{
+    if (
+        !defined('APP_ENVIRONMENT')
+        || strtolower(trim((string)constant('APP_ENVIRONMENT'))) !== 'stage'
+        || !app_is_stage_host()
+    ) {
+        return '';
+    }
+
+    $username = (string)($_SERVER['PHP_AUTH_USER'] ?? '');
+    $password = (string)($_SERVER['PHP_AUTH_PW'] ?? '');
+    if ($username !== '' && $password !== '') {
+        return 'Basic ' . base64_encode($username . ':' . $password);
+    }
+
+    $candidates = [
+        (string)($_SERVER['HTTP_AUTHORIZATION'] ?? ''),
+        (string)($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? ''),
+    ];
+    if (function_exists('apache_request_headers')) {
+        foreach ((array)apache_request_headers() as $name => $value) {
+            if (strcasecmp((string)$name, 'Authorization') === 0) {
+                $candidates[] = (string)$value;
+            }
+        }
+    }
+
+    foreach ($candidates as $candidate) {
+        $candidate = trim($candidate);
+        if (preg_match('/\ABasic[ \t]+([A-Za-z0-9+\/]+={0,2})\z/D', $candidate, $matches) !== 1) {
+            continue;
+        }
+
+        $decoded = base64_decode($matches[1], true);
+        if (!is_string($decoded) || !str_contains($decoded, ':')) {
+            continue;
+        }
+
+        [$decodedUsername, $decodedPassword] = explode(':', $decoded, 2);
+        if ($decodedUsername === '' || $decodedPassword === '') {
+            continue;
+        }
+
+        return 'Basic ' . $matches[1];
+    }
+
+    return '';
+}
+
+function app_internal_request_headers(array $headers): array
+{
+    $authorization = app_stage_basic_authorization();
+    if ($authorization === '') {
+        return $headers;
+    }
+
+    foreach ($headers as $header) {
+        if (str_starts_with(strtolower(ltrim((string)$header)), 'authorization:')) {
+            return $headers;
+        }
+    }
+
+    $headers[] = 'Authorization: ' . $authorization;
+    return $headers;
+}
+
 function app_host(): string
 {
     $origin = app_public_origin();

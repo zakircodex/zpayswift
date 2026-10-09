@@ -78,6 +78,7 @@ function subadmin_create_user_internal_api_request(string $method, string $relat
     if ($body !== null) {
         $finalHeaders[] = 'Content-Type: application/json';
     }
+    $finalHeaders = app_internal_request_headers($finalHeaders);
 
     curl_setopt_array($ch, [
         CURLOPT_URL => $url,

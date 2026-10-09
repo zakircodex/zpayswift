@@ -95,6 +95,7 @@ function admin_mobile_internal_request(
     string $deviceId = ''
 ): array {
     $url = admin_mobile_api_base_url() . '/' . ltrim($relativePath, '/');
+    $stageBasicAuthorization = app_stage_basic_authorization();
     $headers = [
         'Accept: application/json',
         'X-APP-KEY: ' . APP_KEY,
@@ -104,11 +105,14 @@ function admin_mobile_internal_request(
     }
     if ($sessionToken !== '') {
         $headers[] = 'X-SESSION-TOKEN: ' . $sessionToken;
-        $headers[] = 'Authorization: Bearer ' . $sessionToken;
+        if ($stageBasicAuthorization === '') {
+            $headers[] = 'Authorization: Bearer ' . $sessionToken;
+        }
     }
     if ($deviceId !== '') {
         $headers[] = 'X-ADMIN-DEVICE-ID: ' . $deviceId;
     }
+    $headers = app_internal_request_headers($headers);
 
     $ch = curl_init();
     curl_setopt_array($ch, [
