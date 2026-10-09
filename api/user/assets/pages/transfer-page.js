@@ -389,7 +389,7 @@
     if (!transferId) return details;
 
     try {
-      const data = await shell.get('transfer_history', { limit: 10 }, 'Loading receipt link...', { busy: false });
+      const data = await shell.get('transfer_history', { limit: 100 }, 'Loading receipt link...', { busy: false });
       const items = Array.isArray(data.items) ? data.items : [];
       const match = items.find((item) => String(item?.transfer_id || item?.request_id || '').trim() === transferId);
       if (!match) return details;
@@ -403,10 +403,38 @@
     }
   }
 
-  async function copyTransferResult(details) {
-    const link = transferTrackingUrl(details);
+  async function resolveTransferTrackingUrl(details) {
+    const current = transferTrackingUrl(details);
+    if (current) return current;
+
+    const recovered = await recoverTransferTracking(details);
+    const link = transferTrackingUrl(recovered);
+    if (link && details && typeof details === 'object') {
+      Object.assign(details, recovered);
+      app.transfer.successContext = details;
+    }
+    return link;
+  }
+
+  async function openTransferResult(details, button) {
+    setButtonBusy(button, true, 'Opening...');
+    const link = await resolveTransferTrackingUrl(details);
     if (!link) {
-      toast('Tracking link is unavailable.', 'error');
+      setButtonBusy(button, false);
+      toast('Tracking link is unavailable. Please try again.', 'error');
+      return;
+    }
+
+    finishTransferModalClose({ replaceHistory: true });
+    window.location.assign(link);
+  }
+
+  async function copyTransferResult(details, button) {
+    setButtonBusy(button, true, 'Copying...');
+    const link = await resolveTransferTrackingUrl(details);
+    if (!link) {
+      setButtonBusy(button, false);
+      toast('Tracking link is unavailable. Please try again.', 'error');
       return;
     }
     let fallbackField = null;
@@ -428,6 +456,7 @@
       toast('Transfer tracking information could not be copied.', 'error');
     } finally {
       fallbackField?.remove();
+      setButtonBusy(button, false);
     }
   }
 
@@ -473,25 +502,22 @@
       const actions = document.createElement('div');
       actions.className = 'transfer-action-buttons is-compact';
       const trackingUrl = transferTrackingUrl(details);
-      const open = document.createElement(trackingUrl ? 'a' : 'button');
+      const transferId = String(details.transfer_id || details.request_id || '').trim();
+      const canResolveTracking = Boolean(trackingUrl || transferId);
+      const open = document.createElement('button');
+      open.type = 'button';
       open.className = 'transfer-modal-button primary tracking-action';
       open.textContent = 'Open';
-      if (trackingUrl) {
-        open.href = trackingUrl;
-        open.setAttribute('aria-disabled', 'false');
-        open.addEventListener('click', () => finishTransferModalClose({ replaceHistory: true }));
-      } else {
-        open.type = 'button';
-        open.disabled = true;
-        open.setAttribute('aria-disabled', 'true');
-      }
+      open.disabled = !canResolveTracking;
+      open.setAttribute('aria-disabled', String(!canResolveTracking));
+      open.addEventListener('click', () => openTransferResult(details, open));
       const copy = document.createElement('button');
       copy.type = 'button';
       copy.className = 'transfer-modal-button copy-action tracking-action';
       copy.textContent = 'Copy';
-      copy.disabled = !trackingUrl;
-      copy.setAttribute('aria-disabled', String(!trackingUrl));
-      copy.addEventListener('click', () => copyTransferResult(details));
+      copy.disabled = !canResolveTracking;
+      copy.setAttribute('aria-disabled', String(!canResolveTracking));
+      copy.addEventListener('click', () => copyTransferResult(details, copy));
       actions.append(open, copy);
       if (!isTransferFavoriteSaved(details)) {
         const favorite = document.createElement('button');

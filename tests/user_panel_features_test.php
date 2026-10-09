@@ -91,9 +91,11 @@ expect_true(
     && str_contains($transferJs, "toast('Tracking link copied', 'ok')")
     && str_contains($transferJs, "url.origin !== base.origin")
     && str_contains($transferJs, "queryKeys[0] !== 't'")
-    && str_contains($transferJs, "copy.setAttribute('aria-disabled', String(!trackingUrl))")
-    && str_contains($transferJs, "shell.get('transfer_history', { limit: 10 }")
+    && str_contains($transferJs, "copy.setAttribute('aria-disabled', String(!canResolveTracking))")
+    && str_contains($transferJs, "shell.get('transfer_history', { limit: 100 }")
     && str_contains($transferJs, 'return transferTrackingUrl(recovered) ? recovered : details')
+    && str_contains($transferJs, 'const canResolveTracking = Boolean(trackingUrl || transferId)')
+    && str_contains($transferJs, 'openTransferResult(details, open)')
     && str_contains($transferCss, '.transfer-modal-button.copy-action:not(:disabled)')
     && !str_contains($transferJs, '`Z-Pay Transfer ${transferId'),
     'Transfer Open/Copy does not enforce the canonical public tracking URL'

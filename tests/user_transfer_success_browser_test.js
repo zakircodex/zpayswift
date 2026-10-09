@@ -27,7 +27,7 @@ function pageMarkup(origin) {
       </section>
     </main>
     <script>
-      window.__transferTest={blurred:[],copied:'',toasts:[],calls:[]};
+      window.__transferTest={blurred:[],copied:'',toasts:[],calls:[],historyReads:0};
       Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(value)=>{window.__transferTest.copied=value;}}});
       window.UserShell={
         ready:Promise.resolve(),holdPageLoad:()=>()=>{},setBusy:()=>{},refreshSession:async()=>{},
@@ -35,7 +35,11 @@ function pageMarkup(origin) {
         get:async(action)=>{
           window.__transferTest.calls.push({action,method:'GET'});
           if(action==='transfer_favorites') return {favorites:[]};
-          if(action==='transfer_history') return {items:[{transfer_id:'WTR-LOCAL-1',receipt_url:${JSON.stringify(trackingUrl)},tracking_url:${JSON.stringify(trackingUrl)}}]};
+          if(action==='transfer_history') {
+            window.__transferTest.historyReads += 1;
+            if(window.__transferTest.historyReads===1) return {items:[]};
+            return {items:[{transfer_id:'WTR-LOCAL-1',receipt_url:${JSON.stringify(trackingUrl)},tracking_url:${JSON.stringify(trackingUrl)}}]};
+          }
           return {};
         },
         post:async(action,payload)=>{
@@ -95,7 +99,7 @@ async function runFlow(browser, origin, width) {
       activeId: document.activeElement?.id || '',
       activeTag: document.activeElement?.tagName || '',
       openTag: open?.tagName || '',
-      openHref: open?.href || '',
+      openDisabled: Boolean(open?.disabled),
       openAriaDisabled: open?.getAttribute('aria-disabled'),
       copyDisabled: Boolean(copy?.disabled),
       copyAriaDisabled: copy?.getAttribute('aria-disabled'),
@@ -103,21 +107,21 @@ async function runFlow(browser, origin, width) {
       copyBackground: copyStyle.backgroundColor,
       doneBackground: doneStyle.backgroundColor,
       blurred: window.__transferTest.blurred,
-      recoveredTracking: window.__transferTest.calls.some((entry) => entry.action === 'transfer_history'),
+      historyReads: window.__transferTest.historyReads,
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth
     };
   });
 
-  assert.equal(state.activeTag, 'A', `${width}px success modal did not move focus away from a form input.`);
-  assert.equal(state.openTag, 'A', `${width}px Open was not rendered as an active tracking link.`);
-  assert.equal(state.openHref, `${origin}/receipt.php?t=LOCAL_TRANSFER_CAPABILITY`, `${width}px Open lost its receipt URL.`);
+  assert.equal(state.activeTag, 'BUTTON', `${width}px success modal did not move focus away from a form input.`);
+  assert.equal(state.openTag, 'BUTTON', `${width}px Open was not rendered as a retryable action.`);
+  assert.equal(state.openDisabled, false, `${width}px Open remained disabled while a transfer ID was available.`);
   assert.equal(state.openAriaDisabled, 'false', `${width}px Open reports a disabled state.`);
-  assert.equal(state.copyDisabled, false, `${width}px Copy remained disabled with a valid receipt URL.`);
+  assert.equal(state.copyDisabled, false, `${width}px Copy remained disabled while a transfer ID was available.`);
   assert.equal(state.copyAriaDisabled, 'false', `${width}px Copy reports a disabled state.`);
   assert.equal(state.copyCursor, 'pointer', `${width}px Copy does not present as actionable.`);
   assert.notEqual(state.copyBackground, state.doneBackground, `${width}px Copy still looks like the neutral action.`);
   assert.ok(state.blurred.includes('transferReferenceInput'), `${width}px reference input was not blurred before success.`);
-  assert.equal(state.recoveredTracking, true, `${width}px missing tracking URL was not recovered from transfer history.`);
+  assert.equal(state.historyReads, 1, `${width}px initial tracking lookup did not exercise the missing-link path.`);
   assert.equal(state.overflow, false, `${width}px success modal overflows horizontally.`);
 
   await page.getByRole('button', { name: 'Copy', exact: true }).click();
@@ -128,6 +132,11 @@ async function runFlow(browser, origin, width) {
   if (process.env.ZPAY_TRANSFER_SCREENSHOT && width === 390) {
     await page.screenshot({ path: process.env.ZPAY_TRANSFER_SCREENSHOT, fullPage: true });
   }
+
+  await Promise.all([
+    page.waitForURL(`${origin}/receipt.php?t=LOCAL_TRANSFER_CAPABILITY`),
+    page.getByRole('button', { name: 'Open', exact: true }).click()
+  ]);
   await context.close();
 }
 
@@ -142,6 +151,11 @@ async function main() {
     if (request.url === '/transfer-page.js') return sendFile(response, transferScript, 'application/javascript');
     if (request.url === '/transfer-page.css') return sendFile(response, transferCss, 'text/css');
     if (request.url === '/user-shell.css') return sendFile(response, shellCss, 'text/css');
+    if (request.url === '/receipt.php?t=LOCAL_TRANSFER_CAPABILITY') {
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      response.end('<!doctype html><title>Transfer receipt</title>');
+      return;
+    }
     response.writeHead(404).end();
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
