@@ -739,8 +739,14 @@ body.user-transfer-page {
 .transfer-action-modal .transfer-tracking-copy {
   margin: 10px 0 0;
   color: var(--z-muted);
+  font-size: 13px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
   text-align: center;
+}
+
+.transfer-action-modal .transfer-tracking-copy.is-pending {
+  font-size: 15px;
 }
 
 .transfer-action-modal .transfer-action-buttons {

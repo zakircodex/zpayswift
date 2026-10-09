@@ -383,20 +383,64 @@
     }
   }
 
+  function transferTrackingRequestNonce() {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function mergeTransferTracking(details, source) {
+    const row = source && typeof source === 'object' ? source : {};
+    return Object.assign({}, details, {
+      receipt_url: row.receipt_url || row.tracking_url || details.receipt_url || '',
+      tracking_url: row.tracking_url || row.receipt_url || details.tracking_url || ''
+    });
+  }
+
+  function transferTrackingDisplay(link) {
+    if (!link) return 'Tracking link is being prepared. Tap Open or Copy to retry.';
+    try {
+      const url = new URL(link);
+      const token = String(url.searchParams.get('t') || '');
+      const maskedToken = token.length > 18
+        ? `${token.slice(0, 8)}...${token.slice(-6)}`
+        : token;
+      return `${url.origin}${url.pathname}?t=${maskedToken}`;
+    } catch (_) {
+      return 'Tracking link ready.';
+    }
+  }
+
+  function updateTransferTrackingDisplay(link) {
+    const node = document.querySelector('[data-transfer-tracking-url]');
+    if (!node) return;
+    node.textContent = transferTrackingDisplay(link);
+    node.classList.toggle('is-pending', !link);
+  }
+
   async function recoverTransferTracking(details) {
     if (transferTrackingUrl(details)) return details;
     const transferId = String(details?.transfer_id || details?.request_id || '').trim();
     if (!transferId) return details;
 
     try {
-      const data = await shell.get('transfer_history', { limit: 100 }, 'Loading receipt link...', { busy: false });
+      const data = await shell.get('transfer_status', {
+        transfer_id: transferId,
+        request_nonce: transferTrackingRequestNonce()
+      }, 'Loading receipt link...', { busy: false });
+      const recovered = mergeTransferTracking(details, data.transfer || data);
+      if (transferTrackingUrl(recovered)) return recovered;
+    } catch (_) {
+      // A history lookup below preserves compatibility while status is unavailable.
+    }
+
+    try {
+      const data = await shell.get('transfer_history', {
+        limit: 100,
+        request_nonce: transferTrackingRequestNonce()
+      }, 'Loading receipt link...', { busy: false });
       const items = Array.isArray(data.items) ? data.items : [];
       const match = items.find((item) => String(item?.transfer_id || item?.request_id || '').trim() === transferId);
       if (!match) return details;
-      const recovered = Object.assign({}, details, {
-        receipt_url: match.receipt_url || match.tracking_url || details.receipt_url || '',
-        tracking_url: match.tracking_url || match.receipt_url || details.tracking_url || ''
-      });
+      const recovered = mergeTransferTracking(details, match);
       return transferTrackingUrl(recovered) ? recovered : details;
     } catch (_) {
       return details;
@@ -413,6 +457,7 @@
       Object.assign(details, recovered);
       app.transfer.successContext = details;
     }
+    updateTransferTrackingDisplay(link);
     return link;
   }
 
@@ -498,10 +543,12 @@
       });
       const trackingCopy = document.createElement('p');
       trackingCopy.className = 'transfer-tracking-copy';
-      trackingCopy.textContent = 'This is your transfer tracking link.';
+      trackingCopy.dataset.transferTrackingUrl = 'true';
       const actions = document.createElement('div');
       actions.className = 'transfer-action-buttons is-compact';
       const trackingUrl = transferTrackingUrl(details);
+      trackingCopy.textContent = transferTrackingDisplay(trackingUrl);
+      trackingCopy.classList.toggle('is-pending', !trackingUrl);
       const transferId = String(details.transfer_id || details.request_id || '').trim();
       const canResolveTracking = Boolean(trackingUrl || transferId);
       const open = document.createElement('button');

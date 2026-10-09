@@ -27,18 +27,22 @@ function pageMarkup(origin) {
       </section>
     </main>
     <script>
-      window.__transferTest={blurred:[],copied:'',toasts:[],calls:[],historyReads:0};
+      window.__transferTest={blurred:[],copied:'',toasts:[],calls:[],historyReads:0,statusReads:0};
       Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(value)=>{window.__transferTest.copied=value;}}});
       window.UserShell={
         ready:Promise.resolve(),holdPageLoad:()=>()=>{},setBusy:()=>{},refreshSession:async()=>{},
         toast:(message,type)=>window.__transferTest.toasts.push({message,type}),
-        get:async(action)=>{
-          window.__transferTest.calls.push({action,method:'GET'});
+        get:async(action,params)=>{
+          window.__transferTest.calls.push({action,params,method:'GET'});
           if(action==='transfer_favorites') return {favorites:[]};
+          if(action==='transfer_status') {
+            window.__transferTest.statusReads += 1;
+            if(window.__transferTest.statusReads===1) return {transfer:{transfer_id:'WTR-LOCAL-1'}};
+            return {transfer:{transfer_id:'WTR-LOCAL-1',receipt_url:${JSON.stringify(trackingUrl)},tracking_url:${JSON.stringify(trackingUrl)}}};
+          }
           if(action==='transfer_history') {
             window.__transferTest.historyReads += 1;
-            if(window.__transferTest.historyReads===1) return {items:[]};
-            return {items:[{transfer_id:'WTR-LOCAL-1',receipt_url:${JSON.stringify(trackingUrl)},tracking_url:${JSON.stringify(trackingUrl)}}]};
+            return {items:[]};
           }
           return {};
         },
@@ -108,6 +112,9 @@ async function runFlow(browser, origin, width) {
       doneBackground: doneStyle.backgroundColor,
       blurred: window.__transferTest.blurred,
       historyReads: window.__transferTest.historyReads,
+      statusReads: window.__transferTest.statusReads,
+      trackingText: document.querySelector('[data-transfer-tracking-url]')?.textContent || '',
+      statusCalls: window.__transferTest.calls.filter((item) => item.action === 'transfer_status'),
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth
     };
   });
@@ -122,12 +129,23 @@ async function runFlow(browser, origin, width) {
   assert.notEqual(state.copyBackground, state.doneBackground, `${width}px Copy still looks like the neutral action.`);
   assert.ok(state.blurred.includes('transferReferenceInput'), `${width}px reference input was not blurred before success.`);
   assert.equal(state.historyReads, 1, `${width}px initial tracking lookup did not exercise the missing-link path.`);
+  assert.equal(state.statusReads, 1, `${width}px initial tracking lookup did not use the exact transfer status endpoint.`);
+  assert.equal(state.statusCalls[0]?.params?.transfer_id, 'WTR-LOCAL-1', `${width}px status lookup did not send the exact transfer ID.`);
+  assert.ok(String(state.statusCalls[0]?.params?.request_nonce || '').length > 8, `${width}px status lookup is missing its cache-busting nonce.`);
+  assert.match(state.trackingText, /being prepared/i, `${width}px pending tracking state is not visible.`);
   assert.equal(state.overflow, false, `${width}px success modal overflows horizontally.`);
 
   await page.getByRole('button', { name: 'Copy', exact: true }).click();
-  const copyResult = await page.evaluate(() => ({ copied: window.__transferTest.copied, toasts: window.__transferTest.toasts }));
+  const copyResult = await page.evaluate(() => ({
+    copied: window.__transferTest.copied,
+    toasts: window.__transferTest.toasts,
+    statusReads: window.__transferTest.statusReads,
+    trackingText: document.querySelector('[data-transfer-tracking-url]')?.textContent || ''
+  }));
   assert.equal(copyResult.copied, `${origin}/receipt.php?t=LOCAL_TRANSFER_CAPABILITY`, `${width}px Copy did not write the tracking URL.`);
   assert.ok(copyResult.toasts.some((item) => item.message === 'Tracking link copied' && item.type === 'ok'), `${width}px Copy success feedback is missing.`);
+  assert.equal(copyResult.statusReads, 2, `${width}px Copy did not retry the exact transfer status lookup.`);
+  assert.match(copyResult.trackingText, /LOCAL_TR\.\.\.BILITY/, `${width}px recovered tracking URL is not shown safely.`);
 
   if (process.env.ZPAY_TRANSFER_SCREENSHOT && width === 390) {
     await page.screenshot({ path: process.env.ZPAY_TRANSFER_SCREENSHOT, fullPage: true });

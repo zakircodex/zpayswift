@@ -40,7 +40,7 @@ expect_true(
     'Profile editable-field authority is not preserved'
 );
 
-foreach (['transfer_recipient', 'transfer_preview', 'transfer_create', 'transfer_history', 'transfer_favorites', 'transfer_favorite_add', 'transfer_favorite_remove'] as $action) {
+foreach (['transfer_recipient', 'transfer_preview', 'transfer_create', 'transfer_status', 'transfer_history', 'transfer_favorites', 'transfer_favorite_add', 'transfer_favorite_remove'] as $action) {
     expect_true(str_contains($proxy, "case '{$action}':"), "missing transfer proxy action {$action}");
 }
 expect_true(
@@ -92,11 +92,18 @@ expect_true(
     && str_contains($transferJs, "url.origin !== base.origin")
     && str_contains($transferJs, "queryKeys[0] !== 't'")
     && str_contains($transferJs, "copy.setAttribute('aria-disabled', String(!canResolveTracking))")
-    && str_contains($transferJs, "shell.get('transfer_history', { limit: 100 }")
+    && str_contains($transferJs, "shell.get('transfer_status'")
+    && str_contains($transferJs, 'transfer_id: transferId')
+    && str_contains($transferJs, 'request_nonce: transferTrackingRequestNonce()')
+    && str_contains($transferJs, "shell.get('transfer_history'")
     && str_contains($transferJs, 'return transferTrackingUrl(recovered) ? recovered : details')
     && str_contains($transferJs, 'const canResolveTracking = Boolean(trackingUrl || transferId)')
     && str_contains($transferJs, 'openTransferResult(details, open)')
+    && str_contains($transferJs, 'dataset.transferTrackingUrl')
     && str_contains($transferCss, '.transfer-modal-button.copy-action:not(:disabled)')
+    && str_contains($transferCss, '.transfer-tracking-copy.is-pending')
+    && str_contains($proxy, "case 'transfer_status':")
+    && str_contains($proxy, "'transfer/status.php?'")
     && !str_contains($transferJs, '`Z-Pay Transfer ${transferId'),
     'Transfer Open/Copy does not enforce the canonical public tracking URL'
 );

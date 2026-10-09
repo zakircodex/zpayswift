@@ -5550,6 +5550,22 @@ switch ($action) {
         );
         break;
 
+    case 'transfer_status':
+        user_proxy_require_method('GET');
+        user_proxy_require_login(true, false);
+        $transferId = trim((string)($_GET['transfer_id'] ?? ''));
+        if ($transferId === '' || preg_match('/^[A-Za-z0-9_-]{3,80}$/D', $transferId) !== 1) {
+            user_proxy_response(false, 'VALIDATION_ERROR', 'Valid transfer_id is required.', [], 422);
+        }
+        user_proxy_forward_authenticated_json(
+            'GET',
+            'transfer/status.php?' . http_build_query(['transfer_id' => $transferId]),
+            null,
+            'TRANSFER_STATUS_FAILED',
+            'Transfer status could not be loaded.'
+        );
+        break;
+
     case 'transfer_history':
         user_proxy_require_method('GET');
         user_proxy_require_login(true, false);
