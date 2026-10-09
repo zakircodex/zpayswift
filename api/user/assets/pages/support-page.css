@@ -177,6 +177,52 @@ body.user-support-page .user-page-content {
   cursor: not-allowed;
 }
 
+#supportSection .support-contact-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 2px 0;
+}
+
+#supportSection .support-contact-options[hidden],
+#supportSection .support-contact-option[hidden],
+#supportSection .support-service-meta[hidden] {
+  display: none;
+}
+
+#supportSection .support-contact-option {
+  min-width: 0;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 10px;
+  border: 1px solid rgba(50, 230, 134, 0.34);
+  border-radius: 16px;
+  color: var(--z-text);
+  background: rgba(15, 52, 91, 0.88);
+  font-size: 13px;
+  font-weight: 850;
+  text-align: center;
+  text-decoration: none;
+}
+
+#supportSection .support-contact-option:hover,
+#supportSection .support-contact-option:focus-visible {
+  border-color: var(--z-green);
+  color: var(--z-green);
+  outline: none;
+}
+
+#supportSection .support-service-meta {
+  margin: 7px 4px 0;
+  color: var(--z-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 #supportSection .support-list-heading {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 44px;
@@ -955,6 +1001,17 @@ body.user-support-page.support-keyboard-open .bottom-nav {
 
   #supportSection .support-live-hero h1 {
     font-size: 25px;
+  }
+
+  #supportSection .support-contact-options {
+    gap: 6px;
+  }
+
+  #supportSection .support-contact-option {
+    min-height: 40px;
+    padding-right: 6px;
+    padding-left: 6px;
+    font-size: 12px;
   }
 
   #supportSection .support-state-header,

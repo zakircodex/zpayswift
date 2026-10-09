@@ -19,7 +19,7 @@ function pageMarkup() {
       <div class="hero-balance"><span id="heroBalancePrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroBalance" class="dashboard-placeholder dashboard-placeholder-balance">--</span></div>
       <div class="hero-hold-line"><span id="heroHoldPrefix" class="dashboard-placeholder dashboard-placeholder-prefix">BDT</span> <span id="heroHold" class="dashboard-placeholder dashboard-placeholder-compact">--</span></div>
       <div id="heroGrid"><span id="heroRateCard"><span id="heroRateLabel">Today Rate</span><span id="heroRate" class="dashboard-placeholder dashboard-placeholder-rate">Loading rate</span></span><span id="heroRequests" class="dashboard-placeholder dashboard-placeholder-compact dashboard-deferred-placeholder">--</span><span id="heroName" class="dashboard-placeholder dashboard-placeholder-name">Loading account</span></div>
-    </div></div>
+    </div><div id="dashboardTagline" class="android-tagline" aria-label="" hidden><div class="android-tagline-track" aria-hidden="true"><span id="dashboardTaglinePrimary" class="android-tagline-item"></span><span id="dashboardTaglineSecondary" class="android-tagline-item"></span></div></div></div>
     <section id="overviewSection" aria-busy="true"><div id="zpayQuickActions"><h2>Recommended</h2><button data-dashboard-action="shopping">Shopping</button></div></section>
     <div id="dashboardPullIndicator"><span id="dashboardPullText"></span></div>
   </div></div></main></div></div>
@@ -71,6 +71,7 @@ async function main() {
             rate_myr_bdt: 31.1
           }
         },
+        notice: { active: true, text: 'Admin configured tagline' },
         request_logs: { items: [], deferred: true }
       }), 900);
       return;
@@ -113,6 +114,10 @@ async function main() {
       assert.equal(await page.locator('#heroName').textContent(), 'TEST USER', `${width}px resolved dashboard did not render.`);
       assert.equal(await page.locator('#heroBalancePrefix').textContent(), 'RM', `${width}px loader closed before RM currency rendered.`);
       assert.equal(await page.locator('#heroBalance').textContent(), '25.00', `${width}px loader closed before balance rendered.`);
+      assert.equal(await page.locator('#dashboardTagline').isVisible(), true, `${width}px admin tagline is hidden.`);
+      assert.equal(await page.locator('#dashboardTagline').getAttribute('aria-label'), 'Admin configured tagline', `${width}px tagline label is stale.`);
+      assert.equal(await page.locator('#dashboardTaglinePrimary').textContent(), 'Admin configured tagline', `${width}px primary tagline is stale.`);
+      assert.equal(await page.locator('#dashboardTaglineSecondary').textContent(), 'Admin configured tagline', `${width}px repeated tagline is stale.`);
       assert.equal(await page.locator('#appView').evaluate((node) => node.inert), false, `${width}px dashboard stayed blocked after loading.`);
       assert.equal(await page.locator('.bottom-nav').evaluate((node) => node.inert), false, `${width}px navigation stayed blocked after loading.`);
       assert.equal(await page.locator('#zpayQuickActions button').isEnabled(), true, `${width}px dashboard actions waited for monthly activity.`);

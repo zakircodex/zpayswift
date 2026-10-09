@@ -48,6 +48,16 @@
     shell.setBusy(open, String(message || 'Refreshing dashboard...'));
   }
 
+  function renderDashboardNotice(notice) {
+    const tagline = byId('dashboardTagline');
+    if (!tagline) return;
+    const text = notice?.active ? String(notice.text || '').trim() : '';
+    tagline.hidden = text === '';
+    tagline.setAttribute('aria-label', text);
+    if (byId('dashboardTaglinePrimary')) byId('dashboardTaglinePrimary').textContent = text;
+    if (byId('dashboardTaglineSecondary')) byId('dashboardTaglineSecondary').textContent = text;
+  }
+
   function renderDashboard(data) {
     const user = data.user || shell.state.user || {};
     const summary = data.wallet_summary || {};
@@ -96,6 +106,7 @@
     byId('heroRate').textContent = isMalaysiaAccount
       ? (rate > 0 ? `RM 1 = ${rate.toFixed(2)} BDT` : 'Rate unavailable')
       : accountType;
+    renderDashboardNotice(data.notice || {});
   }
 
   async function loadDashboardActivity(options = {}) {

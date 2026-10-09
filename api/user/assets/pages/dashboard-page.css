@@ -260,6 +260,10 @@ body.user-dashboard-page.user-page-loading .dashboard-placeholder-name {
   border-radius: 22px;
 }
 
+.user-dashboard-page .android-tagline[hidden] {
+  display: none;
+}
+
 .user-dashboard-page .android-tagline-track {
   min-width: max-content;
   display: inline-flex;

@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/lib/mfs.php';
 require_once dirname(__DIR__) . '/lib/add_money.php';
 require_once dirname(__DIR__) . '/lib/favorites.php';
 require_once dirname(__DIR__) . '/lib/referral.php';
+require_once dirname(__DIR__) . '/lib/mobile_dashboard.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -2638,6 +2639,62 @@ function user_proxy_collect_wallet_received(string $uid, string $month, int $lim
     ));
 }
 
+function user_proxy_dashboard_notice_payload(): array
+{
+    $config = zpay_dash_config();
+    $text = !empty($config['notice_active'])
+        ? trim((string)($config['notice_text'] ?? ''))
+        : '';
+
+    return [
+        'active' => $text !== '',
+        'text' => $text,
+    ];
+}
+
+function user_proxy_monthly_activity_summary(string $uid, string $month): array
+{
+    $limit = 300;
+    $groups = [
+        'REQUEST' => user_proxy_collect_request_logs($uid, $limit, false, $month),
+        'TRANSFER' => user_proxy_collect_wallet_history($uid, $month, $limit),
+        'ADD_MONEY' => add_money_list_user_history($uid, $limit, $month),
+    ];
+    $unique = [];
+    $breakdown = [];
+
+    foreach ($groups as $source => $rows) {
+        $breakdown[strtolower($source)] = count($rows);
+        foreach ($rows as $index => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $rowSource = $source === 'REQUEST'
+                ? strtoupper(trim((string)($row['request_type'] ?? $row['type'] ?? $source)))
+                : $source;
+            $rowId = trim((string)(
+                $row['request_id']
+                ?? $row['transfer_id']
+                ?? $row['transaction_id']
+                ?? $row['id']
+                ?? ''
+            ));
+            if ($rowId === '') {
+                $encoded = json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $rowId = hash('sha256', is_string($encoded) ? $encoded : $source . ':' . $index);
+            }
+            $unique[$rowSource . ':' . $rowId] = true;
+        }
+    }
+
+    return [
+        'request_count' => count($unique),
+        'breakdown' => $breakdown,
+        'count_limit' => $limit,
+        'count_capped' => in_array($limit, array_values($breakdown), true),
+    ];
+}
+
 /* =========================================================
    Create Topup
 ========================================================= */
@@ -4634,6 +4691,7 @@ switch ($action) {
             'user' => $sessionUser,
             'csrf' => user_proxy_get_csrf(),
             'wallet_summary' => user_proxy_wallet_summary_payload($uid, $sessionUser, $balanceOnly),
+            'notice' => user_proxy_dashboard_notice_payload(),
             'request_logs' => [
                 'uid' => $uid,
                 'month' => $month,
@@ -4653,19 +4711,14 @@ switch ($action) {
         $sessionUser = user_proxy_require_login(true, false);
         $uid = trim((string)($sessionUser['uid'] ?? ''));
         $month = user_proxy_valid_month_key($_GET['month'] ?? null);
-        $limit = (int)($_GET['limit'] ?? 50);
-        if ($limit <= 0) {
-            $limit = 50;
-        }
-        if ($limit > 100) {
-            $limit = 100;
-        }
-        $items = user_proxy_collect_request_logs($uid, $limit, false, $month);
+        $summary = user_proxy_monthly_activity_summary($uid, $month);
 
         user_proxy_response(true, 'SUCCESS', 'Dashboard activity summary loaded', [
             'uid' => $uid,
             'month' => $month,
-            'request_count' => count($items),
+            'request_count' => (int)$summary['request_count'],
+            'breakdown' => (array)$summary['breakdown'],
+            'count_capped' => (bool)$summary['count_capped'],
             'loaded_at' => user_proxy_now(),
         ]);
         break;

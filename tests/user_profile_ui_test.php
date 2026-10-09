@@ -7,6 +7,9 @@ $css = (string)file_get_contents($root . '/api/user/assets/pages/profile-page.cs
 $js = (string)file_get_contents($root . '/api/user/assets/pages/profile-page.js');
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $profileUpdate = (string)file_get_contents($root . '/api/user/profile_update.php');
+$profileUpload = (string)file_get_contents($root . '/api/user/profile_photo_upload.php');
+$authSession = (string)file_get_contents($root . '/api/auth/session.php');
+$dashboardLib = (string)file_get_contents($root . '/api/lib/mobile_dashboard.php');
 $tests = 0;
 
 function profile_expect(bool $condition, string $message): void
@@ -101,6 +104,21 @@ profile_expect(
     !str_contains($page . $js, 'openSection(')
     && !str_contains($page, 'data-page-section'),
     'Profile still depends on SPA routing'
+);
+profile_expect(
+    str_contains($dashboardLib, 'function zpay_public_profile_photo_url')
+    && str_contains($dashboardLib, "'PROFILE', 'profile'")
+    && str_contains($authSession, "'profile_photo_url' => zpay_public_profile_photo_url(\$user)")
+    && str_contains($profileUpdate, "'profile_photo_url' => zpay_public_profile_photo_url(\$user)")
+    && str_contains($profileUpload, "'profile_photo_url' => zpay_public_profile_photo_url(\$user)"),
+    'Profile APIs do not preserve migrated public photo field compatibility'
+);
+profile_expect(
+    str_contains($js, "url.protocol === 'https:'")
+    && str_contains($js, "'zpayswift.com'")
+    && str_contains($js, "'stage.zpayswift.com'")
+    && str_contains($js, 'allowedHosts.has(url.hostname.toLowerCase())'),
+    'Profile photo renderer does not constrain migrated cross-host photos to trusted HTTPS origins'
 );
 
 echo "User Profile UI tests passed ({$tests} assertions).\n";

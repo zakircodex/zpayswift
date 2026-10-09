@@ -20,6 +20,7 @@
     attachments: [],
     selectedCategory: null,
     requestLogs: [],
+    configLoaded: false,
     ticketsLoaded: false,
     createFiles: [],
     replyFiles: [],
@@ -175,9 +176,67 @@
     return state.tickets.find((ticket) => ticket && ticket.ticket_id && !supportIsClosed(ticket.status)) || null;
   }
 
+  function supportPhone(value) {
+    const raw = String(value || '').trim();
+    const prefix = raw.startsWith('+') ? '+' : '';
+    const digits = raw.replace(/\D+/g, '');
+    return digits.length >= 7 && digits.length <= 15 ? prefix + digits : '';
+  }
+
+  function supportEmail(value) {
+    const email = String(value || '').trim();
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : '';
+  }
+
+  function configureContactLink(id, visible, href) {
+    const link = $(id);
+    if (!link) return;
+    link.hidden = !visible;
+    if (visible) link.setAttribute('href', href);
+    else link.setAttribute('href', '#');
+  }
+
+  function renderSupportConfig() {
+    const config = state.config || {};
+    const contactEnabled = config.contact_us_enabled !== false;
+    const whatsapp = supportPhone(config.whatsapp_number);
+    const phone = supportPhone(config.support_phone);
+    const email = supportEmail(config.support_email);
+    const showWhatsApp = contactEnabled && config.whatsapp_enabled === true && whatsapp !== '';
+    const showCall = contactEnabled && config.call_enabled === true && phone !== '';
+    const showEmail = contactEnabled && config.email_enabled === true && email !== '';
+
+    configureContactLink('supportWhatsAppLink', showWhatsApp, 'https://wa.me/' + whatsapp.replace(/\D+/g, ''));
+    configureContactLink('supportCallLink', showCall, 'tel:' + phone);
+    configureContactLink('supportEmailLink', showEmail, 'mailto:' + email);
+    const options = $('supportContactOptions');
+    if (options) options.hidden = !(showWhatsApp || showCall || showEmail);
+
+    const serviceMeta = $('supportServiceMeta');
+    const details = [config.support_hours, config.average_response_text]
+      .map((value) => String(value || '').trim())
+      .filter(Boolean);
+    if (serviceMeta) {
+      serviceMeta.textContent = details.join(' | ');
+      serviceMeta.hidden = details.length === 0;
+    }
+
+    const notice = String(config.support_notice || '').trim();
+    if ($('supportCreateNotice') && notice) $('supportCreateNotice').textContent = notice;
+    renderStartChatState();
+  }
+
   function renderStartChatState() {
     const button = $('supportStartChatButton');
     if (!button) return;
+    const ticketEnabled = !state.configLoaded
+      || (state.config.contact_us_enabled !== false && state.config.ticket_enabled !== false);
+    button.hidden = !ticketEnabled;
+    if (!ticketEnabled) {
+      button.disabled = true;
+      button.dataset.activeTicketId = '';
+      return;
+    }
     if (!state.ticketsLoaded || state.loadingTickets) {
       button.disabled = true;
       button.textContent = 'Loading...';
@@ -436,7 +495,9 @@
   async function loadSupportConfig() {
     const data = await get('support_config', {});
     state.config = data.config || {};
+    state.configLoaded = true;
     state.categories = Array.isArray(data.categories) ? data.categories : [];
+    renderSupportConfig();
     renderCategories();
   }
 

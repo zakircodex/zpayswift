@@ -43,7 +43,7 @@ api_response(true, 'SESSION_OK', 'Session valid', [
     'wallet_currency' => $walletCurrency !== '' ? $walletCurrency : 'BDT',
     'created_at' => (int)($user['created_at'] ?? 0),
     'last_login_at' => (int)($user['last_login_at'] ?? 0),
-    'profile_photo_url' => (string)($user['profile_photo_url'] ?? $user['profile_photo'] ?? $user['photo_url'] ?? ''),
+    'profile_photo_url' => zpay_public_profile_photo_url($user),
     'device_id' => (string)($session['device_id'] ?? ''),
     'device_trusted' => auth_device_is_trusted((string)$user['uid'], (string)($session['device_id'] ?? '')),
 ]);

@@ -206,5 +206,23 @@ dashboard_expect(
     && str_contains($pageJs, "classList.remove('dashboard-deferred-placeholder', 'dashboard-placeholder')"),
     'Dashboard activity does not retain a polished non-blocking placeholder after balance render'
 );
+dashboard_expect(
+    str_contains($proxy, 'function user_proxy_monthly_activity_summary')
+    && str_contains($proxy, "'REQUEST' => user_proxy_collect_request_logs")
+    && str_contains($proxy, "'TRANSFER' => user_proxy_collect_wallet_history")
+    && str_contains($proxy, "'ADD_MONEY' => add_money_list_user_history")
+    && str_contains($proxy, "'request_count' => (int)\$summary['request_count']"),
+    'Dashboard monthly count does not include all History sources'
+);
+dashboard_expect(
+    str_contains($dashboard, 'id="dashboardTagline"')
+    && str_contains($dashboard, 'id="dashboardTaglinePrimary"')
+    && str_contains($dashboard, 'id="dashboardTaglineSecondary"')
+    && str_contains($proxy, "'notice' => user_proxy_dashboard_notice_payload()")
+    && str_contains($pageJs, 'function renderDashboardNotice(notice)')
+    && substr_count($pageJs, '.textContent = text') >= 2
+    && str_contains($pageCss, '.user-dashboard-page .android-tagline[hidden]'),
+    'Admin dashboard tagline is not rendered safely from the dashboard config'
+);
 
 echo "User Dashboard UI tests passed ({$tests} assertions).\n";

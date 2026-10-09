@@ -26,6 +26,12 @@ user_page_begin($page);
         <p>Start a conversation with Z-Pay Swift Support.</p>
         <button id="supportStartChatButton" class="support-primary-button" type="button" disabled>Loading...</button>
       </div>
+      <nav id="supportContactOptions" class="support-contact-options" aria-label="Contact support directly" hidden>
+        <a id="supportWhatsAppLink" class="support-contact-option" href="#" target="_blank" rel="noopener noreferrer" hidden>WhatsApp</a>
+        <a id="supportCallLink" class="support-contact-option" href="#" hidden>Call</a>
+        <a id="supportEmailLink" class="support-contact-option" href="#" hidden>Email</a>
+      </nav>
+      <p id="supportServiceMeta" class="support-service-meta" hidden></p>
       <div class="support-list-heading">
         <div>
           <h2>My Conversations</h2>
@@ -53,7 +59,7 @@ user_page_begin($page);
       <button id="supportCreateBack" class="support-icon-button" type="button" aria-label="Back to categories">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20v-2Z"/></svg>
       </button>
-      <div><h1>Start Chat</h1><p>Never share your password, PIN or OTP.</p></div>
+      <div><h1>Start Chat</h1><p id="supportCreateNotice">Never share your password, PIN or OTP.</p></div>
       <span aria-hidden="true"></span>
     </header>
     <div id="supportCreateScroll" class="support-create-scroll">

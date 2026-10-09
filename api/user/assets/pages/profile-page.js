@@ -208,7 +208,15 @@
     if (!raw) return '';
     try {
       const url = new URL(raw, window.location.origin);
-      return url.origin === window.location.origin ? url.href : '';
+      const allowedHosts = new Set([
+        window.location.hostname.toLowerCase(),
+        'zpayswift.com',
+        'www.zpayswift.com',
+        'stage.zpayswift.com'
+      ]);
+      const sameOrigin = url.origin === window.location.origin;
+      const trustedHttps = url.protocol === 'https:' && allowedHosts.has(url.hostname.toLowerCase());
+      return sameOrigin || trustedHttps ? url.href : '';
     } catch (_) {
       return '';
     }
