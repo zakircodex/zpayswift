@@ -270,7 +270,6 @@ assert_true(!empty($repairOperation['ok']), 'Add Money recovery operation should
 $repairCredit = wallet_credit_available('UID_REPAIR', 40.00, $repairRef, 'ADD_MONEY', 'Manual add money approved', [
     'ledger_id' => wallet_financial_operation_ledger_id($repairRef, 'ADD_MONEY_APPROVAL_CREDIT'),
     'request_id' => 'REQ_REPAIR',
-    'ref_id' => 'REQ_REPAIR',
     'currency' => 'BDT',
 ], ['financial_operation' => $repairOperation['claim']]);
 assert_true(!empty($repairCredit['ok']), 'Add Money recovery setup should credit once');
@@ -291,7 +290,30 @@ test_set('ADD_MONEY_REQUESTS/REQ_REPAIR', $approvedRow);
 $writesBeforeRepair = wallet_write_count('UID_REPAIR');
 assert_true(add_money_repair_approved_operation($approvedRow), 'approved Add Money operation should repair ledger/finalization from evidence');
 assert_true(wallet_write_count('UID_REPAIR') === $writesBeforeRepair, 'approved operation repair must not credit wallet again');
-assert_true((string)(test_get(wallet_financial_operation_scope_path($repairRef, 'REQUEST_FINAL'))['status'] ?? '') === 'COMPLETED', 'repaired Add Money operation should complete');
+$repairOperationPath = wallet_financial_operation_scope_path($repairRef, 'REQUEST_FINAL');
+$completedRepairOperation = test_get($repairOperationPath);
+assert_true((string)($completedRepairOperation['status'] ?? '') === 'COMPLETED', 'repaired Add Money operation should complete');
+assert_true((string)($completedRepairOperation['request_id'] ?? '') === $repairRef, 'completed Add Money operation must preserve its canonical reference');
+assert_true(add_money_repair_approved_operation($approvedRow), 'completed Add Money approval replay should be idempotent');
+assert_true(wallet_write_count('UID_REPAIR') === $writesBeforeRepair, 'completed Add Money replay must not credit wallet again');
+
+$completedRepairOperation['request_id'] = 'REQ_REPAIR';
+$completedRepairOperation['ledger_row']['ref_id'] = 'REQ_REPAIR';
+$legacyLedgerPath = 'WALLET_LEDGER/UID_REPAIR/'
+    . month_key((int)($completedRepairOperation['ledger_row']['created_at'] ?? now_ts()))
+    . '/'
+    . (string)($completedRepairOperation['ledger_id'] ?? '');
+$legacyLedger = test_get($legacyLedgerPath);
+$legacyLedger['ref_id'] = 'REQ_REPAIR';
+test_set($legacyLedgerPath, $legacyLedger);
+$repairWallet = test_get('USER_WALLETS/UID_REPAIR');
+$repairOperationKey = wallet_financial_operation_key($repairRef, 'ADD_MONEY_APPROVAL_CREDIT');
+$repairWallet['financial_operations'][$repairOperationKey]['ledger_row']['ref_id'] = 'REQ_REPAIR';
+test_set('USER_WALLETS/UID_REPAIR', $repairWallet);
+test_set($repairOperationPath, $completedRepairOperation);
+assert_true(add_money_repair_approved_operation($approvedRow), 'legacy completed Add Money operation reference should repair from wallet and ledger evidence');
+assert_true((string)(test_get($repairOperationPath)['request_id'] ?? '') === $repairRef, 'legacy completed Add Money operation must restore its canonical reference');
+assert_true(wallet_write_count('UID_REPAIR') === $writesBeforeRepair, 'legacy operation reference repair must not credit wallet again');
 
 put_wallet('UID_AMBIGUOUS', 5.00);
 $ambiguousRef = 'ADD_MONEY_APPROVE:' . hash('sha256', 'REQ_AMBIGUOUS');

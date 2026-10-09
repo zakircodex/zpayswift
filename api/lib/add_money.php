@@ -1542,6 +1542,97 @@ function add_money_list_admin(array $filters = [], int $limit = 10, string $curs
     return (array)($page['items'] ?? []);
 }
 
+function add_money_repair_legacy_completed_operation_reference(
+    array $request,
+    string $operationRef,
+    string $currency
+): bool {
+    $requestId = trim((string)($request['request_id'] ?? ''));
+    $uid = trim((string)($request['uid'] ?? ''));
+    $amount = add_money_round($request['amount'] ?? 0);
+    $path = wallet_financial_operation_scope_path($operationRef, 'REQUEST_FINAL');
+    $operationKey = wallet_financial_operation_key($operationRef, 'ADD_MONEY_APPROVAL_CREDIT');
+
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $snapshot = fb_get_with_etag($path);
+        $operation = is_array($snapshot['value'] ?? null) ? (array)$snapshot['value'] : [];
+        if (empty($snapshot['ok']) || !is_string($snapshot['etag'] ?? null)) {
+            return false;
+        }
+        if ($operation === []) {
+            return true;
+        }
+
+        $storedRef = trim((string)($operation['request_id'] ?? ''));
+        if ($storedRef !== '' && hash_equals($operationRef, $storedRef)) {
+            return true;
+        }
+        if ($storedRef === '' || !hash_equals($requestId, $storedRef)) {
+            return false;
+        }
+
+        $ledgerId = trim((string)($operation['ledger_id'] ?? ''));
+        $ledgerRow = is_array($operation['ledger_row'] ?? null) ? (array)$operation['ledger_row'] : [];
+        $ledgerRef = trim((string)($ledgerRow['ref_id'] ?? ''));
+        $ledgerCurrency = wallet_normalize_currency_code(
+            (string)($ledgerRow['currency'] ?? $ledgerRow['wallet_currency'] ?? '')
+        );
+        $bindingsMatch = strtoupper(trim((string)($operation['status'] ?? ''))) === 'COMPLETED'
+            && strtoupper(trim((string)($operation['operation_type'] ?? ''))) === 'ADD_MONEY_APPROVAL_CREDIT'
+            && strtoupper(trim((string)($operation['scope'] ?? ''))) === 'REQUEST_FINAL'
+            && trim((string)($operation['uid'] ?? '')) === $uid
+            && trim((string)($operation['operation_key'] ?? '')) === $operationKey
+            && abs(add_money_round($operation['amount'] ?? 0) - $amount) <= 0.001
+            && wallet_normalize_currency_code((string)($operation['currency'] ?? '')) === $currency
+            && !empty($operation['wallet_applied'])
+            && !empty($operation['ledger_written'])
+            && !empty($operation['request_finalized'])
+            && $ledgerId !== ''
+            && $ledgerRow !== []
+            && trim((string)($ledgerRow['ledger_id'] ?? '')) === $ledgerId
+            && strtoupper(trim((string)($ledgerRow['type'] ?? ''))) === 'ADD_MONEY'
+            && strtoupper(trim((string)($ledgerRow['direction'] ?? ''))) === 'CREDIT'
+            && in_array($ledgerRef, [$operationRef, $requestId], true)
+            && abs(add_money_round($ledgerRow['amount'] ?? 0) - $amount) <= 0.001
+            && $ledgerCurrency === $currency;
+        if (!$bindingsMatch) {
+            return false;
+        }
+
+        $ledgerCreatedAt = (int)($ledgerRow['created_at'] ?? $request['approved_at'] ?? $request['updated_at'] ?? 0);
+        $storedLedger = $ledgerCreatedAt > 0
+            ? fb_get('WALLET_LEDGER/' . $uid . '/' . wallet_month_key($ledgerCreatedAt) . '/' . $ledgerId)
+            : null;
+        if (!is_array($storedLedger) || !wallet_financial_operation_ledger_matches($storedLedger, $ledgerRow)) {
+            return false;
+        }
+
+        $marker = wallet_financial_operation_marker_from_wallet($uid, $operationKey);
+        $expectedClaim = [
+            'operation_key' => $operationKey,
+            'request_id' => $operationRef,
+            'operation_type' => 'ADD_MONEY_APPROVAL_CREDIT',
+            'amount' => $amount,
+            'currency' => $currency,
+        ];
+        if (!wallet_financial_operation_marker_matches_claim($uid, $expectedClaim, $marker)
+            || trim((string)($marker['ledger_id'] ?? '')) !== $ledgerId) {
+            return false;
+        }
+
+        $operation['request_id'] = $operationRef;
+        $operation['binding_repaired_at'] = add_money_now();
+        $operation['binding_repair_source'] = 'ADD_MONEY_LEGACY_REQUEST_ID';
+        $save = fb_put_if_match($path, $operation, (string)$snapshot['etag']);
+        if ((int)($save['status'] ?? 0) === 412) {
+            continue;
+        }
+        return !empty($save['ok']);
+    }
+
+    return false;
+}
+
 function add_money_repair_approved_operation(array $row): bool
 {
     $requestId = trim((string)($row['request_id'] ?? ''));
@@ -1559,6 +1650,9 @@ function add_money_repair_approved_operation(array $row): bool
     $existingOperation = fb_get(wallet_financial_operation_scope_path($operationRef, 'REQUEST_FINAL'));
     if (!is_array($existingOperation)) {
         return true;
+    }
+    if (!add_money_repair_legacy_completed_operation_reference($row, $operationRef, $currency)) {
+        return false;
     }
     $operation = wallet_financial_operation_begin(
         $operationRef,
@@ -1582,7 +1676,7 @@ function add_money_repair_approved_operation(array $row): bool
             $financialClaim,
             'APPROVED_REQUEST_WALLET_EVIDENCE_MISSING',
             'Approved Add Money request has no reliable wallet mutation evidence',
-            ['request_finalized' => true, 'request_id' => $requestId]
+            ['request_finalized' => true]
         );
         return false;
     }
@@ -1592,7 +1686,6 @@ function add_money_repair_approved_operation(array $row): bool
         'ledger_id' => $ledgerId,
         'source' => 'ADD_MONEY_REQUEST',
         'request_id' => $requestId,
-        'ref_id' => $requestId,
         'currency' => $currency,
         'wallet_currency' => $currency,
         'status' => 'SUCCESS',
@@ -1608,7 +1701,6 @@ function add_money_repair_approved_operation(array $row): bool
         'ledger_written' => true,
         'request_finalized' => true,
         'history_written' => true,
-        'request_id' => $requestId,
         'ledger_id' => (string)($repair['ledger_id'] ?? $row['ledger_id'] ?? $ledgerId),
         'result_data' => $row,
     ]);
@@ -1758,7 +1850,6 @@ function add_money_process_request(string $requestId, string $action, string $ac
         'amount' => $amount,
         'method' => (string)($row['method'] ?? ''),
         'request_id' => $requestId,
-        'ref_id' => $requestId,
         'currency' => $currency,
         'wallet_currency' => $currency,
         'approved_by' => $actorUid,
@@ -1799,7 +1890,6 @@ function add_money_process_request(string $requestId, string $action, string $ac
         wallet_financial_operation_mark_failed($financialClaim, 'REQUEST_FINALIZATION_FAILED', 'Add money request could not be finalized after wallet credit', [
             'wallet_applied' => true,
             'ledger_written' => true,
-            'request_id' => $requestId,
             'request_finalized' => false,
         ]);
         return ['ok' => false, 'code' => 'REQUEST_FINALIZATION_FAILED', 'message' => 'Add money request could not be finalized after wallet credit', 'data' => $row];
@@ -1823,7 +1913,6 @@ function add_money_process_request(string $requestId, string $action, string $ac
         'request_finalized' => true,
         'history_written' => true,
         'notification_written' => true,
-        'request_id' => $requestId,
         'ledger_id' => (string)($credit['ledger_id'] ?? ''),
         'result_data' => $final,
     ])) {
