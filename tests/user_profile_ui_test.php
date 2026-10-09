@@ -38,11 +38,19 @@ profile_expect(
 profile_expect(
     str_contains($page, 'id="profileAvatarButton"')
     && str_contains($page, 'id="profileAvatarImage"')
+    && str_contains($page, 'src="/assets/brand/zpay-icon.png"')
     && str_contains($page, 'id="profileAvatarInitials"')
     && str_contains($page, 'id="profilePhotoEditButton"')
     && str_contains($page, 'id="profileEditButton"')
     && str_contains($page, 'id="profilePhotoInput"'),
     'Profile photo/edit controls are incomplete'
+);
+profile_expect(
+    str_contains($js, "const PROFILE_AVATAR_FALLBACK = '/assets/brand/zpay-icon.png'")
+    && str_contains($js, "avatar.dataset.fallback = image ? 'profile' : 'brand'")
+    && str_contains($js, "avatar.src = image || PROFILE_AVATAR_FALLBACK")
+    && str_contains($js, "image.dataset.fallback !== 'brand'"),
+    'Profile does not share the drawer brand fallback or recover from broken profile photos'
 );
 profile_expect(
     str_contains($page, '<h3>Security</h3>')

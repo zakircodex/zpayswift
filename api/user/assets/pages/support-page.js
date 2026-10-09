@@ -210,7 +210,11 @@
     configureContactLink('supportCallLink', showCall, 'tel:' + phone);
     configureContactLink('supportEmailLink', showEmail, 'mailto:' + email);
     const options = $('supportContactOptions');
-    if (options) options.hidden = !(showWhatsApp || showCall || showEmail);
+    const visibleContactCount = [showWhatsApp, showCall, showEmail].filter(Boolean).length;
+    if (options) {
+      options.dataset.count = String(visibleContactCount);
+      options.hidden = visibleContactCount === 0;
+    }
 
     const serviceMeta = $('supportServiceMeta');
     const details = [config.support_hours, config.average_response_text]

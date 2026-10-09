@@ -2,6 +2,7 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
+  const PROFILE_AVATAR_FALLBACK = '/assets/brand/zpay-icon.png';
   const releaseInitialLoad = window.UserShell?.holdPageLoad?.('Loading profile...') || (() => {});
   const allowedImages = new Set(['image/jpeg', 'image/png', 'image/webp']);
   let lastModalFocus = null;
@@ -225,10 +226,16 @@
   function showProfileAvatarFallback() {
     const image = $('profileAvatarImage');
     const fallback = $('profileAvatarInitials');
-    if (image) {
-      image.classList.add('hidden');
-      image.removeAttribute('src');
+    if (image && image.dataset.fallback !== 'brand') {
+      image.dataset.fallback = 'brand';
+      image.src = PROFILE_AVATAR_FALLBACK;
+      image.alt = 'Z-Pay Swift';
+      image.classList.remove('hidden');
+      fallback?.classList.add('hidden');
+      return;
     }
+    image?.classList.add('hidden');
+    image?.removeAttribute('src');
     fallback?.classList.remove('hidden');
   }
 
@@ -648,13 +655,12 @@
     if ($('profileSessionStatus')) $('profileSessionStatus').textContent = profileSessionStatus(profile.session_status || profile.sessionStatus || 'Active');
     if ($('profileAvatarInitials')) $('profileAvatarInitials').textContent = initials(name);
     if ($('profileAvatarImage')) {
-      $('profileAvatarImage').classList.toggle('hidden', !image);
-      $('profileAvatarInitials')?.classList.toggle('hidden', Boolean(image));
-      if (image) {
-        $('profileAvatarImage').src = image;
-      } else {
-        showProfileAvatarFallback();
-      }
+      const avatar = $('profileAvatarImage');
+      avatar.dataset.fallback = image ? 'profile' : 'brand';
+      avatar.src = image || PROFILE_AVATAR_FALLBACK;
+      avatar.alt = image ? `${name} profile photo` : 'Z-Pay Swift';
+      avatar.classList.remove('hidden');
+      $('profileAvatarInitials')?.classList.add('hidden');
     }
   }
 

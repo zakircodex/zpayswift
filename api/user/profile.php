@@ -34,8 +34,8 @@ user_page_begin($page);
       <div class="profile-hero-panel">
         <div class="profile-photo-wrap">
           <button id="profileAvatarButton" class="profile-avatar-button" type="button" aria-label="Change profile photo">
-            <img id="profileAvatarImage" class="hidden" alt="Profile photo">
-            <span id="profileAvatarInitials">ZP</span>
+            <img id="profileAvatarImage" src="/assets/brand/zpay-icon.png" alt="Z-Pay Swift">
+            <span id="profileAvatarInitials" class="hidden">ZP</span>
           </button>
           <button id="profilePhotoEditButton" class="profile-photo-edit-badge" type="button" aria-label="Edit profile photo">Edit</button>
         </div>
