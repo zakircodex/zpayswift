@@ -16,7 +16,7 @@ function pageMarkup(origin) {
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <link rel="stylesheet" href="/user-shell.css"><link rel="stylesheet" href="/transfer-page.css"></head>
     <body class="user-authenticated user-transfer-page"><main class="user-page-content">
-      <section id="transferSection" class="page-section transfer-page-section active" data-tracking-base="${origin}/receipt.php">
+      <section id="transferSection" class="page-section transfer-page-section active" data-tracking-base="https://zpayswift.com/receipt.php">
         <div class="transfer-page-shell"><header class="transfer-page-header"><a id="transferBackButton" href="/user/dashboard">Back</a><h2>Z-Pay Transfer</h2></header>
         <div class="transfer-scroll-body">
           <div id="transferStepReceiver" class="transfer-step active"><div class="transfer-step-card"><input id="transferReceiverInput"><button id="transferResolveBtn">Continue</button></div><button id="transferFavoriteRefreshBtn">Refresh</button><div id="transferFavoriteList"></div></div>
@@ -115,6 +115,8 @@ async function runFlow(browser, origin, width) {
       statusReads: window.__transferTest.statusReads,
       trackingText: document.querySelector('[data-transfer-tracking-url]')?.textContent || '',
       statusCalls: window.__transferTest.calls.filter((item) => item.action === 'transfer_status'),
+      trackingBaseOrigin: new URL(document.getElementById('transferSection').dataset.trackingBase).origin,
+      pageOrigin: window.location.origin,
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth
     };
   });
@@ -132,6 +134,7 @@ async function runFlow(browser, origin, width) {
   assert.equal(state.statusReads, 1, `${width}px initial tracking lookup did not use the exact transfer status endpoint.`);
   assert.equal(state.statusCalls[0]?.params?.transfer_id, 'WTR-LOCAL-1', `${width}px status lookup did not send the exact transfer ID.`);
   assert.ok(String(state.statusCalls[0]?.params?.request_nonce || '').length > 8, `${width}px status lookup is missing its cache-busting nonce.`);
+  assert.notEqual(state.trackingBaseOrigin, state.pageOrigin, `${width}px stale-origin fixture is not exercising the intended regression.`);
   assert.match(state.trackingText, /being prepared/i, `${width}px pending tracking state is not visible.`);
   assert.equal(state.overflow, false, `${width}px success modal overflows horizontally.`);
 

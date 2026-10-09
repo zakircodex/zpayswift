@@ -345,11 +345,20 @@
     const raw = String($('transferSection')?.dataset.trackingBase || '').trim();
     if (!raw) return null;
     try {
-      const base = new URL(raw);
-      if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) {
+      const pageOrigin = new URL(window.location.origin);
+      const configured = new URL(raw, pageOrigin.origin);
+      if (
+        !['http:', 'https:'].includes(pageOrigin.protocol)
+        || !['http:', 'https:'].includes(configured.protocol)
+        || configured.username
+        || configured.password
+        || configured.search
+        || configured.hash
+        || !configured.pathname
+      ) {
         return null;
       }
-      return base;
+      return new URL(configured.pathname, pageOrigin.origin);
     } catch (_) {
       return null;
     }

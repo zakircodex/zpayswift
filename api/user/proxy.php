@@ -1952,6 +1952,57 @@ function user_proxy_transfer_link_trace(
     }
 }
 
+function user_proxy_forward_transfer_create(array $body, array $sessionUser): void
+{
+    $res = user_proxy_internal_api_request(
+        'POST',
+        'transfer/create.php',
+        [
+            'preview_token' => trim((string)($body['preview_token'] ?? '')),
+            'reference' => trim((string)($body['reference'] ?? $body['note'] ?? '')),
+        ],
+        user_proxy_authenticated_headers(),
+        [
+            'canonical_only' => true,
+            'max_attempts' => 1,
+            'connect_timeout' => 15,
+            'timeout' => 60,
+        ]
+    );
+    $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+    $data = (array)($json['data'] ?? []);
+
+    if (!empty($res['ok'])) {
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $transfer = is_array($data['transfer'] ?? null) ? $data['transfer'] : [];
+        $transferId = trim((string)($transfer['transfer_id'] ?? $transfer['request_id'] ?? ''));
+        $persisted = $transferId !== '' && $uid !== ''
+            ? user_proxy_transfer_status_data($transferId, $uid)
+            : null;
+
+        if (is_array($persisted)) {
+            $transfer = array_replace($transfer, $persisted);
+            $data['transfer'] = $transfer;
+        }
+
+        user_proxy_transfer_link_trace(
+            'transfer_create',
+            'response',
+            $uid,
+            $transferId,
+            $transfer
+        );
+    }
+
+    user_proxy_response(
+        !empty($res['ok']),
+        (string)($json['code'] ?? 'TRANSFER_FAILED'),
+        (string)($json['message'] ?? 'Transfer could not be completed.'),
+        $data,
+        (int)(($res['status'] ?? 0) > 0 ? $res['status'] : 502)
+    );
+}
+
 function user_proxy_forward_credential_change(
     string $relativePath,
     array $body,
@@ -5681,24 +5732,9 @@ switch ($action) {
     case 'transfer_create':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
-        user_proxy_require_login(true, false);
+        $sessionUser = user_proxy_require_login(true, false);
         $body = user_proxy_read_json_body();
-        user_proxy_forward_authenticated_json(
-            'POST',
-            'transfer/create.php',
-            [
-                'preview_token' => trim((string)($body['preview_token'] ?? '')),
-                'reference' => trim((string)($body['reference'] ?? $body['note'] ?? '')),
-            ],
-            'TRANSFER_FAILED',
-            'Transfer could not be completed.',
-            [
-                'canonical_only' => true,
-                'max_attempts' => 1,
-                'connect_timeout' => 15,
-                'timeout' => 60,
-            ]
-        );
+        user_proxy_forward_transfer_create($body, $sessionUser);
         break;
 
     case 'transfer_status':
