@@ -57,6 +57,10 @@ expect_true(
 expect_true(
     str_contains($transferCreate, 'zpay_transfer_schedule_post_response_tasks')
     && str_contains($transferCreate, "!empty(\$claim['resume'])")
+    && str_contains($transferCreate, 'function zpay_transfer_create_public_result')
+    && str_contains($transferCreate, "fb_get('TRANSFERS/' . \$transferId)")
+    && str_contains($transferCreate, 'zpay_transfer_user_can_view($persisted, $senderUid)')
+    && substr_count($transferCreate, 'zpay_transfer_create_public_result(') === 4
     && str_contains($mobileTransfer, 'function zpay_transfer_run_post_response_tasks')
     && str_contains($mobileTransfer, "function_exists('fastcgi_finish_request')")
     && str_contains($mobileTransfer, 'zpay_transfer_operation_financially_committed'),
@@ -88,6 +92,8 @@ expect_true(
     && str_contains($transferJs, "url.origin !== base.origin")
     && str_contains($transferJs, "queryKeys[0] !== 't'")
     && str_contains($transferJs, "copy.setAttribute('aria-disabled', String(!trackingUrl))")
+    && str_contains($transferJs, "shell.get('transfer_history', { limit: 10 }")
+    && str_contains($transferJs, 'return transferTrackingUrl(recovered) ? recovered : details')
     && str_contains($transferCss, '.transfer-modal-button.copy-action:not(:disabled)')
     && !str_contains($transferJs, '`Z-Pay Transfer ${transferId'),
     'Transfer Open/Copy does not enforce the canonical public tracking URL'

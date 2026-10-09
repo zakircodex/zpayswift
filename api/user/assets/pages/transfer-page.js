@@ -383,6 +383,26 @@
     }
   }
 
+  async function recoverTransferTracking(details) {
+    if (transferTrackingUrl(details)) return details;
+    const transferId = String(details?.transfer_id || details?.request_id || '').trim();
+    if (!transferId) return details;
+
+    try {
+      const data = await shell.get('transfer_history', { limit: 10 }, 'Loading receipt link...', { busy: false });
+      const items = Array.isArray(data.items) ? data.items : [];
+      const match = items.find((item) => String(item?.transfer_id || item?.request_id || '').trim() === transferId);
+      if (!match) return details;
+      const recovered = Object.assign({}, details, {
+        receipt_url: match.receipt_url || match.tracking_url || details.receipt_url || '',
+        tracking_url: match.tracking_url || match.receipt_url || details.tracking_url || ''
+      });
+      return transferTrackingUrl(recovered) ? recovered : details;
+    } catch (_) {
+      return details;
+    }
+  }
+
   async function copyTransferResult(details) {
     const link = transferTrackingUrl(details);
     if (!link) {
@@ -822,10 +842,11 @@
         receipt_url: transfer.receipt_url || '',
         tracking_url: transfer.tracking_url || transfer.receipt_url || ''
       });
+      const successContext = await recoverTransferTracking(context);
       finishTransferModalClose({ replaceHistory: true });
       resetTransfer({ focus: false });
       app.transfer.favoritesLoaded = false;
-      showTransferSuccess(context);
+      showTransferSuccess(successContext);
     } catch (error) {
       finishTransferModalClose({ replaceHistory: true });
       const uncertain = transferStatusUnknown(error);

@@ -32,13 +32,18 @@ function pageMarkup(origin) {
       window.UserShell={
         ready:Promise.resolve(),holdPageLoad:()=>()=>{},setBusy:()=>{},refreshSession:async()=>{},
         toast:(message,type)=>window.__transferTest.toasts.push({message,type}),
-        get:async(action)=>action==='transfer_favorites'?{favorites:[]}:{},
+        get:async(action)=>{
+          window.__transferTest.calls.push({action,method:'GET'});
+          if(action==='transfer_favorites') return {favorites:[]};
+          if(action==='transfer_history') return {items:[{transfer_id:'WTR-LOCAL-1',receipt_url:${JSON.stringify(trackingUrl)},tracking_url:${JSON.stringify(trackingUrl)}}]};
+          return {};
+        },
         post:async(action,payload)=>{
           window.__transferTest.calls.push({action,payload});
           if(action==='transfer_recipient') return {can_transfer:true,wallet_currency:'MYR',recipient:{receiver_name:'ZAKIR HOSEN',receiver_phone:'60108767201',receiver_phone_masked:'601*****201',wallet_currency:'MYR',can_transfer:true}};
           if(action==='transfer_preview'&&payload.check_only) return {minimum_amount:1};
           if(action==='transfer_preview') return {preview_token:'preview_token_1234567890',receiver_name:'ZAKIR HOSEN',receiver_phone:'60108767201',amount:1,amount_text:'RM 1.00',wallet_currency:'MYR',fee_amount:0,fee_text:'RM 0.00',total_paid:1,total_paid_text:'RM 1.00',balance_after:99,balance_after_text:'RM 99.00'};
-          if(action==='transfer_create') return {transfer:{transfer_id:'WTR-LOCAL-1',receiver_name:'ZAKIR HOSEN',receiver_account:'601*****201',amount:1,amount_text:'RM 1.00',wallet_currency:'MYR',fee_amount:0,fee_text:'RM 0.00',total_paid:1,total_paid_text:'RM 1.00',status:'SUCCESS',receipt_url:${JSON.stringify(trackingUrl)},tracking_url:${JSON.stringify(trackingUrl)}}};
+          if(action==='transfer_create') return {transfer:{transfer_id:'WTR-LOCAL-1',receiver_name:'ZAKIR HOSEN',receiver_account:'601*****201',amount:1,amount_text:'RM 1.00',wallet_currency:'MYR',fee_amount:0,fee_text:'RM 0.00',total_paid:1,total_paid_text:'RM 1.00',status:'SUCCESS'}};
           throw new Error('Unexpected action '+action);
         }
       };
@@ -98,6 +103,7 @@ async function runFlow(browser, origin, width) {
       copyBackground: copyStyle.backgroundColor,
       doneBackground: doneStyle.backgroundColor,
       blurred: window.__transferTest.blurred,
+      recoveredTracking: window.__transferTest.calls.some((entry) => entry.action === 'transfer_history'),
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth
     };
   });
@@ -111,6 +117,7 @@ async function runFlow(browser, origin, width) {
   assert.equal(state.copyCursor, 'pointer', `${width}px Copy does not present as actionable.`);
   assert.notEqual(state.copyBackground, state.doneBackground, `${width}px Copy still looks like the neutral action.`);
   assert.ok(state.blurred.includes('transferReferenceInput'), `${width}px reference input was not blurred before success.`);
+  assert.equal(state.recoveredTracking, true, `${width}px missing tracking URL was not recovered from transfer history.`);
   assert.equal(state.overflow, false, `${width}px success modal overflows horizontally.`);
 
   await page.getByRole('button', { name: 'Copy', exact: true }).click();
