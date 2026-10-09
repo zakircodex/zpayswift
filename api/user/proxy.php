@@ -1875,6 +1875,83 @@ function user_proxy_transfer_history_data(string $uid, int $limit): array
     return array_slice($items, 0, max(1, min(100, $limit)));
 }
 
+function user_proxy_transfer_link_shape(string $url): array
+{
+    $url = trim($url);
+    if ($url === '') {
+        return ['set' => false];
+    }
+
+    $parts = parse_url($url);
+    if (!is_array($parts)) {
+        return ['set' => true, 'parsed' => false];
+    }
+
+    $query = [];
+    parse_str((string)($parts['query'] ?? ''), $query);
+
+    return [
+        'set' => true,
+        'parsed' => true,
+        'scheme' => strtolower((string)($parts['scheme'] ?? '')),
+        'host' => strtolower((string)($parts['host'] ?? '')),
+        'path' => (string)($parts['path'] ?? ''),
+        'query_count' => count($query),
+        'has_token' => isset($query['t']) && is_scalar($query['t']),
+        'token_length' => isset($query['t']) && is_scalar($query['t'])
+            ? strlen(trim((string)$query['t']))
+            : 0,
+    ];
+}
+
+function user_proxy_transfer_link_trace(
+    string $action,
+    string $phase,
+    string $uid = '',
+    string $transferId = '',
+    ?array $transfer = null,
+    int $itemCount = 0
+): void {
+    if (
+        !defined('APP_ENVIRONMENT')
+        || strtolower(trim((string)constant('APP_ENVIRONMENT'))) !== 'stage'
+        || !function_exists('app_is_stage_host')
+        || !app_is_stage_host()
+        || !function_exists('app_private_config_path')
+    ) {
+        return;
+    }
+
+    $directory = dirname(app_private_config_path());
+    if (!is_dir($directory) || !is_writable($directory)) {
+        return;
+    }
+
+    $record = [
+        'time' => gmdate('c'),
+        'action' => preg_replace('/[^a-z_]/', '', strtolower($action)) ?: 'unknown',
+        'phase' => preg_replace('/[^a-z_]/', '', strtolower($phase)) ?: 'unknown',
+        'uid_hash' => $uid !== '' ? substr(hash('sha256', $uid), 0, 16) : '',
+        'transfer_hash' => $transferId !== '' ? substr(hash('sha256', $transferId), 0, 16) : '',
+        'found' => is_array($transfer),
+        'item_count' => max(0, $itemCount),
+    ];
+
+    if (is_array($transfer)) {
+        $record['receipt'] = user_proxy_transfer_link_shape((string)($transfer['receipt_url'] ?? ''));
+        $record['tracking'] = user_proxy_transfer_link_shape((string)($transfer['tracking_url'] ?? ''));
+    }
+
+    $encoded = json_encode($record, JSON_UNESCAPED_SLASHES);
+    if (is_string($encoded)) {
+        @file_put_contents(
+            $directory . '/transfer-link-trace.log',
+            $encoded . PHP_EOL,
+            FILE_APPEND | LOCK_EX
+        );
+    }
+}
+
 function user_proxy_forward_credential_change(
     string $relativePath,
     array $body,
@@ -5626,8 +5703,9 @@ switch ($action) {
 
     case 'transfer_status':
         user_proxy_require_method('GET');
-        $sessionUser = user_proxy_require_login(true, false);
         $transferId = trim((string)($_GET['transfer_id'] ?? ''));
+        user_proxy_transfer_link_trace('transfer_status', 'request', '', $transferId);
+        $sessionUser = user_proxy_require_login(true, false);
         if ($transferId === '' || preg_match('/^[A-Za-z0-9_-]{3,80}$/D', $transferId) !== 1) {
             user_proxy_response(false, 'VALIDATION_ERROR', 'Valid transfer_id is required.', [], 422);
         }
@@ -5637,8 +5715,22 @@ switch ($action) {
             (string)($sessionUser['uid'] ?? '')
         );
         if (!is_array($transfer)) {
+            user_proxy_transfer_link_trace(
+                'transfer_status',
+                'not_found',
+                (string)($sessionUser['uid'] ?? ''),
+                $transferId
+            );
             user_proxy_response(false, 'NOT_FOUND', 'Transfer not found.', [], 404);
         }
+
+        user_proxy_transfer_link_trace(
+            'transfer_status',
+            'response',
+            (string)($sessionUser['uid'] ?? ''),
+            $transferId,
+            $transfer
+        );
 
         user_proxy_response(true, 'TRANSFER_STATUS_OK', 'Transfer status loaded.', [
             'transfer' => $transfer,
@@ -5647,13 +5739,24 @@ switch ($action) {
 
     case 'transfer_history':
         user_proxy_require_method('GET');
+        user_proxy_transfer_link_trace('transfer_history', 'request');
         $sessionUser = user_proxy_require_login(true, false);
         $limit = max(1, min(100, (int)($_GET['limit'] ?? 25)));
+        $transferItems = user_proxy_transfer_history_data(
+            (string)($sessionUser['uid'] ?? ''),
+            $limit
+        );
+        $latestTransfer = is_array($transferItems[0] ?? null) ? $transferItems[0] : null;
+        user_proxy_transfer_link_trace(
+            'transfer_history',
+            'response',
+            (string)($sessionUser['uid'] ?? ''),
+            (string)($latestTransfer['transfer_id'] ?? $latestTransfer['request_id'] ?? ''),
+            $latestTransfer,
+            count($transferItems)
+        );
         user_proxy_response(true, 'TRANSFER_HISTORY_OK', 'Transfer history loaded.', [
-            'items' => user_proxy_transfer_history_data(
-                (string)($sessionUser['uid'] ?? ''),
-                $limit
-            ),
+            'items' => $transferItems,
         ]);
         break;
 
