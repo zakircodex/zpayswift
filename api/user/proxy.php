@@ -1801,6 +1801,42 @@ function user_proxy_forward_authenticated_json(
     );
 }
 
+function user_proxy_transfer_status_data(string $transferId, string $uid): ?array
+{
+    $transferId = trim($transferId);
+    $uid = trim($uid);
+    if ($transferId === '' || $uid === '') {
+        return null;
+    }
+
+    $row = fb_get('TRANSFERS/' . $transferId);
+    if (!is_array($row)) {
+        return null;
+    }
+
+    $senderUid = trim((string)($row['sender_uid'] ?? ''));
+    $receiverUid = trim((string)($row['receiver_uid'] ?? ''));
+    if ($uid !== $senderUid && $uid !== $receiverUid) {
+        return null;
+    }
+
+    $receiptUrl = trim((string)($row['receipt_url'] ?? $row['tracking_url'] ?? ''));
+    $trackingUrl = trim((string)($row['tracking_url'] ?? $row['receipt_url'] ?? ''));
+
+    return [
+        'transfer_id' => (string)($row['transfer_id'] ?? $transferId),
+        'request_id' => (string)($row['request_id'] ?? $row['transfer_id'] ?? $transferId),
+        'status' => (string)($row['status'] ?? ''),
+        'receipt_id' => (string)($row['receipt_id'] ?? ''),
+        'receipt_url' => $receiptUrl,
+        'tracking_url' => $trackingUrl,
+        'receipt_created_at' => (int)($row['receipt_created_at'] ?? 0),
+        'created_at' => (int)($row['created_at'] ?? 0),
+        'updated_at' => (int)($row['updated_at'] ?? 0),
+        'completed_at' => (int)($row['completed_at'] ?? 0),
+    ];
+}
+
 function user_proxy_forward_credential_change(
     string $relativePath,
     array $body,
@@ -5552,18 +5588,23 @@ switch ($action) {
 
     case 'transfer_status':
         user_proxy_require_method('GET');
-        user_proxy_require_login(true, false);
+        $sessionUser = user_proxy_require_login(true, false);
         $transferId = trim((string)($_GET['transfer_id'] ?? ''));
         if ($transferId === '' || preg_match('/^[A-Za-z0-9_-]{3,80}$/D', $transferId) !== 1) {
             user_proxy_response(false, 'VALIDATION_ERROR', 'Valid transfer_id is required.', [], 422);
         }
-        user_proxy_forward_authenticated_json(
-            'GET',
-            'transfer/status.php?' . http_build_query(['transfer_id' => $transferId]),
-            null,
-            'TRANSFER_STATUS_FAILED',
-            'Transfer status could not be loaded.'
+
+        $transfer = user_proxy_transfer_status_data(
+            $transferId,
+            (string)($sessionUser['uid'] ?? '')
         );
+        if (!is_array($transfer)) {
+            user_proxy_response(false, 'NOT_FOUND', 'Transfer not found.', [], 404);
+        }
+
+        user_proxy_response(true, 'TRANSFER_STATUS_OK', 'Transfer status loaded.', [
+            'transfer' => $transfer,
+        ]);
         break;
 
     case 'transfer_history':
