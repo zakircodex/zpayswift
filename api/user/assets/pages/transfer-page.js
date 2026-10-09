@@ -170,6 +170,19 @@
     window.setTimeout(() => body.querySelector('button,input,a[href]')?.focus(), 0);
   }
 
+  function dismissTransferKeyboard() {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.matches('input, textarea, select, [contenteditable="true"]')) {
+      active.blur();
+    }
+    ['transferReceiverInput', 'transferAmountInput', 'transferReferenceInput', 'transferPinInput'].forEach((id) => {
+      $(id)?.blur?.();
+    });
+    try {
+      navigator.virtualKeyboard?.hide?.();
+    } catch (_) {}
+  }
+
   function transferDigits(value) {
     return String(value || '').replace(/\D+/g, '');
   }
@@ -199,7 +212,7 @@
       window.history.pushState({ zpayTransferStep: next }, '', '/user/transfer');
     }
     const focusId = ['transferReceiverInput', 'transferAmountInput', 'transferPinInput'][next - 1];
-    if (focusId) window.setTimeout(() => $(focusId)?.focus(), 0);
+    if (focusId && options.focus !== false) window.setTimeout(() => $(focusId)?.focus(), 0);
     else document.querySelector('#transferSection .transfer-scroll-body')?.scrollTo({ top: 0, behavior: 'auto' });
   }
 
@@ -245,6 +258,7 @@
   }
 
   function openTransferLoading(message) {
+    dismissTransferKeyboard();
     shell.setBusy(false);
     clearTransferModalSurface();
     app.transfer.modalOpen = true;
@@ -398,6 +412,7 @@
   }
 
   function showTransferSuccess(context) {
+    dismissTransferKeyboard();
     shell.setBusy(false);
     clearTransferModalSurface();
     const details = context || {};
@@ -439,20 +454,23 @@
       actions.className = 'transfer-action-buttons is-compact';
       const trackingUrl = transferTrackingUrl(details);
       const open = document.createElement(trackingUrl ? 'a' : 'button');
-      open.className = 'transfer-modal-button primary';
+      open.className = 'transfer-modal-button primary tracking-action';
       open.textContent = 'Open';
       if (trackingUrl) {
         open.href = trackingUrl;
+        open.setAttribute('aria-disabled', 'false');
         open.addEventListener('click', () => finishTransferModalClose({ replaceHistory: true }));
       } else {
         open.type = 'button';
         open.disabled = true;
+        open.setAttribute('aria-disabled', 'true');
       }
       const copy = document.createElement('button');
       copy.type = 'button';
-      copy.className = 'transfer-modal-button';
+      copy.className = 'transfer-modal-button copy-action tracking-action';
       copy.textContent = 'Copy';
       copy.disabled = !trackingUrl;
+      copy.setAttribute('aria-disabled', String(!trackingUrl));
       copy.addEventListener('click', () => copyTransferResult(details));
       actions.append(open, copy);
       if (!isTransferFavoriteSaved(details)) {
@@ -805,7 +823,7 @@
         tracking_url: transfer.tracking_url || transfer.receipt_url || ''
       });
       finishTransferModalClose({ replaceHistory: true });
-      resetTransfer();
+      resetTransfer({ focus: false });
       app.transfer.favoritesLoaded = false;
       showTransferSuccess(context);
     } catch (error) {
@@ -825,7 +843,7 @@
     }
   }
 
-  function resetTransfer() {
+  function resetTransfer(options = {}) {
     app.transfer.recipient = null;
     app.transfer.preview = null;
     app.transfer.reference = '';
@@ -834,7 +852,7 @@
     ['transferReceiverInput', 'transferAmountInput', 'transferReferenceInput', 'transferPinInput'].forEach((id) => {
       if ($(id)) $(id).value = '';
     });
-    transferStep(1, { fromHistory: true });
+    transferStep(1, { fromHistory: true, focus: options.focus !== false });
   }
 
   function leaveTransferPage() {

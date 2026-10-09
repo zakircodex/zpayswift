@@ -87,8 +87,17 @@ expect_true(
     && str_contains($transferJs, "toast('Tracking link copied', 'ok')")
     && str_contains($transferJs, "url.origin !== base.origin")
     && str_contains($transferJs, "queryKeys[0] !== 't'")
+    && str_contains($transferJs, "copy.setAttribute('aria-disabled', String(!trackingUrl))")
+    && str_contains($transferCss, '.transfer-modal-button.copy-action:not(:disabled)')
     && !str_contains($transferJs, '`Z-Pay Transfer ${transferId'),
     'Transfer Open/Copy does not enforce the canonical public tracking URL'
+);
+expect_true(
+    str_contains($transferJs, 'function dismissTransferKeyboard()')
+    && str_contains($transferJs, 'navigator.virtualKeyboard?.hide?.()')
+    && str_contains($transferJs, 'resetTransfer({ focus: false })')
+    && str_contains($transferJs, 'options.focus !== false'),
+    'Transfer success flow can leave a form input focused and reopen the mobile keyboard'
 );
 expect_true(
     str_contains($transferJs, 'submitting: false')
