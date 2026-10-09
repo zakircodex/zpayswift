@@ -37,7 +37,7 @@ function pageMarkup() {
         const previous = Math.floor(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 15).getTime() / 1000);
         return {
           items: Array.from({ length: 25 }, (_, index) => ({ request_id: 'MF-CURRENT-' + index, request_type: 'MFS', provider: 'BKASH', receiver_number: '01700000000', amount_bdt: 100 + index, created_at: now - index, status: 'PENDING' })),
-          wallet_history: [{ transfer_id: 'WT-CURRENT', direction: 'CREDIT', amount: 50, currency: 'BDT', created_at: now, status: 'SUCCESS', counterparty_name: 'TEST USER' }],
+          wallet_history: [{ transfer_id: 'WT-CURRENT', direction: 'DEBIT', amount: 50, currency: 'BDT', created_at: now + 5, status: 'SUCCESS', counterparty_name: 'TEST USER', counterparty_phone: '60123456789' }],
           add_money_history: [{ request_id: 'AM-OLD', amount: 300, currency: 'BDT', created_at: previous, status: 'APPROVED' }],
           pagination: { limit: params.limit, has_more: false }
         };
@@ -85,6 +85,7 @@ async function main() {
       assert.equal(calls[0].params.limit, 10, `${width}px History initial page must remain bounded to 10.`);
       assert.equal(calls[0].params.legacy, 0, `${width}px History enabled legacy scans.`);
       assert.equal(await page.locator('.history-transaction-card').count(), 10, `${width}px History did not render exactly the first 10 rows.`);
+      assert.equal(await page.getByText('Z-Pay Transfer - Sent', { exact: true }).count(), 1, `${width}px outgoing wallet transfer was not rendered as sent.`);
       await page.locator('#historyLoadMore').scrollIntoViewIfNeeded();
       await page.waitForFunction(() => document.querySelectorAll('.history-transaction-card').length === 20);
       assert.equal(await page.locator('.history-transaction-card').count(), 20, `${width}px History did not reveal the next 10 rows.`);

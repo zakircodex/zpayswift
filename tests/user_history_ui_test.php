@@ -234,4 +234,12 @@ history_ui_expect(
     'History navigation or authenticated canonical endpoints were not preserved'
 );
 
+history_ui_expect(
+    str_contains($proxy, 'function user_proxy_collect_wallet_history(')
+    && str_contains($proxy, '$walletHistory = user_proxy_collect_wallet_history($uid, $month, $limit);')
+    && str_contains($proxy, "static fn(array \$row): bool => strtoupper((string)(\$row['direction'] ?? '')) === 'CREDIT'")
+    && str_contains($proxy, "user_proxy_response(true, 'SUCCESS', 'Wallet received history loaded'"),
+    'History must include sent and received wallet transfers without changing the received-only endpoint'
+);
+
 echo "User History UI tests passed ({$assertions} assertions).\n";

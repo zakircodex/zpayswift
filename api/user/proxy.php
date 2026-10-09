@@ -2625,10 +2625,15 @@ function user_proxy_collect_request_logs(string $uid, int $limit = 100, bool $le
     return user_proxy_collect_legacy_request_logs($uid, $limit, $month);
 }
 
+function user_proxy_collect_wallet_history(string $uid, string $month, int $limit = 100): array
+{
+    return wallet_list_user_history($uid, $month, $limit);
+}
+
 function user_proxy_collect_wallet_received(string $uid, string $month, int $limit = 100): array
 {
     return array_values(array_filter(
-        wallet_list_user_history($uid, $month, $limit),
+        user_proxy_collect_wallet_history($uid, $month, $limit),
         static fn(array $row): bool => strtoupper((string)($row['direction'] ?? '')) === 'CREDIT'
     ));
 }
@@ -4829,7 +4834,7 @@ switch ($action) {
         }
 
         $items = user_proxy_collect_request_logs($uid, $limit, $legacy, $month);
-        $walletHistory = user_proxy_collect_wallet_received($uid, $month, $limit);
+        $walletHistory = user_proxy_collect_wallet_history($uid, $month, $limit);
         $addMoneyHistory = add_money_public_request_rows(add_money_list_user_history($uid, $limit, $month));
         $hasMore = count($items) >= $limit
             || count($walletHistory) >= $limit
