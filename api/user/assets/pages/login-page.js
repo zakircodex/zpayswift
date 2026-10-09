@@ -268,9 +268,15 @@
     state.resendAvailableAt = resendAfter > 0
       ? (resendAfter < 1000000000000 ? resendAfter * 1000 : resendAfter)
       : Date.now() + resendIn * 1000;
+    const stageOtp = /^\d{6}$/.test(String(data.stage_otp || '').trim())
+      && data.stage_otp_preview === true
+      ? String(data.stage_otp).trim()
+      : '';
     $('loginOtpMaskedPhone').textContent = state.maskedPhone || '-';
-    $('loginOtpCode').value = '';
-    $('loginOtpStatus').textContent = 'Enter the OTP to complete login.';
+    $('loginOtpCode').value = stageOtp;
+    $('loginOtpStatus').textContent = stageOtp
+      ? 'Stage test OTP is ready. Tap Verify OTP to continue.'
+      : 'Enter the OTP to complete login.';
     clearOtpTimer();
     updateOtpCountdown();
     state.timer = window.setInterval(updateOtpCountdown, 1000);

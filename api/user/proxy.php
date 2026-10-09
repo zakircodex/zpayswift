@@ -4547,7 +4547,7 @@ switch ($action) {
 
         $data = (array)($resendRes['json']['data'] ?? []);
 
-        user_proxy_response(true, 'SUCCESS', 'OTP resent successfully', [
+        $responseData = [
             'require_otp' => true,
             'pre_auth_token' => (string)($data['pre_auth_token'] ?? $preAuthToken),
             'otp_request_id' => (string)($data['otp_request_id'] ?? $otpRequestId),
@@ -4556,7 +4556,13 @@ switch ($action) {
             'expires_at' => (int)($data['expires_at'] ?? 0),
             'resend_in_seconds' => (int)($data['resend_in_seconds'] ?? auth_otp_resend_cooldown_seconds()),
             'resend_after' => (int)($data['resend_after'] ?? 0),
-        ]);
+        ];
+        $stageOtp = trim((string)($data['stage_otp'] ?? ''));
+        if (!empty($data['stage_otp_preview']) && preg_match('/^\d{6}$/D', $stageOtp) === 1) {
+            $responseData['stage_otp_preview'] = true;
+            $responseData['stage_otp'] = $stageOtp;
+        }
+        user_proxy_response(true, 'SUCCESS', 'OTP resent successfully', $responseData);
         break;
 
     case 'logout':

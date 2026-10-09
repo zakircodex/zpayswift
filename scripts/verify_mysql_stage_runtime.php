@@ -59,6 +59,27 @@ foreach ($outboundConstants as $name) {
     }
 }
 
+$stageOtpPreviewEnabled = defined('STAGE_AUTH_OTP_PREVIEW_ENABLED')
+    && constant('STAGE_AUTH_OTP_PREVIEW_ENABLED') === true;
+if ($stageOtpPreviewEnabled) {
+    $previewPhones = defined('STAGE_AUTH_OTP_PREVIEW_PHONES')
+        ? constant('STAGE_AUTH_OTP_PREVIEW_PHONES')
+        : [];
+    $previewPurposes = defined('STAGE_AUTH_OTP_PREVIEW_PURPOSES')
+        ? constant('STAGE_AUTH_OTP_PREVIEW_PURPOSES')
+        : [];
+    if (!is_array($previewPhones) || count($previewPhones) !== 1) {
+        stage_runtime_fail('Stage OTP preview must be limited to exactly one test phone.');
+    }
+    $previewPhone = preg_replace('/\D+/', '', trim((string)reset($previewPhones))) ?? '';
+    if (preg_match('/^[1-9]\d{7,14}$/D', $previewPhone) !== 1) {
+        stage_runtime_fail('Stage OTP preview phone is invalid.');
+    }
+    if (!is_array($previewPurposes) || array_values($previewPurposes) !== ['USER_LOGIN']) {
+        stage_runtime_fail('Stage OTP preview must be limited to USER_LOGIN.');
+    }
+}
+
 try {
     zpay_mysql_assert_environment('STAGE');
 } catch (Throwable) {

@@ -17,6 +17,10 @@ define('ADMIN_KEY', '');
 define('APP_PUBLIC_ORIGIN', 'https://zpayswift.com');
 /* Point staging at a separate, normally absent bridge so it cannot send live SMS. */
 define('APP_PRIVATE_SMS_BRIDGE_PATH', '/home/zedpayhe/private/zpayswift/auth_sms_bridge.php');
+/* Optional staging-only OTP preview. Keep disabled in production. */
+define('STAGE_AUTH_OTP_PREVIEW_ENABLED', false);
+define('STAGE_AUTH_OTP_PREVIEW_PHONES', []);
+define('STAGE_AUTH_OTP_PREVIEW_PURPOSES', ['USER_LOGIN']);
 define('WORKER_CLAIM_LEASE_SECONDS', 180);
 
 /* Firebase Realtime Database */

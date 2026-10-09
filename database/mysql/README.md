@@ -13,6 +13,9 @@ deliberately inactive unless a private configuration explicitly selects the
 - Leave `/home/zedpayhe/stage.zpayswift.com/.stage-not-ready` present until
   schema, import, verification and smoke tests all pass.
 - Stage SMS, Telegram, push and operator credentials must remain empty.
+- Login testing may use the stage-only OTP preview for exactly one private,
+  allowlisted phone. It stays disabled by default, never contacts an SMS
+  provider, and must remain limited to the `USER_LOGIN` purpose.
 
 ## Initial import
 
