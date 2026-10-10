@@ -140,6 +140,7 @@
       RESEND_LIMIT_REACHED: 'OTP resend limit reached. Please start login again later.',
       OTP_RESEND_COOLDOWN: 'Please wait before requesting another OTP.',
       SESSION_EXPIRED: 'Login session expired. Please start again.',
+      SESSION_WRITE_FAILED: 'Login session could not be saved. Please try again.',
       NETWORK_ERROR: 'Network error. Please check your internet connection.',
       REQUEST_TIMEOUT: 'Login request timed out. Please try again.',
       INVALID_RESPONSE: 'A valid response was not received. Please try again.'

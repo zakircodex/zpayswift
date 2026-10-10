@@ -372,7 +372,9 @@ function user_proxy_allowed_role(string $role): bool
 
 function user_proxy_store_session(string $sessionToken, array $user): void
 {
-    session_regenerate_id(true);
+    if (session_status() !== PHP_SESSION_ACTIVE || !session_regenerate_id(true)) {
+        user_proxy_response(false, 'SESSION_WRITE_FAILED', 'Login session could not be prepared. Please try again.', [], 503);
+    }
 
     $_SESSION['user_session_token'] = $sessionToken;
     $_SESSION['user_user'] = [
@@ -385,6 +387,34 @@ function user_proxy_store_session(string $sessionToken, array $user): void
     ];
     $_SESSION['user_csrf'] = bin2hex(random_bytes(32));
     $_SESSION['user_verified_at'] = user_proxy_now();
+
+    $sessionId = session_id();
+    $writeOk = $sessionId !== '' && @session_write_close();
+    if ($writeOk) {
+        session_id($sessionId);
+        $writeOk = @session_start()
+            && session_id() === $sessionId
+            && hash_equals($sessionToken, trim((string)($_SESSION['user_session_token'] ?? '')));
+    }
+
+    if (!$writeOk) {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION = [];
+            @session_write_close();
+        }
+
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', [
+            'expires' => time() - 3600,
+            'path' => (string)($params['path'] ?? '/'),
+            'domain' => (string)($params['domain'] ?? ''),
+            'secure' => (bool)($params['secure'] ?? false),
+            'httponly' => (bool)($params['httponly'] ?? true),
+            'samesite' => (string)($params['samesite'] ?? 'Lax'),
+        ]);
+
+        user_proxy_response(false, 'SESSION_WRITE_FAILED', 'Login session could not be saved. Please try again.', [], 503);
+    }
 }
 
 function user_proxy_clear_session(): void
@@ -4582,6 +4612,9 @@ switch ($action) {
         $sessionToken = trim((string)($pinData['session_token'] ?? ''));
         if ($sessionToken !== '' && empty($pinData['otp_required'])) {
             user_proxy_finalize_verified_login_response($sessionToken, (array)($pinData['user'] ?? []));
+            if (!empty($pinData['trusted_device_cookie']) && is_array($pinData['trusted_device_cookie'])) {
+                user_proxy_set_trust_cookie($pinData['trusted_device_cookie']);
+            }
             user_proxy_response(true, 'SUCCESS', 'Trusted device login successful', [
                 'login_complete' => true,
                 'session_active' => true,
