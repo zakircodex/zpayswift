@@ -91,11 +91,12 @@ body.user-support-page .user-page-content {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) 48px;
   align-items: center;
-  min-height: 68px;
+  gap: 8px;
+  min-height: 82px;
   margin: 0 0 12px;
-  padding: 7px 10px;
+  padding: 14px 18px;
   border: 1px solid rgba(200, 214, 236, 0.24);
-  border-radius: 22px;
+  border-radius: 27px;
   background: linear-gradient(145deg, rgba(11, 45, 92, 0.96), rgba(7, 43, 69, 0.94));
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
 }
@@ -105,9 +106,9 @@ body.user-support-page .user-page-content {
   margin: 0;
   overflow: hidden;
   color: var(--z-text);
-  font-size: 22px;
-  font-weight: 850;
-  line-height: 1.2;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1.15;
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1062,9 +1063,13 @@ body.user-support-page.support-keyboard-open .bottom-nav {
 
   #supportSection .support-page-header {
     grid-template-columns: 44px minmax(0, 1fr) 44px;
-    min-height: 64px;
-    padding-right: 8px;
-    padding-left: 8px;
+    min-height: 76px;
+    padding: 11px 12px;
+    border-radius: 24px;
+  }
+
+  #supportSection .support-page-header h1 {
+    font-size: 21px;
   }
 
   #supportSection .support-header-button {

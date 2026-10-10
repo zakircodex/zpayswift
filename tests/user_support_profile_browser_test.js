@@ -93,7 +93,9 @@ async function supportAudit(browser, width, height) {
     };
   });
   assert.ok(layout.scrollWidth <= layout.clientWidth, `${width}x${height}: Contact Us overflows horizontally`);
-  assert.ok(layout.header.height >= 58 && layout.header.bottom < layout.hero.top, `${width}x${height}: header overlaps the support hero`);
+  const expectedHeaderHeight = height > 720 ? 82 : 58;
+  assert.ok(layout.header.height >= expectedHeaderHeight, `${width}x${height}: Contact Us header is smaller than the shared page header`);
+  assert.ok(layout.header.bottom < layout.hero.top, `${width}x${height}: header overlaps the support hero`);
   assert.equal(layout.optionCount, 2, `${width}x${height}: configured contact channels are missing`);
   assert.equal(layout.dataCount, '2', `${width}x${height}: contact grid did not adapt to two channels`);
   assert.ok(Math.abs(layout.optionWidths[0] - layout.optionWidths[1]) < 2, `${width}x${height}: contact buttons are not balanced`);
