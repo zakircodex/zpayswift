@@ -25,9 +25,19 @@ function support_ui_expect(bool $condition, string $message): void
 support_ui_expect(
     str_contains($page, "'show_global_loader' => false")
     && str_contains($page, "'show_bottom_nav' => true")
-    && str_contains($page, 'class="page-section user-support-experience active"')
+    && str_contains($page, 'aria-labelledby="supportPageTitle"')
     && !str_contains($page, 'id="loadingWrap"'),
     'Support must own its loader, activate its page root and retain the shared bottom navigation'
+);
+
+support_ui_expect(
+    str_contains($page, 'class="support-page-header"')
+    && str_contains($page, 'id="supportBackButton"')
+    && str_contains($page, 'href="/user/dashboard"')
+    && str_contains($page, 'id="supportPageTitle">Contact Us</h1>')
+    && str_contains($page, 'href="/user/notifications"')
+    && str_contains($page, 'data-notification-badge'),
+    'Contact Us main view header is incomplete'
 );
 
 support_ui_expect(
@@ -66,6 +76,35 @@ support_ui_expect(
     && str_contains($js, "postForm('support_create'")
     && str_contains($js, "postForm('support_reply'"),
     'Support page is not reusing the established proxy actions'
+);
+support_ui_expect(
+    str_contains($page, 'id="supportContactOptions"')
+    && str_contains($page, 'id="supportWhatsAppLink"')
+    && str_contains($page, 'id="supportCallLink"')
+    && str_contains($page, 'id="supportEmailLink"')
+    && str_contains($page, 'id="supportServiceMeta"')
+    && str_contains($page, 'id="supportCreateNotice"'),
+    'Contact Us does not expose placeholders for the admin support configuration'
+);
+support_ui_expect(
+    str_contains($js, 'function renderSupportConfig()')
+    && str_contains($js, "'https://wa.me/'")
+    && str_contains($js, "'tel:' + phone")
+    && str_contains($js, "'mailto:' + email")
+    && str_contains($js, 'visibleContactCount')
+    && str_contains($js, 'options.dataset.count = String(visibleContactCount)')
+    && str_contains($js, 'serviceMeta.textContent = details.join')
+    && str_contains($js, "$('supportCreateNotice').textContent = notice")
+    && str_contains($js, 'state.config.contact_us_enabled !== false')
+    && str_contains($js, 'state.config.ticket_enabled !== false'),
+    'Contact Us does not safely render or enforce the admin support configuration'
+);
+support_ui_expect(
+    str_contains($css, '#supportSection .support-contact-options')
+    && str_contains($css, ".support-contact-options[data-count='2']")
+    && str_contains($css, '#supportSection .support-contact-option[hidden]')
+    && str_contains($css, '#supportSection .support-service-meta[hidden]'),
+    'Contact Us configured channels do not have responsive hidden-state styling'
 );
 
 support_ui_expect(
@@ -150,6 +189,20 @@ support_ui_expect(
     && str_contains($css, '#supportSection .support-composer-zone')
     && str_contains($css, '#supportSection .support-action-modal'),
     'Support page fixed regions/body-only scrolling CSS is incomplete'
+);
+
+support_ui_expect(
+    str_contains($css, '#supportSection .support-page-header')
+    && str_contains($css, 'grid-template-columns: 48px minmax(0, 1fr) 48px')
+    && str_contains($css, 'min-height: 82px')
+    && str_contains($css, 'padding: 14px 18px')
+    && str_contains($css, 'border-radius: 27px')
+    && str_contains($css, '@media (max-width: 420px)')
+    && str_contains($css, 'min-height: 78px')
+    && str_contains($css, 'grid-template-columns: 42px minmax(0, 1fr) 42px')
+    && str_contains($css, '#supportSection .support-header-button')
+    && str_contains($css, '@media (max-height: 720px)'),
+    'Contact Us Transfer-aligned header styling is incomplete'
 );
 
 support_ui_expect(

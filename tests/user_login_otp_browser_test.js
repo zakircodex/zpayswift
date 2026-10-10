@@ -26,8 +26,12 @@ function pageMarkup() {
   <script>window.USER_PROXY_URL='/api/user/proxy.php';</script><script src="/login-page.js"></script></body></html>`;
 }
 
-function json(response, status, ok, code, data = {}) {
-  response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+function json(response, status, ok, code, data = {}, headers = {}) {
+  response.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+    ...headers
+  });
   response.end(JSON.stringify({ ok, code, message: code, data }));
 }
 
@@ -37,7 +41,9 @@ async function main() {
   const server = http.createServer((request, response) => {
     const url = new URL(request.url, 'http://127.0.0.1');
     if (url.pathname === '/') {
-      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      const headers = { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' };
+      if (url.searchParams.get('trusted') === '1') headers['Set-Cookie'] = 'LOCAL_AUTH_TRUST=VALID; Path=/; SameSite=Lax';
+      response.writeHead(200, headers);
       response.end(pageMarkup());
       return;
     }
@@ -47,6 +53,11 @@ async function main() {
       return;
     }
     if (url.pathname === '/user/dashboard') {
+      if (!String(request.headers.cookie || '').includes('LOCAL_LOGIN_SESSION=VALID')) {
+        response.writeHead(302, { Location: '/' });
+        response.end();
+        return;
+      }
       response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       response.end('<h1>Dashboard</h1>');
       return;
@@ -57,14 +68,23 @@ async function main() {
     }
 
     const action = url.searchParams.get('action') || '';
+    const trustedLogin = String(request.headers.cookie || '').includes('LOCAL_AUTH_TRUST=VALID');
     calls.push(action);
     request.resume();
     if (action === 'maintenance_status') return json(response, 200, true, 'SUCCESS');
-    if (action === 'login_trusted_account') return json(response, 200, true, 'SUCCESS', { trusted_login_available: false });
+    if (action === 'login_trusted_account') return json(response, 200, true, 'SUCCESS', trustedLogin ? {
+      trusted_login_available: true,
+      pre_auth_token: 'TRUSTED-PREAUTH',
+      phone: '60123456789',
+      phone_country: 'MY',
+      name: 'TEST USER'
+    } : { trusted_login_available: false });
     if (action === 'country_defaults') return json(response, 200, true, 'SUCCESS', { phone_country: 'MY' });
     if (action === 'login_check_number') return json(response, 200, true, 'SUCCESS', { phone: '60123456789', phone_country: 'MY', name: 'TEST USER' });
     if (action === 'login_verify_password') return json(response, 200, true, 'SUCCESS', { pre_auth_token: 'PREAUTH', user: { name: 'TEST USER' } });
-    if (action === 'login_verify_pin') return json(response, 200, true, 'PIN_VERIFIED', { pre_auth_token: 'PREAUTH', otp_required: true });
+    if (action === 'login_verify_pin') return trustedLogin
+      ? json(response, 200, true, 'SUCCESS', { login_complete: true, session_active: true }, { 'Set-Cookie': 'LOCAL_LOGIN_SESSION=VALID; Path=/; SameSite=Lax' })
+      : json(response, 200, true, 'PIN_VERIFIED', { pre_auth_token: 'PREAUTH', otp_required: true });
     if (action === 'login_send_otp') return json(response, 200, true, 'OTP_SENT', {
       pre_auth_token: 'PREAUTH', otp_request_id: 'OTP-1', masked_phone: '601*****789',
       expires_in_seconds: 300, resend_in_seconds: 1
@@ -76,7 +96,7 @@ async function main() {
     if (action === 'login_verify_otp') {
       verifyAttempts += 1;
       if (verifyAttempts === 1) return json(response, 409, false, 'OTP_VERIFY_IN_PROGRESS');
-      setTimeout(() => json(response, 200, true, 'SUCCESS', { login_complete: true, session_active: true }), 12000);
+      setTimeout(() => json(response, 200, true, 'SUCCESS', { login_complete: true, session_active: true }, { 'Set-Cookie': 'LOCAL_LOGIN_SESSION=VALID; Path=/; SameSite=Lax' }), 12000);
       return;
     }
     return json(response, 404, false, 'NOT_FOUND');
@@ -125,6 +145,16 @@ async function main() {
     assert.ok(slowVerifyDuration >= 12000 && slowVerifyDuration < 50000, 'The browser did not survive a valid 12-second OTP verification.');
     assert.equal(calls.filter((action) => action === 'login_verify_pin').length, 1, 'PIN verification submitted more than once.');
     assert.equal(calls.filter((action) => action === 'login_send_otp').length, 1, 'OTP send submitted more than once.');
+
+    await context.clearCookies();
+    const trustedPage = await context.newPage();
+    await trustedPage.goto(`http://127.0.0.1:${server.address().port}/?trusted=1`, { waitUntil: 'networkidle' });
+    await trustedPage.waitForFunction(() => !document.querySelector('[data-login-step="pin"]').hidden);
+    await trustedPage.fill('#loginPin', '1234');
+    await trustedPage.click('#loginPinContinue');
+    await trustedPage.waitForURL('**/user/dashboard');
+    assert.equal(await trustedPage.locator('h1').textContent(), 'Dashboard', 'Trusted PIN login did not reach an authenticated dashboard.');
+    assert.equal(calls.filter((action) => action === 'login_verify_pin').length, 2, 'Trusted PIN verification was not submitted exactly once.');
     console.log(`User login PIN/OTP browser tests passed (slow verify ${slowVerifyDuration} ms).`);
   } finally {
     await context.close();

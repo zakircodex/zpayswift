@@ -109,6 +109,8 @@ async function main() {
     const launchOptions = { headless: true };
     if (process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE) {
       launchOptions.executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE;
+    } else {
+      launchOptions.channel = process.env.PLAYWRIGHT_CHANNEL || 'chrome';
     }
     browser = await chromium.launch(launchOptions);
     const page = await browser.newPage({ viewport: { width: 390, height: 844 } });

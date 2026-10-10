@@ -7,6 +7,9 @@ $css = (string)file_get_contents($root . '/api/user/assets/pages/profile-page.cs
 $js = (string)file_get_contents($root . '/api/user/assets/pages/profile-page.js');
 $proxy = (string)file_get_contents($root . '/api/user/proxy.php');
 $profileUpdate = (string)file_get_contents($root . '/api/user/profile_update.php');
+$profileUpload = (string)file_get_contents($root . '/api/user/profile_photo_upload.php');
+$authSession = (string)file_get_contents($root . '/api/auth/session.php');
+$dashboardLib = (string)file_get_contents($root . '/api/lib/mobile_dashboard.php');
 $tests = 0;
 
 function profile_expect(bool $condition, string $message): void
@@ -35,11 +38,19 @@ profile_expect(
 profile_expect(
     str_contains($page, 'id="profileAvatarButton"')
     && str_contains($page, 'id="profileAvatarImage"')
+    && str_contains($page, 'src="/assets/brand/zpay-icon.png"')
     && str_contains($page, 'id="profileAvatarInitials"')
     && str_contains($page, 'id="profilePhotoEditButton"')
     && str_contains($page, 'id="profileEditButton"')
     && str_contains($page, 'id="profilePhotoInput"'),
     'Profile photo/edit controls are incomplete'
+);
+profile_expect(
+    str_contains($js, "const PROFILE_AVATAR_FALLBACK = '/assets/brand/zpay-icon.png'")
+    && str_contains($js, "avatar.dataset.fallback = image ? 'profile' : 'brand'")
+    && str_contains($js, "avatar.src = image || PROFILE_AVATAR_FALLBACK")
+    && str_contains($js, "image.dataset.fallback !== 'brand'"),
+    'Profile does not share the drawer brand fallback or recover from broken profile photos'
 );
 profile_expect(
     str_contains($page, '<h3>Security</h3>')
@@ -101,6 +112,21 @@ profile_expect(
     !str_contains($page . $js, 'openSection(')
     && !str_contains($page, 'data-page-section'),
     'Profile still depends on SPA routing'
+);
+profile_expect(
+    str_contains($dashboardLib, 'function zpay_public_profile_photo_url')
+    && str_contains($dashboardLib, "'PROFILE', 'profile'")
+    && str_contains($authSession, "'profile_photo_url' => zpay_public_profile_photo_url(\$user)")
+    && str_contains($profileUpdate, "'profile_photo_url' => zpay_public_profile_photo_url(\$user)")
+    && str_contains($profileUpload, "'profile_photo_url' => zpay_public_profile_photo_url(\$user)"),
+    'Profile APIs do not preserve migrated public photo field compatibility'
+);
+profile_expect(
+    str_contains($js, "url.protocol === 'https:'")
+    && str_contains($js, "'zpayswift.com'")
+    && str_contains($js, "'stage.zpayswift.com'")
+    && str_contains($js, 'allowedHosts.has(url.hostname.toLowerCase())'),
+    'Profile photo renderer does not constrain migrated cross-host photos to trusted HTTPS origins'
 );
 
 echo "User Profile UI tests passed ({$tests} assertions).\n";

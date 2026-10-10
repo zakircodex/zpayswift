@@ -77,6 +77,142 @@ function auth_sms_normalize_bd_phone(string $phone): string
     return $phone;
 }
 
+function auth_sms_stage_preview_enabled(): bool
+{
+    return defined('APP_ENVIRONMENT')
+        && strtolower(trim((string)constant('APP_ENVIRONMENT'))) === 'stage'
+        && defined('APP_PUBLIC_ORIGIN')
+        && rtrim(strtolower(trim((string)constant('APP_PUBLIC_ORIGIN'))), '/') === 'https://stage.zpayswift.com'
+        && defined('STAGE_AUTH_OTP_PREVIEW_ENABLED')
+        && constant('STAGE_AUTH_OTP_PREVIEW_ENABLED') === true
+        && function_exists('app_is_stage_host')
+        && app_is_stage_host();
+}
+
+function auth_sms_stage_preview_allowed(string $country, string $phone, string $templateKey): bool
+{
+    if (!auth_sms_stage_preview_enabled()) {
+        return false;
+    }
+
+    $country = auth_normalize_country_code($country);
+    $phone = normalize_phone_by_country($phone, $country);
+    $templateKey = otp_normalize_template_key($templateKey);
+    $allowedPhones = defined('STAGE_AUTH_OTP_PREVIEW_PHONES')
+        ? constant('STAGE_AUTH_OTP_PREVIEW_PHONES')
+        : [];
+    $allowedPurposes = defined('STAGE_AUTH_OTP_PREVIEW_PURPOSES')
+        ? constant('STAGE_AUTH_OTP_PREVIEW_PURPOSES')
+        : [];
+
+    if ($phone === '' || !is_array($allowedPhones) || !is_array($allowedPurposes)) {
+        return false;
+    }
+
+    $normalizedPhones = [];
+    foreach ($allowedPhones as $allowedPhone) {
+        $normalized = preg_replace('/\D+/', '', trim((string)$allowedPhone)) ?? '';
+        if ($normalized !== '') {
+            $normalizedPhones[] = $normalized;
+        }
+    }
+    $normalizedPurposes = array_map(
+        static fn($purpose): string => otp_normalize_template_key((string)$purpose),
+        $allowedPurposes
+    );
+
+    return in_array($phone, $normalizedPhones, true)
+        && in_array($templateKey, $normalizedPurposes, true);
+}
+
+function auth_sms_prepare_otp_code(
+    string $country,
+    string $phone,
+    string $templateKey,
+    string $referenceId,
+    string $fallbackCode
+): string {
+    if (!auth_sms_stage_preview_allowed($country, $phone, $templateKey)) {
+        return $fallbackCode;
+    }
+
+    $appKey = defined('APP_KEY') ? trim((string)constant('APP_KEY')) : '';
+    $phone = normalize_phone_by_country($phone, auth_normalize_country_code($country));
+    $referenceId = trim($referenceId);
+    if ($appKey === '' || $phone === '' || $referenceId === '') {
+        return $fallbackCode;
+    }
+
+    $seed = otp_normalize_template_key($templateKey) . '|' . $phone . '|' . $referenceId;
+    $bucket = hexdec(substr(hash_hmac('sha256', $seed, $appKey), 0, 7));
+    return (string)(100000 + ((int)$bucket % 900000));
+}
+
+function auth_sms_stage_preview_result(
+    string $country,
+    string $phone,
+    string $referenceId,
+    string $templateKey,
+    string $otpCode
+): ?array {
+    if (!auth_sms_stage_preview_enabled()) {
+        return null;
+    }
+
+    if (!auth_sms_stage_preview_allowed($country, $phone, $templateKey)) {
+        return [
+            'ok' => false,
+            'gateway' => 'STAGE_PREVIEW',
+            'code' => 'STAGE_PREVIEW_NOT_ALLOWED',
+            'message' => 'Stage OTP preview is not enabled for this request',
+            'reference_id' => $referenceId,
+            'template_key' => otp_normalize_template_key($templateKey),
+        ];
+    }
+
+    $expectedCode = auth_sms_prepare_otp_code($country, $phone, $templateKey, $referenceId, '');
+    if ($expectedCode === '' || !hash_equals($expectedCode, $otpCode)) {
+        return [
+            'ok' => false,
+            'gateway' => 'STAGE_PREVIEW',
+            'code' => 'STAGE_PREVIEW_CODE_MISMATCH',
+            'message' => 'Stage OTP preview code mismatch',
+            'reference_id' => $referenceId,
+            'template_key' => otp_normalize_template_key($templateKey),
+        ];
+    }
+
+    return [
+        'ok' => true,
+        'gateway' => 'STAGE_PREVIEW',
+        'code' => 'STAGE_PREVIEW_READY',
+        'message' => 'Stage OTP preview prepared without external delivery',
+        'reference_id' => $referenceId,
+        'template_key' => otp_normalize_template_key($templateKey),
+    ];
+}
+
+function auth_sms_stage_preview_response_fields(
+    string $country,
+    string $phone,
+    string $templateKey,
+    string $referenceId
+): array {
+    if (!auth_sms_stage_preview_allowed($country, $phone, $templateKey)) {
+        return [];
+    }
+
+    $otpCode = auth_sms_prepare_otp_code($country, $phone, $templateKey, $referenceId, '');
+    if (preg_match('/^\d{6}$/D', $otpCode) !== 1) {
+        return [];
+    }
+
+    return [
+        'stage_otp_preview' => true,
+        'stage_otp' => $otpCode,
+    ];
+}
+
 function auth_send_otp_sms(string $phone, string $message): bool
 {
     $country = detect_phone_country($phone);
@@ -167,6 +303,16 @@ function auth_send_otp_sms_by_country(
 ): array {
     $country = auth_normalize_country_code($country);
     $templateKey = otp_normalize_template_key($templateKey);
+    $stagePreview = auth_sms_stage_preview_result(
+        $country,
+        $phone,
+        $referenceId,
+        $templateKey,
+        $otpCode
+    );
+    if (is_array($stagePreview)) {
+        return $stagePreview;
+    }
 
     if ($country === 'MY') {
         $approvedMessage = otp_my_build_message($templateKey, $otpCode);

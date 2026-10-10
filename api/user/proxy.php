@@ -11,6 +11,7 @@ require_once dirname(__DIR__) . '/lib/mfs.php';
 require_once dirname(__DIR__) . '/lib/add_money.php';
 require_once dirname(__DIR__) . '/lib/favorites.php';
 require_once dirname(__DIR__) . '/lib/referral.php';
+require_once dirname(__DIR__) . '/lib/mobile_dashboard.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -280,6 +281,7 @@ function user_proxy_internal_api_request(
         if ($body !== null) {
             $finalHeaders[] = 'Content-Type: application/json';
         }
+        $finalHeaders = app_internal_request_headers($finalHeaders);
 
         $curlOptions = [
             CURLOPT_URL => (string)$attempt['url'],
@@ -370,7 +372,9 @@ function user_proxy_allowed_role(string $role): bool
 
 function user_proxy_store_session(string $sessionToken, array $user): void
 {
-    session_regenerate_id(true);
+    if (session_status() !== PHP_SESSION_ACTIVE || !session_regenerate_id(true)) {
+        user_proxy_response(false, 'SESSION_WRITE_FAILED', 'Login session could not be prepared. Please try again.', [], 503);
+    }
 
     $_SESSION['user_session_token'] = $sessionToken;
     $_SESSION['user_user'] = [
@@ -383,6 +387,34 @@ function user_proxy_store_session(string $sessionToken, array $user): void
     ];
     $_SESSION['user_csrf'] = bin2hex(random_bytes(32));
     $_SESSION['user_verified_at'] = user_proxy_now();
+
+    $sessionId = session_id();
+    $writeOk = $sessionId !== '' && @session_write_close();
+    if ($writeOk) {
+        session_id($sessionId);
+        $writeOk = @session_start()
+            && session_id() === $sessionId
+            && hash_equals($sessionToken, trim((string)($_SESSION['user_session_token'] ?? '')));
+    }
+
+    if (!$writeOk) {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            $_SESSION = [];
+            @session_write_close();
+        }
+
+        $params = session_get_cookie_params();
+        setcookie(session_name(), '', [
+            'expires' => time() - 3600,
+            'path' => (string)($params['path'] ?? '/'),
+            'domain' => (string)($params['domain'] ?? ''),
+            'secure' => (bool)($params['secure'] ?? false),
+            'httponly' => (bool)($params['httponly'] ?? true),
+            'samesite' => (string)($params['samesite'] ?? 'Lax'),
+        ]);
+
+        user_proxy_response(false, 'SESSION_WRITE_FAILED', 'Login session could not be saved. Please try again.', [], 503);
+    }
 }
 
 function user_proxy_clear_session(): void
@@ -1699,6 +1731,7 @@ function user_proxy_internal_multipart_request(string $relativePath, array $fiel
     foreach ($headers as $key => $value) {
         $finalHeaders[] = $key . ': ' . $value;
     }
+    $finalHeaders = app_internal_request_headers($finalHeaders);
 
     curl_setopt_array($ch, [
         CURLOPT_URL => $url,
@@ -1737,6 +1770,7 @@ function user_proxy_internal_binary_request(string $relativePath, array $headers
     foreach ($headers as $key => $value) {
         $finalHeaders[] = $key . ': ' . $value;
     }
+    $finalHeaders = app_internal_request_headers($finalHeaders);
 
     curl_setopt_array($ch, [
         CURLOPT_URL => $url,
@@ -1793,6 +1827,123 @@ function user_proxy_forward_authenticated_json(
         (string)($json['code'] ?? $fallbackCode),
         (string)($json['message'] ?? $fallbackMessage),
         (array)($json['data'] ?? []),
+        (int)(($res['status'] ?? 0) > 0 ? $res['status'] : 502)
+    );
+}
+
+function user_proxy_transfer_status_data_from_row(array $row, string $transferId, string $uid): ?array
+{
+    $transferId = trim($transferId);
+    $uid = trim($uid);
+    if ($transferId === '' || $uid === '') {
+        return null;
+    }
+
+    $senderUid = trim((string)($row['sender_uid'] ?? ''));
+    $receiverUid = trim((string)($row['receiver_uid'] ?? ''));
+    if ($uid !== $senderUid && $uid !== $receiverUid) {
+        return null;
+    }
+
+    $receiptUrl = trim((string)($row['receipt_url'] ?? $row['tracking_url'] ?? ''));
+    $trackingUrl = trim((string)($row['tracking_url'] ?? $row['receipt_url'] ?? ''));
+
+    return [
+        'transfer_id' => (string)($row['transfer_id'] ?? $transferId),
+        'request_id' => (string)($row['request_id'] ?? $row['transfer_id'] ?? $transferId),
+        'status' => (string)($row['status'] ?? ''),
+        'receipt_id' => (string)($row['receipt_id'] ?? ''),
+        'receipt_url' => $receiptUrl,
+        'tracking_url' => $trackingUrl,
+        'receipt_created_at' => (int)($row['receipt_created_at'] ?? 0),
+        'created_at' => (int)($row['created_at'] ?? 0),
+        'updated_at' => (int)($row['updated_at'] ?? 0),
+        'completed_at' => (int)($row['completed_at'] ?? 0),
+    ];
+}
+
+function user_proxy_transfer_status_data(string $transferId, string $uid): ?array
+{
+    $row = fb_get('TRANSFERS/' . trim($transferId));
+    if (!is_array($row)) {
+        return null;
+    }
+
+    return user_proxy_transfer_status_data_from_row($row, $transferId, $uid);
+}
+
+function user_proxy_transfer_history_data(string $uid, int $limit): array
+{
+    $uid = trim($uid);
+    if ($uid === '') {
+        return [];
+    }
+
+    $rows = fb_get('TRANSFER_HISTORY/' . $uid);
+    $items = [];
+    foreach ((array)$rows as $transferId => $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+
+        $resolvedId = trim((string)($row['transfer_id'] ?? $row['request_id'] ?? $transferId));
+        $item = user_proxy_transfer_status_data_from_row($row, $resolvedId, $uid);
+        if (!is_array($item)) {
+            continue;
+        }
+
+        $item['direction'] = (string)($row['direction'] ?? '');
+        $item['amount'] = round((float)($row['amount'] ?? $row['transfer_amount'] ?? 0), 2);
+        $item['wallet_currency'] = (string)($row['wallet_currency'] ?? $row['currency'] ?? '');
+        $items[] = $item;
+    }
+
+    usort($items, static fn(array $left, array $right): int =>
+        (int)($right['created_at'] ?? 0) <=> (int)($left['created_at'] ?? 0)
+    );
+
+    return array_slice($items, 0, max(1, min(100, $limit)));
+}
+
+function user_proxy_forward_transfer_create(array $body, array $sessionUser): void
+{
+    $res = user_proxy_internal_api_request(
+        'POST',
+        'transfer/create.php',
+        [
+            'preview_token' => trim((string)($body['preview_token'] ?? '')),
+            'reference' => trim((string)($body['reference'] ?? $body['note'] ?? '')),
+        ],
+        user_proxy_authenticated_headers(),
+        [
+            'canonical_only' => true,
+            'max_attempts' => 1,
+            'connect_timeout' => 15,
+            'timeout' => 60,
+        ]
+    );
+    $json = is_array($res['json'] ?? null) ? $res['json'] : [];
+    $data = (array)($json['data'] ?? []);
+
+    if (!empty($res['ok'])) {
+        $uid = trim((string)($sessionUser['uid'] ?? ''));
+        $transfer = is_array($data['transfer'] ?? null) ? $data['transfer'] : [];
+        $transferId = trim((string)($transfer['transfer_id'] ?? $transfer['request_id'] ?? ''));
+        $persisted = $transferId !== '' && $uid !== ''
+            ? user_proxy_transfer_status_data($transferId, $uid)
+            : null;
+
+        if (is_array($persisted)) {
+            $transfer = array_replace($transfer, $persisted);
+            $data['transfer'] = $transfer;
+        }
+    }
+
+    user_proxy_response(
+        !empty($res['ok']),
+        (string)($json['code'] ?? 'TRANSFER_FAILED'),
+        (string)($json['message'] ?? 'Transfer could not be completed.'),
+        $data,
         (int)(($res['status'] ?? 0) > 0 ? $res['status'] : 502)
     );
 }
@@ -2027,6 +2178,12 @@ function user_proxy_recover_bundle_submit_result(
         return ['ok' => false];
     }
 
+    try {
+        bundle_write_history($request);
+    } catch (Throwable $exception) {
+        error_log('Recovered Bundle history repair failed: ' . $exception->getMessage());
+    }
+
     return [
         'ok' => true,
         'request_id' => (string)($recovered['request_id'] ?? ''),
@@ -2167,6 +2324,38 @@ function user_proxy_create_request_status(string $requestId, string $uid, string
 }
 
 
+function user_proxy_public_balance_after(array $public, array $row): array
+{
+    foreach (
+        ['balance_after', 'display_balance_after', 'wallet_balance_after', 'balance_after_amount', 'last_balance', 'after_balance']
+        as $balanceKey
+    ) {
+        if (
+            !array_key_exists($balanceKey, $row)
+            || $row[$balanceKey] === null
+            || $row[$balanceKey] === ''
+            || !is_numeric($row[$balanceKey])
+        ) {
+            continue;
+        }
+
+        $public['balance_after'] = (float)$row[$balanceKey];
+        break;
+    }
+
+    $balanceAfterText = trim((string)(
+        $row['balance_after_text']
+        ?? $row['display_balance_after_text']
+        ?? ''
+    ));
+    if ($balanceAfterText !== '') {
+        $public['balance_after_text'] = $balanceAfterText;
+    }
+
+    return $public;
+}
+
+
 function user_proxy_public_request_log(array $row, string $requestId = ''): array
 {
     $requestId = trim((string)($row['request_id'] ?? $row['id'] ?? $requestId));
@@ -2199,7 +2388,7 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
             ? mfs_service_name($serviceType)
             : $serviceType;
 
-        return [
+        $public = [
             'request_id' => $requestId,
             'key_id' => (string)($row['key_id'] ?? $row['source_key_id'] ?? 'PANEL'),
             'action' => 'MFS',
@@ -2247,6 +2436,8 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
             'updated_at' => (int)($row['updated_at'] ?? 0),
             'completed_at' => (int)($row['completed_at'] ?? 0),
         ];
+
+        return user_proxy_public_balance_after($public, $row);
     }
 
     $operator = (string)($row['operator'] ?? '');
@@ -2263,7 +2454,7 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
             ?? 0
         );
 
-        return [
+        $public = array_replace(bundle_financial_aliases($row), [
             'request_id' => $requestId,
             'key_id' => (string)($row['key_id'] ?? 'PANEL'),
             'action' => 'BUNDLE',
@@ -2288,12 +2479,14 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
             'created_at' => (int)($row['created_at'] ?? 0),
             'updated_at' => (int)($row['updated_at'] ?? 0),
             'completed_at' => (int)($row['completed_at'] ?? 0),
-        ];
+        ]);
+
+        return user_proxy_public_balance_after($public, $row);
     }
 
     $topupNumber = (string)($row['topup_number'] ?? $row['number'] ?? '');
 
-    return [
+    $public = array_replace(topup_normalized_history_fields($row), [
         'request_id' => $requestId,
         'key_id' => (string)($row['key_id'] ?? 'PANEL'),
         'action' => 'TOPUP',
@@ -2314,11 +2507,19 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
         'user_commission' => 0,
         'you_pay' => 0,
         'payable_amount' => 0,
+        'wallet_debit_bdt' => (float)($row['wallet_debit_bdt'] ?? $row['total_debit_bdt'] ?? 0),
+        'rate_applicable' => (bool)($row['rate_applicable'] ?? false),
+        'rate_snapshot' => $row['rate_snapshot'] ?? null,
+        'rate_used' => (float)($row['rate_used'] ?? $row['rate_snapshot'] ?? 0),
+        'commission_amount' => (float)($row['commission_amount'] ?? $row['commission_bdt'] ?? 0),
+        'commission_bdt' => (float)($row['commission_bdt'] ?? $row['commission_amount'] ?? 0),
         'message' => (string)($row['final_message'] ?? $row['message'] ?? $row['note'] ?? ''),
         'created_at' => (int)($row['created_at'] ?? 0),
         'updated_at' => (int)($row['updated_at'] ?? 0),
         'completed_at' => (int)($row['completed_at'] ?? 0),
-    ];
+    ]);
+
+    return user_proxy_public_balance_after($public, $row);
 }
 
 
@@ -2499,6 +2700,41 @@ function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100, ?st
         }
     }
 
+    $pendingBundleRows = fb_get('BUNDLE_REQUESTS/PENDING', [
+        'orderBy' => json_encode('uid'),
+        'equalTo' => json_encode($uid),
+        'limitToLast' => $candidateLimit,
+    ]);
+    if (is_array($pendingBundleRows)) {
+        foreach ($pendingBundleRows as $requestId => $row) {
+            if (!is_array($row) || trim((string)($row['uid'] ?? '')) !== $uid) {
+                continue;
+            }
+
+            $row['request_id'] = trim((string)($row['request_id'] ?? $requestId));
+            $row['request_type'] = 'BUNDLE';
+            $row['status'] = (string)($row['status'] ?? 'WAITING_ADMIN');
+            $public = user_proxy_public_request_log($row, (string)$requestId);
+            $rid = trim((string)($public['request_id'] ?? $requestId));
+
+            if ($rid === '' || !user_proxy_request_log_matches_month($public, $rid, $month)) {
+                continue;
+            }
+
+            $alreadyMirrored = isset($monthlyMirrors[$rid]);
+            $map[$rid] = array_merge($map[$rid] ?? [], $public);
+            $monthlyMirrors[$rid] = true;
+
+            if (!$alreadyMirrored) {
+                try {
+                    bundle_write_history($row);
+                } catch (Throwable $exception) {
+                    error_log('Bundle history self-repair failed for ' . $rid . ': ' . $exception->getMessage());
+                }
+            }
+        }
+    }
+
     $activeStatuses = ['', 'PENDING', 'WAITING_ADMIN', 'WAITING_APPROVAL', 'PROCESSING', 'CLAIMED', 'DIALING'];
     foreach ($map as $requestId => $row) {
         $status = strtoupper(trim((string)($row['status'] ?? '')));
@@ -2622,12 +2858,73 @@ function user_proxy_collect_request_logs(string $uid, int $limit = 100, bool $le
     return user_proxy_collect_legacy_request_logs($uid, $limit, $month);
 }
 
+function user_proxy_collect_wallet_history(string $uid, string $month, int $limit = 100): array
+{
+    return wallet_list_user_history($uid, $month, $limit);
+}
+
 function user_proxy_collect_wallet_received(string $uid, string $month, int $limit = 100): array
 {
     return array_values(array_filter(
-        wallet_list_user_history($uid, $month, $limit),
+        user_proxy_collect_wallet_history($uid, $month, $limit),
         static fn(array $row): bool => strtoupper((string)($row['direction'] ?? '')) === 'CREDIT'
     ));
+}
+
+function user_proxy_dashboard_notice_payload(): array
+{
+    $config = zpay_dash_config();
+    $text = !empty($config['notice_active'])
+        ? trim((string)($config['notice_text'] ?? ''))
+        : '';
+
+    return [
+        'active' => $text !== '',
+        'text' => $text,
+    ];
+}
+
+function user_proxy_monthly_activity_summary(string $uid, string $month): array
+{
+    $limit = 300;
+    $groups = [
+        'REQUEST' => user_proxy_collect_request_logs($uid, $limit, false, $month),
+        'TRANSFER' => user_proxy_collect_wallet_history($uid, $month, $limit),
+        'ADD_MONEY' => add_money_list_user_history($uid, $limit, $month),
+    ];
+    $unique = [];
+    $breakdown = [];
+
+    foreach ($groups as $source => $rows) {
+        $breakdown[strtolower($source)] = count($rows);
+        foreach ($rows as $index => $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $rowSource = $source === 'REQUEST'
+                ? strtoupper(trim((string)($row['request_type'] ?? $row['type'] ?? $source)))
+                : $source;
+            $rowId = trim((string)(
+                $row['request_id']
+                ?? $row['transfer_id']
+                ?? $row['transaction_id']
+                ?? $row['id']
+                ?? ''
+            ));
+            if ($rowId === '') {
+                $encoded = json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $rowId = hash('sha256', is_string($encoded) ? $encoded : $source . ':' . $index);
+            }
+            $unique[$rowSource . ':' . $rowId] = true;
+        }
+    }
+
+    return [
+        'request_count' => count($unique),
+        'breakdown' => $breakdown,
+        'count_limit' => $limit,
+        'count_capped' => in_array($limit, array_values($breakdown), true),
+    ];
 }
 
 /* =========================================================
@@ -4400,6 +4697,9 @@ switch ($action) {
         $sessionToken = trim((string)($pinData['session_token'] ?? ''));
         if ($sessionToken !== '' && empty($pinData['otp_required'])) {
             user_proxy_finalize_verified_login_response($sessionToken, (array)($pinData['user'] ?? []));
+            if (!empty($pinData['trusted_device_cookie']) && is_array($pinData['trusted_device_cookie'])) {
+                user_proxy_set_trust_cookie($pinData['trusted_device_cookie']);
+            }
             user_proxy_response(true, 'SUCCESS', 'Trusted device login successful', [
                 'login_complete' => true,
                 'session_active' => true,
@@ -4544,7 +4844,7 @@ switch ($action) {
 
         $data = (array)($resendRes['json']['data'] ?? []);
 
-        user_proxy_response(true, 'SUCCESS', 'OTP resent successfully', [
+        $responseData = [
             'require_otp' => true,
             'pre_auth_token' => (string)($data['pre_auth_token'] ?? $preAuthToken),
             'otp_request_id' => (string)($data['otp_request_id'] ?? $otpRequestId),
@@ -4553,7 +4853,13 @@ switch ($action) {
             'expires_at' => (int)($data['expires_at'] ?? 0),
             'resend_in_seconds' => (int)($data['resend_in_seconds'] ?? auth_otp_resend_cooldown_seconds()),
             'resend_after' => (int)($data['resend_after'] ?? 0),
-        ]);
+        ];
+        $stageOtp = trim((string)($data['stage_otp'] ?? ''));
+        if (!empty($data['stage_otp_preview']) && preg_match('/^\d{6}$/D', $stageOtp) === 1) {
+            $responseData['stage_otp_preview'] = true;
+            $responseData['stage_otp'] = $stageOtp;
+        }
+        user_proxy_response(true, 'SUCCESS', 'OTP resent successfully', $responseData);
         break;
 
     case 'logout':
@@ -4620,6 +4926,7 @@ switch ($action) {
             'user' => $sessionUser,
             'csrf' => user_proxy_get_csrf(),
             'wallet_summary' => user_proxy_wallet_summary_payload($uid, $sessionUser, $balanceOnly),
+            'notice' => user_proxy_dashboard_notice_payload(),
             'request_logs' => [
                 'uid' => $uid,
                 'month' => $month,
@@ -4639,19 +4946,14 @@ switch ($action) {
         $sessionUser = user_proxy_require_login(true, false);
         $uid = trim((string)($sessionUser['uid'] ?? ''));
         $month = user_proxy_valid_month_key($_GET['month'] ?? null);
-        $limit = (int)($_GET['limit'] ?? 50);
-        if ($limit <= 0) {
-            $limit = 50;
-        }
-        if ($limit > 100) {
-            $limit = 100;
-        }
-        $items = user_proxy_collect_request_logs($uid, $limit, false, $month);
+        $summary = user_proxy_monthly_activity_summary($uid, $month);
 
         user_proxy_response(true, 'SUCCESS', 'Dashboard activity summary loaded', [
             'uid' => $uid,
             'month' => $month,
-            'request_count' => count($items),
+            'request_count' => (int)$summary['request_count'],
+            'breakdown' => (array)$summary['breakdown'],
+            'count_capped' => (bool)$summary['count_capped'],
             'loaded_at' => user_proxy_now(),
         ]);
         break;
@@ -4820,7 +5122,7 @@ switch ($action) {
         }
 
         $items = user_proxy_collect_request_logs($uid, $limit, $legacy, $month);
-        $walletHistory = user_proxy_collect_wallet_received($uid, $month, $limit);
+        $walletHistory = user_proxy_collect_wallet_history($uid, $month, $limit);
         $addMoneyHistory = add_money_public_request_rows(add_money_list_user_history($uid, $limit, $month));
         $hasMore = count($items) >= $limit
             || count($walletHistory) >= $limit
@@ -5463,37 +5765,43 @@ switch ($action) {
     case 'transfer_create':
         user_proxy_require_method('POST');
         user_proxy_require_csrf();
-        user_proxy_require_login(true, false);
+        $sessionUser = user_proxy_require_login(true, false);
         $body = user_proxy_read_json_body();
-        user_proxy_forward_authenticated_json(
-            'POST',
-            'transfer/create.php',
-            [
-                'preview_token' => trim((string)($body['preview_token'] ?? '')),
-                'reference' => trim((string)($body['reference'] ?? $body['note'] ?? '')),
-            ],
-            'TRANSFER_FAILED',
-            'Transfer could not be completed.',
-            [
-                'canonical_only' => true,
-                'max_attempts' => 1,
-                'connect_timeout' => 15,
-                'timeout' => 60,
-            ]
+        user_proxy_forward_transfer_create($body, $sessionUser);
+        break;
+
+    case 'transfer_status':
+        user_proxy_require_method('GET');
+        $transferId = trim((string)($_GET['transfer_id'] ?? ''));
+        $sessionUser = user_proxy_require_login(true, false);
+        if ($transferId === '' || preg_match('/^[A-Za-z0-9_-]{3,80}$/D', $transferId) !== 1) {
+            user_proxy_response(false, 'VALIDATION_ERROR', 'Valid transfer_id is required.', [], 422);
+        }
+
+        $transfer = user_proxy_transfer_status_data(
+            $transferId,
+            (string)($sessionUser['uid'] ?? '')
         );
+        if (!is_array($transfer)) {
+            user_proxy_response(false, 'NOT_FOUND', 'Transfer not found.', [], 404);
+        }
+
+        user_proxy_response(true, 'TRANSFER_STATUS_OK', 'Transfer status loaded.', [
+            'transfer' => $transfer,
+        ]);
         break;
 
     case 'transfer_history':
         user_proxy_require_method('GET');
-        user_proxy_require_login(true, false);
+        $sessionUser = user_proxy_require_login(true, false);
         $limit = max(1, min(100, (int)($_GET['limit'] ?? 25)));
-        user_proxy_forward_authenticated_json(
-            'GET',
-            'transfer/history.php?' . http_build_query(['limit' => $limit]),
-            null,
-            'TRANSFER_HISTORY_FAILED',
-            'Transfer history could not be loaded.'
+        $transferItems = user_proxy_transfer_history_data(
+            (string)($sessionUser['uid'] ?? ''),
+            $limit
         );
+        user_proxy_response(true, 'TRANSFER_HISTORY_OK', 'Transfer history loaded.', [
+            'items' => $transferItems,
+        ]);
         break;
 
     case 'support_config':

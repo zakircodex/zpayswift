@@ -739,8 +739,14 @@ body.user-transfer-page {
 .transfer-action-modal .transfer-tracking-copy {
   margin: 10px 0 0;
   color: var(--z-muted);
+  font-size: 13px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
   text-align: center;
+}
+
+.transfer-action-modal .transfer-tracking-copy.is-pending {
+  font-size: 15px;
 }
 
 .transfer-action-modal .transfer-action-buttons {
@@ -792,9 +798,20 @@ body.user-transfer-page .transfer-action-modal.transfer-success-modal .transfer-
   background: var(--z-green);
 }
 
+.transfer-action-modal .transfer-modal-button.copy-action:not(:disabled) {
+  color: #fff;
+  border-color: #72bcff;
+  background: #1760a1;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
 .transfer-action-modal .transfer-modal-button:disabled {
   cursor: not-allowed;
-  opacity: 0.58;
+  color: rgba(223, 232, 246, 0.58);
+  border-color: rgba(117, 156, 215, 0.2);
+  background: rgba(11, 45, 92, 0.42);
+  box-shadow: none;
+  opacity: 0.72;
 }
 
 .transfer-action-modal .transfer-modal-button:focus-visible {
@@ -857,8 +874,8 @@ body.user-transfer-page.user-modal-open {
 
 .user-transfer-page .bottom-nav {
   left: 0;
-  padding: 0 12px calc(8px + env(safe-area-inset-bottom));
-  background: linear-gradient(180deg, transparent, rgba(4, 16, 31, 0.97) 38%);
+  padding: 0 12px var(--z-nav-bottom-gap);
+  background: var(--z-nav-backdrop);
 }
 
 .user-transfer-page .bottom-nav-inner {

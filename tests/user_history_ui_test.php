@@ -78,7 +78,12 @@ history_ui_expect(
     str_contains($proxy, "'orderBy' => json_encode('created_at')")
     && str_contains($proxy, "'limitToLast' => \$candidateLimit")
     && str_contains($proxy, "'TOPUP' => 'TOPUP_HISTORY/' . \$uid . '/' . \$month")
+    && str_contains($proxy, "'BUNDLE' => 'BUNDLE_HISTORY/' . \$uid . '/' . \$month")
     && str_contains($proxy, "'MFS' => 'MFS_HISTORY/' . \$uid . '/' . \$month")
+    && str_contains($proxy, "fb_get('BUNDLE_REQUESTS/PENDING'")
+    && str_contains($proxy, "'orderBy' => json_encode('uid')")
+    && str_contains($proxy, "'equalTo' => json_encode(\$uid)")
+    && str_contains($proxy, 'bundle_write_history($row)')
     && str_contains($proxy, 'if (!isset($monthlyMirrors[$requestId])')
     && str_contains($proxy, 'add_money_list_user_history($uid, $limit, $month)')
     && str_contains($addMoney, "'startAt' => json_encode(\$monthPrefix)")
@@ -121,6 +126,74 @@ history_ui_expect(
     && !str_contains($transferBlock, "addDetail(cardRows, 'Balance After'")
     && str_contains($transferBlock, "addDetail(detailRows, 'Balance After'"),
     'Transfer Balance After must remain modal-only like Android'
+);
+
+$balanceHelperStart = strpos($proxy, 'function user_proxy_public_balance_after');
+$balanceHelperEnd = strpos($proxy, 'function user_proxy_public_request_log', $balanceHelperStart !== false ? $balanceHelperStart : 0);
+$balanceHelperBlock = ($balanceHelperStart !== false && $balanceHelperEnd !== false && $balanceHelperEnd > $balanceHelperStart)
+    ? substr($proxy, $balanceHelperStart, $balanceHelperEnd - $balanceHelperStart)
+    : '';
+$mfsProxyStart = strpos($proxy, "if (\$type === 'MFS')");
+$mfsProxyEnd = strpos($proxy, '$operator =', $mfsProxyStart !== false ? $mfsProxyStart : 0);
+$mfsProxyBlock = ($mfsProxyStart !== false && $mfsProxyEnd !== false && $mfsProxyEnd > $mfsProxyStart)
+    ? substr($proxy, $mfsProxyStart, $mfsProxyEnd - $mfsProxyStart)
+    : '';
+$mfsUiStart = strpos($js, 'function mfsItem(row)');
+$mfsUiEnd = strpos($js, 'function bundleItem(row)', $mfsUiStart !== false ? $mfsUiStart : 0);
+$mfsUiBlock = ($mfsUiStart !== false && $mfsUiEnd !== false && $mfsUiEnd > $mfsUiStart)
+    ? substr($js, $mfsUiStart, $mfsUiEnd - $mfsUiStart)
+    : '';
+history_ui_expect(
+    $balanceHelperBlock !== ''
+    && str_contains($balanceHelperBlock, "array_key_exists(\$balanceKey, \$row)")
+    && str_contains($balanceHelperBlock, "\$public['balance_after']")
+    && str_contains($balanceHelperBlock, "\$public['balance_after_text']")
+    && $mfsProxyBlock !== ''
+    && str_contains($mfsProxyBlock, 'user_proxy_public_balance_after($public, $row)')
+    && $mfsUiBlock !== ''
+    && str_contains($mfsUiBlock, "addDetail(cardRows, 'Balance After', balanceAfter);")
+    && str_contains($mfsUiBlock, "addDetail(detailRows, 'Balance After', balanceAfter);"),
+    'MFS History must pass through a stored balance and render it in the card and detail modal'
+);
+
+$topupProxyStart = strpos($proxy, '$topupNumber =');
+$topupProxyEnd = strpos($proxy, 'function user_proxy_apply_request_status_row', $topupProxyStart !== false ? $topupProxyStart : 0);
+$topupProxyBlock = ($topupProxyStart !== false && $topupProxyEnd !== false && $topupProxyEnd > $topupProxyStart)
+    ? substr($proxy, $topupProxyStart, $topupProxyEnd - $topupProxyStart)
+    : '';
+$topupUiStart = strpos($js, 'function topupItem(row)');
+$topupUiEnd = strpos($js, 'function transferItem(row)', $topupUiStart !== false ? $topupUiStart : 0);
+$topupUiBlock = ($topupUiStart !== false && $topupUiEnd !== false && $topupUiEnd > $topupUiStart)
+    ? substr($js, $topupUiStart, $topupUiEnd - $topupUiStart)
+    : '';
+history_ui_expect(
+    $topupProxyBlock !== ''
+    && str_contains($topupProxyBlock, 'topup_normalized_history_fields($row)')
+    && str_contains($topupProxyBlock, 'user_proxy_public_balance_after($public, $row)')
+    && $topupUiBlock !== ''
+    && str_contains($topupUiBlock, "addDetail(cardRows, 'Balance After', balanceAfter);")
+    && str_contains($topupUiBlock, "addDetail(detailRows, 'Balance After', balanceAfter);"),
+    'Top-Up History must preserve normalized financials and render the after balance'
+);
+
+$bundleProxyStart = strpos($proxy, "if (\$type === 'BUNDLE')");
+$bundleProxyEnd = strpos($proxy, '$topupNumber =', $bundleProxyStart !== false ? $bundleProxyStart : 0);
+$bundleProxyBlock = ($bundleProxyStart !== false && $bundleProxyEnd !== false && $bundleProxyEnd > $bundleProxyStart)
+    ? substr($proxy, $bundleProxyStart, $bundleProxyEnd - $bundleProxyStart)
+    : '';
+$bundleUiStart = strpos($js, 'function bundleItem(row)');
+$bundleUiEnd = strpos($js, 'function inferSource(row', $bundleUiStart !== false ? $bundleUiStart : 0);
+$bundleUiBlock = ($bundleUiStart !== false && $bundleUiEnd !== false && $bundleUiEnd > $bundleUiStart)
+    ? substr($js, $bundleUiStart, $bundleUiEnd - $bundleUiStart)
+    : '';
+history_ui_expect(
+    $bundleProxyBlock !== ''
+    && str_contains($bundleProxyBlock, 'bundle_financial_aliases($row)')
+    && str_contains($bundleProxyBlock, 'user_proxy_public_balance_after($public, $row)')
+    && $bundleUiBlock !== ''
+    && str_contains($bundleUiBlock, "addDetail(cardRows, 'Balance After', balanceAfter);")
+    && str_contains($bundleUiBlock, "addDetail(detailRows, 'Balance After', balanceAfter);"),
+    'Bundle History must preserve canonical financials and render the after balance'
 );
 
 history_ui_expect(
@@ -232,6 +305,14 @@ history_ui_expect(
     && str_contains($proxy, "case 'transfer_history':")
     && str_contains($proxy, 'user_proxy_require_login(true, false);'),
     'History navigation or authenticated canonical endpoints were not preserved'
+);
+
+history_ui_expect(
+    str_contains($proxy, 'function user_proxy_collect_wallet_history(')
+    && str_contains($proxy, '$walletHistory = user_proxy_collect_wallet_history($uid, $month, $limit);')
+    && str_contains($proxy, "static fn(array \$row): bool => strtoupper((string)(\$row['direction'] ?? '')) === 'CREDIT'")
+    && str_contains($proxy, "user_proxy_response(true, 'SUCCESS', 'Wallet received history loaded'"),
+    'History must include sent and received wallet transfers without changing the received-only endpoint'
 );
 
 echo "User History UI tests passed ({$assertions} assertions).\n";

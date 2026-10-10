@@ -204,7 +204,7 @@ $dashboardJs = (string)file_get_contents($root . '/api/admin/assets/dashboard.js
 $supportCss = (string)file_get_contents($root . '/api/admin/assets/admin-support.css');
 $proxy = (string)file_get_contents($root . '/api/admin/proxy.php');
 $topupDone = (string)file_get_contents($root . '/api/admin/topup/done.php');
-$users = (string)file_get_contents($root . '/api/admin/users/list.php');
+$users = str_replace("\r\n", "\n", (string)file_get_contents($root . '/api/admin/users/list.php'));
 $mfsJs = (string)file_get_contents($root . '/api/admin/assets/mfs-panel.js');
 
 foreach (['tickets', 'contact', 'categories'] as $tab) {

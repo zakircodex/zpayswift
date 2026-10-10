@@ -99,6 +99,7 @@ function sub_proxy_internal_api_request(string $method, string $relativePath, ?a
     if ($body !== null) {
         $finalHeaders[] = 'Content-Type: application/json';
     }
+    $finalHeaders = app_internal_request_headers($finalHeaders);
 
     curl_setopt_array($ch, [
         CURLOPT_URL => $url,

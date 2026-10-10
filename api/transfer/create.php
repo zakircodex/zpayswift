@@ -7,6 +7,26 @@ require_once dirname(__DIR__) . '/lib/auth_android.php';
 require_once dirname(__DIR__) . '/lib/mobile_dashboard.php';
 require_once dirname(__DIR__) . '/lib/mobile_transfer.php';
 
+function zpay_transfer_create_public_result(array $transfer, string $senderUid): array
+{
+    $public = zpay_transfer_public_row($transfer);
+    if (trim((string)($public['tracking_url'] ?? $public['receipt_url'] ?? '')) !== '') {
+        return $public;
+    }
+
+    $transferId = trim((string)($transfer['transfer_id'] ?? $transfer['request_id'] ?? ''));
+    if ($transferId === '') {
+        return $public;
+    }
+
+    $persisted = fb_get('TRANSFERS/' . $transferId);
+    if (!is_array($persisted) || !zpay_transfer_user_can_view($persisted, $senderUid)) {
+        return $public;
+    }
+
+    return zpay_transfer_public_row($persisted);
+}
+
 api_require_method('POST');
 api_require_app_key();
 $auth = zpay_dash_require_mobile_user(true);
@@ -44,7 +64,7 @@ if ($previewToken !== '') {
         $existingTransfer = (array)($existing['transfer'] ?? []);
         zpay_transfer_schedule_post_response_tasks($existingTransfer);
         api_response(true, 'TRANSFER_SUCCESS', 'Transfer completed successfully.', [
-            'transfer' => zpay_transfer_public_row($existingTransfer),
+            'transfer' => zpay_transfer_create_public_result($existingTransfer, $senderUid),
         ]);
     }
 
@@ -68,7 +88,7 @@ if ($previewToken !== '') {
     $completedTransfer = (array)($result['transfer'] ?? []);
     zpay_transfer_schedule_post_response_tasks($completedTransfer);
     api_response(true, 'TRANSFER_SUCCESS', 'Transfer completed successfully.', [
-        'transfer' => zpay_transfer_public_row($completedTransfer),
+        'transfer' => zpay_transfer_create_public_result($completedTransfer, $senderUid),
     ]);
 }
 
@@ -165,5 +185,5 @@ if (empty($result['ok'])) {
 $completedTransfer = (array)($result['transfer'] ?? []);
 zpay_transfer_schedule_post_response_tasks($completedTransfer);
 api_response(true, 'TRANSFER_SUCCESS', 'Transfer completed successfully.', [
-    'transfer' => zpay_transfer_public_row($completedTransfer),
+    'transfer' => zpay_transfer_create_public_result($completedTransfer, $senderUid),
 ]);

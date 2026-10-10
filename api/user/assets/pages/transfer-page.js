@@ -170,6 +170,19 @@
     window.setTimeout(() => body.querySelector('button,input,a[href]')?.focus(), 0);
   }
 
+  function dismissTransferKeyboard() {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.matches('input, textarea, select, [contenteditable="true"]')) {
+      active.blur();
+    }
+    ['transferReceiverInput', 'transferAmountInput', 'transferReferenceInput', 'transferPinInput'].forEach((id) => {
+      $(id)?.blur?.();
+    });
+    try {
+      navigator.virtualKeyboard?.hide?.();
+    } catch (_) {}
+  }
+
   function transferDigits(value) {
     return String(value || '').replace(/\D+/g, '');
   }
@@ -199,7 +212,7 @@
       window.history.pushState({ zpayTransferStep: next }, '', '/user/transfer');
     }
     const focusId = ['transferReceiverInput', 'transferAmountInput', 'transferPinInput'][next - 1];
-    if (focusId) window.setTimeout(() => $(focusId)?.focus(), 0);
+    if (focusId && options.focus !== false) window.setTimeout(() => $(focusId)?.focus(), 0);
     else document.querySelector('#transferSection .transfer-scroll-body')?.scrollTo({ top: 0, behavior: 'auto' });
   }
 
@@ -245,6 +258,7 @@
   }
 
   function openTransferLoading(message) {
+    dismissTransferKeyboard();
     shell.setBusy(false);
     clearTransferModalSurface();
     app.transfer.modalOpen = true;
@@ -331,11 +345,20 @@
     const raw = String($('transferSection')?.dataset.trackingBase || '').trim();
     if (!raw) return null;
     try {
-      const base = new URL(raw);
-      if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) {
+      const pageOrigin = new URL(window.location.origin);
+      const configured = new URL(raw, pageOrigin.origin);
+      if (
+        !['http:', 'https:'].includes(pageOrigin.protocol)
+        || !['http:', 'https:'].includes(configured.protocol)
+        || configured.username
+        || configured.password
+        || configured.search
+        || configured.hash
+        || !configured.pathname
+      ) {
         return null;
       }
-      return base;
+      return new URL(configured.pathname, pageOrigin.origin);
     } catch (_) {
       return null;
     }
@@ -369,10 +392,103 @@
     }
   }
 
-  async function copyTransferResult(details) {
-    const link = transferTrackingUrl(details);
+  function transferTrackingRequestNonce() {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function mergeTransferTracking(details, source) {
+    const row = source && typeof source === 'object' ? source : {};
+    return Object.assign({}, details, {
+      receipt_url: row.receipt_url || row.tracking_url || details.receipt_url || '',
+      tracking_url: row.tracking_url || row.receipt_url || details.tracking_url || ''
+    });
+  }
+
+  function transferTrackingDisplay(link) {
+    if (!link) return 'Tracking link is being prepared. Tap Open or Copy to retry.';
+    try {
+      const url = new URL(link);
+      const token = String(url.searchParams.get('t') || '');
+      const maskedToken = token.length > 18
+        ? `${token.slice(0, 8)}...${token.slice(-6)}`
+        : token;
+      return `${url.origin}${url.pathname}?t=${maskedToken}`;
+    } catch (_) {
+      return 'Tracking link ready.';
+    }
+  }
+
+  function updateTransferTrackingDisplay(link) {
+    const node = document.querySelector('[data-transfer-tracking-url]');
+    if (!node) return;
+    node.textContent = transferTrackingDisplay(link);
+    node.classList.toggle('is-pending', !link);
+  }
+
+  async function recoverTransferTracking(details) {
+    if (transferTrackingUrl(details)) return details;
+    const transferId = String(details?.transfer_id || details?.request_id || '').trim();
+    if (!transferId) return details;
+
+    try {
+      const data = await shell.get('transfer_status', {
+        transfer_id: transferId,
+        request_nonce: transferTrackingRequestNonce()
+      }, 'Loading receipt link...', { busy: false });
+      const recovered = mergeTransferTracking(details, data.transfer || data);
+      if (transferTrackingUrl(recovered)) return recovered;
+    } catch (_) {
+      // A history lookup below preserves compatibility while status is unavailable.
+    }
+
+    try {
+      const data = await shell.get('transfer_history', {
+        limit: 100,
+        request_nonce: transferTrackingRequestNonce()
+      }, 'Loading receipt link...', { busy: false });
+      const items = Array.isArray(data.items) ? data.items : [];
+      const match = items.find((item) => String(item?.transfer_id || item?.request_id || '').trim() === transferId);
+      if (!match) return details;
+      const recovered = mergeTransferTracking(details, match);
+      return transferTrackingUrl(recovered) ? recovered : details;
+    } catch (_) {
+      return details;
+    }
+  }
+
+  async function resolveTransferTrackingUrl(details) {
+    const current = transferTrackingUrl(details);
+    if (current) return current;
+
+    const recovered = await recoverTransferTracking(details);
+    const link = transferTrackingUrl(recovered);
+    if (link && details && typeof details === 'object') {
+      Object.assign(details, recovered);
+      app.transfer.successContext = details;
+    }
+    updateTransferTrackingDisplay(link);
+    return link;
+  }
+
+  async function openTransferResult(details, button) {
+    setButtonBusy(button, true, 'Opening...');
+    const link = await resolveTransferTrackingUrl(details);
     if (!link) {
-      toast('Tracking link is unavailable.', 'error');
+      setButtonBusy(button, false);
+      toast('Tracking link is unavailable. Please try again.', 'error');
+      return;
+    }
+
+    finishTransferModalClose({ replaceHistory: true });
+    window.location.assign(link);
+  }
+
+  async function copyTransferResult(details, button) {
+    setButtonBusy(button, true, 'Copying...');
+    const link = await resolveTransferTrackingUrl(details);
+    if (!link) {
+      setButtonBusy(button, false);
+      toast('Tracking link is unavailable. Please try again.', 'error');
       return;
     }
     let fallbackField = null;
@@ -394,10 +510,12 @@
       toast('Transfer tracking information could not be copied.', 'error');
     } finally {
       fallbackField?.remove();
+      setButtonBusy(button, false);
     }
   }
 
   function showTransferSuccess(context) {
+    dismissTransferKeyboard();
     shell.setBusy(false);
     clearTransferModalSurface();
     const details = context || {};
@@ -434,26 +552,28 @@
       });
       const trackingCopy = document.createElement('p');
       trackingCopy.className = 'transfer-tracking-copy';
-      trackingCopy.textContent = 'This is your transfer tracking link.';
+      trackingCopy.dataset.transferTrackingUrl = 'true';
       const actions = document.createElement('div');
       actions.className = 'transfer-action-buttons is-compact';
       const trackingUrl = transferTrackingUrl(details);
-      const open = document.createElement(trackingUrl ? 'a' : 'button');
-      open.className = 'transfer-modal-button primary';
+      trackingCopy.textContent = transferTrackingDisplay(trackingUrl);
+      trackingCopy.classList.toggle('is-pending', !trackingUrl);
+      const transferId = String(details.transfer_id || details.request_id || '').trim();
+      const canResolveTracking = Boolean(trackingUrl || transferId);
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.className = 'transfer-modal-button primary tracking-action';
       open.textContent = 'Open';
-      if (trackingUrl) {
-        open.href = trackingUrl;
-        open.addEventListener('click', () => finishTransferModalClose({ replaceHistory: true }));
-      } else {
-        open.type = 'button';
-        open.disabled = true;
-      }
+      open.disabled = !canResolveTracking;
+      open.setAttribute('aria-disabled', String(!canResolveTracking));
+      open.addEventListener('click', () => openTransferResult(details, open));
       const copy = document.createElement('button');
       copy.type = 'button';
-      copy.className = 'transfer-modal-button';
+      copy.className = 'transfer-modal-button copy-action tracking-action';
       copy.textContent = 'Copy';
-      copy.disabled = !trackingUrl;
-      copy.addEventListener('click', () => copyTransferResult(details));
+      copy.disabled = !canResolveTracking;
+      copy.setAttribute('aria-disabled', String(!canResolveTracking));
+      copy.addEventListener('click', () => copyTransferResult(details, copy));
       actions.append(open, copy);
       if (!isTransferFavoriteSaved(details)) {
         const favorite = document.createElement('button');
@@ -804,10 +924,11 @@
         receipt_url: transfer.receipt_url || '',
         tracking_url: transfer.tracking_url || transfer.receipt_url || ''
       });
+      const successContext = await recoverTransferTracking(context);
       finishTransferModalClose({ replaceHistory: true });
-      resetTransfer();
+      resetTransfer({ focus: false });
       app.transfer.favoritesLoaded = false;
-      showTransferSuccess(context);
+      showTransferSuccess(successContext);
     } catch (error) {
       finishTransferModalClose({ replaceHistory: true });
       const uncertain = transferStatusUnknown(error);
@@ -825,7 +946,7 @@
     }
   }
 
-  function resetTransfer() {
+  function resetTransfer(options = {}) {
     app.transfer.recipient = null;
     app.transfer.preview = null;
     app.transfer.reference = '';
@@ -834,7 +955,7 @@
     ['transferReceiverInput', 'transferAmountInput', 'transferReferenceInput', 'transferPinInput'].forEach((id) => {
       if ($(id)) $(id).value = '';
     });
-    transferStep(1, { fromHistory: true });
+    transferStep(1, { fromHistory: true, focus: options.focus !== false });
   }
 
   function leaveTransferPage() {

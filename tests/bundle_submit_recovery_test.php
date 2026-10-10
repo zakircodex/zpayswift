@@ -18,6 +18,20 @@ function fb_put(string $path, $value): bool
     return true;
 }
 
+function fb_patch(string $path, array $data): bool
+{
+    if ($path === '') {
+        foreach ($data as $childPath => $value) {
+            $GLOBALS['bundle_recovery_store'][$childPath] = $value;
+        }
+        return true;
+    }
+
+    $current = $GLOBALS['bundle_recovery_store'][$path] ?? [];
+    $GLOBALS['bundle_recovery_store'][$path] = array_merge(is_array($current) ? $current : [], $data);
+    return true;
+}
+
 function bundle_recovery_expect(bool $condition, string $message): void
 {
     global $assertions;
@@ -114,6 +128,8 @@ bundle_recovery_expect(
     str_contains($submitSource, "header('Content-Length: '")
     && str_contains($submitSource, "'telegram_skip' => true")
     && str_contains($submitSource, "'balance_after' => bundle_round_money((float)(\$hold['after_available']")
+    && str_contains($submitSource, 'bundle_submit_ensure_history(')
+    && str_contains($submitSource, "'history_written' => \$historyWritten")
     && str_contains($submitSource, 'bundle_submit_finish_response(['),
     'Bundle submit must preserve the post-hold balance and return complete JSON before Telegram work.'
 );
@@ -121,8 +137,57 @@ bundle_recovery_expect(
     str_contains($proxySource, 'user_proxy_forward_bundle_submit(')
     && str_contains($proxySource, "'canonical_only' => true")
     && str_contains($proxySource, "'max_attempts' => 1")
+    && str_contains($proxySource, 'bundle_write_history($request)')
     && str_contains($proxySource, "'BUNDLE_SUBMIT_STATUS_UNKNOWN'"),
     'Bundle proxy must avoid repeat submission and safely classify an unrecovered result.'
+);
+
+$atomicRequestId = 'BUNDLE_ATOMIC_HISTORY_1';
+$atomicCreated = create_bundle_pending_request(
+    $atomicRequestId,
+    'BUNDLE_USER',
+    '60123456789',
+    '01300000001',
+    'GP',
+    'Atomic Bundle',
+    100,
+    '',
+    false,
+    '',
+    [
+        'offer_id' => 'OFFER_ATOMIC',
+        'service_amount_bdt' => 100,
+        'bundle_commission' => 3,
+        'you_pay' => 97,
+        'payable_amount' => 97,
+        'wallet_hold_amount' => 3.16,
+        'wallet_debit_amount' => 3.16,
+        'wallet_debit_currency' => 'MYR',
+        'wallet_currency' => 'MYR',
+        'wallet_debit_bdt' => 97,
+        'wallet_debit_myr' => 3.16,
+        'rate_used' => 30.7,
+        'rate_snapshot' => 30.7,
+        'rate_applicable' => true,
+        'balance_after' => 899.84,
+        'telegram_skip' => true,
+    ]
+);
+$atomicRequestPath = 'BUNDLE_REQUESTS/PENDING/' . $atomicRequestId;
+$atomicHistoryPath = 'BUNDLE_HISTORY/BUNDLE_USER/' . bundle_month_key() . '/' . $atomicRequestId;
+$atomicHistory = $GLOBALS['bundle_recovery_store'][$atomicHistoryPath] ?? [];
+bundle_recovery_expect(
+    $atomicCreated
+    && isset($GLOBALS['bundle_recovery_store'][$atomicRequestPath])
+    && is_array($atomicHistory),
+    'Bundle create must atomically persist both its pending queue row and monthly history mirror.'
+);
+bundle_recovery_expect(
+    (float)($atomicHistory['balance_after'] ?? -1) === 899.84
+    && ($atomicHistory['wallet_currency'] ?? '') === 'MYR'
+    && (float)($atomicHistory['wallet_debit_amount'] ?? 0) === 3.16
+    && (int)($atomicHistory['completed_at'] ?? -1) === 0,
+    'Pending Bundle history must preserve financial fields without inventing a completion timestamp.'
 );
 
 $historyDone = [

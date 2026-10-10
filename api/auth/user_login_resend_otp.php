@@ -110,8 +110,14 @@ if (empty($resendState['ok'])) {
 }
 
 $newExpiresAt = $now + 300;
-$newOtpCode = (string)random_int(100000, 999999);
 $newOtpRequestId = 'OTP' . strtoupper(bin2hex(random_bytes(6)));
+$newOtpCode = auth_sms_prepare_otp_code(
+    $phoneCountry,
+    $phone,
+    'USER_LOGIN',
+    $newOtpRequestId,
+    (string)random_int(100000, 999999)
+);
 
 $newOtpRow = $otpRow;
 $newOtpRow = array_replace($newOtpRow, [
@@ -200,4 +206,9 @@ api_response(true, 'SUCCESS', 'OTP resent successfully', [
     'resend_in_seconds' => auth_otp_resend_cooldown_seconds(),
     'resend_after' => $now + auth_otp_resend_cooldown_seconds(),
     'phone_country' => $phoneCountry,
-]);
+] + auth_sms_stage_preview_response_fields(
+    $phoneCountry,
+    $phone,
+    'USER_LOGIN',
+    $newOtpRequestId
+));

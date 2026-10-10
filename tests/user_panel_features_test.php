@@ -40,7 +40,7 @@ expect_true(
     'Profile editable-field authority is not preserved'
 );
 
-foreach (['transfer_recipient', 'transfer_preview', 'transfer_create', 'transfer_history', 'transfer_favorites', 'transfer_favorite_add', 'transfer_favorite_remove'] as $action) {
+foreach (['transfer_recipient', 'transfer_preview', 'transfer_create', 'transfer_status', 'transfer_history', 'transfer_favorites', 'transfer_favorite_add', 'transfer_favorite_remove'] as $action) {
     expect_true(str_contains($proxy, "case '{$action}':"), "missing transfer proxy action {$action}");
 }
 expect_true(
@@ -57,6 +57,10 @@ expect_true(
 expect_true(
     str_contains($transferCreate, 'zpay_transfer_schedule_post_response_tasks')
     && str_contains($transferCreate, "!empty(\$claim['resume'])")
+    && str_contains($transferCreate, 'function zpay_transfer_create_public_result')
+    && str_contains($transferCreate, "fb_get('TRANSFERS/' . \$transferId)")
+    && str_contains($transferCreate, 'zpay_transfer_user_can_view($persisted, $senderUid)')
+    && substr_count($transferCreate, 'zpay_transfer_create_public_result(') === 4
     && str_contains($mobileTransfer, 'function zpay_transfer_run_post_response_tasks')
     && str_contains($mobileTransfer, "function_exists('fastcgi_finish_request')")
     && str_contains($mobileTransfer, 'zpay_transfer_operation_financially_committed'),
@@ -85,10 +89,40 @@ expect_true(
     str_contains($transferPage, 'data-tracking-base=')
     && str_contains($transferPage, "app_api_url('transfer/receipt.php')")
     && str_contains($transferJs, "toast('Tracking link copied', 'ok')")
+    && str_contains($transferJs, 'const pageOrigin = new URL(window.location.origin)')
+    && str_contains($transferJs, 'return new URL(configured.pathname, pageOrigin.origin)')
     && str_contains($transferJs, "url.origin !== base.origin")
     && str_contains($transferJs, "queryKeys[0] !== 't'")
+    && str_contains($transferJs, "copy.setAttribute('aria-disabled', String(!canResolveTracking))")
+    && str_contains($transferJs, "shell.get('transfer_status'")
+    && str_contains($transferJs, 'transfer_id: transferId')
+    && str_contains($transferJs, 'request_nonce: transferTrackingRequestNonce()')
+    && str_contains($transferJs, "shell.get('transfer_history'")
+    && str_contains($transferJs, 'return transferTrackingUrl(recovered) ? recovered : details')
+    && str_contains($transferJs, 'const canResolveTracking = Boolean(trackingUrl || transferId)')
+    && str_contains($transferJs, 'openTransferResult(details, open)')
+    && str_contains($transferJs, 'dataset.transferTrackingUrl')
+    && str_contains($transferCss, '.transfer-modal-button.copy-action:not(:disabled)')
+    && str_contains($transferCss, '.transfer-tracking-copy.is-pending')
+    && str_contains($proxy, "case 'transfer_status':")
+    && str_contains($proxy, "fb_get('TRANSFERS/' . trim(\$transferId))")
+    && str_contains($proxy, "fb_get('TRANSFER_HISTORY/' . \$uid)")
+    && str_contains($proxy, 'function user_proxy_forward_transfer_create')
+    && str_contains($proxy, 'array_replace($transfer, $persisted)')
+    && str_contains($proxy, "\$uid !== \$senderUid && \$uid !== \$receiverUid")
+    && str_contains($proxy, "'TRANSFER_STATUS_OK'")
+    && str_contains($proxy, "'TRANSFER_HISTORY_OK'")
+    && !str_contains($proxy, "'transfer/status.php?' . http_build_query")
+    && !str_contains($proxy, "'transfer/history.php?' . http_build_query")
     && !str_contains($transferJs, '`Z-Pay Transfer ${transferId'),
     'Transfer Open/Copy does not enforce the canonical public tracking URL'
+);
+expect_true(
+    str_contains($transferJs, 'function dismissTransferKeyboard()')
+    && str_contains($transferJs, 'navigator.virtualKeyboard?.hide?.()')
+    && str_contains($transferJs, 'resetTransfer({ focus: false })')
+    && str_contains($transferJs, 'options.focus !== false'),
+    'Transfer success flow can leave a form input focused and reopen the mobile keyboard'
 );
 expect_true(
     str_contains($transferJs, 'submitting: false')

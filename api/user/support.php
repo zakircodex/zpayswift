@@ -16,9 +16,19 @@ $page = user_page_config([
 ]);
 user_page_begin($page);
 ?>
-<section id="supportSection" class="page-section user-support-experience active" aria-busy="true">
+<section id="supportSection" class="page-section user-support-experience active" aria-labelledby="supportPageTitle" aria-busy="true">
   <div id="supportMainView" class="support-view support-main-view">
     <div class="support-main-fixed">
+      <header class="support-page-header">
+        <a id="supportBackButton" class="support-header-button" href="/user/dashboard" aria-label="Back to dashboard">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.7 5.3-1.4-1.4L5.2 12l8.1 8.1 1.4-1.4L9 13h11v-2H9l5.7-5.7Z"/></svg>
+        </a>
+        <h1 id="supportPageTitle">Contact Us</h1>
+        <a class="support-header-button notification-button" href="/user/notifications" aria-label="Notifications">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 22a2.5 2.5 0 0 0 2.35-1.65h-4.7A2.5 2.5 0 0 0 12 22Zm7-5.5-1.4-1.7V10a5.6 5.6 0 0 0-4.35-5.45V3.5a1.25 1.25 0 1 0-2.5 0v1.05A5.6 5.6 0 0 0 6.4 10v4.8L5 16.5V18h14v-1.5Z"/></svg>
+          <span data-notification-badge class="notification-badge hidden">0</span>
+        </a>
+      </header>
       <div class="support-live-hero">
         <span class="support-decor-bubble support-decor-bubble-one" aria-hidden="true"></span>
         <span class="support-decor-bubble support-decor-bubble-two" aria-hidden="true"></span>
@@ -26,6 +36,12 @@ user_page_begin($page);
         <p>Start a conversation with Z-Pay Swift Support.</p>
         <button id="supportStartChatButton" class="support-primary-button" type="button" disabled>Loading...</button>
       </div>
+      <nav id="supportContactOptions" class="support-contact-options" aria-label="Contact support directly" hidden>
+        <a id="supportWhatsAppLink" class="support-contact-option" href="#" target="_blank" rel="noopener noreferrer" hidden>WhatsApp</a>
+        <a id="supportCallLink" class="support-contact-option" href="#" hidden>Call</a>
+        <a id="supportEmailLink" class="support-contact-option" href="#" hidden>Email</a>
+      </nav>
+      <p id="supportServiceMeta" class="support-service-meta" hidden></p>
       <div class="support-list-heading">
         <div>
           <h2>My Conversations</h2>
@@ -53,7 +69,7 @@ user_page_begin($page);
       <button id="supportCreateBack" class="support-icon-button" type="button" aria-label="Back to categories">
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 11H7.8l5.6-5.6L12 4l-8 8 8 8 1.4-1.4L7.8 13H20v-2Z"/></svg>
       </button>
-      <div><h1>Start Chat</h1><p>Never share your password, PIN or OTP.</p></div>
+      <div><h1>Start Chat</h1><p id="supportCreateNotice">Never share your password, PIN or OTP.</p></div>
       <span aria-hidden="true"></span>
     </header>
     <div id="supportCreateScroll" class="support-create-scroll">

@@ -4,6 +4,7 @@ error_log
 *.log
 *.tmp
 *.sql
+!database/mysql/*.sql
 *.bak
 *.old
 *.zip

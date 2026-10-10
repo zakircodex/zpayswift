@@ -360,6 +360,7 @@
     addDetail(cardRows, 'Commission', commission);
     addDetail(cardRows, 'Wallet Debit', walletDebit);
     addDetail(cardRows, 'Number', number);
+    addDetail(cardRows, 'Balance After', balanceAfter);
     const detailRows = [];
     addDetail(detailRows, 'Date', dateText(timestamp(row)));
     addDetail(detailRows, 'Request ID', id);

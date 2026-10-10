@@ -10,7 +10,7 @@ $providerLabel = $provider === 'NAGAD' ? 'Nagad' : 'bKash';
 $pageTitle = $providerLabel . ' Send Money';
 $trackingBase = function_exists('app_api_url')
     ? app_api_url('mfs/receipt.php')
-    : 'https://zpayswift.com/api/mfs/receipt.php';
+    : '/api/mfs/receipt.php';
 ?>
 <script>
 window.USER_MFS_CONFIG = <?= json_encode([

@@ -66,6 +66,7 @@ function admin_users_api_internal_request(string $method, string $relativePath, 
     if ($body !== null) {
         $finalHeaders[] = 'Content-Type: application/json';
     }
+    $finalHeaders = app_internal_request_headers($finalHeaders);
 
     curl_setopt_array($ch, [
         CURLOPT_URL => $url,

@@ -127,10 +127,19 @@ mfs_ui_expect(
 );
 mfs_ui_expect(
     str_contains($script, 'canonicalTrackingUrl(result)')
+    && str_contains($script, 'new URL(configured.pathname, pageOrigin.origin)')
+    && str_contains($flow, ": '/api/mfs/receipt.php'")
+    && !str_contains($flow, 'https://zpayswift.com/api/mfs/receipt.php')
     && str_contains($script, "modalFeedback('Tracking link copied')")
     && str_contains($script, "label: alreadyFavorite ? 'Saved' : 'Favorite'")
     && str_contains($script, 'dismissible: false'),
     'canonical tracking Open/Copy integration is missing'
+);
+mfs_ui_expect(
+    str_contains($script, "label: 'After Balance'")
+    && str_contains($script, 'result.balance_after_text')
+    && str_contains($script, 'result.balance_after'),
+    'authoritative post-debit balance is missing from MFS success'
 );
 mfs_ui_expect(
     str_contains($script, "window.addEventListener('popstate'")

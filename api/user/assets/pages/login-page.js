@@ -140,6 +140,7 @@
       RESEND_LIMIT_REACHED: 'OTP resend limit reached. Please start login again later.',
       OTP_RESEND_COOLDOWN: 'Please wait before requesting another OTP.',
       SESSION_EXPIRED: 'Login session expired. Please start again.',
+      SESSION_WRITE_FAILED: 'Login session could not be saved. Please try again.',
       NETWORK_ERROR: 'Network error. Please check your internet connection.',
       REQUEST_TIMEOUT: 'Login request timed out. Please try again.',
       INVALID_RESPONSE: 'A valid response was not received. Please try again.'
@@ -243,7 +244,7 @@
     const seconds = Math.max(0, Math.ceil((state.expiresAt - Date.now()) / 1000));
     const resendSeconds = Math.max(0, Math.ceil((state.resendAvailableAt - Date.now()) / 1000));
     $('loginOtpExpiresText').textContent = seconds > 0 ? formatCountdown(seconds) : 'Expired';
-    $('verifyLoginOtpBtn').disabled = seconds < 1 || state.verifyInFlight;
+    $('verifyLoginOtpBtn').disabled = seconds < 1 || state.verifyInFlight || state.resendInFlight;
     $('resendLoginOtpBtn').disabled = resendSeconds > 0 || state.resendInFlight;
     $('resendLoginOtpBtn').textContent = resendSeconds > 0
       ? `Resend OTP in ${formatCountdown(resendSeconds)}`
@@ -254,7 +255,7 @@
     }
   }
 
-  function setOtpData(data) {
+  function setOtpData(data, options = {}) {
     state.preAuthToken = String(data.pre_auth_token || state.preAuthToken || '');
     state.otpRequestId = String(data.otp_request_id || state.otpRequestId || '');
     state.maskedPhone = String(data.masked_phone || state.maskedPhone || '');
@@ -268,9 +269,18 @@
     state.resendAvailableAt = resendAfter > 0
       ? (resendAfter < 1000000000000 ? resendAfter * 1000 : resendAfter)
       : Date.now() + resendIn * 1000;
+    const stageOtp = /^\d{6}$/.test(String(data.stage_otp || '').trim())
+      && data.stage_otp_preview === true
+      ? String(data.stage_otp).trim()
+      : '';
     $('loginOtpMaskedPhone').textContent = state.maskedPhone || '-';
-    $('loginOtpCode').value = '';
-    $('loginOtpStatus').textContent = 'Enter the OTP to complete login.';
+    const enteredOtp = $('loginOtpCode').value.trim();
+    if (stageOtp || options.preserveEnteredOtp !== true || enteredOtp === '') {
+      $('loginOtpCode').value = stageOtp;
+    }
+    $('loginOtpStatus').textContent = stageOtp
+      ? 'Stage test OTP is ready. Tap Verify OTP to continue.'
+      : 'Enter the OTP to complete login.';
     clearOtpTimer();
     updateOtpCountdown();
     state.timer = window.setInterval(updateOtpCountdown, 1000);
@@ -607,13 +617,15 @@
       return;
     }
     state.resendInFlight = true;
+    $('loginOtpCode').value = '';
+    $('verifyLoginOtpBtn').disabled = true;
     $('resendLoginOtpBtn').disabled = true;
     try {
       const data = await post('login_resend_otp', {
         pre_auth_token: state.preAuthToken,
         otp_request_id: state.otpRequestId
       }, 'Resending OTP...', 45000);
-      setOtpData(data);
+      setOtpData(data, { preserveEnteredOtp: true });
       $('loginOtpStatus').textContent = 'A new OTP was sent. The previous code is no longer valid.';
     } catch (error) {
       const code = String(error?.code || '').toUpperCase();

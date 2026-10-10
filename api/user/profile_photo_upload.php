@@ -60,7 +60,7 @@ function profile_photo_safe_public_payload(string $uid, array $user, array $wall
         'wallet_currency' => $walletCurrency !== '' ? $walletCurrency : 'BDT',
         'created_at' => (int)($user['created_at'] ?? 0),
         'last_login_at' => (int)($user['last_login_at'] ?? 0),
-        'profile_photo_url' => (string)($user['profile_photo_url'] ?? ''),
+        'profile_photo_url' => zpay_public_profile_photo_url($user),
     ];
 }
 
@@ -169,7 +169,7 @@ if (!move_uploaded_file($tmp, $target)) {
 @chmod($target, 0644);
 
 $publicUrl = '/uploads/profile/photos/' . $fileName;
-$oldPath = profile_photo_old_local_path((string)($user['profile_photo_url'] ?? $user['profile_photo'] ?? $user['photo_url'] ?? ''));
+$oldPath = profile_photo_old_local_path(zpay_public_profile_photo_url($user));
 $patch = [
     'profile_photo_url' => $publicUrl,
     'profile_photo_mime' => $mime,

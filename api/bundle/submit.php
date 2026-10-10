@@ -90,6 +90,20 @@ function bundle_submit_finish_response(array $payload, ?array $telegramRow = nul
     exit;
 }
 
+function bundle_submit_ensure_history(array $row): bool
+{
+    if ($row === []) {
+        return false;
+    }
+
+    try {
+        return bundle_write_history($row);
+    } catch (Throwable $exception) {
+        error_log('Bundle submit history repair failed: ' . $exception->getMessage());
+        return false;
+    }
+}
+
 api_require_method('POST');
 api_require_app_key();
 
@@ -120,6 +134,7 @@ if ($idempotencyPath !== '') {
                 $existingRow = fb_get('BUNDLE_REQUESTS/DONE/' . $existingRequestId);
             }
             $existingRow = is_array($existingRow) ? bundle_with_financial_aliases($existingRow) : [];
+            bundle_submit_ensure_history($existingRow);
             api_response(true, 'BUNDLE_REQUEST_CREATED', 'Bundle request already submitted', [
                 'request_id' => $existingRequestId,
                 'duplicate' => true,
@@ -167,6 +182,7 @@ if ($hasPreviewToken) {
             $existingRow = fb_get('BUNDLE_REQUESTS/DONE/' . $duplicateRequestId);
         }
         $existingRow = is_array($existingRow) ? bundle_with_financial_aliases($existingRow) : bundle_with_financial_aliases($claimedPreview);
+        bundle_submit_ensure_history($existingRow);
         api_response(true, 'BUNDLE_REQUEST_CREATED', 'Bundle request already submitted', [
             'request_id' => $duplicateRequestId,
             'duplicate' => true,
@@ -295,6 +311,14 @@ $operation = wallet_financial_operation_begin(
 );
 if (!empty($operation['duplicate']) && !empty($operation['completed'])) {
     $resultData = is_array($operation['operation']['result_data'] ?? null) ? $operation['operation']['result_data'] : [];
+    $completedRequestId = trim((string)($resultData['request_id'] ?? ''));
+    if ($completedRequestId !== '') {
+        $completedRow = fb_get('BUNDLE_REQUESTS/PENDING/' . $completedRequestId);
+        if (!is_array($completedRow)) {
+            $completedRow = fb_get('BUNDLE_REQUESTS/DONE/' . $completedRequestId);
+        }
+        bundle_submit_ensure_history(is_array($completedRow) ? $completedRow : []);
+    }
     $resultData['duplicate'] = true;
     api_response(true, 'BUNDLE_REQUEST_CREATED', 'Bundle request already submitted', $resultData);
 }
@@ -452,6 +476,10 @@ $deferredLog = [
 
 $savedRow = fb_get('BUNDLE_REQUESTS/PENDING/' . $requestId);
 $savedRow = is_array($savedRow) ? $savedRow : [];
+$historyWritten = $saved;
+if ($savedRow !== []) {
+    $historyWritten = bundle_submit_ensure_history($savedRow) || $historyWritten;
+}
 $savedRow['_bucket'] = 'PENDING';
 
 $responseData = bundle_submit_response_data($savedRow, [
@@ -484,7 +512,7 @@ wallet_financial_operation_mark_completed($financialClaim, [
     'wallet_applied' => true,
     'ledger_written' => true,
     'request_finalized' => true,
-    'history_written' => true,
+    'history_written' => $historyWritten,
     'notification_written' => false,
     'request_id' => $requestId,
     'ledger_id' => (string)($hold['ledger_id'] ?? ''),

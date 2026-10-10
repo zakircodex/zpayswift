@@ -98,10 +98,10 @@ user_page_begin($page);
     </div>
   </div>
 
-  <div class="android-tagline" aria-label="টাকা পাঠানোর সব থেকে সহজ উপায় Z-Pay Swift">
+  <div id="dashboardTagline" class="android-tagline" aria-label="" hidden>
     <div class="android-tagline-track" aria-hidden="true">
-      <span class="android-tagline-item">টাকা পাঠানোর সব থেকে সহজ উপায় &quot;Z-Pay Swift&quot;</span>
-      <span class="android-tagline-item">টাকা পাঠানোর সব থেকে সহজ উপায় &quot;Z-Pay Swift&quot;</span>
+      <span id="dashboardTaglinePrimary" class="android-tagline-item"></span>
+      <span id="dashboardTaglineSecondary" class="android-tagline-item"></span>
     </div>
   </div>
 </div>

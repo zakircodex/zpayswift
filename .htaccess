@@ -10,6 +10,13 @@ DirectoryIndex index.html
   RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/ [NC]
   RewriteRule ^ - [R=503,L]
 
+  # Staging stays closed until its isolated config, schema and verification
+  # checks are complete. The marker is managed outside deployment packages.
+  RewriteCond %{HTTP_HOST} ^stage\.zpayswift\.com(?::[0-9]+)?$ [NC]
+  RewriteCond %{DOCUMENT_ROOT}/.stage-not-ready -f
+  RewriteCond %{REQUEST_URI} !^/\.well-known/acme-challenge/ [NC]
+  RewriteRule ^ - [R=503,L]
+
   # LiteSpeed may restore REMOTE_ADDR to the visitor IP. Preserve only
   # server-owned Cloudflare trust signals; request headers are not used here.
   RewriteCond %{ENV:FRONTEND_CDN} ^CF$ [NC]
@@ -111,6 +118,13 @@ DirectoryIndex index.html
   RewriteCond %{HTTP_HOST} ^(?:www\.)?zpayswift\.com(?::[0-9]+)?$ [NC]
   RewriteRule ^ - [E=ZPAY_MAIN_HOST:1]
 
+  RewriteCond %{HTTP_HOST} ^stage\.zpayswift\.com(?::[0-9]+)?$ [NC]
+  RewriteRule ^ - [E=ZPAY_STAGE_HOST:1]
+
+  RewriteCond %{HTTP_HOST} ^stage\.zpayswift\.com(?::[0-9]+)?$ [NC]
+  RewriteCond %{HTTPS} !=on
+  RewriteRule ^ https://stage.zpayswift.com%{REQUEST_URI} [R=301,L,NE]
+
   RewriteCond %{HTTP_HOST} !^(?:www\.)?zsky24\.com$ [NC]
   RewriteCond %{HTTPS} !=on
   RewriteRule ^ https://zpayswift.com%{REQUEST_URI} [R=301,L,NE]
@@ -176,6 +190,14 @@ DirectoryIndex index.html
   Header always set Referrer-Policy "strict-origin-when-cross-origin" env=ZPAY_MAIN_HOST
   Header always set Permissions-Policy "geolocation=(self), camera=(self), microphone=(), payment=(), usb=()" env=ZPAY_MAIN_HOST
   Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://cloudflareinsights.com; font-src 'self' data:; manifest-src 'self'; worker-src 'self' blob:; frame-src 'self'" env=ZPAY_MAIN_HOST
+
+  Header always set Strict-Transport-Security "max-age=31536000" env=ZPAY_STAGE_HOST
+  Header always set X-Content-Type-Options "nosniff" env=ZPAY_STAGE_HOST
+  Header always set X-Frame-Options "SAMEORIGIN" env=ZPAY_STAGE_HOST
+  Header always set Referrer-Policy "strict-origin-when-cross-origin" env=ZPAY_STAGE_HOST
+  Header always set Permissions-Policy "geolocation=(self), camera=(self), microphone=(), payment=(), usb=()" env=ZPAY_STAGE_HOST
+  Header always set Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://cloudflareinsights.com; font-src 'self' data:; manifest-src 'self'; worker-src 'self' blob:; frame-src 'self'" env=ZPAY_STAGE_HOST
+  Header always set X-Robots-Tag "noindex, nofollow, noarchive" env=ZPAY_STAGE_HOST
 
   # PHP/LiteSpeed implementation headers are not part of the public contract.
   Header always unset X-Powered-By

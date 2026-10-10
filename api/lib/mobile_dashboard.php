@@ -46,6 +46,22 @@ function zpay_dash_clean_string($value, int $max = 200): string
     return $text;
 }
 
+function zpay_public_profile_photo_url(array $user): string
+{
+    foreach (['profile_photo_url', 'profile_photo', 'photo_url', 'PROFILE', 'profile'] as $field) {
+        $value = $user[$field] ?? null;
+        if (!is_scalar($value)) {
+            continue;
+        }
+        $url = zpay_dash_clean_string($value, 500);
+        if ($url !== '') {
+            return $url;
+        }
+    }
+
+    return '';
+}
+
 function zpay_dash_default_theme(): array
 {
     return [

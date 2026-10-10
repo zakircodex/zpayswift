@@ -21,7 +21,7 @@ function register_flow_source(string $path): string
         fwrite(STDERR, "FAIL: could not read {$path}\n");
         exit(1);
     }
-    return $value;
+    return str_replace(["\r\n", "\r"], "\n", $value);
 }
 
 $page = register_flow_source($root . '/api/user/register.php');

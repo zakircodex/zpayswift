@@ -36,6 +36,8 @@
   --z-radius: 8px;
   --z-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
   --z-nav-height: 82px;
+  --z-nav-bottom-gap: 6px;
+  --z-nav-backdrop: #04101f;
 }
 
 * { box-sizing: border-box; }
@@ -490,10 +492,13 @@ body.user-drawer-open { overflow: hidden; }
   right: 0;
   bottom: 0;
   left: 0;
-  padding: 0 16px calc(10px + env(safe-area-inset-bottom));
+  padding: 0 16px var(--z-nav-bottom-gap);
+  background: var(--z-nav-backdrop);
   pointer-events: none;
 }
 .bottom-nav-inner {
+  position: relative;
+  z-index: 1;
   width: min(100%, 720px);
   min-height: 74px;
   display: grid;

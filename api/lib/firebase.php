@@ -50,7 +50,37 @@ function fb_request_handle()
     return $handle;
 }
 
-function fb_request(
+function fb_datastore_driver(): string
+{
+    $driver = defined('DATASTORE_DRIVER')
+        ? strtolower(trim((string)constant('DATASTORE_DRIVER')))
+        : strtolower(trim((string)(getenv('DATASTORE_DRIVER') ?: 'firebase')));
+
+    return in_array($driver, ['firebase', 'mysql'], true) ? $driver : 'firebase';
+}
+
+function fb_production_mutation_locked(string $method): bool
+{
+    if (strtoupper(trim($method)) === 'GET') {
+        return false;
+    }
+
+    $environment = defined('APP_ENVIRONMENT')
+        ? strtolower(trim((string)constant('APP_ENVIRONMENT')))
+        : '';
+    $origin = defined('APP_PUBLIC_ORIGIN')
+        ? strtolower(rtrim(trim((string)constant('APP_PUBLIC_ORIGIN')), '/'))
+        : '';
+    $isProduction = $environment === 'production' || $origin === 'https://zpayswift.com';
+    if (!$isProduction) {
+        return false;
+    }
+
+    $marker = '/home/zedpayhe/public_html/.deploy-in-progress';
+    return is_file($marker) && !is_link($marker);
+}
+
+function fb_firebase_request(
     string $method,
     string $path,
     mixed $data = null,
@@ -80,12 +110,19 @@ function fb_request(
         $finalHeaders[] = $header;
     }
 
+    $connectTimeout = defined('FIREBASE_CONNECT_TIMEOUT_SECONDS')
+        ? max(1, min(60, (int)constant('FIREBASE_CONNECT_TIMEOUT_SECONDS')))
+        : 15;
+    $requestTimeout = defined('FIREBASE_REQUEST_TIMEOUT_SECONDS')
+        ? max($connectTimeout, min(600, (int)constant('FIREBASE_REQUEST_TIMEOUT_SECONDS')))
+        : 30;
+
     curl_setopt_array($ch, [
         CURLOPT_URL => fb_build_url($path, $query),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_CUSTOMREQUEST => strtoupper($method),
-        CURLOPT_CONNECTTIMEOUT => 15,
-        CURLOPT_TIMEOUT => 30,
+        CURLOPT_CONNECTTIMEOUT => $connectTimeout,
+        CURLOPT_TIMEOUT => $requestTimeout,
         CURLOPT_HTTPHEADER => $finalHeaders,
         CURLOPT_HEADER => $includeHeaders,
         CURLOPT_ENCODING => '',
@@ -143,6 +180,33 @@ function fb_request(
         'json' => $decoded,
         'error' => null,
     ];
+}
+
+function fb_request(
+    string $method,
+    string $path,
+    mixed $data = null,
+    array $query = [],
+    array $headers = [],
+    bool $includeHeaders = false
+): array {
+    if (fb_production_mutation_locked($method)) {
+        return [
+            'ok' => false,
+            'status' => 503,
+            'headers' => [],
+            'body' => null,
+            'json' => null,
+            'error' => 'Production datastore writes are temporarily locked',
+        ];
+    }
+
+    if (fb_datastore_driver() === 'mysql') {
+        require_once __DIR__ . '/mysql_firebase.php';
+        return mysql_fb_request($method, $path, $data, $query, $headers, $includeHeaders);
+    }
+
+    return fb_firebase_request($method, $path, $data, $query, $headers, $includeHeaders);
 }
 
 function fb_get(string $path, array $query = []): mixed

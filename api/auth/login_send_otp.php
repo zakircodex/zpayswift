@@ -54,12 +54,23 @@ if ($existingOtpRequestId !== '') {
             'resend_in_seconds' => max(0, $existingResendAfter - $now),
             'resend_after' => $existingResendAfter,
             'phone_country' => $phoneCountry,
-        ]);
+        ] + auth_sms_stage_preview_response_fields(
+            $phoneCountry,
+            $otpPhone,
+            'USER_LOGIN',
+            $existingOtpRequestId
+        ));
     }
 }
 
-$otpCode = (string)random_int(100000, 999999);
 $otpRequestId = 'OTP' . strtoupper(bin2hex(random_bytes(6)));
+$otpCode = auth_sms_prepare_otp_code(
+    $phoneCountry,
+    $otpPhone,
+    'USER_LOGIN',
+    $otpRequestId,
+    (string)random_int(100000, 999999)
+);
 $expiresAt = $now + 300;
 $preAuthExpiresAt = $now + 600;
 $sendRateState = auth_otp_send_rate_state('USER_LOGIN', $otpPhone, $now);
@@ -160,4 +171,9 @@ api_response(true, 'OTP_SENT', 'OTP পাঠানো হয়েছে।', [
     'resend_in_seconds' => auth_otp_resend_cooldown_seconds(),
     'resend_after' => $now + auth_otp_resend_cooldown_seconds(),
     'phone_country' => $phoneCountry,
-]);
+] + auth_sms_stage_preview_response_fields(
+    $phoneCountry,
+    $otpPhone,
+    'USER_LOGIN',
+    $otpRequestId
+));

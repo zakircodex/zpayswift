@@ -66,7 +66,8 @@ transfer_contract_expect(
 );
 transfer_contract_expect(
     str_contains($transferCreate, "api_response(true, 'TRANSFER_SUCCESS'")
-    && str_contains($transferCreate, "'transfer' => zpay_transfer_public_row"),
+    && str_contains($transferCreate, "'transfer' => zpay_transfer_create_public_result")
+    && str_contains($transferCreate, 'zpay_transfer_user_can_view($persisted, $senderUid)'),
     'Web backend canonical success envelope is incomplete'
 );
 

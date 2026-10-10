@@ -937,8 +937,8 @@ body.user-mfs-page.mfs-modal-open {
 
 .user-mfs-page .bottom-nav {
   left: 0;
-  padding: 0 0 calc(8px + env(safe-area-inset-bottom));
-  background: linear-gradient(180deg, transparent, rgba(4, 16, 31, 0.97) 38%);
+  padding: 0 0 var(--z-nav-bottom-gap);
+  background: var(--z-nav-backdrop);
 }
 
 .user-mfs-page .bottom-nav-inner {
