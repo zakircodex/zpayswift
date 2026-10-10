@@ -85,8 +85,10 @@ async function runFlow(browser, origin, provider, outcome) {
 
   await page.locator('#mfsReceiverNumber').fill('01712345678');
   await page.locator('#mfsReceiverContinue').click();
+  await page.waitForFunction(() => document.getElementById('mfsStepAmount')?.classList.contains('active'));
   await page.locator('#mfsAmountBdt').fill('1000');
   await page.locator('#mfsAmountContinue').click();
+  await page.waitForFunction(() => document.getElementById('mfsStepPin')?.classList.contains('active'));
   await page.locator('#mfsPin').fill('1234');
   await page.locator('#mfsPinContinue').click();
   await page.waitForFunction(() => document.getElementById('mfsStepPreview')?.classList.contains('active'));
@@ -154,8 +156,10 @@ async function runWrongPin(browser, origin) {
   await page.waitForFunction(() => document.getElementById('mfsSection')?.getAttribute('aria-busy') === 'false');
   await page.locator('#mfsReceiverNumber').fill('01712345678');
   await page.locator('#mfsReceiverContinue').click();
+  await page.waitForFunction(() => document.getElementById('mfsStepAmount')?.classList.contains('active'));
   await page.locator('#mfsAmountBdt').fill('1000');
   await page.locator('#mfsAmountContinue').click();
+  await page.waitForFunction(() => document.getElementById('mfsStepPin')?.classList.contains('active'));
   await page.locator('#mfsPin').fill('9999');
   await page.locator('#mfsPinContinue').click();
   await page.waitForFunction(() => document.getElementById('mfsActionModal')?.classList.contains('is-error'));
