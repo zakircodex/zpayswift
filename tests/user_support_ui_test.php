@@ -197,10 +197,12 @@ support_ui_expect(
     && str_contains($css, 'min-height: 82px')
     && str_contains($css, 'padding: 14px 18px')
     && str_contains($css, 'border-radius: 27px')
-    && str_contains($css, 'min-height: 76px')
+    && str_contains($css, '@media (max-width: 420px)')
+    && str_contains($css, 'min-height: 78px')
+    && str_contains($css, 'grid-template-columns: 42px minmax(0, 1fr) 42px')
     && str_contains($css, '#supportSection .support-header-button')
     && str_contains($css, '@media (max-height: 720px)'),
-    'Contact Us header or compact-height layout styling is incomplete'
+    'Contact Us Transfer-aligned header styling is incomplete'
 );
 
 support_ui_expect(

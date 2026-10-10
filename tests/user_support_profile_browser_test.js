@@ -83,6 +83,9 @@ async function supportAudit(browser, width, height) {
       scrollWidth: document.documentElement.scrollWidth,
       clientWidth: document.documentElement.clientWidth,
       header: rect('.support-page-header'),
+      headerRadius: getComputedStyle(document.querySelector('.support-page-header')).borderRadius,
+      headerTitleSize: getComputedStyle(document.querySelector('.support-page-header h1')).fontSize,
+      headerButton: rect('.support-header-button'),
       hero: rect('.support-live-hero'),
       options: rect('#supportContactOptions'),
       optionWidths: visibleLinks.map((link) => link.getBoundingClientRect().width),
@@ -93,8 +96,12 @@ async function supportAudit(browser, width, height) {
     };
   });
   assert.ok(layout.scrollWidth <= layout.clientWidth, `${width}x${height}: Contact Us overflows horizontally`);
-  const expectedHeaderHeight = height > 720 ? 82 : 58;
+  const compactWidth = width <= 420;
+  const expectedHeaderHeight = compactWidth ? 78 : 82;
   assert.ok(layout.header.height >= expectedHeaderHeight, `${width}x${height}: Contact Us header is smaller than the shared page header`);
+  assert.equal(layout.headerRadius, compactWidth ? '24px' : '27px', `${width}x${height}: Contact Us header radius differs from Transfer`);
+  assert.equal(layout.headerTitleSize, width <= 359 ? '19px' : compactWidth ? '21px' : '24px', `${width}x${height}: Contact Us title size differs from Transfer`);
+  assert.equal(layout.headerButton.width, compactWidth ? 40 : 44, `${width}x${height}: Contact Us header controls differ from Transfer`);
   assert.ok(layout.header.bottom < layout.hero.top, `${width}x${height}: header overlaps the support hero`);
   assert.equal(layout.optionCount, 2, `${width}x${height}: configured contact channels are missing`);
   assert.equal(layout.dataCount, '2', `${width}x${height}: contact grid did not adapt to two channels`);
