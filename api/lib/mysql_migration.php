@@ -144,3 +144,42 @@ function mysql_migration_values_match(mixed $source, mixed $target): bool
 {
     return hash_equals(mysql_migration_hash($source), mysql_migration_hash($target));
 }
+
+function mysql_migration_root_paths(): array
+{
+    $nodes = zpay_mysql_table('firebase_nodes');
+    $pdo = zpay_mysql_pdo();
+    $root = $pdo->prepare("SELECT node_type FROM {$nodes} WHERE path = :path LIMIT 1");
+    $root->execute([':path' => '']);
+    $rootType = $root->fetchColumn();
+    if ($rootType === false) {
+        return [];
+    }
+    if ((int)$rootType === MYSQL_FB_SCALAR) {
+        return [''];
+    }
+
+    $children = $pdo->prepare(
+        "SELECT node_key FROM {$nodes}
+         WHERE parent_path = :path AND path <> parent_path
+         ORDER BY node_key ASC"
+    );
+    $children->execute([':path' => '']);
+    $paths = array_map('strval', $children->fetchAll(PDO::FETCH_COLUMN));
+    sort($paths, SORT_STRING);
+
+    return $paths;
+}
+
+function mysql_migration_inventory_diff(array $sourcePaths, array $targetPaths): array
+{
+    $sourcePaths = array_values(array_unique(array_map('mysql_fb_normalize_path', $sourcePaths)));
+    $targetPaths = array_values(array_unique(array_map('mysql_fb_normalize_path', $targetPaths)));
+    sort($sourcePaths, SORT_STRING);
+    sort($targetPaths, SORT_STRING);
+
+    return [
+        'source_only' => array_values(array_diff($sourcePaths, $targetPaths)),
+        'target_only' => array_values(array_diff($targetPaths, $sourcePaths)),
+    ];
+}

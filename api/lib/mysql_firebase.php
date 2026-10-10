@@ -472,6 +472,19 @@ function mysql_fb_read_path(PDO $pdo, string $path): mixed
     return mysql_fb_rebuild_rows(mysql_fb_read_rows($pdo, $path), $path);
 }
 
+function mysql_fb_read_node_row(PDO $pdo, string $path): ?array
+{
+    $nodes = zpay_mysql_table('firebase_nodes');
+    $statement = $pdo->prepare(
+        "SELECT path, parent_path, node_key, depth, node_type, value_json
+         FROM {$nodes} WHERE path = :path LIMIT 1"
+    );
+    $statement->execute([':path' => mysql_fb_normalize_path($path)]);
+    $row = $statement->fetch();
+
+    return is_array($row) ? $row : null;
+}
+
 function mysql_fb_shallow_path(PDO $pdo, string $path): mixed
 {
     $nodes = zpay_mysql_table('firebase_nodes');
@@ -571,9 +584,7 @@ function mysql_fb_apply_query(mixed $value, array $query): mixed
         return $value;
     }
 
-    $orderBy = isset($query['orderBy'])
-        ? (string)mysql_fb_query_decode($query['orderBy'])
-        : '$key';
+    $orderBy = mysql_fb_query_order_by($query);
     $entries = [];
     foreach ($value as $key => $entryValue) {
         $key = (string)$key;
@@ -584,6 +595,43 @@ function mysql_fb_apply_query(mixed $value, array $query): mixed
         ];
     }
 
+    $entries = mysql_fb_filter_query_entries($entries, $query);
+
+    if ($entries === []) {
+        return null;
+    }
+
+    $result = [];
+    foreach ($entries as $entry) {
+        $result[(string)$entry['key']] = $entry['value'];
+    }
+    // Firebase REST selects the window using orderBy, then serializes object
+    // properties in key order. Match the PHP array order seen by this app.
+    ksort($result, SORT_STRING);
+
+    return $result;
+}
+
+function mysql_fb_query_order_by(array $query): string
+{
+    return isset($query['orderBy'])
+        ? (string)mysql_fb_query_decode($query['orderBy'])
+        : '$key';
+}
+
+function mysql_fb_query_is_bounded(array $query): bool
+{
+    foreach (['equalTo', 'startAt', 'endAt', 'limitToFirst', 'limitToLast'] as $parameter) {
+        if (array_key_exists($parameter, $query)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function mysql_fb_filter_query_entries(array $entries, array $query): array
+{
     usort($entries, static function (array $left, array $right): int {
         $order = mysql_fb_compare_values($left['order'], $right['order']);
         return $order !== 0 ? $order : strcmp((string)$left['key'], (string)$right['key']);
@@ -620,29 +668,216 @@ function mysql_fb_apply_query(mixed $value, array $query): mixed
         $entries = $limit === 0 ? [] : array_slice($entries, -$limit);
     }
 
+    return $entries;
+}
+
+function mysql_fb_query_row_value(?array $row, string $typeKey, string $valueKey): mixed
+{
+    if ($row === null || !isset($row[$typeKey])) {
+        return null;
+    }
+
+    return (int)$row[$typeKey] === MYSQL_FB_SCALAR
+        ? mysql_fb_json_decode($row[$valueKey] === null ? null : (string)$row[$valueKey])
+        : [];
+}
+
+function mysql_fb_query_candidate_entries(PDO $pdo, string $path, array $query): array
+{
+    $nodes = zpay_mysql_table('firebase_nodes');
+    $path = mysql_fb_normalize_path($path);
+    $orderBy = mysql_fb_query_order_by($query);
+    $selectOrder = '';
+    $joinOrder = '';
+    $parameters = [':parent_path' => $path];
+    $conditions = ['child.parent_path = :parent_path', 'child.path <> child.parent_path'];
+    $orderClause = '';
+    $limitClause = '';
+
+    if ($orderBy === '$key') {
+        if (array_key_exists('equalTo', $query)) {
+            $equalTo = mysql_fb_query_decode($query['equalTo']);
+            if (!is_string($equalTo)) {
+                return [];
+            }
+            $conditions[] = 'child.node_key = :key_equal';
+            $parameters[':key_equal'] = $equalTo;
+        } else {
+            if (array_key_exists('startAt', $query)) {
+                $startAt = mysql_fb_query_decode($query['startAt']);
+                if (is_string($startAt)) {
+                    $conditions[] = 'child.node_key >= :key_start';
+                    $parameters[':key_start'] = $startAt;
+                }
+            }
+            if (array_key_exists('endAt', $query)) {
+                $endAt = mysql_fb_query_decode($query['endAt']);
+                if (is_string($endAt)) {
+                    $conditions[] = 'child.node_key <= :key_end';
+                    $parameters[':key_end'] = $endAt;
+                }
+            }
+        }
+
+        $hasFirst = isset($query['limitToFirst']);
+        $hasLast = isset($query['limitToLast']);
+        if ($hasFirst xor $hasLast) {
+            $limit = max(0, (int)($hasFirst ? $query['limitToFirst'] : $query['limitToLast']));
+            $orderClause = ' ORDER BY child.node_key ' . ($hasLast ? 'DESC' : 'ASC');
+            $limitClause = ' LIMIT ' . $limit;
+        }
+    }
+
+    if (!in_array($orderBy, ['$key', '$value'], true) && trim($orderBy, '/') !== '') {
+        $joinOrder = " LEFT JOIN {$nodes} ordered ON ordered.path = CONCAT(child.path, '/', :order_path)";
+        $selectOrder = ', ordered.node_type AS order_node_type, ordered.value_json AS order_value_json';
+        $parameters[':order_path'] = mysql_fb_normalize_path($orderBy);
+    }
+
+    $childValue = $orderBy === '$value' ? 'child.value_json' : 'NULL';
+
+    $statement = $pdo->prepare(
+        "SELECT child.path, child.node_key, child.node_type, {$childValue} AS value_json{$selectOrder}
+         FROM {$nodes} child{$joinOrder}
+         WHERE " . implode(' AND ', $conditions) . $orderClause . $limitClause
+    );
+    $statement->execute($parameters);
+    $rows = $statement->fetchAll();
+    $entries = [];
+
+    foreach ($rows as $row) {
+        $key = (string)$row['node_key'];
+        if ($orderBy === '$key') {
+            $order = $key;
+        } elseif ($orderBy === '$value') {
+            $order = mysql_fb_query_row_value($row, 'node_type', 'value_json');
+        } elseif (trim($orderBy, '/') === '') {
+            $order = null;
+        } else {
+            $order = mysql_fb_query_row_value($row, 'order_node_type', 'order_value_json');
+        }
+        $entries[] = [
+            'key' => $key,
+            'path' => (string)$row['path'],
+            'order' => $order,
+        ];
+    }
+
+    return $entries;
+}
+
+function mysql_fb_read_selected_children(PDO $pdo, string $parentPath, array $entries): mixed
+{
     if ($entries === []) {
         return null;
     }
 
-    $result = [];
+    $nodes = zpay_mysql_table('firebase_nodes');
+    $parentPath = mysql_fb_normalize_path($parentPath);
+    $selected = [];
     foreach ($entries as $entry) {
-        $result[(string)$entry['key']] = $entry['value'];
+        $selected[(string)$entry['path']] = (string)$entry['key'];
     }
-    // Firebase REST selects the window using orderBy, then serializes object
-    // properties in key order. Match the PHP array order seen by this app.
+    $result = [];
+
+    foreach (array_chunk(array_keys($selected), 200) as $chunk) {
+        $conditions = [];
+        $parameters = [];
+        foreach ($chunk as $index => $childPath) {
+            [$lower, $upper] = mysql_fb_descendant_bounds($childPath);
+            $conditions[] = "(path = :path{$index} OR (path >= :lower{$index} AND path < :upper{$index}))";
+            $parameters[":path{$index}"] = $childPath;
+            $parameters[":lower{$index}"] = $lower;
+            $parameters[":upper{$index}"] = $upper;
+        }
+        $statement = $pdo->prepare(
+            "SELECT path, parent_path, node_key, depth, node_type, value_json
+             FROM {$nodes}
+             WHERE " . implode(' OR ', $conditions) . '
+             ORDER BY depth ASC, path ASC'
+        );
+        $statement->execute($parameters);
+
+        $groupedRows = [];
+        foreach ($statement->fetchAll() as $row) {
+            $rowPath = (string)$row['path'];
+            $relative = $parentPath === ''
+                ? $rowPath
+                : substr($rowPath, strlen($parentPath) + 1);
+            $separator = strpos($relative, '/');
+            $childKey = $separator === false ? $relative : substr($relative, 0, $separator);
+            $childPath = mysql_fb_join_path($parentPath, $childKey);
+            if (isset($selected[$childPath])) {
+                $groupedRows[$childPath][] = $row;
+            }
+        }
+
+        foreach ($chunk as $childPath) {
+            if (!isset($groupedRows[$childPath])) {
+                continue;
+            }
+            $result[$selected[$childPath]] = mysql_fb_rebuild_rows($groupedRows[$childPath], $childPath);
+        }
+    }
+    if ($result === []) {
+        return null;
+    }
     ksort($result, SORT_STRING);
 
     return $result;
 }
 
-function mysql_fb_get_path(string $path, array $query = []): mixed
+function mysql_fb_get_path_from_pdo(PDO $pdo, string $path, array $query = []): mixed
 {
-    $pdo = zpay_mysql_pdo();
     if (isset($query['shallow']) && in_array(strtolower((string)$query['shallow']), ['1', 'true'], true)) {
         return mysql_fb_shallow_path($pdo, $path);
     }
 
+    if (mysql_fb_query_is_bounded($query)) {
+        $node = mysql_fb_read_node_row($pdo, $path);
+        if ($node === null) {
+            return null;
+        }
+        if ((int)$node['node_type'] === MYSQL_FB_SCALAR) {
+            return mysql_fb_json_decode($node['value_json'] === null ? null : (string)$node['value_json']);
+        }
+
+        $entries = mysql_fb_query_candidate_entries($pdo, $path, $query);
+        return mysql_fb_read_selected_children(
+            $pdo,
+            $path,
+            mysql_fb_filter_query_entries($entries, $query)
+        );
+    }
+
     return mysql_fb_apply_query(mysql_fb_read_path($pdo, $path), $query);
+}
+
+function mysql_fb_get_path(string $path, array $query = []): mixed
+{
+    if (mysql_fb_query_is_bounded($query)) {
+        return zpay_mysql_transaction(
+            static fn(PDO $pdo): mixed => mysql_fb_get_path_from_pdo($pdo, $path, $query)
+        );
+    }
+
+    return mysql_fb_get_path_from_pdo(zpay_mysql_pdo(), $path, $query);
+}
+
+function mysql_fb_get_path_with_etag(string $path, array $query = []): array
+{
+    $path = mysql_fb_normalize_path($path);
+
+    return zpay_mysql_transaction(static function (PDO $pdo) use ($path, $query): array {
+        // Locking the version path before reading nodes serializes every overlapping
+        // mutation and also registers paths that have never been read before.
+        $versions = mysql_fb_lock_versions($pdo, [$path]);
+
+        return [
+            'value' => mysql_fb_get_path_from_pdo($pdo, $path, $query),
+            'etag' => mysql_fb_version_etag((int)($versions[$path] ?? 0)),
+        ];
+    });
 }
 
 function mysql_fb_validate_targets(array $targets): void
@@ -786,15 +1021,13 @@ function mysql_fb_request(
         zpay_mysql_assert_expected_environment();
 
         if ($method === 'GET') {
-            $value = mysql_fb_get_path($path, $query);
             $responseHeaders = [];
             if (isset($headerMap['x-firebase-etag'])) {
-                $versions = zpay_mysql_table('firebase_versions');
-                $statement = zpay_mysql_pdo()->prepare(
-                    "SELECT version FROM {$versions} WHERE path = :path"
-                );
-                $statement->execute([':path' => $path]);
-                $responseHeaders['etag'] = mysql_fb_version_etag((int)($statement->fetchColumn() ?: 0));
+                $read = mysql_fb_get_path_with_etag($path, $query);
+                $value = $read['value'];
+                $responseHeaders['etag'] = (string)$read['etag'];
+            } else {
+                $value = mysql_fb_get_path($path, $query);
             }
             return mysql_fb_response(true, 200, $value, $responseHeaders);
         }

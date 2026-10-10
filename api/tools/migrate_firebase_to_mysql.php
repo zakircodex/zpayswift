@@ -309,6 +309,7 @@ try {
     $mismatches = 0;
     $failed = 0;
     $runCompleted = false;
+    $sourceInventoryStable = (array)$options['paths'] !== [];
 
     try {
         foreach ($paths as $path) {
@@ -353,7 +354,46 @@ try {
                 $mismatches++;
                 fwrite(STDERR, "source_inventory=CHANGED rerun_required=true\n");
                 mysql_migration_run_progress((int)$run['id'], $processed, $mismatches, '');
+            } else {
+                $sourceInventoryStable = true;
             }
+        }
+
+        if ((array)$options['paths'] === [] && $sourceInventoryStable) {
+            $targetPaths = mysql_migration_root_paths();
+            $inventoryDiff = mysql_migration_inventory_diff($paths, $targetPaths);
+
+            if ((string)$options['mode'] === 'FINAL_DELTA' && $mismatches === 0 && $failed === 0) {
+                foreach ($inventoryDiff['target_only'] as $path) {
+                    $delete = mysql_fb_put_path((string)$path, null);
+                    if (empty($delete['ok'])) {
+                        throw new RuntimeException('MySQL target-only tree deletion failed.');
+                    }
+                    mysql_migration_checkpoint((string)$path, null, 'VERIFIED');
+                    $processed++;
+                    fwrite(
+                        STDOUT,
+                        'target_only=' . migration_path_label((string)$path) . ' state=DELETED' . PHP_EOL
+                    );
+                    mysql_migration_run_progress((int)$run['id'], $processed, $mismatches, (string)$path);
+                }
+                $targetPaths = mysql_migration_root_paths();
+                $inventoryDiff = mysql_migration_inventory_diff($paths, $targetPaths);
+            }
+
+            $inventoryMatched = $inventoryDiff['source_only'] === []
+                && $inventoryDiff['target_only'] === [];
+            if (!$inventoryMatched) {
+                $mismatches++;
+            }
+            fwrite(
+                $inventoryMatched ? STDOUT : STDERR,
+                'root_inventory=' . ($inventoryMatched ? 'MATCH' : 'MISMATCH')
+                . ' source_only=' . count($inventoryDiff['source_only'])
+                . ' target_only=' . count($inventoryDiff['target_only'])
+                . PHP_EOL
+            );
+            mysql_migration_run_progress((int)$run['id'], $processed, $mismatches, '');
         }
 
         if ((string)$options['mode'] === 'FINAL_DELTA' && $mismatches === 0 && $failed === 0) {

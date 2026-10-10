@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 $_SERVER['SCRIPT_FILENAME'] = __FILE__;
 
-require_once dirname(__DIR__) . '/api/lib/mysql_firebase.php';
+require_once dirname(__DIR__) . '/api/lib/mysql_migration.php';
 
 function mysql_stage_expect(bool $condition, string $message): void
 {
@@ -69,6 +69,11 @@ try {
 mysql_stage_expect($overlapRejected, 'overlapping multi-location updates must be rejected');
 mysql_stage_expect(mysql_fb_etag_version('W/"42"') === 42, 'weak ETag parsing failed');
 mysql_stage_expect(mysql_fb_etag_version('invalid') === null, 'invalid ETag must be rejected');
+$inventoryDiff = mysql_migration_inventory_diff(['USERS', 'WALLETS'], ['OLD_TREE', 'USERS']);
+mysql_stage_expect(
+    $inventoryDiff === ['source_only' => ['WALLETS'], 'target_only' => ['OLD_TREE']],
+    'root inventory comparison did not expose source-only and target-only trees'
+);
 
 $root = dirname(__DIR__);
 $firebaseSource = (string)file_get_contents($root . '/api/lib/firebase.php');
@@ -92,6 +97,17 @@ mysql_stage_expect(
     'MySQL deletes must prune empty Firebase-style ancestors'
 );
 mysql_stage_expect(
+    str_contains($adapterSource, 'mysql_fb_get_path_with_etag')
+        && str_contains($adapterSource, 'mysql_fb_lock_versions($pdo, [$path])'),
+    'ETag reads must register and lock the version path before reading its value'
+);
+mysql_stage_expect(
+    str_contains($adapterSource, 'mysql_fb_query_candidate_entries')
+        && str_contains($adapterSource, 'mysql_fb_read_selected_children')
+        && str_contains($adapterSource, 'array_chunk(array_keys($selected), 200)'),
+    'bounded MySQL queries must select direct children before rebuilding subtrees'
+);
+mysql_stage_expect(
     str_contains($migrationSource, "migration_require_constant('MYSQL_MIGRATION_ALLOW_WRITE') !== true"),
     'migration writes must require an explicit private safety switch'
 );
@@ -103,6 +119,12 @@ mysql_stage_expect(
     !str_contains($migrationSource, "['shallow' => 'true'],\n        ['X-Firebase-ETag: true']")
         && str_contains($migrationSource, 'mysql_migration_hash($inventory)'),
     'Firebase inventory must not combine incompatible shallow and ETag requests'
+);
+mysql_stage_expect(
+    str_contains($migrationSource, "['target_only']")
+        && str_contains($migrationSource, 'state=DELETED')
+        && str_contains($migrationSource, 'root_inventory='),
+    'final delta must delete and verify target-only root trees'
 );
 mysql_stage_expect(
     str_contains($queryParitySource, 'query_parity_expected_environment')
