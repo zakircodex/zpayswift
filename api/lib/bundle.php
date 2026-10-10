@@ -1993,7 +1993,10 @@ function create_bundle_pending_request(
         }
     }
 
-    $ok = fb_put('BUNDLE_REQUESTS/PENDING/' . $requestId, $row);
+    $ok = fb_patch('', [
+        'BUNDLE_REQUESTS/PENDING/' . $requestId => $row,
+        'BUNDLE_HISTORY/' . $uid . '/' . bundle_history_month_key($row) . '/' . $requestId => bundle_history_row($row),
+    ]);
 
     if (!$ok) {
         return false;
@@ -2028,14 +2031,26 @@ function create_bundle_pending_request(
     return true;
 }
 
-function bundle_write_history(array $done): bool
+function bundle_history_month_key(array $row): string
 {
-    $uid = (string)($done['uid'] ?? '');
-    $requestId = (string)($done['request_id'] ?? '');
+    foreach (['created_at', 'updated_at', 'completed_at'] as $key) {
+        $timestamp = (int)($row[$key] ?? 0);
+        if ($timestamp <= 0) {
+            continue;
+        }
+        if ($timestamp > 9999999999) {
+            $timestamp = (int)floor($timestamp / 1000);
+        }
 
-    if ($uid === '' || $requestId === '') {
-        return false;
+        return bundle_month_key($timestamp);
     }
+
+    return bundle_month_key();
+}
+
+function bundle_history_row(array $done): array
+{
+    $requestId = (string)($done['request_id'] ?? '');
 
     $priceAmount = bundle_round_money((float)($done['price_amount'] ?? $done['amount'] ?? 0));
     $payableAmount = bundle_round_money((float)($done['payable_amount'] ?? $done['you_pay'] ?? $done['wallet_hold_amount'] ?? $priceAmount));
@@ -2065,10 +2080,15 @@ function bundle_write_history(array $done): bool
         'commission_credited_at' => (int)($done['commission_credited_at'] ?? 0),
         'user_commission_credited' => (bool)($done['user_commission_credited'] ?? false),
         'subadmin_profit_credited' => (bool)($done['subadmin_profit_credited'] ?? false),
+        'request_type' => 'BUNDLE',
+        'type' => 'BUNDLE',
+        'source' => (string)($done['source'] ?? $done['request_source'] ?? ''),
+        'request_source' => (string)($done['request_source'] ?? $done['source'] ?? ''),
         'status' => (string)($done['status'] ?? ''),
         'message' => (string)($done['final_message'] ?? ''),
         'created_at' => (int)($done['created_at'] ?? bundle_now()),
-        'completed_at' => (int)($done['completed_at'] ?? bundle_now()),
+        'updated_at' => (int)($done['updated_at'] ?? $done['completed_at'] ?? $done['created_at'] ?? bundle_now()),
+        'completed_at' => (int)($done['completed_at'] ?? 0),
     ];
 
     foreach (['balance_after', 'wallet_balance_after', 'balance_after_amount', 'last_balance', 'after_balance'] as $key) {
@@ -2078,7 +2098,27 @@ function bundle_write_history(array $done): bool
         }
     }
 
-    return fb_put('BUNDLE_HISTORY/' . $uid . '/' . bundle_month_key() . '/' . $requestId, bundle_with_financial_aliases($historyRow));
+    $balanceAfterText = trim((string)($done['balance_after_text'] ?? $done['display_balance_after_text'] ?? ''));
+    if ($balanceAfterText !== '') {
+        $historyRow['balance_after_text'] = $balanceAfterText;
+    }
+
+    return bundle_with_financial_aliases($historyRow);
+}
+
+function bundle_write_history(array $done): bool
+{
+    $uid = trim((string)($done['uid'] ?? ''));
+    $requestId = trim((string)($done['request_id'] ?? ''));
+
+    if ($uid === '' || $requestId === '') {
+        return false;
+    }
+
+    return fb_put(
+        'BUNDLE_HISTORY/' . $uid . '/' . bundle_history_month_key($done) . '/' . $requestId,
+        bundle_history_row($done)
+    );
 }
 
 function bundle_update_subadmin_request_log(array $row, string $status, string $message): void
@@ -2200,7 +2240,7 @@ function bundle_update_subadmin_request_log(array $row, string $status, string $
     /*
      * Bundle history sync.
      */
-    fb_patch('BUNDLE_HISTORY/' . $uid . '/' . bundle_month_key($now) . '/' . $requestId, $patch);
+    fb_patch('BUNDLE_HISTORY/' . $uid . '/' . bundle_history_month_key($row) . '/' . $requestId, $patch);
 }
 
 function bundle_wallet_credit_available_fallback(

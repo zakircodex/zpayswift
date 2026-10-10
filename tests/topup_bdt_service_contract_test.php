@@ -230,6 +230,13 @@ $commitMonth = topup_history_month_key($commitRow);
 topup_contract_expect(isset($GLOBALS['topup_contract_store']['TOPUP_REQUESTS/PENDING/REQ_ATOMIC']), 'Atomic Top-Up commit omitted the worker queue row');
 topup_contract_expect(isset($GLOBALS['topup_contract_store']['REQUEST_STATUS/REQ_ATOMIC']), 'Atomic Top-Up commit omitted request status');
 topup_contract_expect(isset($GLOBALS['topup_contract_store']['TOPUP_HISTORY/MY_USER/' . $commitMonth . '/REQ_ATOMIC']), 'Atomic Top-Up commit omitted user history');
+$committedHistory = $GLOBALS['topup_contract_store']['TOPUP_HISTORY/MY_USER/' . $commitMonth . '/REQ_ATOMIC'] ?? [];
+topup_contract_expect(
+    is_array($committedHistory)
+    && (float)($committedHistory['balance_after'] ?? -1) === (float)$commitRow['balance_after']
+    && ($committedHistory['wallet_currency'] ?? '') === 'MYR',
+    'Atomic Top-Up history must preserve the authoritative after balance and wallet currency'
+);
 topup_contract_expect(($GLOBALS['topup_contract_store']['TOPUP_PREVIEWS/ATOMIC_TOKEN/status'] ?? '') === 'USED', 'Atomic Top-Up commit did not finalize the preview');
 
 $workerSource = (string)file_get_contents(dirname(__DIR__) . '/api/lib/worker.php');

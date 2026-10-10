@@ -2178,6 +2178,12 @@ function user_proxy_recover_bundle_submit_result(
         return ['ok' => false];
     }
 
+    try {
+        bundle_write_history($request);
+    } catch (Throwable $exception) {
+        error_log('Recovered Bundle history repair failed: ' . $exception->getMessage());
+    }
+
     return [
         'ok' => true,
         'request_id' => (string)($recovered['request_id'] ?? ''),
@@ -2318,6 +2324,38 @@ function user_proxy_create_request_status(string $requestId, string $uid, string
 }
 
 
+function user_proxy_public_balance_after(array $public, array $row): array
+{
+    foreach (
+        ['balance_after', 'display_balance_after', 'wallet_balance_after', 'balance_after_amount', 'last_balance', 'after_balance']
+        as $balanceKey
+    ) {
+        if (
+            !array_key_exists($balanceKey, $row)
+            || $row[$balanceKey] === null
+            || $row[$balanceKey] === ''
+            || !is_numeric($row[$balanceKey])
+        ) {
+            continue;
+        }
+
+        $public['balance_after'] = (float)$row[$balanceKey];
+        break;
+    }
+
+    $balanceAfterText = trim((string)(
+        $row['balance_after_text']
+        ?? $row['display_balance_after_text']
+        ?? ''
+    ));
+    if ($balanceAfterText !== '') {
+        $public['balance_after_text'] = $balanceAfterText;
+    }
+
+    return $public;
+}
+
+
 function user_proxy_public_request_log(array $row, string $requestId = ''): array
 {
     $requestId = trim((string)($row['request_id'] ?? $row['id'] ?? $requestId));
@@ -2399,30 +2437,7 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
             'completed_at' => (int)($row['completed_at'] ?? 0),
         ];
 
-        foreach (['balance_after', 'display_balance_after', 'last_balance', 'after_balance'] as $balanceKey) {
-            if (
-                !array_key_exists($balanceKey, $row)
-                || $row[$balanceKey] === null
-                || $row[$balanceKey] === ''
-                || !is_numeric($row[$balanceKey])
-            ) {
-                continue;
-            }
-
-            $public['balance_after'] = (float)$row[$balanceKey];
-            break;
-        }
-
-        $balanceAfterText = trim((string)(
-            $row['balance_after_text']
-            ?? $row['display_balance_after_text']
-            ?? ''
-        ));
-        if ($balanceAfterText !== '') {
-            $public['balance_after_text'] = $balanceAfterText;
-        }
-
-        return $public;
+        return user_proxy_public_balance_after($public, $row);
     }
 
     $operator = (string)($row['operator'] ?? '');
@@ -2439,7 +2454,7 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
             ?? 0
         );
 
-        return [
+        $public = array_replace(bundle_financial_aliases($row), [
             'request_id' => $requestId,
             'key_id' => (string)($row['key_id'] ?? 'PANEL'),
             'action' => 'BUNDLE',
@@ -2464,12 +2479,14 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
             'created_at' => (int)($row['created_at'] ?? 0),
             'updated_at' => (int)($row['updated_at'] ?? 0),
             'completed_at' => (int)($row['completed_at'] ?? 0),
-        ];
+        ]);
+
+        return user_proxy_public_balance_after($public, $row);
     }
 
     $topupNumber = (string)($row['topup_number'] ?? $row['number'] ?? '');
 
-    return [
+    $public = array_replace(topup_normalized_history_fields($row), [
         'request_id' => $requestId,
         'key_id' => (string)($row['key_id'] ?? 'PANEL'),
         'action' => 'TOPUP',
@@ -2490,11 +2507,19 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
         'user_commission' => 0,
         'you_pay' => 0,
         'payable_amount' => 0,
+        'wallet_debit_bdt' => (float)($row['wallet_debit_bdt'] ?? $row['total_debit_bdt'] ?? 0),
+        'rate_applicable' => (bool)($row['rate_applicable'] ?? false),
+        'rate_snapshot' => $row['rate_snapshot'] ?? null,
+        'rate_used' => (float)($row['rate_used'] ?? $row['rate_snapshot'] ?? 0),
+        'commission_amount' => (float)($row['commission_amount'] ?? $row['commission_bdt'] ?? 0),
+        'commission_bdt' => (float)($row['commission_bdt'] ?? $row['commission_amount'] ?? 0),
         'message' => (string)($row['final_message'] ?? $row['message'] ?? $row['note'] ?? ''),
         'created_at' => (int)($row['created_at'] ?? 0),
         'updated_at' => (int)($row['updated_at'] ?? 0),
         'completed_at' => (int)($row['completed_at'] ?? 0),
-    ];
+    ]);
+
+    return user_proxy_public_balance_after($public, $row);
 }
 
 
@@ -2671,6 +2696,41 @@ function user_proxy_collect_fast_request_logs(string $uid, int $limit = 100, ?st
             if ($rid !== '' && ($rowMonth === '' || $rowMonth === $month)) {
                 $map[$rid] = array_merge($map[$rid] ?? [], $public);
                 $monthlyMirrors[$rid] = true;
+            }
+        }
+    }
+
+    $pendingBundleRows = fb_get('BUNDLE_REQUESTS/PENDING', [
+        'orderBy' => json_encode('uid'),
+        'equalTo' => json_encode($uid),
+        'limitToLast' => $candidateLimit,
+    ]);
+    if (is_array($pendingBundleRows)) {
+        foreach ($pendingBundleRows as $requestId => $row) {
+            if (!is_array($row) || trim((string)($row['uid'] ?? '')) !== $uid) {
+                continue;
+            }
+
+            $row['request_id'] = trim((string)($row['request_id'] ?? $requestId));
+            $row['request_type'] = 'BUNDLE';
+            $row['status'] = (string)($row['status'] ?? 'WAITING_ADMIN');
+            $public = user_proxy_public_request_log($row, (string)$requestId);
+            $rid = trim((string)($public['request_id'] ?? $requestId));
+
+            if ($rid === '' || !user_proxy_request_log_matches_month($public, $rid, $month)) {
+                continue;
+            }
+
+            $alreadyMirrored = isset($monthlyMirrors[$rid]);
+            $map[$rid] = array_merge($map[$rid] ?? [], $public);
+            $monthlyMirrors[$rid] = true;
+
+            if (!$alreadyMirrored) {
+                try {
+                    bundle_write_history($row);
+                } catch (Throwable $exception) {
+                    error_log('Bundle history self-repair failed for ' . $rid . ': ' . $exception->getMessage());
+                }
             }
         }
     }
