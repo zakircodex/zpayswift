@@ -36,7 +36,7 @@ function pageMarkup() {
         const now = Math.floor(Date.now() / 1000);
         const previous = Math.floor(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 15).getTime() / 1000);
         return {
-          items: Array.from({ length: 25 }, (_, index) => ({ request_id: 'MF-CURRENT-' + index, request_type: 'MFS', provider: 'BKASH', receiver_number: '01700000000', amount_bdt: 100 + index, created_at: now - index, status: 'PENDING' })),
+          items: Array.from({ length: 25 }, (_, index) => ({ request_id: 'MF-CURRENT-' + index, request_type: 'MFS', provider: 'BKASH', receiver_number: '01700000000', amount_bdt: 100 + index, wallet_currency: 'MYR', balance_after_text: 'RM ' + (596.03 - index).toFixed(2), created_at: now - index, status: 'PENDING' })),
           wallet_history: [{ transfer_id: 'WT-CURRENT', direction: 'DEBIT', amount: 50, currency: 'BDT', created_at: now + 5, status: 'SUCCESS', counterparty_name: 'TEST USER', counterparty_phone: '60123456789' }],
           add_money_history: [{ request_id: 'AM-OLD', amount: 300, currency: 'BDT', created_at: previous, status: 'APPROVED' }],
           pagination: { limit: params.limit, has_more: false }
@@ -86,6 +86,13 @@ async function main() {
       assert.equal(calls[0].params.legacy, 0, `${width}px History enabled legacy scans.`);
       assert.equal(await page.locator('.history-transaction-card').count(), 10, `${width}px History did not render exactly the first 10 rows.`);
       assert.equal(await page.getByText('Z-Pay Transfer - Sent', { exact: true }).count(), 1, `${width}px outgoing wallet transfer was not rendered as sent.`);
+      const mfsCard = page.locator('.history-transaction-card').filter({ hasText: 'bKash - Send Money' }).first();
+      assert.match(await mfsCard.innerText(), /Balance After:\s*RM 596\.03/, `${width}px MFS card omitted the after balance.`);
+      await mfsCard.click();
+      assert.match(await page.locator('#historyDetailRows').innerText(), /Request ID:\s*MF-CURRENT-0/, `${width}px MFS detail opened the wrong row.`);
+      assert.match(await page.locator('#historyDetailRows').innerText(), /Balance After:\s*RM 596\.03/, `${width}px MFS detail omitted the after balance.`);
+      await page.locator('#historyDetailActions').getByRole('button', { name: 'Close', exact: true }).click();
+      await page.waitForFunction(() => document.getElementById('historyDetailModal')?.classList.contains('hidden'));
       await page.locator('#historyLoadMore').scrollIntoViewIfNeeded();
       await page.waitForFunction(() => document.querySelectorAll('.history-transaction-card').length === 20);
       assert.equal(await page.locator('.history-transaction-card').count(), 20, `${width}px History did not reveal the next 10 rows.`);

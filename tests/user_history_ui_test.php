@@ -123,6 +123,27 @@ history_ui_expect(
     'Transfer Balance After must remain modal-only like Android'
 );
 
+$mfsProxyStart = strpos($proxy, "if (\$type === 'MFS')");
+$mfsProxyEnd = strpos($proxy, '$operator =', $mfsProxyStart !== false ? $mfsProxyStart : 0);
+$mfsProxyBlock = ($mfsProxyStart !== false && $mfsProxyEnd !== false && $mfsProxyEnd > $mfsProxyStart)
+    ? substr($proxy, $mfsProxyStart, $mfsProxyEnd - $mfsProxyStart)
+    : '';
+$mfsUiStart = strpos($js, 'function mfsItem(row)');
+$mfsUiEnd = strpos($js, 'function bundleItem(row)', $mfsUiStart !== false ? $mfsUiStart : 0);
+$mfsUiBlock = ($mfsUiStart !== false && $mfsUiEnd !== false && $mfsUiEnd > $mfsUiStart)
+    ? substr($js, $mfsUiStart, $mfsUiEnd - $mfsUiStart)
+    : '';
+history_ui_expect(
+    $mfsProxyBlock !== ''
+    && str_contains($mfsProxyBlock, "array_key_exists(\$balanceKey, \$row)")
+    && str_contains($mfsProxyBlock, "\$public['balance_after']")
+    && str_contains($mfsProxyBlock, "\$public['balance_after_text']")
+    && $mfsUiBlock !== ''
+    && str_contains($mfsUiBlock, "addDetail(cardRows, 'Balance After', balanceAfter);")
+    && str_contains($mfsUiBlock, "addDetail(detailRows, 'Balance After', balanceAfter);"),
+    'MFS History must pass through a stored balance and render it in the card and detail modal'
+);
+
 history_ui_expect(
     str_contains($page, 'id="historyDetailModal"')
     && str_contains($page, 'data-history-modal-close')

@@ -2350,7 +2350,7 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
             ? mfs_service_name($serviceType)
             : $serviceType;
 
-        return [
+        $public = [
             'request_id' => $requestId,
             'key_id' => (string)($row['key_id'] ?? $row['source_key_id'] ?? 'PANEL'),
             'action' => 'MFS',
@@ -2398,6 +2398,31 @@ function user_proxy_public_request_log(array $row, string $requestId = ''): arra
             'updated_at' => (int)($row['updated_at'] ?? 0),
             'completed_at' => (int)($row['completed_at'] ?? 0),
         ];
+
+        foreach (['balance_after', 'display_balance_after', 'last_balance', 'after_balance'] as $balanceKey) {
+            if (
+                !array_key_exists($balanceKey, $row)
+                || $row[$balanceKey] === null
+                || $row[$balanceKey] === ''
+                || !is_numeric($row[$balanceKey])
+            ) {
+                continue;
+            }
+
+            $public['balance_after'] = (float)$row[$balanceKey];
+            break;
+        }
+
+        $balanceAfterText = trim((string)(
+            $row['balance_after_text']
+            ?? $row['display_balance_after_text']
+            ?? ''
+        ));
+        if ($balanceAfterText !== '') {
+            $public['balance_after_text'] = $balanceAfterText;
+        }
+
+        return $public;
     }
 
     $operator = (string)($row['operator'] ?? '');
