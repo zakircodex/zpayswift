@@ -761,7 +761,18 @@
     const configuredBase = String(root.dataset.trackingBase || '').trim();
     if (!configuredBase) return '';
     try {
-      const base = new URL(configuredBase, window.location.origin);
+      const pageOrigin = new URL(window.location.origin);
+      const configured = new URL(configuredBase, pageOrigin.origin);
+      if (
+        !['http:', 'https:'].includes(pageOrigin.protocol)
+        || !['http:', 'https:'].includes(configured.protocol)
+        || configured.username
+        || configured.password
+        || configured.search
+        || configured.hash
+        || !configured.pathname
+      ) return '';
+      const base = new URL(configured.pathname, pageOrigin.origin);
       const token = String(result?.receipt_token || '').trim();
       if (/^[A-Za-z0-9_-]{24,128}$/.test(token)) {
         base.search = '';
@@ -772,7 +783,7 @@
       if (!supplied) return '';
       const candidate = new URL(supplied, base.origin);
       const candidateToken = String(candidate.searchParams.get('t') || '').trim();
-      if (candidate.origin !== base.origin || candidate.pathname !== base.pathname || !/^[A-Za-z0-9_-]{24,128}$/.test(candidateToken)) return '';
+      if (candidate.pathname !== base.pathname || !/^[A-Za-z0-9_-]{24,128}$/.test(candidateToken)) return '';
       base.search = '';
       base.searchParams.set('t', candidateToken);
       return base.toString();
@@ -857,11 +868,16 @@
       { label: 'Amount in BDT', value: `BDT ${money(result.amount_bdt || state.amountBdt)}` }
     ];
     if (isMyr) rows.push({ label: 'MYR Amount', value: `RM ${money(result.amount_rm || result.amount_myr)}` });
+    const balanceAfterText = String(result.balance_after_text || '').trim()
+      || (result.balance_after !== undefined && result.balance_after !== null && result.balance_after !== ''
+        ? displayMoney(result.balance_after, result.wallet_currency)
+        : '');
     rows.push(
       { label: 'Fee', value: previewFeeText(result) },
-      { label: 'Total Pay', value: String(result.total_debit_text || result.total_pay_text || displayMoney(result.total_pay ?? result.total_debit, result.wallet_currency)), total: true },
-      { label: 'Status', value: statusLabel(result.status) }
+      { label: 'Total Pay', value: String(result.total_debit_text || result.total_pay_text || displayMoney(result.total_pay ?? result.total_debit, result.wallet_currency)), total: true }
     );
+    if (balanceAfterText) rows.push({ label: 'After Balance', value: balanceAfterText });
+    rows.push({ label: 'Status', value: statusLabel(result.status) });
     const trackingUrl = canonicalTrackingUrl(result);
     const fullNumber = normalizeNumber(result.receiver_number || state.receiverFull);
     const alreadyFavorite = favoriteExists(fullNumber);

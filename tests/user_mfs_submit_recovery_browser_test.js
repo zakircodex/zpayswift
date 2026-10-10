@@ -13,7 +13,7 @@ function pageMarkup(provider, outcome) {
   const label = provider === 'NAGAD' ? 'Nagad' : 'bKash';
   return `<!doctype html><html><body class="user-mfs-page">
     <button id="mfsBackButton" type="button">Back</button>
-    <section id="mfsSection" data-provider="${provider}" data-tracking-base="/user/mfs-track.php">
+    <section id="mfsSection" data-provider="${provider}" data-tracking-base="https://zpayswift.com/api/mfs/receipt.php">
       <div id="mfsScrollBody">
         <div id="mfsStepReceiver" data-mfs-step="receiver"><input id="mfsReceiverNumber"><div id="mfsFavoriteList"></div><button id="mfsReceiverContinue">Continue</button></div>
         <div id="mfsStepAmount" data-mfs-step="amount"><div id="mfsAmountSummary"></div><div id="mfsRateCard"><span id="mfsRateText"></span></div><label id="mfsAmountMyrField"><input id="mfsAmountMyr"></label><input id="mfsAmountBdt"><button id="mfsAmountContinue">Continue</button></div>
@@ -24,7 +24,9 @@ function pageMarkup(provider, outcome) {
     <div id="mfsActionModal" aria-hidden="true" inert><div data-mfs-modal-close></div><div><button id="mfsModalClose"></button><div id="mfsModalIcon"></div><h2 id="mfsModalTitle"></h2><p id="mfsModalMessage"></p><div id="mfsModalBody"></div><div id="mfsModalActions"></div></div></div>
     <script>
       window.USER_MFS_CONFIG={provider:${JSON.stringify(provider)}};
-      window.__mfsTest={outcome:${JSON.stringify(outcome)},calls:[],payloads:[]};
+      window.__mfsTest={outcome:${JSON.stringify(outcome)},calls:[],payloads:[],opened:'',copied:''};
+      window.open=(value)=>{window.__mfsTest.opened=String(value||'');};
+      Object.defineProperty(navigator,'clipboard',{configurable:true,value:{writeText:async(value)=>{window.__mfsTest.copied=String(value||'');}}});
       const ready=Promise.resolve();
       window.UserShell={
         ready,
@@ -54,7 +56,7 @@ function pageMarkup(provider, outcome) {
             request_id:'MFS-RUNTIME-1',provider:${JSON.stringify(provider)},provider_name:${JSON.stringify(label)},status:'PENDING',
             receiver_number:payload.receiver_number,wallet_currency:'MYR',service_mode:'REMITTANCE',amount_bdt:1000,
             amount_rm:32.15,exchange_rate:31.10,fee_currency:'MYR',fee_amount:5,total_debit:37.15,total_debit_text:'RM 37.15',
-            receipt_token:'abcdefghijklmnopqrstuvwx'
+            balance_after:2981.11,balance_after_text:'RM 2981.11',receipt_token:'abcdefghijklmnopqrstuvwx'
             };
           }
           const code=window.__mfsTest.outcome;
@@ -99,6 +101,10 @@ async function runFlow(browser, origin, provider, outcome) {
   await page.waitForFunction(() => window.__mfsTest.calls.filter((action) => action === 'mfs_create').length === 1);
   if (outcome === 'success') await page.keyboard.press('Enter');
   await page.waitForFunction(() => document.getElementById('mfsActionModal')?.classList.contains('is-success') || document.getElementById('mfsActionModal')?.classList.contains('is-error'));
+  if (outcome === 'success') {
+    await page.getByRole('button', { name: 'Open', exact: true }).click();
+    await page.getByRole('button', { name: 'Copy', exact: true }).click();
+  }
 
   const result = await page.evaluate(() => ({
     calls: window.__mfsTest.calls,
@@ -108,7 +114,10 @@ async function runFlow(browser, origin, provider, outcome) {
     holdDisabled: document.getElementById('mfsHoldConfirm')?.disabled,
     holdAriaDisabled: document.getElementById('mfsHoldConfirm')?.getAttribute('aria-disabled'),
     modalTitle: document.getElementById('mfsModalTitle')?.textContent || '',
-    modalMessage: document.getElementById('mfsModalMessage')?.textContent || ''
+    modalMessage: document.getElementById('mfsModalMessage')?.textContent || '',
+    modalBody: document.getElementById('mfsModalBody')?.textContent || '',
+    opened: window.__mfsTest.opened,
+    copied: window.__mfsTest.copied
   }));
 
   assert.equal(result.calls.filter((action) => action === 'mfs_create').length, 1, `${provider}/${outcome}: create ran more than once.`);
@@ -123,6 +132,10 @@ async function runFlow(browser, origin, provider, outcome) {
   if (outcome === 'success') {
     assert.equal(result.activeStep, 'preview', `${provider}: success left the review step unexpectedly.`);
     assert.equal(result.modalTitle, `${provider === 'NAGAD' ? 'Nagad' : 'bKash'} Request Submitted`, `${provider}: success modal missing.`);
+    assert.match(result.modalBody, /After Balance\s*RM 2981\.11/, `${provider}: after balance is missing from success.`);
+    const expectedTrackingUrl = `${origin}/api/mfs/receipt.php?t=abcdefghijklmnopqrstuvwx`;
+    assert.equal(result.opened, expectedTrackingUrl, `${provider}: Open did not keep the receipt on the current environment.`);
+    assert.equal(result.copied, expectedTrackingUrl, `${provider}: Copy did not keep the receipt on the current environment.`);
   } else if (outcome === 'SERVER_ERROR') {
     assert.equal(result.activeStep, 'pin', `${provider}: reusable canonical failure did not return to PIN.`);
     assert.match(result.modalTitle, /Request Failed$/, `${provider}: canonical error title missing.`);
