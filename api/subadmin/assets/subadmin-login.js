@@ -242,12 +242,17 @@ function updateLoginOtpModal(data){
   const expBox = $id('loginOtpExpiresText');
   const statusBox = $id('loginOtpStatus');
   const otpInput = $id('loginOtpCode');
+  const stageOtp = data.stage_otp_preview === true && /^\d{6}$/.test(String(data.stage_otp || '').trim())
+    ? String(data.stage_otp).trim()
+    : '';
 
   if (phoneBox) phoneBox.textContent = loginState.maskedPhone || '-';
-  if (otpInput) otpInput.value = '';
+  if (otpInput) otpInput.value = stageOtp;
 
   if (statusBox) {
-    statusBox.textContent = 'OTP sent to ' + (loginState.maskedPhone || 'your phone') + '. Enter the code to complete login.';
+    statusBox.textContent = stageOtp
+      ? 'Stage OTP is ready. Verify to complete login.'
+      : 'OTP sent to ' + (loginState.maskedPhone || 'your phone') + '. Enter the code to complete login.';
   }
 
   startLoginOtpTimer();

@@ -1013,6 +1013,9 @@ function openAdminOtpModal(data){
   state.loginOtp.maskedPhone = String(data.masked_phone || '');
   state.loginOtp.expiresInSeconds = Number(data.expires_in_seconds || 300);
   state.loginOtp.trustDevice = true;
+  const stageOtp = data.stage_otp_preview === true && /^\d{6}$/.test(String(data.stage_otp || '').trim())
+    ? String(data.stage_otp).trim()
+    : '';
 
   openModal(
     'Verify Admin OTP',
@@ -1056,6 +1059,7 @@ function openAdminOtpModal(data){
     const otpInput = document.getElementById('adminOtpInput');
 
     if (otpInput) {
+      otpInput.value = stageOtp;
       otpInput.focus();
 
       otpInput.addEventListener('input', () => {
@@ -1207,8 +1211,11 @@ async function resendAdminLoginOtp(){
 
     startAdminOtpTimer(state.loginOtp.expiresInSeconds);
 
+    const stageOtp = data.stage_otp_preview === true && /^\d{6}$/.test(String(data.stage_otp || '').trim())
+      ? String(data.stage_otp).trim()
+      : '';
     const otpInput = document.getElementById('adminOtpInput');
-    if (otpInput) otpInput.value = '';
+    if (otpInput) otpInput.value = stageOtp;
 
     showToast('OTP resent successfully', 'info');
   }catch(err){

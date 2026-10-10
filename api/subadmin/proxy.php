@@ -1639,17 +1639,23 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
         $data = (array) ($loginRes['json']['data'] ?? []);
 
         if (!empty($data['require_otp'])) {
+            $responseData = [
+                'require_otp' => true,
+                'pre_auth_token' => (string) ($data['pre_auth_token'] ?? ''),
+                'otp_request_id' => (string) ($data['otp_request_id'] ?? ''),
+                'masked_phone' => (string) ($data['masked_phone'] ?? ''),
+                'expires_in_seconds' => (int) ($data['expires_in_seconds'] ?? 300),
+            ];
+            $stageOtp = trim((string) ($data['stage_otp'] ?? ''));
+            if (!empty($data['stage_otp_preview']) && preg_match('/^\d{6}$/D', $stageOtp) === 1) {
+                $responseData['stage_otp_preview'] = true;
+                $responseData['stage_otp'] = $stageOtp;
+            }
             sub_proxy_response(
                 true,
                 'OTP_REQUIRED',
                 (string) ($loginRes['json']['message'] ?? 'OTP verification required'),
-                [
-                    'require_otp' => true,
-                    'pre_auth_token' => (string) ($data['pre_auth_token'] ?? ''),
-                    'otp_request_id' => (string) ($data['otp_request_id'] ?? ''),
-                    'masked_phone' => (string) ($data['masked_phone'] ?? ''),
-                    'expires_in_seconds' => (int) ($data['expires_in_seconds'] ?? 300),
-                ]
+                $responseData
             );
         }
 
@@ -1750,13 +1756,19 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
 
         $data = (array) ($resendRes['json']['data'] ?? []);
 
-        sub_proxy_response(true, 'SUCCESS', 'OTP resent successfully', [
+        $responseData = [
             'require_otp' => true,
             'pre_auth_token' => (string) ($data['pre_auth_token'] ?? $preAuthToken),
             'otp_request_id' => (string) ($data['otp_request_id'] ?? $otpRequestId),
             'masked_phone' => (string) ($data['masked_phone'] ?? ''),
             'expires_in_seconds' => (int) ($data['expires_in_seconds'] ?? 300),
-        ]);
+        ];
+        $stageOtp = trim((string) ($data['stage_otp'] ?? ''));
+        if (!empty($data['stage_otp_preview']) && preg_match('/^\d{6}$/D', $stageOtp) === 1) {
+            $responseData['stage_otp_preview'] = true;
+            $responseData['stage_otp'] = $stageOtp;
+        }
+        sub_proxy_response(true, 'SUCCESS', 'OTP resent successfully', $responseData);
         break;
 
     case 'forgot_send_otp':

@@ -48,6 +48,11 @@ stage_deploy_expect(
     'the deployer does not reject enabled live outbound integrations'
 );
 stage_deploy_expect(
+    str_contains($runtimeVerifier, "['USER_LOGIN', 'ADMIN_LOGIN', 'SUBADMIN_LOGIN']")
+        && str_contains($runtimeVerifier, 'count($previewPhones) !== 1'),
+    'stage OTP preview guard must remain limited to one phone and login purposes'
+);
+stage_deploy_expect(
     str_contains($script, '# BEGIN ZPAY STAGE AUTH')
         && str_contains($script, 'AuthUserFile /home/zedpayhe/.htpasswds/stage.zpayswift.com/passwd')
         && str_contains($script, 'Require valid-user'),

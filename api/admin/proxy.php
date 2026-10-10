@@ -954,13 +954,24 @@ switch ($action) {
         $data = (array)($loginRes['json']['data'] ?? []);
 
         if (!empty($data['require_otp'])) {
-            proxy_response(true, 'OTP_REQUIRED', (string)($loginRes['json']['message'] ?? 'OTP verification required'), [
+            $responseData = [
                 'require_otp' => true,
                 'pre_auth_token' => (string)($data['pre_auth_token'] ?? ''),
                 'otp_request_id' => (string)($data['otp_request_id'] ?? ''),
                 'masked_phone' => (string)($data['masked_phone'] ?? ''),
                 'expires_in_seconds' => (int)($data['expires_in_seconds'] ?? 300),
-            ]);
+            ];
+            $stageOtp = trim((string)($data['stage_otp'] ?? ''));
+            if (!empty($data['stage_otp_preview']) && preg_match('/^\d{6}$/D', $stageOtp) === 1) {
+                $responseData['stage_otp_preview'] = true;
+                $responseData['stage_otp'] = $stageOtp;
+            }
+            proxy_response(
+                true,
+                'OTP_REQUIRED',
+                (string)($loginRes['json']['message'] ?? 'OTP verification required'),
+                $responseData
+            );
         }
 
         $sessionToken = trim((string)($data['session_token'] ?? ''));
@@ -1069,13 +1080,19 @@ switch ($action) {
 
         $data = (array)($resendRes['json']['data'] ?? []);
 
-        proxy_response(true, 'SUCCESS', 'OTP resent successfully', [
+        $responseData = [
             'require_otp' => true,
             'pre_auth_token' => (string)($data['pre_auth_token'] ?? $preAuthToken),
             'otp_request_id' => (string)($data['otp_request_id'] ?? $otpRequestId),
             'masked_phone' => (string)($data['masked_phone'] ?? ''),
             'expires_in_seconds' => (int)($data['expires_in_seconds'] ?? 300),
-        ]);
+        ];
+        $stageOtp = trim((string)($data['stage_otp'] ?? ''));
+        if (!empty($data['stage_otp_preview']) && preg_match('/^\d{6}$/D', $stageOtp) === 1) {
+            $responseData['stage_otp_preview'] = true;
+            $responseData['stage_otp'] = $stageOtp;
+        }
+        proxy_response(true, 'SUCCESS', 'OTP resent successfully', $responseData);
         break;
 
     case 'logout':

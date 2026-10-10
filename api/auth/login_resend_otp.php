@@ -183,7 +183,13 @@ if (empty($resendState['ok'])) {
     ], (int)($resendState['http_status'] ?? 429));
 }
 
-$newOtp = (string) random_int(100000, 999999);
+$newOtp = auth_sms_prepare_otp_code(
+    $phoneCountry,
+    $phone,
+    $smsTemplateKey,
+    $otpRequestId,
+    (string)random_int(100000, 999999)
+);
 $newExpiresAt = $now + 300;
 
 $message = 'Z-Pay Swift login OTP is ' . $newOtp . '. Valid for 5 minutes. Do not share this code.';
@@ -278,4 +284,9 @@ auth_response(true, 'SUCCESS', 'OTP resent successfully', [
     'otp_request_id' => $otpRequestId,
     'masked_phone' => auth_mask_phone($phone),
     'expires_in_seconds' => 300,
-]);
+] + auth_sms_stage_preview_response_fields(
+    $phoneCountry,
+    $phone,
+    $smsTemplateKey,
+    $otpRequestId
+));

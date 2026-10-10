@@ -50,6 +50,12 @@ stage_builder_expect(str_contains($runtime, "'SUBADMIN_API_ALLOW_QUERY_KEY', fal
 stage_builder_expect(str_contains($runtime, "'ADSTERRA_ZSKY24_WEB_ADS_ENABLED', false"), 'stage ads were not disabled');
 stage_builder_expect(str_contains($runtime, "'STAGE_AUTH_OTP_PREVIEW_ENABLED', false"), 'stage OTP preview must default to disabled');
 stage_builder_expect(str_contains($runtime, "'STAGE_AUTH_OTP_PREVIEW_PHONES', array ("), 'stage OTP preview allowlist is missing');
+stage_builder_expect(
+    str_contains($runtime, "'USER_LOGIN'")
+        && str_contains($runtime, "'ADMIN_LOGIN'")
+        && str_contains($runtime, "'SUBADMIN_LOGIN'"),
+    'stage OTP preview login purposes are incomplete'
+);
 stage_builder_expect(!str_contains($runtime, 'production-app-key-must-not-copy'), 'production app key leaked to runtime');
 stage_builder_expect(!str_contains($runtime, 'production-telegram-token-must-not-copy'), 'Telegram token leaked to runtime');
 stage_builder_expect(!str_contains($runtime, 'production-firebase-auth-migration-only'), 'Firebase auth leaked to runtime');
