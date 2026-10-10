@@ -105,11 +105,13 @@ mysql_stage_expect(
     'Firebase inventory must not combine incompatible shallow and ETag requests'
 );
 mysql_stage_expect(
-    str_contains($queryParitySource, "zpay_mysql_assert_environment('STAGE')")
+    str_contains($queryParitySource, 'query_parity_expected_environment')
+        && str_contains($queryParitySource, "'production' => 'PRODUCTION'")
+        && str_contains($queryParitySource, 'zpay_mysql_assert_environment($expectedEnvironment)')
         && str_contains($queryParitySource, 'mysql_migration_values_match')
         && str_contains($queryParitySource, '!isset($query[\'shallow\'])')
         && !str_contains($queryParitySource, 'json_encode($sourceValue'),
-    'query parity verification must stay stage-only and avoid printing source values'
+    'query parity verification must enforce the selected environment and avoid printing source values'
 );
 mysql_stage_expect(
     str_contains($schema, 'ENGINE=InnoDB')

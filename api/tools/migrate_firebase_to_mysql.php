@@ -11,11 +11,14 @@ function migration_usage(): void
     fwrite(STDOUT, <<<TEXT
 Usage:
   php api/tools/migrate_firebase_to_mysql.php --config=/absolute/migration.php [--dry-run]
-  php api/tools/migrate_firebase_to_mysql.php --config=/absolute/migration.php --execute [--mode=import|reconcile|final-delta] [--path=NODE]
-  php api/tools/migrate_firebase_to_mysql.php --config=/absolute/migration.php --verify-only [--path=NODE]
+  php api/tools/migrate_firebase_to_mysql.php --config=/absolute/migration.php --execute [--mode=import|reconcile] [--path=NODE] [--confirm-production]
+  php api/tools/migrate_firebase_to_mysql.php --config=/absolute/migration.php --execute --mode=final-delta --confirm-production --confirm-final-delta [--path=NODE]
+  php api/tools/migrate_firebase_to_mysql.php --config=/absolute/migration.php --verify-only [--path=NODE] [--confirm-production]
 
-Writes are refused unless the private config sets MIGRATION_TARGET to "stage"
-and MYSQL_MIGRATION_ALLOW_WRITE to true. Repeat --path to process selected trees.
+All writes require MYSQL_MIGRATION_ALLOW_WRITE. Production additionally requires
+MYSQL_MIGRATION_ALLOW_PRODUCTION_WRITE and --confirm-production. A final delta
+also requires --confirm-final-delta and the configured maintenance marker.
+Repeat --path to process selected trees.
 TEXT);
 }
 
@@ -29,6 +32,8 @@ function migration_parse_arguments(array $arguments): array
         'mode' => 'IMPORT',
         'paths' => [],
         'max_retries' => 3,
+        'confirm_production' => false,
+        'confirm_final_delta' => false,
     ];
 
     foreach ($arguments as $argument) {
@@ -46,6 +51,14 @@ function migration_parse_arguments(array $arguments): array
         }
         if ($argument === '--dry-run') {
             $options['dry_run'] = true;
+            continue;
+        }
+        if ($argument === '--confirm-production') {
+            $options['confirm_production'] = true;
+            continue;
+        }
+        if ($argument === '--confirm-final-delta') {
+            $options['confirm_final_delta'] = true;
             continue;
         }
         if (str_starts_with($argument, '--config=')) {
@@ -83,6 +96,9 @@ function migration_parse_arguments(array $arguments): array
     if ($selectedModes === 0) {
         $options['dry_run'] = true;
     }
+    if ($options['mode'] === 'FINAL_DELTA' && !$options['execute']) {
+        throw new InvalidArgumentException('final-delta mode requires --execute.');
+    }
 
     return $options;
 }
@@ -94,6 +110,58 @@ function migration_require_constant(string $name): mixed
     }
 
     return constant($name);
+}
+
+function migration_target_environment(): string
+{
+    $target = strtolower(trim((string)migration_require_constant('MIGRATION_TARGET')));
+    return match ($target) {
+        'stage' => 'STAGE',
+        'production' => 'PRODUCTION',
+        default => throw new RuntimeException('Migration target must be stage or production.'),
+    };
+}
+
+function migration_assert_target_safety(array $options): string
+{
+    $environment = migration_target_environment();
+    if (migration_require_constant('MYSQL_MIGRATION_ALLOW_WRITE') !== true) {
+        throw new RuntimeException('Migration writes are not enabled by private configuration.');
+    }
+
+    if ($environment === 'PRODUCTION') {
+        if (
+            !defined('MYSQL_MIGRATION_ALLOW_PRODUCTION_WRITE')
+            || constant('MYSQL_MIGRATION_ALLOW_PRODUCTION_WRITE') !== true
+        ) {
+            throw new RuntimeException('Production migration writes are not enabled by private configuration.');
+        }
+        if (empty($options['confirm_production'])) {
+            throw new RuntimeException('Production migration requires --confirm-production.');
+        }
+
+        if ((string)$options['mode'] === 'FINAL_DELTA') {
+            if ((array)$options['paths'] !== []) {
+                throw new RuntimeException('Production final delta must process the complete source inventory.');
+            }
+            if (empty($options['confirm_final_delta'])) {
+                throw new RuntimeException('Production final delta requires --confirm-final-delta.');
+            }
+            $marker = trim((string)migration_require_constant('PRODUCTION_MAINTENANCE_MARKER'));
+            $requiredMarker = '/home/zedpayhe/public_html/.deploy-in-progress';
+            if (
+                $marker === ''
+                || !hash_equals($requiredMarker, str_replace('\\', '/', $marker))
+                || !is_file($marker)
+                || is_link($marker)
+            ) {
+                throw new RuntimeException('Production maintenance marker is unavailable.');
+            }
+        }
+    }
+
+    zpay_mysql_assert_environment($environment);
+    return $environment;
 }
 
 function migration_source_read(string $path, bool $withEtag = true): array
@@ -215,10 +283,11 @@ try {
     require_once $apiRoot . '/lib/firebase.php';
     require_once $apiRoot . '/lib/mysql_migration.php';
 
-    $rootEtagBefore = null;
-    $paths = migration_source_paths((array)$options['paths'], $rootEtagBefore);
     if (!empty($options['dry_run'])) {
+        $rootEtagBefore = null;
+        $paths = migration_source_paths((array)$options['paths'], $rootEtagBefore);
         fwrite(STDOUT, 'mode=DRY_RUN' . PHP_EOL);
+        fwrite(STDOUT, 'target=' . migration_target_environment() . PHP_EOL);
         fwrite(STDOUT, 'source_trees=' . count($paths) . PHP_EOL);
         foreach ($paths as $path) {
             fwrite(STDOUT, 'path=' . migration_path_label($path) . PHP_EOL);
@@ -226,16 +295,14 @@ try {
         exit(0);
     }
 
-    if (strtolower((string)migration_require_constant('MIGRATION_TARGET')) !== 'stage') {
-        throw new RuntimeException('Migration writes are restricted to the stage target.');
-    }
-    if (migration_require_constant('MYSQL_MIGRATION_ALLOW_WRITE') !== true) {
-        throw new RuntimeException('Stage migration writes are not enabled by private configuration.');
-    }
     migration_require_constant('MYSQL_DSN');
     migration_require_constant('MYSQL_USER');
     migration_require_constant('MYSQL_PASSWORD');
-    zpay_mysql_assert_environment('STAGE');
+    $targetEnvironment = migration_assert_target_safety($options);
+
+    $rootEtagBefore = null;
+    $paths = migration_source_paths((array)$options['paths'], $rootEtagBefore);
+    fwrite(STDOUT, 'target=' . $targetEnvironment . PHP_EOL);
 
     $run = mysql_migration_run_start((string)$options['mode']);
     $processed = 0;
@@ -287,6 +354,24 @@ try {
                 fwrite(STDERR, "source_inventory=CHANGED rerun_required=true\n");
                 mysql_migration_run_progress((int)$run['id'], $processed, $mismatches, '');
             }
+        }
+
+        if ((string)$options['mode'] === 'FINAL_DELTA' && $mismatches === 0 && $failed === 0) {
+            foreach ($paths as $path) {
+                $source = migration_source_read($path, false)['value'];
+                $target = mysql_fb_get_path($path);
+                $matched = mysql_migration_values_match($source, $target);
+                if (!$matched) {
+                    $mismatches++;
+                }
+                fwrite(
+                    $matched ? STDOUT : STDERR,
+                    'final_check=' . migration_path_label($path)
+                    . ' state=' . ($matched ? 'MATCH' : 'MISMATCH')
+                    . PHP_EOL
+                );
+            }
+            mysql_migration_run_progress((int)$run['id'], $processed, $mismatches, '');
         }
 
         $runCompleted = $mismatches === 0 && $failed === 0;

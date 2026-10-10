@@ -59,6 +59,27 @@ function fb_datastore_driver(): string
     return in_array($driver, ['firebase', 'mysql'], true) ? $driver : 'firebase';
 }
 
+function fb_production_mutation_locked(string $method): bool
+{
+    if (strtoupper(trim($method)) === 'GET') {
+        return false;
+    }
+
+    $environment = defined('APP_ENVIRONMENT')
+        ? strtolower(trim((string)constant('APP_ENVIRONMENT')))
+        : '';
+    $origin = defined('APP_PUBLIC_ORIGIN')
+        ? strtolower(rtrim(trim((string)constant('APP_PUBLIC_ORIGIN')), '/'))
+        : '';
+    $isProduction = $environment === 'production' || $origin === 'https://zpayswift.com';
+    if (!$isProduction) {
+        return false;
+    }
+
+    $marker = '/home/zedpayhe/public_html/.deploy-in-progress';
+    return is_file($marker) && !is_link($marker);
+}
+
 function fb_firebase_request(
     string $method,
     string $path,
@@ -169,6 +190,17 @@ function fb_request(
     array $headers = [],
     bool $includeHeaders = false
 ): array {
+    if (fb_production_mutation_locked($method)) {
+        return [
+            'ok' => false,
+            'status' => 503,
+            'headers' => [],
+            'body' => null,
+            'json' => null,
+            'error' => 'Production datastore writes are temporarily locked',
+        ];
+    }
+
     if (fb_datastore_driver() === 'mysql') {
         require_once __DIR__ . '/mysql_firebase.php';
         return mysql_fb_request($method, $path, $data, $query, $headers, $includeHeaders);

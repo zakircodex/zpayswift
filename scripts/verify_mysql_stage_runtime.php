@@ -26,6 +26,8 @@ $valid = defined('APP_ENVIRONMENT')
     && constant('APP_PUBLIC_ORIGIN') === 'https://stage.zpayswift.com'
     && defined('DATASTORE_DRIVER')
     && constant('DATASTORE_DRIVER') === 'mysql'
+    && defined('MYSQL_EXPECTED_ENVIRONMENT')
+    && constant('MYSQL_EXPECTED_ENVIRONMENT') === 'STAGE'
     && defined('FIREBASE_DB_URL')
     && constant('FIREBASE_DB_URL') === 'https://invalid.local';
 if (!$valid) {

@@ -12,6 +12,7 @@ declare(strict_types=1);
 define('APP_KEY', '');
 define('WORKER_KEY', '');
 define('ADMIN_KEY', '');
+define('APP_ENVIRONMENT', 'production'); // production | stage
 
 /* Canonical server origin used by authenticated internal HTTP calls. */
 define('APP_PUBLIC_ORIGIN', 'https://zpayswift.com');
@@ -35,6 +36,7 @@ define('FIREBASE_REQUEST_TIMEOUT_SECONDS', 30);
  * reconciliation and cutover checks have completed successfully.
  */
 define('DATASTORE_DRIVER', 'firebase'); // firebase | mysql
+define('MYSQL_EXPECTED_ENVIRONMENT', 'PRODUCTION'); // must match the database guard row
 define('MYSQL_DSN', 'mysql:host=localhost;dbname=cpanel_database;charset=utf8mb4');
 define('MYSQL_USER', 'cpanel_database_user');
 define('MYSQL_PASSWORD', '');

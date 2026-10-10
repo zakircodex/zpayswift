@@ -45,6 +45,7 @@ $runtime = (string)file_get_contents($runtimePath);
 $migration = (string)file_get_contents($migrationPath);
 stage_builder_expect(str_contains($runtime, "'APP_ENVIRONMENT', 'stage'"), 'stage environment marker is missing');
 stage_builder_expect(str_contains($runtime, "'DATASTORE_DRIVER', 'mysql'"), 'runtime does not select MySQL');
+stage_builder_expect(str_contains($runtime, "'MYSQL_EXPECTED_ENVIRONMENT', 'STAGE'"), 'stage runtime database guard is missing');
 stage_builder_expect(str_contains($runtime, "'MYR_TO_BDT_RATE', 31.25"), 'non-secret business setting changed');
 stage_builder_expect(str_contains($runtime, "'SUBADMIN_API_ALLOW_QUERY_KEY', false"), 'boolean policy setting changed');
 stage_builder_expect(str_contains($runtime, "'ADSTERRA_ZSKY24_WEB_ADS_ENABLED', false"), 'stage ads were not disabled');
@@ -55,6 +56,7 @@ stage_builder_expect(!str_contains($runtime, 'production-telegram-token-must-not
 stage_builder_expect(!str_contains($runtime, 'production-firebase-auth-migration-only'), 'Firebase auth leaked to runtime');
 stage_builder_expect(str_contains($migration, 'production-firebase-auth-migration-only'), 'migration source auth is missing');
 stage_builder_expect(str_contains($migration, "'MYSQL_MIGRATION_ALLOW_WRITE', true"), 'migration write guard was not enabled');
+stage_builder_expect(str_contains($migration, "'MYSQL_EXPECTED_ENVIRONMENT', 'STAGE'"), 'stage migration database guard is missing');
 
 @unlink($runtimePath);
 @unlink($migrationPath);

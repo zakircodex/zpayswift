@@ -783,6 +783,8 @@ function mysql_fb_request(
     $headerMap = mysql_fb_headers_map($headers);
 
     try {
+        zpay_mysql_assert_expected_environment();
+
         if ($method === 'GET') {
             $value = mysql_fb_get_path($path, $query);
             $responseHeaders = [];
