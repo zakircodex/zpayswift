@@ -14,6 +14,11 @@ function pagination_expect(bool $condition, string $message): void
     }
 }
 
+function pagination_source(string $path): string
+{
+    return str_replace(["\r\n", "\r"], "\n", (string)file_get_contents($path));
+}
+
 function fb_get(string $path, array $query = []): mixed
 {
     global $store, $queries;
@@ -99,16 +104,16 @@ foreach ($queries as $query) {
 }
 
 $root = dirname(__DIR__);
-$dashboard = (string)file_get_contents($root . '/api/admin/dashboard.php');
-$dashboardJs = (string)file_get_contents($root . '/api/admin/assets/dashboard.js');
-$mfsPage = (string)file_get_contents($root . '/api/admin/mfs.php');
-$mfsJs = (string)file_get_contents($root . '/api/admin/assets/mfs-panel.js');
-$addMoney = (string)file_get_contents($root . '/api/lib/add_money.php');
-$support = (string)file_get_contents($root . '/api/lib/support.php');
-$offers = (string)file_get_contents($root . '/api/admin/bundle/offers.php');
-$users = (string)file_get_contents($root . '/api/admin/users/list.php');
-$userFilters = (string)file_get_contents($root . '/api/lib/admin_user_filters.php');
-$mfs = (string)file_get_contents($root . '/api/lib/mfs.php');
+$dashboard = pagination_source($root . '/api/admin/dashboard.php');
+$dashboardJs = pagination_source($root . '/api/admin/assets/dashboard.js');
+$mfsPage = pagination_source($root . '/api/admin/mfs.php');
+$mfsJs = pagination_source($root . '/api/admin/assets/mfs-panel.js');
+$addMoney = pagination_source($root . '/api/lib/add_money.php');
+$support = pagination_source($root . '/api/lib/support.php');
+$offers = pagination_source($root . '/api/admin/bundle/offers.php');
+$users = pagination_source($root . '/api/admin/users/list.php');
+$userFilters = pagination_source($root . '/api/lib/admin_user_filters.php');
+$mfs = pagination_source($root . '/api/lib/mfs.php');
 
 $sidebarDestinations = [
     'data-section="dashboardSection"',
@@ -160,7 +165,7 @@ pagination_expect(!str_contains($offers, "fb_get('BUNDLE_OFFERS')") && !str_cont
 
 pagination_expect(str_contains($mfs, 'function mfs_read_bucket_page('), 'MFS bounded bucket pagination helper is missing');
 foreach (['pending.php', 'processing.php', 'done.php'] as $endpoint) {
-    $source = (string)file_get_contents($root . '/api/admin/mfs/' . $endpoint);
+    $source = pagination_source($root . '/api/admin/mfs/' . $endpoint);
     pagination_expect(str_contains($source, 'mfs_read_bucket_page('), 'MFS endpoint is not using bounded pagination: ' . $endpoint);
     pagination_expect(!str_contains($source, "mfs_read_bucket('"), 'MFS endpoint still reads a complete bucket: ' . $endpoint);
 }

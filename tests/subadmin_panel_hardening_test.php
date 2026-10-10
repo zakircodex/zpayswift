@@ -15,6 +15,11 @@ function subadmin_expect(bool $condition, string $message): void
     }
 }
 
+function subadmin_source(string $path): string
+{
+    return str_replace(["\r\n", "\r"], "\n", (string)file_get_contents($path));
+}
+
 function subadmin_function_source(string $source, string $functionName): string
 {
     $start = strpos($source, 'function ' . $functionName . '(');
@@ -44,21 +49,21 @@ function subadmin_function_source(string $source, string $functionName): string
 }
 
 $root = dirname(__DIR__);
-$login = (string)file_get_contents($root . '/api/auth/login_start.php');
-$auth = (string)file_get_contents($root . '/api/lib/auth.php');
-$proxy = (string)file_get_contents($root . '/api/subadmin/proxy.php');
-$subapi = (string)file_get_contents($root . '/api/lib/subadmin_api.php');
-$usersEndpoint = (string)file_get_contents($root . '/api/users_list.php');
-$usersLib = (string)file_get_contents($root . '/api/lib/users_admin.php');
-$topupApi = (string)file_get_contents($root . '/api/public_api/topup_create.php');
-$bundleApi = (string)file_get_contents($root . '/api/public_api/bundle_offers.php');
-$mfs = (string)file_get_contents($root . '/api/lib/mfs.php');
-$addMoney = (string)file_get_contents($root . '/api/lib/add_money.php');
-$wallet = (string)file_get_contents($root . '/api/lib/wallet.php');
-$ledger = (string)file_get_contents($root . '/api/wallet_ledger_list.php');
-$dashboard = (string)file_get_contents($root . '/api/subadmin/dashboard.php');
-$javascript = (string)file_get_contents($root . '/api/subadmin/assets/subadmin.js');
-$css = (string)file_get_contents($root . '/api/subadmin/assets/subadmin.css');
+$login = subadmin_source($root . '/api/auth/login_start.php');
+$auth = subadmin_source($root . '/api/lib/auth.php');
+$proxy = subadmin_source($root . '/api/subadmin/proxy.php');
+$subapi = subadmin_source($root . '/api/lib/subadmin_api.php');
+$usersEndpoint = subadmin_source($root . '/api/users_list.php');
+$usersLib = subadmin_source($root . '/api/lib/users_admin.php');
+$topupApi = subadmin_source($root . '/api/public_api/topup_create.php');
+$bundleApi = subadmin_source($root . '/api/public_api/bundle_offers.php');
+$mfs = subadmin_source($root . '/api/lib/mfs.php');
+$addMoney = subadmin_source($root . '/api/lib/add_money.php');
+$wallet = subadmin_source($root . '/api/lib/wallet.php');
+$ledger = subadmin_source($root . '/api/wallet_ledger_list.php');
+$dashboard = subadmin_source($root . '/api/subadmin/dashboard.php');
+$javascript = subadmin_source($root . '/api/subadmin/assets/subadmin.js');
+$css = subadmin_source($root . '/api/subadmin/assets/subadmin.css');
 
 $precheck = strpos($login, 'auth_admin_login_attempt_state(');
 $lookup = strpos($login, 'auth_find_uid_by_phone_country(');

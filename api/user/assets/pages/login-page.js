@@ -244,7 +244,7 @@
     const seconds = Math.max(0, Math.ceil((state.expiresAt - Date.now()) / 1000));
     const resendSeconds = Math.max(0, Math.ceil((state.resendAvailableAt - Date.now()) / 1000));
     $('loginOtpExpiresText').textContent = seconds > 0 ? formatCountdown(seconds) : 'Expired';
-    $('verifyLoginOtpBtn').disabled = seconds < 1 || state.verifyInFlight;
+    $('verifyLoginOtpBtn').disabled = seconds < 1 || state.verifyInFlight || state.resendInFlight;
     $('resendLoginOtpBtn').disabled = resendSeconds > 0 || state.resendInFlight;
     $('resendLoginOtpBtn').textContent = resendSeconds > 0
       ? `Resend OTP in ${formatCountdown(resendSeconds)}`
@@ -255,7 +255,7 @@
     }
   }
 
-  function setOtpData(data) {
+  function setOtpData(data, options = {}) {
     state.preAuthToken = String(data.pre_auth_token || state.preAuthToken || '');
     state.otpRequestId = String(data.otp_request_id || state.otpRequestId || '');
     state.maskedPhone = String(data.masked_phone || state.maskedPhone || '');
@@ -274,7 +274,10 @@
       ? String(data.stage_otp).trim()
       : '';
     $('loginOtpMaskedPhone').textContent = state.maskedPhone || '-';
-    $('loginOtpCode').value = stageOtp;
+    const enteredOtp = $('loginOtpCode').value.trim();
+    if (stageOtp || options.preserveEnteredOtp !== true || enteredOtp === '') {
+      $('loginOtpCode').value = stageOtp;
+    }
     $('loginOtpStatus').textContent = stageOtp
       ? 'Stage test OTP is ready. Tap Verify OTP to continue.'
       : 'Enter the OTP to complete login.';
@@ -614,13 +617,15 @@
       return;
     }
     state.resendInFlight = true;
+    $('loginOtpCode').value = '';
+    $('verifyLoginOtpBtn').disabled = true;
     $('resendLoginOtpBtn').disabled = true;
     try {
       const data = await post('login_resend_otp', {
         pre_auth_token: state.preAuthToken,
         otp_request_id: state.otpRequestId
       }, 'Resending OTP...', 45000);
-      setOtpData(data);
+      setOtpData(data, { preserveEnteredOtp: true });
       $('loginOtpStatus').textContent = 'A new OTP was sent. The previous code is no longer valid.';
     } catch (error) {
       const code = String(error?.code || '').toUpperCase();
