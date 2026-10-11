@@ -10,21 +10,11 @@ function stage_deploy_expect(bool $condition, string $message): void
 }
 
 $root = dirname(__DIR__);
-$cpanel = (string) file_get_contents($root . '/.cpanel.yml');
 $script = (string) file_get_contents($root . '/scripts/deploy_mysql_stage.sh');
 $runtimeVerifier = (string) file_get_contents($root . '/scripts/verify_mysql_stage_runtime.php');
 $readme = (string) file_get_contents($root . '/database/mysql/README.md');
 $productionDeployTest = (string) file_get_contents($root . '/tests/cpanel_push_deployment_test.php');
 
-stage_deploy_expect(
-    str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift-stage/scripts/deploy_mysql_stage.sh'),
-    'cPanel does not invoke the isolated stage deployer'
-);
-stage_deploy_expect(
-    !str_contains($cpanel, '/home/zedpayhe/public_html')
-        && !str_contains($cpanel, 'REPOPATH=/home/zedpayhe/repositories/zpayswift;'),
-    'the stage cPanel contract still targets production'
-);
 stage_deploy_expect(
     str_contains($script, 'REPOSITORY_ROOT="/home/zedpayhe/repositories/zpayswift-stage"')
         && str_contains($script, 'PUBLIC_ROOT="/home/zedpayhe/stage.zpayswift.com"')

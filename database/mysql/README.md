@@ -1,4 +1,4 @@
-# MySQL staging migration
+# MySQL migration
 
 This directory contains the Firebase-compatible MySQL staging store. It is
 deliberately inactive unless a private configuration explicitly selects the
@@ -54,6 +54,21 @@ run; added or removed source trees make the run fail closed and require another
 reconciliation pass. Query parity checks separately cover shallow reads,
 ordered windows and limits against the live Firebase source.
 The final cutover remains a separate, explicitly scheduled maintenance step.
+
+## Production boundary
+
+- Never reuse the staging database. Create a fresh production database and a
+  least-privilege production database user.
+- Apply `001_firebase_compat_production.sql`; its guard row is permanently
+  pinned to `PRODUCTION`.
+- Production migration requires two private write switches plus the
+  `--confirm-production` argument. Final delta additionally requires
+  `--confirm-final-delta` while `.deploy-in-progress` is present.
+- Runtime MySQL requests verify the database guard once per PHP request.
+- The current Firebase config and Firebase data remain available for rollback.
+
+The complete release, reconciliation, cutover and rollback procedure is in
+`database/mysql/PRODUCTION_CUTOVER.md`.
 
 ## Stage deployment
 

@@ -37,7 +37,15 @@ znews_contract_expect(str_contains($launcher, 'user_page_require_auth()'), 'Dash
 znews_contract_expect(str_contains($launcher, 'random_bytes(32)'), 'Handoff code must use cryptographic randomness.');
 znews_contract_expect(str_contains($launcher, "'expires_at' => \$now + 90"), 'Handoff must be short-lived.');
 znews_contract_expect(str_contains($launcher, 'session_hash($sessionToken)'), 'Handoff must be bound to the existing Z-Pay session.');
-znews_contract_expect(str_contains($launcher, "znews_handoff_target_host() . '/#handoff='"), 'Handoff code must travel to the standalone host in the URL fragment.');
+znews_contract_expect(
+    str_contains($launcher, "znews_handoff_target_host() . \$returnPath . '#handoff='"),
+    'Handoff code must travel to the standalone host in the URL fragment.'
+);
+znews_contract_expect(
+    str_contains($launcher, "preg_match('#^/birthday/manage/[a-z0-9-]{8,100}/?$#D', \$returnPath)")
+    && str_contains($launcher, "\$returnPath = '/';"),
+    'Handoff return paths must remain allowlisted with a root fallback.'
+);
 
 znews_contract_expect(str_contains($handoff, "api_require_method('POST')"), 'Handoff exchange must require POST.');
 znews_contract_expect(str_contains($handoff, 'api_require_app_key()'), 'Handoff exchange must require the app key contract.');

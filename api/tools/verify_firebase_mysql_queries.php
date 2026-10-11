@@ -27,6 +27,19 @@ function query_parity_top_level_keys(mixed $value): array
     return is_array($value) ? array_map('strval', array_keys($value)) : [];
 }
 
+function query_parity_expected_environment(): string
+{
+    if (!defined('MIGRATION_TARGET')) {
+        throw new RuntimeException('Migration target is unavailable.');
+    }
+
+    return match (strtolower(trim((string)constant('MIGRATION_TARGET')))) {
+        'stage' => 'STAGE',
+        'production' => 'PRODUCTION',
+        default => throw new RuntimeException('Migration target must be stage or production.'),
+    };
+}
+
 function query_parity_cases(): array
 {
     return [
@@ -59,14 +72,14 @@ try {
     }
 
     require_once $configPath;
-    if (!defined('MIGRATION_TARGET') || strtolower((string)MIGRATION_TARGET) !== 'stage') {
-        throw new RuntimeException('Query parity checks are restricted to the stage target.');
-    }
+    $expectedEnvironment = query_parity_expected_environment();
 
     $apiRoot = dirname(__DIR__);
     require_once $apiRoot . '/lib/firebase.php';
     require_once $apiRoot . '/lib/mysql_migration.php';
-    zpay_mysql_assert_environment('STAGE');
+    zpay_mysql_assert_environment($expectedEnvironment);
+
+    fwrite(STDOUT, 'target=' . $expectedEnvironment . PHP_EOL);
 
     $failed = 0;
     foreach (query_parity_cases() as $label => [$path, $query]) {

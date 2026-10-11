@@ -90,6 +90,38 @@ function zpay_mysql_assert_environment(string $expected): void
     }
 }
 
+function zpay_mysql_expected_environment(): string
+{
+    if (defined('MYSQL_EXPECTED_ENVIRONMENT')) {
+        $expected = strtoupper(trim((string)constant('MYSQL_EXPECTED_ENVIRONMENT')));
+    } elseif (defined('MIGRATION_TARGET')) {
+        $expected = strtoupper(trim((string)constant('MIGRATION_TARGET')));
+    } elseif (defined('APP_ENVIRONMENT')) {
+        $expected = strtoupper(trim((string)constant('APP_ENVIRONMENT')));
+    } else {
+        throw new RuntimeException('MySQL expected environment is unavailable.');
+    }
+
+    if (!in_array($expected, ['STAGE', 'PRODUCTION'], true)) {
+        throw new RuntimeException('MySQL expected environment is invalid.');
+    }
+
+    return $expected;
+}
+
+function zpay_mysql_assert_expected_environment(): void
+{
+    static $verified = [];
+
+    $expected = zpay_mysql_expected_environment();
+    if (!empty($verified[$expected])) {
+        return;
+    }
+
+    zpay_mysql_assert_environment($expected);
+    $verified[$expected] = true;
+}
+
 function zpay_mysql_transaction(callable $operation, int $maxAttempts = 3): mixed
 {
     $pdo = zpay_mysql_pdo();
