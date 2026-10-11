@@ -1,4 +1,4 @@
 ---
 deployment:
   tasks:
-    - /bin/bash -lc 'set -euo pipefail; REPOPATH=/home/zedpayhe/repositories/zpayswift; DEPLOYPATH=/home/zedpayhe/public_html; SHA=$(/usr/bin/git -C "$REPOPATH" rev-parse HEAD); STAGE=/home/zedpayhe/.zpayswift-deploy/$SHA; /bin/bash "$REPOPATH/scripts/build_public_deployment.sh" "$REPOPATH" "$STAGE" "$SHA"; /bin/bash "$REPOPATH/scripts/promote_public_deployment.sh" "$STAGE" "$DEPLOYPATH"; /bin/rm -rf -- "$STAGE"'
+    - /bin/bash -lc 'set -euo pipefail; /bin/bash /home/zedpayhe/repositories/zpayswift-stage/scripts/deploy_mysql_stage.sh'

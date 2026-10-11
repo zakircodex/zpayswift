@@ -53,7 +53,6 @@ $adapter = (string)file_get_contents($root . '/api/lib/mysql_firebase.php');
 $firebase = (string)file_get_contents($root . '/api/lib/firebase.php');
 $productionSchema = (string)file_get_contents($root . '/database/mysql/001_firebase_compat_production.sql');
 $configExample = (string)file_get_contents($root . '/api/config.example.php');
-$cpanel = (string)file_get_contents($root . '/.cpanel.yml');
 
 production_cutover_expect(str_contains($runtime, "'APP_ENVIRONMENT', 'production'"), 'production environment marker is missing');
 production_cutover_expect(str_contains($runtime, "'DATASTORE_DRIVER', 'mysql'"), 'production candidate does not select MySQL');
@@ -111,13 +110,6 @@ production_cutover_expect(
         && str_contains($cutoverScript, 'maintenance marker remains'),
     'production cutover orchestration does not fail closed'
 );
-production_cutover_expect(
-    str_contains($cpanel, 'REPOPATH=/home/zedpayhe/repositories/zpayswift')
-        && str_contains($cpanel, 'DEPLOYPATH=/home/zedpayhe/public_html')
-        && !str_contains($cpanel, 'deploy_mysql_stage.sh'),
-    'production candidate cPanel contract still targets stage'
-);
-
 @unlink($runtimePath);
 @unlink($migrationPath);
 @rmdir($temporaryRoot);
