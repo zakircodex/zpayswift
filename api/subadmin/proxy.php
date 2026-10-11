@@ -1343,6 +1343,7 @@ function sub_proxy_mfs_page(string $uid, string $tab, array $filters = [], strin
 {
     $tab = strtolower(trim($tab));
     $bucket = $tab === 'processing' ? 'PROCESSING' : ($tab === 'done' || $tab === 'failed' ? 'DONE' : 'PENDING');
+    $counterStatus = $tab === 'done' ? 'SUCCESSFUL' : strtoupper($tab);
     $filters['uid'] = trim($uid);
     $filters['query'] = trim((string)($filters['search'] ?? $filters['query'] ?? ''));
     if (!empty($filters['service']) && empty($filters['provider'])) {
@@ -1352,6 +1353,17 @@ function sub_proxy_mfs_page(string $uid, string $tab, array $filters = [], strin
         $filters['status'] = 'SUCCESSFUL';
     } elseif ($tab === 'failed') {
         $filters['status'] = 'FAILED';
+    }
+
+    $counterResult = mfs_user_status_counts($uid);
+    if (!empty($counterResult['ok'])) {
+        return mfs_read_user_status_page(
+            $uid,
+            $counterStatus,
+            $filters,
+            $cursor,
+            min(10, max(1, $limit))
+        );
     }
 
     return mfs_read_bucket_page($bucket, $filters, $cursor, min(10, max(1, $limit)));
