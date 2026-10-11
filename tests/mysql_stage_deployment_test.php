@@ -37,11 +37,13 @@ $runtimeVerifier = (string) file_get_contents($root . '/scripts/verify_mysql_sta
 $readme = (string) file_get_contents($root . '/database/mysql/README.md');
 $productionDeployTest = (string) file_get_contents($root . '/tests/cpanel_push_deployment_test.php');
 
+$currentBranch = stage_deploy_current_branch($root);
+$stageBranch = in_array($currentBranch, ['codex/mysql-stage', 'cpanel/mysql-stage'], true);
 $stageDeployment = str_contains($cpanel, 'deploy_mysql_stage.sh');
-if ($stageDeployment) {
+if ($stageBranch) {
     stage_deploy_expect(
-        in_array(stage_deploy_current_branch($root), ['codex/mysql-stage', 'cpanel/mysql-stage'], true),
-        'the stage cPanel target is allowed only on an isolated MySQL stage branch'
+        $stageDeployment,
+        'an isolated MySQL stage branch must use the stage cPanel task'
     );
     stage_deploy_expect(
         str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift-stage/scripts/deploy_mysql_stage.sh')
@@ -50,7 +52,8 @@ if ($stageDeployment) {
     );
 } else {
     stage_deploy_expect(
-        str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift')
+        !$stageDeployment
+            && str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift')
             && str_contains($cpanel, '/home/zedpayhe/public_html')
             && str_contains($cpanel, 'build_public_deployment.sh')
             && str_contains($cpanel, 'promote_public_deployment.sh')
