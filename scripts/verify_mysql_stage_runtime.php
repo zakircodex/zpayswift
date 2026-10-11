@@ -77,8 +77,9 @@ if ($stageOtpPreviewEnabled) {
     if (preg_match('/^[1-9]\d{7,14}$/D', $previewPhone) !== 1) {
         stage_runtime_fail('Stage OTP preview phone is invalid.');
     }
-    if (!is_array($previewPurposes) || array_values($previewPurposes) !== ['USER_LOGIN']) {
-        stage_runtime_fail('Stage OTP preview must be limited to USER_LOGIN.');
+    $allowedPreviewPurposes = ['USER_LOGIN', 'ADMIN_LOGIN', 'SUBADMIN_LOGIN'];
+    if (!is_array($previewPurposes) || array_values($previewPurposes) !== $allowedPreviewPurposes) {
+        stage_runtime_fail('Stage OTP preview must be limited to login purposes.');
     }
 }
 

@@ -259,13 +259,19 @@ if (sub_login_has_valid_trusted_device($uid, $trustedDeviceCookie)) {
     ]);
 }
 
-$otpCode = (string)random_int(100000, 999999);
 $otpRequestId = 'OTP' . strtoupper(bin2hex(random_bytes(6)));
 $preAuthToken = random_token(24);
 $now = now_ts();
 $expiresAt = $now + 300;
 $smsTemplateKey = $role === 'ADMIN' ? 'ADMIN_LOGIN' : 'SUBADMIN_LOGIN';
 $loginPurpose = $role === 'ADMIN' ? 'ADMIN_LOGIN' : 'SUBADMIN_LOGIN';
+$otpCode = auth_sms_prepare_otp_code(
+    $storedPhoneCountry,
+    $otpPhone,
+    $smsTemplateKey,
+    $otpRequestId,
+    (string)random_int(100000, 999999)
+);
 
 $message = 'Z-Pay Swift login OTP is ' . $otpCode . '. Valid for 5 minutes. Do not share this code.';
 $sendRateState = auth_otp_send_rate_state($loginPurpose, $otpPhone, $now);
@@ -376,4 +382,9 @@ api_response(true, 'OTP_REQUIRED', 'OTP verification required', [
     'masked_phone' => sub_login_mask_phone($otpPhone),
     'expires_in_seconds' => 300,
     'phone_country' => $storedPhoneCountry,
-]);
+] + auth_sms_stage_preview_response_fields(
+    $storedPhoneCountry,
+    $otpPhone,
+    $smsTemplateKey,
+    $otpRequestId
+));

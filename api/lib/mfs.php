@@ -4535,6 +4535,168 @@ function mfs_admin_normalize_row(array $row, string $requestId, string $bucket):
     return $row;
 }
 
+function mfs_admin_row_matches_query(array $row, string $query): bool
+{
+    $query = strtolower(trim($query));
+    if ($query === '') {
+        return true;
+    }
+
+    $haystack = strtolower(implode(' ', [
+        $row['request_id'] ?? '',
+        $row['uid'] ?? '',
+        $row['user_name'] ?? '',
+        $row['user_phone'] ?? '',
+        $row['receiver_number'] ?? '',
+        $row['number'] ?? '',
+        $row['provider'] ?? '',
+        $row['provider_name'] ?? '',
+        $row['reference'] ?? '',
+        $row['trx_id'] ?? '',
+    ]));
+
+    return str_contains($haystack, $query);
+}
+
+function mfs_read_user_status_page(
+    string $uid,
+    string $status,
+    array $filters = [],
+    string $cursor = '',
+    int $limit = 10,
+    int $maxBatches = 6
+): array {
+    $uid = trim($uid);
+    $status = mfs_status_counter_status($status);
+    $limit = max(1, min(10, $limit));
+    $maxBatches = max(1, min(20, $maxBatches));
+
+    if ($uid === '' || !in_array($status, ['PENDING', 'PROCESSING', 'SUCCESSFUL', 'FAILED'], true)) {
+        return [
+            'items' => [],
+            'pagination' => [
+                'limit' => $limit,
+                'count' => 0,
+                'has_more' => false,
+                'cursor' => '',
+                'next_cursor' => '',
+                'scanned' => 0,
+                'scan_limited' => false,
+            ],
+        ];
+    }
+
+    $bucket = $status === 'PENDING'
+        ? 'PENDING'
+        : ($status === 'PROCESSING' ? 'PROCESSING' : 'DONE');
+    $indexPath = 'MFS_USER_STATUS_COUNTERS/' . $uid . '/' . $status;
+    $cursorState = admin_pagination_decode_cursor($cursor);
+    $queryKey = (string)$cursorState['key'];
+    $exclusiveKey = !empty($cursorState['exclusive']) ? $queryKey : '';
+    $filters['uid'] = $uid;
+    unset($filters['status']);
+    $queryText = (string)($filters['query'] ?? '');
+    $items = [];
+    $scanned = 0;
+    $batches = 0;
+    $lastScannedKey = '';
+    $exhausted = false;
+    $nextCursor = '';
+
+    while ($batches < $maxBatches && !$exhausted && $nextCursor === '') {
+        $query = [
+            'orderBy' => json_encode('$key'),
+            'limitToLast' => $limit + 1,
+        ];
+        if ($queryKey !== '') {
+            $query['endAt'] = json_encode($queryKey);
+        }
+
+        $indexRows = mfs_fb_get($indexPath, $query);
+        $indexRows = is_array($indexRows) ? $indexRows : [];
+        $rawCount = count($indexRows);
+        $batches++;
+
+        if ($indexRows === []) {
+            $exhausted = true;
+            break;
+        }
+
+        ksort($indexRows, SORT_STRING);
+        $requestIds = array_reverse(array_keys($indexRows));
+        $processedThisBatch = 0;
+
+        foreach ($requestIds as $requestId) {
+            $requestId = (string)$requestId;
+            if ($exclusiveKey !== '' && hash_equals($exclusiveKey, $requestId)) {
+                $exclusiveKey = '';
+                continue;
+            }
+
+            $lastScannedKey = $requestId;
+            $processedThisBatch++;
+            $scanned++;
+
+            $row = mfs_fb_get('MFS_REQUESTS/' . $bucket . '/' . $requestId);
+            if (!is_array($row)) {
+                continue;
+            }
+
+            $normalized = mfs_admin_normalize_row($row, $requestId, $bucket);
+            if (mfs_status_counter_status((string)($normalized['status'] ?? ''), $bucket) !== $status) {
+                continue;
+            }
+            if (mfs_apply_filters([$normalized], $filters) === []) {
+                continue;
+            }
+            if (!mfs_admin_row_matches_query($normalized, $queryText)) {
+                continue;
+            }
+
+            if (count($items) < $limit) {
+                $items[] = $normalized;
+                continue;
+            }
+
+            $nextCursor = admin_pagination_encode_cursor($requestId, false);
+            break;
+        }
+
+        if ($nextCursor !== '') {
+            break;
+        }
+        if ($rawCount < $limit + 1) {
+            $exhausted = true;
+            break;
+        }
+        if ($processedThisBatch === 0 || $lastScannedKey === '') {
+            $exhausted = true;
+            break;
+        }
+
+        $queryKey = $lastScannedKey;
+        $exclusiveKey = $lastScannedKey;
+    }
+
+    $scanLimited = !$exhausted && $nextCursor === '' && $lastScannedKey !== '';
+    if ($scanLimited) {
+        $nextCursor = admin_pagination_encode_cursor($lastScannedKey, true);
+    }
+
+    return [
+        'items' => array_values($items),
+        'pagination' => [
+            'limit' => $limit,
+            'count' => count($items),
+            'has_more' => $nextCursor !== '',
+            'cursor' => trim($cursor),
+            'next_cursor' => $nextCursor,
+            'scanned' => $scanned,
+            'scan_limited' => $scanLimited,
+        ],
+    ];
+}
+
 function mfs_read_bucket_page(
     string $bucket,
     array $filters = [],
@@ -4569,23 +4731,7 @@ function mfs_read_bucket_page(
             if (mfs_apply_filters([$normalized], $filters) === []) {
                 return false;
             }
-            if ($query === '') {
-                return true;
-            }
-
-            $haystack = strtolower(implode(' ', [
-                $normalized['request_id'] ?? '',
-                $normalized['uid'] ?? '',
-                $normalized['user_name'] ?? '',
-                $normalized['user_phone'] ?? '',
-                $normalized['receiver_number'] ?? '',
-                $normalized['number'] ?? '',
-                $normalized['provider'] ?? '',
-                $normalized['provider_name'] ?? '',
-                $normalized['reference'] ?? '',
-                $normalized['trx_id'] ?? '',
-            ]));
-            return str_contains($haystack, $query);
+            return mfs_admin_row_matches_query($normalized, $query);
         },
         static fn(array $row, string $requestId): array => mfs_admin_normalize_row($row, $requestId, $bucket)
     );

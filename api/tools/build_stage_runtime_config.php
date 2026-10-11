@@ -144,7 +144,7 @@ try {
         'APP_PRIVATE_SMS_BRIDGE_PATH' => '/home/zedpayhe/private/zpayswift-stage/disabled-auth-sms-bridge.php',
         'STAGE_AUTH_OTP_PREVIEW_ENABLED' => false,
         'STAGE_AUTH_OTP_PREVIEW_PHONES' => [],
-        'STAGE_AUTH_OTP_PREVIEW_PURPOSES' => ['USER_LOGIN'],
+        'STAGE_AUTH_OTP_PREVIEW_PURPOSES' => ['USER_LOGIN', 'ADMIN_LOGIN', 'SUBADMIN_LOGIN'],
         'APP_KEY' => stage_config_random_secret(),
         'WORKER_KEY' => stage_config_random_secret(),
         'ADMIN_KEY' => stage_config_random_secret(),

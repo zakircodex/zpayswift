@@ -14,7 +14,7 @@ define('APP_PUBLIC_ORIGIN', 'https://stage.zpayswift.com');
 define('APP_KEY', str_repeat('a', 64));
 define('STAGE_AUTH_OTP_PREVIEW_ENABLED', true);
 define('STAGE_AUTH_OTP_PREVIEW_PHONES', ['60123456789']);
-define('STAGE_AUTH_OTP_PREVIEW_PURPOSES', ['USER_LOGIN']);
+define('STAGE_AUTH_OTP_PREVIEW_PURPOSES', ['USER_LOGIN', 'ADMIN_LOGIN', 'SUBADMIN_LOGIN']);
 $_SERVER['HTTP_HOST'] = 'stage.zpayswift.com';
 
 require_once dirname(__DIR__) . '/api/lib/auth_sms.php';
@@ -47,6 +47,35 @@ $fields = auth_sms_stage_preview_response_fields('MY', '60123456789', 'USER_LOGI
 stage_otp_expect(($fields['stage_otp_preview'] ?? false) === true, 'stage preview marker is missing');
 stage_otp_expect(($fields['stage_otp'] ?? '') === $prepared, 'stage preview response did not return the request OTP');
 
+foreach (['ADMIN_LOGIN', 'SUBADMIN_LOGIN'] as $loginPurpose) {
+    $roleReferenceId = $loginPurpose . 'ABC123';
+    $roleOtp = auth_sms_prepare_otp_code(
+        'MY',
+        '60123456789',
+        $loginPurpose,
+        $roleReferenceId,
+        '123456'
+    );
+    $roleResult = auth_send_otp_sms_by_country(
+        'MY',
+        '60123456789',
+        'unused in stage preview',
+        $roleReferenceId,
+        $loginPurpose,
+        $roleOtp
+    );
+    stage_otp_expect(!empty($roleResult['ok']), $loginPurpose . ' did not use the stage preview path');
+    stage_otp_expect(
+        (auth_sms_stage_preview_response_fields(
+            'MY',
+            '60123456789',
+            $loginPurpose,
+            $roleReferenceId
+        )['stage_otp'] ?? '') === $roleOtp,
+        $loginPurpose . ' preview OTP was not returned'
+    );
+}
+
 $blockedPhone = auth_sms_stage_preview_result('MY', '60111111111', $referenceId, 'USER_LOGIN', '123456');
 stage_otp_expect(is_array($blockedPhone) && empty($blockedPhone['ok']), 'a non-allowlisted phone reached stage preview');
 stage_otp_expect(($blockedPhone['code'] ?? '') === 'STAGE_PREVIEW_NOT_ALLOWED', 'blocked phone failure code changed');
@@ -62,7 +91,23 @@ $root = dirname(__DIR__);
 $combinedSource = (string)file_get_contents($root . '/api/lib/auth_sms.php')
     . (string)file_get_contents($root . '/api/auth/login_send_otp.php')
     . (string)file_get_contents($root . '/api/auth/user_login_resend_otp.php')
+    . (string)file_get_contents($root . '/api/auth/admin_login_start.php')
+    . (string)file_get_contents($root . '/api/auth/admin_login_resend_otp.php')
+    . (string)file_get_contents($root . '/api/auth/login_start.php')
+    . (string)file_get_contents($root . '/api/auth/login_resend_otp.php')
+    . (string)file_get_contents($root . '/api/admin/proxy.php')
+    . (string)file_get_contents($root . '/api/subadmin/proxy.php')
+    . (string)file_get_contents($root . '/api/admin/assets/dashboard.js')
+    . (string)file_get_contents($root . '/api/subadmin/assets/subadmin-login.js')
     . (string)file_get_contents($root . '/api/user/assets/pages/login-page.js');
 stage_otp_expect(!str_contains($combinedSource, '60123456789'), 'test phone must not leak into application source');
+stage_otp_expect(
+    substr_count($combinedSource, 'auth_sms_stage_preview_response_fields') >= 8,
+    'login endpoints do not consistently return stage preview OTP fields'
+);
+stage_otp_expect(
+    substr_count($combinedSource, "data.stage_otp_preview === true") >= 3,
+    'login clients do not safely consume stage preview OTP data'
+);
 
 echo "stage OTP preview tests passed\n";

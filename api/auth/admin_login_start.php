@@ -282,8 +282,14 @@ if (admin_login_has_valid_trusted_device($uid, $trustedDeviceCookie)) {
     ]);
 }
 
-$otpCode = (string)random_int(100000, 999999);
 $otpRequestId = 'AOTP' . strtoupper(bin2hex(random_bytes(6)));
+$otpCode = auth_sms_prepare_otp_code(
+    $storedPhoneCountry,
+    $otpPhone,
+    'ADMIN_LOGIN',
+    $otpRequestId,
+    (string)random_int(100000, 999999)
+);
 $preAuthToken = 'APA' . random_token(24);
 $now = now_ts();
 $expiresAt = $now + 300;
@@ -402,4 +408,9 @@ api_response(true, 'OTP_REQUIRED', 'OTP verification required', [
     'masked_phone' => admin_login_mask_phone($otpPhone),
     'expires_in_seconds' => 300,
     'phone_country' => $storedPhoneCountry,
-]);
+] + auth_sms_stage_preview_response_fields(
+    $storedPhoneCountry,
+    $otpPhone,
+    'ADMIN_LOGIN',
+    $otpRequestId
+));

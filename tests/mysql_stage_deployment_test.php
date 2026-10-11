@@ -11,10 +11,16 @@ function stage_deploy_expect(bool $condition, string $message): void
 
 $root = dirname(__DIR__);
 $script = (string) file_get_contents($root . '/scripts/deploy_mysql_stage.sh');
+$cpanel = (string) file_get_contents($root . '/.cpanel.yml');
 $runtimeVerifier = (string) file_get_contents($root . '/scripts/verify_mysql_stage_runtime.php');
 $readme = (string) file_get_contents($root . '/database/mysql/README.md');
 $productionDeployTest = (string) file_get_contents($root . '/tests/cpanel_push_deployment_test.php');
 
+stage_deploy_expect(
+    str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift-stage/scripts/deploy_mysql_stage.sh')
+        && !str_contains($cpanel, '/home/zedpayhe/public_html'),
+    'the stage branch cPanel task is not isolated from production'
+);
 stage_deploy_expect(
     str_contains($script, 'REPOSITORY_ROOT="/home/zedpayhe/repositories/zpayswift-stage"')
         && str_contains($script, 'PUBLIC_ROOT="/home/zedpayhe/stage.zpayswift.com"')
@@ -36,6 +42,11 @@ stage_deploy_expect(
         && str_contains($runtimeVerifier, 'SMSS360_API_KEY')
         && str_contains($runtimeVerifier, 'TELEGRAM_BOT_TOKEN'),
     'the deployer does not reject enabled live outbound integrations'
+);
+stage_deploy_expect(
+    str_contains($runtimeVerifier, "['USER_LOGIN', 'ADMIN_LOGIN', 'SUBADMIN_LOGIN']")
+        && str_contains($runtimeVerifier, 'count($previewPhones) !== 1'),
+    'stage OTP preview guard must remain limited to one phone and login purposes'
 );
 stage_deploy_expect(
     str_contains($script, '# BEGIN ZPAY STAGE AUTH')

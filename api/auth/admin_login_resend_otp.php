@@ -131,7 +131,13 @@ if ($phone === '') {
     api_response(false, 'VALIDATION_ERROR', 'Phone number missing for OTP resend', [], 422);
 }
 
-$newOtpCode = (string)random_int(100000, 999999);
+$newOtpCode = auth_sms_prepare_otp_code(
+    $phoneCountry,
+    $phone,
+    'ADMIN_LOGIN',
+    $otpRequestId,
+    (string)random_int(100000, 999999)
+);
 $expiresAt = $now + 300;
 
 $message = 'Z-Pay Swift admin login OTP is ' . $newOtpCode . '. Valid for 5 minutes. Do not share this code.';
@@ -207,4 +213,9 @@ api_response(true, 'SUCCESS', 'OTP resent successfully', [
     'masked_phone' => admin_resend_mask_phone($phone),
     'expires_in_seconds' => 300,
     'phone_country' => $phoneCountry,
-]);
+] + auth_sms_stage_preview_response_fields(
+    $phoneCountry,
+    $phone,
+    'ADMIN_LOGIN',
+    $otpRequestId
+));

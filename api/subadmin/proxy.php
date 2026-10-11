@@ -1343,6 +1343,7 @@ function sub_proxy_mfs_page(string $uid, string $tab, array $filters = [], strin
 {
     $tab = strtolower(trim($tab));
     $bucket = $tab === 'processing' ? 'PROCESSING' : ($tab === 'done' || $tab === 'failed' ? 'DONE' : 'PENDING');
+    $counterStatus = $tab === 'done' ? 'SUCCESSFUL' : strtoupper($tab);
     $filters['uid'] = trim($uid);
     $filters['query'] = trim((string)($filters['search'] ?? $filters['query'] ?? ''));
     if (!empty($filters['service']) && empty($filters['provider'])) {
@@ -1352,6 +1353,17 @@ function sub_proxy_mfs_page(string $uid, string $tab, array $filters = [], strin
         $filters['status'] = 'SUCCESSFUL';
     } elseif ($tab === 'failed') {
         $filters['status'] = 'FAILED';
+    }
+
+    $counterResult = mfs_user_status_counts($uid);
+    if (!empty($counterResult['ok'])) {
+        return mfs_read_user_status_page(
+            $uid,
+            $counterStatus,
+            $filters,
+            $cursor,
+            min(10, max(1, $limit))
+        );
     }
 
     return mfs_read_bucket_page($bucket, $filters, $cursor, min(10, max(1, $limit)));
@@ -1639,17 +1651,23 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
         $data = (array) ($loginRes['json']['data'] ?? []);
 
         if (!empty($data['require_otp'])) {
+            $responseData = [
+                'require_otp' => true,
+                'pre_auth_token' => (string) ($data['pre_auth_token'] ?? ''),
+                'otp_request_id' => (string) ($data['otp_request_id'] ?? ''),
+                'masked_phone' => (string) ($data['masked_phone'] ?? ''),
+                'expires_in_seconds' => (int) ($data['expires_in_seconds'] ?? 300),
+            ];
+            $stageOtp = trim((string) ($data['stage_otp'] ?? ''));
+            if (!empty($data['stage_otp_preview']) && preg_match('/^\d{6}$/D', $stageOtp) === 1) {
+                $responseData['stage_otp_preview'] = true;
+                $responseData['stage_otp'] = $stageOtp;
+            }
             sub_proxy_response(
                 true,
                 'OTP_REQUIRED',
                 (string) ($loginRes['json']['message'] ?? 'OTP verification required'),
-                [
-                    'require_otp' => true,
-                    'pre_auth_token' => (string) ($data['pre_auth_token'] ?? ''),
-                    'otp_request_id' => (string) ($data['otp_request_id'] ?? ''),
-                    'masked_phone' => (string) ($data['masked_phone'] ?? ''),
-                    'expires_in_seconds' => (int) ($data['expires_in_seconds'] ?? 300),
-                ]
+                $responseData
             );
         }
 
@@ -1750,13 +1768,19 @@ $loginRes = sub_proxy_internal_api_request('POST', 'auth/login_start.php', [
 
         $data = (array) ($resendRes['json']['data'] ?? []);
 
-        sub_proxy_response(true, 'SUCCESS', 'OTP resent successfully', [
+        $responseData = [
             'require_otp' => true,
             'pre_auth_token' => (string) ($data['pre_auth_token'] ?? $preAuthToken),
             'otp_request_id' => (string) ($data['otp_request_id'] ?? $otpRequestId),
             'masked_phone' => (string) ($data['masked_phone'] ?? ''),
             'expires_in_seconds' => (int) ($data['expires_in_seconds'] ?? 300),
-        ]);
+        ];
+        $stageOtp = trim((string) ($data['stage_otp'] ?? ''));
+        if (!empty($data['stage_otp_preview']) && preg_match('/^\d{6}$/D', $stageOtp) === 1) {
+            $responseData['stage_otp_preview'] = true;
+            $responseData['stage_otp'] = $stageOtp;
+        }
+        sub_proxy_response(true, 'SUCCESS', 'OTP resent successfully', $responseData);
         break;
 
     case 'forgot_send_otp':

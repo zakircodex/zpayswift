@@ -185,7 +185,7 @@ header('Pragma: no-cache');
             </div>
             <div class="card-body">
               <div class="detail-grid">
-                <div class="detail-item"><label>Total Users</label><strong id="dashUsersCount">0</strong></div>
+                <div class="detail-item"><label>Total Users</label><strong id="dashUsersCount">-</strong></div>
                 <div class="detail-item"><label>Pending Bundles</label><strong id="dashBundleCount">0</strong></div>
                 <div class="detail-item"><label>Active Operators</label><strong id="dashOperatorsCount">0</strong></div>
                 <div class="detail-item"><label>Listed Page Balance</label><strong id="dashBalanceTotal">0.00</strong></div>
