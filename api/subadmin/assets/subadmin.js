@@ -1,6 +1,11 @@
 const APP_API_BASE = (() => {
   const configured = String(window.SUBADMIN_API_BASE || '').trim();
-  if (configured) return configured.replace(/\/+$/, '');
+  if (configured) {
+    const normalized = configured.replace(/\/+$/, '');
+    if (/^https?:\/\//i.test(normalized)) return normalized;
+    if (normalized.startsWith('/')) return window.location.origin + normalized;
+    return new URL(normalized, window.location.origin + '/').toString().replace(/\/+$/, '');
+  }
 
   const path = window.location.pathname || '';
   const marker = '/api/subadmin/';

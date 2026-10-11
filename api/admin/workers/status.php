@@ -88,7 +88,9 @@ if (is_array($rows)) {
         $recentHeartbeat = $lastHeartbeatMs > 0 && (($nowMs - $lastHeartbeatMs) <= $onlineWindowMs);
         $flagOnline = worker_bool($row['online'] ?? false);
 
-        $isOnline = $flagOnline || $recentHeartbeat;
+        // The app leaves its online flag set between heartbeats. The flag shows
+        // intent; a recent heartbeat proves that the worker is currently live.
+        $isOnline = $flagOnline && $recentHeartbeat;
 
         $status = strtoupper(trim((string)($row['current_status'] ?? '')));
         if ($status === '') {

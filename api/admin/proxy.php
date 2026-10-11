@@ -1551,6 +1551,11 @@ switch ($action) {
         ]);
         break;
 
+    case 'user_summary':
+        proxy_require_method('GET');
+        proxy_forward_admin_get('users/summary.php');
+        break;
+
     case 'user_get':
         proxy_require_method('GET');
         proxy_forward_admin_get('users/get.php', [

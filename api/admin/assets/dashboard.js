@@ -67,6 +67,7 @@ const state = {
     doneTopups: false,
     doneBundles: false,
     users: false,
+    userSummary: false,
     workers: false,
     workerSms: false,
     operators: false,
@@ -1318,6 +1319,7 @@ async function loadDashboardFast(){
   try{
     const results = await Promise.allSettled([
       safeLoad('Counts', loadCounts, { busy:false, silentLog:true }),
+      safeLoad('User Summary', loadUserSummary, { busy:false, silentLog:true }),
       safeLoad('Pending Topups', loadTopups, { busy:false, silentLog:true }),
       safeLoad('Pending Bundles', loadBundles, { busy:false, silentLog:true }),
       safeLoad('App Config', loadAppConfigStatus, { busy:false, silentLog:true }),
@@ -1598,6 +1600,19 @@ async function loadCounts(options = {}){
   state.loaded.counts = true;
 
   renderOverviewCharts();
+}
+
+async function loadUserSummary(options = {}){
+  const data = await proxyGet('user_summary', {}, options);
+  const totalUsers = Number(data.total_users);
+  const dashUsersCount = document.getElementById('dashUsersCount');
+
+  if (dashUsersCount && Number.isFinite(totalUsers) && totalUsers >= 0) {
+    dashUsersCount.textContent = String(Math.trunc(totalUsers));
+  }
+
+  state.loaded.userSummary = true;
+  return data;
 }
 
 async function loadTopups(options = {}){
