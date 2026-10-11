@@ -9,6 +9,27 @@ function stage_deploy_expect(bool $condition, string $message): void
     }
 }
 
+function stage_deploy_current_branch(string $root): string
+{
+    $gitPath = $root . '/.git';
+    if (is_file($gitPath)) {
+        $pointer = trim((string) file_get_contents($gitPath));
+        if (str_starts_with($pointer, 'gitdir: ')) {
+            $gitPath = substr($pointer, 8);
+            if (!str_starts_with($gitPath, '/') && preg_match('/^[A-Za-z]:[\\\\\/]/', $gitPath) !== 1) {
+                $gitPath = $root . '/' . $gitPath;
+            }
+        }
+    }
+
+    $head = is_dir($gitPath) ? trim((string) @file_get_contents($gitPath . '/HEAD')) : '';
+    if (str_starts_with($head, 'ref: refs/heads/')) {
+        return substr($head, strlen('ref: refs/heads/'));
+    }
+
+    return trim((string) (getenv('GITHUB_HEAD_REF') ?: getenv('GITHUB_REF_NAME') ?: ''));
+}
+
 $root = dirname(__DIR__);
 $script = (string) file_get_contents($root . '/scripts/deploy_mysql_stage.sh');
 $cpanel = (string) file_get_contents($root . '/.cpanel.yml');
@@ -16,11 +37,30 @@ $runtimeVerifier = (string) file_get_contents($root . '/scripts/verify_mysql_sta
 $readme = (string) file_get_contents($root . '/database/mysql/README.md');
 $productionDeployTest = (string) file_get_contents($root . '/tests/cpanel_push_deployment_test.php');
 
-stage_deploy_expect(
-    str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift-stage/scripts/deploy_mysql_stage.sh')
-        && !str_contains($cpanel, '/home/zedpayhe/public_html'),
-    'the stage branch cPanel task is not isolated from production'
-);
+$currentBranch = stage_deploy_current_branch($root);
+$stageBranch = in_array($currentBranch, ['codex/mysql-stage', 'cpanel/mysql-stage'], true);
+$stageDeployment = str_contains($cpanel, 'deploy_mysql_stage.sh');
+if ($stageBranch) {
+    stage_deploy_expect(
+        $stageDeployment,
+        'an isolated MySQL stage branch must use the stage cPanel task'
+    );
+    stage_deploy_expect(
+        str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift-stage/scripts/deploy_mysql_stage.sh')
+            && !str_contains($cpanel, '/home/zedpayhe/public_html'),
+        'the stage branch cPanel task is not isolated from production'
+    );
+} else {
+    stage_deploy_expect(
+        !$stageDeployment
+            && str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift')
+            && str_contains($cpanel, '/home/zedpayhe/public_html')
+            && str_contains($cpanel, 'build_public_deployment.sh')
+            && str_contains($cpanel, 'promote_public_deployment.sh')
+            && !str_contains($cpanel, '/home/zedpayhe/repositories/zpayswift-stage'),
+        'the production cPanel task is not pinned to the guarded production release path'
+    );
+}
 stage_deploy_expect(
     str_contains($script, 'REPOSITORY_ROOT="/home/zedpayhe/repositories/zpayswift-stage"')
         && str_contains($script, 'PUBLIC_ROOT="/home/zedpayhe/stage.zpayswift.com"')
