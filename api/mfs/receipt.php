@@ -137,7 +137,7 @@ if (!$isMy && $totalBdt <= 0) {
     .head{padding:28px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
     .brand{display:flex;gap:14px;align-items:center}
     .logo{width:52px;height:52px;border-radius:18px;background:linear-gradient(135deg,var(--green),var(--blue));display:grid;place-items:center;font-weight:900;color:#03111f}
-    h1{margin:0;font-size:26px;letter-spacing:-.03em}
+    h1{margin:0;font-size:26px;letter-spacing:0}
     p{margin:6px 0 0;color:var(--muted)}
     .status{border:1px solid rgba(245,158,11,.38);background:rgba(245,158,11,.13);color:#fde68a;border-radius:999px;padding:8px 12px;font-weight:800;font-size:12px}
     .status.success{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.12);color:#bbf7d0}
@@ -155,7 +155,34 @@ if (!$isMy && $totalBdt <= 0) {
     button.green,a.green{border-color:rgba(34,197,94,.35);background:rgba(34,197,94,.14);color:#dcfce7}
     .copy-status{margin-top:10px;color:#bbf7d0;font-weight:800;min-height:20px}
     .not-found{padding:48px;text-align:center}
-    @media(max-width:640px){body{padding:12px}.head{display:block}.status{display:inline-flex;margin-top:16px}.grid{grid-template-columns:1fr}.r-row{display:block}.r-row strong{display:block;text-align:left;margin-top:4px}.card{border-radius:22px}}
+    @media(max-width:640px){
+      body{padding:10px}
+      .wrap{width:100%}
+      .card{border-radius:18px}
+      .head{display:block;padding:20px 16px 16px}
+      .brand{gap:12px;align-items:flex-start;min-width:0}
+      .brand>div{min-width:0}
+      h1{font-size:21px;line-height:1.2}
+      p{margin-top:5px;font-size:15px;line-height:1.4}
+      .status{display:inline-flex;margin:14px 0 0 50px;padding:7px 11px}
+      .body{padding:14px;gap:12px}
+      .section{padding:14px;border-radius:16px;min-width:0}
+      .section h2{margin-bottom:8px;font-size:13px}
+      .grid{grid-template-columns:1fr;gap:0;min-width:0}
+      .r-row{display:block;min-width:0;padding:10px 0}
+      .r-row span{display:block;font-size:14px}
+      .r-row strong{display:block;text-align:left;margin-top:4px;line-height:1.35;overflow-wrap:anywhere;word-break:break-word}
+      .actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:14px}
+      .actions .green{grid-column:1/-1}
+      button,a.btn{width:100%;min-height:46px;padding:10px}
+      .not-found{padding:36px 20px}
+    }
+    @media(max-width:360px){
+      body{padding:8px}
+      .head{padding:17px 14px 14px}
+      h1{font-size:20px}
+      .body{padding:12px}
+    }
     @page{size:auto;margin:12mm}
     @media print{
       :root{color-scheme:light}
