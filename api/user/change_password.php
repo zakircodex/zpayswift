@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/auth_android.php';
 require_once dirname(__DIR__) . '/lib/mobile_dashboard.php';
+require_once dirname(__DIR__) . '/lib/auth_profile_security.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -45,6 +46,17 @@ if ($newPassword !== $confirmPassword) {
 
 if (password_verify($newPassword, $passwordHash)) {
     api_response(false, 'PASSWORD_UNCHANGED', 'Choose a different new password.', [], 422);
+}
+
+if (($body['continue_session'] ?? false) === true) {
+    $result = auth_app_change_profile_credential($auth, 'password_hash', password_hash($newPassword, PASSWORD_DEFAULT));
+    if (empty($result['ok'])) {
+        api_response(false, (string)$result['code'], 'Unable to update password securely. Please retry.', [], (int)$result['http_status']);
+    }
+    system_log('USER_PASSWORD_CHANGED', $uid, 'User password changed from profile security.', ['uid' => $uid]);
+    api_response(true, 'PASSWORD_UPDATED', 'Password updated successfully.', array_merge(
+        ['password_updated' => true], $result['data']
+    ));
 }
 
 $now = now_ts();

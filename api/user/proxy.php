@@ -6007,108 +6007,13 @@ switch ($action) {
         user_proxy_require_method('POST');
 
         $body = user_proxy_read_json_body();
-        $stage = strtoupper(trim((string)($body['stage'] ?? '')));
         require_once dirname(__DIR__) . '/lib/auth_android.php';
         require_once dirname(__DIR__) . '/lib/register_android.php';
         require_once dirname(__DIR__) . '/lib/user_web_credentials.php';
         require_once dirname(__DIR__) . '/lib/user_registration_identity.php';
-
-        if ($stage === 'PHONE') {
-            $phoneCountry = auth_normalize_country_code((string)($body['phone_country'] ?? ''));
-            if (!in_array($phoneCountry, ['BD', 'MY'], true)) {
-                user_proxy_response(false, 'VALIDATION_ERROR', 'This phone country is not supported.', ['field' => 'phone_country'], 422);
-            }
-            $phone = normalize_phone_by_country((string)($body['phone'] ?? ''), $phoneCountry);
-            if ($phone === '') {
-                user_proxy_response(false, 'VALIDATION_ERROR', auth_phone_validation_message($phoneCountry), ['field' => 'phone'], 422);
-            }
-            if (reg_app_phone_uid($phone, $phoneCountry) !== '') {
-                user_proxy_response(false, 'PHONE_ALREADY_REGISTERED', 'This phone number is already registered.', [], 409);
-            }
-
-            user_proxy_response(true, 'REGISTER_PHONE_AVAILABLE', 'Phone number is available.', [
-                'phone_country' => $phoneCountry,
-                'phone_available' => true,
-            ]);
-        }
-
-        if ($stage === 'PERSONAL') {
-            $name = trim((string)($body['name'] ?? ''));
-            $email = strtolower(trim((string)($body['email'] ?? '')));
-            $nameLength = function_exists('mb_strlen') ? mb_strlen($name, 'UTF-8') : strlen($name);
-
-            if ($name === '' || $nameLength > 100) {
-                user_proxy_response(false, 'VALIDATION_ERROR', 'Please enter your full name.', ['field' => 'name'], 422);
-            }
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                user_proxy_response(false, 'VALIDATION_ERROR', 'Please enter a valid email address.', ['field' => 'email'], 422);
-            }
-            if (reg_app_email_uid($email) !== '') {
-                user_proxy_response(false, 'EMAIL_ALREADY_REGISTERED', 'This email is already registered.', [], 409);
-            }
-
-            user_proxy_response(true, 'REGISTER_PERSONAL_AVAILABLE', 'Registration details are available.', [
-                'email_available' => true,
-            ]);
-        }
-
-        if ($stage === 'IDENTITY') {
-            $identityTypeInput = strtoupper(trim((string)($body['identity_type'] ?? '')));
-            $identityNumber = auth_app_identity_number($body);
-            if (!in_array($identityTypeInput, ['NID', 'PASSPORT'], true)) {
-                user_proxy_response(false, 'VALIDATION_ERROR', 'Select a valid identity type.', ['field' => 'identity_type'], 422);
-            }
-            $identityHash = auth_app_identity_hash($identityNumber);
-            if ($identityHash === '') {
-                user_proxy_response(false, 'IDENTITY_REQUIRED', $identityTypeInput === 'PASSPORT' ? 'Passport number is required.' : 'NID number is required.', ['field' => 'identity_number'], 422);
-            }
-            $identityLookup = user_web_registration_identity_lookup(
-                user_web_registration_identity_hashes($identityNumber),
-                $identityTypeInput
-            );
-            if (empty($identityLookup['ok'])) {
-                user_proxy_response(false, 'IDENTITY_CHECK_UNAVAILABLE', 'Identity availability could not be checked. Please try again.', [], 503);
-            }
-            if (!empty($identityLookup['occupied'])) {
-                $code = $identityTypeInput === 'PASSPORT' ? 'PASSPORT_ALREADY_REGISTERED' : 'NID_ALREADY_REGISTERED';
-                $message = $identityTypeInput === 'PASSPORT'
-                    ? 'This Passport is already registered.'
-                    : 'This NID is already registered.';
-                user_proxy_response(false, $code, $message, [], 409);
-            }
-
-            user_proxy_response(true, 'REGISTER_IDENTITY_VALID', 'Identity details are valid.', [
-                'identity_type' => $identityTypeInput,
-            ]);
-        }
-
-        if ($stage === 'PASSWORD') {
-            $password = (string)($body['password'] ?? '');
-            $confirmPassword = (string)($body['confirm_password'] ?? '');
-            if (!user_web_password_valid($password)) {
-                user_proxy_response(false, 'VALIDATION_ERROR', 'Password must be exactly 6 digits.', ['field' => 'password'], 422);
-            }
-            if ($password !== $confirmPassword) {
-                user_proxy_response(false, 'VALIDATION_ERROR', 'Password confirmation does not match.', ['field' => 'confirm_password'], 422);
-            }
-
-            user_proxy_response(true, 'REGISTER_PASSWORD_VALID', 'Password is valid.');
-        }
-
-        if ($stage === 'PIN') {
-            $pin = trim((string)($body['pin'] ?? ''));
-            $confirmPin = trim((string)($body['confirm_pin'] ?? ''));
-            if (!user_web_transaction_pin_valid($pin)) {
-                user_proxy_response(false, 'VALIDATION_ERROR', 'PIN must be exactly 4 digits.', ['field' => 'pin'], 422);
-            }
-            if ($pin !== $confirmPin) {
-                user_proxy_response(false, 'VALIDATION_ERROR', 'PIN confirmation does not match.', ['field' => 'confirm_pin'], 422);
-            }
-
-            user_proxy_response(true, 'REGISTER_PIN_VALID', 'PIN is valid.');
-        }
-
-        user_proxy_response(false, 'VALIDATION_ERROR', 'Invalid registration precheck stage.', [], 422);
+        require_once dirname(__DIR__) . '/lib/user_registration_precheck.php';
+        $result = user_registration_precheck($body);
+        user_proxy_response($result['ok'], $result['code'], $result['message'], $result['data'], $result['http_status']);
         break;
 
     case 'register_prepare_kyc':

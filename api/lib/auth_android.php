@@ -717,7 +717,7 @@ function auth_app_repair_device_trust_from_current_session(
     return ['ok' => true, 'repaired' => true];
 }
 
-function auth_app_revoke_user_trust_records(string $uid, ?int $now = null): void
+function auth_app_revoke_user_trust_records(string $uid, ?int $now = null, string $preserveDeviceId = ''): void
 {
     $uid = auth_clean_string($uid);
     if ($uid === '') {
@@ -729,6 +729,10 @@ function auth_app_revoke_user_trust_records(string $uid, ?int $now = null): void
     $devices = fb_get('AUTH_DEVICE_TRUST/' . $uid);
     if (is_array($devices)) {
         foreach ($devices as $deviceKey => $row) {
+            $rowDeviceId = is_array($row) ? (string)($row['device_id'] ?? rawurldecode((string)$deviceKey)) : '';
+            if ($preserveDeviceId !== '' && $rowDeviceId === $preserveDeviceId) {
+                continue;
+            }
             @fb_patch('AUTH_DEVICE_TRUST/' . $uid . '/' . (string)$deviceKey, [
                 'trusted' => false,
                 'manual_logout' => true,

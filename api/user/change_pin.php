@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/auth_android.php';
 require_once dirname(__DIR__) . '/lib/mobile_dashboard.php';
+require_once dirname(__DIR__) . '/lib/auth_profile_security.php';
 
 api_require_method('POST');
 api_require_app_key();
@@ -45,6 +46,17 @@ if ($newPin !== $confirmPin) {
 
 if (password_verify($newPin, $pinHash)) {
     api_response(false, 'PIN_UNCHANGED', 'Choose a different new PIN.', [], 422);
+}
+
+if (($body['continue_session'] ?? false) === true) {
+    $result = auth_app_change_profile_credential($auth, 'pin_hash', password_hash($newPin, PASSWORD_DEFAULT));
+    if (empty($result['ok'])) {
+        api_response(false, (string)$result['code'], 'Unable to update PIN securely. Please retry.', [], (int)$result['http_status']);
+    }
+    system_log('USER_PIN_CHANGED', $uid, 'User PIN changed from profile security.', ['uid' => $uid]);
+    api_response(true, 'PIN_UPDATED', 'PIN updated successfully.', array_merge(
+        ['pin_updated' => true], $result['data']
+    ));
 }
 
 $now = now_ts();

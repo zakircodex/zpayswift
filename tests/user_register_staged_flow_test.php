@@ -28,6 +28,8 @@ $page = register_flow_source($root . '/api/user/register.php');
 $js = register_flow_source($root . '/api/user/assets/register.js');
 $css = register_flow_source($root . '/api/user/assets/register.css');
 $proxy = register_flow_source($root . '/api/user/proxy.php');
+$precheck = register_flow_source($root . '/api/lib/user_registration_precheck.php');
+$appPrecheck = register_flow_source($root . '/api/auth/user_register_precheck.php');
 $sendOtp = register_flow_source($root . '/api/auth/user_register_send_otp.php');
 $resendOtp = register_flow_source($root . '/api/auth/user_register_resend_otp.php');
 $verifyAndroidOtp = register_flow_source($root . '/api/auth/register_verify_otp.php');
@@ -53,10 +55,11 @@ register_flow_expect(!str_contains($page, 'id="reviewIdentityNumber"') && !str_c
 register_flow_expect(str_contains($page, 'id="reviewDocumentStatus"') && str_contains($page, 'id="reviewSelfieStatus"') && !str_contains($page, 'document_path_private'), 'Review must show KYC status without private paths');
 register_flow_expect(str_contains($page, 'href="/terms"') && str_contains($page, 'href="/privacy"'), 'Terms and Privacy routes are not preserved');
 
-register_flow_expect(str_contains($proxy, "case 'register_precheck':") && str_contains($proxy, "\$stage === 'PHONE'") && str_contains($proxy, "\$stage === 'PERSONAL'"), 'Registration phone/personal precheck routes are incomplete');
-register_flow_expect(str_contains($proxy, "\$stage === 'IDENTITY'") && str_contains($proxy, "\$stage === 'PASSWORD'") && str_contains($proxy, "\$stage === 'PIN'"), 'Identity, password and PIN prechecks are incomplete');
-register_flow_expect(str_contains($proxy, 'reg_app_phone_uid') && str_contains($proxy, 'reg_app_email_uid'), 'Registration prechecks must use canonical direct indexes');
-register_flow_expect(str_contains($proxy, 'user_web_registration_identity_lookup') && str_contains($proxy, 'NID_ALREADY_REGISTERED') && str_contains($proxy, 'PASSPORT_ALREADY_REGISTERED'), 'Identity precheck must reject existing NID and Passport indexes');
+register_flow_expect(str_contains($proxy, "case 'register_precheck':") && str_contains($proxy, 'user_registration_precheck($body)') && str_contains($appPrecheck, 'user_registration_precheck(api_read_json_body())'), 'Web and app must use the same registration precheck');
+register_flow_expect(str_contains($precheck, "\$stage === 'PHONE'") && str_contains($precheck, "\$stage === 'PERSONAL'"), 'Registration phone/personal precheck routes are incomplete');
+register_flow_expect(str_contains($precheck, "\$stage === 'IDENTITY'") && str_contains($precheck, "\$stage === 'PASSWORD'") && str_contains($precheck, "\$stage === 'PIN'"), 'Identity, password and PIN prechecks are incomplete');
+register_flow_expect(str_contains($precheck, 'reg_app_phone_uid') && str_contains($precheck, 'reg_app_email_uid'), 'Registration prechecks must use canonical direct indexes');
+register_flow_expect(str_contains($precheck, 'user_web_registration_identity_lookup') && str_contains($precheck, 'NID_ALREADY_REGISTERED') && str_contains($precheck, 'PASSPORT_ALREADY_REGISTERED'), 'Identity precheck must reject existing NID and Passport indexes');
 register_flow_expect(str_contains($sendOtp, 'user_web_registration_identity_lookup($identityHashes, $identityType)'), 'OTP preparation must recheck normalized identity variants');
 register_flow_expect(str_contains($prepareKyc, "'web_kyc_draft' => true") && str_contains($prepareKyc, "'registration_source' => 'USER_WEB'") && str_contains($prepareKyc, 'AUTH_USER_REGISTER_PREAUTH/'), 'Web KYC draft must use the canonical registration pre-auth node');
 register_flow_expect(str_contains($proxy, "case 'register_upload_kyc':") && str_contains($proxy, "'auth/register_upload_kyc.php'") && str_contains($proxy, "'X-APP-KEY' => APP_KEY"), 'Web KYC upload must reuse the Android endpoint through the internal proxy');
@@ -72,7 +75,7 @@ register_flow_expect(str_contains($confirm, 'user_web_registration_identity_look
 register_flow_expect(str_contains($identityUniqueness, "'orderBy' => json_encode('identity_number_hash'") && str_contains($identityUniqueness, 'user_web_registration_identity_legacy_index_missing') && str_contains($identityUniqueness, "'source' => 'INDEX_ONLY'") && str_contains($identityUniqueness, 'IDENTITY_LOOKUP_FAILED'), 'Only a missing legacy Firebase query index may fall back to authoritative indexes');
 register_flow_expect(str_contains($credentials, "preg_match('/^\\d{6}$/D', \$password)") && str_contains($credentials, "preg_match('/^\\d{4}$/D', \$pin)"), 'Canonical Web User credential lengths are incorrect');
 register_flow_expect(str_contains($identityUniqueness, '$upper = strtoupper($trimmed)') && str_contains($identityUniqueness, "preg_replace('/[^A-Z0-9]+/', '', \$upper)"), 'Web identity punctuation normalization must preserve lowercase letters before hashing');
-register_flow_expect(str_contains($proxy, 'user_web_password_valid($password)') && str_contains($proxy, 'user_web_transaction_pin_valid($pin)'), 'Registration precheck must use canonical Web User credential validators');
+register_flow_expect(str_contains($precheck, 'user_web_password_valid($password)') && str_contains($precheck, 'user_web_transaction_pin_valid($pin)'), 'Registration precheck must use canonical Web User credential validators');
 register_flow_expect(str_contains($sendOtp, 'user_web_password_valid($password)') && str_contains($sendOtp, 'user_web_transaction_pin_valid($pin)'), 'OTP preparation must revalidate canonical credential lengths');
 register_flow_expect(str_contains($js, '/^\\d{6}$/.test(data.password)') && str_contains($js, '/^\\d{4}$/.test(data.pin)'), 'Register client validation must enforce exact credential lengths');
 
