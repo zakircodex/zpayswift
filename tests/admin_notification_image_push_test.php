@@ -127,4 +127,3 @@ notification_image_expect(
 );
 
 fwrite(STDOUT, "PASS: {$notificationImageAssertions} admin notification image push assertions\n");
-
