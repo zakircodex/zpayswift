@@ -15,6 +15,7 @@ $notificationImageDb = [
     ],
 ];
 $notificationImagePushes = [];
+$notificationImageFailNextWrite = false;
 
 function notification_image_expect(bool $condition, string $message): void
 {
@@ -49,7 +50,11 @@ function fb_get(string $path, array $query = [])
 
 function fb_put(string $path, $value): bool
 {
-    global $notificationImageDb;
+    global $notificationImageDb, $notificationImageFailNextWrite;
+    if ($notificationImageFailNextWrite && str_starts_with($path, 'USER_NOTIFICATIONS/')) {
+        $notificationImageFailNextWrite = false;
+        return false;
+    }
     $parts = notification_image_path_parts($path);
     $node =& $notificationImageDb;
     foreach ($parts as $part) {
@@ -124,6 +129,29 @@ notification_image_expect(count($notificationImagePushes) === 2, 'Expected one t
 notification_image_expect(
     ($notificationImagePushes[1]['data']['has_image'] ?? '') === '0',
     'Text push payload did not explicitly disable image rendering.'
+);
+
+$notificationImageFailNextWrite = true;
+$failedRow = notification_broadcast_admin_notice([
+    'notice_id' => 'NOTICE_IMAGE_ROW_FAILURE',
+    'audience' => 'ACTIVE',
+    'title' => 'Image Notice Fallback',
+    'body' => 'The text fallback must remain safe.',
+    'image_id' => 'NI_TEST_FAILED_ROW',
+    'image_path' => '/private/notification_images/failure.jpg',
+    'image_mime' => 'image/jpeg',
+    'image_name' => 'failure.jpg',
+]);
+
+notification_image_expect(!empty($failedRow['ok']), 'Broadcast did not complete after one row write failure.');
+notification_image_expect(count($notificationImagePushes) === 3, 'Expected a text fallback push after row failure.');
+notification_image_expect(
+    ($notificationImagePushes[2]['data']['has_image'] ?? '') === '0',
+    'A failed notification row advertised an inaccessible image.'
+);
+notification_image_expect(
+    ($notificationImagePushes[2]['data']['notification_id'] ?? 'missing') === '',
+    'Failed row unexpectedly exposed a notification id.'
 );
 
 fwrite(STDOUT, "PASS: {$notificationImageAssertions} admin notification image push assertions\n");
