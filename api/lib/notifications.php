@@ -1135,6 +1135,8 @@ function notification_broadcast_admin_notice(array $notice): array
     $title = notification_clean_text($notice['title'] ?? '', 100);
     $bodyFull = notification_clean_text($notice['body'] ?? '', 4000);
     $body = notification_clean_text($bodyFull, 220);
+    $hasImage = (string)($notice['image_id'] ?? '') !== ''
+        && (string)($notice['image_path'] ?? '') !== '';
     if ($noticeId === '' || $title === '') {
         return ['ok' => false, 'code' => 'NOTICE_INVALID'];
     }
@@ -1180,6 +1182,7 @@ function notification_broadcast_admin_notice(array $notice): array
                     'notice_id' => $noticeId,
                     'title' => $title,
                     'body' => $body !== '' ? $body : 'Notice from Z-Pay Swift.',
+                    'has_image' => $hasImage ? '1' : '0',
                 ],
                 'ADMIN_NOTICE:' . $noticeId . ':' . (string)$uid
             );
@@ -1194,6 +1197,7 @@ function notification_broadcast_admin_notice(array $notice): array
         'audience_label' => notification_audience_label($audience),
         'included_statuses' => notification_audience_statuses($audience),
         'title' => $title,
+        'has_image' => $hasImage,
         'specific_uid' => $specificUid,
         'sent' => $sent,
         'push_sent' => $pushSent,
@@ -1207,6 +1211,7 @@ function notification_broadcast_admin_notice(array $notice): array
         'notice_id' => $noticeId,
         'sent' => $sent,
         'push_sent' => $pushSent,
+        'has_image' => $hasImage,
         'included_statuses' => notification_audience_statuses($audience),
         'recipient_count' => count($targets),
     ];
@@ -1483,3 +1488,4 @@ function notification_recent_broadcasts(int $limit = 10): array
     usort($items, static fn(array $a, array $b): int => ((int)$b['created_at'] <=> (int)$a['created_at']));
     return array_slice($items, 0, max(1, min(20, $limit)));
 }
+
