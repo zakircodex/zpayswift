@@ -1172,17 +1172,19 @@ function notification_broadcast_admin_notice(array $notice): array
             $sent++;
         }
         if (function_exists('fcm_send_to_user')) {
+            $notificationId = (string)($record['notification_id'] ?? '');
+            $pushHasImage = $hasImage && !empty($record['ok']) && $notificationId !== '';
             $push = fcm_send_to_user(
                 (string)$uid,
                 $title,
                 $body !== '' ? $body : 'Notice from Z-Pay Swift.',
                 [
                     'type' => 'ADMIN_NOTICE',
-                    'notification_id' => (string)($record['notification_id'] ?? ''),
+                    'notification_id' => $notificationId,
                     'notice_id' => $noticeId,
                     'title' => $title,
                     'body' => $body !== '' ? $body : 'Notice from Z-Pay Swift.',
-                    'has_image' => $hasImage ? '1' : '0',
+                    'has_image' => $pushHasImage ? '1' : '0',
                 ],
                 'ADMIN_NOTICE:' . $noticeId . ':' . (string)$uid
             );
