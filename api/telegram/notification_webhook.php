@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once dirname(__DIR__) . '/bootstrap.php';
 require_once dirname(__DIR__) . '/lib/notifications.php';
+require_once dirname(__DIR__) . '/lib/notification_bot_menu.php';
 require_once dirname(__DIR__) . '/lib/rates.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -231,15 +232,7 @@ function nb_mark_update_seen(array $update): void
 
 function nb_menu_keyboard(): array
 {
-    return ['inline_keyboard' => [
-        [['text' => 'Send Notification', 'callback_data' => 'nb|notice']],
-        [['text' => 'Update Ringgit Rate', 'callback_data' => 'nb|rate']],
-        [
-            ['text' => 'View Current Rate', 'callback_data' => 'nb|rate_view'],
-            ['text' => 'Recent Broadcasts', 'callback_data' => 'nb|recent'],
-        ],
-        [['text' => 'Cancel', 'callback_data' => 'nb|cancel']],
-    ]];
+    return notification_bot_main_keyboard();
 }
 
 function nb_audience_keyboard(): array
@@ -461,10 +454,11 @@ function nb_handle_callback(array $callback): void
     if ($action === 'cancel') {
         nb_clear_context($chatId, $fromId);
         nb_answer($callbackId, 'Cancelled');
-        nb_send($chatId, 'Cancelled.');
+        nb_send($chatId, 'Cancelled.', nb_menu_keyboard());
         nb_json(true, 'CANCELLED', 'Notification bot context cancelled.');
     }
     if ($action === 'menu') {
+        nb_clear_context($chatId, $fromId);
         nb_answer($callbackId, 'Menu');
         nb_send($chatId, 'Z-Pay Swift Notification Bot', nb_menu_keyboard());
         nb_json(true, 'MENU_OK', 'Menu shown.');
@@ -496,12 +490,12 @@ function nb_handle_callback(array $callback): void
     }
     if ($action === 'rate_view') {
         nb_answer($callbackId, 'Current rate');
-        nb_send($chatId, nb_rate_view_text());
+        nb_send($chatId, nb_rate_view_text(), nb_menu_keyboard());
         nb_json(true, 'RATE_VIEW_OK', 'Rate shown.');
     }
     if ($action === 'recent') {
         nb_answer($callbackId, 'Recent broadcasts');
-        nb_send($chatId, nb_recent_text());
+        nb_send($chatId, nb_recent_text(), nb_menu_keyboard());
         nb_json(true, 'RECENT_OK', 'Recent broadcasts shown.');
     }
     if ($action === 'rate') {
@@ -554,7 +548,11 @@ function nb_handle_callback(array $callback): void
         if (!empty($result['ok'])) {
             nb_clear_context($chatId, $fromId);
             nb_answer($callbackId, 'Sent');
-            nb_send($chatId, 'Notification sent. Rows: ' . (int)($result['sent'] ?? 0) . ' | Push: ' . (int)($result['push_sent'] ?? 0));
+            nb_send(
+                $chatId,
+                'Notification sent. Rows: ' . (int)($result['sent'] ?? 0) . ' | Push: ' . (int)($result['push_sent'] ?? 0),
+                nb_menu_keyboard()
+            );
             nb_json(true, 'NOTICE_SENT', 'Notification sent.', $result);
         }
         nb_answer($callbackId, 'Send failed.', true);
@@ -572,10 +570,14 @@ function nb_handle_callback(array $callback): void
             nb_clear_context($chatId, $fromId);
             nb_answer($callbackId, 'Rate updated');
             $notification = (array)($result['data']['notification'] ?? []);
-            nb_send($chatId, 'Ringgit rate updated: RM 1 = ' . number_format($newRate, 2, '.', '') . ' BDT'
-                . "\nNotifications: " . (int)($notification['sent'] ?? 0)
-                . "\nPush: " . (int)($notification['push_sent'] ?? 0)
-                . "\nFailed/skipped: " . ((int)($notification['rows_failed'] ?? 0) + (int)($notification['push_failed'] ?? 0)));
+            nb_send(
+                $chatId,
+                'Ringgit rate updated: RM 1 = ' . number_format($newRate, 2, '.', '') . ' BDT'
+                    . "\nNotifications: " . (int)($notification['sent'] ?? 0)
+                    . "\nPush: " . (int)($notification['push_sent'] ?? 0)
+                    . "\nFailed/skipped: " . ((int)($notification['rows_failed'] ?? 0) + (int)($notification['push_failed'] ?? 0)),
+                nb_menu_keyboard()
+            );
             nb_json(true, 'RATE_UPDATED', 'Ringgit rate updated.', (array)($result['data'] ?? []));
         }
         nb_answer($callbackId, 'Rate update failed.', true);
@@ -594,20 +596,22 @@ function nb_handle_message(array $message): void
         nb_send($chatId, 'Unauthorized Telegram account.');
         nb_json(true, 'IGNORED', 'Unauthorized notification bot message ignored.');
     }
-    if (preg_match('/^\/cancel(?:@\w+)?(?:\s|$)/i', $text) === 1) {
+    $messageAction = notification_bot_action_from_text($text);
+    if ($messageAction === 'CANCEL') {
         nb_clear_context($chatId, $fromId);
-        nb_send($chatId, 'Cancelled.');
+        nb_send($chatId, 'Cancelled.', nb_menu_keyboard());
         nb_json(true, 'CANCELLED', 'Context cancelled.');
     }
-    if (preg_match('/^\/start(?:@\w+)?(?:\s|$)/i', $text) === 1 || strcasecmp($text, 'menu') === 0) {
+    if ($messageAction === 'MENU') {
+        nb_clear_context($chatId, $fromId);
         nb_send($chatId, 'Z-Pay Swift Notification Bot', nb_menu_keyboard());
         nb_json(true, 'MENU_OK', 'Menu shown.');
     }
-    if (strcasecmp($text, 'Send Notification') === 0 || preg_match('/^\/notice(?:@\w+)?(?:\s|$)/i', $text) === 1) {
+    if ($messageAction === 'NOTICE') {
         nb_start_notice($chatId, $fromId);
         nb_json(true, 'NOTICE_START_OK', 'Notification flow started.');
     }
-    if (strcasecmp($text, 'Update Ringgit Rate') === 0 || preg_match('/^\/rate(?:@\w+)?(?:\s|$)/i', $text) === 1) {
+    if ($messageAction === 'RATE') {
         nb_save_context($chatId, $fromId, [
             'workflow' => 'RATE',
             'step' => 'RATE_VALUE',
@@ -617,12 +621,12 @@ function nb_handle_message(array $message): void
         nb_send($chatId, nb_rate_view_text() . "\n\nSend new rate, e.g. 30.90");
         nb_json(true, 'RATE_START_OK', 'Rate flow started.');
     }
-    if (strcasecmp($text, 'View Current Rate') === 0 || preg_match('/^\/current_rate(?:@\w+)?(?:\s|$)/i', $text) === 1) {
-        nb_send($chatId, nb_rate_view_text());
+    if ($messageAction === 'RATE_VIEW') {
+        nb_send($chatId, nb_rate_view_text(), nb_menu_keyboard());
         nb_json(true, 'RATE_VIEW_OK', 'Rate shown.');
     }
-    if (strcasecmp($text, 'Recent Broadcasts') === 0 || preg_match('/^\/recent(?:@\w+)?(?:\s|$)/i', $text) === 1) {
-        nb_send($chatId, nb_recent_text());
+    if ($messageAction === 'RECENT') {
+        nb_send($chatId, nb_recent_text(), nb_menu_keyboard());
         nb_json(true, 'RECENT_OK', 'Recent broadcasts shown.');
     }
 
