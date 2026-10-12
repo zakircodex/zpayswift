@@ -1135,6 +1135,8 @@ function notification_broadcast_admin_notice(array $notice): array
     $title = notification_clean_text($notice['title'] ?? '', 100);
     $bodyFull = notification_clean_text($notice['body'] ?? '', 4000);
     $body = notification_clean_text($bodyFull, 220);
+    $hasImage = (string)($notice['image_id'] ?? '') !== ''
+        && (string)($notice['image_path'] ?? '') !== '';
     if ($noticeId === '' || $title === '') {
         return ['ok' => false, 'code' => 'NOTICE_INVALID'];
     }
@@ -1170,16 +1172,19 @@ function notification_broadcast_admin_notice(array $notice): array
             $sent++;
         }
         if (function_exists('fcm_send_to_user')) {
+            $notificationId = (string)($record['notification_id'] ?? '');
+            $pushHasImage = $hasImage && !empty($record['ok']) && $notificationId !== '';
             $push = fcm_send_to_user(
                 (string)$uid,
                 $title,
                 $body !== '' ? $body : 'Notice from Z-Pay Swift.',
                 [
                     'type' => 'ADMIN_NOTICE',
-                    'notification_id' => (string)($record['notification_id'] ?? ''),
+                    'notification_id' => $notificationId,
                     'notice_id' => $noticeId,
                     'title' => $title,
                     'body' => $body !== '' ? $body : 'Notice from Z-Pay Swift.',
+                    'has_image' => $pushHasImage ? '1' : '0',
                 ],
                 'ADMIN_NOTICE:' . $noticeId . ':' . (string)$uid
             );
@@ -1194,6 +1199,7 @@ function notification_broadcast_admin_notice(array $notice): array
         'audience_label' => notification_audience_label($audience),
         'included_statuses' => notification_audience_statuses($audience),
         'title' => $title,
+        'has_image' => $hasImage,
         'specific_uid' => $specificUid,
         'sent' => $sent,
         'push_sent' => $pushSent,
@@ -1207,6 +1213,7 @@ function notification_broadcast_admin_notice(array $notice): array
         'notice_id' => $noticeId,
         'sent' => $sent,
         'push_sent' => $pushSent,
+        'has_image' => $hasImage,
         'included_statuses' => notification_audience_statuses($audience),
         'recipient_count' => count($targets),
     ];
