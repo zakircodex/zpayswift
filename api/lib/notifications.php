@@ -1488,4 +1488,3 @@ function notification_recent_broadcasts(int $limit = 10): array
     usort($items, static fn(array $a, array $b): int => ((int)$b['created_at'] <=> (int)$a['created_at']));
     return array_slice($items, 0, max(1, min(20, $limit)));
 }
-
