@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-$apkPath = __DIR__ . '/downloads/zpay-swift.apk';
+$apkPath = __DIR__ . '/downloads/Z-Pay-Swift-1.18.apk';
 $downloadName = 'zpay-swift.apk';
 
 if (is_file($apkPath) && is_readable($apkPath)) {

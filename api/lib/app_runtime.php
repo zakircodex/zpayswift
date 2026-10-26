@@ -1,8 +1,8 @@
 <?php
 declare(strict_types=1);
 
-const APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE = 2;
-const APP_RUNTIME_DEFAULT_ANDROID_VERSION_NAME = '1.1';
+const APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE = 19;
+const APP_RUNTIME_DEFAULT_ANDROID_VERSION_NAME = '1.18';
 const APP_RUNTIME_DEFAULT_ANDROID_UPDATE_URL = 'https://zpayswift.com/download.php';
 const APP_RUNTIME_DEFAULT_ANDROID_UPDATE_MESSAGE = 'A new version of Z-Pay Swift is ready. Update now to continue.';
 
@@ -54,6 +54,35 @@ function app_runtime_update_message($value, string $default = APP_RUNTIME_DEFAUL
     return $message;
 }
 
+function app_runtime_android_latest_release(array $config): array
+{
+    $configuredVersionCode = app_runtime_positive_int(
+        $config['android_latest_version_code'] ?? APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE,
+        APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE
+    );
+    $configuredVersionName = app_runtime_version_name(
+        $config['android_latest_version_name'] ?? APP_RUNTIME_DEFAULT_ANDROID_VERSION_NAME
+    );
+
+    if ($configuredVersionCode < APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE) {
+        return [
+            'version_code' => APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE,
+            'version_name' => APP_RUNTIME_DEFAULT_ANDROID_VERSION_NAME,
+        ];
+    }
+
+    if ($configuredVersionCode === APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE
+        && version_compare($configuredVersionName, APP_RUNTIME_DEFAULT_ANDROID_VERSION_NAME, '<')
+    ) {
+        $configuredVersionName = APP_RUNTIME_DEFAULT_ANDROID_VERSION_NAME;
+    }
+
+    return [
+        'version_code' => $configuredVersionCode,
+        'version_name' => $configuredVersionName,
+    ];
+}
+
 function app_runtime_android_update_required(
     int $currentVersionCode,
     string $currentVersionName,
@@ -80,13 +109,9 @@ function app_runtime_android_update_required(
 
 function app_runtime_android_update(array $config, int $currentVersionCode = 0, string $currentVersionName = ''): array
 {
-    $latestVersionCode = app_runtime_positive_int(
-        $config['android_latest_version_code'] ?? APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE,
-        APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE
-    );
-    $latestVersionName = app_runtime_version_name(
-        $config['android_latest_version_name'] ?? APP_RUNTIME_DEFAULT_ANDROID_VERSION_NAME
-    );
+    $latestRelease = app_runtime_android_latest_release($config);
+    $latestVersionCode = (int)$latestRelease['version_code'];
+    $latestVersionName = (string)$latestRelease['version_name'];
     $currentVersionCode = max(0, $currentVersionCode);
 
     return [
