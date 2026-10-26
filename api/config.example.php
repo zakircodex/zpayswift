@@ -45,6 +45,8 @@ define('MYSQL_CONNECT_TIMEOUT_SECONDS', 5);
 
 /* Session and validation */
 define('SESSION_TTL_SECONDS', 60 * 60 * 24 * 7);
+/* Regular USER sessions persist until logout, device replacement, account block, or server revocation. */
+define('USER_SESSION_PERSISTENT', true);
 define('ADMIN_PANEL_SESSION_TTL_SECONDS', 60 * 60 * 2);
 define('ADMIN_SESSION_TTL_SECONDS', 60 * 60 * 2);
 /* Admin Android companion app is opt-in and uses short, device-bound sessions. */

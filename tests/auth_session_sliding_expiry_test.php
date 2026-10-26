@@ -4,6 +4,7 @@ declare(strict_types=1);
 $_SERVER['SCRIPT_FILENAME'] = __FILE__;
 
 define('SESSION_TTL_SECONDS', 60 * 60 * 24 * 7);
+define('USER_SESSION_PERSISTENT', true);
 
 $authSlidingNow = 1792972800;
 $authSlidingToken = 'active-session-token';
@@ -102,8 +103,8 @@ $touchPatch = (array)($authSlidingPatches[0]['patch'] ?? []);
 auth_sliding_expect(($touchPatch['last_seen_at'] ?? 0) === $authSlidingNow, 'Session last_seen_at was not touched.');
 auth_sliding_expect(($touchPatch['updated_at'] ?? 0) === $authSlidingNow, 'Session updated_at was not touched.');
 auth_sliding_expect(
-    ($touchPatch['expires_at'] ?? 0) === $authSlidingNow + SESSION_TTL_SECONDS,
-    'Active session expiry was not renewed.'
+    array_key_exists('expires_at', $touchPatch) && $touchPatch['expires_at'] === 0,
+    'Active USER session was not converted to persistent login.'
 );
 
 $authSlidingPatches = [];
@@ -111,6 +112,7 @@ auth_require_user(false);
 auth_sliding_expect($authSlidingPatches === [], 'Non-touch authentication unexpectedly mutated the session.');
 
 $adminMobileExpiry = $authSlidingNow + 7200;
+$authSlidingDb['USERS']['USER_ACTIVE']['role'] = 'ADMIN';
 $authSlidingDb['USER_SESSIONS'][$authSlidingHash]['channel'] = 'ADMIN_MOBILE';
 $authSlidingDb['USER_SESSIONS'][$authSlidingHash]['expires_at'] = $adminMobileExpiry;
 $authSlidingPatches = [];
@@ -125,6 +127,7 @@ auth_sliding_expect(
     'Admin mobile session incorrectly inherited the general user TTL.'
 );
 unset($authSlidingDb['USER_SESSIONS'][$authSlidingHash]['channel']);
+$authSlidingDb['USERS']['USER_ACTIVE']['role'] = 'SUBADMIN';
 
 $longExpiry = $authSlidingNow + (SESSION_TTL_SECONDS * 2);
 $authSlidingDb['USER_SESSIONS'][$authSlidingHash]['expires_at'] = $longExpiry;

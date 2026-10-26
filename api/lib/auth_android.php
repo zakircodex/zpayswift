@@ -273,9 +273,10 @@ function auth_app_issue_session(array $user, string $uid, string $deviceId, stri
         'device_name' => $deviceName,
         'device_id' => $deviceId,
         'status' => 'ACTIVE',
+        'channel' => 'USER_APP',
         'ip' => client_ip(),
         'created_at' => $now,
-        'expires_at' => $now + SESSION_TTL_SECONDS,
+        'expires_at' => auth_user_session_expires_at($now),
         'last_seen_at' => $now,
         'auth_session_epoch' => $authSessionEpoch,
     ];
@@ -521,7 +522,7 @@ function auth_app_complete_quick_login_session(
     if (!fb_patch('USER_SESSIONS/' . $sessionHash, [
         'device_name' => $deviceName,
         'last_seen_at' => $now,
-        'expires_at' => $now + SESSION_TTL_SECONDS,
+        'expires_at' => auth_user_session_expires_at($now),
         'updated_at' => $now,
     ])) {
         return auth_app_quick_login_error(
