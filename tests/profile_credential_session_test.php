@@ -114,6 +114,8 @@ foreach (['password_hash' => 'new-passphrase', 'pin_hash' => '3434'] as $field =
     $data = $result['data'];
     expect($data['session_preserved'] && !$data['reauth_required'], 'Current device must stay signed in.');
     expect($data['session_token'] !== 'old-token', 'Session token must rotate.');
+    expect($store['USER_SESSIONS/' . session_hash($data['session_token'])]['expires_at'] === 0,
+        'Replacement USER session must remain persistent.');
     expect(password_verify($plain, $store['USERS/U1'][$field]), 'New credential must be saved.');
     $unchanged = $field === 'pin_hash' ? 'password_hash' : 'pin_hash';
     expect($store['USERS/U1'][$unchanged] === $auth['user'][$unchanged], 'Other credential must remain unchanged.');

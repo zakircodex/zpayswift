@@ -233,6 +233,8 @@ assert_true(!empty($session['ok']), 'website user session must be created');
 $sessionRow = test_get('USER_SESSIONS/' . $session['session_hash']);
 $userRow = test_get('USERS/U1');
 assert_true(($sessionRow['status'] ?? '') === 'ACTIVE', 'website session must be active after checked creation');
+assert_true(($sessionRow['expires_at'] ?? -1) === 0, 'website USER session must persist until explicit revocation');
+assert_true(($sessionRow['channel'] ?? '') === 'USER_WEB', 'website USER session must record its channel');
 assert_true(($sessionRow['auth_session_epoch'] ?? '') === ($userRow['auth_session_epoch'] ?? ''), 'session epoch must match user epoch');
 assert_true(($userRow['active_device_id'] ?? '') === 'USER_WEB', 'active website device must be persisted');
 assert_true(!in_array('USER_SESSIONS', $getPaths, true), 'website login must not scan the global session node');
@@ -295,6 +297,7 @@ $quickDurationMs = (microtime(true) - $quickStartedAt) * 1000;
 assert_true(!empty($quickContext['ok']), 'Android quick login must validate the saved session by direct token path');
 assert_true(!empty($quickSession['ok']) && !empty($quickSession['reused']), 'Android quick login must reuse the OTP-created session');
 assert_true(($quickSession['session_token'] ?? '') === $androidToken, 'Android quick login must return the same session token');
+assert_true((test_get('USER_SESSIONS/' . $androidHash)['expires_at'] ?? -1) === 0, 'Android quick login must persist the active USER session');
 assert_true(count((array)test_get('USER_SESSIONS')) === $sessionCountBeforeQuickLogin, 'Android quick login must not create another session');
 assert_true(!in_array('USER_SESSIONS', $getPaths, true), 'Android quick login must not scan the global session node');
 assert_true(!in_array('USERS', $getPaths, true), 'Android quick login must not scan the global user node');
@@ -384,13 +387,16 @@ test_set('USERS/U4', [
 $firebaseDelayUs = ['USER_SESSIONS' => 120000];
 $getPaths = [];
 $sessionIssueStartedAt = microtime(true);
-auth_app_issue_session(
+$issuedAndroidSession = auth_app_issue_session(
     (array)test_get('USERS/U4'),
     'U4',
     'ANDROID_OLD_FLOW',
     'Android Legacy Test',
     ['app_version' => '1.0.0']
 );
+$issuedAndroidRow = test_get('USER_SESSIONS/' . $issuedAndroidSession['session_hash']);
+assert_true(($issuedAndroidRow['expires_at'] ?? -1) === 0, 'new Android USER session must persist until explicit revocation');
+assert_true(($issuedAndroidRow['channel'] ?? '') === 'USER_APP', 'new Android USER session must record its channel');
 $sessionIssueDurationMs = (microtime(true) - $sessionIssueStartedAt) * 1000;
 $firebaseDelayUs = [];
 assert_true(!in_array('USER_SESSIONS', $getPaths, true), 'Android session issuance must not scan the global session node');

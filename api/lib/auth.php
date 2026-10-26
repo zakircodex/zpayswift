@@ -1119,6 +1119,36 @@ function auth_new_session_epoch(): string
     return 'SE' . strtoupper(bin2hex(random_bytes(16)));
 }
 
+function auth_persistent_user_sessions_enabled(): bool
+{
+    if (!defined('USER_SESSION_PERSISTENT')) {
+        return true;
+    }
+
+    $value = constant('USER_SESSION_PERSISTENT');
+    if (is_bool($value)) {
+        return $value;
+    }
+
+    return in_array(strtoupper(trim((string)$value)), ['1', 'TRUE', 'YES', 'ON'], true);
+}
+
+function auth_user_session_expires_at(int $now): int
+{
+    if (auth_persistent_user_sessions_enabled()) {
+        return 0;
+    }
+
+    return $now + max(1, (int)SESSION_TTL_SECONDS);
+}
+
+function auth_is_persistent_user_session(array $user, array $session = []): bool
+{
+    return auth_persistent_user_sessions_enabled()
+        && auth_status_value($user['role'] ?? '') === 'USER'
+        && auth_status_value($session['channel'] ?? '') !== 'ADMIN_MOBILE';
+}
+
 function auth_issue_website_user_session(
     array $user,
     string $uid,
@@ -1155,10 +1185,11 @@ function auth_issue_website_user_session(
         'device_name' => $deviceName,
         'device_id' => $deviceId,
         'status' => 'ACTIVE',
+        'channel' => 'USER_WEB',
         'activated_at' => $now,
         'ip' => client_ip(),
         'created_at' => $now,
-        'expires_at' => $now + SESSION_TTL_SECONDS,
+        'expires_at' => auth_user_session_expires_at($now),
         'last_seen_at' => $now,
         'auth_session_epoch' => $epoch,
     ];
@@ -1328,7 +1359,9 @@ function auth_require_user(bool $touchSession = true): array
             'last_seen_at' => $touchedAt,
             'updated_at' => $touchedAt,
         ];
-        if ($sessionChannel !== 'ADMIN_MOBILE'
+        if (auth_is_persistent_user_session($user, $session)) {
+            $sessionPatch['expires_at'] = 0;
+        } elseif ($sessionChannel !== 'ADMIN_MOBILE'
             && $expiresAt > 0
             && defined('SESSION_TTL_SECONDS')
             && SESSION_TTL_SECONDS > 0

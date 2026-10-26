@@ -52,10 +52,11 @@ function auth_app_change_profile_credential(array $auth, string $field, string $
         'device_id' => $deviceId,
         'device_name' => $deviceName,
         'status' => 'ACTIVE',
+        'channel' => 'USER_APP',
         'ip' => client_ip(),
         'created_at' => $now,
         'last_seen_at' => $now,
-        'expires_at' => $now + SESSION_TTL_SECONDS,
+        'expires_at' => auth_user_session_expires_at($now),
         'auth_session_epoch' => $epoch,
     ];
 
