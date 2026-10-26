@@ -10,6 +10,7 @@ $row = fb_get('APP_CONFIG');
 if (!is_array($row)) {
     $row = [];
 }
+$androidRelease = app_runtime_android_latest_release($row);
 
 api_response(true, 'SUCCESS', 'App config loaded', [
     'topup_enabled' => (bool)($row['topup_enabled'] ?? true),
@@ -17,13 +18,8 @@ api_response(true, 'SUCCESS', 'App config loaded', [
     'maintenance_mode' => (bool)($row['maintenance_mode'] ?? false),
     'privacy_policy_url' => trim((string)($row['privacy_policy_url'] ?? '')),
     'terms_conditions_url' => trim((string)($row['terms_conditions_url'] ?? '')),
-    'android_latest_version_code' => app_runtime_positive_int(
-        $row['android_latest_version_code'] ?? APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE,
-        APP_RUNTIME_DEFAULT_ANDROID_VERSION_CODE
-    ),
-    'android_latest_version_name' => app_runtime_version_name(
-        $row['android_latest_version_name'] ?? APP_RUNTIME_DEFAULT_ANDROID_VERSION_NAME
-    ),
+    'android_latest_version_code' => (int)$androidRelease['version_code'],
+    'android_latest_version_name' => (string)$androidRelease['version_name'],
     'android_update_url' => app_runtime_https_url(
         $row['android_update_url'] ?? APP_RUNTIME_DEFAULT_ANDROID_UPDATE_URL
     ),

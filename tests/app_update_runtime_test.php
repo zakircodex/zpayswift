@@ -17,18 +17,22 @@ $root = dirname(__DIR__);
 require_once $root . '/api/lib/app_runtime.php';
 
 $config = [
-    'android_latest_version_code' => 7,
+    'android_latest_version_code' => 27,
     'android_latest_version_name' => '2.4.0',
     'android_update_url' => 'https://zpayswift.com/download.php',
     'android_update_message' => 'Update Z-Pay Swift to continue.',
 ];
 
-$oldClient = app_runtime_android_update($config, 6, '2.3.0');
-$currentClient = app_runtime_android_update($config, 7, '2.4.0');
-$newerClient = app_runtime_android_update($config, 8, '2.5.0');
-$sameCodeOlderName = app_runtime_android_update($config, 7, '2.3.0');
+$oldClient = app_runtime_android_update($config, 26, '2.3.0');
+$currentClient = app_runtime_android_update($config, 27, '2.4.0');
+$newerClient = app_runtime_android_update($config, 28, '2.5.0');
+$sameCodeOlderName = app_runtime_android_update($config, 27, '2.3.0');
 $legacyClient = app_runtime_android_update($config, 0, '2.3.0');
 $legacyCurrentClient = app_runtime_android_update($config, 0, '2.4.0');
+$staleProductionConfig = app_runtime_android_update([
+    'android_latest_version_code' => 18,
+    'android_latest_version_name' => '1.17',
+], 18, '1.17');
 
 app_update_expect(!empty($oldClient['required']), 'A lower Android version code must require an update.');
 app_update_expect(empty($currentClient['required']), 'The configured Android version must remain allowed.');
@@ -36,6 +40,9 @@ app_update_expect(empty($newerClient['required']), 'A newer Android build must r
 app_update_expect(!empty($sameCodeOlderName['required']), 'An older version name with the same code must require an update.');
 app_update_expect(!empty($legacyClient['required']), 'A legacy client without a version code must be checked by version name.');
 app_update_expect(empty($legacyCurrentClient['required']), 'A legacy client on the configured version name must remain allowed.');
+app_update_expect(!empty($staleProductionConfig['required']), 'The built-in release floor must update an older remote configuration.');
+app_update_expect((int)$staleProductionConfig['latest_version_code'] === 19, 'The release floor must publish Android version code 19.');
+app_update_expect((string)$staleProductionConfig['latest_version_name'] === '1.18', 'The release floor must publish Android version 1.18.');
 app_update_expect(
     !app_runtime_is_android_client_request(['device_id' => 'USER_WEB', 'app_version' => 'WEB']),
     'Browser login requests must remain outside the Android update gate.'
