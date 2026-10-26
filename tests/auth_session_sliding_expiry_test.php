@@ -110,6 +110,22 @@ $authSlidingPatches = [];
 auth_require_user(false);
 auth_sliding_expect($authSlidingPatches === [], 'Non-touch authentication unexpectedly mutated the session.');
 
+$adminMobileExpiry = $authSlidingNow + 7200;
+$authSlidingDb['USER_SESSIONS'][$authSlidingHash]['channel'] = 'ADMIN_MOBILE';
+$authSlidingDb['USER_SESSIONS'][$authSlidingHash]['expires_at'] = $adminMobileExpiry;
+$authSlidingPatches = [];
+auth_require_user(true);
+$adminMobilePatch = (array)($authSlidingPatches[0]['patch'] ?? []);
+auth_sliding_expect(
+    ($adminMobilePatch['last_seen_at'] ?? 0) === $authSlidingNow,
+    'Admin mobile session was not touched.'
+);
+auth_sliding_expect(
+    !isset($adminMobilePatch['expires_at']),
+    'Admin mobile session incorrectly inherited the general user TTL.'
+);
+unset($authSlidingDb['USER_SESSIONS'][$authSlidingHash]['channel']);
+
 $longExpiry = $authSlidingNow + (SESSION_TTL_SECONDS * 2);
 $authSlidingDb['USER_SESSIONS'][$authSlidingHash]['expires_at'] = $longExpiry;
 $authSlidingPatches = [];

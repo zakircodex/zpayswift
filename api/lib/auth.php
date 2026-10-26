@@ -1323,11 +1323,16 @@ function auth_require_user(bool $touchSession = true): array
 
     if ($touchSession) {
         $touchedAt = now_ts();
+        $sessionChannel = auth_status_value($session['channel'] ?? '');
         $sessionPatch = [
             'last_seen_at' => $touchedAt,
             'updated_at' => $touchedAt,
         ];
-        if ($expiresAt > 0 && defined('SESSION_TTL_SECONDS') && SESSION_TTL_SECONDS > 0) {
+        if ($sessionChannel !== 'ADMIN_MOBILE'
+            && $expiresAt > 0
+            && defined('SESSION_TTL_SECONDS')
+            && SESSION_TTL_SECONDS > 0
+        ) {
             $sessionPatch['expires_at'] = max($expiresAt, $touchedAt + SESSION_TTL_SECONDS);
         }
         fb_patch('USER_SESSIONS/' . $session['_session_hash'], $sessionPatch);
