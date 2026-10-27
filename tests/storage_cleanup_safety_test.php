@@ -212,6 +212,26 @@ $options = [
     'current_apk' => 'Z-Pay-Swift-1.18.apk',
     'limit' => 100,
     'trigger' => 'AUTOMATIC',
+    'pre_delete_batch' => static function (array $candidates, string $runId): array {
+        $fingerprints = [];
+        foreach ($candidates as $candidate) {
+            $candidateId = strtolower((string)($candidate['candidate_id'] ?? ''));
+            $path = (string)($candidate['path'] ?? '');
+            $fingerprints[$candidateId] = [
+                'sha256' => (string)hash_file('sha256', $path),
+                'size_bytes' => (int)filesize($path),
+            ];
+        }
+        return [
+            'ok' => true,
+            'code' => 'EMAIL_BACKUP_TEST_ACCEPTED',
+            'messages_sent' => 1,
+            'files_sent' => count($candidates),
+            'files_reused' => 0,
+            'recipient_masked' => 'te**@example.com',
+            'fingerprints' => $fingerprints,
+        ];
+    },
 ];
 $categories = array_keys(storage_cleanup_categories());
 

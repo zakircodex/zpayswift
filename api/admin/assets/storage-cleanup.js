@@ -103,11 +103,20 @@
     const automaticDetail = document.getElementById('storageCleanupAutomationDetail');
     const automaticEnabled = automatic.enabled === true;
     const automaticCategories = Array.isArray(automatic.categories) ? automatic.categories.length : 0;
-    if (automaticPanel) automaticPanel.classList.toggle('enabled', automaticEnabled);
-    if (automaticStatus) automaticStatus.textContent = automaticEnabled ? 'Automatic cleanup runner enabled' : 'Automatic cleanup runner disabled';
+    const emailBackup = automatic.email_backup && typeof automatic.email_backup === 'object' ? automatic.email_backup : {};
+    const emailReady = emailBackup.ready === true;
+    const automationReady = automaticEnabled && emailReady;
+    if (automaticPanel) automaticPanel.classList.toggle('enabled', automationReady);
+    if (automaticStatus) {
+      automaticStatus.textContent = automationReady
+        ? 'Automatic cleanup runner ready'
+        : (automaticEnabled ? 'Automatic cleanup runner paused' : 'Automatic cleanup runner disabled');
+    }
     if (automaticDetail) {
-      automaticDetail.textContent = automaticEnabled
-        ? `Daily server runs may delete up to ${Number(automatic.batch_limit || 100)} eligible files across ${automaticCategories} protected categories.`
+      automaticDetail.textContent = automationReady
+        ? `Daily server runs may email and delete up to ${Number(automatic.batch_limit || 100)} eligible files across ${automaticCategories} protected categories. Backup: ${emailBackup.recipient_masked || 'configured'}. Automatic APK deletion is off.`
+        : automaticEnabled
+          ? 'No files will be deleted until the cleanup backup email is ready. Automatic APK deletion is off.'
         : 'Scheduled deletion remains fail-closed until it is explicitly enabled in the private server configuration.';
     }
 

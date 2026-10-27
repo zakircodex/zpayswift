@@ -6,6 +6,8 @@ $dashboard = (string)file_get_contents($root . '/api/admin/dashboard.php');
 $js = (string)file_get_contents($root . '/api/admin/assets/dashboard.js');
 $css = (string)file_get_contents($root . '/api/admin/assets/admin-settings.css');
 $proxy = (string)file_get_contents($root . '/api/admin/proxy.php');
+$configGet = (string)file_get_contents($root . '/api/admin/config/get.php');
+$configSave = (string)file_get_contents($root . '/api/admin/config/save.php');
 $operatorGet = (string)file_get_contents($root . '/api/admin/operators/get.php');
 $operatorList = (string)file_get_contents($root . '/api/admin/operators/list.php');
 $assertions = 0;
@@ -97,7 +99,7 @@ $settingsUi = ($settingsStart !== false && $settingsEnd !== false)
     : '';
 admin_settings_ui_expect($settingsUi !== '', 'System Settings source could not be isolated');
 
-foreach (['Services', 'Service Limits', 'Legal Links', 'Maintenance'] as $groupTitle) {
+foreach (['Services', 'Service Limits', 'Legal Links', 'Storage Cleanup Backup', 'Maintenance'] as $groupTitle) {
     admin_settings_ui_expect(str_contains($settingsUi, $groupTitle), "System Settings group missing: {$groupTitle}");
 }
 
@@ -111,6 +113,8 @@ foreach ([
     'cfgMaxBundleAmount',
     'cfgPrivacyPolicyUrl',
     'cfgTermsConditionsUrl',
+    'cfgStorageCleanupEmailEnabled',
+    'cfgStorageCleanupEmailRecipient',
 ] as $fieldId) {
     admin_settings_ui_expect(str_contains($settingsUi, 'id="' . $fieldId . '"'), "Existing System Settings field ID changed: {$fieldId}");
 }
@@ -118,6 +122,9 @@ foreach ([
 admin_settings_ui_expect(str_contains($settingsUi, "proxyPost('app_config_save', body"), 'System Settings save action changed');
 admin_settings_ui_expect(str_contains($settingsUi, "setModalPresentationScope('system-settings')"), 'System Settings modal presentation scope is missing');
 admin_settings_ui_expect(!preg_match('/\b(commission|rate_myr_bdt|myr_to_bdt_rate)\b/i', $settingsUi), 'Unrelated rate or commission settings were added to System Settings');
+admin_settings_ui_expect(str_contains($configGet, "'storage_cleanup_email_recipient'"), 'System Settings API must return the cleanup backup recipient to authenticated Admins');
+admin_settings_ui_expect(str_contains($configSave, 'storage_cleanup_email_address($storageCleanupEmailRaw)'), 'System Settings API must strictly validate the cleanup backup recipient');
+admin_settings_ui_expect(str_contains($configSave, "'storage_cleanup_email_recipient_configured'"), 'Cleanup email audit metadata must avoid logging the recipient address');
 
 $getResponse = substr($operatorGet, (int)strrpos($operatorGet, 'api_response('));
 $listResponse = substr($operatorList, (int)strrpos($operatorList, 'api_response('));

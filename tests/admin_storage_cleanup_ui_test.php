@@ -35,6 +35,8 @@ admin_storage_cleanup_expect(str_contains($cleanupJs, "proxyPost('storage_cleanu
 admin_storage_cleanup_expect(str_contains($cleanupJs, 'preview_token'), 'Cleanup UI must submit its short-lived preview token.');
 admin_storage_cleanup_expect(str_contains($cleanupJs, 'DELETE 90 DAY FILES'), 'Cleanup UI must require an explicit typed confirmation.');
 admin_storage_cleanup_expect(str_contains($cleanupJs, 'automatic.enabled === true'), 'Cleanup UI must render only an explicitly enabled automatic runner as active.');
+admin_storage_cleanup_expect(str_contains($cleanupJs, 'emailBackup.ready === true'), 'Cleanup UI must expose the fail-closed email backup readiness state.');
+admin_storage_cleanup_expect(str_contains($cleanupJs, 'Automatic APK deletion is off'), 'Cleanup UI must clearly report the automatic APK protection.');
 admin_storage_cleanup_expect(!preg_match('/loadStorageCleanup\([^)]*\).*storage_cleanup_run/s', substr($cleanupJs, -500)), 'Loading the cleanup section must never auto-delete files.');
 
 admin_storage_cleanup_expect(str_contains($proxy, "case 'storage_cleanup_preview':"), 'Admin proxy must expose cleanup preview.');
@@ -49,6 +51,7 @@ admin_storage_cleanup_expect(str_contains($library, "\$status !== 'CLOSED'"), 'S
 admin_storage_cleanup_expect(str_contains($library, "'rollback_apk'"), 'APK cleanup must preserve a rollback release.');
 admin_storage_cleanup_expect(str_contains($library, 'STORAGE_CLEANUP_RUNS/'), 'Every cleanup must create an audit record.');
 admin_storage_cleanup_expect(str_contains($library, "'trigger' => \$trigger"), 'Cleanup audits must distinguish manual and automatic runs.');
+admin_storage_cleanup_expect(str_contains($library, 'STORAGE_CLEANUP_BACKUP_FAILED'), 'Automatic cleanup must fail closed when its email backup fails.');
 admin_storage_cleanup_expect(str_contains($cleanupCss, '@media (max-width:640px)'), 'Storage Cleanup must remain usable on mobile Admin screens.');
 
 fwrite(STDOUT, "PASS: {$assertions} admin storage cleanup UI assertions\n");

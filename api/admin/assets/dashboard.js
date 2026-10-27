@@ -4903,6 +4903,31 @@ async function openAppConfigModal(){
             </div>
           </section>
 
+          <section class="admin-settings-group">
+            <div class="admin-settings-group-head">
+              <span class="settings-kicker">Automatic retention</span>
+              <h4>Storage Cleanup Backup</h4>
+            </div>
+            <div class="form-grid">
+              <label class="settings-toggle-card form-full">
+                <span>
+                  <strong>Email Before Delete</strong>
+                  <small>${data.storage_cleanup_email_ready ? 'Ready' : 'Not ready'}</small>
+                </span>
+                <select id="cfgStorageCleanupEmailEnabled">
+                  <option value="true" ${data.storage_cleanup_email_enabled ? 'selected' : ''}>Enabled</option>
+                  <option value="false" ${!data.storage_cleanup_email_enabled ? 'selected' : ''}>Disabled</option>
+                </select>
+              </label>
+
+              <label class="admin-settings-field form-full">
+                <span>Backup Email</span>
+                <input class="input" id="cfgStorageCleanupEmailRecipient" type="email" inputmode="email" autocomplete="email" maxlength="254" placeholder="admin@example.com" value="${esc(data.storage_cleanup_email_recipient || '')}">
+                <small>Automatic deletion pauses if email backup is unavailable. APK files remain excluded.</small>
+              </label>
+            </div>
+          </section>
+
           <section class="admin-settings-group settings-maintenance-card">
             <div class="admin-settings-group-head">
               <span class="settings-kicker">System state</span>
@@ -4954,6 +4979,8 @@ async function saveAppConfig(){
     android_latest_version_name: (document.getElementById('cfgAndroidVersionName')?.value || '').trim(),
     android_update_url: (document.getElementById('cfgAndroidUpdateUrl')?.value || '').trim(),
     android_update_message: (document.getElementById('cfgAndroidUpdateMessage')?.value || '').trim(),
+    storage_cleanup_email_enabled: document.getElementById('cfgStorageCleanupEmailEnabled')?.value === 'true',
+    storage_cleanup_email_recipient: (document.getElementById('cfgStorageCleanupEmailRecipient')?.value || '').trim(),
   };
 
   try{

@@ -2,6 +2,8 @@
 declare(strict_types=1);
 
 require_once dirname(__DIR__, 2) . '/bootstrap.php';
+require_once dirname(__DIR__, 2) . '/lib/storage_cleanup.php';
+require_once dirname(__DIR__, 2) . '/lib/storage_cleanup_email.php';
 
 api_require_method('POST');
 $auth = auth_require_admin_session(true);
@@ -14,6 +16,14 @@ $existing = is_array($existing) ? $existing : [];
 $topupEnabled = (bool)($body['topup_enabled'] ?? true);
 $bundleEnabled = (bool)($body['bundle_enabled'] ?? true);
 $maintenanceMode = (bool)($body['maintenance_mode'] ?? false);
+$currentCleanupEmail = storage_cleanup_email_settings($existing);
+$storageCleanupEmailEnabled = array_key_exists('storage_cleanup_email_enabled', $body)
+    ? storage_cleanup_email_bool($body['storage_cleanup_email_enabled'])
+    : !empty($currentCleanupEmail['enabled']);
+$storageCleanupEmailRaw = array_key_exists('storage_cleanup_email_recipient', $body)
+    ? (string)$body['storage_cleanup_email_recipient']
+    : (string)($currentCleanupEmail['recipient'] ?? '');
+$storageCleanupEmailRecipient = storage_cleanup_email_address($storageCleanupEmailRaw);
 
 $minTopupAmount = (float)($body['min_topup_amount'] ?? 0);
 $maxTopupAmount = (float)($body['max_topup_amount'] ?? 0);
@@ -43,6 +53,18 @@ $androidUpdateUrl = app_config_public_https_url(
 $androidUpdateMessage = trim((string)($body['android_update_message']
     ?? $existing['android_update_message']
     ?? APP_RUNTIME_DEFAULT_ANDROID_UPDATE_MESSAGE));
+
+if (trim($storageCleanupEmailRaw) !== '' && $storageCleanupEmailRecipient === '') {
+    api_response(false, 'VALIDATION_ERROR', 'Storage cleanup email must be a valid email address.', [
+        'field' => 'storage_cleanup_email_recipient',
+    ], 422);
+}
+
+if ($storageCleanupEmailEnabled && $storageCleanupEmailRecipient === '') {
+    api_response(false, 'VALIDATION_ERROR', 'A valid backup email is required before automatic cleanup can be enabled.', [
+        'field' => 'storage_cleanup_email_recipient',
+    ], 422);
+}
 
 if ($minTopupAmount < 0) {
     api_response(false, 'VALIDATION_ERROR', 'min_topup_amount cannot be negative', ['field' => 'min_topup_amount'], 422);
@@ -122,6 +144,8 @@ $payload = [
     'android_latest_version_name' => $androidLatestVersionName,
     'android_update_url' => $androidUpdateUrl['url'],
     'android_update_message' => $androidUpdateMessage,
+    'storage_cleanup_email_enabled' => $storageCleanupEmailEnabled,
+    'storage_cleanup_email_recipient' => $storageCleanupEmailRecipient,
 
     'min_topup_amount' => $minTopupAmount,
     'max_topup_amount' => $maxTopupAmount,
@@ -146,6 +170,8 @@ admin_action_log('SAVE_APP_CONFIG', 'APP_CONFIG', 'Admin updated app config', [
     'android_latest_version_code' => $androidLatestVersionCode,
     'android_latest_version_name' => $androidLatestVersionName,
     'android_update_url_configured' => $androidUpdateUrl['url'] !== '',
+    'storage_cleanup_email_enabled' => $storageCleanupEmailEnabled,
+    'storage_cleanup_email_recipient_configured' => $storageCleanupEmailRecipient !== '',
     'min_topup_amount' => $minTopupAmount,
     'max_topup_amount' => $maxTopupAmount,
     'min_bundle_amount' => $minBundleAmount,
@@ -162,6 +188,8 @@ system_log('ADMIN_SAVE_APP_CONFIG', 'APP_CONFIG', 'Admin updated app config', [
     'android_latest_version_code' => $androidLatestVersionCode,
     'android_latest_version_name' => $androidLatestVersionName,
     'android_update_url_configured' => $androidUpdateUrl['url'] !== '',
+    'storage_cleanup_email_enabled' => $storageCleanupEmailEnabled,
+    'storage_cleanup_email_recipient_configured' => $storageCleanupEmailRecipient !== '',
     'min_topup_amount' => $minTopupAmount,
     'max_topup_amount' => $maxTopupAmount,
     'min_bundle_amount' => $minBundleAmount,

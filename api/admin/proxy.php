@@ -10,6 +10,7 @@ require_once dirname(__DIR__) . '/lib/referral.php';
 require_once dirname(__DIR__) . '/lib/currency_conversion.php';
 require_once dirname(__DIR__) . '/lib/support.php';
 require_once dirname(__DIR__) . '/lib/storage_cleanup.php';
+require_once dirname(__DIR__) . '/lib/storage_cleanup_email.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');

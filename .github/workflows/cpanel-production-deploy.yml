@@ -131,6 +131,7 @@ jobs:
           test -f deployment/api/admin/assets/zsky24-admin.js
           test -f deployment/api/admin/assets/zsky24-admin.css
           test -f deployment/api/lib/storage_cleanup.php
+          test -f deployment/api/lib/storage_cleanup_email.php
           test -f deployment/api/tools/cleanup_storage.php
           test -f deployment/api/admin/assets/storage-cleanup.js
           test -f deployment/api/admin/assets/admin-storage-cleanup.css
