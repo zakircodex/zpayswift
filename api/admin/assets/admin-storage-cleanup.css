@@ -81,6 +81,48 @@
   color:var(--muted);
 }
 
+#storageCleanupSection .storage-cleanup-automation{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+  margin:0 20px 16px;
+  padding:13px 15px;
+  border:1px solid rgba(118,154,194,.2);
+  border-radius:8px;
+  background:rgba(10,28,49,.4);
+}
+
+#storageCleanupSection .storage-cleanup-automation-dot{
+  width:10px;
+  height:10px;
+  flex:0 0 auto;
+  margin-top:5px;
+  border-radius:50%;
+  background:#8094aa;
+  box-shadow:0 0 0 4px rgba(128,148,170,.12);
+}
+
+#storageCleanupSection .storage-cleanup-automation.enabled{
+  border-color:rgba(62,222,145,.28);
+  background:rgba(33,177,111,.06);
+}
+
+#storageCleanupSection .storage-cleanup-automation.enabled .storage-cleanup-automation-dot{
+  background:#42df96;
+  box-shadow:0 0 0 4px rgba(66,223,150,.12);
+}
+
+#storageCleanupSection .storage-cleanup-automation strong,
+#storageCleanupSection .storage-cleanup-automation span{
+  display:block;
+}
+
+#storageCleanupSection .storage-cleanup-automation span:last-child{
+  margin-top:4px;
+  color:var(--muted);
+  line-height:1.45;
+}
+
 #storageCleanupSection .storage-cleanup-category-list{
   border-top:1px solid rgba(118,154,194,.14);
 }
@@ -256,6 +298,10 @@
   #storageCleanupSection .storage-cleanup-policy{
     display:grid;
     margin:14px;
+  }
+
+  #storageCleanupSection .storage-cleanup-automation{
+    margin:0 14px 14px;
   }
 
   #storageCleanupSection .storage-cleanup-category{

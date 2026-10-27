@@ -967,6 +967,14 @@ header('Pragma: no-cache');
             <span>Pending requests, active tickets, KYC, profile media, transaction records, the current APK and one rollback APK are never selected.</span>
           </div>
 
+          <div class="storage-cleanup-automation" id="storageCleanupAutomation" role="status">
+            <span class="storage-cleanup-automation-dot" aria-hidden="true"></span>
+            <div>
+              <strong id="storageCleanupAutomationStatus">Automatic cleanup status is loading</strong>
+              <span id="storageCleanupAutomationDetail">The server runner must be explicitly enabled before scheduled deletion can start.</span>
+            </div>
+          </div>
+
           <div class="storage-cleanup-category-list" id="storageCleanupCategories">
             <label class="storage-cleanup-category" for="cleanupAddMoneyReceipts">
               <input id="cleanupAddMoneyReceipts" type="checkbox" value="add_money_receipts" checked>

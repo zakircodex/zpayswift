@@ -38,6 +38,39 @@ function storage_cleanup_scan_limit(): int
     return max(100, min(20000, $limit));
 }
 
+function storage_cleanup_automatic_enabled(): bool
+{
+    if (!defined('STORAGE_CLEANUP_AUTOMATIC_ENABLED')) {
+        return false;
+    }
+
+    return constant('STORAGE_CLEANUP_AUTOMATIC_ENABLED') === true;
+}
+
+function storage_cleanup_automatic_batch_limit(): int
+{
+    $limit = defined('STORAGE_CLEANUP_AUTOMATIC_BATCH_LIMIT')
+        ? (int)constant('STORAGE_CLEANUP_AUTOMATIC_BATCH_LIMIT')
+        : storage_cleanup_batch_limit();
+
+    return max(1, min(storage_cleanup_batch_limit(), $limit));
+}
+
+function storage_cleanup_automatic_categories(): array
+{
+    $categories = defined('STORAGE_CLEANUP_AUTOMATIC_CATEGORIES')
+        ? constant('STORAGE_CLEANUP_AUTOMATIC_CATEGORIES')
+        : array_keys(storage_cleanup_categories());
+
+    return is_array($categories) ? storage_cleanup_normalize_categories($categories) : [];
+}
+
+function storage_cleanup_trigger($value): string
+{
+    $trigger = strtoupper(trim((string)$value));
+    return in_array($trigger, ['MANUAL', 'AUTOMATIC'], true) ? $trigger : 'MANUAL';
+}
+
 function storage_cleanup_confirmation_phrase(): string
 {
     return 'DELETE 90 DAY FILES';
@@ -705,6 +738,11 @@ function storage_cleanup_public_preview(array $scan, int $sampleLimit = 30): arr
     $scan['sample_limited'] = (int)($scan['total_files'] ?? 0) > count($items);
     $scan['batch_limit'] = storage_cleanup_batch_limit();
     $scan['confirmation_phrase'] = storage_cleanup_confirmation_phrase();
+    $scan['automatic'] = [
+        'enabled' => storage_cleanup_automatic_enabled(),
+        'batch_limit' => storage_cleanup_automatic_batch_limit(),
+        'categories' => storage_cleanup_automatic_categories(),
+    ];
     return $scan;
 }
 
@@ -850,6 +888,7 @@ function storage_cleanup_execute(
     $selected = storage_cleanup_normalize_categories($categories);
     $deps = array_replace(storage_cleanup_default_dependencies(), $dependencies);
     $now = isset($options['now']) ? (int)$options['now'] : storage_cleanup_now();
+    $trigger = storage_cleanup_trigger($options['trigger'] ?? 'MANUAL');
     $limit = isset($options['limit'])
         ? max(1, min(storage_cleanup_batch_limit(), (int)$options['limit']))
         : storage_cleanup_batch_limit();
@@ -860,6 +899,7 @@ function storage_cleanup_execute(
     $audit = [
         'run_id' => $runId,
         'status' => 'RUNNING',
+        'trigger' => $trigger,
         'actor_uid' => trim($actorUid),
         'categories' => $selected,
         'retention_days' => storage_cleanup_retention_days(),
@@ -881,8 +921,10 @@ function storage_cleanup_execute(
         'ok' => true,
         'code' => 'STORAGE_CLEANUP_COMPLETED',
         'run_id' => $runId,
+        'trigger' => $trigger,
         'retention_days' => storage_cleanup_retention_days(),
         'eligible_files' => (int)$scan['total_files'],
+        'eligible_bytes' => (int)$scan['total_bytes'],
         'attempted_files' => count($candidates),
         'deleted_files' => 0,
         'deleted_bytes' => 0,
@@ -990,8 +1032,9 @@ function storage_cleanup_execute(
     ]);
 
     if (function_exists('system_log')) {
-        system_log('STORAGE_CLEANUP', $runId, 'Admin storage cleanup completed', [
+        system_log('STORAGE_CLEANUP', $runId, 'Storage cleanup completed', [
             'actor_uid' => trim($actorUid),
+            'trigger' => $trigger,
             'categories' => $selected,
             'deleted_files' => $result['deleted_files'],
             'deleted_bytes' => $result['deleted_bytes'],
