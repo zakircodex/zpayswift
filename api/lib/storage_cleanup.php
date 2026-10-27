@@ -56,13 +56,27 @@ function storage_cleanup_automatic_batch_limit(): int
     return max(1, min(storage_cleanup_batch_limit(), $limit));
 }
 
+function storage_cleanup_automatic_apk_deletion_enabled(): bool
+{
+    return defined('STORAGE_CLEANUP_AUTOMATIC_ALLOW_APK_DELETION')
+        && constant('STORAGE_CLEANUP_AUTOMATIC_ALLOW_APK_DELETION') === true;
+}
+
 function storage_cleanup_automatic_categories(): array
 {
     $categories = defined('STORAGE_CLEANUP_AUTOMATIC_CATEGORIES')
         ? constant('STORAGE_CLEANUP_AUTOMATIC_CATEGORIES')
         : array_keys(storage_cleanup_categories());
 
-    return is_array($categories) ? storage_cleanup_normalize_categories($categories) : [];
+    $normalized = is_array($categories) ? storage_cleanup_normalize_categories($categories) : [];
+    if (!storage_cleanup_automatic_apk_deletion_enabled()) {
+        $normalized = array_values(array_filter(
+            $normalized,
+            static fn(string $category): bool => $category !== 'old_app_releases'
+        ));
+    }
+
+    return $normalized;
 }
 
 function storage_cleanup_trigger($value): string
@@ -742,7 +756,16 @@ function storage_cleanup_public_preview(array $scan, int $sampleLimit = 30): arr
         'enabled' => storage_cleanup_automatic_enabled(),
         'batch_limit' => storage_cleanup_automatic_batch_limit(),
         'categories' => storage_cleanup_automatic_categories(),
+        'apk_deletion_enabled' => storage_cleanup_automatic_apk_deletion_enabled(),
     ];
+    if (function_exists('storage_cleanup_email_settings')) {
+        $email = storage_cleanup_email_settings();
+        $scan['automatic']['email_backup'] = [
+            'enabled' => !empty($email['enabled']),
+            'ready' => !empty($email['ready']),
+            'recipient_masked' => (string)($email['recipient_masked'] ?? ''),
+        ];
+    }
     return $scan;
 }
 
@@ -936,6 +959,63 @@ function storage_cleanup_execute(
     ];
     $deletedRefs = [];
     $roots = array_replace(storage_cleanup_default_roots(), (array)($options['roots'] ?? []));
+    $backupFingerprints = [];
+
+    if ($trigger === 'AUTOMATIC' && $candidates !== []) {
+        $preDeleteBatch = $options['pre_delete_batch'] ?? null;
+        $backup = ['ok' => false, 'code' => 'EMAIL_BACKUP_HANDLER_MISSING'];
+        if (is_callable($preDeleteBatch)) {
+            try {
+                $candidateBackup = $preDeleteBatch($candidates, $runId);
+                $backup = is_array($candidateBackup)
+                    ? $candidateBackup
+                    : ['ok' => false, 'code' => 'EMAIL_BACKUP_INVALID_RESULT'];
+            } catch (Throwable $exception) {
+                $backup = ['ok' => false, 'code' => 'EMAIL_BACKUP_EXCEPTION'];
+            }
+        }
+
+        $backupSummary = [
+            'code' => trim((string)($backup['code'] ?? 'EMAIL_BACKUP_FAILED')),
+            'messages_sent' => max(0, (int)($backup['messages_sent'] ?? 0)),
+            'files_sent' => max(0, (int)($backup['files_sent'] ?? 0)),
+            'files_reused' => max(0, (int)($backup['files_reused'] ?? 0)),
+            'recipient_masked' => trim((string)($backup['recipient_masked'] ?? '')),
+        ];
+        $backupFingerprints = is_array($backup['fingerprints'] ?? null)
+            ? (array)$backup['fingerprints']
+            : [];
+        $result['email_backup'] = $backupSummary;
+
+        if (empty($backup['ok']) || count($backupFingerprints) !== count($candidates)) {
+            $result['ok'] = false;
+            $result['code'] = 'STORAGE_CLEANUP_BACKUP_FAILED';
+            $result['attempted_files'] = 0;
+            $result['failed_files'] = count($candidates);
+            $result['backup_failed_files'] = count($candidates);
+            $result['remaining_files'] = (int)$scan['total_files'];
+            ($deps['patch_audit'])($auditPath, [
+                'status' => 'BACKUP_FAILED',
+                'attempted_files' => 0,
+                'deleted_files' => 0,
+                'deleted_bytes' => 0,
+                'failed_files' => count($candidates),
+                'remaining_files' => (int)$scan['total_files'],
+                'email_backup' => $backupSummary,
+                'completed_at' => storage_cleanup_now(),
+            ]);
+            if (function_exists('system_log')) {
+                system_log('STORAGE_CLEANUP_BACKUP_FAILED', $runId, 'Automatic cleanup backup failed safely', [
+                    'actor_uid' => trim($actorUid),
+                    'trigger' => $trigger,
+                    'categories' => $selected,
+                    'eligible_files' => (int)$scan['total_files'],
+                    'backup_code' => $backupSummary['code'],
+                ]);
+            }
+            return $result;
+        }
+    }
 
     foreach ($candidates as $candidate) {
         $category = (string)($candidate['category'] ?? '');
@@ -944,6 +1024,23 @@ function storage_cleanup_execute(
         if ($safePath === '' || !storage_cleanup_candidate_still_eligible($candidate, (int)$scan['cutoff_at'], $deps)) {
             $result['failed_files']++;
             continue;
+        }
+
+        if ($trigger === 'AUTOMATIC') {
+            $candidateId = strtolower(trim((string)($candidate['candidate_id'] ?? '')));
+            $fingerprint = is_array($backupFingerprints[$candidateId] ?? null)
+                ? (array)$backupFingerprints[$candidateId]
+                : [];
+            $currentHash = @hash_file('sha256', $safePath);
+            if (
+                preg_match('/^[a-f0-9]{64}$/D', (string)($fingerprint['sha256'] ?? '')) !== 1
+                || !is_string($currentHash)
+                || !hash_equals((string)$fingerprint['sha256'], $currentHash)
+                || (int)($fingerprint['size_bytes'] ?? -1) !== max(0, (int)@filesize($safePath))
+            ) {
+                $result['failed_files']++;
+                continue;
+            }
         }
 
         $deletePath = $safePath;

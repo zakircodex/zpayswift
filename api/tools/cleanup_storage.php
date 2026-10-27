@@ -18,9 +18,11 @@ require_once $apiRoot . '/bootstrap.php';
 require_once $apiRoot . '/lib/add_money.php';
 require_once $apiRoot . '/lib/support.php';
 require_once $apiRoot . '/lib/storage_cleanup.php';
+require_once $apiRoot . '/lib/storage_cleanup_email.php';
 
 $dryRun = false;
 $statusOnly = false;
+$emailTest = false;
 $requestedLimit = null;
 
 foreach (array_slice($argv, 1) as $argument) {
@@ -32,18 +34,28 @@ foreach (array_slice($argv, 1) as $argument) {
         $statusOnly = true;
         continue;
     }
+    if ($argument === '--email-test') {
+        $emailTest = true;
+        continue;
+    }
     if (preg_match('/^--limit=(\d{1,3})$/D', $argument, $matches) === 1) {
         $requestedLimit = (int)$matches[1];
         continue;
     }
 
-    fwrite(STDERR, "Usage: php api/tools/cleanup_storage.php [--dry-run] [--status] [--limit=100]\n");
+    fwrite(STDERR, "Usage: php api/tools/cleanup_storage.php [--dry-run|--status|--email-test] [--limit=100]\n");
+    exit(2);
+}
+
+if (((int)$dryRun + (int)$statusOnly + (int)$emailTest) > 1) {
+    fwrite(STDERR, "Choose only one of --dry-run, --status, or --email-test.\n");
     exit(2);
 }
 
 $enabled = storage_cleanup_automatic_enabled();
 $categories = storage_cleanup_automatic_categories();
 $configuredLimit = storage_cleanup_automatic_batch_limit();
+$emailSettings = storage_cleanup_email_settings();
 $limit = $requestedLimit === null
     ? $configuredLimit
     : max(1, min($configuredLimit, $requestedLimit));
@@ -53,7 +65,24 @@ if ($statusOnly) {
     fwrite(STDOUT, 'retention_days=' . storage_cleanup_retention_days() . PHP_EOL);
     fwrite(STDOUT, 'batch_limit=' . $configuredLimit . PHP_EOL);
     fwrite(STDOUT, 'categories=' . implode(',', $categories) . PHP_EOL);
-    exit($enabled && $categories !== [] ? 0 : 3);
+    fwrite(STDOUT, 'automatic_apk_deletion=' . (storage_cleanup_automatic_apk_deletion_enabled() ? 'true' : 'false') . PHP_EOL);
+    fwrite(STDOUT, 'email_backup_enabled=' . (!empty($emailSettings['enabled']) ? 'true' : 'false') . PHP_EOL);
+    fwrite(STDOUT, 'email_backup_ready=' . (!empty($emailSettings['ready']) ? 'true' : 'false') . PHP_EOL);
+    fwrite(STDOUT, 'email_backup_recipient=' . (string)($emailSettings['recipient_masked'] ?? '') . PHP_EOL);
+    exit($enabled && $categories !== [] && !empty($emailSettings['ready']) ? 0 : 3);
+}
+
+if ($emailTest) {
+    if (!$enabled) {
+        fwrite(STDERR, "Automatic storage cleanup is disabled.\n");
+        exit(3);
+    }
+    $test = storage_cleanup_email_send_test();
+    fwrite(STDOUT, 'email_test=' . (!empty($test['ok']) ? 'accepted' : 'failed') . PHP_EOL);
+    fwrite(STDOUT, 'code=' . (string)($test['code'] ?? 'EMAIL_TEST_FAILED') . PHP_EOL);
+    fwrite(STDOUT, 'recipient=' . (string)($test['recipient_masked'] ?? '') . PHP_EOL);
+    fwrite(STDOUT, "files_attached=0\nfiles_deleted=0\n");
+    exit(!empty($test['ok']) ? 0 : 1);
 }
 
 if (!$dryRun && !$enabled) {
@@ -62,6 +91,10 @@ if (!$dryRun && !$enabled) {
 }
 if ($categories === []) {
     fwrite(STDERR, "Automatic storage cleanup has no valid categories.\n");
+    exit(3);
+}
+if (!$dryRun && empty($emailSettings['ready'])) {
+    fwrite(STDERR, "Automatic cleanup email backup is not ready. No files were deleted.\n");
     exit(3);
 }
 
@@ -87,6 +120,8 @@ try {
             [
                 'limit' => $limit,
                 'trigger' => 'AUTOMATIC',
+                'pre_delete_batch' => static fn(array $candidates, string $runId): array =>
+                    storage_cleanup_email_backup_candidates($candidates, $runId),
             ]
         );
         $result['mode'] = 'delete';
@@ -109,6 +144,10 @@ $fields = [
     'deleted_bytes' => max(0, (int)($result['deleted_bytes'] ?? 0)),
     'failed_files' => max(0, (int)($result['failed_files'] ?? 0)),
     'remaining_files' => max(0, (int)($result['remaining_files'] ?? 0)),
+    'email_backup_code' => (string)($result['email_backup']['code'] ?? ''),
+    'email_messages_sent' => max(0, (int)($result['email_backup']['messages_sent'] ?? 0)),
+    'email_files_sent' => max(0, (int)($result['email_backup']['files_sent'] ?? 0)),
+    'email_files_reused' => max(0, (int)($result['email_backup']['files_reused'] ?? 0)),
     'scan_limited' => !empty($result['scan_limited']) ? 'true' : 'false',
 ];
 foreach ($fields as $name => $value) {

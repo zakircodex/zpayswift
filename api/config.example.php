@@ -164,8 +164,14 @@ define('STORAGE_CLEANUP_AUTOMATIC_CATEGORIES', [
     'add_money_receipts',
     'notification_images',
     'support_attachments',
-    'old_app_releases',
 ]);
+/* APK files stay out of unattended cleanup because Gmail blocks APK attachments. */
+define('STORAGE_CLEANUP_AUTOMATIC_ALLOW_APK_DELETION', false);
+define('STORAGE_CLEANUP_EMAIL_BACKUP_ENABLED', false);
+define('STORAGE_CLEANUP_EMAIL_BACKUP_RECIPIENT', '');
+define('STORAGE_CLEANUP_EMAIL_FROM', 'no-reply@zpayswift.com');
+define('STORAGE_CLEANUP_EMAIL_MAX_RAW_BYTES', 12 * 1024 * 1024);
+define('STORAGE_CLEANUP_EMAIL_MAX_ATTACHMENTS', 10);
 define('SECURITY_IP_WHITELIST', []);
 define('SECURITY_IP_BLOCKLIST', []);
 define('SECURITY_IP_CACHE_TTL_SECONDS', 86400);
@@ -224,6 +230,8 @@ APP_CONFIG:
 - max_topup_amount
 - min_bundle_amount
 - max_bundle_amount
+- storage_cleanup_email_enabled
+- storage_cleanup_email_recipient
 
 MFS_CONFIG:
 - enabled
