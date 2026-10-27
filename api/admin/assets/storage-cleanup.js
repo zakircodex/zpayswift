@@ -91,11 +91,25 @@
     const sampleItems = Array.isArray(preview.sample_items) ? preview.sample_items : [];
     const categories = preview.categories && typeof preview.categories === 'object' ? preview.categories : {};
     const generatedAt = Number(preview.generated_at || 0);
+    const automatic = preview.automatic && typeof preview.automatic === 'object' ? preview.automatic : {};
 
     document.getElementById('storageCleanupFileCount').textContent = String(totalFiles);
     document.getElementById('storageCleanupByteCount').textContent = cleanupBytes(totalBytes);
     document.getElementById('storageCleanupCutoff').textContent = `${Number(preview.retention_days || 90)} days / ${cleanupDate(preview.cutoff_at)}`;
     document.getElementById('storageCleanupBatchLimit').textContent = `${Number(preview.batch_limit || 100)} files`;
+
+    const automaticPanel = document.getElementById('storageCleanupAutomation');
+    const automaticStatus = document.getElementById('storageCleanupAutomationStatus');
+    const automaticDetail = document.getElementById('storageCleanupAutomationDetail');
+    const automaticEnabled = automatic.enabled === true;
+    const automaticCategories = Array.isArray(automatic.categories) ? automatic.categories.length : 0;
+    if (automaticPanel) automaticPanel.classList.toggle('enabled', automaticEnabled);
+    if (automaticStatus) automaticStatus.textContent = automaticEnabled ? 'Automatic cleanup runner enabled' : 'Automatic cleanup runner disabled';
+    if (automaticDetail) {
+      automaticDetail.textContent = automaticEnabled
+        ? `Daily server runs may delete up to ${Number(automatic.batch_limit || 100)} eligible files across ${automaticCategories} protected categories.`
+        : 'Scheduled deletion remains fail-closed until it is explicitly enabled in the private server configuration.';
+    }
 
     document.querySelectorAll('[data-cleanup-result]').forEach(node => {
       const category = String(node.dataset.cleanupResult || '');

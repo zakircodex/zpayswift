@@ -211,6 +211,7 @@ $options = [
     'roots' => $roots,
     'current_apk' => 'Z-Pay-Swift-1.18.apk',
     'limit' => 100,
+    'trigger' => 'AUTOMATIC',
 ];
 $categories = array_keys(storage_cleanup_categories());
 
@@ -245,6 +246,7 @@ storage_test_expect(($requests[$approvedId]['receipt_hash'] ?? '') === 'HASH_MUS
 storage_test_expect($deletedTokens === ['TOKEN_APPROVED'], 'Only the deleted receipt capability token should be removed.');
 storage_test_expect(!empty($attachments[$closedTicketId][$closedAttachmentId]['archived']), 'Deleted support attachment metadata must be archived.');
 storage_test_expect(count($auditRows) === 1 && (string)array_values($auditRows)[0]['status'] === 'COMPLETED', 'Cleanup must leave a completed audit record.');
+storage_test_expect((string)array_values($auditRows)[0]['trigger'] === 'AUTOMATIC', 'Automatic cleanup must identify its trigger in the audit record.');
 
 $failureId = 'AM20260101010104ABCDEF12';
 $failureRelative = '2026-01/' . $failureId . '.jpg';

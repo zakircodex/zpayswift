@@ -154,6 +154,18 @@ define('BIRTHDAY_UNIVERSE_STORAGE_DIR', '');
 define('STORAGE_CLEANUP_RETENTION_DAYS', 90);
 define('STORAGE_CLEANUP_BATCH_LIMIT', 100);
 define('STORAGE_CLEANUP_SCAN_LIMIT', 5000);
+/*
+ * Automatic cleanup is CLI-only and remains disabled until explicitly enabled.
+ * Schedule api/tools/cleanup_storage.php once daily after enabling it.
+ */
+define('STORAGE_CLEANUP_AUTOMATIC_ENABLED', false);
+define('STORAGE_CLEANUP_AUTOMATIC_BATCH_LIMIT', 100);
+define('STORAGE_CLEANUP_AUTOMATIC_CATEGORIES', [
+    'add_money_receipts',
+    'notification_images',
+    'support_attachments',
+    'old_app_releases',
+]);
 define('SECURITY_IP_WHITELIST', []);
 define('SECURITY_IP_BLOCKLIST', []);
 define('SECURITY_IP_CACHE_TTL_SECONDS', 86400);
