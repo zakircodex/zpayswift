@@ -11,11 +11,11 @@ $pageCss = basename((string)$userPage['page_css']);
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#07172f">
   <title><?= $title ?></title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
-  <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
+  <?php require __DIR__ . '/pwa-head.php'; ?>
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
   <link rel="stylesheet" href="/api/user/assets/user-shell.css?v=<?= user_page_asset_version('user-shell.css') ?>">
   <link rel="stylesheet" href="/api/user/assets/user-components.css?v=<?= user_page_asset_version('user-components.css') ?>">

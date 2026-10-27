@@ -4,6 +4,20 @@ declare(strict_types=1);
 $root = dirname(__DIR__);
 $path = parse_url((string)($_SERVER['REQUEST_URI'] ?? '/'), PHP_URL_PATH) ?: '/';
 
+if ($path === '/user/manifest.webmanifest') {
+    header('Content-Type: application/manifest+json; charset=utf-8');
+    header('Cache-Control: no-cache, must-revalidate');
+    readfile($root . '/api/user/manifest.webmanifest');
+    exit;
+}
+
+if ($path === '/user/pwa-sw.js') {
+    header('Content-Type: application/javascript; charset=utf-8');
+    header('Cache-Control: no-cache, no-store, must-revalidate, max-age=0');
+    readfile($root . '/api/user/pwa-sw.js');
+    exit;
+}
+
 if ($path === '/test/support-viewport') {
     $width = max(320, min(1366, (int)($_GET['width'] ?? 390)));
     $height = max(560, min(1000, (int)($_GET['height'] ?? 844)));
