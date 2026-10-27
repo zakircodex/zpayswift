@@ -11,6 +11,7 @@
     bundleOffersSection:['Bundle Offers','Create and maintain the bundle offers shown across the platform.'],
     usersSection:['Users & Wallets','Manage user accounts, balances, ledger history and API access.'],
     operatorsSection:['Operators','Configure operator templates, availability and secure settings.'],
+    storageCleanupSection:['Storage Cleanup','Preview and remove eligible files under the protected 90-day retention policy.'],
     zsky24Section:['Z Sky 24','Review isolated creator-credit operations and transfer queues.']
   };
 

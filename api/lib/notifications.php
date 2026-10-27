@@ -503,7 +503,8 @@ function notification_public_row(array $row): array
     $type = notification_clean_code($row['type'] ?? '');
     $category = notification_clean_code($row['category'] ?? notification_category_for_type($type));
     $notificationId = (string)($row['notification_id'] ?? '');
-    $hasImage = (string)($row['image_id'] ?? '') !== '' && (string)($row['image_path'] ?? '') !== '';
+    $hasImage = (string)($row['image_id'] ?? '') !== ''
+        && notification_image_file_available((string)($row['image_path'] ?? ''));
     return [
         'notification_id' => $notificationId,
         'type' => $type,
@@ -902,6 +903,21 @@ function notification_private_storage_root(): string
         return $livePrivate;
     }
     return dirname(__DIR__) . DIRECTORY_SEPARATOR . 'storage_private' . DIRECTORY_SEPARATOR . 'notifications';
+}
+
+function notification_image_file_available(string $path): bool
+{
+    $path = trim($path);
+    if ($path === '' || is_link($path)) {
+        return false;
+    }
+    $root = realpath(notification_private_storage_root());
+    $real = realpath($path);
+    if ($root === false || $real === false || !is_file($real) || !is_readable($real)) {
+        return false;
+    }
+    $prefix = rtrim(str_replace('\\', '/', $root), '/') . '/';
+    return str_starts_with(str_replace('\\', '/', $real), $prefix);
 }
 
 function notification_image_id(): string

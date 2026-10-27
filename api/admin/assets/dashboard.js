@@ -70,6 +70,7 @@ const state = {
     userSummary: false,
     workers: false,
     workerSms: false,
+    storageCleanup: false,
     operators: false,
     appConfig: false,
     dashboardConfig: false
@@ -1453,6 +1454,12 @@ async function loadSectionData(sectionId, force = false){
     if (force || !state.loaded.workerSms) {
       await loadWorkerSmsArchive({ busyText:'Loading worker SMS archive...' });
     }
+    return;
+  }
+
+  if (sectionId === 'storageCleanupSection' && typeof window.loadStorageCleanup === 'function') {
+    await window.loadStorageCleanup(force);
+    state.loaded.storageCleanup = true;
     return;
   }
 

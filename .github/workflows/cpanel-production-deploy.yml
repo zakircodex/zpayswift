@@ -130,6 +130,9 @@ jobs:
           test -f deployment/api/admin/zsky24_creator_admin.php
           test -f deployment/api/admin/assets/zsky24-admin.js
           test -f deployment/api/admin/assets/zsky24-admin.css
+          test -f deployment/api/lib/storage_cleanup.php
+          test -f deployment/api/admin/assets/storage-cleanup.js
+          test -f deployment/api/admin/assets/admin-storage-cleanup.css
           test -f deployment/api/znews/lib/creator_registry.php
           test -f deployment/api/znews/lib/creator_view_policy.php
           test -f deployment/api/znews/lib/creator_payout_batches.php

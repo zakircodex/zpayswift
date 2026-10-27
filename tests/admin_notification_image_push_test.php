@@ -3,6 +3,12 @@ declare(strict_types=1);
 
 $_SERVER['SCRIPT_FILENAME'] = __FILE__;
 
+$notificationImageRoot = sys_get_temp_dir() . '/zpay-notification-image-' . bin2hex(random_bytes(5));
+mkdir($notificationImageRoot, 0700, true);
+define('NOTIFICATION_IMAGE_DIR', $notificationImageRoot);
+$notificationImagePath = $notificationImageRoot . '/NI20261012042300ABCDEF12.jpg';
+file_put_contents($notificationImagePath, 'test-image');
+
 $notificationImageAssertions = 0;
 $notificationImageDb = [
     'USERS' => [
@@ -92,7 +98,7 @@ $withImage = notification_broadcast_admin_notice([
     'title' => 'Premium Notice',
     'body' => 'Open the notification to see the full update.',
     'image_id' => 'NI_TEST_IMAGE',
-    'image_path' => '/private/notification_images/test.jpg',
+    'image_path' => $notificationImagePath,
     'image_mime' => 'image/jpeg',
     'image_name' => 'update.jpg',
 ]);
@@ -153,5 +159,8 @@ notification_image_expect(
     ($notificationImagePushes[2]['data']['notification_id'] ?? 'missing') === '',
     'Failed row unexpectedly exposed a notification id.'
 );
+
+@unlink($notificationImagePath);
+@rmdir($notificationImageRoot);
 
 fwrite(STDOUT, "PASS: {$notificationImageAssertions} admin notification image push assertions\n");
