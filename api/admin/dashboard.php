@@ -21,6 +21,7 @@ header('Pragma: no-cache');
   <link rel="stylesheet" href="/api/admin/assets/admin-support.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-support.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-settings.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-settings.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/admin-worker-sms.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-worker-sms.css') ?: 1)) ?>">
+  <link rel="stylesheet" href="/api/admin/assets/admin-storage-cleanup.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-storage-cleanup.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/zsky24-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/api/admin/assets/birthday-admin.css?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/birthday-admin.css') ?: 1)) ?>">
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
@@ -84,6 +85,7 @@ header('Pragma: no-cache');
         <button class="nav-btn" data-section="usersSection">Users <span>›</span></button>
         <button class="nav-btn" data-section="operatorsSection">Operators <span>›</span></button>
         <button class="nav-btn" data-section="workerSmsSection">Worker SMS <span>›</span></button>
+        <button class="nav-btn" data-section="storageCleanupSection">Storage Cleanup <span>›</span></button>
         <button class="nav-btn" data-section="zsky24Section">Z Sky 24 <span>›</span></button>
         <button class="nav-btn" data-section="birthdayUniverseSection">Birthday Universe <span>›</span></button>
       </div>
@@ -942,6 +944,72 @@ header('Pragma: no-cache');
         </div>
       </section>
 
+      <section class="section" id="storageCleanupSection" aria-labelledby="storageCleanupTitle">
+        <div class="card storage-cleanup-card">
+          <div class="panel-head storage-cleanup-head">
+            <div>
+              <span class="storage-cleanup-kicker">SAFE RETENTION</span>
+              <h3 id="storageCleanupTitle">Storage Cleanup</h3>
+              <p>Preview and remove eligible files older than 90 days. Financial history and active files are always preserved.</p>
+            </div>
+            <button class="btn blue" id="storageCleanupPreviewBtn" type="button">Preview Cleanup</button>
+          </div>
+
+          <div class="storage-cleanup-metrics" aria-live="polite">
+            <div><span>Eligible files</span><strong id="storageCleanupFileCount">-</strong></div>
+            <div><span>Recoverable space</span><strong id="storageCleanupByteCount">-</strong></div>
+            <div><span>Retention cutoff</span><strong id="storageCleanupCutoff">90 days</strong></div>
+            <div><span>Batch limit</span><strong id="storageCleanupBatchLimit">100 files</strong></div>
+          </div>
+
+          <div class="storage-cleanup-policy" role="note">
+            <strong>Protected by default</strong>
+            <span>Pending requests, active tickets, KYC, profile media, transaction records, the current APK and one rollback APK are never selected.</span>
+          </div>
+
+          <div class="storage-cleanup-category-list" id="storageCleanupCategories">
+            <label class="storage-cleanup-category" for="cleanupAddMoneyReceipts">
+              <input id="cleanupAddMoneyReceipts" type="checkbox" value="add_money_receipts" checked>
+              <span class="storage-cleanup-category-copy"><strong>Add Money receipts</strong><small>Approved or rejected receipts older than 90 days.</small></span>
+              <span class="storage-cleanup-category-result" data-cleanup-result="add_money_receipts">Not scanned</span>
+            </label>
+            <label class="storage-cleanup-category" for="cleanupNotificationImages">
+              <input id="cleanupNotificationImages" type="checkbox" value="notification_images" checked>
+              <span class="storage-cleanup-category-copy"><strong>Notification images</strong><small>Notification artwork older than 90 days.</small></span>
+              <span class="storage-cleanup-category-result" data-cleanup-result="notification_images">Not scanned</span>
+            </label>
+            <label class="storage-cleanup-category" for="cleanupSupportAttachments">
+              <input id="cleanupSupportAttachments" type="checkbox" value="support_attachments" checked>
+              <span class="storage-cleanup-category-copy"><strong>Closed support attachments</strong><small>Only screenshots from tickets closed over 90 days ago.</small></span>
+              <span class="storage-cleanup-category-result" data-cleanup-result="support_attachments">Not scanned</span>
+            </label>
+            <label class="storage-cleanup-category" for="cleanupOldAppReleases">
+              <input id="cleanupOldAppReleases" type="checkbox" value="old_app_releases" checked>
+              <span class="storage-cleanup-category-copy"><strong>Old app releases</strong><small>Preserves the current APK and the newest rollback APK.</small></span>
+              <span class="storage-cleanup-category-result" data-cleanup-result="old_app_releases">Not scanned</span>
+            </label>
+          </div>
+
+          <div class="storage-cleanup-preview" id="storageCleanupPreviewPanel" hidden>
+            <div class="storage-cleanup-preview-head">
+              <div>
+                <h4>Preview</h4>
+                <p id="storageCleanupPreviewNote">No files selected yet.</p>
+              </div>
+              <button class="btn red" id="storageCleanupDeleteBtn" type="button" disabled>Delete Eligible Files</button>
+            </div>
+            <div class="table-wrap storage-cleanup-table-wrap">
+              <table class="storage-cleanup-table">
+                <thead><tr><th>Category</th><th>Reference</th><th>File</th><th>Age</th><th>Size</th><th>Status</th></tr></thead>
+                <tbody id="storageCleanupTableBody"><tr><td colspan="6" class="empty">Run preview to inspect eligible files.</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="storage-cleanup-result" id="storageCleanupRunResult" hidden aria-live="polite"></div>
+        </div>
+      </section>
+
       <section class="section" id="zsky24Section" aria-labelledby="zsky24AdminTitle">
         <div class="zsky-admin-shell">
           <div class="zsky-admin-hero">
@@ -1007,6 +1075,7 @@ header('Pragma: no-cache');
 window.ADMIN_PROXY_URL = '/api/admin/proxy.php';
 </script>
 <script src="/api/admin/assets/dashboard.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/dashboard.js') ?: 1)) ?>"></script>
+<script src="/api/admin/assets/storage-cleanup.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/storage-cleanup.js') ?: 1)) ?>"></script>
 <script src="/api/admin/assets/zsky24-admin.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/zsky24-admin.js') ?: 1)) ?>"></script>
 <script src="/api/admin/assets/birthday-admin.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/birthday-admin.js') ?: 1)) ?>"></script>
 <script src="/api/admin/assets/admin-dashboard-ux.js?v=<?= rawurlencode((string)(@filemtime(__DIR__ . '/assets/admin-dashboard-ux.js') ?: 1)) ?>"></script>

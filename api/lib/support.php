@@ -1113,6 +1113,9 @@ function support_attachment_rows_for_ids(string $ticketId, array $ids = []): arr
         if (!is_array($row)) {
             continue;
         }
+        if (!empty($row['archived'])) {
+            continue;
+        }
         $attachmentId = (string)($row['attachment_id'] ?? '');
         if ($attachmentId === '' || ($allowed !== [] && empty($allowed[$attachmentId]))) {
             continue;

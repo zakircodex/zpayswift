@@ -1,0 +1,278 @@
+#storageCleanupSection .storage-cleanup-card{
+  overflow:hidden;
+}
+
+#storageCleanupSection .storage-cleanup-head{
+  align-items:flex-start;
+  padding:20px;
+}
+
+#storageCleanupSection .storage-cleanup-head h3{
+  margin:3px 0 0;
+  font-size:20px;
+}
+
+#storageCleanupSection .storage-cleanup-head p{
+  max-width:720px;
+  margin:6px 0 0;
+  color:var(--muted);
+  line-height:1.5;
+}
+
+#storageCleanupSection .storage-cleanup-kicker{
+  color:#45df98;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:0;
+}
+
+#storageCleanupSection .storage-cleanup-metrics{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  border-top:1px solid rgba(118,154,194,.14);
+  border-bottom:1px solid rgba(118,154,194,.14);
+}
+
+#storageCleanupSection .storage-cleanup-metrics > div{
+  min-width:0;
+  padding:16px 20px;
+  border-right:1px solid rgba(118,154,194,.14);
+}
+
+#storageCleanupSection .storage-cleanup-metrics > div:last-child{
+  border-right:0;
+}
+
+#storageCleanupSection .storage-cleanup-metrics span,
+#storageCleanupSection .storage-cleanup-metrics strong{
+  display:block;
+  overflow-wrap:anywhere;
+}
+
+#storageCleanupSection .storage-cleanup-metrics span{
+  color:var(--muted);
+  font-size:12px;
+  font-weight:700;
+}
+
+#storageCleanupSection .storage-cleanup-metrics strong{
+  margin-top:5px;
+  color:var(--text);
+  font-size:18px;
+}
+
+#storageCleanupSection .storage-cleanup-policy{
+  display:flex;
+  gap:12px;
+  margin:16px 20px;
+  padding:13px 15px;
+  border:1px solid rgba(62,222,145,.28);
+  border-radius:8px;
+  background:rgba(33,177,111,.08);
+  line-height:1.45;
+}
+
+#storageCleanupSection .storage-cleanup-policy strong{
+  flex:0 0 auto;
+  color:#58e7a5;
+}
+
+#storageCleanupSection .storage-cleanup-policy span{
+  color:var(--muted);
+}
+
+#storageCleanupSection .storage-cleanup-category-list{
+  border-top:1px solid rgba(118,154,194,.14);
+}
+
+#storageCleanupSection .storage-cleanup-category{
+  display:grid;
+  grid-template-columns:22px minmax(0,1fr) minmax(130px,auto);
+  gap:12px;
+  align-items:center;
+  min-height:72px;
+  padding:13px 20px;
+  border-bottom:1px solid rgba(118,154,194,.12);
+  cursor:pointer;
+}
+
+#storageCleanupSection .storage-cleanup-category:hover{
+  background:rgba(77,147,222,.05);
+}
+
+#storageCleanupSection .storage-cleanup-category input{
+  width:18px;
+  height:18px;
+  margin:0;
+  accent-color:#38df8b;
+}
+
+#storageCleanupSection .storage-cleanup-category-copy,
+#storageCleanupSection .storage-cleanup-category-copy strong,
+#storageCleanupSection .storage-cleanup-category-copy small{
+  display:block;
+  min-width:0;
+}
+
+#storageCleanupSection .storage-cleanup-category-copy small{
+  margin-top:4px;
+  color:var(--muted);
+  line-height:1.4;
+}
+
+#storageCleanupSection .storage-cleanup-category-result{
+  color:#8eb5df;
+  font-size:12px;
+  font-weight:800;
+  text-align:right;
+  overflow-wrap:anywhere;
+}
+
+#storageCleanupSection .storage-cleanup-preview{
+  border-top:1px solid rgba(118,154,194,.16);
+}
+
+#storageCleanupSection .storage-cleanup-preview-head{
+  display:flex;
+  justify-content:space-between;
+  gap:16px;
+  align-items:center;
+  padding:17px 20px;
+}
+
+#storageCleanupSection .storage-cleanup-preview-head h4{
+  margin:0;
+  font-size:16px;
+}
+
+#storageCleanupSection .storage-cleanup-preview-head p{
+  margin:5px 0 0;
+  color:var(--muted);
+  line-height:1.4;
+}
+
+#storageCleanupSection .storage-cleanup-table-wrap{
+  padding:0;
+}
+
+#storageCleanupSection .storage-cleanup-table{
+  width:100%;
+  min-width:820px;
+  table-layout:fixed;
+}
+
+#storageCleanupSection .storage-cleanup-table th:nth-child(1){width:150px}
+#storageCleanupSection .storage-cleanup-table th:nth-child(2){width:180px}
+#storageCleanupSection .storage-cleanup-table th:nth-child(3){width:auto}
+#storageCleanupSection .storage-cleanup-table th:nth-child(4){width:90px}
+#storageCleanupSection .storage-cleanup-table th:nth-child(5){width:100px}
+#storageCleanupSection .storage-cleanup-table th:nth-child(6){width:110px}
+
+#storageCleanupSection .storage-cleanup-table td{
+  vertical-align:top;
+  overflow-wrap:anywhere;
+}
+
+#storageCleanupSection .storage-cleanup-result{
+  margin:18px 20px 20px;
+  padding:15px;
+  border:1px solid rgba(118,154,194,.22);
+  border-radius:8px;
+  background:rgba(10,28,49,.48);
+}
+
+#storageCleanupSection .storage-cleanup-result.success{
+  border-color:rgba(62,222,145,.34);
+}
+
+#storageCleanupSection .storage-cleanup-result.warning{
+  border-color:rgba(255,181,71,.42);
+}
+
+#storageCleanupSection .storage-cleanup-result h4{
+  margin:0 0 7px;
+  font-size:15px;
+}
+
+#storageCleanupSection .storage-cleanup-result p{
+  margin:0;
+  color:var(--muted);
+  line-height:1.5;
+  overflow-wrap:anywhere;
+}
+
+.storage-cleanup-confirm-copy{
+  display:grid;
+  gap:12px;
+}
+
+.storage-cleanup-confirm-copy p{
+  margin:0;
+  line-height:1.5;
+}
+
+.storage-cleanup-confirm-summary{
+  padding:12px 14px;
+  border:1px solid rgba(255,181,71,.35);
+  border-radius:8px;
+  background:rgba(255,181,71,.08);
+}
+
+.storage-cleanup-confirm-copy code{
+  color:#ffd08a;
+  font-weight:800;
+}
+
+@media (max-width:900px){
+  #storageCleanupSection .storage-cleanup-metrics{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  #storageCleanupSection .storage-cleanup-metrics > div:nth-child(2){
+    border-right:0;
+  }
+
+  #storageCleanupSection .storage-cleanup-metrics > div:nth-child(-n+2){
+    border-bottom:1px solid rgba(118,154,194,.14);
+  }
+}
+
+@media (max-width:640px){
+  #storageCleanupSection .storage-cleanup-head,
+  #storageCleanupSection .storage-cleanup-preview-head{
+    align-items:stretch;
+    flex-direction:column;
+  }
+
+  #storageCleanupSection .storage-cleanup-head .btn,
+  #storageCleanupSection .storage-cleanup-preview-head .btn{
+    width:100%;
+  }
+
+  #storageCleanupSection .storage-cleanup-metrics > div{
+    padding:13px 14px;
+  }
+
+  #storageCleanupSection .storage-cleanup-policy{
+    display:grid;
+    margin:14px;
+  }
+
+  #storageCleanupSection .storage-cleanup-category{
+    grid-template-columns:22px minmax(0,1fr);
+    padding:13px 14px;
+  }
+
+  #storageCleanupSection .storage-cleanup-category-result{
+    grid-column:2;
+    text-align:left;
+  }
+
+  #storageCleanupSection .storage-cleanup-table-wrap{
+    padding:0 14px 14px;
+  }
+
+  #storageCleanupSection .storage-cleanup-result{
+    margin:14px;
+  }
+}

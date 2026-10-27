@@ -149,6 +149,11 @@ define('BIRTHDAY_UNIVERSE_AUDIO_MAX_BYTES', 10 * 1024 * 1024);
 define('BIRTHDAY_UNIVERSE_AUDIO_MAX_DURATION_SECONDS', 30);
 /* Leave empty to use private/uploads/znews/birthday outside the public webroot. */
 define('BIRTHDAY_UNIVERSE_STORAGE_DIR', '');
+
+/* Admin Storage Cleanup: never allows retention shorter than 90 days. */
+define('STORAGE_CLEANUP_RETENTION_DAYS', 90);
+define('STORAGE_CLEANUP_BATCH_LIMIT', 100);
+define('STORAGE_CLEANUP_SCAN_LIMIT', 5000);
 define('SECURITY_IP_WHITELIST', []);
 define('SECURITY_IP_BLOCKLIST', []);
 define('SECURITY_IP_CACHE_TTL_SECONDS', 86400);

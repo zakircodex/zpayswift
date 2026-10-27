@@ -9,6 +9,7 @@ require_once dirname(__DIR__) . '/lib/mfs_admin_settings.php';
 require_once dirname(__DIR__) . '/lib/referral.php';
 require_once dirname(__DIR__) . '/lib/currency_conversion.php';
 require_once dirname(__DIR__) . '/lib/support.php';
+require_once dirname(__DIR__) . '/lib/storage_cleanup.php';
 
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -1758,6 +1759,109 @@ switch ($action) {
         }
 
         proxy_response(true, 'SUCCESS', $approve ? 'Add money request approved' : 'Add money request rejected', (array)($res['data'] ?? []));
+        break;
+
+    case 'storage_cleanup_preview':
+        proxy_require_method('GET');
+        $adminUser = proxy_require_admin_login(true);
+        @set_time_limit(45);
+
+        $requestedCategories = trim((string)($_GET['categories'] ?? ''));
+        $categories = $requestedCategories === ''
+            ? array_keys(storage_cleanup_categories())
+            : explode(',', $requestedCategories);
+        $categories = storage_cleanup_normalize_categories($categories);
+        if ($categories === []) {
+            proxy_response(false, 'STORAGE_CLEANUP_CATEGORY_INVALID', 'Select at least one cleanup category.', [], 422);
+        }
+
+        $scan = storage_cleanup_scan($categories);
+        $preview = storage_cleanup_public_preview($scan);
+        $previewToken = bin2hex(random_bytes(24));
+        $previewExpiresAt = time() + 600;
+        $_SESSION['storage_cleanup_preview'] = [
+            'token_hash' => hash('sha256', $previewToken),
+            'actor_uid' => trim((string)($adminUser['uid'] ?? '')),
+            'categories' => $categories,
+            'cutoff_at' => (int)($preview['cutoff_at'] ?? 0),
+            'eligible_files' => (int)($preview['total_files'] ?? 0),
+            'expires_at' => $previewExpiresAt,
+        ];
+        $preview['preview_token'] = $previewToken;
+        $preview['preview_expires_at'] = $previewExpiresAt;
+        proxy_response(true, 'STORAGE_CLEANUP_PREVIEW_READY', 'Storage cleanup preview is ready.', $preview);
+        break;
+
+    case 'storage_cleanup_run':
+        proxy_require_method('POST');
+        proxy_require_csrf();
+        $adminUser = proxy_require_admin_login(true);
+        $body = proxy_read_json_body();
+        $categories = storage_cleanup_normalize_categories((array)($body['categories'] ?? []));
+        $confirmation = strtoupper(trim((string)($body['confirmation'] ?? '')));
+        $previewToken = trim((string)($body['preview_token'] ?? ''));
+        $savedPreview = is_array($_SESSION['storage_cleanup_preview'] ?? null)
+            ? (array)$_SESSION['storage_cleanup_preview']
+            : [];
+
+        if ($confirmation === '' || !hash_equals(storage_cleanup_confirmation_phrase(), $confirmation)) {
+            proxy_response(false, 'STORAGE_CLEANUP_CONFIRMATION_REQUIRED', 'Type the exact confirmation phrase before deleting files.', [], 422);
+        }
+        $savedTokenHash = trim((string)($savedPreview['token_hash'] ?? ''));
+        if (
+            $previewToken === ''
+            || $savedTokenHash === ''
+            || !hash_equals($savedTokenHash, hash('sha256', $previewToken))
+            || (int)($savedPreview['expires_at'] ?? 0) < time()
+            || !hash_equals(
+                trim((string)($savedPreview['actor_uid'] ?? '')),
+                trim((string)($adminUser['uid'] ?? ''))
+            )
+            || $categories !== storage_cleanup_normalize_categories((array)($savedPreview['categories'] ?? []))
+        ) {
+            unset($_SESSION['storage_cleanup_preview']);
+            proxy_response(false, 'STORAGE_CLEANUP_PREVIEW_EXPIRED', 'Cleanup preview expired or changed. Preview the files again.', [], 409);
+        }
+
+        $lock = storage_cleanup_acquire_lock();
+        if ($lock === false) {
+            proxy_response(false, 'STORAGE_CLEANUP_BUSY', 'Another storage cleanup is already running.', [], 409);
+        }
+        unset($_SESSION['storage_cleanup_preview']);
+        proxy_unlock_session();
+        @set_time_limit(90);
+        $cleanupError = null;
+        try {
+            $result = storage_cleanup_execute(
+                $categories,
+                trim((string)($adminUser['uid'] ?? ''))
+            );
+        } catch (Throwable $exception) {
+            $cleanupError = $exception;
+        } finally {
+            storage_cleanup_release_lock($lock);
+        }
+        if ($cleanupError instanceof Throwable) {
+            if (function_exists('system_log')) {
+                system_log('STORAGE_CLEANUP_ERROR', '', 'Admin storage cleanup failed before completion', [
+                    'actor_uid' => trim((string)($adminUser['uid'] ?? '')),
+                    'categories' => $categories,
+                    'error_type' => get_class($cleanupError),
+                ]);
+            }
+            proxy_response(false, 'STORAGE_CLEANUP_FAILED', 'Storage cleanup could not be completed. Review the audit log before retrying.', [], 500);
+        }
+        if (empty($result['ok']) && (string)($result['code'] ?? '') === 'STORAGE_CLEANUP_AUDIT_UNAVAILABLE') {
+            proxy_response(false, (string)$result['code'], (string)$result['message'], [], 503);
+        }
+        proxy_response(
+            true,
+            (string)($result['code'] ?? 'STORAGE_CLEANUP_COMPLETED'),
+            !empty($result['ok'])
+                ? 'Eligible storage files were deleted safely.'
+                : 'Cleanup completed with warnings. Review the audit result.',
+            $result
+        );
         break;
 
     case 'support_list':
