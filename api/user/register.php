@@ -14,7 +14,7 @@ $registerJsVersion = (string)(filemtime(__DIR__ . '/assets/register.js') ?: 1);
   <meta name="theme-color" content="#06162c">
   <title>Create Account | Z-Pay Swift</title>
   <link rel="icon" type="image/png" href="/assets/brand/favicon.png">
-  <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
+  <?php require __DIR__ . '/includes/pwa-head.php'; ?>
   <link rel="stylesheet" href="/assets/brand/brand.css?v=1">
   <link rel="stylesheet" href="/api/user/assets/register.css?v=<?= htmlspecialchars($registerCssVersion, ENT_QUOTES, 'UTF-8') ?>">
 </head>
@@ -246,5 +246,6 @@ window.USER_PROXY_URL = '/api/user/proxy.php';
 window.USER_LOGIN_URL = '/user/';
 </script>
 <script src="/api/user/assets/register.js?v=<?= htmlspecialchars($registerJsVersion, ENT_QUOTES, 'UTF-8') ?>"></script>
+<?php require __DIR__ . '/includes/pwa-script.php'; ?>
 </body>
 </html>

@@ -1,6 +1,10 @@
 Options -Indexes
 DirectoryIndex index.html
 
+<IfModule mod_mime.c>
+  AddType application/manifest+json .webmanifest
+</IfModule>
+
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
@@ -150,6 +154,8 @@ DirectoryIndex index.html
   RewriteRule ^privacy/?$ /privacy.html [L,QSA,NC]
   RewriteRule ^terms/?$ /terms.html [L,QSA,NC]
 
+  RewriteRule ^user/manifest\.webmanifest$ /api/user/manifest.webmanifest [L,NC]
+  RewriteRule ^user/pwa-sw\.js$ /api/user/pwa-sw.js [L,NC]
   RewriteRule ^user/?$ /api/user/index.php [L,QSA]
   RewriteRule ^user/dashboard/?$ /api/user/dashboard.php [L,QSA,NC]
   RewriteRule ^user/znews/?$ /api/user/znews.php [L,QSA,NC]
@@ -212,6 +218,12 @@ DirectoryIndex index.html
     Header always set Pragma "no-cache"
     Header always set Expires "0"
   </FilesMatch>
+
+  <Files "pwa-sw.js">
+    Header always set Cache-Control "no-cache, no-store, must-revalidate, max-age=0"
+    Header always set Pragma "no-cache"
+    Header always set Expires "0"
+  </Files>
 
   <Files "assetlinks.json">
     Header always set Content-Type "application/json; charset=utf-8"

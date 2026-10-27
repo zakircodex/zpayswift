@@ -1,0 +1,34 @@
+{
+  "id": "/user/",
+  "name": "Z-Pay Swift",
+  "short_name": "Z-Pay Swift",
+  "description": "Secure access to your Z-Pay Swift account.",
+  "lang": "en",
+  "start_url": "/user/",
+  "scope": "/user/",
+  "display": "standalone",
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ],
+  "background_color": "#06162c",
+  "theme_color": "#07172f",
+  "categories": [
+    "finance",
+    "utilities"
+  ],
+  "icons": [
+    {
+      "src": "/assets/brand/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/brand/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
