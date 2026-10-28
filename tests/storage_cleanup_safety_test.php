@@ -230,6 +230,7 @@ $options = [
             'files_reused' => 0,
             'recipient_masked' => 'te**@example.com',
             'fingerprints' => $fingerprints,
+            'authorize_delete' => static fn(array $candidate): array => ['ok' => true],
         ];
     },
 ];

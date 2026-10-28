@@ -10,13 +10,29 @@ $auth = auth_require_admin_session(true);
 $adminUser = $auth['user'];
 
 $body = api_read_json_body();
-$existing = fb_get('APP_CONFIG');
-$existing = is_array($existing) ? $existing : [];
+$cleanupLock = storage_cleanup_acquire_lock();
+if ($cleanupLock === false) {
+    api_response(false, 'STORAGE_CLEANUP_BUSY', 'Cleanup or a settings save is running. Retry when it finishes.', [], 409);
+}
+register_shutdown_function(static function () use ($cleanupLock): void {
+    storage_cleanup_release_lock($cleanupLock);
+});
+$configRead = storage_cleanup_email_read_record('APP_CONFIG');
+$currentCleanupEmail = storage_cleanup_email_settings_from_config($configRead);
+if (empty($currentCleanupEmail['ok'])) {
+    api_response(false, (string)$currentCleanupEmail['code'], 'App settings could not be verified. Retry before saving.', [], 503);
+}
+$existing = $configRead['row'];
+
+if ((array_key_exists('storage_cleanup_email_enabled', $body) && !is_bool($body['storage_cleanup_email_enabled']))
+    || (array_key_exists('storage_cleanup_email_recipient', $body) && !is_string($body['storage_cleanup_email_recipient']))
+) {
+    api_response(false, 'VALIDATION_ERROR', 'Storage cleanup email settings are invalid.', [], 422);
+}
 
 $topupEnabled = (bool)($body['topup_enabled'] ?? true);
 $bundleEnabled = (bool)($body['bundle_enabled'] ?? true);
 $maintenanceMode = (bool)($body['maintenance_mode'] ?? false);
-$currentCleanupEmail = storage_cleanup_email_settings($existing);
 $storageCleanupEmailEnabled = array_key_exists('storage_cleanup_email_enabled', $body)
     ? storage_cleanup_email_bool($body['storage_cleanup_email_enabled'])
     : !empty($currentCleanupEmail['enabled']);
@@ -146,6 +162,10 @@ $payload = [
     'android_update_message' => $androidUpdateMessage,
     'storage_cleanup_email_enabled' => $storageCleanupEmailEnabled,
     'storage_cleanup_email_recipient' => $storageCleanupEmailRecipient,
+    'storage_cleanup_email_revision' => isset($existing['storage_cleanup_email_revision'])
+        && $storageCleanupEmailEnabled === $currentCleanupEmail['enabled']
+        && $storageCleanupEmailRecipient === $currentCleanupEmail['recipient']
+            ? $existing['storage_cleanup_email_revision'] : bin2hex(random_bytes(16)),
 
     'min_topup_amount' => $minTopupAmount,
     'max_topup_amount' => $maxTopupAmount,
@@ -157,7 +177,11 @@ $payload = [
     'updated_by_admin_uid' => (string)($adminUser['uid'] ?? ''),
 ];
 
-if (!fb_patch('APP_CONFIG', $payload)) {
+$configWrite = fb_put_if_match('APP_CONFIG', array_replace($existing, $payload), $configRead['etag']);
+if (empty($configWrite['ok']) && (int)($configWrite['status'] ?? 0) === 412) {
+    api_response(false, 'APP_CONFIG_CHANGED', 'App settings changed while saving. Reload and retry.', [], 409);
+}
+if (empty($configWrite['ok'])) {
     api_response(false, 'SERVER_ERROR', 'Failed to save app config', [], 500);
 }
 

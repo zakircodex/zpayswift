@@ -50,11 +50,62 @@ function storage_cleanup_email_mask(string $email): string
     return $visible . str_repeat('*', max(2, strlen($local) - strlen($visible))) . '@' . $domain;
 }
 
-function storage_cleanup_email_settings(?array $row = null): array
+function storage_cleanup_email_read_record(string $path): array
 {
-    if ($row === null) {
-        $loaded = function_exists('fb_get') ? fb_get('APP_CONFIG') : [];
-        $row = is_array($loaded) ? $loaded : [];
+    try {
+        if (!function_exists('fb_request')) {
+            return ['ok' => false, 'state' => 'READ_FAILED'];
+        }
+        $response = fb_request('GET', $path, null, [], ['X-Firebase-ETag: true'], true);
+        if (($response['ok'] ?? false) !== true || (int)($response['status'] ?? 0) !== 200) {
+            return ['ok' => false, 'state' => 'READ_FAILED'];
+        }
+        if (!is_string($response['body'] ?? null)) {
+            return ['ok' => false, 'state' => 'MALFORMED'];
+        }
+        $decoded = json_decode($response['body'], false, 512, JSON_THROW_ON_ERROR);
+        if ($decoded !== null && !$decoded instanceof stdClass) {
+            return ['ok' => false, 'state' => 'MALFORMED'];
+        }
+        $etag = $response['headers']['etag'] ?? null;
+        if (!is_string($etag) || trim($etag) === '') {
+            return ['ok' => false, 'state' => 'VERSION_UNAVAILABLE'];
+        }
+        return [
+            'ok' => true,
+            'state' => $decoded === null ? 'MISSING' : 'VALID',
+            'row' => $decoded === null ? [] : json_decode($response['body'], true, 512, JSON_THROW_ON_ERROR),
+            'etag' => $etag,
+        ];
+    } catch (JsonException $exception) {
+        return ['ok' => false, 'state' => 'MALFORMED'];
+    } catch (Throwable $exception) {
+        return ['ok' => false, 'state' => 'READ_FAILED'];
+    }
+}
+
+function storage_cleanup_email_settings_failure(string $code): array
+{
+    return ['ok' => false, 'code' => $code, 'enabled' => false, 'recipient' => '',
+        'recipient_masked' => '', 'ready' => false];
+}
+
+function storage_cleanup_email_settings_from_config(array $read): array
+{
+    if (($read['ok'] ?? false) !== true) {
+        return storage_cleanup_email_settings_failure('EMAIL_SETTINGS_' . ($read['state'] ?? 'READ_FAILED'));
+    }
+    $row = $read['row'] ?? null;
+    if (!is_array($row) || !in_array($read['state'] ?? '', ['VALID', 'MISSING'], true)
+        || !is_string($read['etag'] ?? null) || $read['etag'] === ''
+    ) {
+        return storage_cleanup_email_settings_failure('EMAIL_SETTINGS_MALFORMED');
+    }
+    $hasEnabled = array_key_exists('storage_cleanup_email_enabled', $row);
+    $hasRecipient = array_key_exists('storage_cleanup_email_recipient', $row);
+    $hasRevision = array_key_exists('storage_cleanup_email_revision', $row);
+    if ($hasEnabled !== $hasRecipient || ($hasRevision && !$hasEnabled)) {
+        return storage_cleanup_email_settings_failure('EMAIL_SETTINGS_MALFORMED');
     }
 
     $defaultEnabled = defined('STORAGE_CLEANUP_EMAIL_BACKUP_ENABLED')
@@ -62,19 +113,61 @@ function storage_cleanup_email_settings(?array $row = null): array
     $defaultRecipient = defined('STORAGE_CLEANUP_EMAIL_BACKUP_RECIPIENT')
         ? storage_cleanup_email_address(constant('STORAGE_CLEANUP_EMAIL_BACKUP_RECIPIENT'))
         : '';
-    $enabled = array_key_exists('storage_cleanup_email_enabled', $row)
-        ? storage_cleanup_email_bool($row['storage_cleanup_email_enabled'])
-        : $defaultEnabled;
-    $recipient = array_key_exists('storage_cleanup_email_recipient', $row)
-        ? storage_cleanup_email_address($row['storage_cleanup_email_recipient'])
-        : $defaultRecipient;
+    $rawEnabled = $hasEnabled ? $row['storage_cleanup_email_enabled'] : $defaultEnabled;
+    $rawRecipient = $hasRecipient ? $row['storage_cleanup_email_recipient'] : $defaultRecipient;
+    $revision = $row['storage_cleanup_email_revision'] ?? 'legacy';
+    if (!is_bool($rawEnabled) || !is_string($rawRecipient) || !is_string($revision)
+        || ($hasRevision && preg_match('/^[a-f0-9]{32}$/D', $revision) !== 1)
+    ) {
+        return storage_cleanup_email_settings_failure('EMAIL_SETTINGS_MALFORMED');
+    }
+    $enabled = $rawEnabled;
+    $recipient = storage_cleanup_email_address($rawRecipient);
+    if (($rawRecipient !== '' && $recipient === '') || ($enabled && $recipient === '')) {
+        return storage_cleanup_email_settings_failure('EMAIL_SETTINGS_MALFORMED');
+    }
+    $source = $hasEnabled ? 'ADMIN' : 'BOOTSTRAP';
 
     return [
+        'ok' => true,
+        'code' => 'EMAIL_SETTINGS_' . $read['state'],
+        'source' => $source,
+        'read_version' => $read['etag'],
+        'config_hash' => hash('sha256', json_encode([$source, $enabled, $recipient, $revision], JSON_THROW_ON_ERROR)),
         'enabled' => $enabled,
         'recipient' => $recipient,
         'recipient_masked' => storage_cleanup_email_mask($recipient),
         'ready' => $enabled && $recipient !== '' && function_exists('mail'),
     ];
+}
+
+function storage_cleanup_email_settings(): array
+{
+    return storage_cleanup_email_settings_from_config(storage_cleanup_email_read_record('APP_CONFIG'));
+}
+
+function storage_cleanup_email_check_settings(array $approved, array $deps): array
+{
+    try {
+        $current = ($deps['settings'])();
+    } catch (Throwable $exception) {
+        return ['ok' => false, 'code' => 'EMAIL_SETTINGS_READ_FAILED'];
+    }
+    if (!is_array($current) || ($current['ok'] ?? false) !== true) {
+        return ['ok' => false, 'code' => is_array($current)
+            ? (string)($current['code'] ?? 'EMAIL_SETTINGS_READ_FAILED') : 'EMAIL_SETTINGS_READ_FAILED'];
+    }
+    if (($current['enabled'] ?? false) !== true || empty($current['ready'])) {
+        return ['ok' => false, 'code' => 'EMAIL_BACKUP_NOT_READY'];
+    }
+    foreach (['config_hash', 'read_version'] as $key) {
+        if (!is_string($approved[$key] ?? null) || $approved[$key] === ''
+            || !hash_equals($approved[$key], (string)($current[$key] ?? ''))
+        ) {
+            return ['ok' => false, 'code' => 'EMAIL_SETTINGS_CHANGED'];
+        }
+    }
+    return ['ok' => true];
 }
 
 function storage_cleanup_email_from(): string
@@ -117,9 +210,9 @@ function storage_cleanup_email_default_dependencies(): array
         'settings' => static fn(): array => storage_cleanup_email_settings(),
         'roots' => static fn(): array => storage_cleanup_default_roots(),
         'read_receipt' => static fn(string $candidateId): array =>
-            is_array($row = fb_get(storage_cleanup_email_receipt_path($candidateId))) ? $row : [],
-        'write_receipt' => static fn(string $candidateId, array $row): bool =>
-            fb_put(storage_cleanup_email_receipt_path($candidateId), $row),
+            storage_cleanup_email_read_record(storage_cleanup_email_receipt_path($candidateId)),
+        'write_receipt' => static fn(string $candidateId, array $row, string $etag): bool =>
+            (fb_put_if_match(storage_cleanup_email_receipt_path($candidateId), $row, $etag)['ok'] ?? false) === true,
         'send_message' => static fn(string $to, string $subject, string $body, string $headers): bool =>
             @mail($to, $subject, $body, $headers),
         'now' => static fn(): int => function_exists('now_ts') ? (int)now_ts() : time(),
@@ -191,12 +284,14 @@ function storage_cleanup_email_prepare_candidate(array $candidate, array $roots,
     ];
 }
 
-function storage_cleanup_email_receipt_matches(array $receipt, array $file, string $recipientHash): bool
+function storage_cleanup_email_receipt_matches(array $receipt, array $file, string $recipientHash, string $configHash): bool
 {
-    return !empty($receipt['accepted'])
+    return ($receipt['accepted'] ?? false) === true
+        && ($receipt['state'] ?? '') === 'ACCEPTED'
         && hash_equals((string)($receipt['candidate_id'] ?? ''), (string)$file['candidate_id'])
         && hash_equals((string)($receipt['file_sha256'] ?? ''), (string)$file['sha256'])
         && hash_equals((string)($receipt['recipient_hash'] ?? ''), $recipientHash)
+        && hash_equals((string)($receipt['config_hash'] ?? ''), $configHash)
         && (int)($receipt['size_bytes'] ?? -1) === (int)$file['size_bytes'];
 }
 
@@ -251,6 +346,11 @@ function storage_cleanup_email_message(array $files, string $runId, int $part, i
         if (!is_string($content)) {
             return ['ok' => false, 'code' => 'EMAIL_BACKUP_READ_FAILED'];
         }
+        if (strlen($content) !== (int)$file['size_bytes']
+            || !hash_equals((string)$file['sha256'], hash('sha256', $content))
+        ) {
+            return ['ok' => false, 'code' => 'EMAIL_BACKUP_FILE_CHANGED'];
+        }
         $name = (string)$file['name'];
         $body .= '--' . $boundary . $eol
             . 'Content-Type: ' . (string)$file['mime'] . '; name="' . $name . '"' . $eol
@@ -282,7 +382,8 @@ function storage_cleanup_email_message(array $files, string $runId, int $part, i
 function storage_cleanup_email_backup_candidates(
     array $candidates,
     string $runId,
-    array $dependencies = []
+    array $dependencies = [],
+    ?array $approvedSettings = null
 ): array {
     if ($candidates === []) {
         return [
@@ -296,8 +397,15 @@ function storage_cleanup_email_backup_candidates(
     }
 
     $deps = array_replace(storage_cleanup_email_default_dependencies(), $dependencies);
-    $settings = ($deps['settings'])();
-    $settings = is_array($settings) ? $settings : [];
+    $settings = $approvedSettings ?? ($deps['settings'])();
+    if (!is_array($settings) || ($settings['ok'] ?? false) !== true) {
+        return ['ok' => false, 'code' => is_array($settings)
+            ? (string)($settings['code'] ?? 'EMAIL_SETTINGS_READ_FAILED') : 'EMAIL_SETTINGS_READ_FAILED'];
+    }
+    $check = storage_cleanup_email_check_settings($settings, $deps);
+    if (empty($check['ok'])) {
+        return $check;
+    }
     $recipient = storage_cleanup_email_address($settings['recipient'] ?? '');
     if (empty($settings['enabled']) || $recipient === '' || !is_callable($deps['send_message'])) {
         return ['ok' => false, 'code' => 'EMAIL_BACKUP_NOT_READY'];
@@ -307,6 +415,7 @@ function storage_cleanup_email_backup_candidates(
     $roots = is_array($roots) ? $roots : [];
     $maxBytes = storage_cleanup_email_max_raw_bytes();
     $recipientHash = storage_cleanup_email_recipient_hash($recipient);
+    $configHash = (string)$settings['config_hash'];
     $prepared = [];
     $unsent = [];
     $reused = 0;
@@ -316,11 +425,22 @@ function storage_cleanup_email_backup_candidates(
         if (empty($file['ok'])) {
             return ['ok' => false, 'code' => (string)($file['code'] ?? 'EMAIL_BACKUP_PREPARE_FAILED')];
         }
-        $receipt = ($deps['read_receipt'])((string)$file['candidate_id']);
-        $receipt = is_array($receipt) ? $receipt : [];
-        if (storage_cleanup_email_receipt_matches($receipt, $file, $recipientHash)) {
+        $read = ($deps['read_receipt'])((string)$file['candidate_id']);
+        if (!is_array($read) || ($read['ok'] ?? false) !== true || empty($read['etag'])) {
+            return ['ok' => false, 'code' => 'EMAIL_BACKUP_RECEIPT_READ_FAILED'];
+        }
+        $receipt = $read['row'];
+        if (storage_cleanup_email_receipt_matches($receipt, $file, $recipientHash, $configHash)) {
             $reused++;
         } else {
+            // A durable pending intent may already have reached the mail transport.
+            $state = $receipt['state'] ?? '';
+            $definitePreviousOutcome = ($state === 'FAILED' && ($receipt['accepted'] ?? null) === false)
+                || (in_array($state, ['', 'ACCEPTED'], true) && ($receipt['accepted'] ?? false) === true);
+            if ($receipt !== [] && !$definitePreviousOutcome) {
+                return ['ok' => false, 'code' => 'EMAIL_BACKUP_OUTCOME_UNKNOWN'];
+            }
+            $file['receipt_etag'] = $read['etag'];
             $unsent[] = $file;
         }
         $prepared[] = $file;
@@ -334,42 +454,102 @@ function storage_cleanup_email_backup_candidates(
     $sentMessages = 0;
     $sentFiles = 0;
     $now = (int)($deps['now'])();
+    $failure = static function (string $code) use (&$sentMessages, &$sentFiles, $reused, $recipient): array {
+        return ['ok' => false, 'code' => $code, 'messages_sent' => $sentMessages,
+            'files_sent' => $sentFiles, 'files_reused' => $reused,
+            'recipient_masked' => storage_cleanup_email_mask($recipient)];
+    };
     foreach ($groups as $index => $group) {
         $message = storage_cleanup_email_message($group, $runId, $index + 1, count($groups));
         if (empty($message['ok'])) {
-            return ['ok' => false, 'code' => (string)($message['code'] ?? 'EMAIL_BACKUP_BUILD_FAILED')];
+            return $failure((string)($message['code'] ?? 'EMAIL_BACKUP_BUILD_FAILED'));
+        }
+        $check = storage_cleanup_email_check_settings($settings, $deps);
+        if (empty($check['ok'])) {
+            return $failure((string)$check['code']);
+        }
+        $attemptId = bin2hex(random_bytes(16));
+        $intents = [];
+        foreach ($group as $file) {
+            $id = (string)$file['candidate_id'];
+            $intent = [
+                'candidate_id' => $id,
+                'category' => (string)$file['category'],
+                'file_sha256' => (string)$file['sha256'],
+                'size_bytes' => (int)$file['size_bytes'],
+                'recipient_hash' => $recipientHash,
+                'config_hash' => $configHash,
+                'accepted' => false,
+                'state' => 'PENDING',
+                'attempt_id' => $attemptId,
+                'started_at' => $now,
+                'run_id' => $runId,
+            ];
+            if (!(($deps['write_receipt'])($id, $intent, (string)$file['receipt_etag']))) {
+                return $failure('EMAIL_BACKUP_AUDIT_FAILED');
+            }
+            $claimed = ($deps['read_receipt'])($id);
+            $claimedRow = $claimed['row'] ?? null;
+            $verifiedIntent = is_array($claimedRow) && count($claimedRow) === count($intent);
+            foreach ($intent as $field => $value) {
+                $verifiedIntent = $verifiedIntent && array_key_exists($field, $claimedRow) && $claimedRow[$field] === $value;
+            }
+            if (($claimed['ok'] ?? false) !== true || empty($claimed['etag'])
+                || !$verifiedIntent
+            ) {
+                return $failure('EMAIL_BACKUP_AUDIT_FAILED');
+            }
+            $intents[$id] = ['row' => $intent, 'etag' => $claimed['etag']];
+        }
+        $check = storage_cleanup_email_check_settings($settings, $deps);
+        if (empty($check['ok'])) {
+            // No transport call occurred. Persist a definite non-send where possible.
+            foreach ($intents as $id => $intent) {
+                $row = $intent['row'];
+                $row['state'] = 'FAILED';
+                ($deps['write_receipt'])($id, $row, $intent['etag']);
+            }
+            return $failure((string)$check['code']);
         }
         try {
-            $accepted = (bool)($deps['send_message'])(
+            $accepted = ($deps['send_message'])(
                 $recipient,
                 (string)$message['subject'],
                 (string)$message['body'],
                 (string)$message['headers']
             );
         } catch (Throwable $exception) {
-            $accepted = false;
+            $accepted = null;
         }
-        if (!$accepted) {
-            return ['ok' => false, 'code' => 'EMAIL_BACKUP_SEND_FAILED'];
+        if ($accepted !== true && $accepted !== false) {
+            return $failure('EMAIL_BACKUP_OUTCOME_UNKNOWN');
+        }
+        if ($accepted === false) {
+            foreach ($intents as $id => $intent) {
+                $row = $intent['row'];
+                $row['state'] = 'FAILED';
+                ($deps['write_receipt'])($id, $row, $intent['etag']);
+            }
+            return $failure('EMAIL_BACKUP_SEND_FAILED');
         }
         $sentMessages++;
+        $sentFiles += count($group);
 
         foreach ($group as $file) {
-            $receipt = [
-                'candidate_id' => (string)$file['candidate_id'],
-                'category' => (string)$file['category'],
-                'file_sha256' => (string)$file['sha256'],
-                'size_bytes' => (int)$file['size_bytes'],
-                'recipient_hash' => $recipientHash,
-                'accepted' => true,
-                'accepted_at' => $now,
-                'run_id' => $runId,
-            ];
-            if (!($deps['write_receipt'])((string)$file['candidate_id'], $receipt)) {
-                return ['ok' => false, 'code' => 'EMAIL_BACKUP_AUDIT_FAILED'];
+            $id = (string)$file['candidate_id'];
+            $receipt = $intents[$id]['row'];
+            $receipt['state'] = 'ACCEPTED';
+            $receipt['accepted'] = true;
+            $receipt['accepted_at'] = $now;
+            if (!($deps['write_receipt'])($id, $receipt, $intents[$id]['etag'])) {
+                return $failure('EMAIL_BACKUP_AUDIT_FAILED');
             }
-            $sentFiles++;
         }
+    }
+
+    $check = storage_cleanup_email_check_settings($settings, $deps);
+    if (empty($check['ok'])) {
+        return $failure((string)$check['code']);
     }
 
     $fingerprints = [];
@@ -389,14 +569,40 @@ function storage_cleanup_email_backup_candidates(
         'total_files' => count($prepared),
         'recipient_masked' => storage_cleanup_email_mask($recipient),
         'fingerprints' => $fingerprints,
+        'authorize_delete' => static function (array $candidate) use ($settings, $deps, $prepared, $recipientHash, $configHash): array {
+            $check = storage_cleanup_email_check_settings($settings, $deps);
+            if (empty($check['ok'])) {
+                return $check;
+            }
+            foreach ($prepared as $file) {
+                if ($file['candidate_id'] !== ($candidate['candidate_id'] ?? '')) {
+                    continue;
+                }
+                $read = ($deps['read_receipt'])((string)$file['candidate_id']);
+                if (($read['ok'] ?? false) === true
+                    && storage_cleanup_email_receipt_matches($read['row'], $file, $recipientHash, $configHash)
+                ) {
+                    return ['ok' => true];
+                }
+                break;
+            }
+            return ['ok' => false, 'code' => 'EMAIL_BACKUP_RECEIPT_INVALID'];
+        },
     ];
 }
 
-function storage_cleanup_email_send_test(array $dependencies = []): array
+function storage_cleanup_email_send_test(array $dependencies = [], ?array $approvedSettings = null): array
 {
     $deps = array_replace(storage_cleanup_email_default_dependencies(), $dependencies);
-    $settings = ($deps['settings'])();
-    $settings = is_array($settings) ? $settings : [];
+    $settings = $approvedSettings ?? ($deps['settings'])();
+    if (!is_array($settings) || ($settings['ok'] ?? false) !== true) {
+        return ['ok' => false, 'code' => is_array($settings)
+            ? (string)($settings['code'] ?? 'EMAIL_SETTINGS_READ_FAILED') : 'EMAIL_SETTINGS_READ_FAILED'];
+    }
+    $check = storage_cleanup_email_check_settings($settings, $deps);
+    if (empty($check['ok'])) {
+        return $check;
+    }
     $recipient = storage_cleanup_email_address($settings['recipient'] ?? '');
     if (empty($settings['enabled']) || $recipient === '') {
         return ['ok' => false, 'code' => 'EMAIL_BACKUP_NOT_READY'];

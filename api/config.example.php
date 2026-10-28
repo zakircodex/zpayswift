@@ -232,6 +232,7 @@ APP_CONFIG:
 - max_bundle_amount
 - storage_cleanup_email_enabled
 - storage_cleanup_email_recipient
+- storage_cleanup_email_revision (server-generated; changes invalidate earlier backup authorization)
 
 MFS_CONFIG:
 - enabled

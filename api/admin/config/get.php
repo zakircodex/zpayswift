@@ -8,12 +8,13 @@ require_once dirname(__DIR__, 2) . '/lib/storage_cleanup_email.php';
 api_require_method('GET');
 $auth = auth_require_admin_session(true);
 
-$row = fb_get('APP_CONFIG');
-if (!is_array($row)) {
-    $row = [];
+$configRead = storage_cleanup_email_read_record('APP_CONFIG');
+$cleanupEmail = storage_cleanup_email_settings_from_config($configRead);
+if (empty($cleanupEmail['ok'])) {
+    api_response(false, (string)$cleanupEmail['code'], 'App settings could not be verified. Retry before saving or running cleanup.', [], 503);
 }
+$row = $configRead['row'];
 $androidRelease = app_runtime_android_latest_release($row);
-$cleanupEmail = storage_cleanup_email_settings($row);
 
 api_response(true, 'SUCCESS', 'App config loaded', [
     'topup_enabled' => (bool)($row['topup_enabled'] ?? true),
