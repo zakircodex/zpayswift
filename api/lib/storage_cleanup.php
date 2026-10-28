@@ -764,6 +764,7 @@ function storage_cleanup_public_preview(array $scan, int $sampleLimit = 30): arr
             'enabled' => !empty($email['enabled']),
             'ready' => !empty($email['ready']),
             'recipient_masked' => (string)($email['recipient_masked'] ?? ''),
+            'code' => (string)($email['code'] ?? 'EMAIL_SETTINGS_READ_FAILED'),
         ];
     }
     return $scan;
@@ -960,6 +961,7 @@ function storage_cleanup_execute(
     $deletedRefs = [];
     $roots = array_replace(storage_cleanup_default_roots(), (array)($options['roots'] ?? []));
     $backupFingerprints = [];
+    $authorizeDelete = null;
 
     if ($trigger === 'AUTOMATIC' && $candidates !== []) {
         $preDeleteBatch = $options['pre_delete_batch'] ?? null;
@@ -986,8 +988,9 @@ function storage_cleanup_execute(
             ? (array)$backup['fingerprints']
             : [];
         $result['email_backup'] = $backupSummary;
+        $authorizeDelete = $backup['authorize_delete'] ?? null;
 
-        if (empty($backup['ok']) || count($backupFingerprints) !== count($candidates)) {
+        if (empty($backup['ok']) || count($backupFingerprints) !== count($candidates) || !is_callable($authorizeDelete)) {
             $result['ok'] = false;
             $result['code'] = 'STORAGE_CLEANUP_BACKUP_FAILED';
             $result['attempted_files'] = 0;
@@ -1027,6 +1030,16 @@ function storage_cleanup_execute(
         }
 
         if ($trigger === 'AUTOMATIC') {
+            try {
+                $authorization = $authorizeDelete($candidate);
+            } catch (Throwable $exception) {
+                $authorization = ['ok' => false, 'code' => 'EMAIL_BACKUP_AUTHORIZATION_FAILED'];
+            }
+            if (($authorization['ok'] ?? false) !== true) {
+                $result['email_backup']['code'] = (string)($authorization['code'] ?? 'EMAIL_BACKUP_AUTHORIZATION_FAILED');
+                $result['failed_files'] = count($candidates) - $result['deleted_files'];
+                break;
+            }
             $candidateId = strtolower(trim((string)($candidate['candidate_id'] ?? '')));
             $fingerprint = is_array($backupFingerprints[$candidateId] ?? null)
                 ? (array)$backupFingerprints[$candidateId]
@@ -1083,6 +1096,21 @@ function storage_cleanup_execute(
             }
         }
 
+        if ($trigger === 'AUTOMATIC') {
+            try {
+                $authorization = $authorizeDelete($candidate);
+            } catch (Throwable $exception) {
+                $authorization = ['ok' => false, 'code' => 'EMAIL_BACKUP_AUTHORIZATION_FAILED'];
+            }
+            if (($authorization['ok'] ?? false) !== true) {
+                $result['email_backup']['code'] = (string)($authorization['code'] ?? 'EMAIL_BACKUP_AUTHORIZATION_FAILED');
+                // Metadata may already be archived; retain its quarantined bytes for recovery.
+                $result['orphaned_files'] += $metadataBacked ? 1 : 0;
+                $result['failed_files'] = count($candidates) - $result['deleted_files'];
+                break;
+            }
+        }
+
         if (!($deps['delete_file'])($deletePath)) {
             $result['failed_files']++;
             if ($metadataBacked) {
@@ -1126,7 +1154,7 @@ function storage_cleanup_execute(
         'remaining_files' => $result['remaining_files'],
         'deleted_items' => array_slice($deletedRefs, 0, 100),
         'completed_at' => storage_cleanup_now(),
-    ]);
+    ] + (isset($result['email_backup']) ? ['email_backup' => $result['email_backup']] : []));
 
     if (function_exists('system_log')) {
         system_log('STORAGE_CLEANUP', $runId, 'Storage cleanup completed', [

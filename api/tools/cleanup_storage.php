@@ -68,6 +68,7 @@ if ($statusOnly) {
     fwrite(STDOUT, 'automatic_apk_deletion=' . (storage_cleanup_automatic_apk_deletion_enabled() ? 'true' : 'false') . PHP_EOL);
     fwrite(STDOUT, 'email_backup_enabled=' . (!empty($emailSettings['enabled']) ? 'true' : 'false') . PHP_EOL);
     fwrite(STDOUT, 'email_backup_ready=' . (!empty($emailSettings['ready']) ? 'true' : 'false') . PHP_EOL);
+    fwrite(STDOUT, 'email_settings_code=' . (string)($emailSettings['code'] ?? 'EMAIL_SETTINGS_READ_FAILED') . PHP_EOL);
     fwrite(STDOUT, 'email_backup_recipient=' . (string)($emailSettings['recipient_masked'] ?? '') . PHP_EOL);
     exit($enabled && $categories !== [] && !empty($emailSettings['ready']) ? 0 : 3);
 }
@@ -77,7 +78,16 @@ if ($emailTest) {
         fwrite(STDERR, "Automatic storage cleanup is disabled.\n");
         exit(3);
     }
-    $test = storage_cleanup_email_send_test();
+    $testLock = storage_cleanup_acquire_lock();
+    if ($testLock === false) {
+        fwrite(STDERR, "Storage cleanup or settings save is busy. Retry later.\n");
+        exit(3);
+    }
+    try {
+        $test = storage_cleanup_email_send_test([], $emailSettings);
+    } finally {
+        storage_cleanup_release_lock($testLock);
+    }
     fwrite(STDOUT, 'email_test=' . (!empty($test['ok']) ? 'accepted' : 'failed') . PHP_EOL);
     fwrite(STDOUT, 'code=' . (string)($test['code'] ?? 'EMAIL_TEST_FAILED') . PHP_EOL);
     fwrite(STDOUT, 'recipient=' . (string)($test['recipient_masked'] ?? '') . PHP_EOL);
@@ -94,7 +104,8 @@ if ($categories === []) {
     exit(3);
 }
 if (!$dryRun && empty($emailSettings['ready'])) {
-    fwrite(STDERR, "Automatic cleanup email backup is not ready. No files were deleted.\n");
+    fwrite(STDERR, (string)($emailSettings['code'] ?? 'EMAIL_BACKUP_NOT_READY')
+        . ": Verify backup settings and retry. No files were deleted.\n");
     exit(3);
 }
 
@@ -121,7 +132,7 @@ try {
                 'limit' => $limit,
                 'trigger' => 'AUTOMATIC',
                 'pre_delete_batch' => static fn(array $candidates, string $runId): array =>
-                    storage_cleanup_email_backup_candidates($candidates, $runId),
+                    storage_cleanup_email_backup_candidates($candidates, $runId, [], $emailSettings),
             ]
         );
         $result['mode'] = 'delete';

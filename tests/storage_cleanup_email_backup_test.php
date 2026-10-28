@@ -52,16 +52,17 @@ $candidate = storage_cleanup_candidate('notification_images', [
 $receipts = [];
 $messages = [];
 $dependencies = [
-    'settings' => static fn(): array => [
-        'enabled' => true,
-        'recipient' => 'backup@example.com',
-    ],
+    'settings' => static fn(): array => storage_cleanup_email_settings_from_config([
+        'ok' => true, 'state' => 'VALID', 'etag' => '"config-1"',
+        'row' => ['storage_cleanup_email_enabled' => true, 'storage_cleanup_email_recipient' => 'backup@example.com'],
+    ]),
     'roots' => static fn(): array => [
         'notification_images' => $notificationRoot,
         'old_app_releases' => $apkRoot,
     ],
     'read_receipt' => static function (string $candidateId) use (&$receipts): array {
-        return is_array($receipts[$candidateId] ?? null) ? $receipts[$candidateId] : [];
+        return ['ok' => true, 'state' => isset($receipts[$candidateId]) ? 'VALID' : 'MISSING',
+            'row' => $receipts[$candidateId] ?? [], 'etag' => '"fixture"'];
     },
     'write_receipt' => static function (string $candidateId, array $row) use (&$receipts): bool {
         $receipts[$candidateId] = $row;
@@ -87,13 +88,14 @@ cleanup_email_expect(!empty($repeat['ok']) && (int)$repeat['files_reused'] === 1
 cleanup_email_expect(count($messages) === 1, 'An already backed-up file must not be emailed twice.');
 
 $failedDependencies = $dependencies;
-$failedDependencies['read_receipt'] = static fn(string $candidateId): array => [];
+$receipts = [];
 $failedDependencies['send_message'] = static fn(string $to, string $subject, string $body, string $headers): bool => false;
 $failed = storage_cleanup_email_backup_candidates([$candidate], 'SCRTEST003', $failedDependencies);
 cleanup_email_expect(empty($failed['ok']) && $failed['code'] === 'EMAIL_BACKUP_SEND_FAILED', 'Mail transport failure must fail closed.');
 
 $invalidDependencies = $dependencies;
 $invalidDependencies['settings'] = static fn(): array => [
+    'ok' => true, 'ready' => true, 'config_hash' => 'fixture', 'read_version' => 'fixture',
     'enabled' => true,
     'recipient' => "backup@example.com\r\nBcc: attacker@example.com",
 ];
@@ -163,6 +165,7 @@ $tamperOptions['pre_delete_batch'] = static function (array $candidates, string 
         'ok' => true,
         'code' => 'EMAIL_BACKUP_ACCEPTED',
         'fingerprints' => [$candidateId => $fingerprint],
+        'authorize_delete' => static fn(array $candidate): array => ['ok' => true],
     ];
 };
 $tampered = storage_cleanup_execute(
